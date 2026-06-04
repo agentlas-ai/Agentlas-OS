@@ -4,7 +4,8 @@
   "version": "0.1.3",
   "description": "Three-agent meta-agent team for creating single agents, creating multi-agent teams, and packaging existing agents into Agentlas architecture.",
   "author": {
-    "name": "Agentlas"
+    "name": "Agentlas",
+    "email": "appbridge@appbridge.co.kr"
   },
   "homepage": "https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent",
   "repository": "https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent",

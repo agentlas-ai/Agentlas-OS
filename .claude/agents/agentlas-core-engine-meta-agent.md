@@ -12,5 +12,8 @@ Route each request to one of the three public team members:
 - `20-multi-agent-team-builder`
 - `30-agentlas-packager`
 
-Read `AGENTS.md` and `.agentlas/mode-map.json` first. Keep adapters thin. Do
-not store secrets in generated files. Verify packages before release.
+Read `AGENTS.md`, `.agentlas/mode-map.json`, and the public mode classifier
+first. Use the clarify question loop when missing details change the package.
+Use `.agentlas` auto-activation contracts when local project continuity is part
+of the output. Keep adapters thin. Do not store secrets in generated files.
+Verify packages before release.

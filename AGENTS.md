@@ -7,6 +7,11 @@ Claude Code, Gemini CLI, Cursor, and `AGENTS.md`-compatible runtimes.
 ## Source Of Truth
 
 - Canonical entry point: `AGENTS.md`.
+- Architecture ownership rule: `docs/source-of-truth.md`.
+- Runtime split and sync boundary: `docs/runtime-sync-boundaries.md`.
+- Portable support contracts: `docs/mode-classifier.md`,
+  `docs/clarify-question-loop.md`, `docs/agentlas-auto-activation.md`, and
+  `docs/skill-lifecycle-promotion.md`.
 - Team members: `agents/10-single-agent-builder/agent.md`,
   `agents/20-multi-agent-team-builder/agent.md`, and
   `agents/30-agentlas-packager/agent.md`.
@@ -17,7 +22,8 @@ Claude Code, Gemini CLI, Cursor, and `AGENTS.md`-compatible runtimes.
 - Agentlas contracts: `.agentlas/mode-map.json`,
   `.agentlas/agent-card.json`, `.agentlas/company-blueprint.json`,
   `.agentlas/sitemap.json`, `.agentlas/memory-map.json`,
-  `.agentlas/memory-tickets.jsonl`, and `.agentlas/vault-references.json`.
+  `.agentlas/memory-tickets.jsonl`, `.agentlas/vault-references.json`, and
+  skill lifecycle files emitted in generated packages.
 - Public install surfaces: `codex/`, `.claude/`, `.gemini/`, and `scripts/`.
 
 Runtime-specific folders are adapters. They must mirror the canonical core, not
@@ -25,20 +31,29 @@ become separate sources of truth.
 
 ## Operating Loop
 
-1. Classify the request as one of:
+1. Run the public mode classifier (`skills/mode-classification/SKILL.md`) and
+   classify the request as one of:
    - create one single agent;
    - create a multi-agent team;
    - package or repair an existing local/external agent or team.
-2. Route to exactly one core team member:
+2. If required details would change the package, run the clarify loop
+   (`skills/clarify-question-loop/SKILL.md`) before generating files.
+3. Route to exactly one core team member:
    - `10-single-agent-builder`;
    - `20-multi-agent-team-builder`;
    - `30-agentlas-packager`.
-3. Inspect current files before making claims. Prefer real files over remembered
+4. Inspect current files before making claims. Prefer real files over remembered
    assumptions.
-4. Emit or repair the smallest useful Agentlas package.
-5. Add the required architecture contracts for the selected mode.
-6. Add thin adapters for Codex, Claude Code, Gemini CLI, and optional Cursor.
-7. Verify with `scripts/verify-package.sh`.
+5. Emit or repair the smallest useful Agentlas package.
+6. Add the required architecture contracts for the selected mode.
+7. Add thin adapters for Codex, Claude Code, Gemini CLI, and optional Cursor.
+8. Add `.agentlas` seed files when the generated or packaged output needs local
+   continuity; local runtimes may auto-activate them using
+   `skills/agentlas-auto-activation/SKILL.md`.
+9. Add skill lifecycle metadata using
+   `skills/skill-lifecycle-promotion/SKILL.md` when the package contains
+   reusable skills.
+10. Verify with `scripts/verify-package.sh`.
 
 ## Team Roles
 
@@ -73,6 +88,9 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/memory-map.json`;
 - `.agentlas/memory-tickets.jsonl`;
 - `.agentlas/vault-references.json`;
+- `.agentlas/skill-registry.json`;
+- `.agentlas/skill-trials.jsonl`;
+- `.agentlas/curator-decisions.jsonl`;
 - runtime adapters and smoke-test docs;
 - install or verification scripts;
 - public-safety notes if the output is meant for GitHub.
@@ -105,6 +123,11 @@ Before substantial work:
 
 Workers may emit `## Memory Events`. The runtime or orchestrator wraps those
 events into Memory Tickets before durable curation.
+
+Skills may also emit `## Skill Trial Events`. Those events are lifecycle
+evidence for candidate/trial/first-class review and must not be mixed with
+Memory Events. Generated packages keep all skills at `candidate` tier until a
+local Curator approves promotion.
 
 ## Safety Rules
 

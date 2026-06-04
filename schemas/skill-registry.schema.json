@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/skill-registry.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "projectId",
+    "defaultTier",
+    "runtimeFirstClassRecallEnabled",
+    "predicatesRequired",
+    "curatorQuarantineRequired",
+    "evidenceLedgers",
+    "skills"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-skill-lifecycle-registry" },
+    "state": { "enum": ["export_only", "local_candidate", "trial", "active", "archived"] },
+    "projectId": { "type": "string" },
+    "draftId": { "type": ["string", "null"] },
+    "defaultTier": { "const": "candidate" },
+    "runtimeFirstClassRecallEnabled": { "const": false },
+    "predicatesRequired": { "type": "boolean" },
+    "curatorQuarantineRequired": { "const": true },
+    "evidenceLedgers": {
+      "type": "object",
+      "required": ["trials", "curatorDecisions"],
+      "properties": {
+        "trials": { "type": "string" },
+        "curatorDecisions": { "type": "string" },
+        "memoryEvents": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "effectiveErrorBudgetTerms": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "niches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "capacity", "criticalReserve", "maxErrorUcb"],
+        "properties": {
+          "id": { "type": "string" },
+          "capacity": { "type": "integer", "minimum": 0 },
+          "criticalReserve": { "type": "integer", "minimum": 0 },
+          "maxErrorUcb": { "type": "number", "minimum": 0, "maximum": 1 },
+          "maxCandidateSearchCostMs": { "type": "integer", "minimum": 0 },
+          "maxArchiveSearchCostMs": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slug", "tier", "nicheId", "successPredicates", "patchPolicy"],
+        "properties": {
+          "slug": { "type": "string" },
+          "name": { "type": "string" },
+          "tier": { "const": "candidate" },
+          "nicheId": { "type": "string" },
+          "situationTags": { "type": "array", "items": { "type": "string" } },
+          "valueScore": { "type": "number", "minimum": 0 },
+          "criticalityScore": { "type": "number", "minimum": 0 },
+          "successPredicates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["stepId", "predicateId", "predicateVersion", "validatorOwner", "type"],
+              "properties": {
+                "stepId": { "type": "string" },
+                "predicateId": { "type": "string" },
+                "predicateVersion": { "type": "string" },
+                "validatorOwner": { "enum": ["curator", "evaluator", "tool", "human"] },
+                "type": {
+                  "enum": [
+                    "executable_assertion",
+                    "tool_check",
+                    "spc_envelope",
+                    "golden_trace",
+                    "human_gate",
+                    "llm_rubric_assisted"
+                  ]
+                },
+                "metricName": { "type": "string" },
+                "failurePolicy": {
+                  "enum": ["stop", "retry", "branch", "quarantine", "human_review"]
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "patchPolicy": {
+            "type": "object",
+            "required": [
+              "localizedStepOnly",
+              "predicateChangeRequiresExecution",
+              "semanticPatchRequiresExecution",
+              "rollbackSnapshotRequired"
+            ],
+            "properties": {
+              "localizedStepOnly": { "type": "boolean" },
+              "predicateChangeRequiresExecution": { "type": "boolean" },
+              "semanticPatchRequiresExecution": { "type": "boolean" },
+              "rollbackSnapshotRequired": { "type": "boolean" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "rolloutPolicy": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

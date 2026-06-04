@@ -35,10 +35,15 @@ portable Agentlas-compatible package.
 
 - Keep the canonical instructions in `AGENTS.md`.
 - Keep adapters thin.
+- Run mode classification before routing.
+- Ask clarify questions when missing details would change the generated files,
+  runtime adapters, or public/private boundary.
 - Do not create a team when one agent is enough.
 - Do not collapse a requested team into one helper.
 - Use the packager when the user already has an agent/team from local files,
   another runtime, or another repo.
+- Include `.agentlas` auto-activation seed files when local project continuity
+  is part of the output.
 - Do not store secrets in memory or generated files.
 - Every durable memory write goes through Memory Events and Memory Tickets.
 - Public repos must include visible role folders and reusable skill folders.

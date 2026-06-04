@@ -35,6 +35,12 @@ The canonical core is runtime-neutral:
 
 - `AGENTS.md`
 - `agent.md`
+- `docs/source-of-truth.md`
+- `docs/runtime-sync-boundaries.md`
+- `docs/mode-classifier.md`
+- `docs/clarify-question-loop.md`
+- `docs/agentlas-auto-activation.md`
+- `docs/skill-lifecycle-promotion.md`
 - `agents/`
 - `modes/`
 - `.agents/agentlas-core-engine-meta-agent/agent.md`
@@ -46,8 +52,28 @@ The canonical core is runtime-neutral:
 - `.agentlas/memory-map.json`
 - `.agentlas/memory-tickets.jsonl`
 - `.agentlas/vault-references.json`
+- `.agentlas/skill-registry.json` in generated packages
+- `.agentlas/skill-trials.jsonl` in generated packages
+- `.agentlas/curator-decisions.jsonl` in generated packages
 - `schemas/`
 - `templates/`
+
+## Public Runtime Contracts
+
+Three runtime behaviors are public contracts here, not private product code:
+
+- Mode classifier: choose `single-agent-creator`, `team-builder`, or
+  `agentlas-packager` before generation.
+- Clarify question loop: ask one to five package-shaping questions when the
+  mode, runtime target, public boundary, tools, or safety constraints are
+  unclear.
+- `.agentlas` auto-activation: local runtimes may create or merge public
+  `.agentlas` seed files after explicit activation or repeated meaningful work
+  in the same folder.
+- Skill lifecycle registry: generated packages may ship export-only candidate
+  skill metadata, trial evidence ledgers, and Curator decision ledgers. Runtime
+  first-class recall stays off until local Curator review and workspace policy
+  approve it.
 
 ## Generated Architecture Components
 
@@ -56,6 +82,7 @@ contracts that the three builders generate or repair inside output packages:
 
 - PM Soul or project owner.
 - Memory Curator and Memory Tickets.
+- Skill lifecycle registry, trial evidence, and Curator promotion decisions.
 - Sitemap and task bias.
 - LLM runtime architecture.
 - Policy Gate.

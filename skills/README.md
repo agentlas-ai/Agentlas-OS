@@ -16,6 +16,10 @@ for runtime discovery.
 
 ## Architecture Support Skills
 
+- `mode-classification`
+- `clarify-question-loop`
+- `agentlas-auto-activation`
+- `skill-lifecycle-promotion`
 - `memory-ticketing`
 - `runtime-adapters`
 - `llm-runtime-architecture`

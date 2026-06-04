@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/activation.schema.json",
+  "title": "Agentlas Auto Activation",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "activationPolicy",
+    "seedFiles",
+    "safety"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-auto-activation" },
+    "state": {
+      "type": "string",
+      "enum": ["seed", "active", "inactive"]
+    },
+    "activationPolicy": {
+      "type": "object",
+      "required": ["explicitActivation", "repeatedUseThreshold", "mergeOnly"],
+      "properties": {
+        "explicitActivation": { "type": "boolean" },
+        "repeatedUseThreshold": { "type": "integer", "minimum": 1 },
+        "mergeOnly": { "type": "boolean" },
+        "neverOverwriteWithoutApproval": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "seedFiles": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "safety": {
+      "type": "object",
+      "required": ["noSecrets", "vaultReferencesOnly"],
+      "properties": {
+        "noSecrets": { "type": "boolean" },
+        "noRawLogs": { "type": "boolean" },
+        "noFullTranscripts": { "type": "boolean" },
+        "vaultReferencesOnly": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -2,7 +2,7 @@
   "name": "agentlas-core-engine",
   "owner": {
     "name": "Agentlas",
-    "email": "jeongmk522-netizen@users.noreply.github.com"
+    "email": "appbridge@appbridge.co.kr"
   },
   "metadata": {
     "description": "Agentlas Core Engine plugins for Claude Code.",
@@ -15,7 +15,7 @@
       "version": "0.1.3",
       "author": {
         "name": "Agentlas",
-        "email": "jeongmk522-netizen@users.noreply.github.com"
+        "email": "appbridge@appbridge.co.kr"
       },
       "source": "./plugins/agentlas-core-engine-meta-agent"
     }

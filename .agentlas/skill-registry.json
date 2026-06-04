@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "agentlas-skill-lifecycle-registry",
+  "state": "export_only",
+  "projectId": "agentlas-core-engine-meta-agent",
+  "draftId": null,
+  "defaultTier": "candidate",
+  "runtimeFirstClassRecallEnabled": false,
+  "predicatesRequired": true,
+  "curatorQuarantineRequired": true,
+  "evidenceLedgers": {
+    "trials": ".agentlas/skill-trials.jsonl",
+    "curatorDecisions": ".agentlas/curator-decisions.jsonl",
+    "memoryEvents": ".agentlas/memory-tickets.jsonl"
+  },
+  "hardStops": [
+    "permission_change",
+    "credential_change",
+    "payment_or_billing_effect",
+    "regulated_or_irreversible_side_effect",
+    "same_authority_patch_and_validator",
+    "holdout_contamination",
+    "missing_rollback_snapshot"
+  ],
+  "effectiveErrorBudgetTerms": [
+    "first_class_error_mass",
+    "quarantine_false_accept_estimate",
+    "blind_spot_estimate",
+    "drift_estimate"
+  ],
+  "niches": [
+    {
+      "id": "core-meta-agent-public-contracts",
+      "capacity": 6,
+      "criticalReserve": 1,
+      "maxErrorUcb": 0.05,
+      "maxCandidateSearchCostMs": 250,
+      "maxArchiveSearchCostMs": 1000
+    }
+  ],
+  "skills": [
+    {
+      "slug": "mode-classification",
+      "tier": "candidate",
+      "nicheId": "core-meta-agent-public-contracts",
+      "situationTags": ["mode-routing", "meta-agent"],
+      "valueScore": 0.8,
+      "criticalityScore": 0.6,
+      "successPredicates": [],
+      "patchPolicy": {
+        "localizedStepOnly": true,
+        "predicateChangeRequiresExecution": true,
+        "semanticPatchRequiresExecution": true,
+        "rollbackSnapshotRequired": true
+      }
+    },
+    {
+      "slug": "clarify-question-loop",
+      "tier": "candidate",
+      "nicheId": "core-meta-agent-public-contracts",
+      "situationTags": ["clarify", "package-shaping"],
+      "valueScore": 0.8,
+      "criticalityScore": 0.6,
+      "successPredicates": [],
+      "patchPolicy": {
+        "localizedStepOnly": true,
+        "predicateChangeRequiresExecution": true,
+        "semanticPatchRequiresExecution": true,
+        "rollbackSnapshotRequired": true
+      }
+    },
+    {
+      "slug": "agentlas-auto-activation",
+      "tier": "candidate",
+      "nicheId": "core-meta-agent-public-contracts",
+      "situationTags": ["activation", ".agentlas"],
+      "valueScore": 0.7,
+      "criticalityScore": 0.7,
+      "successPredicates": [],
+      "patchPolicy": {
+        "localizedStepOnly": true,
+        "predicateChangeRequiresExecution": true,
+        "semanticPatchRequiresExecution": true,
+        "rollbackSnapshotRequired": true
+      }
+    },
+    {
+      "slug": "skill-lifecycle-promotion",
+      "tier": "candidate",
+      "nicheId": "core-meta-agent-public-contracts",
+      "situationTags": ["skill-lifecycle", "curator-quarantine", "promotion"],
+      "valueScore": 0.7,
+      "criticalityScore": 0.8,
+      "successPredicates": [],
+      "patchPolicy": {
+        "localizedStepOnly": true,
+        "predicateChangeRequiresExecution": true,
+        "semanticPatchRequiresExecution": true,
+        "rollbackSnapshotRequired": true
+      }
+    }
+  ],
+  "rolloutPolicy": {
+    "staticOnlyCanApprove": false,
+    "sandboxRequired": true,
+    "holdoutRequired": true,
+    "shadowRequiredForFastPathChanges": true,
+    "lowRiskCanaryOnly": true,
+    "severeFailureTolerance": 0
+  }
+}
