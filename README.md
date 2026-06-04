@@ -89,9 +89,29 @@ scripts/public_safety_check.sh
 
 ### 2. Claude Code plugin으로 설치
 
+아래 명령은 README가 자동 실행하는 것이 아닙니다. Claude Code 사용자가 자기 환경에서 직접 실행해야 marketplace가 등록되고 plugin이 설치됩니다.
+
+터미널에서 설치:
+
 ```bash
 claude plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
 claude plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+```
+
+이미 Claude Code 안에 들어와 있다면 slash command로도 설치할 수 있습니다.
+
+```text
+/plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
+/plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+/reload-plugins
+/plugin list
+```
+
+정상 적용 예시는 이런 흐름입니다.
+
+```text
+✓ Installed agentlas-core-engine-meta-agent. Run /reload-plugins to apply.
+Reloaded: 1 plugin · 0 skills · 9 agents · 0 hooks · 0 plugin MCP servers · 0 plugin LSP servers
 ```
 
 로컬 checkout에서 설치할 수도 있습니다.
@@ -105,10 +125,16 @@ claude plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
 
 ### 3. Codex plugin으로 설치
 
+Codex도 사용자가 자기 환경에 marketplace를 추가한 뒤 plugin을 설치해야 합니다.
+
 ```bash
 codex plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.2
+codex plugin list
 codex plugin add agentlas-core-engine-meta-agent@agentlas-core-engine
+codex plugin list
 ```
+
+이미 Codex 세션이 열려 있었다면 새 세션을 열어 plugin 로딩을 반영하세요.
 
 ### 4. Agentlas Desktop과 같이 쓰기
 
@@ -242,17 +268,34 @@ curl -fsSL https://raw.githubusercontent.com/jeongmk522-netizen/agent_agentlas_c
 
 Claude Code plugin:
 
+这些命令需要每个 Claude Code 用户在自己的环境中手动运行。README 只是说明安装路径，不会自动注册 plugin。
+
+Install from terminal:
+
 ```bash
 claude plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
 claude plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+```
+
+Or install from inside Claude Code:
+
+```text
+/plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
+/plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+/reload-plugins
+/plugin list
 ```
 
 Codex plugin:
 
 ```bash
 codex plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.2
+codex plugin list
 codex plugin add agentlas-core-engine-meta-agent@agentlas-core-engine
+codex plugin list
 ```
+
+If Codex was already open, start a new session after installation.
 
 Agentlas Desktop:
 
@@ -316,17 +359,41 @@ curl -fsSL https://raw.githubusercontent.com/jeongmk522-netizen/agent_agentlas_c
 
 Claude Code plugin:
 
+These commands must be run by each Claude Code user. The README only documents the install path; it does not register the plugin automatically.
+
+Install from terminal:
+
 ```bash
 claude plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
 claude plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+```
+
+Or install from inside Claude Code:
+
+```text
+/plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
+/plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+/reload-plugins
+/plugin list
+```
+
+Expected apply flow:
+
+```text
+✓ Installed agentlas-core-engine-meta-agent. Run /reload-plugins to apply.
+Reloaded: 1 plugin · 0 skills · 9 agents · 0 hooks · 0 plugin MCP servers · 0 plugin LSP servers
 ```
 
 Codex plugin:
 
 ```bash
 codex plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.2
+codex plugin list
 codex plugin add agentlas-core-engine-meta-agent@agentlas-core-engine
+codex plugin list
 ```
+
+If Codex was already open, start a new session after installation.
 
 Agentlas Desktop:
 
@@ -443,17 +510,34 @@ curl -fsSL https://raw.githubusercontent.com/jeongmk522-netizen/agent_agentlas_c
 
 Claude Code plugin:
 
+このコマンドは各 Claude Code ユーザーが自分の環境で実行する必要があります。README は install path を説明するだけで、plugin を自動登録するものではありません。
+
+Install from terminal:
+
 ```bash
 claude plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
 claude plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+```
+
+Or install from inside Claude Code:
+
+```text
+/plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
+/plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+/reload-plugins
+/plugin list
 ```
 
 Codex plugin:
 
 ```bash
 codex plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.2
+codex plugin list
 codex plugin add agentlas-core-engine-meta-agent@agentlas-core-engine
+codex plugin list
 ```
+
+Codex がすでに開いている場合は、install 後に新しい session を開始してください。
 
 Agentlas Desktop:
 
@@ -517,17 +601,34 @@ curl -fsSL https://raw.githubusercontent.com/jeongmk522-netizen/agent_agentlas_c
 
 Claude Code plugin:
 
+इन commands को हर Claude Code user को अपने environment में चलाना होगा। README केवल install path बताता है; plugin अपने-आप register नहीं होता।
+
+Install from terminal:
+
 ```bash
 claude plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
 claude plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+```
+
+Or install from inside Claude Code:
+
+```text
+/plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
+/plugin install agentlas-core-engine-meta-agent@agentlas-core-engine
+/reload-plugins
+/plugin list
 ```
 
 Codex plugin:
 
 ```bash
 codex plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.2
+codex plugin list
 codex plugin add agentlas-core-engine-meta-agent@agentlas-core-engine
+codex plugin list
 ```
+
+अगर Codex पहले से खुला था, तो install के बाद नया session शुरू करें।
 
 Agentlas Desktop:
 
