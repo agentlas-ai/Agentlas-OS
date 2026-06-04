@@ -1,0 +1,25 @@
+<svg width="1200" height="320" viewBox="0 0 1200 320" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Agentlas Agent Lab</title>
+  <desc id="desc">A banner for Agentlas Agent Lab, a public research lab for practical agent systems.</desc>
+  <rect width="1200" height="320" fill="#0E1116"/>
+  <path d="M0 246C128 202 232 210 340 244C450 278 555 292 676 248C790 207 898 147 1020 171C1100 187 1160 224 1200 252V320H0V246Z" fill="#15251F"/>
+  <path d="M0 92C106 122 199 122 286 92C405 50 513 18 644 51C762 80 864 102 988 65C1070 41 1140 45 1200 64V0H0V92Z" fill="#131A22"/>
+  <g opacity="0.92">
+    <circle cx="846" cy="82" r="10" fill="#6EE7B7"/>
+    <circle cx="932" cy="128" r="8" fill="#93C5FD"/>
+    <circle cx="1016" cy="78" r="9" fill="#FBBF24"/>
+    <circle cx="1082" cy="152" r="7" fill="#F472B6"/>
+    <circle cx="884" cy="210" r="7" fill="#D9F99D"/>
+    <path d="M846 82L932 128L1016 78L1082 152L884 210L932 128" stroke="#E5E7EB" stroke-width="2" stroke-opacity="0.32"/>
+    <path d="M846 82L884 210" stroke="#E5E7EB" stroke-width="2" stroke-opacity="0.22"/>
+  </g>
+  <g opacity="0.18">
+    <rect x="72" y="46" width="280" height="12" rx="6" fill="#E5E7EB"/>
+    <rect x="72" y="74" width="210" height="12" rx="6" fill="#E5E7EB"/>
+    <rect x="72" y="224" width="330" height="10" rx="5" fill="#E5E7EB"/>
+    <rect x="72" y="249" width="250" height="10" rx="5" fill="#E5E7EB"/>
+  </g>
+  <text x="72" y="142" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="58" font-weight="800">Agentlas Agent Lab</text>
+  <text x="76" y="184" fill="#A7F3D0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" font-weight="600">Public research agents, memory patterns, and field-tested operating contracts.</text>
+  <text x="76" y="215" fill="#CBD5E1" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" font-weight="500">agentlas.cloud</text>
+</svg>

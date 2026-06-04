@@ -1,0 +1,15 @@
+.DS_Store
+._*
+*.log
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+.memory.local/
+.codex/
+.claude/settings.local.json
+.claude/settings.*.local.json
