@@ -75,5 +75,9 @@ for dir in agents modes skills .agents .agentlas .claude .gemini codex docs sche
   copy_dir "$dir"
 done
 
+if [[ -d "$target/scripts" ]]; then
+  chmod +x "$target"/scripts/*.sh 2>/dev/null || true
+fi
+
 echo "Agentlas Core Engine Meta-Agent Team installed into: $target"
 echo "Read AGENTS.md, then run: scripts/verify-package.sh"
