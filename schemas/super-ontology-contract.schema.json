@@ -48,6 +48,7 @@
           "observability_telemetry_contract",
           "objective_proxy_validity_contract",
           "stakeholder_preference_governance_contract",
+          "normative_authority_drift_contract",
           "agentlas_integration_contract",
           "memory_curator_bridge",
           "promotion_readiness",
@@ -77,6 +78,7 @@
         "observabilityTelemetry",
         "objectiveProxyValidity",
         "stakeholderPreferenceGovernance",
+        "normativeAuthorityDrift",
         "memoryCuratorBridge",
         "memoryTickets"
       ],
@@ -98,6 +100,7 @@
         "observabilityTelemetry": { "type": "string" },
         "objectiveProxyValidity": { "type": "string" },
         "stakeholderPreferenceGovernance": { "type": "string" },
+        "normativeAuthorityDrift": { "type": "string" },
         "memoryCuratorBridge": { "type": "string" },
         "memoryTickets": { "type": "string" }
       },
@@ -152,6 +155,10 @@
         "singleStakeholderRuntimeWritesBlocked",
         "aggregationRuleRequired",
         "appealPathRequired",
+        "normativeAuthorityDriftRequired",
+        "stalePolicyRuntimeWritesBlocked",
+        "jurisdictionScopeRequired",
+        "authorityHierarchyRequired",
         "memoryCuratorBridgeRequired",
         "directDurableMemoryWritesBlocked",
         "appbridgeSourceWritesBlocked"
@@ -198,6 +205,10 @@
         "singleStakeholderRuntimeWritesBlocked": { "const": true },
         "aggregationRuleRequired": { "const": true },
         "appealPathRequired": { "const": true },
+        "normativeAuthorityDriftRequired": { "const": true },
+        "stalePolicyRuntimeWritesBlocked": { "const": true },
+        "jurisdictionScopeRequired": { "const": true },
+        "authorityHierarchyRequired": { "const": true },
         "memoryCuratorBridgeRequired": { "const": true },
         "directDurableMemoryWritesBlocked": { "const": true },
         "appbridgeSourceWritesBlocked": { "const": true }

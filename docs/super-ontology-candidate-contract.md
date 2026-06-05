@@ -26,6 +26,7 @@ Generated or packaged repos may include:
   super-ontology-observability-telemetry.json
   super-ontology-objective-proxy-validity.json
   super-ontology-stakeholder-preference-governance.json
+  super-ontology-normative-authority-drift.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -262,6 +263,24 @@ Generated or packaged repos may include:
   preference records, hidden affected parties, missing dissent, and missing
   appeal paths from becoming write authority.
 
+`super-ontology-normative-authority-drift.json`
+
+- Public-safe normative authority drift seed.
+- Requires policy-like, law-like, contract-like, license-like, consent-like,
+  retention-like, emergency-exception, or professional-guideline sources to
+  name primary source, version, effective date, jurisdiction scope, authority
+  owner, precedence rule, exception owner and expiry where relevant, review
+  owner, audit trail, and rollback before graph, memory, tool, route, release,
+  public, training, customer-message, financial, hiring, health, physical,
+  legal/compliance, or runtime-policy writes can treat a rule as current
+  authority.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks stale policy, wrong jurisdiction, draft policy, superseded contract,
+  expired consent, local custom, translation mismatch, summary-only regulation,
+  license conflict, cross-border transfer gaps, emergency exceptions without
+  expiry, and legal/compliance claims without review from becoming write
+  authority.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -293,6 +312,7 @@ invariantVerificationRequired = true
 observabilityTelemetryRequired = true
 objectiveProxyValidityRequired = true
 stakeholderPreferenceGovernanceRequired = true
+normativeAuthorityDriftRequired = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
 untrustedSourceRuntimeWritesBlocked = true
@@ -308,6 +328,9 @@ proxyOptimizationRuntimeWritesBlocked = true
 singleStakeholderRuntimeWritesBlocked = true
 aggregationRuleRequired = true
 appealPathRequired = true
+stalePolicyRuntimeWritesBlocked = true
+jurisdictionScopeRequired = true
+authorityHierarchyRequired = true
 ```
 
 The package can be searched, reviewed, and replayed. It cannot write official
@@ -337,11 +360,12 @@ The public contract names these layers:
 18. observability telemetry contract,
 19. objective proxy validity contract,
 20. stakeholder preference governance contract,
-21. Agentlas integration contract,
-22. Memory Curator bridge,
-23. promotion readiness,
-24. promotion replay drill,
-25. architecture sync review.
+21. normative authority drift contract,
+22. Agentlas integration contract,
+23. Memory Curator bridge,
+24. promotion readiness,
+25. promotion replay drill,
+26. architecture sync review.
 
 ## Hard Stops
 
@@ -404,6 +428,12 @@ Automatic promotion is blocked when:
   write authority without stakeholder map, scope of authority, aggregation
   rule, consent or rights checks, dissent capture, appeal path, review owner,
   and rollback;
+- stale policy, wrong jurisdiction, draft policy, superseded contract, expired
+  consent, local custom, policy translation, regulation summary, license
+  conflict, retention gap, cross-border transfer, emergency exception without
+  expiry, or legal/compliance claim is treated as current authority without
+  primary source, effective date, version, scope, precedence rule, review owner,
+  audit trail, and rollback;
 - an AppBridge route output would be treated as source-write authority;
 - a release artifact lacks SLSA or in-toto style provenance;
 - AppBridge is treated as source of truth;

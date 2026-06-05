@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-normative-authority-drift.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "authorityTypes",
+    "scopeDimensions",
+    "conflictTypes",
+    "effectiveTimeStates",
+    "jurisdictionStates",
+    "authorityHierarchyRules",
+    "requiredAuthorityEvidence",
+    "decisions",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-normative-authority-drift" },
+    "state": { "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"] },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "authorityTypes": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "scopeDimensions": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "conflictTypes": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "effectiveTimeStates": { "type": "array", "items": { "type": "string" }, "minItems": 7 },
+    "jurisdictionStates": { "type": "array", "items": { "type": "string" }, "minItems": 6 },
+    "authorityHierarchyRules": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "requiredAuthorityEvidence": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "decisions": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "researchBasis": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "hardStops": { "type": "array", "items": { "type": "string" }, "minItems": 15 }
+  },
+  "additionalProperties": false
+}
+

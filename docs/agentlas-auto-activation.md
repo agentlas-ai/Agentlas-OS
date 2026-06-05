@@ -55,6 +55,7 @@ Recommended minimum:
 ├── super-ontology-observability-telemetry.json
 ├── super-ontology-objective-proxy-validity.json
 ├── super-ontology-stakeholder-preference-governance.json
+├── super-ontology-normative-authority-drift.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -122,6 +123,7 @@ overwriting user content.
   epistemic-calibration, semantic-alignment, resilience-control,
   invariant-verification, observability-telemetry, objective-proxy-validity,
   stakeholder-preference-governance,
+  normative-authority-drift,
   promotion-readiness, replay, and sync-review gates.
 
 `super-ontology-open-world-coverage.json`
@@ -288,6 +290,15 @@ overwriting user content.
   rollback before graph, memory, personalization, tool, route, release, public,
   training, customer-message, financial, hiring, health, physical, or
   runtime-policy writes can treat a preference as legitimate authority.
+
+`super-ontology-normative-authority-drift.json`
+
+- Export-only normative authority drift seed.
+- Requires policy-like, law-like, contract-like, license-like, consent-like,
+  retention-like, emergency-exception, or professional-guideline sources to
+  name primary source, effective date, jurisdiction scope, authority owner,
+  precedence, review owner, exception expiry where relevant, audit trail, and
+  rollback before write authority.
 - Keeps runtime promotion disabled and blocks owner preference, majority vote,
   behavior signals, role power, old preference records, hidden affected
   parties, missing dissent, and missing appeal paths from becoming write
