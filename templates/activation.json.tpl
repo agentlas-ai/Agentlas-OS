@@ -16,7 +16,10 @@
     ".agentlas/vault-references.json",
     ".agentlas/skill-registry.json",
     ".agentlas/skill-trials.jsonl",
-    ".agentlas/curator-decisions.jsonl"
+    ".agentlas/curator-decisions.jsonl",
+    ".agentlas/super-ontology-contract.json",
+    ".agentlas/super-ontology-replays.jsonl",
+    ".agentlas/super-ontology-evidence.jsonl"
   ],
   "safety": {
     "noSecrets": true,

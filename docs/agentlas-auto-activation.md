@@ -39,6 +39,9 @@ Recommended minimum:
 ├── skill-registry.json
 ├── skill-trials.jsonl
 ├── curator-decisions.jsonl
+├── super-ontology-contract.json
+├── super-ontology-replays.jsonl
+├── super-ontology-evidence.jsonl
 └── activation.json
 ```
 
@@ -92,6 +95,19 @@ overwriting user content.
   empty on activation unless a local runtime has real evidence to append.
 - In portable packages this may start as `state: "seed"` so a local runtime can
   decide when to activate it.
+
+`super-ontology-contract.json`
+
+- Candidate-only adaptive knowledge governance metadata.
+- Keeps `runtimeGraphWriteEnabled` and `zeroErrorClaim` false on export.
+- Names the source-intake, evidence-packet, belief-ledger, knowledge-capsule,
+  affordance-binding, promotion-readiness, replay, and sync-review gates.
+
+`super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
+
+- Empty append-only ledgers for future shadow/canary/rollback replay and
+  promotion evidence.
+- They do not make the ontology runtime-active by themselves.
 
 ## Runtime Behavior
 

@@ -21,6 +21,8 @@ Public core owns the portable contract:
   and runtime adapter rules;
 - skill lifecycle registry, trial evidence, and Curator promotion decision
   contracts;
+- Super Ontology candidate contract, replay evidence, and promotion evidence
+  contracts;
 - public-safe schemas, templates, docs, skills, and verification scripts.
 
 Public core should be runnable as a Markdown-first agent team. It should not
@@ -40,6 +42,7 @@ public core contract is the public version they should all mirror:
 | Generated folder layout | canonical | emits ZIPs | installs or imports |
 | `.agentlas` memory files | canonical | emits in exports | creates/maintains locally |
 | `.agentlas` skill lifecycle files | canonical export contract | emits candidate registry and empty ledgers | may merge locally as candidate metadata |
+| `.agentlas` Super Ontology files | canonical candidate contract | emits candidate contract and empty replay/evidence ledgers | may seed locally as candidate metadata |
 | PM Soul / Memory Curator | generated role contract | may package into exports | may ship built-in agents |
 | Sitemap/task-bias | generated contract | may package into exports | may maintain local project state |
 | Runtime adapters | public adapters | emitted in ZIPs | used to invoke local runners |
@@ -94,6 +97,8 @@ The following formerly runtime-owned behaviors are now public contracts:
 4. Skill lifecycle promotion metadata: see
    `docs/skill-lifecycle-promotion.md` and
    `skills/skill-lifecycle-promotion/SKILL.md`.
+5. Super Ontology candidate metadata: see
+   `docs/super-ontology-candidate-contract.md`.
 
 These are contract-level syncs. They do not move hosted billing, account state,
 private storage, or local Electron implementation into public core.

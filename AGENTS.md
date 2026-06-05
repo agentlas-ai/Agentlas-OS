@@ -91,6 +91,9 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/skill-registry.json`;
 - `.agentlas/skill-trials.jsonl`;
 - `.agentlas/curator-decisions.jsonl`;
+- `.agentlas/super-ontology-contract.json`;
+- `.agentlas/super-ontology-replays.jsonl`;
+- `.agentlas/super-ontology-evidence.jsonl`;
 - runtime adapters and smoke-test docs;
 - install or verification scripts;
 - public-safety notes if the output is meant for GitHub.

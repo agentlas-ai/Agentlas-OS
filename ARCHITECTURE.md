@@ -41,6 +41,7 @@ The canonical core is runtime-neutral:
 - `docs/clarify-question-loop.md`
 - `docs/agentlas-auto-activation.md`
 - `docs/skill-lifecycle-promotion.md`
+- `docs/super-ontology-candidate-contract.md`
 - `agents/`
 - `modes/`
 - `.agents/agentlas-core-engine-meta-agent/agent.md`
@@ -55,6 +56,9 @@ The canonical core is runtime-neutral:
 - `.agentlas/skill-registry.json` in generated packages
 - `.agentlas/skill-trials.jsonl` in generated packages
 - `.agentlas/curator-decisions.jsonl` in generated packages
+- `.agentlas/super-ontology-contract.json` in generated packages
+- `.agentlas/super-ontology-replays.jsonl` in generated packages
+- `.agentlas/super-ontology-evidence.jsonl` in generated packages
 - `schemas/`
 - `templates/`
 
@@ -74,6 +78,10 @@ Three runtime behaviors are public contracts here, not private product code:
   skill metadata, trial evidence ledgers, and Curator decision ledgers. Runtime
   first-class recall stays off until local Curator review and workspace policy
   approve it.
+- Super Ontology candidate contract: generated packages may ship export-only
+  adaptive knowledge governance metadata, replay ledgers, and promotion evidence
+  ledgers. Runtime graph writes stay off until shadow/canary replay, rollback,
+  and sync review approve a later phase.
 
 ## Generated Architecture Components
 
@@ -83,6 +91,7 @@ contracts that the three builders generate or repair inside output packages:
 - PM Soul or project owner.
 - Memory Curator and Memory Tickets.
 - Skill lifecycle registry, trial evidence, and Curator promotion decisions.
+- Super Ontology candidate contract, replay evidence, and promotion evidence.
 - Sitemap and task bias.
 - LLM runtime architecture.
 - Policy Gate.

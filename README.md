@@ -353,6 +353,7 @@ Keep private notes, machine paths, raw logs, and secrets out of the public repo.
 | Ask the right setup questions | [`docs/clarify-question-loop.md`](docs/clarify-question-loop.md) |
 | Activate local `.agentlas` workspace files | [`docs/agentlas-auto-activation.md`](docs/agentlas-auto-activation.md) |
 | Review skill lifecycle promotion | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
+| Review Super Ontology candidate contract | [`docs/super-ontology-candidate-contract.md`](docs/super-ontology-candidate-contract.md) |
 | Verify a package | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
 | Check public safety | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 

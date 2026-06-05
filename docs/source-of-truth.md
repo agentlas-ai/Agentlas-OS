@@ -50,6 +50,7 @@ These files are the public contract surface:
 - `docs/clarify-question-loop.md`
 - `docs/agentlas-auto-activation.md`
 - `docs/skill-lifecycle-promotion.md`
+- `docs/super-ontology-candidate-contract.md`
 - `.agentlas/mode-map.json`
 - `.agentlas/agent-card.json`
 - `.agentlas/company-blueprint.json`
@@ -61,6 +62,9 @@ These files are the public contract surface:
 - `.agentlas/skill-registry.json` in generated packages
 - `.agentlas/skill-trials.jsonl` in generated packages
 - `.agentlas/curator-decisions.jsonl` in generated packages
+- `.agentlas/super-ontology-contract.json` in generated packages
+- `.agentlas/super-ontology-replays.jsonl` in generated packages
+- `.agentlas/super-ontology-evidence.jsonl` in generated packages
 - `agents/10-single-agent-builder/agent.md`
 - `agents/20-multi-agent-team-builder/agent.md`
 - `agents/30-agentlas-packager/agent.md`

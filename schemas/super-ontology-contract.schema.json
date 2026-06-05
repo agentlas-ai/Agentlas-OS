@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-contract.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "projectId",
+    "runtimeGraphWriteEnabled",
+    "zeroErrorClaim",
+    "layers",
+    "evidenceLedgers",
+    "hardStops",
+    "promotionPolicy"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-contract" },
+    "state": {
+      "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"]
+    },
+    "projectId": { "type": "string" },
+    "draftId": { "type": ["string", "null"] },
+    "runtimeGraphWriteEnabled": { "const": false },
+    "zeroErrorClaim": { "const": false },
+    "layers": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "source_intake",
+          "evidence_packet",
+          "belief_ledger",
+          "knowledge_capsule",
+          "affordance_action_binding",
+          "agentlas_integration_contract",
+          "promotion_readiness",
+          "promotion_replay_drill",
+          "architecture_sync_review"
+        ]
+      },
+      "minItems": 1
+    },
+    "evidenceLedgers": {
+      "type": "object",
+      "required": ["replays", "promotionEvidence", "memoryTickets"],
+      "properties": {
+        "replays": { "type": "string" },
+        "promotionEvidence": { "type": "string" },
+        "memoryTickets": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "promotionPolicy": {
+      "type": "object",
+      "required": [
+        "shadowRequired",
+        "canaryRequiredForMixedContext",
+        "rollbackRequired",
+        "syncReviewRequired",
+        "appbridgeSourceWritesBlocked"
+      ],
+      "properties": {
+        "shadowRequired": { "const": true },
+        "canaryRequiredForMixedContext": { "const": true },
+        "rollbackRequired": { "const": true },
+        "syncReviewRequired": { "const": true },
+        "appbridgeSourceWritesBlocked": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "surfacePolicy": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["defaultDecision"],
+        "properties": {
+          "defaultDecision": {
+            "enum": ["candidate_only", "shadow_required", "canary_required", "sync_review_required", "blocked"]
+          },
+          "notes": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
