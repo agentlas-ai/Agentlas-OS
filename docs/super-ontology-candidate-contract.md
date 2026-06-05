@@ -28,6 +28,7 @@ Generated or packaged repos may include:
   super-ontology-stakeholder-preference-governance.json
   super-ontology-normative-authority-drift.json
   super-ontology-side-effect-containment.json
+  super-ontology-source-lineage-version.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -300,6 +301,22 @@ Generated or packaged repos may include:
   interlock, scheduled action without cancellation, and hosted tools without a
   local side-effect wrapper.
 
+`super-ontology-source-lineage-version.json`
+
+- Public-safe source lineage and version seed.
+- Requires document-like artifacts to name source URI, checksum or content
+  hash, version/revision, capture time, derivation chain, parent refs, primary
+  source, authority owner, transformation log, parser version, chunk span,
+  audit trace, and rollback where needed.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks filename-as-version, final-folder-as-current-source, PDF export as
+  primary source, summary as primary source, OCR text without span, spreadsheet
+  tab without workbook revision, stale connector cache as current record,
+  chunk without source span, embedding hit without artifact version, Memory
+  fact without lineage, public export without lineage, training example without
+  dataset version, graph edge without derivation chain, superseded source to
+  runtime write, and unresolved lineage cycles.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -336,6 +353,10 @@ sideEffectContainmentRequired = true
 irreversibleRuntimeActionsBlocked = true
 idempotencyKeyRequired = true
 compensationPlanRequired = true
+sourceLineageVersionRequired = true
+unversionedSourceRuntimeWritesBlocked = true
+derivedArtifactPromotionBlocked = true
+lineageRepairRequired = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
 untrustedSourceRuntimeWritesBlocked = true
@@ -384,11 +405,13 @@ The public contract names these layers:
 19. objective proxy validity contract,
 20. stakeholder preference governance contract,
 21. normative authority drift contract,
-22. Agentlas integration contract,
-23. Memory Curator bridge,
-24. promotion readiness,
-25. promotion replay drill,
-26. architecture sync review.
+22. side-effect containment contract,
+23. source lineage version contract,
+24. Agentlas integration contract,
+25. Memory Curator bridge,
+26. promotion readiness,
+27. promotion replay drill,
+28. architecture sync review.
 
 ## Hard Stops
 

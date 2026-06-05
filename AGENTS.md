@@ -109,6 +109,7 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/super-ontology-stakeholder-preference-governance.json`;
 - `.agentlas/super-ontology-normative-authority-drift.json`;
 - `.agentlas/super-ontology-side-effect-containment.json`;
+- `.agentlas/super-ontology-source-lineage-version.json`;
 - `.agentlas/super-ontology-replays.jsonl`;
 - `.agentlas/super-ontology-evidence.jsonl`;
 - `.agentlas/super-ontology-memory-bridge.jsonl`;

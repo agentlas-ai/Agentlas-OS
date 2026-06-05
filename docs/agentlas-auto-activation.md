@@ -57,6 +57,7 @@ Recommended minimum:
 ├── super-ontology-stakeholder-preference-governance.json
 ├── super-ontology-normative-authority-drift.json
 ├── super-ontology-side-effect-containment.json
+├── super-ontology-source-lineage-version.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -319,6 +320,21 @@ overwriting user content.
   committed, non-idempotent retries, irreversible actions without approval,
   release without rollback, partial failure without saga state, physical action
   without safety interlock, and scheduled action without cancellation.
+
+`super-ontology-source-lineage-version.json`
+
+- Export-only source lineage and version seed.
+- Requires drafts, exported PDFs, summaries, translations, redacted copies,
+  spreadsheet tabs, connector caches, chunks, embeddings, memory notes, and
+  superseded runtime contracts to name source URI, checksum or content hash,
+  version/revision, derivation chain, parent refs, authority owner,
+  transformation log, span, audit, and rollback before promotion.
+- Keeps runtime promotion disabled and blocks filename-as-version,
+  final-folder-as-current-source, PDF export as primary source, summary as
+  primary source, stale cache as current record, chunk without source span,
+  embedding hit without artifact version, Memory fact without lineage, public
+  export without lineage evidence, graph edge without derivation chain, and
+  superseded source to runtime write.
 
 `super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
 

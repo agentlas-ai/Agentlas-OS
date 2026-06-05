@@ -50,6 +50,7 @@
           "stakeholder_preference_governance_contract",
           "normative_authority_drift_contract",
           "side_effect_containment_contract",
+          "source_lineage_version_contract",
           "agentlas_integration_contract",
           "memory_curator_bridge",
           "promotion_readiness",
@@ -81,6 +82,7 @@
         "stakeholderPreferenceGovernance",
         "normativeAuthorityDrift",
         "sideEffectContainment",
+        "sourceLineageVersion",
         "memoryCuratorBridge",
         "memoryTickets"
       ],
@@ -104,6 +106,7 @@
         "stakeholderPreferenceGovernance": { "type": "string" },
         "normativeAuthorityDrift": { "type": "string" },
         "sideEffectContainment": { "type": "string" },
+        "sourceLineageVersion": { "type": "string" },
         "memoryCuratorBridge": { "type": "string" },
         "memoryTickets": { "type": "string" }
       },
@@ -166,6 +169,10 @@
         "irreversibleRuntimeActionsBlocked",
         "idempotencyKeyRequired",
         "compensationPlanRequired",
+        "sourceLineageVersionRequired",
+        "unversionedSourceRuntimeWritesBlocked",
+        "derivedArtifactPromotionBlocked",
+        "lineageRepairRequired",
         "memoryCuratorBridgeRequired",
         "directDurableMemoryWritesBlocked",
         "appbridgeSourceWritesBlocked"
@@ -220,6 +227,10 @@
         "irreversibleRuntimeActionsBlocked": { "const": true },
         "idempotencyKeyRequired": { "const": true },
         "compensationPlanRequired": { "const": true },
+        "sourceLineageVersionRequired": { "const": true },
+        "unversionedSourceRuntimeWritesBlocked": { "const": true },
+        "derivedArtifactPromotionBlocked": { "const": true },
+        "lineageRepairRequired": { "const": true },
         "memoryCuratorBridgeRequired": { "const": true },
         "directDurableMemoryWritesBlocked": { "const": true },
         "appbridgeSourceWritesBlocked": { "const": true }

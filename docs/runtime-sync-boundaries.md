@@ -22,8 +22,8 @@ Public core owns the portable contract:
 - skill lifecycle registry, trial evidence, and Curator promotion decision
   contracts;
 - Super Ontology candidate contract, open-world coverage, consensus coordination, task coverage, contextual flow, causal
-  impact, assurance case, knowledge homeostasis, adversarial provenance, replay
-  evidence, and promotion evidence contracts;
+  impact, assurance case, knowledge homeostasis, adversarial provenance, source
+  lineage version, replay evidence, and promotion evidence contracts;
 - public-safe schemas, templates, docs, skills, and verification scripts.
 
 Public core should be runnable as a Markdown-first agent team. It should not
@@ -105,7 +105,8 @@ The following formerly runtime-owned behaviors are now public contracts:
    epistemic-calibration seed, semantic-alignment seed, resilience-control seed,
    observability-telemetry seed, objective-proxy-validity seed,
    stakeholder-preference-governance seed, normative-authority-drift seed,
-   side-effect-containment seed, and Memory Curator bridge ledger are
+   side-effect-containment seed, source-lineage-version seed, and Memory
+   Curator bridge ledger are
    candidate-only: task coverage
    classifies requested work before action, contextual flow blocks unsafe
    boundary crossings, causal impact blocks relation-as-intervention jumps,
@@ -125,6 +126,11 @@ The following formerly runtime-owned behaviors are now public contracts:
    release, rollback, and emergency-stop transitions unless event order,
    authority, evidence, consent, idempotency, and observed recovery invariants
    pass.
+   Source lineage version blocks drafts, exported PDFs, summaries,
+   translations, redacted copies, stale connector caches, chunks, embeddings,
+   Memory Curator notes, and superseded runtime contracts from becoming graph,
+   memory, public, training, tool, or route authority without source/version
+   lineage, owner, span, audit, and rollback evidence.
    Objective proxy validity blocks metric movement, benchmark scores, approval
    rates, ontology edge counts, reward deltas, and green dashboards from being
    treated as real success unless construct validity, countermetrics,

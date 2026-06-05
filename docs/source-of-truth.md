@@ -80,6 +80,7 @@ These files are the public contract surface:
 - `.agentlas/super-ontology-stakeholder-preference-governance.json` in generated packages
 - `.agentlas/super-ontology-normative-authority-drift.json` in generated packages
 - `.agentlas/super-ontology-side-effect-containment.json` in generated packages
+- `.agentlas/super-ontology-source-lineage-version.json` in generated packages
 - `.agentlas/super-ontology-replays.jsonl` in generated packages
 - `.agentlas/super-ontology-evidence.jsonl` in generated packages
 - `.agentlas/super-ontology-memory-bridge.jsonl` in generated packages
@@ -116,8 +117,9 @@ change:
 - `.agentlas` Super Ontology open-world coverage, consensus coordination, task coverage, contextual flow, causal impact,
   assurance case, knowledge homeostasis, adversarial provenance, epistemic
   calibration, semantic alignment, resilience control, invariant verification,
-  observability telemetry, objective proxy validity, and stakeholder preference
-  governance contracts;
+  observability telemetry, objective proxy validity, stakeholder preference
+  governance, normative authority drift, side-effect containment, and source
+  lineage version contracts;
 - Memory Curator, Memory Tickets, PM Soul, sitemap, task-bias, self-evolution,
   policy, eval, or QA/evidence contracts;
 - runtime adapter shape;
