@@ -40,6 +40,7 @@ Recommended minimum:
 ├── skill-trials.jsonl
 ├── curator-decisions.jsonl
 ├── super-ontology-contract.json
+├── super-ontology-open-world-coverage.json
 ├── super-ontology-task-coverage.json
 ├── super-ontology-contextual-flow.json
 ├── super-ontology-causal-impact.json
@@ -112,11 +113,20 @@ overwriting user content.
 - Candidate-only adaptive knowledge governance metadata.
 - Keeps `runtimeGraphWriteEnabled` and `zeroErrorClaim` false on export.
 - Names the source-intake, evidence-packet, belief-ledger, knowledge-capsule,
-  affordance-binding, task-coverage, contextual-flow, causal-impact,
+  affordance-binding, open-world-coverage, task-coverage, contextual-flow, causal-impact,
   assurance-case, knowledge-homeostasis, adversarial-provenance,
   epistemic-calibration, semantic-alignment, resilience-control,
   invariant-verification,
   promotion-readiness, replay, and sync-review gates.
+
+`super-ontology-open-world-coverage.json`
+
+- Export-only open-world coverage seed.
+- Treats new world/task/modality/fault/authority/write-surface combinations as
+  candidate-only until fixture pressure, shadow replay, owner review, and sync
+  review lower or approve authority.
+- Blocks proposal/deck examples from being treated as proof that all future
+  work is covered.
 
 `super-ontology-task-coverage.json`
 

@@ -11,6 +11,7 @@ Generated or packaged repos may include:
 ```text
 .agentlas/
   super-ontology-contract.json
+  super-ontology-open-world-coverage.json
   super-ontology-task-coverage.json
   super-ontology-contextual-flow.json
   super-ontology-causal-impact.json
@@ -29,7 +30,8 @@ Generated or packaged repos may include:
 `super-ontology-contract.json`
 
 - Describes the allowed ontology pipeline: source intake, evidence packets,
-  belief ledger, knowledge capsules, affordance binding, task coverage,
+  belief ledger, knowledge capsules, affordance binding, open-world coverage,
+  task coverage,
   promotion readiness, replay drills, and rollback.
 - Must set `runtimeGraphWriteEnabled` to `false` on export.
 - Must set `zeroErrorClaim` to `false`.
@@ -59,6 +61,16 @@ Generated or packaged repos may include:
   Gate, PM Soul, or architecture sync review accepts the ticket.
 - Rows must not store raw prompts, secret values, private paths, full
   transcripts, or direct durable memory writes.
+
+`super-ontology-open-world-coverage.json`
+
+- Public-safe open-world coverage seed.
+- Requires new world, task signal, modality, fault model, authority state, and
+  write-surface combinations to stay candidate-only until fixture pressure,
+  shadow replay, owner review, and sync review lower or approve authority.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks proposal/deck examples from being treated as proof that every future
+  task is covered.
 
 `super-ontology-task-coverage.json`
 
@@ -201,6 +213,9 @@ zeroErrorClaim = false
 shadowRequired = true
 canaryRequiredForMixedContext = true
 rollbackRequired = true
+openWorldCoverageRequired = true
+unknownCombinationRuntimeWritesBlocked = true
+uncoveredModalityRuntimeWritesBlocked = true
 taskCoverageRequired = true
 contextualFlowRequired = true
 causalImpactRequired = true
@@ -235,21 +250,22 @@ The public contract names these layers:
 3. belief ledger,
 4. knowledge capsule,
 5. affordance action binding,
-6. task coverage contract,
-7. contextual flow contract,
-8. causal impact contract,
-9. assurance case contract,
-10. knowledge homeostasis contract,
-11. adversarial provenance contract,
-12. epistemic calibration contract,
-13. semantic alignment contract,
-14. resilience control contract,
-15. invariant verification contract,
-16. Agentlas integration contract,
-17. Memory Curator bridge,
-18. promotion readiness,
-19. promotion replay drill,
-20. architecture sync review.
+6. open-world coverage contract,
+7. task coverage contract,
+8. contextual flow contract,
+9. causal impact contract,
+10. assurance case contract,
+11. knowledge homeostasis contract,
+12. adversarial provenance contract,
+13. epistemic calibration contract,
+14. semantic alignment contract,
+15. resilience control contract,
+16. invariant verification contract,
+17. Agentlas integration contract,
+18. Memory Curator bridge,
+19. promotion readiness,
+20. promotion replay drill,
+21. architecture sync review.
 
 ## Hard Stops
 
@@ -260,6 +276,10 @@ Automatic promotion is blocked when:
 - a graph edge joins forbidden personal/company/public contexts;
 - a downstream agent receives the whole graph instead of a task capsule;
 - a tool call lacks argument provenance or user authority;
+- a proposal/deck fixture is treated as proof that all future work is covered;
+- a new world, task, modality, fault, authority, or write-surface combination
+  would proceed without open-world fixture pressure, shadow replay, owner
+  review, or sync review;
 - a requested task family, affordance type, evidence mode, or rollback path is
   missing;
 - a relation would be treated as causation, action permission, or intervention

@@ -21,7 +21,7 @@ Public core owns the portable contract:
   and runtime adapter rules;
 - skill lifecycle registry, trial evidence, and Curator promotion decision
   contracts;
-- Super Ontology candidate contract, task coverage, contextual flow, causal
+- Super Ontology candidate contract, open-world coverage, task coverage, contextual flow, causal
   impact, assurance case, knowledge homeostasis, adversarial provenance, replay
   evidence, and promotion evidence contracts;
 - public-safe schemas, templates, docs, skills, and verification scripts.
@@ -100,7 +100,7 @@ The following formerly runtime-owned behaviors are now public contracts:
    `skills/skill-lifecycle-promotion/SKILL.md`.
 5. Super Ontology candidate metadata: see
    `docs/super-ontology-candidate-contract.md`.
-   Its task coverage seed, contextual-flow seed, causal-impact seed,
+   Its open-world coverage seed, task coverage seed, contextual-flow seed, causal-impact seed,
    assurance-case seed, knowledge-homeostasis seed, adversarial-provenance seed,
    epistemic-calibration seed, semantic-alignment seed, resilience-control seed, and Memory Curator bridge ledger are
    candidate-only: task coverage

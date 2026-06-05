@@ -92,6 +92,7 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/skill-trials.jsonl`;
 - `.agentlas/curator-decisions.jsonl`;
 - `.agentlas/super-ontology-contract.json`;
+- `.agentlas/super-ontology-open-world-coverage.json`;
 - `.agentlas/super-ontology-task-coverage.json`;
 - `.agentlas/super-ontology-contextual-flow.json`;
 - `.agentlas/super-ontology-causal-impact.json`;

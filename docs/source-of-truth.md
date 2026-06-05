@@ -63,6 +63,7 @@ These files are the public contract surface:
 - `.agentlas/skill-trials.jsonl` in generated packages
 - `.agentlas/curator-decisions.jsonl` in generated packages
 - `.agentlas/super-ontology-contract.json` in generated packages
+- `.agentlas/super-ontology-open-world-coverage.json` in generated packages
 - `.agentlas/super-ontology-task-coverage.json` in generated packages
 - `.agentlas/super-ontology-contextual-flow.json` in generated packages
 - `.agentlas/super-ontology-causal-impact.json` in generated packages
@@ -106,7 +107,7 @@ change:
 - `.agentlas` schemas or required files;
 - `.agentlas` auto-activation contract;
 - `.agentlas` skill lifecycle registry contract;
-- `.agentlas` Super Ontology task coverage, contextual flow, causal impact,
+- `.agentlas` Super Ontology open-world coverage, task coverage, contextual flow, causal impact,
   assurance case, knowledge homeostasis, adversarial provenance, epistemic
   calibration, semantic alignment, resilience control, and invariant verification contracts;
 - Memory Curator, Memory Tickets, PM Soul, sitemap, task-bias, self-evolution,
