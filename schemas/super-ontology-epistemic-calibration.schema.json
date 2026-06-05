@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-epistemic-calibration.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "contextTypes",
+    "claimTypes",
+    "uncertaintySources",
+    "epistemicStates",
+    "calibrationSignals",
+    "confidenceBands",
+    "riskTiers",
+    "allowedOutputs",
+    "requiredParameters",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-epistemic-calibration" },
+    "state": { "const": "export_only" },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "contextTypes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 15,
+      "uniqueItems": true
+    },
+    "claimTypes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 15,
+      "uniqueItems": true
+    },
+    "uncertaintySources": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 16,
+      "uniqueItems": true
+    },
+    "epistemicStates": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 7,
+      "uniqueItems": true
+    },
+    "calibrationSignals": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 14,
+      "uniqueItems": true
+    },
+    "confidenceBands": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 5,
+      "uniqueItems": true
+    },
+    "riskTiers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 4,
+      "uniqueItems": true
+    },
+    "allowedOutputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 9,
+      "uniqueItems": true
+    },
+    "requiredParameters": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 14,
+      "uniqueItems": true
+    },
+    "researchBasis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 10,
+      "uniqueItems": true
+    },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 10,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

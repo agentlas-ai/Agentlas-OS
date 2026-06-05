@@ -17,6 +17,7 @@ Generated or packaged repos may include:
   super-ontology-assurance-case.json
   super-ontology-knowledge-homeostasis.json
   super-ontology-adversarial-provenance.json
+  super-ontology-epistemic-calibration.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -128,6 +129,19 @@ Generated or packaged repos may include:
   tampering from becoming action, route output from becoming source-write
   authority, and stale trusted-source replay from becoming current truth.
 
+`super-ontology-epistemic-calibration.json`
+
+- Public-safe uncertainty and abstention seed.
+- Requires arbitrary future work to name context type, claim type, uncertainty
+  source, epistemic state, calibration signal, confidence band, risk tier,
+  allowed output, required controls, blocked shortcuts, evidence refs, research
+  basis, memory policy, tool policy, public export policy, and rollback.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks missing evidence as complete answer, conflicting sources as current
+  truth, low retrieval relevance as confident answer, noisy OCR as ontology
+  class, model disagreement as consensus, inconclusive tool output as action,
+  uncalibrated route sync, and wide judge intervals in regulated answers.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -145,9 +159,11 @@ causalImpactRequired = true
 assuranceCaseRequired = true
 knowledgeHomeostasisRequired = true
 adversarialProvenanceRequired = true
+epistemicCalibrationRequired = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
 untrustedSourceRuntimeWritesBlocked = true
+uncalibratedRuntimeWritesBlocked = true
 ```
 
 The package can be searched, reviewed, and replayed. It cannot write official
@@ -168,11 +184,12 @@ The public contract names these layers:
 9. assurance case contract,
 10. knowledge homeostasis contract,
 11. adversarial provenance contract,
-12. Agentlas integration contract,
-13. Memory Curator bridge,
-14. promotion readiness,
-15. promotion replay drill,
-16. architecture sync review.
+12. epistemic calibration contract,
+13. Agentlas integration contract,
+14. Memory Curator bridge,
+15. promotion readiness,
+16. promotion replay drill,
+17. architecture sync review.
 
 ## Hard Stops
 
@@ -198,6 +215,11 @@ Automatic promotion is blocked when:
 - prompt injection, poisoned source, spoofed citation, forged provenance,
   hidden OCR text, tool-output tampering, or stale trusted-source replay would
   become retrieval, memory, tool, or public seed authority;
+- missing evidence, conflicting sources, stale evidence, low retrieval
+  relevance, model disagreement, or unknown epistemic state would become a
+  confident answer, graph write, tool action, memory write, or public artifact;
+- a regulated answer, financial estimate, scientific claim, physical action, or
+  route sync has an uncalibrated confidence band or wide judge interval;
 - an AppBridge route output would be treated as source-write authority;
 - a release artifact lacks SLSA or in-toto style provenance;
 - AppBridge is treated as source of truth;

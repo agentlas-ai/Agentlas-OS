@@ -46,6 +46,7 @@ Recommended minimum:
 ├── super-ontology-assurance-case.json
 ├── super-ontology-knowledge-homeostasis.json
 ├── super-ontology-adversarial-provenance.json
+├── super-ontology-epistemic-calibration.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -110,6 +111,7 @@ overwriting user content.
 - Names the source-intake, evidence-packet, belief-ledger, knowledge-capsule,
   affordance-binding, task-coverage, contextual-flow, causal-impact,
   assurance-case, knowledge-homeostasis, adversarial-provenance,
+  epistemic-calibration,
   promotion-readiness, replay, and sync-review gates.
 
 `super-ontology-task-coverage.json`
@@ -173,6 +175,19 @@ overwriting user content.
   forged provenance, spoofed citations, hidden OCR instructions, tampered tool
   output, stale trusted-source replay, and unsigned release artifacts from
   becoming retrieval, memory, tool, or public seed authority.
+
+`super-ontology-epistemic-calibration.json`
+
+- Export-only uncertainty and abstention seed.
+- Requires unknown work to name context type, claim type, uncertainty source,
+  epistemic state, calibration signal, confidence band, risk tier, allowed
+  output, evidence refs, memory policy, tool policy, public export policy, and
+  rollback before answers, memory writes, tool actions, route sync, or public
+  artifacts.
+- Keeps runtime promotion disabled and blocks missing evidence, conflicting
+  sources, low retrieval relevance, stale policies, noisy OCR, inconclusive
+  tool output, model disagreement, wide judge intervals, and uncalibrated route
+  sync from becoming confident answers or graph writes.
 
 `super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
 

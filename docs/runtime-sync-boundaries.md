@@ -102,15 +102,18 @@ The following formerly runtime-owned behaviors are now public contracts:
    `docs/super-ontology-candidate-contract.md`.
    Its task coverage seed, contextual-flow seed, causal-impact seed,
    assurance-case seed, knowledge-homeostasis seed, adversarial-provenance seed,
-   and Memory Curator bridge ledger are candidate-only: task coverage
+   epistemic-calibration seed, and Memory Curator bridge ledger are
+   candidate-only: task coverage
    classifies requested work before action, contextual flow blocks unsafe
    boundary crossings, causal impact blocks relation-as-intervention jumps,
    assurance cases block unsupported broad claims, knowledge homeostasis blocks
    stale or desynced knowledge from continuing silently, adversarial provenance
    blocks hostile or unverified sources from becoming retrieval, memory, tool,
-   or public-seed authority, and the bridge keeps direct durable memory writes
-   blocked until Curator, Policy, PM Soul, or sync review approves a later
-   phase.
+   or public-seed authority, epistemic calibration blocks missing evidence,
+   conflict, stale evidence, low retrieval relevance, and model disagreement
+   from becoming confident answers or runtime writes, and the bridge keeps
+   direct durable memory writes blocked until Curator, Policy, PM Soul, or sync
+   review approves a later phase.
 
 These are contract-level syncs. They do not move hosted billing, account state,
 private storage, or local Electron implementation into public core.

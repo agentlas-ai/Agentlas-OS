@@ -39,6 +39,7 @@
           "assurance_case_contract",
           "knowledge_homeostasis_contract",
           "adversarial_provenance_contract",
+          "epistemic_calibration_contract",
           "agentlas_integration_contract",
           "memory_curator_bridge",
           "promotion_readiness",
@@ -59,6 +60,7 @@
         "assuranceCase",
         "knowledgeHomeostasis",
         "adversarialProvenance",
+        "epistemicCalibration",
         "memoryCuratorBridge",
         "memoryTickets"
       ],
@@ -71,6 +73,7 @@
         "assuranceCase": { "type": "string" },
         "knowledgeHomeostasis": { "type": "string" },
         "adversarialProvenance": { "type": "string" },
+        "epistemicCalibration": { "type": "string" },
         "memoryCuratorBridge": { "type": "string" },
         "memoryTickets": { "type": "string" }
       },
@@ -95,6 +98,8 @@
         "knowledgeHomeostasisRequired",
         "adversarialProvenanceRequired",
         "untrustedSourceRuntimeWritesBlocked",
+        "epistemicCalibrationRequired",
+        "uncalibratedRuntimeWritesBlocked",
         "memoryCuratorBridgeRequired",
         "directDurableMemoryWritesBlocked",
         "appbridgeSourceWritesBlocked"
@@ -111,6 +116,8 @@
         "knowledgeHomeostasisRequired": { "const": true },
         "adversarialProvenanceRequired": { "const": true },
         "untrustedSourceRuntimeWritesBlocked": { "const": true },
+        "epistemicCalibrationRequired": { "const": true },
+        "uncalibratedRuntimeWritesBlocked": { "const": true },
         "memoryCuratorBridgeRequired": { "const": true },
         "directDurableMemoryWritesBlocked": { "const": true },
         "appbridgeSourceWritesBlocked": { "const": true }
