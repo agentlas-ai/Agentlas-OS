@@ -41,6 +41,7 @@ Recommended minimum:
 ├── curator-decisions.jsonl
 ├── super-ontology-contract.json
 ├── super-ontology-task-coverage.json
+├── super-ontology-causal-impact.json
 ├── super-ontology-assurance-case.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
@@ -104,8 +105,8 @@ overwriting user content.
 - Candidate-only adaptive knowledge governance metadata.
 - Keeps `runtimeGraphWriteEnabled` and `zeroErrorClaim` false on export.
 - Names the source-intake, evidence-packet, belief-ledger, knowledge-capsule,
-  affordance-binding, task-coverage, assurance-case, promotion-readiness,
-  replay, and sync-review gates.
+  affordance-binding, task-coverage, causal-impact, assurance-case,
+  promotion-readiness, replay, and sync-review gates.
 
 `super-ontology-task-coverage.json`
 
@@ -115,6 +116,16 @@ overwriting user content.
   actions.
 - Keeps runtime promotion disabled until evidence mode, authority, review, and
   rollback are explicit.
+
+`super-ontology-causal-impact.json`
+
+- Export-only causal impact seed.
+- Requires relation-to-action jumps to name intervention target,
+  counterfactual checks, adverse outcomes, observability, reversibility, blast
+  radius, and rollback.
+- Keeps runtime promotion disabled and blocks correlation-as-causation,
+  physical action, training, and multi-agent shared-state writes without
+  evidence and review.
 
 `super-ontology-assurance-case.json`
 

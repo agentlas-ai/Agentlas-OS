@@ -12,6 +12,7 @@ Generated or packaged repos may include:
 .agentlas/
   super-ontology-contract.json
   super-ontology-task-coverage.json
+  super-ontology-causal-impact.json
   super-ontology-assurance-case.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
@@ -62,6 +63,17 @@ Generated or packaged repos may include:
 - Blocks write, publish, execute, physical, and training tasks unless evidence
   mode, authority, review, and rollback are explicit.
 
+`super-ontology-causal-impact.json`
+
+- Public-safe causal-impact seed.
+- Requires state-changing work to name causal claim type, intervention target,
+  expected outcomes, adverse outcomes, counterfactual checks, observability,
+  reversibility, blast radius, blocked write surfaces, and rollback.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks correlation-as-causation, relation-as-permission, autonomous physical
+  control, training without consent/delete path, and multi-agent writes without
+  ordered handoff.
+
 `super-ontology-assurance-case.json`
 
 - Public-safe claim/evidence seed.
@@ -85,6 +97,7 @@ shadowRequired = true
 canaryRequiredForMixedContext = true
 rollbackRequired = true
 taskCoverageRequired = true
+causalImpactRequired = true
 assuranceCaseRequired = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
@@ -103,12 +116,13 @@ The public contract names these layers:
 4. knowledge capsule,
 5. affordance action binding,
 6. task coverage contract,
-7. assurance case contract,
-8. Agentlas integration contract,
-9. Memory Curator bridge,
-10. promotion readiness,
-11. promotion replay drill,
-12. architecture sync review.
+7. causal impact contract,
+8. assurance case contract,
+9. Agentlas integration contract,
+10. Memory Curator bridge,
+11. promotion readiness,
+12. promotion replay drill,
+13. architecture sync review.
 
 ## Hard Stops
 
@@ -121,6 +135,9 @@ Automatic promotion is blocked when:
 - a tool call lacks argument provenance or user authority;
 - a requested task family, affordance type, evidence mode, or rollback path is
   missing;
+- a relation would be treated as causation, action permission, or intervention
+  authority without counterfactual checks, blast radius, observability, and
+  rollback;
 - a broad claim lacks an assurance case, observed evidence, validator, residual
   risk, or rollback plan;
 - AppBridge is treated as source of truth;
