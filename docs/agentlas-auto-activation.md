@@ -52,6 +52,7 @@ Recommended minimum:
 ├── super-ontology-semantic-alignment.json
 ├── super-ontology-resilience-control.json
 ├── super-ontology-invariant-verification.json
+├── super-ontology-observability-telemetry.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -117,7 +118,7 @@ overwriting user content.
   affordance-binding, open-world-coverage, consensus-coordination, task-coverage, contextual-flow, causal-impact,
   assurance-case, knowledge-homeostasis, adversarial-provenance,
   epistemic-calibration, semantic-alignment, resilience-control,
-  invariant-verification,
+  invariant-verification, observability-telemetry,
   promotion-readiness, replay, and sync-review gates.
 
 `super-ontology-open-world-coverage.json`
@@ -248,6 +249,20 @@ overwriting user content.
   contextual-flow approval, route sync without source-contract verification,
   unobserved rollback, emergency-stop bypass, unordered multi-agent writes, and
   non-idempotent replay mutation.
+
+`super-ontology-observability-telemetry.json`
+
+- Export-only traceability and audit seed.
+- Requires trace id, span id, correlation id when crossing surfaces,
+  source/evidence refs, authority and decision state, redaction and retention
+  policy, audit sink, snapshots where relevant, rollback refs, alert refs, and
+  sample size before state-changing events can be considered.
+- Keeps runtime promotion disabled and blocks writes without trace ids, memory
+  tickets without span lineage, tool actions without audit receipts, public
+  exports with stale metrics, route sync without correlation ids, release seeds
+  when audit sinks are down, suppressed degraded-mode alerts, unrecorded shadow
+  replays, repair without before/after snapshots, and unobservable runtime
+  writes.
 
 `super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
 

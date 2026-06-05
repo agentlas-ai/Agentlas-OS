@@ -45,6 +45,7 @@
           "semantic_alignment_contract",
           "resilience_control_contract",
           "invariant_verification_contract",
+          "observability_telemetry_contract",
           "agentlas_integration_contract",
           "memory_curator_bridge",
           "promotion_readiness",
@@ -71,6 +72,7 @@
         "semanticAlignment",
         "resilienceControl",
         "invariantVerification",
+        "observabilityTelemetry",
         "memoryCuratorBridge",
         "memoryTickets"
       ],
@@ -89,6 +91,7 @@
         "semanticAlignment": { "type": "string" },
         "resilienceControl": { "type": "string" },
         "invariantVerification": { "type": "string" },
+        "observabilityTelemetry": { "type": "string" },
         "memoryCuratorBridge": { "type": "string" },
         "memoryTickets": { "type": "string" }
       },
@@ -131,6 +134,10 @@
         "invariantVerificationRequired",
         "runtimeInvariantWritesBlocked",
         "forbiddenTransitionBlocked",
+        "observabilityTelemetryRequired",
+        "unobservableRuntimeWritesBlocked",
+        "auditSinkRequired",
+        "crossSurfaceCorrelationRequired",
         "memoryCuratorBridgeRequired",
         "directDurableMemoryWritesBlocked",
         "appbridgeSourceWritesBlocked"
@@ -165,6 +172,10 @@
         "invariantVerificationRequired": { "const": true },
         "runtimeInvariantWritesBlocked": { "const": true },
         "forbiddenTransitionBlocked": { "const": true },
+        "observabilityTelemetryRequired": { "const": true },
+        "unobservableRuntimeWritesBlocked": { "const": true },
+        "auditSinkRequired": { "const": true },
+        "crossSurfaceCorrelationRequired": { "const": true },
         "memoryCuratorBridgeRequired": { "const": true },
         "directDurableMemoryWritesBlocked": { "const": true },
         "appbridgeSourceWritesBlocked": { "const": true }

@@ -30,6 +30,7 @@
     ".agentlas/super-ontology-semantic-alignment.json",
     ".agentlas/super-ontology-resilience-control.json",
     ".agentlas/super-ontology-invariant-verification.json",
+    ".agentlas/super-ontology-observability-telemetry.json",
     ".agentlas/super-ontology-replays.jsonl",
     ".agentlas/super-ontology-evidence.jsonl",
     ".agentlas/super-ontology-memory-bridge.jsonl"

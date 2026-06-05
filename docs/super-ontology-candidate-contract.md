@@ -23,6 +23,7 @@ Generated or packaged repos may include:
   super-ontology-semantic-alignment.json
   super-ontology-resilience-control.json
   super-ontology-invariant-verification.json
+  super-ontology-observability-telemetry.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -216,6 +217,22 @@ Generated or packaged repos may include:
   invariants, rollback without observed feedback, emergency-stop bypass,
   unordered multi-agent writes, and non-idempotent replay mutation.
 
+`super-ontology-observability-telemetry.json`
+
+- Public-safe trace, span, correlation, audit, redaction, retention, snapshot,
+  rollback, and alert seed.
+- Requires source intake, evidence packets, belief updates, graph writes, memory
+  tickets, tool actions, public exports, route sync, release seeds, repair
+  events, rollback, and emergency stops to be reconstructable before runtime
+  writes.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks writes without trace ids, memory tickets without span lineage, tool
+  actions without audit receipts, public exports with stale metrics, route sync
+  without correlation ids, release seeds when audit sinks are down, telemetry
+  without redaction policy, green metrics without sample size, suppressed
+  degraded-mode alerts, unrecorded shadow replays, repair without before/after
+  snapshots, rollback without observed event, and unobservable runtime writes.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -280,9 +297,10 @@ The public contract names these layers:
 15. semantic alignment contract,
 16. resilience control contract,
 17. invariant verification contract,
-18. Agentlas integration contract,
-19. Memory Curator bridge,
-20. promotion readiness,
+18. observability telemetry contract,
+19. Agentlas integration contract,
+20. Memory Curator bridge,
+21. promotion readiness,
 21. promotion replay drill,
 22. architecture sync review.
 
@@ -331,6 +349,9 @@ Automatic promotion is blocked when:
 - memory writes, graph writes, tool calls, public exports, route sync, release
   seeds, rollback, or emergency-stop transitions bypass their event-stream
   invariants;
+- graph, memory, tool, public, route, release, repair, rollback, or stop events
+  lack trace/span/correlation/audit telemetry, redaction and retention policy,
+  required snapshots, alert refs, or rollback refs;
 - an AppBridge route output would be treated as source-write authority;
 - a release artifact lacks SLSA or in-toto style provenance;
 - AppBridge is treated as source of truth;

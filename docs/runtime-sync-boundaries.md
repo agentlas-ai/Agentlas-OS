@@ -102,7 +102,8 @@ The following formerly runtime-owned behaviors are now public contracts:
    `docs/super-ontology-candidate-contract.md`.
    Its open-world coverage seed, consensus-coordination seed, task coverage seed, contextual-flow seed, causal-impact seed,
    assurance-case seed, knowledge-homeostasis seed, adversarial-provenance seed,
-   epistemic-calibration seed, semantic-alignment seed, resilience-control seed, and Memory Curator bridge ledger are
+   epistemic-calibration seed, semantic-alignment seed, resilience-control seed,
+   observability-telemetry seed, and Memory Curator bridge ledger are
    candidate-only: task coverage
    classifies requested work before action, contextual flow blocks unsafe
    boundary crossings, causal impact blocks relation-as-intervention jumps,
