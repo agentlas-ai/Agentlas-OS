@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-knowledge-homeostasis.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "signals",
+    "decisions",
+    "requiredParameters",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-knowledge-homeostasis" },
+    "state": { "const": "export_only" },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "signals": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 10
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "continue",
+          "quarantine",
+          "degrade_to_read_only",
+          "require_review",
+          "replay",
+          "repair",
+          "rollback",
+          "block_promotion",
+          "retire"
+        ]
+      },
+      "minItems": 9,
+      "uniqueItems": true
+    },
+    "requiredParameters": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 10
+    },
+    "researchBasis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 6
+    },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 5
+    }
+  },
+  "additionalProperties": false
+}

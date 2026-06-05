@@ -22,6 +22,7 @@
     ".agentlas/super-ontology-contextual-flow.json",
     ".agentlas/super-ontology-causal-impact.json",
     ".agentlas/super-ontology-assurance-case.json",
+    ".agentlas/super-ontology-knowledge-homeostasis.json",
     ".agentlas/super-ontology-replays.jsonl",
     ".agentlas/super-ontology-evidence.jsonl",
     ".agentlas/super-ontology-memory-bridge.jsonl"

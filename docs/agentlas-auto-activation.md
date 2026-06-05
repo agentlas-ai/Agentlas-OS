@@ -44,6 +44,7 @@ Recommended minimum:
 ├── super-ontology-contextual-flow.json
 ├── super-ontology-causal-impact.json
 ├── super-ontology-assurance-case.json
+├── super-ontology-knowledge-homeostasis.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -106,8 +107,9 @@ overwriting user content.
 - Candidate-only adaptive knowledge governance metadata.
 - Keeps `runtimeGraphWriteEnabled` and `zeroErrorClaim` false on export.
 - Names the source-intake, evidence-packet, belief-ledger, knowledge-capsule,
-  affordance-binding, task-coverage, contextual-flow, causal-impact, assurance-case,
-  promotion-readiness, replay, and sync-review gates.
+  affordance-binding, task-coverage, contextual-flow, causal-impact,
+  assurance-case, knowledge-homeostasis, promotion-readiness, replay, and
+  sync-review gates.
 
 `super-ontology-task-coverage.json`
 
@@ -146,6 +148,16 @@ overwriting user content.
   validators, residual risk, blocked shortcuts, and rollback.
 - Keeps runtime promotion disabled and treats perfection or zero-error language
   as a rejected overclaim.
+
+`super-ontology-knowledge-homeostasis.json`
+
+- Export-only knowledge health seed.
+- Requires stale, contradictory, unsupported, drifting, parser-failed,
+  privacy-incident, missing-evidence, user-corrected, or runtime-desynced
+  knowledge to name signal, measurement, error budget, control decision,
+  Memory Curator policy, public export policy, escalation, and rollback.
+- Keeps runtime promotion disabled and blocks critical health signals from
+  direct runtime writes.
 
 `super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
 

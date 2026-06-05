@@ -37,6 +37,7 @@
           "contextual_flow_contract",
           "causal_impact_contract",
           "assurance_case_contract",
+          "knowledge_homeostasis_contract",
           "agentlas_integration_contract",
           "memory_curator_bridge",
           "promotion_readiness",
@@ -55,6 +56,7 @@
         "contextualFlow",
         "causalImpact",
         "assuranceCase",
+        "knowledgeHomeostasis",
         "memoryCuratorBridge",
         "memoryTickets"
       ],
@@ -65,6 +67,7 @@
         "contextualFlow": { "type": "string" },
         "causalImpact": { "type": "string" },
         "assuranceCase": { "type": "string" },
+        "knowledgeHomeostasis": { "type": "string" },
         "memoryCuratorBridge": { "type": "string" },
         "memoryTickets": { "type": "string" }
       },
@@ -86,6 +89,7 @@
         "contextualFlowRequired",
         "causalImpactRequired",
         "assuranceCaseRequired",
+        "knowledgeHomeostasisRequired",
         "memoryCuratorBridgeRequired",
         "directDurableMemoryWritesBlocked",
         "appbridgeSourceWritesBlocked"
@@ -99,6 +103,7 @@
         "contextualFlowRequired": { "const": true },
         "causalImpactRequired": { "const": true },
         "assuranceCaseRequired": { "const": true },
+        "knowledgeHomeostasisRequired": { "const": true },
         "memoryCuratorBridgeRequired": { "const": true },
         "directDurableMemoryWritesBlocked": { "const": true },
         "appbridgeSourceWritesBlocked": { "const": true }

@@ -15,6 +15,7 @@ Generated or packaged repos may include:
   super-ontology-contextual-flow.json
   super-ontology-causal-impact.json
   super-ontology-assurance-case.json
+  super-ontology-knowledge-homeostasis.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -98,6 +99,19 @@ Generated or packaged repos may include:
 - Treats literal perfection or zero-error language as a rejected overclaim, not
   a release state.
 
+`super-ontology-knowledge-homeostasis.json`
+
+- Public-safe knowledge-health seed.
+- Requires stale, contradictory, unsupported, drifting, parser-failed,
+  privacy-incident, missing-evidence, user-corrected, or runtime-desynced
+  knowledge to name signal, measurement window, error budget, affected surface,
+  control decision, escalation, evidence, Memory Curator policy, public export
+  policy, and rollback.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks overrun budgets from continuing silently, critical cases from runtime
+  writes, privacy incidents from public export, AppBridge routes from becoming
+  source-write authority, and stale claims from becoming current truth.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -113,6 +127,7 @@ taskCoverageRequired = true
 contextualFlowRequired = true
 causalImpactRequired = true
 assuranceCaseRequired = true
+knowledgeHomeostasisRequired = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
 ```
@@ -130,13 +145,15 @@ The public contract names these layers:
 4. knowledge capsule,
 5. affordance action binding,
 6. task coverage contract,
-7. causal impact contract,
-8. assurance case contract,
-9. Agentlas integration contract,
-10. Memory Curator bridge,
-11. promotion readiness,
-12. promotion replay drill,
-13. architecture sync review.
+7. contextual flow contract,
+8. causal impact contract,
+9. assurance case contract,
+10. knowledge homeostasis contract,
+11. Agentlas integration contract,
+12. Memory Curator bridge,
+13. promotion readiness,
+14. promotion replay drill,
+15. architecture sync review.
 
 ## Hard Stops
 
@@ -154,6 +171,11 @@ Automatic promotion is blocked when:
   rollback;
 - a broad claim lacks an assurance case, observed evidence, validator, residual
   risk, or rollback plan;
+- a knowledge health signal overruns its error budget but still continues;
+- a critical homeostasis row would allow direct runtime writes;
+- a privacy incident would public-export or write memory without quarantine;
+- stale, parser-failed, or runtime-desynced knowledge would be treated as
+  current operational truth;
 - AppBridge is treated as source of truth;
 - a candidate bypasses the Memory Curator bridge and writes durable memory
   directly;
