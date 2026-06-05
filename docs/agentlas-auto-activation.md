@@ -45,6 +45,7 @@ Recommended minimum:
 ├── super-ontology-causal-impact.json
 ├── super-ontology-assurance-case.json
 ├── super-ontology-knowledge-homeostasis.json
+├── super-ontology-adversarial-provenance.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -108,8 +109,8 @@ overwriting user content.
 - Keeps `runtimeGraphWriteEnabled` and `zeroErrorClaim` false on export.
 - Names the source-intake, evidence-packet, belief-ledger, knowledge-capsule,
   affordance-binding, task-coverage, contextual-flow, causal-impact,
-  assurance-case, knowledge-homeostasis, promotion-readiness, replay, and
-  sync-review gates.
+  assurance-case, knowledge-homeostasis, adversarial-provenance,
+  promotion-readiness, replay, and sync-review gates.
 
 `super-ontology-task-coverage.json`
 
@@ -158,6 +159,20 @@ overwriting user content.
   Memory Curator policy, public export policy, escalation, and rollback.
 - Keeps runtime promotion disabled and blocks critical health signals from
   direct runtime writes.
+
+`super-ontology-adversarial-provenance.json`
+
+- Export-only hostile-source provenance seed.
+- Requires uploads, web pages, emails, chats, tool responses, connector results,
+  memory recalls, public repos, media assets, AppBridge route outputs,
+  generated artifacts, and datasets to name source channel, attack vector,
+  trust boundary, claimed authority, observed artifact, provenance evidence,
+  integrity checks, instruction policy, retrieval policy, memory policy, tool
+  policy, promotion decision, controls, forbidden shortcuts, and rollback.
+- Keeps runtime promotion disabled and blocks prompt injection, poisoning,
+  forged provenance, spoofed citations, hidden OCR instructions, tampered tool
+  output, stale trusted-source replay, and unsigned release artifacts from
+  becoming retrieval, memory, tool, or public seed authority.
 
 `super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
 

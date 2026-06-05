@@ -16,6 +16,7 @@ Generated or packaged repos may include:
   super-ontology-causal-impact.json
   super-ontology-assurance-case.json
   super-ontology-knowledge-homeostasis.json
+  super-ontology-adversarial-provenance.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -112,6 +113,21 @@ Generated or packaged repos may include:
   writes, privacy incidents from public export, AppBridge routes from becoming
   source-write authority, and stale claims from becoming current truth.
 
+`super-ontology-adversarial-provenance.json`
+
+- Public-safe hostile-source provenance seed.
+- Requires arbitrary uploads, web pages, emails, chats, tool responses,
+  connector results, recalled memories, public repos, media assets, AppBridge
+  routes, generated artifacts, and datasets to name claimed authority,
+  provenance evidence, integrity checks, instruction policy, retrieval policy,
+  memory policy, tool policy, promotion decision, forbidden shortcuts, and
+  rollback.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks prompt injection from becoming instruction, poisoned sources from
+  becoming memory, forged provenance from becoming trusted source, tool-output
+  tampering from becoming action, route output from becoming source-write
+  authority, and stale trusted-source replay from becoming current truth.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -128,8 +144,10 @@ contextualFlowRequired = true
 causalImpactRequired = true
 assuranceCaseRequired = true
 knowledgeHomeostasisRequired = true
+adversarialProvenanceRequired = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
+untrustedSourceRuntimeWritesBlocked = true
 ```
 
 The package can be searched, reviewed, and replayed. It cannot write official
@@ -149,11 +167,12 @@ The public contract names these layers:
 8. causal impact contract,
 9. assurance case contract,
 10. knowledge homeostasis contract,
-11. Agentlas integration contract,
-12. Memory Curator bridge,
-13. promotion readiness,
-14. promotion replay drill,
-15. architecture sync review.
+11. adversarial provenance contract,
+12. Agentlas integration contract,
+13. Memory Curator bridge,
+14. promotion readiness,
+15. promotion replay drill,
+16. architecture sync review.
 
 ## Hard Stops
 
@@ -176,6 +195,11 @@ Automatic promotion is blocked when:
 - a privacy incident would public-export or write memory without quarantine;
 - stale, parser-failed, or runtime-desynced knowledge would be treated as
   current operational truth;
+- prompt injection, poisoned source, spoofed citation, forged provenance,
+  hidden OCR text, tool-output tampering, or stale trusted-source replay would
+  become retrieval, memory, tool, or public seed authority;
+- an AppBridge route output would be treated as source-write authority;
+- a release artifact lacks SLSA or in-toto style provenance;
 - AppBridge is treated as source of truth;
 - a candidate bypasses the Memory Curator bridge and writes durable memory
   directly;

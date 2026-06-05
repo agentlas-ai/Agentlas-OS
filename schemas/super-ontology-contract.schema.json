@@ -38,6 +38,7 @@
           "causal_impact_contract",
           "assurance_case_contract",
           "knowledge_homeostasis_contract",
+          "adversarial_provenance_contract",
           "agentlas_integration_contract",
           "memory_curator_bridge",
           "promotion_readiness",
@@ -57,6 +58,7 @@
         "causalImpact",
         "assuranceCase",
         "knowledgeHomeostasis",
+        "adversarialProvenance",
         "memoryCuratorBridge",
         "memoryTickets"
       ],
@@ -68,6 +70,7 @@
         "causalImpact": { "type": "string" },
         "assuranceCase": { "type": "string" },
         "knowledgeHomeostasis": { "type": "string" },
+        "adversarialProvenance": { "type": "string" },
         "memoryCuratorBridge": { "type": "string" },
         "memoryTickets": { "type": "string" }
       },
@@ -90,6 +93,8 @@
         "causalImpactRequired",
         "assuranceCaseRequired",
         "knowledgeHomeostasisRequired",
+        "adversarialProvenanceRequired",
+        "untrustedSourceRuntimeWritesBlocked",
         "memoryCuratorBridgeRequired",
         "directDurableMemoryWritesBlocked",
         "appbridgeSourceWritesBlocked"
@@ -104,6 +109,8 @@
         "causalImpactRequired": { "const": true },
         "assuranceCaseRequired": { "const": true },
         "knowledgeHomeostasisRequired": { "const": true },
+        "adversarialProvenanceRequired": { "const": true },
+        "untrustedSourceRuntimeWritesBlocked": { "const": true },
         "memoryCuratorBridgeRequired": { "const": true },
         "directDurableMemoryWritesBlocked": { "const": true },
         "appbridgeSourceWritesBlocked": { "const": true }

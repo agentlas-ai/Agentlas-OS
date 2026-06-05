@@ -62,6 +62,7 @@ The canonical core is runtime-neutral:
 - `.agentlas/super-ontology-causal-impact.json` in generated packages
 - `.agentlas/super-ontology-assurance-case.json` in generated packages
 - `.agentlas/super-ontology-knowledge-homeostasis.json` in generated packages
+- `.agentlas/super-ontology-adversarial-provenance.json` in generated packages
 - `.agentlas/super-ontology-replays.jsonl` in generated packages
 - `.agentlas/super-ontology-evidence.jsonl` in generated packages
 - `.agentlas/super-ontology-memory-bridge.jsonl` in generated packages
@@ -87,11 +88,12 @@ Three runtime behaviors are public contracts here, not private product code:
 - Super Ontology candidate contract: generated packages may ship export-only
   adaptive knowledge governance metadata, task coverage, contextual-flow,
   causal-impact metadata, assurance-case metadata, knowledge-homeostasis
-  metadata, replay ledgers, and promotion evidence ledgers. Runtime graph
+  metadata, adversarial-provenance metadata, replay ledgers, and promotion
+  evidence ledgers. Runtime graph
   writes, cross-context information flows, relation-as-action jumps, broad
-  safety claims, and stale or desynced knowledge use stay off until
-  shadow/canary replay, rollback, homeostasis review, and sync review approve a
-  later phase.
+  safety claims, stale or desynced knowledge use, and hostile-source promotion
+  stay off until shadow/canary replay, rollback, homeostasis review,
+  adversarial-provenance review, and sync review approve a later phase.
 
 ## Generated Architecture Components
 
@@ -102,8 +104,8 @@ contracts that the three builders generate or repair inside output packages:
 - Memory Curator and Memory Tickets.
 - Skill lifecycle registry, trial evidence, and Curator promotion decisions.
 - Super Ontology candidate contract, task coverage, contextual flow, causal
-  impact, assurance cases, knowledge homeostasis, replay evidence, and
-  promotion evidence.
+  impact, assurance cases, knowledge homeostasis, adversarial provenance,
+  replay evidence, and promotion evidence.
 - Sitemap and task bias.
 - LLM runtime architecture.
 - Policy Gate.

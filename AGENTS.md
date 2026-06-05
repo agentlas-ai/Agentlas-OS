@@ -97,6 +97,7 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/super-ontology-causal-impact.json`;
 - `.agentlas/super-ontology-assurance-case.json`;
 - `.agentlas/super-ontology-knowledge-homeostasis.json`;
+- `.agentlas/super-ontology-adversarial-provenance.json`;
 - `.agentlas/super-ontology-replays.jsonl`;
 - `.agentlas/super-ontology-evidence.jsonl`;
 - `.agentlas/super-ontology-memory-bridge.jsonl`;

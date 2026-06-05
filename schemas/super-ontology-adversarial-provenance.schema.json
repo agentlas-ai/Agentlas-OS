@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-adversarial-provenance.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "sourceChannels",
+    "attackVectors",
+    "trustBoundaries",
+    "instructionPolicies",
+    "retrievalPolicies",
+    "memoryPolicies",
+    "toolPolicies",
+    "promotionDecisions",
+    "requiredParameters",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-adversarial-provenance" },
+    "state": { "const": "export_only" },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "sourceChannels": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 12,
+      "uniqueItems": true
+    },
+    "attackVectors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 14,
+      "uniqueItems": true
+    },
+    "trustBoundaries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 9,
+      "uniqueItems": true
+    },
+    "instructionPolicies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 7,
+      "uniqueItems": true
+    },
+    "retrievalPolicies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 6,
+      "uniqueItems": true
+    },
+    "memoryPolicies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 5,
+      "uniqueItems": true
+    },
+    "toolPolicies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 5,
+      "uniqueItems": true
+    },
+    "promotionDecisions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 6,
+      "uniqueItems": true
+    },
+    "requiredParameters": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 12,
+      "uniqueItems": true
+    },
+    "researchBasis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 8,
+      "uniqueItems": true
+    },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 8,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}
