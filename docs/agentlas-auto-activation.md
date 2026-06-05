@@ -56,6 +56,7 @@ Recommended minimum:
 ├── super-ontology-objective-proxy-validity.json
 ├── super-ontology-stakeholder-preference-governance.json
 ├── super-ontology-normative-authority-drift.json
+├── super-ontology-side-effect-containment.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -124,6 +125,7 @@ overwriting user content.
   invariant-verification, observability-telemetry, objective-proxy-validity,
   stakeholder-preference-governance,
   normative-authority-drift,
+  side-effect-containment,
   promotion-readiness, replay, and sync-review gates.
 
 `super-ontology-open-world-coverage.json`
@@ -299,10 +301,24 @@ overwriting user content.
   name primary source, effective date, jurisdiction scope, authority owner,
   precedence, review owner, exception expiry where relevant, audit trail, and
   rollback before write authority.
-- Keeps runtime promotion disabled and blocks owner preference, majority vote,
-  behavior signals, role power, old preference records, hidden affected
-  parties, missing dissent, and missing appeal paths from becoming write
+- Keeps runtime promotion disabled and blocks stale policy, wrong jurisdiction,
+  draft policy, superseded contract, expired consent, translation mismatch,
+  license conflict, cross-border transfer gaps, emergency exceptions without
+  expiry, and legal/compliance claims without review from becoming write
   authority.
+
+`super-ontology-side-effect-containment.json`
+
+- Export-only side-effect containment seed.
+- Requires sends, payments, deletes, releases, cloud permission changes,
+  database writes, training updates, route sync, scheduled jobs, physical
+  actions, and legal/compliance commitments to name dry-run, idempotency,
+  approval, transaction, compensation, cancellation, receipt, audit, and
+  rollback evidence before execution.
+- Keeps runtime promotion disabled and blocks preview-as-send, dry-run as
+  committed, non-idempotent retries, irreversible actions without approval,
+  release without rollback, partial failure without saga state, physical action
+  without safety interlock, and scheduled action without cancellation.
 
 `super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
 

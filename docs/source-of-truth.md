@@ -79,6 +79,7 @@ These files are the public contract surface:
 - `.agentlas/super-ontology-objective-proxy-validity.json` in generated packages
 - `.agentlas/super-ontology-stakeholder-preference-governance.json` in generated packages
 - `.agentlas/super-ontology-normative-authority-drift.json` in generated packages
+- `.agentlas/super-ontology-side-effect-containment.json` in generated packages
 - `.agentlas/super-ontology-replays.jsonl` in generated packages
 - `.agentlas/super-ontology-evidence.jsonl` in generated packages
 - `.agentlas/super-ontology-memory-bridge.jsonl` in generated packages

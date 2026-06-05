@@ -73,6 +73,7 @@ The canonical core is runtime-neutral:
 - `.agentlas/super-ontology-objective-proxy-validity.json` in generated packages
 - `.agentlas/super-ontology-stakeholder-preference-governance.json` in generated packages
 - `.agentlas/super-ontology-normative-authority-drift.json` in generated packages
+- `.agentlas/super-ontology-side-effect-containment.json` in generated packages
 - `.agentlas/super-ontology-replays.jsonl` in generated packages
 - `.agentlas/super-ontology-evidence.jsonl` in generated packages
 - `.agentlas/super-ontology-memory-bridge.jsonl` in generated packages
@@ -102,7 +103,8 @@ Three runtime behaviors are public contracts here, not private product code:
   semantic-alignment metadata, resilience-control metadata,
   invariant-verification metadata, observability-telemetry metadata,
   objective-proxy-validity metadata, stakeholder-preference-governance metadata,
-  normative-authority-drift metadata, replay ledgers, and promotion
+  normative-authority-drift metadata, side-effect-containment metadata, replay
+  ledgers, and promotion
   evidence ledgers. Runtime graph
   writes, cross-context information flows, relation-as-action jumps, broad
   safety claims, stale or desynced knowledge use, hostile-source promotion, and
@@ -113,7 +115,8 @@ Three runtime behaviors are public contracts here, not private product code:
   adversarial-provenance review, epistemic-calibration review,
   semantic-alignment review, resilience-control review, invariant-verification
   review, observability-telemetry review, objective-proxy-validity review,
-  stakeholder-preference-governance review, normative-authority-drift review, and
+  stakeholder-preference-governance review, normative-authority-drift review,
+  side-effect-containment review, and
   sync review approve a later phase.
 
 ## Generated Architecture Components

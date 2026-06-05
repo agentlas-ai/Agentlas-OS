@@ -27,6 +27,7 @@ Generated or packaged repos may include:
   super-ontology-objective-proxy-validity.json
   super-ontology-stakeholder-preference-governance.json
   super-ontology-normative-authority-drift.json
+  super-ontology-side-effect-containment.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -281,6 +282,24 @@ Generated or packaged repos may include:
   expiry, and legal/compliance claims without review from becoming write
   authority.
 
+`super-ontology-side-effect-containment.json`
+
+- Public-safe side-effect containment seed.
+- Requires side-effecting work to name the side-effect class, action surface,
+  reversibility state, transaction boundary, idempotency state, blast radius,
+  external commit state, containment evidence, approval, transaction log,
+  compensation, cancellation, receipt, audit trace, rollback, and post-action
+  verification before filesystem, external-send, payment, customer-record,
+  public-release, cloud-admin, database, durable-memory, training, physical,
+  route-sync, scheduled-job, or legal/compliance actions can execute.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks read permission as write permission, preview as send, dry-run as
+  committed, non-idempotent retry, irreversible action without approval,
+  deletion without recovery, payment without idempotency, release without
+  rollback, partial failure without saga state, physical action without safety
+  interlock, scheduled action without cancellation, and hosted tools without a
+  local side-effect wrapper.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -313,6 +332,10 @@ observabilityTelemetryRequired = true
 objectiveProxyValidityRequired = true
 stakeholderPreferenceGovernanceRequired = true
 normativeAuthorityDriftRequired = true
+sideEffectContainmentRequired = true
+irreversibleRuntimeActionsBlocked = true
+idempotencyKeyRequired = true
+compensationPlanRequired = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
 untrustedSourceRuntimeWritesBlocked = true

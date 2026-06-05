@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-side-effect-containment.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "sideEffectClasses",
+    "actionSurfaces",
+    "reversibilityStates",
+    "transactionBoundaries",
+    "idempotencyStates",
+    "blastRadii",
+    "externalCommitStates",
+    "requiredContainmentEvidence",
+    "decisions",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-side-effect-containment" },
+    "state": { "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"] },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "sideEffectClasses": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "actionSurfaces": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "reversibilityStates": { "type": "array", "items": { "type": "string" }, "minItems": 6 },
+    "transactionBoundaries": { "type": "array", "items": { "type": "string" }, "minItems": 7 },
+    "idempotencyStates": { "type": "array", "items": { "type": "string" }, "minItems": 5 },
+    "blastRadii": { "type": "array", "items": { "type": "string" }, "minItems": 9 },
+    "externalCommitStates": { "type": "array", "items": { "type": "string" }, "minItems": 7 },
+    "requiredContainmentEvidence": { "type": "array", "items": { "type": "string" }, "minItems": 16 },
+    "decisions": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "researchBasis": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "hardStops": { "type": "array", "items": { "type": "string" }, "minItems": 18 }
+  },
+  "additionalProperties": false
+}
