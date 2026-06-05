@@ -21,8 +21,8 @@ Public core owns the portable contract:
   and runtime adapter rules;
 - skill lifecycle registry, trial evidence, and Curator promotion decision
   contracts;
-- Super Ontology candidate contract, task coverage, causal impact, assurance
-  case, replay evidence, and promotion evidence contracts;
+- Super Ontology candidate contract, task coverage, contextual flow, causal
+  impact, assurance case, replay evidence, and promotion evidence contracts;
 - public-safe schemas, templates, docs, skills, and verification scripts.
 
 Public core should be runnable as a Markdown-first agent team. It should not

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-contextual-flow.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "flowStages",
+    "contexts",
+    "requiredParameters",
+    "decisions",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-contextual-flow" },
+    "state": {
+      "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"]
+    },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "const": "contextual_flow_required_before_boundary_crossing" },
+    "flowStages": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "user_to_agent",
+          "agent_to_tool",
+          "tool_to_agent",
+          "agent_to_agent",
+          "agent_to_memory",
+          "agent_to_output",
+          "agent_to_public_surface"
+        ]
+      },
+      "minItems": 1
+    },
+    "contexts": {
+      "type": "array",
+      "items": {
+        "enum": ["personal", "company", "customer", "public", "regulated", "agent_internal"]
+      },
+      "minItems": 1
+    },
+    "requiredParameters": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "enum": ["allow", "redact", "aggregate_only", "review_required", "block"]
+      },
+      "minItems": 1
+    },
+    "researchBasis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}

@@ -64,6 +64,7 @@ These files are the public contract surface:
 - `.agentlas/curator-decisions.jsonl` in generated packages
 - `.agentlas/super-ontology-contract.json` in generated packages
 - `.agentlas/super-ontology-task-coverage.json` in generated packages
+- `.agentlas/super-ontology-contextual-flow.json` in generated packages
 - `.agentlas/super-ontology-causal-impact.json` in generated packages
 - `.agentlas/super-ontology-assurance-case.json` in generated packages
 - `.agentlas/super-ontology-replays.jsonl` in generated packages

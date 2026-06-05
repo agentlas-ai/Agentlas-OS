@@ -12,6 +12,7 @@ Generated or packaged repos may include:
 .agentlas/
   super-ontology-contract.json
   super-ontology-task-coverage.json
+  super-ontology-contextual-flow.json
   super-ontology-causal-impact.json
   super-ontology-assurance-case.json
   super-ontology-replays.jsonl
@@ -63,6 +64,18 @@ Generated or packaged repos may include:
 - Blocks write, publish, execute, physical, and training tasks unless evidence
   mode, authority, review, and rollback are explicit.
 
+`super-ontology-contextual-flow.json`
+
+- Public-safe contextual-flow seed.
+- Requires information flows to name source context, target context, sender,
+  recipient, subject, attribute, transmission principle, purpose, authority,
+  sensitivity, retention, controls, and audit references.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks same-user cross-context joins, tool responses treated as need-to-know,
+  raw prompt or transcript memory writes, public output after private handoff,
+  customer-data publication without consent, regulated training without delete
+  path, and agent-internal traces in user output.
+
 `super-ontology-causal-impact.json`
 
 - Public-safe causal-impact seed.
@@ -97,6 +110,7 @@ shadowRequired = true
 canaryRequiredForMixedContext = true
 rollbackRequired = true
 taskCoverageRequired = true
+contextualFlowRequired = true
 causalImpactRequired = true
 assuranceCaseRequired = true
 memoryCuratorBridgeRequired = true
