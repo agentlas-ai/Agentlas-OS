@@ -15,8 +15,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent?label=release">
+  <a href="https://github.com/agentlas-ai/Hephaestus/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Hephaestus?label=release">
   </a>
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
@@ -93,7 +93,7 @@ open Agentlas.dmg
 **Windows PowerShell**
 
 ```powershell
-$r = Invoke-RestMethod https://api.github.com/repos/jeongmk522-netizen/agentlas-desktop/releases/latest
+$r = Invoke-RestMethod https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest
 $u = ($r.assets | Where-Object { $_.name -like '*Windows-x64-Setup.exe' }).browser_download_url
 Invoke-WebRequest $u -OutFile "$env:TEMP\AgentlasSetup.exe"
 Start-Process "$env:TEMP\AgentlasSetup.exe"
@@ -102,7 +102,7 @@ Start-Process "$env:TEMP\AgentlasSetup.exe"
 **Linux terminal, AppImage**
 
 ```bash
-url=$(curl -fsSL https://api.github.com/repos/jeongmk522-netizen/agentlas-desktop/releases/latest \
+url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest \
   | grep -o 'https://[^"]*Linux-x64\.AppImage' | head -1)
 curl -fL "$url" -o Agentlas.AppImage
 chmod +x Agentlas.AppImage
@@ -112,7 +112,7 @@ chmod +x Agentlas.AppImage
 **Linux terminal, Debian/Ubuntu**
 
 ```bash
-url=$(curl -fsSL https://api.github.com/repos/jeongmk522-netizen/agentlas-desktop/releases/latest \
+url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest \
   | grep -o 'https://[^"]*Linux-x64\.deb' | head -1)
 curl -fL "$url" -o agentlas.deb
 sudo dpkg -i agentlas.deb
@@ -132,7 +132,7 @@ agentlas run agentlas-meta-agent "Package this workflow for Agentlas"
 Open macOS Terminal, Linux terminal, Windows Git Bash, or WSL in the project folder where you want the package files installed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent/v0.1.6/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.1.6/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -142,7 +142,7 @@ Windows PowerShell:
 ```powershell
 $zip = "$env:TEMP\agentlas-meta-agent-v0.1.6.zip"
 $extract = "$env:TEMP\agentlas-meta-agent-v0.1.6"
-Invoke-WebRequest "https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent/archive/refs/tags/v0.1.6.zip" -OutFile $zip
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.1.6.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1
@@ -156,7 +156,7 @@ Marketplace registration and plugin installation are separate steps. The marketp
 Inside a **Claude Code chat**, type:
 
 ```text
-/plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
+/plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
 /plugin install agentlas-meta-agent@agentlas-core-engine
 /reload-plugins
 /plugin list
@@ -165,7 +165,7 @@ Inside a **Claude Code chat**, type:
 From your **OS terminal** with the `claude` CLI available:
 
 ```bash
-claude plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
+claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
 claude plugin install agentlas-meta-agent@agentlas-core-engine
 ```
 
@@ -181,7 +181,7 @@ Reloaded: 1 plugin · 0 skills · 9 agents · 0 hooks · 0 plugin MCP servers ·
 Inside a **Codex chat**, type:
 
 ```text
-/plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.6
+/plugin marketplace add agentlas-ai/Hephaestus --ref v0.1.6
 /plugin install agentlas-meta-agent@agentlas-core-engine
 /reload-plugins
 /plugin list
@@ -190,7 +190,7 @@ Inside a **Codex chat**, type:
 From your **OS terminal** with the `codex` CLI available:
 
 ```bash
-codex plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.6
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.1.6
 codex plugin list
 codex plugin add agentlas-meta-agent@agentlas-core-engine
 codex plugin list

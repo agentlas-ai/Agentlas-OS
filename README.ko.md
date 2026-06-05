@@ -63,7 +63,7 @@ open Agentlas.dmg
 **Windows PowerShell**
 
 ```powershell
-$r = Invoke-RestMethod https://api.github.com/repos/jeongmk522-netizen/agentlas-desktop/releases/latest
+$r = Invoke-RestMethod https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest
 $u = ($r.assets | Where-Object { $_.name -like '*Windows-x64-Setup.exe' }).browser_download_url
 Invoke-WebRequest $u -OutFile "$env:TEMP\AgentlasSetup.exe"
 Start-Process "$env:TEMP\AgentlasSetup.exe"
@@ -72,7 +72,7 @@ Start-Process "$env:TEMP\AgentlasSetup.exe"
 **Linux terminal, AppImage**
 
 ```bash
-url=$(curl -fsSL https://api.github.com/repos/jeongmk522-netizen/agentlas-desktop/releases/latest \
+url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest \
   | grep -o 'https://[^"]*Linux-x64\.AppImage' | head -1)
 curl -fL "$url" -o Agentlas.AppImage
 chmod +x Agentlas.AppImage
@@ -82,7 +82,7 @@ chmod +x Agentlas.AppImage
 **Linux terminal, Debian/Ubuntu**
 
 ```bash
-url=$(curl -fsSL https://api.github.com/repos/jeongmk522-netizen/agentlas-desktop/releases/latest \
+url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest \
   | grep -o 'https://[^"]*Linux-x64\.deb' | head -1)
 curl -fL "$url" -o agentlas.deb
 sudo dpkg -i agentlas.deb
@@ -102,7 +102,7 @@ agentlas run agentlas-meta-agent "Package this workflow for Agentlas"
 설치할 프로젝트 폴더에서 macOS Terminal, Linux terminal, Windows Git Bash, WSL 중 하나를 엽니다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent/v0.1.6/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.1.6/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -112,7 +112,7 @@ Windows PowerShell:
 ```powershell
 $zip = "$env:TEMP\agentlas-meta-agent-v0.1.6.zip"
 $extract = "$env:TEMP\agentlas-meta-agent-v0.1.6"
-Invoke-WebRequest "https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent/archive/refs/tags/v0.1.6.zip" -OutFile $zip
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.1.6.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1
@@ -126,7 +126,7 @@ Get-ChildItem $src.FullName -Force | Copy-Item -Destination (Get-Location) -Recu
 **Claude Code 채팅창 안에서**:
 
 ```text
-/plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
+/plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
 /plugin install agentlas-meta-agent@agentlas-core-engine
 /reload-plugins
 /plugin list
@@ -135,7 +135,7 @@ Get-ChildItem $src.FullName -Force | Copy-Item -Destination (Get-Location) -Recu
 **OS 터미널에서 `claude` CLI로**:
 
 ```bash
-claude plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --sparse .claude-plugin claude/plugins
+claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
 claude plugin install agentlas-meta-agent@agentlas-core-engine
 ```
 
@@ -151,7 +151,7 @@ Reloaded: 1 plugin · 0 skills · 9 agents · 0 hooks · 0 plugin MCP servers ·
 **Codex 채팅창 안에서**:
 
 ```text
-/plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.6
+/plugin marketplace add agentlas-ai/Hephaestus --ref v0.1.6
 /plugin install agentlas-meta-agent@agentlas-core-engine
 /reload-plugins
 /plugin list
@@ -160,7 +160,7 @@ Reloaded: 1 plugin · 0 skills · 9 agents · 0 hooks · 0 plugin MCP servers ·
 **OS 터미널에서 `codex` CLI로**:
 
 ```bash
-codex plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.6
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.1.6
 codex plugin list
 codex plugin add agentlas-meta-agent@agentlas-core-engine
 codex plugin list

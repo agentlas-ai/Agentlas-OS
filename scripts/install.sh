@@ -3,7 +3,7 @@ set -euo pipefail
 
 target="${1:-$PWD}"
 force="${AGENTLAS_META_OS_FORCE:-0}"
-repo_tarball="${AGENTLAS_META_OS_TARBALL_URL:-https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent/archive/refs/tags/v0.1.6.tar.gz}"
+repo_tarball="${AGENTLAS_META_OS_TARBALL_URL:-https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.1.6.tar.gz}"
 
 usage() {
   cat <<'EOF'
@@ -34,7 +34,7 @@ else
   archive="$tmp_dir/package.tar.gz"
   curl -fsSL "$repo_tarball" -o "$archive"
   tar -xzf "$archive" -C "$tmp_dir"
-  source_dir="$(find "$tmp_dir" -maxdepth 1 -type d -name 'agent_agentlas_core_engine_meta_agent-*' | head -n 1)"
+  source_dir="$(find "$tmp_dir" -maxdepth 1 -type d -name 'Hephaestus-*' | head -n 1)"
 fi
 
 if [[ ! -d "$source_dir" ]]; then

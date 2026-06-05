@@ -12,7 +12,7 @@
   <text x="96" y="190" font-family="Inter, Arial, sans-serif" font-size="16" fill="#b7c6e3">Type these inside Codex. Use /plugin install in chat; use codex plugin add only in the shell.</text>
   <g font-family="Menlo, Consolas, monospace" font-size="18">
     <rect x="96" y="226" width="1008" height="58" rx="12" fill="#050914" stroke="#39517d"/>
-    <text x="124" y="262" fill="#a5d6ff">/plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.5</text>
+    <text x="124" y="262" fill="#a5d6ff">/plugin marketplace add agentlas-ai/Hephaestus --ref v0.1.5</text>
     <text x="96" y="322" fill="#ffdf8b">1. Register the repo marketplace snapshot.</text>
     <rect x="96" y="352" width="1008" height="58" rx="12" fill="#050914" stroke="#39517d"/>
     <text x="124" y="388" fill="#a5d6ff">/plugin install agentlas-meta-agent@agentlas-core-engine</text>

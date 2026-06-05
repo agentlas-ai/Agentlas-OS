@@ -25,7 +25,7 @@
   <text x="360" y="332" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700" fill="#111827">1. Open Settings -> Plugins -> menu -> +Add More...</text>
   <text x="360" y="382" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700" fill="#111827">2. Paste this GitHub repo URL:</text>
   <rect x="360" y="410" width="760" height="58" rx="12" fill="#0b1020"/>
-  <text x="388" y="446" font-family="Menlo, Consolas, monospace" font-size="17" fill="#a5d6ff">https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent</text>
+  <text x="388" y="446" font-family="Menlo, Consolas, monospace" font-size="17" fill="#a5d6ff">https://github.com/agentlas-ai/Hephaestus</text>
   <text x="360" y="526" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700" fill="#111827">3. Select the new marketplace and install:</text>
   <rect x="360" y="554" width="412" height="52" rx="12" fill="#ecfdf3" stroke="#46a758"/>
   <text x="386" y="587" font-family="Inter, Arial, sans-serif" font-size="18" fill="#166534">agentlas-meta-agent</text>

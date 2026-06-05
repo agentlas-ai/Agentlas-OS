@@ -11,7 +11,7 @@
   <text x="104" y="160" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700" fill="#dff0ff">Codex shell install</text>
   <text x="104" y="195" font-family="Inter, Arial, sans-serif" font-size="16" fill="#a7b8d4">Run these in a terminal where the codex CLI is available.</text>
   <g font-family="Menlo, Consolas, monospace" font-size="18">
-    <text x="104" y="245" fill="#79c0ff">$ codex plugin marketplace add jeongmk522-netizen/agent_agentlas_core_engine_meta_agent --ref v0.1.5</text>
+    <text x="104" y="245" fill="#79c0ff">$ codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.1.5</text>
     <text x="104" y="295" fill="#79c0ff">$ codex plugin list</text>
     <text x="104" y="345" fill="#79c0ff">$ codex plugin add agentlas-meta-agent@agentlas-core-engine</text>
     <text x="104" y="395" fill="#79c0ff">$ codex plugin list</text>

@@ -7,8 +7,8 @@
     "name": "Agentlas",
     "email": "appbridge@appbridge.co.kr"
   },
-  "homepage": "https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent",
-  "repository": "https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent",
+  "homepage": "https://github.com/agentlas-ai/Hephaestus",
+  "repository": "https://github.com/agentlas-ai/Hephaestus",
   "license": "Apache-2.0",
   "keywords": ["agentlas", "meta-agent", "agents", "codex", "claude", "gemini"],
   "skills": "skills",

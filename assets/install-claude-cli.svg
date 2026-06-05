@@ -11,7 +11,7 @@
   <text x="104" y="160" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700" fill="#e6edf3">Claude shell install</text>
   <text x="104" y="195" font-family="Inter, Arial, sans-serif" font-size="16" fill="#9da7b3">Run these in macOS Terminal, Windows PowerShell, Linux terminal, Git Bash, or WSL.</text>
   <g font-family="Menlo, Consolas, monospace" font-size="18">
-    <text x="104" y="245" fill="#7ee787">$ claude plugin marketplace add https://github.com/jeongmk522-netizen/agent_agentlas_core_engine_meta_agent \</text>
+    <text x="104" y="245" fill="#7ee787">$ claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus \</text>
     <text x="126" y="275" fill="#7ee787">  --sparse .claude-plugin claude/plugins</text>
     <text x="104" y="325" fill="#7ee787">$ claude plugin install agentlas-meta-agent@agentlas-core-engine</text>
     <text x="104" y="385" fill="#79c0ff"># Then return to Claude Code and reload plugins if the session is open.</text>
