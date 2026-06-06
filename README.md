@@ -295,8 +295,24 @@ The public core is the architecture and foldering contract. Runtime-specific fol
 | Clarify question loop | Asks only package-shaping questions that affect runtime, public boundary, tools, or safety |
 | `.agentlas` auto-activation | Lets local runtimes seed project memory, sitemap/task-bias, Memory Tickets, and vault references |
 | Skill lifecycle registry | Ships candidate skill metadata, empty trial ledgers, and Curator decision ledgers before first-class recall |
+| Super Ontology candidate layer | Seeds public-safe graph and memory governance files for source lineage, privacy, task coverage, causality, consensus, repair, and reflexive feedback checks |
 
 The default export state is conservative. Generated skills are searchable candidate metadata, not automatically promoted runtime behavior. A local Curator must see execution evidence, sealed holdout or replay proof, rollback coverage, and workspace policy approval before a skill becomes first-class recall.
+
+### Super Ontology And Working Memory
+
+For knowledge-heavy personal or company agents, Hephaestus can seed a candidate-only Super Ontology contract under `.agentlas/`. This is not a promise that the agent already knows every future edge case, and it is not a production graph database by itself. It is the public-safe rule layer that says how source evidence, source lineage, privacy boundaries, task type, causal impact, consensus, knowledge drift, repair, and reflexive feedback must be checked before graph, memory, tool, public-export, or runtime-policy writes are trusted.
+
+The practical runtime stack should stay layered:
+
+| Layer | Role |
+|---|---|
+| Source archive and RAG | Stores raw documents, chunks, embeddings, spreadsheets, PDFs, and exact source spans for retrieval |
+| Super Ontology | Organizes candidate entities, relations, evidence, authority, uncertainty, and repair gates |
+| Memory Curator | Decides what becomes durable memory through tickets, quarantine, supersession, deprecation, or discard |
+| Agent Working Memory | A small per-agent hot cache for the current task: scoped facts, recent decisions, retrieved graph slices, TTLs, source refs, confidence, and invalidation state |
+
+That hot working-memory layer is intentionally a cache, not a source of truth. If the goal is lower context tokens, faster recall, and better personalization across large company or personal archives, production runtimes should add it on top of Memory Curator and Super Ontology. The public repo currently ships the candidate contracts, schemas, templates, and verification gates that make that later runtime layer auditable instead of opaque.
 
 ## Why Agentlas Desktop And Terminal Make It Better
 
@@ -354,6 +370,7 @@ Keep private notes, machine paths, raw logs, and secrets out of the public repo.
 | Activate local `.agentlas` workspace files | [`docs/agentlas-auto-activation.md`](docs/agentlas-auto-activation.md) |
 | Review skill lifecycle promotion | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
 | Review Super Ontology candidate contract | [`docs/super-ontology-candidate-contract.md`](docs/super-ontology-candidate-contract.md) |
+| Understand graph and Memory Curator boundaries | [`docs/super-ontology-candidate-contract.md`](docs/super-ontology-candidate-contract.md) |
 | Verify a package | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
 | Check public safety | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 

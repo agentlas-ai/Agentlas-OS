@@ -244,8 +244,24 @@ public core는 architecture/foldering contract입니다. Claude, Codex, Gemini, 
 | Clarify question loop | runtime, 공개/비공개 경계, tools, safety에 영향 있는 질문만 합니다. |
 | `.agentlas` auto-activation | local runtime이 project memory, sitemap/task-bias, Memory Tickets, vault reference를 seed할 수 있게 합니다. |
 | Skill lifecycle registry | skill을 candidate metadata로 시작하고 trial/Curator decision ledger를 둡니다. |
+| Super Ontology candidate layer | source lineage, privacy, task coverage, causality, consensus, repair, reflexive feedback을 확인하는 공개 가능한 graph/memory governance 파일을 seed합니다. |
 
 기본 export는 보수적입니다. 생성된 skill은 바로 first-class recall이 되지 않습니다. Curator가 실행 증거, sealed holdout/replay, rollback, workspace policy를 확인해야 승격됩니다.
+
+### Super Ontology와 Working Memory
+
+개인 자료나 회사 자료처럼 지식이 많은 agent/team을 만들 때 Hephaestus는 `.agentlas/` 아래에 candidate-only Super Ontology contract를 seed할 수 있습니다. 이건 agent가 모든 미래 edge case를 이미 안다는 뜻도 아니고, production graph database 자체도 아닙니다. 대신 source evidence, source lineage, privacy boundary, task type, causal impact, consensus, knowledge drift, repair, reflexive feedback을 확인한 뒤에야 graph, memory, tool, public export, runtime policy write를 믿을 수 있게 만드는 공개 가능한 규칙층입니다.
+
+실제 runtime은 층을 나눠야 합니다.
+
+| 층 | 역할 |
+|---|---|
+| Source archive / RAG | 원본 문서, chunk, embedding, spreadsheet, PDF, 정확한 source span을 저장하고 검색합니다. |
+| Super Ontology | candidate entity, relation, evidence, authority, uncertainty, repair gate를 정리합니다. |
+| Memory Curator | ticket, quarantine, supersession, deprecation, discard를 통해 durable memory로 승격할지 결정합니다. |
+| Agent Working Memory | 현재 작업에 필요한 작은 per-agent hot cache입니다. scoped fact, 최근 결정, 검색된 graph slice, TTL, source ref, confidence, invalidation state를 담습니다. |
+
+이 hot working-memory layer는 source of truth가 아니라 cache입니다. 수십 GB 개인/회사 자료에서 context token을 줄이고, 빠르게 recall하고, 개인화 성능을 올리는 게 목표라면 production runtime에는 이 층이 필요합니다. 이 public repo는 그 runtime cache가 나중에 감사 가능한 구조가 되도록 candidate contract, schema, template, verification gate를 제공합니다.
 
 ## Agentlas Desktop과 Terminal을 같이 쓰면 좋은 점
 
@@ -291,6 +307,7 @@ Keep private notes, machine paths, raw logs, and secrets out of the public repo.
 | source of truth 확인 | [`docs/source-of-truth.md`](docs/source-of-truth.md) |
 | runtime boundary 확인 | [`docs/runtime-sync-boundaries.md`](docs/runtime-sync-boundaries.md) |
 | mode 선택 방식 | [`docs/mode-classifier.md`](docs/mode-classifier.md) |
+| Super Ontology candidate contract 확인 | [`docs/super-ontology-candidate-contract.md`](docs/super-ontology-candidate-contract.md) |
 | package 검증 | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
 | public safety 검사 | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 
