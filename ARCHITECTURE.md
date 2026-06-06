@@ -80,6 +80,7 @@ The canonical core is runtime-neutral:
 - `.agentlas/super-ontology-capability-delegation-authority.json` in generated packages
 - `.agentlas/super-ontology-privacy-confidentiality-boundary.json` in generated packages
 - `.agentlas/super-ontology-strategic-incentive-compatibility.json` in generated packages
+- `.agentlas/super-ontology-reflexive-feedback-stability.json` in generated packages
 - `.agentlas/super-ontology-replays.jsonl` in generated packages
 - `.agentlas/super-ontology-evidence.jsonl` in generated packages
 - `.agentlas/super-ontology-memory-bridge.jsonl` in generated packages
@@ -139,7 +140,8 @@ contracts that the three builders generate or repair inside output packages:
   impact, assurance cases, knowledge homeostasis, adversarial provenance,
   epistemic calibration, semantic alignment, resilience control, invariant verification,
   observability telemetry, objective proxy validity, stakeholder preference
-  governance, replay evidence, and
+  governance, strategic incentive compatibility, reflexive feedback stability,
+  replay evidence, and
   promotion evidence.
 - Sitemap and task bias.
 - LLM runtime architecture.

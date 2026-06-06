@@ -35,6 +35,7 @@
     "capability_delegation_authority_contract",
     "privacy_confidentiality_boundary_contract",
     "strategic_incentive_compatibility_contract",
+    "reflexive_feedback_stability_contract",
     "agentlas_integration_contract",
     "memory_curator_bridge",
     "promotion_readiness",
@@ -68,7 +69,8 @@
     "memoryCuratorBridge": ".agentlas/super-ontology-memory-bridge.jsonl",
     "memoryTickets": ".agentlas/memory-tickets.jsonl",
     "privacyConfidentialityBoundary": ".agentlas/super-ontology-privacy-confidentiality-boundary.json",
-    "strategicIncentiveCompatibility": ".agentlas/super-ontology-strategic-incentive-compatibility.json"
+    "strategicIncentiveCompatibility": ".agentlas/super-ontology-strategic-incentive-compatibility.json",
+    "reflexiveFeedbackStability": ".agentlas/super-ontology-reflexive-feedback-stability.json"
   },
   "hardStops": [
     "zero_error_claim",
@@ -378,7 +380,29 @@
     "collusive_agents_as_quorum",
     "mechanism_missing_to_runtime_write",
     "incentive_conflict_to_memory_write",
-    "reward_model_as_human_goal"
+    "reward_model_as_human_goal",
+    "missing_reflexive_feedback_stability_contract",
+    "observation_after_intervention_as_neutral_truth",
+    "recommendation_effect_as_preference",
+    "self_generated_content_as_training_data",
+    "model_output_as_source_corpus",
+    "dashboard_change_as_system_improvement",
+    "metric_response_as_real_world_gain",
+    "repeated_retrieval_as_relevance",
+    "agent_self_score_as_external_feedback",
+    "closed_loop_without_counterfactual",
+    "runaway_feedback_to_runtime_write",
+    "oscillation_as_adaptation",
+    "delayed_harm_ignored",
+    "synthetic_data_loop_as_real_distribution",
+    "intervention_without_stop_condition",
+    "user_adaptation_as_stable_preference",
+    "market_response_as_causal_truth",
+    "personal_nudge_as_identity_change",
+    "training_on_ai_outputs_without_real_anchor",
+    "feedback_loop_to_memory_write",
+    "feedback_loop_to_policy_write",
+    "externality_free_assumption"
   ],
   "promotionPolicy": {
     "shadowRequired": true,
@@ -461,7 +485,13 @@
     "mechanismReviewRequired": true,
     "independentVerificationRequired": true,
     "collusionCheckRequired": true,
-    "mechanismRedesignRequired": true
+    "mechanismRedesignRequired": true,
+    "reflexiveFeedbackStabilityRequired": true,
+    "postInterventionRuntimeWritesBlocked": true,
+    "feedbackHoldoutRequired": true,
+    "realWorldAnchorRequired": true,
+    "dampingAndStopConditionRequired": true,
+    "modelCollapseLoopBlocked": true
   },
   "surfacePolicy": {
     "publicResearchRepo": {

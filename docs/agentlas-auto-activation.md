@@ -63,6 +63,7 @@ Recommended minimum:
 ├── super-ontology-capability-delegation-authority.json
 ├── super-ontology-privacy-confidentiality-boundary.json
 ├── super-ontology-strategic-incentive-compatibility.json
+├── super-ontology-reflexive-feedback-stability.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -133,6 +134,7 @@ overwriting user content.
   normative-authority-drift,
   side-effect-containment,
   strategic-incentive-compatibility,
+  reflexive-feedback-stability,
   promotion-readiness, replay, and sync-review gates.
 
 `super-ontology-open-world-coverage.json`
@@ -412,6 +414,22 @@ overwriting user content.
   truthfulness check, audit sample, independent verification, collusion check,
   mechanism constraint, counter-incentive, appeal path, audit trace, rollback,
   monitoring, and residual incentive risk where needed.
+
+`super-ontology-reflexive-feedback-stability.json`
+
+- Export-only reflexive feedback stability seed.
+- Keeps runtime promotion disabled and blocks post-intervention observations,
+  recommendation effects, generated artifacts, dashboard movement, repeated
+  retrieval, route distributions, market responses, agent self-scores, social
+  contagion, scheduler replays, and user adaptation from becoming graph,
+  memory, public, training, tool, route, release, financial, hiring, policy,
+  customer-output, analytics, evaluation, physical-action, or personalization
+  authority.
+- Requires intervention id, pre-intervention baseline, feedback path, time lag,
+  holdout or counterfactual, real-world anchor, synthetic-data ratio, stability
+  margin, damping or rate limit, saturation bound, externality map, affected
+  stakeholders, monitoring trace, stop condition, rollback, owner review, and
+  residual feedback risk where needed.
 
 `super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
 

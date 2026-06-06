@@ -34,6 +34,7 @@ Generated or packaged repos may include:
   super-ontology-capability-delegation-authority.json
   super-ontology-privacy-confidentiality-boundary.json
   super-ontology-strategic-incentive-compatibility.json
+  super-ontology-reflexive-feedback-stability.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -421,6 +422,29 @@ Generated or packaged repos may include:
   family pressure as user preference, collusive agents as quorum, missing
   mechanism review as runtime write, and reward model as human goal.
 
+`super-ontology-reflexive-feedback-stability.json`
+
+- Public-safe reflexive feedback stability seed.
+- Requires post-intervention observations, recommendation effects, route
+  distributions, dashboard movement, repeated retrieval, generated artifacts,
+  model output reuse, agent self-scores, market responses, social contagion,
+  scheduler replays, and adapted user behavior to name intervention id,
+  pre-intervention baseline, feedback path, time lag, holdout or
+  counterfactual, real-world anchor, synthetic-data ratio, stability margin,
+  damping or rate limit, saturation bound, externality map, affected
+  stakeholders, monitoring trace, stop condition, rollback, owner review, and
+  residual feedback risk before authority-bearing use.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks observation after intervention as neutral truth, recommendation effect
+  as preference, self-generated content as training data, model output as
+  source corpus, dashboard change as system improvement, repeated retrieval as
+  relevance, agent self-score as external feedback, closed loop without
+  counterfactual, runaway feedback as runtime write, oscillation as adaptation,
+  delayed harm ignored, synthetic-data loop as real distribution, intervention
+  without stop condition, user adaptation as stable preference, market response
+  as causal truth, personal nudge as identity change, and feedback loop as
+  memory or policy write.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -486,6 +510,12 @@ mechanismReviewRequired = true
 independentVerificationRequired = true
 collusionCheckRequired = true
 mechanismRedesignRequired = true
+reflexiveFeedbackStabilityRequired = true
+postInterventionRuntimeWritesBlocked = true
+feedbackHoldoutRequired = true
+realWorldAnchorRequired = true
+dampingAndStopConditionRequired = true
+modelCollapseLoopBlocked = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
 untrustedSourceRuntimeWritesBlocked = true
@@ -541,11 +571,12 @@ The public contract names these layers:
 26. capability delegation authority contract,
 27. privacy confidentiality boundary contract,
 28. strategic incentive compatibility contract,
-29. Agentlas integration contract,
-30. Memory Curator bridge,
-31. promotion readiness,
-32. promotion replay drill,
-33. architecture sync review.
+29. reflexive feedback stability contract,
+30. Agentlas integration contract,
+31. Memory Curator bridge,
+32. promotion readiness,
+33. promotion replay drill,
+34. architecture sync review.
 
 ## Hard Stops
 
@@ -621,6 +652,12 @@ Automatic promotion is blocked when:
   treated as truth without incentive evidence, independent verification,
   collusion checks, mechanism constraints, appeal path, audit trail, and
   rollback;
+- a post-intervention observation, recommendation effect, dashboard movement,
+  repeated retrieval, generated artifact, model output reuse, agent self-score,
+  market response, social contagion, scheduler replay, or adapted user behavior
+  is treated as neutral truth without intervention id, baseline, feedback path,
+  lag window, holdout or counterfactual, real-world anchor, stability margin,
+  damping, stop condition, monitoring, and rollback;
 - an AppBridge route output would be treated as source-write authority;
 - a release artifact lacks SLSA or in-toto style provenance;
 - AppBridge is treated as source of truth;

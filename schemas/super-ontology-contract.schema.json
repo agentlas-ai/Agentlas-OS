@@ -78,6 +78,7 @@
           "capability_delegation_authority_contract",
           "privacy_confidentiality_boundary_contract",
           "strategic_incentive_compatibility_contract",
+          "reflexive_feedback_stability_contract",
           "agentlas_integration_contract",
           "memory_curator_bridge",
           "promotion_readiness",
@@ -115,6 +116,7 @@
         "capabilityDelegationAuthority",
         "privacyConfidentialityBoundary",
         "strategicIncentiveCompatibility",
+        "reflexiveFeedbackStability",
         "memoryCuratorBridge",
         "memoryTickets"
       ],
@@ -198,6 +200,9 @@
           "type": "string"
         },
         "strategicIncentiveCompatibility": {
+          "type": "string"
+        },
+        "reflexiveFeedbackStability": {
           "type": "string"
         }
       },
@@ -293,7 +298,13 @@
         "mechanismReviewRequired",
         "independentVerificationRequired",
         "collusionCheckRequired",
-        "mechanismRedesignRequired"
+        "mechanismRedesignRequired",
+        "reflexiveFeedbackStabilityRequired",
+        "postInterventionRuntimeWritesBlocked",
+        "feedbackHoldoutRequired",
+        "realWorldAnchorRequired",
+        "dampingAndStopConditionRequired",
+        "modelCollapseLoopBlocked"
       ],
       "properties": {
         "shadowRequired": {
@@ -537,6 +548,24 @@
           "const": true
         },
         "mechanismRedesignRequired": {
+          "const": true
+        },
+        "reflexiveFeedbackStabilityRequired": {
+          "const": true
+        },
+        "postInterventionRuntimeWritesBlocked": {
+          "const": true
+        },
+        "feedbackHoldoutRequired": {
+          "const": true
+        },
+        "realWorldAnchorRequired": {
+          "const": true
+        },
+        "dampingAndStopConditionRequired": {
+          "const": true
+        },
+        "modelCollapseLoopBlocked": {
           "const": true
         }
       },
