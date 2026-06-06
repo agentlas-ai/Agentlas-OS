@@ -9,6 +9,9 @@ Claude Code, Gemini CLI, Cursor, and `AGENTS.md`-compatible runtimes.
 - Canonical entry point: `AGENTS.md`.
 - Architecture ownership rule: `docs/source-of-truth.md`.
 - Runtime split and sync boundary: `docs/runtime-sync-boundaries.md`.
+- Production Ontology Runtime: `docs/ontology-runtime.md`, `ontology/`,
+  `bin/ontology`, `tests/test_ontology_runtime.py`, and
+  `scripts/verify-ontology-runtime.sh`.
 - Portable support contracts: `docs/mode-classifier.md`,
   `docs/clarify-question-loop.md`, `docs/agentlas-auto-activation.md`, and
   `docs/skill-lifecycle-promotion.md`.
@@ -54,6 +57,8 @@ become separate sources of truth.
    `skills/skill-lifecycle-promotion/SKILL.md` when the package contains
    reusable skills.
 10. Verify with `scripts/verify-package.sh`.
+11. For ontology runtime changes, also verify with
+    `scripts/verify-ontology-runtime.sh`.
 
 ## Team Roles
 
@@ -120,6 +125,9 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/super-ontology-evidence.jsonl`;
 - `.agentlas/super-ontology-memory-bridge.jsonl`;
 - runtime adapters and smoke-test docs;
+- production ontology runtime code, CLI, tests, and sample corpus when the
+  package needs local-first knowledge storage, search, GraphRAG, Memory Curator
+  bridge tickets, or Agent Working Memory;
 - install or verification scripts;
 - public-safety notes if the output is meant for GitHub.
 

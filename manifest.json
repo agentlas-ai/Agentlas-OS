@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0",
   "package": "agentlas-meta-agent",
-  "version": "0.1.6",
-  "description": "Portable Markdown-first three-agent meta-agent team for creating single agents, creating multi-agent teams, and packaging existing agents into Agentlas architecture.",
+  "version": "0.2.0",
+  "description": "Portable three-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
   "entrypoints": {
     "canonical": "AGENTS.md",
     "singleAgent": "agent.md",
@@ -12,7 +12,10 @@
     "claudePlugin": "claude/plugins/agentlas-core-engine-meta-agent/.claude-plugin/plugin.json",
     "claudeCommand": ".claude/commands/meta-agent.md",
     "gemini": "GEMINI.md",
-    "installer": "scripts/install.sh"
+    "installer": "scripts/install.sh",
+    "ontologyCli": "bin/ontology",
+    "ontologyRuntime": "ontology/__init__.py",
+    "ontologyVerification": "scripts/verify-ontology-runtime.sh"
   },
   "coreAgents": [
     "agents/10-single-agent-builder/agent.md",
@@ -29,7 +32,8 @@
     "runtime-adapters",
     "policy-gate",
     "eval-release-review",
-    "public-packaging"
+    "public-packaging",
+    "production-ontology-runtime"
   ],
   "requiredDirectories": [
     "agents",
@@ -45,6 +49,10 @@
     "schemas",
     "templates",
     "docs",
-    "scripts"
+    "scripts",
+    "ontology",
+    "bin",
+    "tests",
+    "examples"
   ]
 }

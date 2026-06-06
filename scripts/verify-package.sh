@@ -164,6 +164,21 @@ required_files=(
   "codex/plugins/agentlas-core-engine-meta-agent/skills/clarify-question-loop/SKILL.md"
   "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-auto-activation/SKILL.md"
   "codex/plugins/agentlas-core-engine-meta-agent/skills/skill-lifecycle-promotion/SKILL.md"
+  "bin/ontology"
+  "ontology/__init__.py"
+  "ontology/__main__.py"
+  "ontology/cli.py"
+  "ontology/embeddings.py"
+  "ontology/parsers.py"
+  "ontology/runtime.py"
+  "ontology/utils.py"
+  "tests/test_ontology_runtime.py"
+  "scripts/verify-ontology-runtime.sh"
+  "examples/ontology-corpus/company.md"
+  "examples/ontology-corpus/notes.txt"
+  "examples/ontology-corpus/facts.json"
+  "examples/ontology-corpus/matrix.csv"
+  "examples/ontology-corpus/unsupported.hwp"
 )
 
 for path in "${required_files[@]}"; do
@@ -207,5 +222,7 @@ if grep -R -nE '00-meta|05-mode|10-agent-repo|20-runtime|30-memory|40-pm|50-poli
   cat /tmp/agentlas-meta-old-ids.txt >&2
   fail "old concept-agent ids still present"
 fi
+
+scripts/verify-ontology-runtime.sh
 
 echo "Package verification passed."

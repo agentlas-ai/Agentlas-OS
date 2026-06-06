@@ -296,23 +296,61 @@ The public core is the architecture and foldering contract. Runtime-specific fol
 | `.agentlas` auto-activation | Lets local runtimes seed project memory, sitemap/task-bias, Memory Tickets, and vault references |
 | Skill lifecycle registry | Ships candidate skill metadata, empty trial ledgers, and Curator decision ledgers before first-class recall |
 | Super Ontology candidate layer | Seeds public-safe graph and memory governance files for source lineage, privacy, task coverage, causality, consensus, repair, and reflexive feedback checks |
+| Production Ontology Runtime | Ingests local sources into SQLite/FTS chunks, entities, relations, GraphRAG retrieval, Memory Curator tickets, and Agent Working Memory cache |
 
 The default export state is conservative. Generated skills are searchable candidate metadata, not automatically promoted runtime behavior. A local Curator must see execution evidence, sealed holdout or replay proof, rollback coverage, and workspace policy approval before a skill becomes first-class recall.
 
-### Super Ontology And Working Memory
+### Production Ontology Runtime
 
-For knowledge-heavy personal or company agents, Hephaestus can seed a candidate-only Super Ontology contract under `.agentlas/`. This is not a promise that the agent already knows every future edge case, and it is not a production graph database by itself. It is the public-safe rule layer that says how source evidence, source lineage, privacy boundaries, task type, causal impact, consensus, knowledge drift, repair, and reflexive feedback must be checked before graph, memory, tool, public-export, or runtime-policy writes are trusted.
+For knowledge-heavy personal or company agents, Hephaestus now ships a real local-first ontology runtime under `ontology/` with the executable CLI `bin/ontology`. It turns approved files into an agent-readable source archive, chunk store, full-text index, deterministic local vector index, ontology graph, GraphRAG result, Memory Curator candidate ticket, and Agent Working Memory cache.
 
-The practical runtime stack should stay layered:
+The Super Ontology files under `.agentlas/` remain the safety/governance layer. They define the source-lineage, privacy, task-coverage, causal, consensus, and memory-write gates around the runtime. The runtime is the implementation layer.
+
+Supported ingest formats:
+
+| Format | Status |
+|---|---|
+| `.txt`, `.md`, `.json`, `.csv` | parsed |
+| `.docx`, `.xlsx`, `.pptx` | parsed through OpenXML adapters |
+| `.pdf`, `.hwp` / `.hwpx`, images/OCR, unknown extensions | `unsupported_pending_adapter` |
+
+The storage default is SQLite at `.agentlas/ontology-runtime.sqlite`, ignored by Git. The schema includes `sources`, `source_lineage`, `chunks`, `chunk_fts`, `entities`, `entity_aliases`, `relations`, `memory_candidates`, `memory_candidate_events`, `working_memory`, `runtime_adapters`, and `schema_migrations`.
+
+Basic local run:
+
+```bash
+bin/ontology ingest examples/ontology-corpus --scope internal
+bin/ontology query "Project Helios Memory Curator" --agent verifier
+bin/ontology graph entity "Project Helios"
+bin/ontology memory candidates
+bin/ontology working-memory read --agent verifier
+bin/ontology verify
+```
+
+The query response includes relevant chunks, related entities, relation edges, evidence refs, source spans, confidence, Memory Curator candidate suggestions, and optional Agent Working Memory writes. It is not a vector-only result.
+
+The runtime stack is layered:
 
 | Layer | Role |
 |---|---|
-| Source archive and RAG | Stores raw documents, chunks, embeddings, spreadsheets, PDFs, and exact source spans for retrieval |
-| Super Ontology | Organizes candidate entities, relations, evidence, authority, uncertainty, and repair gates |
-| Memory Curator | Decides what becomes durable memory through tickets, quarantine, supersession, deprecation, or discard |
-| Agent Working Memory | A small per-agent hot cache for the current task: scoped facts, recent decisions, retrieved graph slices, TTLs, source refs, confidence, and invalidation state |
+| Source archive and chunk store | Stores source metadata, checksum, source type, parser status, version, privacy scope, lineage, chunks, source spans, token estimates, and checksums |
+| Search index | Uses SQLite FTS5 plus a pluggable vector adapter; the default is deterministic local hashing when no provider key exists |
+| Ontology graph | Stores entities, aliases, relations, confidence, evidence chunks, observed/valid time fields, source lineage, and active/stale/deprecated status |
+| GraphRAG retriever | Returns text evidence and graph slices together |
+| Memory Curator bridge | Creates candidate tickets only; direct durable memory writes are blocked |
+| Agent Working Memory | Per-agent hot cache with task/session scope, source refs, confidence, importance, TTL, last-used time, and invalidation reason |
 
-That hot working-memory layer is intentionally a cache, not a source of truth. If the goal is lower context tokens, faster recall, and better personalization across large company or personal archives, production runtimes should add it on top of Memory Curator and Super Ontology. The public repo currently ships the candidate contracts, schemas, templates, and verification gates that make that later runtime layer auditable instead of opaque.
+Memory Curator flow:
+
+```bash
+bin/ontology memory candidates
+bin/ontology memory decide <ticket-id> approve --reason "Curator accepted source-backed fact"
+bin/ontology memory decide <ticket-id> quarantine --reason "Needs source owner review"
+```
+
+Approval records review state but still does not write durable memory. The Memory Curator owns durable promotion. Agent Working Memory is intentionally a cache, not a source of truth.
+
+See [`docs/ontology-runtime.md`](docs/ontology-runtime.md) for the schema, adapter boundaries, storage commands, verification coverage, and current limits.
 
 ## Why Agentlas Desktop And Terminal Make It Better
 
@@ -369,8 +407,10 @@ Keep private notes, machine paths, raw logs, and secrets out of the public repo.
 | Ask the right setup questions | [`docs/clarify-question-loop.md`](docs/clarify-question-loop.md) |
 | Activate local `.agentlas` workspace files | [`docs/agentlas-auto-activation.md`](docs/agentlas-auto-activation.md) |
 | Review skill lifecycle promotion | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
+| Run the production ontology runtime | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
 | Review Super Ontology candidate contract | [`docs/super-ontology-candidate-contract.md`](docs/super-ontology-candidate-contract.md) |
 | Understand graph and Memory Curator boundaries | [`docs/super-ontology-candidate-contract.md`](docs/super-ontology-candidate-contract.md) |
+| Verify ontology runtime behavior | [`scripts/verify-ontology-runtime.sh`](scripts/verify-ontology-runtime.sh) |
 | Verify a package | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
 | Check public safety | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 
@@ -386,6 +426,7 @@ Before opening a PR or publishing a release, run:
 
 ```bash
 scripts/verify-package.sh
+scripts/verify-ontology-runtime.sh
 scripts/public_safety_check.sh
 ```
 

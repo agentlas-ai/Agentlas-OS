@@ -9,6 +9,7 @@
     { "id": "agentlas-packager", "kind": "mode", "owner": "30-agentlas-packager" },
     { "id": "agentlas-contracts", "kind": "architecture", "owner": "30-agentlas-packager" },
     { "id": "runtime-adapters", "kind": "adapter", "owner": "30-agentlas-packager" },
+    { "id": "ontology-runtime", "kind": "runtime", "owner": "30-agentlas-packager" },
     { "id": "memory-architecture", "kind": "memory", "owner": "30-agentlas-packager" },
     { "id": "release-check", "kind": "verification", "owner": "30-agentlas-packager" }
   ],
@@ -19,6 +20,8 @@
     { "from": "single-agent-creator", "to": "agentlas-contracts", "reason": "single agents still ship Agentlas contracts" },
     { "from": "team-builder", "to": "agentlas-contracts", "reason": "teams require full operating-system architecture" },
     { "from": "agentlas-packager", "to": "runtime-adapters", "reason": "packaged output must run across requested runtimes" },
+    { "from": "runtime-adapters", "to": "ontology-runtime", "reason": "local-first source archive, search, graph, memory bridge, and working-memory runtime" },
+    { "from": "ontology-runtime", "to": "memory-architecture", "reason": "GraphRAG can create candidate tickets and scoped hot-cache entries" },
     { "from": "agentlas-packager", "to": "release-check", "reason": "public and local packages require verification" }
   ],
   "taskBiases": [
@@ -55,6 +58,7 @@
     "agentlasPackager": true,
     "selfEvolvingSingleAgent": true,
     "memoryArchitecture": true,
+    "productionOntologyRuntime": true,
     "allLlmRuntimeArchitecture": true,
     "publicPluginPackaging": true,
     "terminalInstaller": true

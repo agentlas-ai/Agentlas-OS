@@ -41,9 +41,15 @@ The canonical core is runtime-neutral:
 - `docs/clarify-question-loop.md`
 - `docs/agentlas-auto-activation.md`
 - `docs/skill-lifecycle-promotion.md`
+- `docs/ontology-runtime.md`
 - `docs/super-ontology-candidate-contract.md`
 - `agents/`
 - `modes/`
+- `ontology/`
+- `bin/ontology`
+- `tests/test_ontology_runtime.py`
+- `scripts/verify-ontology-runtime.sh`
+- `examples/ontology-corpus/`
 - `.agents/agentlas-core-engine-meta-agent/agent.md`
 - `.agents/skills/*/SKILL.md`
 - `.agentlas/mode-map.json`
@@ -127,6 +133,12 @@ Three runtime behaviors are public contracts here, not private product code:
   stakeholder-preference-governance review, normative-authority-drift review,
   side-effect-containment review, source-lineage-version review, and
   sync review approve a later phase.
+- Production Ontology Runtime: the public core includes a local-first runtime
+  package that ingests supported files into SQLite, FTS5, deterministic local
+  vectors, source-lineaged chunks, ontology entities and relations, GraphRAG
+  query responses, Memory Curator candidate tickets, and Agent Working Memory
+  cache entries. The runtime blocks direct durable-memory writes and records
+  unsupported formats as `unsupported_pending_adapter`.
 
 ## Generated Architecture Components
 
@@ -148,6 +160,7 @@ contracts that the three builders generate or repair inside output packages:
 - Policy Gate.
 - Eval judge and QA/evidence gate.
 - Thin runtime adapters.
+- Local-first ontology runtime.
 - Public-safety and install verification.
 
 ## Runtime Adapters
@@ -159,6 +172,8 @@ Adapters translate the same core into each runtime:
 - Claude Code: `.claude/commands/`, `.claude/agents/`, `.claude/skills/`.
 - Gemini CLI: `GEMINI.md` and `.gemini/GEMINI.md`.
 - Generic AGENTS.md tools: root `AGENTS.md`.
+- Ontology CLI: `bin/ontology` runs the local-first storage/search/graph/memory
+  runtime from a shell.
 
 Adapters should not contain private logic that is missing from the canonical
 core.

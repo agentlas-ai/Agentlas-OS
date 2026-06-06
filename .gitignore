@@ -1,5 +1,7 @@
 .DS_Store
 ._*
+__pycache__/
+*.py[cod]
 *.log
 
 .env
@@ -10,6 +12,8 @@
 *.p12
 
 .memory.local/
+.agentlas/ontology-runtime.sqlite*
+.ontology-runtime/
 .codex/
 .claude/settings.local.json
 .claude/settings.*.local.json
