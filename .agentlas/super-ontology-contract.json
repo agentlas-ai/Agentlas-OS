@@ -6,6 +6,21 @@
   "draftId": null,
   "runtimeGraphWriteEnabled": false,
   "zeroErrorClaim": false,
+  "operatorManagedPromotion": {
+    "enabled": true,
+    "runtimePromotionModel": "operator_managed_local",
+    "securityGateMode": "context_folder_routing_only",
+    "blockingSecurityGate": false,
+    "requiredBeforePromotion": [
+      "project_root",
+      "source_folder",
+      "owner",
+      "evidence_refs",
+      "rollback_or_replay_path"
+    ],
+    "publicExportRemainsValueFree": true,
+    "notes": "Local operators may promote when structure and ownership are explicit. Security labels are routing metadata, not a generic runtime stop sign."
+  },
   "layers": [
     "source_intake",
     "evidence_packet",

@@ -4,6 +4,26 @@ The Super Ontology contract is a public-safe seed for adaptive knowledge
 governance. It is not a claim that one ontology can perfectly cover every
 future situation.
 
+## Local Operator Mode
+
+Public exports stay value-free and candidate-only. Local projects may use an
+operator-managed promotion mode where the "gate" is not a generic security stop
+sign.
+
+In local operator mode, promotion checks mean:
+
+- which project root owns this knowledge;
+- which source folder or file produced it;
+- who owns the decision;
+- which evidence rows support it;
+- which rollback or replay path can undo it.
+
+Security, privacy, and confidentiality labels are routing metadata in this
+mode. They organize context, folder placement, owner, audience, and retention;
+they do not block local work by themselves when the operator has named the
+structure above. Public releases still keep secret values out and keep broad
+claims candidate-only until evidence exists.
+
 ## Files
 
 Generated or packaged repos may include:
@@ -49,8 +69,11 @@ Generated or packaged repos may include:
   promotion readiness, replay drills, and rollback.
 - Must set `runtimeGraphWriteEnabled` to `false` on export.
 - Must set `zeroErrorClaim` to `false`.
-- Must stay candidate-only until local runtime policy, shadow/canary replay,
-  rollback, and sync review approve a later phase.
+- Must include `operatorManagedPromotion` metadata so local promotion can be
+  decided by project/folder/owner/evidence/rollback structure instead of a
+  generic security blocker.
+- Must stay candidate-only for public export until shadow/canary replay,
+  rollback, and sync review approve a later public phase.
 
 `super-ontology-replays.jsonl`
 

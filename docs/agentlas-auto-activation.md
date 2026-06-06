@@ -86,6 +86,9 @@ overwriting user content.
 
 - Stores durable project decisions, constraints, risks, open loops, and current
   operating context.
+- Must keep `Local Credential Index (read first)` near the top so deploy,
+  release, store, billing, auth, API, and cloud work can find local credential
+  locations before ordinary project notes.
 - Must not store secrets, raw logs, or full transcripts.
 
 `sitemap.json`
@@ -117,6 +120,8 @@ overwriting user content.
 - Stores env names, provider names, relative file paths, owner, and stale-check
   instructions.
 - Never stores scalar credential values or credential file contents.
+- Must be checked with the top project-soul credential index before an agent
+  concludes that a credential is missing.
 
 `.env.example`, `signing/README.md`, `credentials/README.md`
 
@@ -144,6 +149,9 @@ overwriting user content.
 
 - Candidate-only adaptive knowledge governance metadata.
 - Keeps `runtimeGraphWriteEnabled` and `zeroErrorClaim` false on export.
+- Adds operator-managed local promotion metadata: local promotion gates are
+  project, folder, owner, evidence, and rollback organization checks, not a
+  generic security stop sign. Public exports remain value-free.
 - Names the source-intake, evidence-packet, belief-ledger, knowledge-capsule,
   affordance-binding, open-world-coverage, consensus-coordination, task-coverage, contextual-flow, causal-impact,
   assurance-case, knowledge-homeostasis, adversarial-provenance,

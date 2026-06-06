@@ -46,6 +46,44 @@
     "zeroErrorClaim": {
       "const": false
     },
+    "operatorManagedPromotion": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "runtimePromotionModel",
+        "securityGateMode",
+        "blockingSecurityGate",
+        "requiredBeforePromotion",
+        "publicExportRemainsValueFree"
+      ],
+      "properties": {
+        "enabled": {
+          "const": true
+        },
+        "runtimePromotionModel": {
+          "const": "operator_managed_local"
+        },
+        "securityGateMode": {
+          "const": "context_folder_routing_only"
+        },
+        "blockingSecurityGate": {
+          "const": false
+        },
+        "requiredBeforePromotion": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "publicExportRemainsValueFree": {
+          "const": true
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
     "layers": {
       "type": "array",
       "items": {

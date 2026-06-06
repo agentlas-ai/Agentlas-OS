@@ -176,6 +176,10 @@ local Curator approves promotion.
   (`.env`, `.env.local`, `signing/`, `credentials/`) or a local keychain/vault.
   Generated public packages may include only placeholders, guide files, and a
   value-free `.agentlas/local-credentials.map.json`.
+- Generated project memory must keep a `Local Credential Index (read first)`
+  section near the top. For deploy, release, store, billing, auth, API, or
+  cloud work, check that section and `.agentlas/local-credentials.map.json`
+  before reporting missing credentials.
 - Do not copy private local research folders into public output.
 - Do not call runtime adapters canonical.
 - Ask for explicit approval before destructive file actions, production deploys,

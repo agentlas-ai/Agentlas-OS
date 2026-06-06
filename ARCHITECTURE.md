@@ -111,34 +111,20 @@ Three runtime behaviors are public contracts here, not private product code:
 - Local credential store: local runtimes may materialize real values in
   gitignored project `.env`, `signing/`, and `credentials/` files, while public
   packages and memory keep only value-free names, paths, and stale-check rules.
+  Project memory must place a `Local Credential Index (read first)` section near
+  the top so release, deploy, store, billing, auth, API, and cloud work checks
+  local credential locations before reporting a missing key.
 - Skill lifecycle registry: generated packages may ship export-only candidate
   skill metadata, trial evidence ledgers, and Curator decision ledgers. Runtime
   first-class recall stays off until local Curator review and workspace policy
   approve it.
 - Super Ontology candidate contract: generated packages may ship export-only
-  adaptive knowledge governance metadata, open-world coverage, consensus coordination, task coverage, contextual-flow,
-  causal-impact metadata, assurance-case metadata, knowledge-homeostasis
-  metadata, adversarial-provenance metadata, epistemic-calibration metadata,
-  semantic-alignment metadata, resilience-control metadata,
-  invariant-verification metadata, observability-telemetry metadata,
-  objective-proxy-validity metadata, stakeholder-preference-governance metadata,
-  normative-authority-drift metadata, side-effect-containment metadata,
-  source-lineage-version metadata, entity-identity-resolution metadata,
-  temporal-state-transition metadata, capability-delegation-authority metadata,
-  replay ledgers, and promotion
-  evidence ledgers. Runtime graph
-  writes, cross-context information flows, relation-as-action jumps, broad
-  safety claims, stale or desynced knowledge use, hostile-source promotion, and
-  uncalibrated answers or writes, unreviewed term/schema/ontology merges, and
-  preference-driven writes without stakeholder governance, and stale or
-  out-of-scope authority claims, and unbounded role/token/tool authority
-  stay off until shadow/canary replay, rollback, homeostasis review,
-  adversarial-provenance review, epistemic-calibration review,
-  semantic-alignment review, resilience-control review, invariant-verification
-  review, observability-telemetry review, objective-proxy-validity review,
-  stakeholder-preference-governance review, normative-authority-drift review,
-  side-effect-containment review, source-lineage-version review, and
-  sync review approve a later phase.
+  adaptive knowledge governance metadata, coverage seeds, replay ledgers, and
+  promotion evidence ledgers. Public exports keep graph writes value-free and
+  candidate-only. In local operator mode, promotion gates are project, folder,
+  owner, evidence, and rollback organization rules, not a generic security stop
+  sign. Local promotion can proceed when those structures are named; public
+  release claims still need replay, rollback, and sync evidence.
 - Production Ontology Runtime: the public core includes a local-first runtime
   package that ingests supported files into SQLite, FTS5, deterministic local
   vectors, source-lineaged chunks, ontology entities and relations, GraphRAG

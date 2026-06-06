@@ -34,6 +34,8 @@ worker observation
 Single Agent Builder must still include memory architecture:
 
 - project memory owned by PM Soul/project owner;
+- a top `Local Credential Index (read first)` section in project memory for
+  local credential location hints;
 - Memory Events for durable learning;
 - Memory Tickets before durable writes;
 - vault references and local credential maps as references only, never values;
@@ -55,3 +57,7 @@ Do not store secrets, raw credentials, full transcripts, private logs, or
 customer data in any memory scope. Real values may live in local gitignored
 project files described by `docs/local-credential-store.md`; memory stores only
 env names, owner, project, local relative path, and stale-check metadata.
+
+For deploy, release, store, billing, auth, API, or cloud work, memory users must
+read the top project credential index and `.agentlas/local-credentials.map.json`
+before concluding that credentials are absent.
