@@ -77,6 +77,7 @@
           "temporal_state_transition_contract",
           "capability_delegation_authority_contract",
           "privacy_confidentiality_boundary_contract",
+          "strategic_incentive_compatibility_contract",
           "agentlas_integration_contract",
           "memory_curator_bridge",
           "promotion_readiness",
@@ -113,6 +114,7 @@
         "temporalStateTransition",
         "capabilityDelegationAuthority",
         "privacyConfidentialityBoundary",
+        "strategicIncentiveCompatibility",
         "memoryCuratorBridge",
         "memoryTickets"
       ],
@@ -193,6 +195,9 @@
           "type": "string"
         },
         "privacyConfidentialityBoundary": {
+          "type": "string"
+        },
+        "strategicIncentiveCompatibility": {
           "type": "string"
         }
       },
@@ -282,7 +287,13 @@
         "privacyConfidentialityBoundaryRequired",
         "memoryCuratorBridgeRequired",
         "directDurableMemoryWritesBlocked",
-        "appbridgeSourceWritesBlocked"
+        "appbridgeSourceWritesBlocked",
+        "strategicIncentiveCompatibilityRequired",
+        "incentiveConflictRuntimeWritesBlocked",
+        "mechanismReviewRequired",
+        "independentVerificationRequired",
+        "collusionCheckRequired",
+        "mechanismRedesignRequired"
       ],
       "properties": {
         "shadowRequired": {
@@ -508,6 +519,24 @@
           "const": true
         },
         "crossTenantPrivacyBleedBlocked": {
+          "const": true
+        },
+        "strategicIncentiveCompatibilityRequired": {
+          "const": true
+        },
+        "incentiveConflictRuntimeWritesBlocked": {
+          "const": true
+        },
+        "mechanismReviewRequired": {
+          "const": true
+        },
+        "independentVerificationRequired": {
+          "const": true
+        },
+        "collusionCheckRequired": {
+          "const": true
+        },
+        "mechanismRedesignRequired": {
           "const": true
         }
       },

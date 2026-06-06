@@ -33,6 +33,7 @@ Generated or packaged repos may include:
   super-ontology-temporal-state-transition.json
   super-ontology-capability-delegation-authority.json
   super-ontology-privacy-confidentiality-boundary.json
+  super-ontology-strategic-incentive-compatibility.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -400,6 +401,26 @@ Generated or packaged repos may include:
   attributes as output, embedding leaks, vector-neighbor leaks, and
   confidential source text sent to untrusted models.
 
+`super-ontology-strategic-incentive-compatibility.json`
+
+- Public-safe strategic incentive compatibility seed.
+- Requires KPI reports, commissions, approvals, customer ratings, benchmark
+  scores, agent votes, vendor claims, access requests, social pressure,
+  family pressure, data-payment claims, and cost-saving claims to name the
+  principal, agent, private information, objective, payoff or reward model,
+  conflict disclosure, strategic behavior hypothesis, counterfactual
+  truthfulness check, holdout or audit sample, independent verification,
+  collusion check, mechanism constraint, counter-incentive, appeal path, audit,
+  rollback, and residual incentive risk before authority-bearing use.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks self-report as truth, KPI as objective, commission reports as facts,
+  manager approval as no conflict, vendor claims as source quality, customer
+  ratings as value, agent votes as independence, benchmark score as general
+  capability, cheap provider as best provider, compliance attestation as
+  compliance, hidden affiliation as neutral review, retention as satisfaction,
+  family pressure as user preference, collusive agents as quorum, missing
+  mechanism review as runtime write, and reward model as human goal.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -459,6 +480,12 @@ privacyBoundaryReviewRequired = true
 publicTrainingDisclosureFlagRequired = true
 deletionAndRetentionStateRequired = true
 crossTenantPrivacyBleedBlocked = true
+strategicIncentiveCompatibilityRequired = true
+incentiveConflictRuntimeWritesBlocked = true
+mechanismReviewRequired = true
+independentVerificationRequired = true
+collusionCheckRequired = true
+mechanismRedesignRequired = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
 untrustedSourceRuntimeWritesBlocked = true
@@ -509,11 +536,16 @@ The public contract names these layers:
 21. normative authority drift contract,
 22. side-effect containment contract,
 23. source lineage version contract,
-24. Agentlas integration contract,
-25. Memory Curator bridge,
-26. promotion readiness,
-27. promotion replay drill,
-28. architecture sync review.
+24. entity identity resolution contract,
+25. temporal state transition contract,
+26. capability delegation authority contract,
+27. privacy confidentiality boundary contract,
+28. strategic incentive compatibility contract,
+29. Agentlas integration contract,
+30. Memory Curator bridge,
+31. promotion readiness,
+32. promotion replay drill,
+33. architecture sync review.
 
 ## Hard Stops
 
@@ -582,6 +614,13 @@ Automatic promotion is blocked when:
   expiry, or legal/compliance claim is treated as current authority without
   primary source, effective date, version, scope, precedence rule, review owner,
   audit trail, and rollback;
+- a self-report, KPI, commission report, approval chain, customer rating,
+  benchmark score, agent vote, vendor label, cost-saving claim, compliance
+  attestation, survey response, retention metric, access request, social
+  pressure, hidden affiliation, strategic silence, or collusive quorum is
+  treated as truth without incentive evidence, independent verification,
+  collusion checks, mechanism constraints, appeal path, audit trail, and
+  rollback;
 - an AppBridge route output would be treated as source-write authority;
 - a release artifact lacks SLSA or in-toto style provenance;
 - AppBridge is treated as source of truth;

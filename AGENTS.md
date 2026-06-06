@@ -114,6 +114,7 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/super-ontology-temporal-state-transition.json`;
 - `.agentlas/super-ontology-capability-delegation-authority.json`;
 - `.agentlas/super-ontology-privacy-confidentiality-boundary.json`;
+- `.agentlas/super-ontology-strategic-incentive-compatibility.json`;
 - `.agentlas/super-ontology-replays.jsonl`;
 - `.agentlas/super-ontology-evidence.jsonl`;
 - `.agentlas/super-ontology-memory-bridge.jsonl`;

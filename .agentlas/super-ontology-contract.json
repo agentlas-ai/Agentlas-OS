@@ -34,6 +34,7 @@
     "temporal_state_transition_contract",
     "capability_delegation_authority_contract",
     "privacy_confidentiality_boundary_contract",
+    "strategic_incentive_compatibility_contract",
     "agentlas_integration_contract",
     "memory_curator_bridge",
     "promotion_readiness",
@@ -66,7 +67,8 @@
     "capabilityDelegationAuthority": ".agentlas/super-ontology-capability-delegation-authority.json",
     "memoryCuratorBridge": ".agentlas/super-ontology-memory-bridge.jsonl",
     "memoryTickets": ".agentlas/memory-tickets.jsonl",
-    "privacyConfidentialityBoundary": ".agentlas/super-ontology-privacy-confidentiality-boundary.json"
+    "privacyConfidentialityBoundary": ".agentlas/super-ontology-privacy-confidentiality-boundary.json",
+    "strategicIncentiveCompatibility": ".agentlas/super-ontology-strategic-incentive-compatibility.json"
   },
   "hardStops": [
     "zero_error_claim",
@@ -351,7 +353,32 @@
     "vector_search_private_neighbor_leak",
     "shared_memory_without_audience_boundary",
     "confidential_source_to_untrusted_model",
-    "legal_privilege_lost_by_disclosure"
+    "legal_privilege_lost_by_disclosure",
+    "missing_strategic_incentive_compatibility_contract",
+    "self_report_as_truth",
+    "kpi_as_objective",
+    "commission_report_as_fact",
+    "manager_approval_as_no_conflict",
+    "vendor_claim_as_source_quality",
+    "customer_rating_as_value",
+    "agent_vote_as_independent_signal",
+    "benchmark_score_as_general_capability",
+    "cheap_provider_as_best_provider",
+    "data_provider_label_as_quality",
+    "compliance_attestation_as_compliance",
+    "peer_pressure_as_consensus",
+    "hidden_affiliation_as_neutral_review",
+    "survey_response_as_stable_preference",
+    "retention_metric_as_satisfaction",
+    "access_request_as_need_to_know",
+    "family_pressure_as_user_preference",
+    "approval_chain_as_truthfulness",
+    "cost_saving_as_system_health",
+    "strategic_silence_as_no_risk",
+    "collusive_agents_as_quorum",
+    "mechanism_missing_to_runtime_write",
+    "incentive_conflict_to_memory_write",
+    "reward_model_as_human_goal"
   ],
   "promotionPolicy": {
     "shadowRequired": true,
@@ -428,7 +455,13 @@
     "privacyBoundaryReviewRequired": true,
     "publicTrainingDisclosureFlagRequired": true,
     "deletionAndRetentionStateRequired": true,
-    "crossTenantPrivacyBleedBlocked": true
+    "crossTenantPrivacyBleedBlocked": true,
+    "strategicIncentiveCompatibilityRequired": true,
+    "incentiveConflictRuntimeWritesBlocked": true,
+    "mechanismReviewRequired": true,
+    "independentVerificationRequired": true,
+    "collusionCheckRequired": true,
+    "mechanismRedesignRequired": true
   },
   "surfacePolicy": {
     "publicResearchRepo": {

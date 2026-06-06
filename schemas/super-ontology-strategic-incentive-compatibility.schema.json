@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-strategic-incentive-compatibility.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "incentiveSignalTypes",
+    "authoritySurfaces",
+    "requiredIncentiveEvidence",
+    "hardStops",
+    "researchBasis"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "agentlas-super-ontology-strategic-incentive-compatibility"
+    },
+    "state": {
+      "const": "export_only"
+    },
+    "runtimePromotionAllowed": {
+      "const": false
+    },
+    "defaultDecision": {
+      "const": "incentive_evidence_required_before_graph_memory_public_training_tool_route_release_financial_hiring_policy_customer_output_analytics_evaluation_or_personalization_authority"
+    },
+    "incentiveSignalTypes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 12
+    },
+    "authoritySurfaces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 10
+    },
+    "requiredIncentiveEvidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 20
+    },
+    "hardStops": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 20
+    },
+    "researchBasis": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 10
+    }
+  },
+  "additionalProperties": true
+}

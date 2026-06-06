@@ -24,8 +24,8 @@ Public core owns the portable contract:
 - Super Ontology candidate contract, open-world coverage, consensus coordination, task coverage, contextual flow, causal
   impact, assurance case, knowledge homeostasis, adversarial provenance, source
   lineage version, entity identity resolution, temporal state transition,
-  capability delegation authority, replay evidence, and promotion evidence
-  contracts;
+  capability delegation authority, privacy confidentiality boundary, strategic
+  incentive compatibility, replay evidence, and promotion evidence contracts;
 - public-safe schemas, templates, docs, skills, and verification scripts.
 
 Public core should be runnable as a Markdown-first agent team. It should not
@@ -110,8 +110,7 @@ The following formerly runtime-owned behaviors are now public contracts:
    side-effect-containment seed, source-lineage-version seed,
    entity-identity-resolution seed, temporal-state-transition seed,
    capability-delegation-authority seed, privacy-confidentiality-boundary seed,
-   and Memory
-   Curator bridge ledger are
+   strategic-incentive-compatibility seed, and Memory Curator bridge ledger are
    candidate-only: task coverage
    classifies requested work before action, contextual flow blocks unsafe
    boundary crossings, causal impact blocks relation-as-intervention jumps,
@@ -140,6 +139,13 @@ The following formerly runtime-owned behaviors are now public contracts:
    rates, ontology edge counts, reward deltas, and green dashboards from being
    treated as real success unless construct validity, countermetrics,
    stakeholder review, gaming probes, and rollback are present.
+   Strategic incentive compatibility blocks self-reports, KPI movement,
+   commission reports, manager approvals, vendor claims, customer ratings,
+   benchmark scores, agent votes, cost-saving claims, compliance attestations,
+   access requests, hidden affiliations, social pressure, strategic silence,
+   and collusive quorums from becoming truth or write authority without
+   incentive evidence, independent verification, collusion checks, mechanism
+   constraints, appeal, audit, and rollback.
    The bridge keeps direct durable memory writes blocked until Curator, Policy,
    PM Soul, or sync review approves a later phase.
 

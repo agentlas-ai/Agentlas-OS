@@ -62,6 +62,7 @@ Recommended minimum:
 ├── super-ontology-temporal-state-transition.json
 ├── super-ontology-capability-delegation-authority.json
 ├── super-ontology-privacy-confidentiality-boundary.json
+├── super-ontology-strategic-incentive-compatibility.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -131,6 +132,7 @@ overwriting user content.
   stakeholder-preference-governance,
   normative-authority-drift,
   side-effect-containment,
+  strategic-incentive-compatibility,
   promotion-readiness, replay, and sync-review gates.
 
 `super-ontology-open-world-coverage.json`
@@ -394,6 +396,22 @@ overwriting user content.
   basis, minimization, redaction, retention, transfer, public/training flags,
   access policy decision, audit trace, breach owner, and rollback evidence
   where needed.
+
+`super-ontology-strategic-incentive-compatibility.json`
+
+- Export-only strategic incentive compatibility seed.
+- Keeps runtime promotion disabled and blocks self-reports, KPI movement,
+  commissions, approvals, customer ratings, benchmark scores, agent votes,
+  vendor claims, cost-saving claims, compliance attestations, access requests,
+  social or family pressure, hidden affiliations, strategic silence, and
+  collusive quorums from becoming graph, memory, public, training, tool,
+  route, release, financial, hiring, policy, customer-output, analytics,
+  evaluation, or personalization authority.
+- Requires principal, agent, private information, objective function, payoff or
+  reward model, conflict disclosure, strategic behavior hypothesis,
+  truthfulness check, audit sample, independent verification, collusion check,
+  mechanism constraint, counter-incentive, appeal path, audit trace, rollback,
+  monitoring, and residual incentive risk where needed.
 
 `super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
 
