@@ -36,7 +36,7 @@ Single Agent Builder must still include memory architecture:
 - project memory owned by PM Soul/project owner;
 - Memory Events for durable learning;
 - Memory Tickets before durable writes;
-- vault references as references only, never secret values;
+- vault references and local credential maps as references only, never values;
 - proposal-first self-evolution.
 
 ## Ticket Fields
@@ -52,4 +52,6 @@ Single Agent Builder must still include memory architecture:
 - `status`
 
 Do not store secrets, raw credentials, full transcripts, private logs, or
-customer data in any memory scope.
+customer data in any memory scope. Real values may live in local gitignored
+project files described by `docs/local-credential-store.md`; memory stores only
+env names, owner, project, local relative path, and stale-check metadata.

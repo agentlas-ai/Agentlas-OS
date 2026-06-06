@@ -17,6 +17,8 @@ Public core owns the portable contract:
   `agentlas-packager`;
 - visible package foldering;
 - `.agentlas` contracts;
+- local credential store contract for gitignored `.env`, `signing/`, and
+  `credentials/` materialization;
 - Memory Tickets, PM Soul, Memory Curator, sitemap/task-bias, policy, eval, QA,
   and runtime adapter rules;
 - skill lifecycle registry, trial evidence, and Curator promotion decision
@@ -44,6 +46,7 @@ public core contract is the public version they should all mirror:
 | Clarify question loop | public rule | may store sessions and meter usage | may run locally |
 | Generated folder layout | canonical | emits ZIPs | installs or imports |
 | `.agentlas` memory files | canonical | emits in exports | creates/maintains locally |
+| Local credential store | value-free public contract | may emit placeholders only | may store real values in gitignored local files |
 | `.agentlas` skill lifecycle files | canonical export contract | emits candidate registry and empty ledgers | may merge locally as candidate metadata |
 | `.agentlas` Super Ontology files | canonical candidate contract | emits candidate contract and empty replay/evidence ledgers | may seed locally as candidate metadata |
 | PM Soul / Memory Curator | generated role contract | may package into exports | may ship built-in agents |
@@ -82,6 +85,7 @@ not be copied into this public repo as product code:
 - Electron IPC, windows, menus, updater, renderer state, and app registry;
 - local App Factory and Tool Factory implementation;
 - filesystem materialization of installed agents;
+- filesystem materialization of project-local credential files;
 - automation scheduler and local surface registry.
 
 Public core can define public activation and package contracts. Local runtimes
@@ -97,10 +101,11 @@ The following formerly runtime-owned behaviors are now public contracts:
    `skills/clarify-question-loop/SKILL.md`.
 3. `.agentlas` auto-activation: see `docs/agentlas-auto-activation.md` and
    `skills/agentlas-auto-activation/SKILL.md`.
-4. Skill lifecycle promotion metadata: see
+4. Local credential store: see `docs/local-credential-store.md`.
+5. Skill lifecycle promotion metadata: see
    `docs/skill-lifecycle-promotion.md` and
    `skills/skill-lifecycle-promotion/SKILL.md`.
-5. Super Ontology candidate metadata: see
+6. Super Ontology candidate metadata: see
    `docs/super-ontology-candidate-contract.md`.
    Its open-world coverage seed, consensus-coordination seed, task coverage seed, contextual-flow seed, causal-impact seed,
    assurance-case seed, knowledge-homeostasis seed, adversarial-provenance seed,

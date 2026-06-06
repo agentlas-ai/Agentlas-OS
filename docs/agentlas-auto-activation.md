@@ -36,6 +36,7 @@ Recommended minimum:
 ├── memory-map.json
 ├── memory-tickets.jsonl
 ├── vault-references.json
+├── local-credentials.map.json
 ├── skill-registry.json
 ├── skill-trials.jsonl
 ├── curator-decisions.jsonl
@@ -68,6 +69,12 @@ Recommended minimum:
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
 └── activation.json
+
+.env.example
+signing/
+└── README.md
+credentials/
+└── README.md
 ```
 
 If a package already includes `.agentlas/`, merge missing files without
@@ -103,6 +110,18 @@ overwriting user content.
 
 - References secret names or vault locations.
 - Never stores secret values.
+
+`local-credentials.map.json`
+
+- Indexes project-local `.env`, `signing/`, and `credentials/` material.
+- Stores env names, provider names, relative file paths, owner, and stale-check
+  instructions.
+- Never stores scalar credential values or credential file contents.
+
+`.env.example`, `signing/README.md`, `credentials/README.md`
+
+- Prepare a local credential store without committing real values.
+- `.env`, `.env.local`, `signing/*`, and `credentials/*` must be ignored by git.
 
 `activation.json`
 

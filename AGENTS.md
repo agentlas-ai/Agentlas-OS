@@ -13,8 +13,8 @@ Claude Code, Gemini CLI, Cursor, and `AGENTS.md`-compatible runtimes.
   `bin/ontology`, `tests/test_ontology_runtime.py`, and
   `scripts/verify-ontology-runtime.sh`.
 - Portable support contracts: `docs/mode-classifier.md`,
-  `docs/clarify-question-loop.md`, `docs/agentlas-auto-activation.md`, and
-  `docs/skill-lifecycle-promotion.md`.
+  `docs/clarify-question-loop.md`, `docs/agentlas-auto-activation.md`,
+  `docs/local-credential-store.md`, and `docs/skill-lifecycle-promotion.md`.
 - Team members: `agents/10-single-agent-builder/agent.md`,
   `agents/20-multi-agent-team-builder/agent.md`, and
   `agents/30-agentlas-packager/agent.md`.
@@ -25,8 +25,9 @@ Claude Code, Gemini CLI, Cursor, and `AGENTS.md`-compatible runtimes.
 - Agentlas contracts: `.agentlas/mode-map.json`,
   `.agentlas/agent-card.json`, `.agentlas/company-blueprint.json`,
   `.agentlas/sitemap.json`, `.agentlas/memory-map.json`,
-  `.agentlas/memory-tickets.jsonl`, `.agentlas/vault-references.json`, and
-  skill lifecycle files emitted in generated packages.
+  `.agentlas/memory-tickets.jsonl`, `.agentlas/vault-references.json`,
+  `.agentlas/local-credentials.map.json`, and skill lifecycle files emitted in
+  generated packages.
 - Public install surfaces: `codex/`, `.claude/`, `.gemini/`, and `scripts/`.
 
 Runtime-specific folders are adapters. They must mirror the canonical core, not
@@ -93,6 +94,8 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/memory-map.json`;
 - `.agentlas/memory-tickets.jsonl`;
 - `.agentlas/vault-references.json`;
+- `.agentlas/local-credentials.map.json` plus `.env.example`, `signing/README.md`,
+  and `credentials/README.md` when local credentials are required;
 - `.agentlas/skill-registry.json`;
 - `.agentlas/skill-trials.jsonl`;
 - `.agentlas/curator-decisions.jsonl`;
@@ -167,8 +170,12 @@ local Curator approves promotion.
 
 ## Safety Rules
 
-- Never store secrets, API keys, tokens, private keys, service-account JSON, raw
-  logs, or full transcripts in generated repos or memory.
+- Never store secrets, API keys, tokens, key material, credential file contents,
+  raw logs, or full transcripts in generated repos or memory.
+- Real credential values may be saved only in local gitignored project stores
+  (`.env`, `.env.local`, `signing/`, `credentials/`) or a local keychain/vault.
+  Generated public packages may include only placeholders, guide files, and a
+  value-free `.agentlas/local-credentials.map.json`.
 - Do not copy private local research folders into public output.
 - Do not call runtime adapters canonical.
 - Ask for explicit approval before destructive file actions, production deploys,

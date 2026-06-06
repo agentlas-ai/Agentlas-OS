@@ -40,6 +40,7 @@ The canonical core is runtime-neutral:
 - `docs/mode-classifier.md`
 - `docs/clarify-question-loop.md`
 - `docs/agentlas-auto-activation.md`
+- `docs/local-credential-store.md`
 - `docs/skill-lifecycle-promotion.md`
 - `docs/ontology-runtime.md`
 - `docs/super-ontology-candidate-contract.md`
@@ -59,6 +60,8 @@ The canonical core is runtime-neutral:
 - `.agentlas/memory-map.json`
 - `.agentlas/memory-tickets.jsonl`
 - `.agentlas/vault-references.json`
+- `.agentlas/local-credentials.map.json` in generated local packages that need
+  credentials
 - `.agentlas/skill-registry.json` in generated packages
 - `.agentlas/skill-trials.jsonl` in generated packages
 - `.agentlas/curator-decisions.jsonl` in generated packages
@@ -105,6 +108,9 @@ Three runtime behaviors are public contracts here, not private product code:
 - `.agentlas` auto-activation: local runtimes may create or merge public
   `.agentlas` seed files after explicit activation or repeated meaningful work
   in the same folder.
+- Local credential store: local runtimes may materialize real values in
+  gitignored project `.env`, `signing/`, and `credentials/` files, while public
+  packages and memory keep only value-free names, paths, and stale-check rules.
 - Skill lifecycle registry: generated packages may ship export-only candidate
   skill metadata, trial evidence ledgers, and Curator decision ledgers. Runtime
   first-class recall stays off until local Curator review and workspace policy

@@ -10,6 +10,16 @@ __pycache__/
 *.pem
 *.key
 *.p12
+*.p8
+*.mobileprovision
+*.jks
+*.keystore
+signing/*
+!signing/
+!signing/README.md
+credentials/*
+!credentials/
+!credentials/README.md
 
 .memory.local/
 .agentlas/ontology-runtime.sqlite*
