@@ -23,7 +23,8 @@ Public core owns the portable contract:
   contracts;
 - Super Ontology candidate contract, open-world coverage, consensus coordination, task coverage, contextual flow, causal
   impact, assurance case, knowledge homeostasis, adversarial provenance, source
-  lineage version, replay evidence, and promotion evidence contracts;
+  lineage version, entity identity resolution, temporal state transition,
+  replay evidence, and promotion evidence contracts;
 - public-safe schemas, templates, docs, skills, and verification scripts.
 
 Public core should be runnable as a Markdown-first agent team. It should not
@@ -106,7 +107,7 @@ The following formerly runtime-owned behaviors are now public contracts:
    observability-telemetry seed, objective-proxy-validity seed,
    stakeholder-preference-governance seed, normative-authority-drift seed,
    side-effect-containment seed, source-lineage-version seed,
-   entity-identity-resolution seed, and Memory
+   entity-identity-resolution seed, temporal-state-transition seed, and Memory
    Curator bridge ledger are
    candidate-only: task coverage
    classifies requested work before action, contextual flow blocks unsafe

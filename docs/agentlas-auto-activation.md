@@ -59,6 +59,7 @@ Recommended minimum:
 ├── super-ontology-side-effect-containment.json
 ├── super-ontology-source-lineage-version.json
 ├── super-ontology-entity-identity-resolution.json
+├── super-ontology-temporal-state-transition.json
 ├── super-ontology-replays.jsonl
 ├── super-ontology-evidence.jsonl
 ├── super-ontology-memory-bridge.jsonl
@@ -350,6 +351,19 @@ overwriting user content.
   public identity leakage, cross-tenant id collisions, stale aliases, recycled
   ids, relationship edges without endpoint identity, and memory notes as
   identity authority.
+
+`super-ontology-temporal-state-transition.json`
+
+- Export-only temporal state transition seed.
+- Keeps runtime promotion disabled and blocks current snapshots, missing valid
+  time, missing transaction time, local timestamps as global order, spreadsheet
+  row order as event order, LLM summaries as event logs, late events, future
+  effective policies as current, expired states, deleted nodes without
+  tombstones, non-idempotent replays, materialized views as source of truth,
+  projections without version, recurring events without rules, timezone-free
+  deadlines, stale caches, partial failures, scheduled jobs without receipts,
+  memory facts without validity intervals, and graph edges without temporal
+  bounds.
 
 `super-ontology-replays.jsonl` and `super-ontology-evidence.jsonl`
 

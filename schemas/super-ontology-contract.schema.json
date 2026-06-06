@@ -52,6 +52,7 @@
           "side_effect_containment_contract",
           "source_lineage_version_contract",
           "entity_identity_resolution_contract",
+          "temporal_state_transition_contract",
           "agentlas_integration_contract",
           "memory_curator_bridge",
           "promotion_readiness",
@@ -85,6 +86,7 @@
         "sideEffectContainment",
         "sourceLineageVersion",
         "entityIdentityResolution",
+        "temporalStateTransition",
         "memoryCuratorBridge",
         "memoryTickets"
       ],
@@ -110,6 +112,7 @@
         "sideEffectContainment": { "type": "string" },
         "sourceLineageVersion": { "type": "string" },
         "entityIdentityResolution": { "type": "string" },
+        "temporalStateTransition": { "type": "string" },
         "memoryCuratorBridge": { "type": "string" },
         "memoryTickets": { "type": "string" }
       },
@@ -180,6 +183,10 @@
         "ambiguousIdentityRuntimeWritesBlocked",
         "identityMergeReviewRequired",
         "identityRollbackRequired",
+        "temporalStateTransitionRequired",
+        "timelessStateRuntimeWritesBlocked",
+        "eventReplayRequired",
+        "projectionVersionRequired",
         "memoryCuratorBridgeRequired",
         "directDurableMemoryWritesBlocked",
         "appbridgeSourceWritesBlocked"
@@ -242,6 +249,10 @@
         "ambiguousIdentityRuntimeWritesBlocked": { "const": true },
         "identityMergeReviewRequired": { "const": true },
         "identityRollbackRequired": { "const": true },
+        "temporalStateTransitionRequired": { "const": true },
+        "timelessStateRuntimeWritesBlocked": { "const": true },
+        "eventReplayRequired": { "const": true },
+        "projectionVersionRequired": { "const": true },
         "memoryCuratorBridgeRequired": { "const": true },
         "directDurableMemoryWritesBlocked": { "const": true },
         "appbridgeSourceWritesBlocked": { "const": true }

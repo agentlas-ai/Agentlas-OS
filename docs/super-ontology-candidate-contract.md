@@ -30,6 +30,7 @@ Generated or packaged repos may include:
   super-ontology-side-effect-containment.json
   super-ontology-source-lineage-version.json
   super-ontology-entity-identity-resolution.json
+  super-ontology-temporal-state-transition.json
   super-ontology-replays.jsonl
   super-ontology-evidence.jsonl
   super-ontology-memory-bridge.jsonl
@@ -336,6 +337,28 @@ Generated or packaged repos may include:
   entity without tombstone, external URI without context, relationship edge
   without identity evidence, and memory note as identity authority.
 
+`super-ontology-temporal-state-transition.json`
+
+- Public-safe temporal state transition seed.
+- Requires current snapshots, local timestamps, spreadsheet row order,
+  document revisions, webhooks, connector deltas, calendar holds, scheduled
+  jobs, audit logs, migration batches, materialized views, LLM summaries,
+  memory notes, and graph edges to name valid time, transaction time, event id,
+  event sequence, source span, pre-state, post-state, state-machine rule,
+  transition guard, idempotency, replay log, projection version, scheduler
+  receipt, audit trace, and rollback where needed.
+- Keeps `runtimePromotionAllowed=false` on export.
+- Blocks current snapshot as truth, missing valid time, missing transaction
+  time, local timestamp as global order, spreadsheet order as event order, LLM
+  summary as event log, late event ignored, retroactive correction without
+  transaction history, future-effective as current, expired state as active,
+  deleted state without tombstone, non-idempotent replay, materialized view as
+  source of truth, projection without version, recurring event without rule,
+  timezone-free deadline, stale cache as current, state transition without
+  precondition, partial failure as success, scheduled job without receipt,
+  memory fact without validity interval, and graph edge without temporal
+  bounds.
+
 ## Default State
 
 Every exported Super Ontology contract starts as:
@@ -380,6 +403,10 @@ entityIdentityResolutionRequired = true
 ambiguousIdentityRuntimeWritesBlocked = true
 identityMergeReviewRequired = true
 identityRollbackRequired = true
+temporalStateTransitionRequired = true
+timelessStateRuntimeWritesBlocked = true
+eventReplayRequired = true
+projectionVersionRequired = true
 memoryCuratorBridgeRequired = true
 directDurableMemoryWritesBlocked = true
 untrustedSourceRuntimeWritesBlocked = true
