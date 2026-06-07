@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "agentlas-meta-agent",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Three-agent meta-agent team for creating single agents, creating multi-agent teams, and packaging existing agents into Agentlas architecture.",
   "author": {
     "name": "Agentlas",
