@@ -3,7 +3,7 @@ set -euo pipefail
 
 target="${1:-$PWD}"
 force="${AGENTLAS_META_OS_FORCE:-0}"
-repo_tarball="${AGENTLAS_META_OS_TARBALL_URL:-https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.0.tar.gz}"
+repo_tarball="${AGENTLAS_META_OS_TARBALL_URL:-https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.1.tar.gz}"
 
 usage() {
   cat <<'EOF'
@@ -71,12 +71,15 @@ for file in AGENTS.md CLAUDE.md GEMINI.md README.md README.ko.md README.zh-CN.md
   copy_root_file "$file"
 done
 
-for dir in assets agents modes skills .agents .agentlas .claude-plugin .claude claude .gemini codex docs schemas templates examples scripts; do
+for dir in assets agents modes skills .agents .agentlas .claude-plugin .claude claude .gemini codex docs schemas templates examples scripts bin; do
   copy_dir "$dir"
 done
 
 if [[ -d "$target/scripts" ]]; then
   chmod +x "$target"/scripts/*.sh 2>/dev/null || true
+fi
+if [[ -d "$target/bin" ]]; then
+  chmod +x "$target"/bin/* 2>/dev/null || true
 fi
 
 echo "agentlas-meta-agent installed into: $target"

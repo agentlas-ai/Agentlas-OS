@@ -1,7 +1,7 @@
 {
   "id": "agentlas-meta-agent",
   "name": "agentlas-meta-agent",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Three-agent meta-agent team for creating single agents, creating multi-agent teams, and packaging existing agents into Agentlas architecture.",
   "author": {
     "name": "Agentlas",

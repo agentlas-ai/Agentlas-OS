@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  bin/hephaestus ontology [--gui] [--no-open] [project-dir]
+  bin/hephaestus ontology add <path> [--project <dir>] [--kind company|project|personal] [--scope public|internal|private]
+  bin/hephaestus meta-agent "<request>"
+
+Examples:
+  bin/hephaestus ontology
+  bin/hephaestus ontology --gui .
+  bin/hephaestus ontology add ./company-docs --kind company --scope private
+EOF
+}
+
+if [[ "${1:-}" == "" || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+command="$1"
+shift
+
+case "$command" in
+  ontology)
+    if [[ "${1:-}" == "add" ]]; then
+      shift
+      PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" python3 -m ontology sources add "$@"
+      exit $?
+    fi
+
+    open_flag=1
+    if [[ "${1:-}" == "--gui" ]]; then
+      shift
+    fi
+    if [[ "${1:-}" == "--no-open" ]]; then
+      open_flag=0
+      shift
+    fi
+    project="${1:-.}"
+    if [[ "$open_flag" == "1" ]]; then
+      PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" python3 -m ontology gui "$project"
+    else
+      PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" python3 -m ontology gui "$project" --no-open
+    fi
+    ;;
+  meta-agent)
+    request="${*:-Create or package an Agentlas-compatible agent.}"
+    cat <<EOF
+Hephaestus meta-agent request:
+$request
+
+Open Claude Code or Codex with the installed plugin, then run:
+/Hephaestus $request
+EOF
+    ;;
+  *)
+    echo "hephaestus: unknown command: $command" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

@@ -34,75 +34,80 @@
 
 ## 빠른 시작
 
-설치 경로는 세 가지입니다. **Agentlas 전체 런타임**이 필요하면 1번과 3번을 쓰세요. Claude Code, Codex, 일반 프로젝트 폴더에 이 패키지만 직접 넣고 싶으면 2번을 쓰면 됩니다.
+새 컴퓨터에서는 아래 경로 중 하나로 시작하세요. Claude Code나 Codex에서 쓰려면 플러그인 설치가 먼저입니다. 일반 프로젝트 폴더에 파일만 복사하고 싶을 때만 파일 설치를 쓰세요.
 
-| 경로 | 언제 쓰나 | 무엇을 열어야 하나 |
-|---|---|---|
-| 1. Agentlas Terminal | 셸에서 Agentlas 에이전트를 실행할 때 | 먼저 Agentlas Desktop, 그 다음 macOS Terminal / Windows PowerShell / Linux terminal |
-| 2. agentlas-meta-agent 단독 설치 | Claude Code, Codex, 일반 repo에 직접 설치할 때 | Claude Code, Codex, 또는 OS 터미널 |
-| 3. Agentlas Desktop | 시각적 로컬 런타임, agent/team 관리, vault, Apps가 필요할 때 | 브라우저로 다운로드 후 Agentlas Desktop 앱 |
+### A. Claude Code 플러그인
 
-### 1. Agentlas Terminal 설치
+Claude 채팅창이 아니라 **macOS Terminal, Windows PowerShell, Linux terminal, Git Bash, WSL 같은 OS 터미널**에서 실행합니다.
 
-Agentlas Terminal은 **Agentlas Desktop**에서 설치합니다. Desktop 설치 후 앱에서 아래 메뉴를 여세요.
+```bash
+claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
+claude plugin install agentlas-meta-agent@agentlas-core-engine
+```
+
+그 다음 작업할 프로젝트 폴더에서 Claude Code를 열거나 재시작하고, Claude Code 안에 아래처럼 입력합니다.
 
 ```text
-Agentlas Desktop -> Settings -> Use from the terminal (`agentlas` CLI) -> Install CLI
+/reload-plugins
+/Hephaestus ontology
 ```
 
-그 다음 일반 터미널을 열고 `agentlas` 명령어를 입력합니다.
+`/Hephaestus ontology`는 현재 프로젝트에 로컬 ontology GUI를 만들고 엽니다.
 
-**macOS Terminal**
+```text
+.agentlas/ontology-inbox/
+.agentlas/ontology-sources.json
+.agentlas/ontology-runtime.sqlite
+.agentlas/ontology-gui/index.html
+```
+
+홈 폴더나 옆 프로젝트를 훑지 않습니다. 승인된 회사 문서나 프로젝트 문서는 `.agentlas/ontology-inbox/`에 넣고 `/Hephaestus ontology`를 다시 실행하면 됩니다.
+
+에이전트나 팀을 만들 때는 설치 후 Claude Code 안에서 이렇게 입력합니다.
+
+```text
+/Hephaestus create a research agent for SEC filing analysis
+/Hephaestus create a customer support operations team
+/Hephaestus package this existing Claude agent into Agentlas architecture
+```
+
+Claude CLI는 `claude plugins ...`도 alias로 받지만, 이 문서에서는 헷갈리지 않게 `claude plugin ...` 단수형으로 통일합니다.
+
+### B. Codex 플러그인
+
+Codex 채팅창이 아니라 **OS 터미널**에서 실행합니다.
 
 ```bash
-arch=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
-curl -fL "https://agentlas.cloud/api/desktop/download?arch=${arch}" -o Agentlas.dmg
-open Agentlas.dmg
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.1
+codex plugin add agentlas-meta-agent@agentlas-core-engine
 ```
 
-**Windows PowerShell**
+그 다음 작업할 프로젝트 폴더에서 Codex를 열거나 재시작하고, Codex 안에 아래처럼 입력합니다.
 
-```powershell
-$r = Invoke-RestMethod https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest
-$u = ($r.assets | Where-Object { $_.name -like '*Windows-x64-Setup.exe' }).browser_download_url
-Invoke-WebRequest $u -OutFile "$env:TEMP\AgentlasSetup.exe"
-Start-Process "$env:TEMP\AgentlasSetup.exe"
+```text
+/Hephaestus ontology
 ```
 
-**Linux terminal, AppImage**
+Codex CLI 명령은 `codex plugins`가 아니라 `codex plugin` 단수형입니다. 플러그인 설치 후 `/Hephaestus ontology`를 실행하면 같은 프로젝트 로컬 GUI가 만들어집니다.
+
+```text
+.agentlas/ontology-gui/index.html
+```
+
+에이전트나 팀을 만들 때는 설치 후 Codex 안에서 이렇게 입력합니다.
+
+```text
+/Hephaestus create a self-evolving research agent
+/Hephaestus create a finance analyst team
+/Hephaestus package this existing Codex workspace into Agentlas architecture
+```
+
+### C. 파일 복사 설치
+
+Claude/Codex 플러그인이 아니라 현재 프로젝트에 패키지 파일만 복사하고 싶을 때 씁니다. 설치할 프로젝트 폴더에서 OS 터미널을 열고 실행합니다.
 
 ```bash
-url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest \
-  | grep -o 'https://[^"]*Linux-x64\.AppImage' | head -1)
-curl -fL "$url" -o Agentlas.AppImage
-chmod +x Agentlas.AppImage
-./Agentlas.AppImage
-```
-
-**Linux terminal, Debian/Ubuntu**
-
-```bash
-url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest \
-  | grep -o 'https://[^"]*Linux-x64\.deb' | head -1)
-curl -fL "$url" -o agentlas.deb
-sudo dpkg -i agentlas.deb
-```
-
-Desktop Settings에서 CLI 설치를 끝낸 뒤:
-
-```bash
-agentlas list
-agentlas run agentlas-meta-agent "Package this workflow for Agentlas"
-```
-
-### 2. agentlas-meta-agent 단독 설치
-
-#### 단순 파일 설치
-
-설치할 프로젝트 폴더에서 macOS Terminal, Linux terminal, Windows Git Bash, WSL 중 하나를 엽니다.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.0/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.1/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -110,73 +115,43 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\agentlas-meta-agent-v0.2.0.zip"
-$extract = "$env:TEMP\agentlas-meta-agent-v0.2.0"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.0.zip" -OutFile $zip
+$zip = "$env:TEMP\agentlas-meta-agent-v0.2.1.zip"
+$extract = "$env:TEMP\agentlas-meta-agent-v0.2.1"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.1.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1
 Get-ChildItem $src.FullName -Force | Copy-Item -Destination (Get-Location) -Recurse -Force
 ```
 
-#### Claude Code 플러그인 설치
+파일 설치 후에는 slash command가 아니라 터미널에서 직접 실행합니다.
 
-마켓플레이스 등록과 플러그인 설치는 별도 단계입니다. 마켓플레이스 등록은 Claude Code가 이 repo를 찾을 수 있게 하는 작업이고, install이 실제 설치입니다.
+```bash
+bin/hephaestus ontology
+```
 
-**Claude Code 채팅창 안에서**:
+### D. 이미 Claude/Codex 채팅창 안에 있을 때
+
+아래 명령은 OS 터미널이 아니라 Claude Code 또는 Codex 채팅창 안에 그대로 입력하는 버전입니다.
+
+Claude Code:
 
 ```text
 /plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
 /plugin install agentlas-meta-agent@agentlas-core-engine
 /reload-plugins
-/plugin list
+/Hephaestus ontology
 ```
 
-**OS 터미널에서 `claude` CLI로**:
-
-```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
-claude plugin install agentlas-meta-agent@agentlas-core-engine
-```
-
-예상 결과:
+Codex:
 
 ```text
-✓ Installed agentlas-meta-agent. Run /reload-plugins to apply.
-Reloaded: 1 plugin · 0 skills · 9 agents · 0 hooks · 0 plugin MCP servers · 0 plugin LSP servers
-```
-
-#### Codex 플러그인 설치
-
-**Codex 채팅창 안에서**:
-
-```text
-/plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.0
+/plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.1
 /plugin install agentlas-meta-agent@agentlas-core-engine
-/reload-plugins
-/plugin list
+/Hephaestus ontology
 ```
 
-**OS 터미널에서 `codex` CLI로**:
-
-```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.0
-codex plugin list
-codex plugin add agentlas-meta-agent@agentlas-core-engine
-codex plugin list
-```
-
-이미 Codex 세션이 열려 있었다면 `/reload-plugins`를 실행하거나 새 세션을 시작하세요.
-
-### 3. Agentlas Desktop 설치
-
-브라우저에서 아래 주소를 엽니다.
-
-```text
-https://agentlas.cloud/desktop
-```
-
-Desktop은 로컬 프로젝트, agents, teams, Apps, vault reference, runtime 선택, 내장 Core Engine Meta-Agent 라우팅, `agentlas` CLI 설치 화면을 제공합니다.
+설치 후 `/Hephaestus`가 안 보이면 해당 프로젝트에서 Claude Code나 Codex를 재시작하세요.
 
 ## 그림으로 보는 설치 방법
 

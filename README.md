@@ -64,90 +64,89 @@
 
 ## Quickstart
 
-There are three install paths. Use **1 + 3** when you want the full Agentlas runtime. Use **2** only when you want this package installed directly into Claude Code, Codex, or a plain project folder.
+Use one of these paths on a new computer. Start with a Claude Code or Codex
+plugin install unless you only want the package files copied into a normal
+project folder.
 
-| Path | Best for | What you open |
-|---|---|---|
-| 1. Agentlas Terminal | Running Agentlas agents from a shell | Agentlas Desktop first, then macOS Terminal / Windows PowerShell / Linux terminal |
-| 2. Standalone agentlas-meta-agent | Claude Code, Codex, or a normal repo without Desktop | Claude Code, Codex, or your OS terminal |
-| 3. Agentlas Desktop | Visual local runtime, agent/team management, vault, Apps | A browser for download, then the Agentlas Desktop app |
+### Option A. Claude Code plugin
 
-### 1. Install Agentlas Terminal
+Open your normal OS terminal, not the Claude chat box, and run:
 
-Agentlas Terminal is installed from **Agentlas Desktop**. First install Desktop, then open:
+```bash
+claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
+claude plugin install agentlas-meta-agent@agentlas-core-engine
+```
+
+Then open or restart Claude Code in the project you want to work on and type:
 
 ```text
-Agentlas Desktop -> Settings -> Use from the terminal (`agentlas` CLI) -> Install CLI
+/reload-plugins
+/Hephaestus ontology
 ```
 
-After that, open your normal terminal and run `agentlas`.
+`/Hephaestus ontology` opens a local ontology dashboard for the current project.
+It creates these files in that project only:
 
-**macOS Terminal**
+```text
+.agentlas/ontology-inbox/
+.agentlas/ontology-sources.json
+.agentlas/ontology-runtime.sqlite
+.agentlas/ontology-gui/index.html
+```
+
+It does not scan your home folder or sibling projects. Put approved company docs
+inside `.agentlas/ontology-inbox/`, then run `/Hephaestus ontology` again.
+
+To create agents or teams after install:
+
+```text
+/Hephaestus create a research agent for SEC filing analysis
+/Hephaestus create a customer support operations team
+/Hephaestus package this existing Claude agent into Agentlas architecture
+```
+
+Claude also supports `claude plugins ...` as an alias, but this README uses
+`claude plugin ...` everywhere so the command shape stays consistent.
+
+### Option B. Codex plugin
+
+Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-arch=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
-curl -fL "https://agentlas.cloud/api/desktop/download?arch=${arch}" -o Agentlas.dmg
-open Agentlas.dmg
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.1
+codex plugin add agentlas-meta-agent@agentlas-core-engine
 ```
 
-**Windows PowerShell**
+Then open or restart Codex in the project you want to work on and type:
 
-```powershell
-$r = Invoke-RestMethod https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest
-$u = ($r.assets | Where-Object { $_.name -like '*Windows-x64-Setup.exe' }).browser_download_url
-Invoke-WebRequest $u -OutFile "$env:TEMP\AgentlasSetup.exe"
-Start-Process "$env:TEMP\AgentlasSetup.exe"
+```text
+/Hephaestus ontology
 ```
 
-**Linux terminal, AppImage**
+The Codex CLI command is singular: `codex plugin`, not `codex plugins`.
+After plugin install, `/Hephaestus ontology` creates and opens the same
+project-local ontology dashboard:
+
+```text
+.agentlas/ontology-gui/index.html
+```
+
+To create agents or teams after install:
+
+```text
+/Hephaestus create a self-evolving research agent
+/Hephaestus create a finance analyst team
+/Hephaestus package this existing Codex workspace into Agentlas architecture
+```
+
+### Option C. Copy the files into a project
+
+Use this if you are not installing the Claude/Codex plugin and just want the
+repo package files in your current project. Open macOS Terminal, Linux terminal,
+Windows Git Bash, or WSL in that project folder and run:
 
 ```bash
-url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest \
-  | grep -o 'https://[^"]*Linux-x64\.AppImage' | head -1)
-curl -fL "$url" -o Agentlas.AppImage
-chmod +x Agentlas.AppImage
-./Agentlas.AppImage
-```
-
-**Linux terminal, Debian/Ubuntu**
-
-```bash
-url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop/releases/latest \
-  | grep -o 'https://[^"]*Linux-x64\.deb' | head -1)
-curl -fL "$url" -o agentlas.deb
-sudo dpkg -i agentlas.deb
-```
-
-After installing the CLI from Desktop Settings:
-
-```bash
-agentlas list
-agentlas run agentlas-meta-agent "Package this workflow for Agentlas"
-agentlas ontology
-```
-
-`agentlas ontology` activates a project-local knowledge vault in the current
-folder. It creates `.agentlas/ontology-inbox/`, `.agentlas/ontology-sources.json`,
-and `.agentlas/ontology-runtime.sqlite`. It never scans your home folder or
-neighboring projects. Put approved `txt`, `md`, `json`, or `csv` files in the
-inbox, or explicitly register a source:
-
-```bash
-agentlas ontology add /path/to/company-docs --kind company --scope private
-```
-
-Standalone Claude/Codex plugin installs include the public architecture and
-verification files, but the normal user activation surface for ontology sync is
-Agentlas Desktop or the `agentlas` terminal CLI.
-
-### 2. Install agentlas-meta-agent standalone
-
-#### Simple file install
-
-Open macOS Terminal, Linux terminal, Windows Git Bash, or WSL in the project folder where you want the package files installed:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.0/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.1/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -155,75 +154,45 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\agentlas-meta-agent-v0.2.0.zip"
-$extract = "$env:TEMP\agentlas-meta-agent-v0.2.0"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.0.zip" -OutFile $zip
+$zip = "$env:TEMP\agentlas-meta-agent-v0.2.1.zip"
+$extract = "$env:TEMP\agentlas-meta-agent-v0.2.1"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.1.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1
 Get-ChildItem $src.FullName -Force | Copy-Item -Destination (Get-Location) -Recurse -Force
 ```
 
-#### Claude Code plugin install
+After file install, run the ontology GUI directly:
 
-Marketplace registration and plugin installation are separate steps. The marketplace command only registers where Claude Code can find this repo. The install command actually installs the plugin. Reload after install.
+```bash
+bin/hephaestus ontology
+```
 
-Inside a **Claude Code chat**, type:
+### Optional in-chat plugin install
+
+Use these only when you are already inside Claude Code or Codex and want to
+install from the chat UI instead of the OS terminal.
+
+Claude Code chat:
 
 ```text
 /plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
 /plugin install agentlas-meta-agent@agentlas-core-engine
 /reload-plugins
-/plugin list
+/Hephaestus ontology
 ```
 
-From your **OS terminal** with the `claude` CLI available:
-
-```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
-claude plugin install agentlas-meta-agent@agentlas-core-engine
-```
-
-Expected result after reload:
+Codex chat:
 
 ```text
-✓ Installed agentlas-meta-agent. Run /reload-plugins to apply.
-Reloaded: 1 plugin · 0 skills · 9 agents · 0 hooks · 0 plugin MCP servers · 0 plugin LSP servers
-```
-
-#### Codex plugin install
-
-Inside a **Codex chat**, type:
-
-```text
-/plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.0
+/plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.1
 /plugin install agentlas-meta-agent@agentlas-core-engine
-/reload-plugins
-/plugin list
+/Hephaestus ontology
 ```
 
-From your **OS terminal** with the `codex` CLI available:
-
-```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.0
-codex plugin list
-codex plugin add agentlas-meta-agent@agentlas-core-engine
-codex plugin list
-```
-
-If a Codex session was already open, run `/reload-plugins` or start a new session.
-
-### 3. Install Agentlas Desktop
-
-Open this page in your browser:
-
-```text
-https://agentlas.cloud/desktop
-```
-
-Desktop gives you the visual Agentlas surface: local projects, agents, teams, Apps, vault references, runtime selection, built-in Core Engine Meta-Agent routing, and the `agentlas` CLI installer.
-It also shows the per-project Ontology panel with inbox, source registration,
-and the safe no-home-scan policy.
+If a chat session does not show the new command after install, restart Claude
+Code or Codex in that project.
 
 ## Visual Install Guide
 

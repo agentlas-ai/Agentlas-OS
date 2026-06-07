@@ -297,6 +297,45 @@ class OntologyRuntimeTests(unittest.TestCase):
         verify_payload = json.loads(verify.stdout)
         self.assertEqual(verify_payload["status"], "pass")
 
+        gui = subprocess.run(
+            [sys.executable, "-m", "ontology", "--db", db, "gui", str(self.root), "--no-open"],
+            cwd=Path(__file__).resolve().parents[1],
+            env=env,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        gui_payload = json.loads(gui.stdout)
+        self.assertEqual(gui_payload["status"], "gui_ready")
+        self.assertFalse(gui_payload["opened"])
+        gui_path = Path(gui_payload["gui_path"])
+        self.assertTrue(gui_path.exists())
+        self.assertIn("Hephaestus Ontology", gui_path.read_text(encoding="utf-8"))
+
+    def test_hephaestus_runner_creates_project_gui_without_browser(self):
+        env = os.environ.copy()
+        repo = Path(__file__).resolve().parents[1]
+        project = self.root / "runner-project"
+        (project / ".agentlas" / "ontology-inbox").mkdir(parents=True)
+        (project / ".agentlas" / "ontology-inbox" / "company.md").write_text(
+            "Runner Company depends on Review Board.",
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [str(repo / "bin" / "hephaestus"), "ontology", "--no-open", str(project)],
+            cwd=repo,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "gui_ready")
+        self.assertFalse(payload["opened"])
+        self.assertTrue(Path(payload["gui_path"]).exists())
+        self.assertTrue(Path(payload["db_path"]).exists())
+
     def test_auto_activation_uses_project_local_inbox_and_blocks_cross_project_mixing(self):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
