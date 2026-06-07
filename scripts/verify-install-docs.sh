@@ -63,14 +63,14 @@ for pattern in "${bad_patterns[@]}"; do
 done
 
 if rg -n 'agentlas-meta-agent' README*.md claude/README.md codex/README.md \
-  | grep -Ev 'agentlas-meta-agent-architecture|agentlas-meta-agent-v0\.2\.3|agentlas-meta-agent@agentlas-core-engine|agentlas run agentlas-meta-agent|old `agentlas-meta-agent`|still shows `agentlas-meta-agent`|older install still shows `agentlas-meta-agent`|points at `agentlas-meta-agent`|예전 `agentlas-meta-agent`|아직 `agentlas-meta-agent`' \
+  | grep -Ev 'agentlas-meta-agent-architecture|agentlas-meta-agent-v0\.2\.4|agentlas-meta-agent@agentlas-core-engine|agentlas run agentlas-meta-agent|old `agentlas-meta-agent`|still shows `agentlas-meta-agent`|older install still shows `agentlas-meta-agent`|points at `agentlas-meta-agent`|예전 `agentlas-meta-agent`|아직 `agentlas-meta-agent`' \
   >/tmp/hephaestus-old-name-docs.txt; then
   cat /tmp/hephaestus-old-name-docs.txt >&2
   fail "old product name appears in public prose"
 fi
 
 for path in README.md README.ko.md codex/README.md; do
-  rg -q 'codex plugin marketplace add agentlas-ai/Hephaestus --ref v0\.2\.3' "$path" || fail "missing Codex marketplace command in $path"
+  rg -q 'codex plugin marketplace add agentlas-ai/Hephaestus --ref v0\.2\.4' "$path" || fail "missing Codex marketplace command in $path"
   rg -q 'codex plugin add hephaestus@agentlas-core-engine' "$path" || fail "missing Codex add command in $path"
 done
 
@@ -89,12 +89,12 @@ claude = json.loads(Path("claude/plugins/agentlas-core-engine-meta-agent/.claude
 manifest = json.loads(Path("manifest.json").read_text())
 assert codex["id"] == "hephaestus", codex["id"]
 assert codex["name"] == "hephaestus", codex["name"]
-assert codex["version"] == "0.2.3", codex["version"]
+assert codex["version"] == "0.2.4", codex["version"]
 assert codex["interface"]["displayName"] == "Hephaestus", codex["interface"]["displayName"]
 assert claude["name"] == "hephaestus", claude["name"]
-assert claude["version"] == "0.2.3", claude["version"]
+assert claude["version"] == "0.2.4", claude["version"]
 assert manifest["package"] == "hephaestus", manifest["package"]
-assert manifest["version"] == "0.2.3", manifest["version"]
+assert manifest["version"] == "0.2.4", manifest["version"]
 assert manifest["entrypoints"]["claudeHephaestusCommand"].endswith("hephaestus.md")
 assert manifest["entrypoints"]["codexHephaestusCommand"].endswith("hephaestus.md")
 

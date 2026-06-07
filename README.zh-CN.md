@@ -102,7 +102,7 @@ agentlas run agentlas-meta-agent "Package this workflow for Agentlas"
 在你想安装包文件的项目文件夹中打开 macOS Terminal、Linux terminal、Windows Git Bash 或 WSL：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.3/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.4/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -110,9 +110,9 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\agentlas-meta-agent-v0.2.3.zip"
-$extract = "$env:TEMP\agentlas-meta-agent-v0.2.3"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.3.zip" -OutFile $zip
+$zip = "$env:TEMP\agentlas-meta-agent-v0.2.4.zip"
+$extract = "$env:TEMP\agentlas-meta-agent-v0.2.4"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.4.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1
@@ -153,7 +153,7 @@ Reloaded: 1 plugin · 0 skills · 9 agents · 0 hooks · 0 plugin MCP servers ·
 **在带有 `codex` CLI 的系统终端中输入**：
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.3
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.4
 codex plugin list
 codex plugin add hephaestus@agentlas-core-engine
 codex plugin list

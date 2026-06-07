@@ -10,7 +10,7 @@ git --version
 ```
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.3
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.4
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
