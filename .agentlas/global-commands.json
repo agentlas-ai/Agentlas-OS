@@ -23,7 +23,7 @@
       "runtime": "gemini-cli",
       "command": "/hephaestus",
       "adapterPath": "gemini/extension/commands/hephaestus.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.2.5",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.2.6",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus.toml."

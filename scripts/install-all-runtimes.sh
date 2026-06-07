@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-version="${HEPHAESTUS_REF:-v0.2.5}"
+version="${HEPHAESTUS_REF:-v0.2.6}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Hephaestus}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -190,6 +190,13 @@ install_gemini() {
   if [[ ! -f "$gemini_extension_dir/gemini-extension.json" ]]; then
     warn "Gemini extension manifest not found: $gemini_extension_dir/gemini-extension.json"
     return 1
+  fi
+  if [[ -z "${HEPHAESTUS_SOURCE_DIR:-}" ]]; then
+    local stable_gemini_source="$HOME/.gemini/hephaestus-extension-source"
+    rm -rf "$stable_gemini_source"
+    mkdir -p "$stable_gemini_source"
+    cp -R "$gemini_extension_dir"/. "$stable_gemini_source"/
+    gemini_extension_dir="$stable_gemini_source"
   fi
 
   run_yes gemini extensions install "$gemini_extension_dir" --consent --skip-settings || return 1
