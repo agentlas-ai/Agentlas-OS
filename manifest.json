@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "package": "hephaestus",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Portable three-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
   "entrypoints": {
     "canonical": "AGENTS.md",
@@ -17,6 +17,9 @@
     "geminiExtension": "gemini/extension/gemini-extension.json",
     "geminiHephaestusCommand": "gemini/extension/commands/hephaestus.toml",
     "geminiProjectHephaestusCommand": ".gemini/commands/hephaestus.toml",
+    "antigravityWorkflow": "antigravity/workflows/hephaestus.md",
+    "antigravityProjectWorkflow": ".agents/workflows/hephaestus.md",
+    "antigravityGlobalWorkflow": "~/.gemini/antigravity/global_workflows/hephaestus.md",
     "globalCommands": ".agentlas/global-commands.json",
     "gemini": "GEMINI.md",
     "installer": "scripts/install.sh",
@@ -54,6 +57,7 @@
     "claude",
     ".gemini",
     "codex",
+    "antigravity",
     "schemas",
     "templates",
     "docs",

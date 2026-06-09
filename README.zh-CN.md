@@ -32,6 +32,24 @@
 
 ---
 
+## 粘贴即装 (让你的 AI 来做)
+
+不熟悉终端？不用自己运行任何命令。打开任意 AI 编程工具（**Claude Code、
+Codex、Gemini CLI、Antigravity 或 Cursor**），把下面这段消息原样粘贴到它的
+聊天框里。Agent 会替你运行安装脚本，并告诉你接下来要用的命令：
+
+```text
+在这个工作区里安装 Hephaestus Agentlas 元代理。在终端运行
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.8/scripts/install-all-runtimes.sh | bash`
+然后告诉我，在我正在用的工具（Claude Code、Codex、Gemini CLI、Antigravity、
+Cursor）里应该使用的确切 /hephaestus 命令。如果出错，请读取报错、修复并重试。
+```
+
+完成后，在你的工具里输入 `/hephaestus`。想自己运行命令？请使用下面的
+**快速开始**。
+
+---
+
 ## 快速开始
 
 这里有三种安装路径。如果你想使用完整的 Agentlas 本地运行时，请使用 **1 + 3**。如果你只想把这个包直接装进 Claude Code、Codex 或普通项目文件夹，请使用 **2**。
@@ -102,7 +120,7 @@ agentlas run agentlas-meta-agent "Package this workflow for Agentlas"
 在你想安装包文件的项目文件夹中打开 macOS Terminal、Linux terminal、Windows Git Bash 或 WSL：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.7/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.8/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -110,9 +128,9 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\hephaestus-v0.2.7.zip"
-$extract = "$env:TEMP\hephaestus-v0.2.7"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.7.zip" -OutFile $zip
+$zip = "$env:TEMP\hephaestus-v0.2.8.zip"
+$extract = "$env:TEMP\hephaestus-v0.2.8"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.8.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1
@@ -153,7 +171,7 @@ Reloaded: 1 plugin · 0 skills · 9 agents · 0 hooks · 0 plugin MCP servers ·
 **在带有 `codex` CLI 的系统终端中输入**：
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.7
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.8
 codex plugin list
 codex plugin add hephaestus@agentlas-core-engine
 codex plugin list

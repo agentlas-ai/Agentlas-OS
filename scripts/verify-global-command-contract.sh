@@ -19,6 +19,8 @@ required_files=(
   "gemini/extension/commands/hephaestus.toml"
   ".gemini/commands/hephaestus.toml"
   "gemini/extension/gemini-extension.json"
+  "antigravity/workflows/hephaestus.md"
+  ".agents/workflows/hephaestus.md"
   "AGENTS.md"
 )
 
@@ -41,6 +43,7 @@ required = {
     "claude-code": ".claude/commands/hephaestus.md",
     "codex": "codex/plugins/agentlas-core-engine-meta-agent/commands/hephaestus.md",
     "gemini-cli": "gemini/extension/commands/hephaestus.toml",
+    "antigravity": "antigravity/workflows/hephaestus.md",
     "generic-agents-md": "AGENTS.md",
     "agentlas-terminal": "bin/hephaestus",
 }
@@ -53,7 +56,7 @@ for runtime, adapter in required.items():
     if not Path(adapter).exists():
         raise SystemExit(f"{runtime} adapter file does not exist: {adapter}")
 
-for runtime in ("claude-code", "codex", "gemini-cli", "generic-agents-md"):
+for runtime in ("claude-code", "codex", "gemini-cli", "antigravity", "generic-agents-md"):
     if commands[runtime].get("command") != command:
         raise SystemExit(f"{runtime} command does not match canonical command")
 

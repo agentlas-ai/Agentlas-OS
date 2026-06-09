@@ -32,6 +32,27 @@
 
 ---
 
+## 貼り付けてインストール (AI にやってもらう)
+
+ターミナルが苦手でも、自分で何か実行する必要はありません。AI コーディング
+ツール（**Claude Code・Codex・Gemini CLI・Antigravity・Cursor** のどれでも）を
+開き、次のメッセージをチャット欄にそのまま貼り付けてください。エージェントが
+代わりにインストーラーを実行し、次に使うコマンドを教えてくれます。
+
+```text
+このワークスペースに Hephaestus Agentlas メタエージェントをセットアップして。
+ターミナルで
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.8/scripts/install-all-runtimes.sh | bash`
+を実行し、私が使っているツール（Claude Code, Codex, Gemini CLI, Antigravity,
+Cursor）で使う正確な /hephaestus コマンドを教えて。失敗したらエラーを読んで
+直し、もう一度試して。
+```
+
+終わったら、ツールで `/hephaestus` と入力します。自分でコマンドを実行したい
+場合は、下の **Quickstart** を使ってください。
+
+---
+
 ## Quickstart
 
 インストール方法は 3 つあります。Agentlas のフルローカル runtime が必要なら **1 + 3** を使います。Claude Code、Codex、通常の project folder にこの package だけを直接入れたい場合は **2** を使います。
@@ -102,7 +123,7 @@ agentlas run agentlas-meta-agent "Package this workflow for Agentlas"
 package files を入れたい project folder で macOS Terminal、Linux terminal、Windows Git Bash、または WSL を開きます。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.7/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.2.8/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -110,9 +131,9 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\hephaestus-v0.2.7.zip"
-$extract = "$env:TEMP\hephaestus-v0.2.7"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.7.zip" -OutFile $zip
+$zip = "$env:TEMP\hephaestus-v0.2.8.zip"
+$extract = "$env:TEMP\hephaestus-v0.2.8"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.2.8.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1
@@ -153,7 +174,7 @@ Codex chat の中では `/plugin marketplace add` は使いません。Codex app
 **`codex` CLI が使える OS terminal で入力**:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.7
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.2.8
 codex plugin list
 codex plugin add hephaestus@agentlas-core-engine
 codex plugin list

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-version="${HEPHAESTUS_REF:-v0.2.7}"
+version="${HEPHAESTUS_REF:-v0.2.8}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Hephaestus}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -205,6 +205,34 @@ install_gemini() {
   ok=$((ok + 1))
 }
 
+antigravity_present() {
+  [[ -d "$HOME/.gemini/antigravity" ]] && return 0
+  [[ -n "${HEPHAESTUS_FORCE_ANTIGRAVITY:-}" ]] && return 0
+  ls -d /Applications/Antigravity*.app >/dev/null 2>&1 && return 0
+  return 1
+}
+
+install_antigravity() {
+  if ! antigravity_present; then
+    warn "Antigravity not detected; skipped Antigravity workflow install."
+    return 0
+  fi
+
+  log "== Antigravity workflow =="
+  ensure_downloaded_source || return 1
+  local workflow_src="$source_dir/antigravity/workflows/hephaestus.md"
+  if [[ ! -f "$workflow_src" ]]; then
+    warn "Antigravity workflow not found: $workflow_src"
+    return 1
+  fi
+
+  local global_dir="$HOME/.gemini/antigravity/global_workflows"
+  mkdir -p "$global_dir"
+  cp "$workflow_src" "$global_dir/hephaestus.md" || return 1
+  log "Installed Antigravity global workflow: $global_dir/hephaestus.md"
+  ok=$((ok + 1))
+}
+
 main() {
   log "Hephaestus one-touch install/update"
   log "repo: $repo"
@@ -216,16 +244,18 @@ main() {
   install_claude || { warn "Claude install failed."; failed=$((failed + 1)); }
   install_codex || { warn "Codex install failed."; failed=$((failed + 1)); }
   install_gemini || { warn "Gemini install failed."; failed=$((failed + 1)); }
+  install_antigravity || { warn "Antigravity install failed."; failed=$((failed + 1)); }
 
   log ""
   log "Installed/updated runtimes: $ok"
   log "Failed runtimes: $failed"
   log ""
-  log "Restart open Claude Code, Codex, and Gemini sessions."
+  log "Restart open Claude Code, Codex, Gemini, and Antigravity sessions."
   log "Then use:"
   log "  Claude Code: /reload-plugins, then /hephaestus ontology"
   log "  Codex:       /plugins, then /hephaestus ontology"
   log "  Gemini CLI:  /extensions list or /commands list, then /hephaestus"
+  log "  Antigravity: reopen the workspace, then /hephaestus"
 
   if [[ "$ok" -eq 0 || "$failed" -gt 0 ]]; then
     exit 1

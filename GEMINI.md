@@ -3,6 +3,10 @@
 This is a thin Gemini CLI adapter for the Agentlas Core Engine Meta-Agent Team.
 `AGENTS.md` is the canonical source of truth.
 
+Google Antigravity shares the `~/.gemini/` home with the Gemini CLI and also
+auto-loads this file and `AGENTS.md`. Its `/hephaestus` slash command ships as
+an Antigravity workflow under `antigravity/` (see `antigravity/README.md`).
+
 ## Startup
 
 1. Read `AGENTS.md`.
@@ -24,11 +28,15 @@ This is a thin Gemini CLI adapter for the Agentlas Core Engine Meta-Agent Team.
 ## Default Behavior
 
 Create or package portable Markdown-first Agentlas agents and teams with
-Codex, Claude Code, Gemini, Cursor, and AGENTS.md adapters.
+Codex, Claude Code, Gemini, Antigravity, Cursor, and AGENTS.md adapters.
 
 ## Global Command
 
 This package exposes `/hephaestus` for Gemini CLI through
 `gemini/extension/commands/hephaestus.toml`, with a fallback user command at
-`.gemini/commands/hephaestus.toml`. Generated agents must receive their own
-Gemini extension command and a matching `.agentlas/global-commands.json` entry.
+`.gemini/commands/hephaestus.toml`. For Antigravity the same command ships as a
+workflow at `antigravity/workflows/hephaestus.md` (global install target
+`~/.gemini/antigravity/global_workflows/hephaestus.md`; project fallback
+`.agents/workflows/hephaestus.md`). Generated agents must receive their own
+Gemini extension command, Antigravity workflow, and a matching
+`.agentlas/global-commands.json` entry.

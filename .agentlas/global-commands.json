@@ -23,10 +23,19 @@
       "runtime": "gemini-cli",
       "command": "/hephaestus",
       "adapterPath": "gemini/extension/commands/hephaestus.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.2.7",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.2.8",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus.toml."
+    },
+    {
+      "runtime": "antigravity",
+      "command": "/hephaestus",
+      "adapterPath": "antigravity/workflows/hephaestus.md",
+      "globalInstallPath": "~/.gemini/antigravity/global_workflows/hephaestus.md",
+      "scope": "global",
+      "status": "workflow-slash-command",
+      "notes": "Installed by scripts/install-all-runtimes.sh. Project-scope fallback ships at .agents/workflows/hephaestus.md. Antigravity also auto-loads AGENTS.md and .agents/skills/."
     },
     {
       "runtime": "generic-agents-md",
@@ -46,6 +55,6 @@
   ],
   "postCreationUserMessage": {
     "required": true,
-    "template": "global_commands: Claude Code /hephaestus; Codex /hephaestus; Gemini CLI /hephaestus; Agentlas terminal hephaestus or agentlas run hephaestus"
+    "template": "global_commands: Claude Code /hephaestus; Codex /hephaestus; Gemini CLI /hephaestus; Antigravity /hephaestus; Agentlas terminal hephaestus or agentlas run hephaestus"
   }
 }

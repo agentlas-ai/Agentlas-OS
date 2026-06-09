@@ -2,7 +2,8 @@
 
 This repository is a portable three-agent meta-agent team. Use it to create or
 package Agentlas-compatible single agents and multi-agent teams for Codex,
-Claude Code, Gemini CLI, Cursor, and `AGENTS.md`-compatible runtimes.
+Claude Code, Gemini CLI, Antigravity, Cursor, and `AGENTS.md`-compatible
+runtimes.
 
 ## Source Of Truth
 
@@ -30,7 +31,8 @@ Claude Code, Gemini CLI, Cursor, and `AGENTS.md`-compatible runtimes.
   `.agentlas/memory-tickets.jsonl`, `.agentlas/vault-references.json`,
   `.agentlas/local-credentials.map.json`, and skill lifecycle files emitted in
   generated packages.
-- Public install surfaces: `codex/`, `.claude/`, `.gemini/`, and `scripts/`.
+- Public install surfaces: `codex/`, `.claude/`, `.gemini/`, `antigravity/`, and
+  `scripts/`.
 
 Runtime-specific folders are adapters. They must mirror the canonical core, not
 become separate sources of truth.
@@ -52,7 +54,8 @@ become separate sources of truth.
    assumptions.
 5. Emit or repair the smallest useful Agentlas package.
 6. Add the required architecture contracts for the selected mode.
-7. Add thin adapters for Codex, Claude Code, Gemini CLI, and optional Cursor.
+7. Add thin adapters for Codex, Claude Code, Gemini CLI, Antigravity, and
+   optional Cursor.
 8. Assign one canonical global command during creation, write
    `.agentlas/global-commands.json`, add runtime command files or aliases, and
    keep team worker roles routed through the orchestrator/HQ command unless the
