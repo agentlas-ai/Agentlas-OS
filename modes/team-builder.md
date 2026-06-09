@@ -16,8 +16,8 @@ small operating system, not a loose list of prompts.
   and public/private release decisions.
 - Worker roles for domain work.
 - Eval judge and QA/evidence gate before final handoff.
-- Runtime Adapter Engineer for Codex, Claude Code, Gemini CLI, Cursor, and
-  generic `AGENTS.md` surfaces.
+- Runtime Adapter Engineer for Codex, Claude Code, Gemini CLI, Antigravity,
+  Cursor, and generic `AGENTS.md` surfaces.
 - Global Command Registry for one orchestrator/HQ command across runtimes.
 
 ## Required Contracts

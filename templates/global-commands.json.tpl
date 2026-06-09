@@ -29,6 +29,15 @@
       "notes": "Fallback user command can also be installed at ~/.gemini/commands/{{COMMAND_SLUG}}.toml."
     },
     {
+      "runtime": "antigravity",
+      "command": "/{{COMMAND_SLUG}}",
+      "adapterPath": "antigravity/workflows/{{COMMAND_SLUG}}.md",
+      "globalInstallPath": "~/.gemini/antigravity/global_workflows/{{COMMAND_SLUG}}.md",
+      "scope": "global",
+      "status": "workflow-slash-command",
+      "notes": "Project-scope fallback ships at .agents/workflows/{{COMMAND_SLUG}}.md. Antigravity also auto-loads AGENTS.md and .agents/skills/."
+    },
+    {
       "runtime": "generic-agents-md",
       "command": "/{{COMMAND_SLUG}}",
       "adapterPath": "AGENTS.md",
@@ -46,6 +55,6 @@
   ],
   "postCreationUserMessage": {
     "required": true,
-    "template": "global_commands: Claude Code /{{COMMAND_SLUG}}; Codex /{{COMMAND_SLUG}}; Gemini CLI /{{COMMAND_SLUG}}; Agentlas terminal {{COMMAND_SLUG}} or agentlas run {{COMMAND_SLUG}}"
+    "template": "global_commands: Claude Code /{{COMMAND_SLUG}}; Codex /{{COMMAND_SLUG}}; Gemini CLI /{{COMMAND_SLUG}}; Antigravity /{{COMMAND_SLUG}}; Agentlas terminal {{COMMAND_SLUG}} or agentlas run {{COMMAND_SLUG}}"
   }
 }

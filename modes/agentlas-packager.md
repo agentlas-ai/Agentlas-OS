@@ -28,8 +28,8 @@ Cursor rules, another public repo, a ZIP, or an ad hoc Markdown structure.
 3. Add missing Agentlas contracts.
 4. Preserve or derive a canonical global command and add runtime command files.
 5. Remove private or unsafe material before public release.
-6. Add Codex plugin, Claude adapter, Gemini adapter, and terminal install
-   surfaces when requested.
+6. Add Codex plugin, Claude adapter, Gemini adapter, Antigravity workflow, and
+   terminal install surfaces when requested.
 
 ## Do Not
 

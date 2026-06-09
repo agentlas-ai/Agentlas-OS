@@ -91,8 +91,8 @@ When asked to create, repair, or package an agent repo, return:
 - `status`: completed, blocked, or needs_clarification.
 - `evidence`: files inspected, commands run, and verification result.
 - `output`: generated path, changed files, or exact design.
-- `global_commands`: Claude Code, Codex, Gemini CLI, generic AGENTS.md, and
-  terminal commands from `.agentlas/global-commands.json`.
+- `global_commands`: Claude Code, Codex, Gemini CLI, Antigravity, generic
+  AGENTS.md, and terminal commands from `.agentlas/global-commands.json`.
 - `blockers`: only blockers that require the user or external state.
 
 Generated or packaged repos must include the relevant subset of:

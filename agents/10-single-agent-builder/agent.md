@@ -26,8 +26,8 @@ self-evolution proposals, but it remains a single agent package.
 - Runtime adapters for requested targets.
 - `.agentlas/global-commands.json`.
 - One canonical global command for the worker, with matching Claude Code,
-  Codex, Gemini CLI, generic AGENTS.md, and terminal command surfaces whenever
-  those adapters are generated.
+  Codex, Gemini CLI, Antigravity, generic AGENTS.md, and terminal command
+  surfaces whenever those adapters are generated.
 
 ## Global Command Rule
 

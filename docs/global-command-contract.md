@@ -23,6 +23,7 @@ not an optional README note.
 | Claude Code | `.claude/commands/<slug>.md` plus global install path `~/.claude/commands/<slug>.md` |
 | Codex | `codex/plugins/<package-id>/commands/<slug>.md` when packaging a plugin |
 | Gemini CLI | `gemini/extension/commands/<slug>.toml` in a Gemini extension plus fallback global install path `~/.gemini/commands/<slug>.toml` |
+| Antigravity | `antigravity/workflows/<slug>.md` plus global install path `~/.gemini/antigravity/global_workflows/<slug>.md`, with project fallback `.agents/workflows/<slug>.md` |
 | Cursor or AGENTS.md tools | `AGENTS.md` command section and optional `.cursor/` adapter when requested |
 | Agentlas terminal | shell entry under `bin/` or documented `agentlas run <slug>` entry |
 
@@ -52,6 +53,7 @@ global_commands:
 - Claude Code: /<slug> (global file: ~/.claude/commands/<slug>.md)
 - Codex: /<slug> (plugin command: codex/plugins/<package-id>/commands/<slug>.md)
 - Gemini CLI: /<slug> (extension command: gemini/extension/commands/<slug>.toml; fallback global file: ~/.gemini/commands/<slug>.toml)
+- Antigravity: /<slug> (global workflow: ~/.gemini/antigravity/global_workflows/<slug>.md; project workflow: .agents/workflows/<slug>.md)
 - Agentlas terminal: <slug> or agentlas run <slug>
 ```
 

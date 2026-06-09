@@ -21,5 +21,6 @@ Return status, evidence, output, global_commands, and blockers.
 
 Canonical command: `/{{COMMAND_SLUG}}`
 
-Expose this command in Claude Code, Codex, Gemini CLI, generic AGENTS.md tools,
-and terminal adapters. For teams, this command routes to orchestrator/HQ.
+Expose this command in Claude Code, Codex, Gemini CLI, Antigravity, generic
+AGENTS.md tools, and terminal adapters. For teams, this command routes to
+orchestrator/HQ.

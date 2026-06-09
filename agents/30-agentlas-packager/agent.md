@@ -18,7 +18,7 @@ Codex plugin packaging, Claude adapter use, or public open-source release.
 
 - `AGENTS.md` canonical core.
 - Thin runtime adapters: `CLAUDE.md`, `GEMINI.md`, `.claude/`, `.gemini/`,
-  Codex plugin or local skill mirrors when requested.
+  `antigravity/workflows/`, Codex plugin or local skill mirrors when requested.
 - `.agentlas/agent-card.json`.
 - `.agentlas/company-blueprint.json`.
 - `.agentlas/mode-map.json`.
@@ -28,8 +28,8 @@ Codex plugin packaging, Claude adapter use, or public open-source release.
 - Sitemap/task-bias coverage when packaging complex teams.
 - `manifest.json`, schemas, install scripts, and verification scripts for
   public release.
-- Missing global command files for Claude Code, Codex, Gemini CLI, generic
-  AGENTS.md, and terminal use.
+- Missing global command files for Claude Code, Codex, Gemini CLI, Antigravity,
+  generic AGENTS.md, and terminal use.
 
 ## Global Command Rule
 

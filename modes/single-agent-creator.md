@@ -18,10 +18,10 @@ self-evolution proposals, but it is still one worker.
 - `.agentlas/global-commands.json` with one public command for the worker.
 - `memory/<slug>-memory.md` or `.agentlas/project-soul-memory.md` for project
   memory owned by PM Soul/project owner.
-- Thin adapters for Codex, Claude Code, Gemini CLI, Cursor, and generic
-  `AGENTS.md` tools.
-- Runtime command files or aliases for Claude Code, Codex, Gemini CLI, generic
-  AGENTS.md tools, and terminal use.
+- Thin adapters for Codex, Claude Code, Gemini CLI, Antigravity, Cursor, and
+  generic `AGENTS.md` tools.
+- Runtime command files or aliases for Claude Code, Codex, Gemini CLI,
+  Antigravity, generic AGENTS.md tools, and terminal use.
 
 ## Self-Evolution Rule
 

@@ -14,6 +14,7 @@ required_files=(
   ".agentlas/global-commands.json"
   "schemas/global-commands.schema.json"
   "templates/global-commands.json.tpl"
+  "templates/antigravity-workflow.md.tpl"
   ".claude/commands/hephaestus.md"
   "codex/plugins/agentlas-core-engine-meta-agent/commands/hephaestus.md"
   "gemini/extension/commands/hephaestus.toml"
@@ -64,7 +65,7 @@ message = registry.get("postCreationUserMessage", {})
 if message.get("required") is not True:
     raise SystemExit("postCreationUserMessage.required must be true")
 template = message.get("template", "")
-for expected in ("Claude Code", "Codex", "Gemini CLI", "Agentlas terminal"):
+for expected in ("Claude Code", "Codex", "Gemini CLI", "Antigravity", "Agentlas terminal"):
     if expected not in template:
         raise SystemExit(f"post creation template missing {expected}")
 PY
@@ -87,6 +88,20 @@ require_pattern docs/llm-runtime-architecture.md 'Global Command'
 require_pattern docs/global-command-contract.md 'post-creation'
 require_pattern templates/AGENTS.md.tpl 'Global Command'
 require_pattern templates/runtime-matrix.md.tpl 'Global Command'
+
+# Generated packages must also receive an Antigravity workflow surface.
+require_pattern templates/global-commands.json.tpl '"runtime": "antigravity"'
+require_pattern templates/global-commands.json.tpl 'antigravity/workflows'
+require_pattern templates/antigravity-workflow.md.tpl 'COMMAND_SLUG'
+require_pattern templates/antigravity-workflow.md.tpl 'global_workflows'
+require_pattern templates/AGENTS.md.tpl 'Antigravity'
+require_pattern templates/runtime-matrix.md.tpl 'Antigravity'
+require_pattern agents/10-single-agent-builder/agent.md 'Antigravity'
+require_pattern agents/20-multi-agent-team-builder/agent.md 'Antigravity'
+require_pattern agents/30-agentlas-packager/agent.md 'Antigravity'
+require_pattern modes/single-agent-creator.md 'Antigravity'
+require_pattern modes/team-builder.md 'Antigravity'
+require_pattern modes/agentlas-packager.md 'Antigravity'
 require_pattern codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-core-engine-meta-agent/SKILL.md 'global_commands'
 require_pattern claude/plugins/agentlas-core-engine-meta-agent/SKILL.md 'global_commands'
 

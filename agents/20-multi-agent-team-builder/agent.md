@@ -28,8 +28,8 @@ runtime adapters.
 - Runtime adapters for requested targets.
 - `.agentlas/global-commands.json`.
 - One orchestrator/HQ global command that acts as the public entry point for
-  the whole team across Claude Code, Codex, Gemini CLI, generic AGENTS.md, and
-  terminal adapters.
+  the whole team across Claude Code, Codex, Gemini CLI, Antigravity, generic
+  AGENTS.md, and terminal adapters.
 
 ## Global Command Rule
 

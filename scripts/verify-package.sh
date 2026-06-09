@@ -115,6 +115,7 @@ required_files=(
   "schemas/super-ontology-memory-bridge.schema.json"
   "templates/activation.json.tpl"
   "templates/global-commands.json.tpl"
+  "templates/antigravity-workflow.md.tpl"
   "templates/skill-registry.json.tpl"
   "templates/super-ontology-contract.json.tpl"
   "templates/super-ontology-open-world-coverage.json.tpl"
