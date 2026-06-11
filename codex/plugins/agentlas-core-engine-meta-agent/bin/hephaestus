@@ -13,6 +13,8 @@ Usage:
   bin/hephaestus runtime bundle <agent-folder>
   bin/hephaestus runtime read-agent-file <agent-folder> <path>
   bin/hephaestus field-test
+  bin/hephaestus plugins list [--project <dir>]
+  bin/hephaestus plugins resolve "<need>" [--project <dir>] [--no-hub]
   bin/hephaestus meta-agent "<request>"
 
 Examples:
@@ -81,6 +83,9 @@ case "$command" in
     ;;
   field-test)
     PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" python3 -m agentlas_cloud field-test
+    ;;
+  plugins)
+    PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" python3 -m agentlas_cloud plugins "$@"
     ;;
   meta-agent)
     request="${*:-Create or package an Agentlas-compatible agent.}"

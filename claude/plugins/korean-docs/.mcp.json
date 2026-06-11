@@ -1,0 +1,6 @@
+{
+  "kordoc": {
+    "command": "npx",
+    "args": ["-y", "kordoc", "mcp"]
+  }
+}

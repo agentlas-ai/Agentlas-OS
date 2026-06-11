@@ -1,0 +1,98 @@
+{
+  "name": "kordoc",
+  "version": "3.0.1",
+  "description": "Parse Korean documents (HWP3, HWP, HWPX, HWPML, PDF, XLS, XLSX, DOCX) to Markdown + Print Renderer",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "kordoc": "./dist/cli.js",
+    "kordoc-mcp": "./dist/mcp.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "prepublishOnly": "npm run test && npm run build"
+  },
+  "keywords": [
+    "hwp",
+    "hwpx",
+    "hancom",
+    "hangul",
+    "korean",
+    "document",
+    "parser",
+    "pdf",
+    "xls",
+    "xlsx",
+    "biff8",
+    "docx",
+    "markdown",
+    "converter",
+    "mcp",
+    "model-context-protocol",
+    "print",
+    "puppeteer"
+  ],
+  "author": "chrisryugj",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chrisryugj/kordoc.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@xmldom/xmldom": "^0.9.8",
+    "cfb": "1.2.2",
+    "commander": "^13.0.0",
+    "jszip": "^3.10.1",
+    "markdown-it": "^14.1.1",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "pdfjs-dist": ">=4.0.0",
+    "puppeteer-core": ">=22.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pdfjs-dist": {
+      "optional": true
+    },
+    "puppeteer-core": {
+      "optional": true
+    }
+  },
+  "optionalDependencies": {
+    "@huggingface/transformers": "^4.1.0",
+    "@hyzyla/pdfium": "^2.1.0",
+    "onnxruntime-node": "^1.24.0",
+    "sharp": "^0.34.0"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "^4.1.0",
+    "@hyzyla/pdfium": "^2.1.0",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^18.19.130",
+    "onnxruntime-node": "^1.24.0",
+    "pdfjs-dist": "^4.10.38",
+    "puppeteer-core": "^24.42.0",
+    "sharp": "^0.34.0",
+    "tsup": "^8.4.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.0"
+  }
+}

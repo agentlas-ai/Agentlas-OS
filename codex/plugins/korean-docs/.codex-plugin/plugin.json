@@ -1,0 +1,30 @@
+{
+  "id": "korean-docs",
+  "name": "korean-docs",
+  "version": "0.1.0",
+  "description": "Korean document reading and writing for agents — parse HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX to markdown, fill government/office forms, and patch documents back with formatting preserved (powered by the vendored kordoc engine).",
+  "author": {
+    "name": "Agentlas",
+    "email": "appbridge@appbridge.co.kr"
+  },
+  "homepage": "https://github.com/agentlas-ai/Hephaestus",
+  "repository": "https://github.com/chrisryugj/kordoc",
+  "license": "MIT",
+  "keywords": ["korean", "hwp", "hwpx", "hangul", "document", "parser", "form-fill", "kordoc", "공문서"],
+  "skills": "skills",
+  "interface": {
+    "displayName": "Korean Docs",
+    "shortDescription": "Read, compare, fill, and format-preserving-write Korean documents (HWP/HWPX/PDF/XLS/DOCX).",
+    "longDescription": "Gives agents first-class Korean document ability via the kordoc engine: HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX to markdown with 99.9%+ recall and exact table reproduction, government form filling, cross-format diffing (신구대조표), and byte-preserving round-trip patches of HWP/HWPX files.",
+    "developerName": "Agentlas",
+    "category": "Productivity",
+    "capabilities": [
+      "korean_document_parsing",
+      "hwp_hwpx_round_trip_writing",
+      "form_filling",
+      "document_diffing",
+      "ontology_korean_ingestion"
+    ],
+    "defaultPrompt": "이 한글 문서를 읽고 요약해줘 (HWP/HWPX/PDF 모두 가능)."
+  }
+}

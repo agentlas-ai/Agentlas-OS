@@ -18,6 +18,16 @@
         "email": "appbridge@appbridge.co.kr"
       },
       "source": "./plugins/agentlas-core-engine-meta-agent"
+    },
+    {
+      "name": "korean-docs",
+      "description": "Korean document reading and writing for agents — parse HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX to markdown, fill government/office forms, and patch documents back with formatting preserved (powered by the vendored kordoc engine).",
+      "version": "0.1.0",
+      "author": {
+        "name": "Agentlas",
+        "email": "appbridge@appbridge.co.kr"
+      },
+      "source": "./plugins/korean-docs"
     }
   ]
 }

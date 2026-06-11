@@ -10,8 +10,10 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from xml.etree import ElementTree
+
+from . import kordoc_adapter
 
 
 @dataclass
@@ -42,20 +44,63 @@ class SourceParserRegistry:
         if suffix == ".csv":
             return self._parse_csv(path)
         if suffix == ".docx":
-            return self._parse_docx(path)
+            return self._parse_with_kordoc(path, "docx", self._parse_docx)
         if suffix == ".xlsx":
-            return self._parse_xlsx(path)
+            return self._parse_with_kordoc(path, "xlsx", self._parse_xlsx)
+        if suffix == ".xls":
+            return self._parse_with_kordoc(path, "xls", None)
+        if suffix == ".hml":
+            return self._parse_with_kordoc(path, "hwpml", None)
         if suffix == ".pptx":
             return self._parse_pptx(path)
         if suffix == ".pdf":
-            return self._parse_pdf(path)
+            return self._parse_with_kordoc(path, "pdf", self._parse_pdf)
         if suffix == ".hwpx":
-            return self._parse_hwpx(path)
+            return self._parse_with_kordoc(path, "hwpx", self._parse_hwpx)
         if suffix == ".hwp":
-            return self._parse_hwp(path)
+            return self._parse_with_kordoc(path, "hwp", self._parse_hwp)
         if suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".tiff", ".bmp"}:
             return self._parse_image_ocr(path)
         return unsupported(suffix.lstrip(".") or "unknown", "unregistered_parser_adapter")
+
+    def _parse_with_kordoc(
+        self,
+        path: Path,
+        source_type: str,
+        fallback: Callable[[Path], ParsedDocument] | None,
+    ) -> ParsedDocument:
+        """Prefer kordoc for Korean office formats; fall back to the stdlib parser.
+
+        kordoc keeps table structure, Hancom PUA glyphs, and johab text that
+        the XML/pdftotext paths flatten or drop, so it is the primary adapter
+        whenever a runner is resolvable.
+        """
+        try:
+            markdown, runner = kordoc_adapter.parse_to_markdown(path)
+        except kordoc_adapter.KordocUnavailableError as exc:
+            if fallback is not None:
+                return fallback(path)
+            return unsupported(source_type, kordoc_adapter.ADAPTER_NAME, str(exc))
+        except kordoc_adapter.KordocParseError as exc:
+            if fallback is not None:
+                fallback_result = fallback(path)
+                if fallback_result.parser_status == "parsed":
+                    return fallback_result
+            return ParsedDocument(source_type, "parser_error", [], str(exc), kordoc_adapter.ADAPTER_NAME)
+
+        records = [
+            ParsedRecord(
+                text=str(section["text"]),
+                span={
+                    "kind": "kordoc_markdown_section",
+                    "section": section["section"],
+                    "heading": section["heading"],
+                },
+                metadata={"section": section["section"], "heading": section["heading"], "runner": runner},
+            )
+            for section in kordoc_adapter.split_markdown_sections(markdown)
+        ]
+        return ParsedDocument(source_type, "parsed", records, adapter_name=kordoc_adapter.ADAPTER_NAME)
 
     def adapter_statuses(self) -> list[tuple[str, str]]:
         return [
@@ -63,6 +108,7 @@ class SourceParserRegistry:
             ("text_parser", "available"),
             ("json_parser", "available"),
             ("csv_parser", "available"),
+            ("kordoc_adapter", kordoc_adapter.kordoc_status()),
             ("docx_xml_parser", "available"),
             ("xlsx_xml_parser", "available"),
             ("pptx_xml_parser", "available"),

@@ -1,0 +1,17 @@
+Pix2Text — Open-source Python MFD + MFR toolkit
+https://github.com/breezedeus/Pix2Text
+
+MFD weights: https://huggingface.co/breezedeus/pix2text-mfd
+  - Trained on Ultralytics YOLOv8 (AGPL-3.0 architecture)
+  - Weights distributed under MIT on HuggingFace
+MFR weights: https://huggingface.co/breezedeus/pix2text-mfr
+  - DeiT-based encoder + TrOCR-style decoder
+  - MIT License
+
+kordoc uses these models via runtime HuggingFace download (SHA-256 verified).
+No model weights are redistributed. The TypeScript implementations in
+src/pdf/formula/ are original ports referencing Pix2Text's algorithm
+(YOLOv8 letterbox + NMS, DeiT preprocess + autoregressive greedy decode).
+
+Users who depend on MFD detection in a commercial or closed-source product
+should independently review Ultralytics' AGPL-3.0 terms for YOLOv8.

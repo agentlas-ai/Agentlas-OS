@@ -35,6 +35,15 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("field-test", help="Run local fixture field test")
 
+    plugins = sub.add_parser("plugins", help="Plugin discovery (local installs + Agentlas Hub)")
+    plugins_sub = plugins.add_subparsers(dest="plugins_command", required=True)
+    plugins_list = plugins_sub.add_parser("list", help="Scan locally installed plugins")
+    plugins_list.add_argument("--project", default=".")
+    plugins_resolve = plugins_sub.add_parser("resolve", help="Resolve a capability need from local + hub plugins")
+    plugins_resolve.add_argument("query")
+    plugins_resolve.add_argument("--project", default=".")
+    plugins_resolve.add_argument("--no-hub", action="store_true", help="Skip the Agentlas Hub query (local scan only)")
+
     args = parser.parse_args(argv)
     if args.command == "wizard":
         return emit(run_setup_wizard(args.folder, args.name, write=not args.no_write))
@@ -53,6 +62,13 @@ def main(argv: list[str] | None = None) -> int:
         return emit(read_agent_file(args.folder, args.path))
     if args.command == "field-test":
         return emit(run_field_test())
+    if args.command == "plugins":
+        from .plugin_discovery import resolve_plugins, scan_local_plugins
+
+        if args.plugins_command == "list":
+            return emit(scan_local_plugins(args.project))
+        if args.plugins_command == "resolve":
+            return emit(resolve_plugins(args.query, args.project, use_hub=not args.no_hub))
     parser.error("unhandled command")
     return 2
 

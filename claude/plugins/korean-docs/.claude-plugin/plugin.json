@@ -1,0 +1,13 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "korean-docs",
+  "version": "0.1.0",
+  "description": "Korean document reading and writing for agents — parse HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX to markdown, fill government/office forms, and patch documents back with formatting preserved (powered by the vendored kordoc engine).",
+  "author": {
+    "name": "Agentlas",
+    "email": "appbridge@appbridge.co.kr"
+  },
+  "skills": [
+    "./"
+  ]
+}

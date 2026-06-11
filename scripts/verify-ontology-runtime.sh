@@ -9,6 +9,12 @@ export PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}"
 
 python3 -m unittest discover -s "$root/tests" -v
 
+# The corpus gates below assert stdlib-parser statuses (e.g. hwp →
+# unsupported_pending_adapter). Pin kordoc off so a machine-local kordoc
+# install cannot change the deterministic expectations; kordoc behavior is
+# covered by tests/test_kordoc_adapter.py above.
+export KORDOC_DISABLE=1
+
 db="$tmp/ontology.sqlite"
 adapter_corpus="$tmp/adapter-corpus"
 mkdir -p "$adapter_corpus"

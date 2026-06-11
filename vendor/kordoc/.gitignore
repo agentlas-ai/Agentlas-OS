@@ -1,0 +1,34 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+demo/node_modules/
+.tools/
+.vscode/
+
+# Claude Code 개인 설정 — .claude/memory/ 의 .md만 추적 (자동 생성 로그는 제외)
+.claude/*
+!.claude/memory/
+.claude/memory/.changes-*.log
+.claude/memory/*.log
+
+# tsup 임시 빌드 산출물
+tsup.config.bundled_*.mjs
+
+# 개인 메모/임시 파일
+reply-*.md
+
+# 실제 문서 fixture — 개인 문서이므로 저장소에 포함하지 않음
+tests/fixtures/sample.*
+
+# dummy fixture는 커밋 (CI용 — 프로그래밍 생성 문서)
+!tests/fixtures/dummy.*
+
+# 입력
+input/
+
+# 결과물
+output/
+# 벤치 코퍼스 — 실제 공문서, 저장소 미포함
+bench/corpus/
+bench/out/

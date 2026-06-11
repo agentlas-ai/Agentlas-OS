@@ -16,6 +16,19 @@
         "products": ["CODEX"]
       },
       "category": "AI Agents"
+    },
+    {
+      "name": "korean-docs",
+      "source": {
+        "source": "local",
+        "path": "./plugins/korean-docs"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "NONE",
+        "products": ["CODEX"]
+      },
+      "category": "Productivity"
     }
   ]
 }
