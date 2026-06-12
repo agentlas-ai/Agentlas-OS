@@ -38,6 +38,31 @@ def required_approvals(card: dict[str, Any]) -> list[str]:
     return sorted({cap for cap in declared + risk_caps if cap in HIGH_RISK_CAPABILITIES})
 
 
+def missing_grants(capabilities: list[str], target: str, home: Path | str | None = None) -> list[str]:
+    return sorted({cap for cap in capabilities if cap in HIGH_RISK_CAPABILITIES and not has_grant(cap, target, home)})
+
+
+def consume_per_call_grants(capabilities: list[str], target: str, home: Path | str | None = None) -> list[str]:
+    base = Path(home) if home else networking_home()
+    consumed: list[str] = []
+    for capability in sorted(set(capabilities)):
+        grant = _active_grant(capability, target, base)
+        if not grant or grant.get("scope", "per_call") != "per_call":
+            continue
+        append_jsonl(
+            base / "ledgers" / "capability-grants.jsonl",
+            {
+                "ts": utc_now(),
+                "capability": capability,
+                "target": target,
+                "scope": "per_call",
+                "status": "consumed",
+            },
+        )
+        consumed.append(capability)
+    return consumed
+
+
 def record_grant(
     capability: str,
     target: str,
@@ -61,16 +86,16 @@ def record_grant(
     return {"status": "granted", **record}
 
 
-def has_grant(capability: str, target: str, home: Path | str | None = None) -> bool:
+def _active_grant(capability: str, target: str, home: Path | str | None = None) -> dict[str, Any] | None:
     base = Path(home) if home else networking_home()
     grants = read_jsonl(base / "ledgers" / "capability-grants.jsonl")
     now = datetime.now(timezone.utc)
     for grant in reversed(grants):
         if grant.get("capability") != capability or grant.get("target") != target:
             continue
+        if grant.get("status") == "consumed":
+            return None
         scope = grant.get("scope", "per_call")
-        if scope == "per_call":
-            continue
         ttl = grant.get("ttl_seconds")
         if ttl:
             try:
@@ -79,5 +104,9 @@ def has_grant(capability: str, target: str, home: Path | str | None = None) -> b
                 continue
             if (now - granted_at).total_seconds() > float(ttl):
                 continue
-        return True
-    return False
+        return grant
+    return None
+
+
+def has_grant(capability: str, target: str, home: Path | str | None = None) -> bool:
+    return _active_grant(capability, target, home) is not None

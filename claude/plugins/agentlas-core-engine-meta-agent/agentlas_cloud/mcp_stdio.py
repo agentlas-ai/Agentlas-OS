@@ -18,7 +18,7 @@ import sys
 from typing import Any
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "0.4.3"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "0.4.4"}
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -38,6 +38,10 @@ TOOLS: list[dict[str, Any]] = [
                     "type": "boolean",
                     "description": "Set true only after the user explicitly approved a Hub search (redacted keywords only).",
                 },
+                "hub_only": {
+                    "type": "boolean",
+                    "description": "Skip local routing cards and search Agentlas Hub only.",
+                },
             },
             "required": ["request"],
         },
@@ -46,6 +50,40 @@ TOOLS: list[dict[str, Any]] = [
         "name": "hephaestus_network_status",
         "description": "Report Hephaestus Network state: card counts, benchmark state, auto-routing gate.",
         "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "hephaestus_hub_invoke",
+        "description": (
+            "Invoke an Agentlas Hub public agent through the Hephaestus Network surface. "
+            "This skips local routing, calls Hub MCP marketplace.search_agents and "
+            "agentlas.get_runtime_bundle, resolves Hub plugins, touches Agentlas memory "
+            "when memory_root is provided, and writes an execution receipt. Agentlas "
+            "public agents are BYOM: the Hub returns a runtime bundle; it does not run an LLM."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "request": {"type": "string", "description": "Prompt/task for the Hub agent."},
+                "slug": {"type": "string", "description": "Optional exact Hub agent slug. If omitted, first callable Hub result is used."},
+                "project_dir": {"type": "string", "description": "Project directory for context (default: cwd)."},
+                "memory_root": {"type": "string", "description": "Optional Agentlas memory root to bootstrap/update missing-only."},
+                "approve_hub": {
+                    "type": "boolean",
+                    "description": "Set true only after the user explicitly approved Hub use.",
+                },
+                "version": {"type": "string", "description": "Hub package hash or latest."},
+                "reject_paid_slug": {
+                    "type": "boolean",
+                    "description": "Block if the selected Hub slug also exists in local Paid cards (default true).",
+                },
+                "local_inventory": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Installed plugin slugs/names to pass to agentlas.resolve_plugins. Use [] to avoid local plugin matches.",
+                },
+            },
+            "required": ["request"],
+        },
     },
 ]
 
@@ -62,6 +100,35 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             runtime="mcp",
             use_hub=True,
             hub_approved=bool(arguments.get("approve_hub", False)),
+            hub_only=bool(arguments.get("hub_only", False)),
+        )
+    if name == "hephaestus_hub_invoke":
+        from .networking.hub_invocation import invoke_hub_agent
+
+        decision = route_request(
+            arguments["request"],
+            project_dir=arguments.get("project_dir", "."),
+            runtime="mcp",
+            use_hub=True,
+            hub_approved=bool(arguments.get("approve_hub", False)),
+            hub_only=True,
+        )
+        if decision.get("action") != "hub_candidates":
+            return {
+                "action": "hub_invoke",
+                "status": "routing_not_ready",
+                "routing_decision": decision,
+                "detail": "Hub invocation requires a Hub-approved hub_only route that returns hub_candidates.",
+            }
+        return invoke_hub_agent(
+            arguments["request"],
+            slug=arguments.get("slug"),
+            hub_decision=decision,
+            project_dir=arguments.get("project_dir", "."),
+            memory_root=arguments.get("memory_root"),
+            version=str(arguments.get("version") or "latest"),
+            reject_paid_slug=arguments.get("reject_paid_slug", True) is not False,
+            local_inventory=arguments.get("local_inventory") or [],
         )
     if name == "hephaestus_network_status":
         return network_status()

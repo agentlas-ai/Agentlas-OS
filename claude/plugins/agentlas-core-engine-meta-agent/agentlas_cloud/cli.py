@@ -81,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     route.add_argument("--runtime", default="terminal")
     route.add_argument("--no-hub", action="store_true")
     route.add_argument("--approve-hub", action="store_true", help="Approve this Hub search (redacted keywords only)")
+    route.add_argument("--hub-only", action="store_true", help="Skip local cards and search Agentlas Hub only")
 
     mcp = sub.add_parser("mcp", help="MCP integration")
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
@@ -197,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
                 runtime=args.runtime,
                 use_hub=not args.no_hub,
                 hub_approved=args.approve_hub,
+                hub_only=args.hub_only,
             )
         )
     parser.error("unhandled command")

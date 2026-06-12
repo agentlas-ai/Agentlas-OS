@@ -1,6 +1,6 @@
 # Hephaestus Network 2.0 — Pipeline Routing 설계 (v1 draft, 2026-06-12)
 
-상태: **구현 완료 (v0.4.3).** 브랜딩 주의: 별도 버전(2.1)이 아니라 **Network 2.0의 기능**으로 출하한다.
+상태: **구현 완료 (v0.4.4).** 브랜딩 주의: 별도 버전(2.1)이 아니라 **Network 2.0의 기능**으로 출하한다.
 구현: `agentlas_cloud/networking/pipeline.py` + `router.py` 통합, 시드 카드 5종 산출물 계약,
 `benchmarks/routing/pipeline.jsonl` 20케이스 (plan accuracy 100%, 과분해 0), `tests/test_network_pipeline.py`.
 v1 탐지 범위는 plan→build→verify 체인(마케팅 체인 등은 산출물 계약만 선반영, 탐지기는 후속).

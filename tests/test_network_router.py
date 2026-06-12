@@ -1,6 +1,7 @@
 import json
 
-from agentlas_cloud.networking import init_networking, route_request, save_card
+from agentlas_cloud.networking import init_networking, load_global_cards, route_request, save_card
+from agentlas_cloud.networking.approvals import record_grant
 from agentlas_cloud.networking.bench import run_bench
 from test_network_cards import make_ready_card
 
@@ -127,6 +128,28 @@ def test_high_risk_ambiguous_request_clarifies(tmp_path):
         assert "payment" in result["approval_request"]["capabilities"]
 
 
+def test_granted_card_does_not_repeat_approval_request(tmp_path):
+    home = setup_home(tmp_path)
+    cards, _ = load_global_cards(home)
+    insta = next(card for card in cards if card["id"] == "local/insta-team")
+    insta["approval_requirements"] = ["file_write"]
+    insta["risk_profile"] = {"tier": "medium", "capabilities_at_risk": ["file_write"]}
+    save_card(home, insta)
+
+    first = route_request("인스타그램 마케팅 콘텐츠 만들어줘", home=home, use_hub=False)
+    assert first["approval_request"]["capabilities"] == ["file_write"]
+
+    grant = record_grant("file_write", "local/insta-team", home=home)
+    assert grant["status"] == "granted"
+
+    second = route_request("인스타그램 마케팅 콘텐츠 만들어줘", home=home, use_hub=False)
+    assert second["action"] == "route"
+    assert second["approval_request"] is None
+
+    third = route_request("인스타그램 마케팅 콘텐츠 만들어줘", home=home, use_hub=False)
+    assert third["approval_request"]["capabilities"] == ["file_write"]
+
+
 def test_explicit_command_routes_directly(tmp_path):
     home = setup_home(tmp_path)
     result = route_request("/legal-review check this NDA", home=home, use_hub=False)
@@ -147,6 +170,44 @@ def test_hub_fallback_requires_approval(tmp_path):
     assert result["action"] in ("hub_fallback", "propose_new")
     if result["action"] == "hub_fallback":
         assert result["approval_request"]["capabilities"] == ["cloud_call"]
+
+
+def test_hub_only_skips_strong_local_match(tmp_path, monkeypatch):
+    home = setup_home(tmp_path)
+
+    def fake_search_hub(query_tokens, home=None, approved=False):
+        assert approved is True
+        return {
+            "status": "ok",
+            "query": " ".join(query_tokens),
+            "results": [{"slug": "hub-instagram-agent", "name": "Hub Instagram Agent", "kind": "cloud-callable"}],
+        }
+
+    monkeypatch.setattr("agentlas_cloud.networking.router.search_hub", fake_search_hub)
+    result = route_request("인스타그램 마케팅 콘텐츠 만들어줘", home=home, use_hub=True, hub_approved=True, hub_only=True)
+    assert result["action"] == "hub_candidates"
+    assert result["selected"] is None
+    assert result["candidates"] == []
+    assert result["suggestions"] == []
+    assert result["approval_request"] is None
+    assert result["hub"]["results"][0]["slug"] == "hub-instagram-agent"
+    assert result["reasons"] == ["hub_only_results_found"]
+
+
+def test_secretary_does_not_trigger_secret_privacy_gate(tmp_path, monkeypatch):
+    home = setup_home(tmp_path)
+
+    def fake_search_hub(query_tokens, home=None, approved=False):
+        return {
+            "status": "ok",
+            "query": " ".join(query_tokens),
+            "results": [{"slug": "marketer-schedule-secretary", "name": "Schedule Secretary", "kind": "install-only"}],
+        }
+
+    monkeypatch.setattr("agentlas_cloud.networking.router.search_hub", fake_search_hub)
+    result = route_request("marketer-schedule-secretary content calendar", home=home, use_hub=True, hub_approved=True, hub_only=True)
+    assert result["action"] == "hub_candidates"
+    assert result["hub"]["results"][0]["slug"] == "marketer-schedule-secretary"
 
 
 def test_project_override_wins(tmp_path):

@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo="${HEPHAESTUS_REPO:-https://github.com/agentlas-ai/Hephaestus}"
 codex_repo="${HEPHAESTUS_CODEX_REPO:-agentlas-ai/Hephaestus}"
-version="${HEPHAESTUS_VERSION:-v0.4.3}"
+version="${HEPHAESTUS_VERSION:-v0.4.4}"
 keep="${HEPHAESTUS_KEEP_SMOKE_DIR:-0}"
 
 fail() {
@@ -37,7 +37,7 @@ echo "version: $version"
 echo "workdir: $tmp"
 echo
 
-echo "1/5 macOS/git preflight"
+echo "1/6 macOS/git preflight"
 git --version
 if [[ "$(uname -s)" == "Darwin" ]]; then
   xcode-select -p >/dev/null 2>&1 || fail "macOS Command Line Tools are not installed. Run: xcode-select --install"
@@ -47,7 +47,7 @@ echo
 
 echo "2/6 One-touch all-runtime install script"
 HOME="$shell_home" CODEX_HOME="$codex_home" HEPHAESTUS_SOURCE_DIR="$PWD" HEPHAESTUS_REF="$version" scripts/install-all-runtimes.sh | tee "$tmp/install-all-runtimes.txt"
-rg -q 'Installed/updated runtimes: 3' "$tmp/install-all-runtimes.txt" || fail "one-touch installer did not update all three runtimes"
+rg -q 'Installed/updated runtimes: 5' "$tmp/install-all-runtimes.txt" || fail "one-touch installer did not update the expected five runtimes"
 echo "PASS one-touch installer"
 echo
 

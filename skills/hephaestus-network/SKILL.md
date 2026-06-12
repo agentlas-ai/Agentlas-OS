@@ -45,7 +45,11 @@ If shell execution is unavailable in this harness but MCP is, call the
 - `action: "route"` — report the selected card (`selected.id`,
   `entrypoints.canonical_command`). If `approval_request` is present, get the
   user's explicit approval for the listed capabilities FIRST, then invoke the
-  selected agent's canonical command with the original request.
+  selected agent's canonical command with the original request. If
+  `entrypoints.canonical_command` is null but `entrypoints.agent` and
+  `selected.source` are present, use `selected.source/entrypoints.agent` as the
+  AGENTS.md runtime entrypoint: read it, follow its routing rules, and report
+  that AGENTS fallback path.
 - `action: "clarify"` — ask `clarify_question` with the candidate list and
   re-route with the answer.
 - `action: "pipeline"` — a multi-team plan. Execute `stages` in order: per-stage
@@ -56,6 +60,16 @@ If shell execution is unavailable in this harness but MCP is, call the
 - `action: "hub_fallback"` or `"hub_candidates"` — the Hub needs approval. Show
   `approval_request.payload_preview` (redacted keywords only — the raw prompt is
   never sent). Only after explicit approval re-run with `--approve-hub`.
+  If the user explicitly asks to avoid all local agents/cards, pass
+  `hub_only: true` to the MCP tool or `--hub-only` to the CLI so local
+  paid/free/plugin cards are skipped entirely.
+  If the user asks to actually invoke an Agentlas Hub agent through this MCP
+  surface, use `hephaestus_hub_invoke` with `approve_hub: true`,
+  `local_inventory: []`, and `reject_paid_slug: true`. This tool still skips
+  local routing; it calls Hub MCP (`marketplace.search_agents`,
+  `agentlas.get_runtime_bundle`, `agentlas.resolve_plugins`) and writes a
+  Hephaestus execution receipt. Hub public agents are BYOM runtime bundles —
+  the Hub returns instructions, not a server-side LLM completion.
 - `action: "propose_new"` — offer to build a new agent/team via the Hephaestus
   meta-agent (`/hephaestus`).
 - `action: "refuse"` — explain `reasons` (loop guard or privacy block). Do not

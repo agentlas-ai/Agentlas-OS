@@ -26,8 +26,13 @@ def test_initialize_and_tools_list(monkeypatch, tmp_path):
     init = responses[0]["result"]
     assert init["protocolVersion"] == "2025-06-18"
     assert init["serverInfo"]["name"] == "hephaestus-network"
-    tool_names = {tool["name"] for tool in responses[1]["result"]["tools"]}
-    assert tool_names == {"hephaestus_route", "hephaestus_network_status"}
+    tools = responses[1]["result"]["tools"]
+    tool_names = {tool["name"] for tool in tools}
+    assert tool_names == {"hephaestus_route", "hephaestus_hub_invoke", "hephaestus_network_status"}
+    route_tool = next(tool for tool in tools if tool["name"] == "hephaestus_route")
+    assert "hub_only" in route_tool["inputSchema"]["properties"]
+    invoke_tool = next(tool for tool in tools if tool["name"] == "hephaestus_hub_invoke")
+    assert "memory_root" in invoke_tool["inputSchema"]["properties"]
 
 
 def test_tools_call_status_and_route(monkeypatch, tmp_path):
