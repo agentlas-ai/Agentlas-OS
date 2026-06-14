@@ -12,7 +12,7 @@ git --version
 One-command install or update for Claude, Codex, and Gemini:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.4.5/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.4.6/scripts/install-all-runtimes.sh | bash
 ```
 
 ```bash
@@ -30,7 +30,7 @@ Then open or restart Claude Code in the project and type:
 If an older install still points at `agentlas-meta-agent`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.4.5/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.4.6/scripts/install-all-runtimes.sh | bash
 ```
 
 That command creates and opens:

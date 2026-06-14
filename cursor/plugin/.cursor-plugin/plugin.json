@@ -1,5 +1,5 @@
 {
   "name": "hephaestus",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Hephaestus meta-agent team for creating Agentlas agents and teams, packaging existing agents, and routing requests through the Hephaestus Network local-first router."
 }

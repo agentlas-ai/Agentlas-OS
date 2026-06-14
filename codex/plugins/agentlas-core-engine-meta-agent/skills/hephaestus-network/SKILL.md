@@ -1,12 +1,30 @@
 ---
 name: hephaestus-network
-description: "Use when the user types /hephaestus-network, mentions @Hephaestus, or asks to find/route to the right local agent, team, or plugin for a task. Routes natural-language requests through the Hephaestus Network local-first router with Hub fallback."
+description: "Use when the user types /hephaestus-network, mentions @Hephaestus, or asks to find/invoke the right Agentlas Hub agent, team, or plugin for a task. For public demos, distribution docs, README GIFs, and user-facing MCP tests, Hephaestus Network means Hub-first/Hub-only invocation, not Mason's local Paid/Free folders."
 ---
 
 # Hephaestus Network Routing
 
-Route the request through the deterministic local-first router. Never guess an
-agent yourself when this skill is active — the router decides.
+Route the request through the Hephaestus Network. Never guess an agent yourself
+when this skill is active — the router or Hub decides.
+
+## 0. Hub-first rule for demos and user distribution
+
+For public demos, README GIFs, packaged-agent distribution, Threads/Instagram
+share kits, or any request where the end user will not have Mason's local
+`Paid/`, `Free/`, or plugin inventory, do **not** route to local cards.
+Use Agentlas Hub invocation only:
+
+- Prefer the MCP tool `hephaestus_hub_invoke` with
+  `local_inventory: []` and `reject_paid_slug: true`.
+- If using the CLI, pass `--hub-only`.
+- Do not report or rely on paths such as
+  `/Users/mason/Documents/Hephaestus_agent_forge/Paid/...`.
+- A bundled local agent folder is applied separately by opening/reading its
+  `AGENTS.md`; it is not the same thing as a Hephaestus Network Hub call.
+
+Only use local-first routing when the user explicitly asks to test Mason's
+installed local inventory or a named local folder.
 
 ## 1. Resolve the runner
 
@@ -40,15 +58,24 @@ If shell execution is unavailable in this harness but MCP is, call the
 "$RUNNER" route "<the user's request>" --runtime "<this runtime's name>"
 ```
 
+For demo/distribution/Hub-only requests:
+
+```bash
+"$RUNNER" route "<the user's request>" --runtime "<this runtime's name>" --hub-only
+```
+
 ## 3. Act on the JSON decision
 
-- `action: "route"` — report the selected card (`selected.id`,
+- `action: "route"` — if the current task is explicitly local-inventory
+  testing, report the selected card (`selected.id`,
   `entrypoints.canonical_command`), then invoke the selected agent's canonical
   command with the original request. If
   `entrypoints.canonical_command` is null but `entrypoints.agent` and
   `selected.source` are present, use `selected.source/entrypoints.agent` as the
   AGENTS.md runtime entrypoint: read it, follow its routing rules, and report
-  that AGENTS fallback path.
+  that AGENTS fallback path. For public demos or distribution docs, treat a
+  local `route` result as the wrong surface; rerun Hub-only or use
+  `hephaestus_hub_invoke`.
 - `action: "clarify"` — ask `clarify_question` with the candidate list and
   re-route with the answer.
 - `action: "pipeline"` — a multi-team plan. Execute `stages` in order: run the
@@ -67,6 +94,13 @@ If shell execution is unavailable in this harness but MCP is, call the
   `agentlas.get_runtime_bundle`, `agentlas.resolve_plugins`) and writes a
   Hephaestus execution receipt. Hub public agents are BYOM runtime bundles —
   the Hub returns instructions, not a server-side LLM completion.
+  Before doing the user's substantive task, always send a short fixed
+  user-visible receipt line that makes the Hub invocation obvious:
+  `Hub 호출: <agent name> (<slug>) · local_routing=skipped · receipt=<routing_receipt_id> · execution=<execution_id>`.
+  If only candidates were returned and no Hub agent was invoked yet, say:
+  `Hub 후보 확인: <top candidate name> (<slug>) · 아직 invoke 전 · receipt=<receipt_id>`,
+  then invoke the chosen callable Hub agent before proceeding whenever the task
+  needs the agent's runtime bundle.
 - `action: "propose_new"` — offer to build a new agent/team via the Hephaestus
   meta-agent (`/hephaestus`).
 - `action: "refuse"` — explain `reasons` (for example, loop guard). Do not
@@ -78,4 +112,10 @@ If shell execution is unavailable in this harness but MCP is, call the
   execute payments, deletes, publishes, file writes, or external submissions.
 - For actual tool execution, follow the host runtime's safety and permission
   model (Claude Code, Codex, Cursor, etc.).
+- When this skill invokes Hub, surface the called Hub agent name/slug and
+  receipt before the main answer or work summary so the user can tell the
+  Network actually ran.
+- Hephaestus Network user-facing demos must summarize Hub-called agents and
+  reasons. Do not summarize local `Paid/` candidates as if they were Hub MCP
+  calls.
 - Report the routing `receipt_id` in your final message.

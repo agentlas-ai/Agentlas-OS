@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "hephaestus",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Hephaestus meta-agent team for creating Agentlas agents and teams, packaging existing agents, and opening the local ontology GUI.",
   "author": {
     "name": "Agentlas",

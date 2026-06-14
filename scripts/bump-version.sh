@@ -47,8 +47,8 @@ web_file="${AGENTLAS_WEB_INSTALL_GUIDE:-}"
 
 # Tag form (vX.Y.Z) in shell scripts + docs; quoted plain form ("X.Y.Z") in JSON manifests.
 targets="$(grep -rl -e "v${old_re}" -e "\"${old_re}\"" \
-  --include='*.sh' --include='*.md' --include='*.json' --include='*.toml' --include='*.command' --include='*.svg' \
-  . 2>/dev/null | grep -v node_modules | grep -v '^\./\.git/' | grep -v 'scripts/bump-version\.sh' || true)"
+  --include='*.sh' --include='*.py' --include='*.md' --include='*.json' --include='*.toml' --include='*.command' --include='*.svg' \
+  . 2>/dev/null | grep -v node_modules | grep -v '^\./vendor/' | grep -v '^\./\.git/' | grep -v 'scripts/bump-version\.sh' || true)"
 if [[ -f "$web_file" ]] && grep -q "v${old_re}" "$web_file"; then
   targets="$targets
 $web_file"
@@ -79,8 +79,8 @@ else
   # Straggler check: any OTHER version pin that this run did not move is a bug
   # waiting to bite (e.g. a README edited by hand to a one-off version).
   stragglers="$(grep -rn "v0\.[0-9]\{1,\}\.[0-9]\{1,\}" \
-    --include='*.sh' --include='*.md' --include='*.json' --include='*.toml' --include='*.command' --include='*.svg' \
-    . 2>/dev/null | grep -v node_modules | grep -v '^\./\.git/' | grep -v 'scripts/bump-version\.sh' \
+    --include='*.sh' --include='*.py' --include='*.md' --include='*.json' --include='*.toml' --include='*.command' --include='*.svg' \
+    . 2>/dev/null | grep -v node_modules | grep -v '^\./vendor/' | grep -v '^\./\.git/' | grep -v 'scripts/bump-version\.sh' \
     | grep -v "$new" || true)"
   if [[ -n "$stragglers" ]]; then
     echo ""
