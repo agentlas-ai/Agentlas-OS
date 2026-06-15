@@ -1,7 +1,7 @@
 # Hephaestus Network Hub Routing Optimization
 
-Status: design + first hotfix plan  
-Date: 2026-06-15  
+Status: hotfix shipped + million-scale architecture plan
+Date: 2026-06-15
 Owners: Hephaestus Network, Agentlas Hub
 
 ## Goal
@@ -58,6 +58,27 @@ Server-side matching should also default to `limit=10` and compact results.
 Clients can request `verbose=true` only when installing or inspecting details.
 
 ## Target Server Architecture
+
+### Scale Boundary
+
+The current in-process scorer is acceptable only while the public catalog is
+small enough to load into app memory. It must not become the long-term search
+architecture.
+
+Hard boundary:
+
+- up to 10k agents: in-process lexical scoring is acceptable for product
+  iteration and benchmark collection;
+- 10k-100k agents: backfilled routing indexes are required, and the server must
+  stop embedding queries for every request;
+- 100k-1M agents: Hub search must use an indexed candidate-generation layer
+  (BM25/full-text plus ANN vector search), never a full profile scan;
+- 1M+ agents: route by partition first, then retrieve top candidates inside
+  each relevant partition. The model must still receive only 5-10 compact
+  candidates.
+
+The invariant is simple: search latency grows with `topK` and number of touched
+partitions, not with total catalog size.
 
 ### 0. General Tool Search Architecture
 
@@ -150,6 +171,62 @@ It supports vector search beside operational metadata, hybrid search, and
 metadata filters. A Postgres/pgvector migration is only worth it if the Hub
 store moves to Postgres.
 
+Do not store vectors only inside the public profile document forever. At
+million-agent scale, create a dedicated `routing_documents` collection so search
+can be indexed, compacted, backfilled, and re-sharded without rewriting the
+public profile surface.
+
+Document shape:
+
+```json
+{
+  "agentId": "agent_...",
+  "slug": "shop-product-writer",
+  "version": "2026-06-15T00:00:00Z",
+  "visibility": "marketplace",
+  "kind": "cloud-callable",
+  "locale": ["ko", "en"],
+  "partitionKeys": ["commerce", "copywriting"],
+  "routing": {
+    "textHash": "sha256:...",
+    "tokens": ["shop", "product", "writer"],
+    "sparseText": "name capabilities triggers ...",
+    "embeddingModel": "text-embedding-3-small",
+    "embeddingDims": 512,
+    "embedding": [0.01, -0.02]
+  },
+  "trust": {
+    "evalPassRate": 1,
+    "verifiedInvocations": 12,
+    "lastRoutingSuccessAt": "2026-06-15T00:00:00Z",
+    "recentFailureRate": 0,
+    "rating": 4.7,
+    "ratingCount": 18
+  },
+  "updatedAt": "2026-06-15T00:00:00Z"
+}
+```
+
+Write path:
+
+1. publish/update writes the public profile and manifest;
+2. a routing-index job builds canonical routing text and tokens;
+3. if the text hash changed, it computes one embedding;
+4. it upserts `routing_documents` by `(agentId, version)`;
+5. it marks the active version only after the index write succeeds.
+
+Read path:
+
+1. normalize and redact the query;
+2. classify coarse partitions from query tokens and locale;
+3. run lexical top 200 and vector top 200 inside those partitions;
+4. fuse with RRF;
+5. fetch only the top 50 compact docs for rerank;
+6. apply trust, anti-trigger, runtime availability, dedup, and clarify gates;
+7. return top 5-10 compact results.
+
+No API route should load all public profiles once this collection is active.
+
 Mongo index:
 
 ```js
@@ -192,6 +269,10 @@ score =
 
 `user_fit_local_hint` is privacy-preserving: the client sends local inventory
 categories or hashed capability hints, not raw local file paths or memory.
+
+For the default privacy mode, even coarse local hints should be optional. The
+shipped local runtime can already personalize by reranking Hub top-K locally
+without sending local inventory terms to the server.
 
 ### 4. Trust Signals
 
@@ -264,7 +345,7 @@ Keep personalization local-first:
 
 - client computes local inventory capability tokens;
 - Hub receives only coarse hints, for example
-  `["finance-analysis", "korean-docs", "app-store-ops"]`;
+  `["finance-analysis", "document-processing", "app-store-ops"]`;
 - client reranks Hub top 10 using local complementarity:
   "things that complete the user's current stack";
 - no local agent names, paths, memory, or private card text are sent by default.
