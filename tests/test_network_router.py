@@ -2,6 +2,7 @@ import json
 
 from agentlas_cloud.networking import init_networking, load_global_cards, route_request, save_card
 from agentlas_cloud.networking.bench import run_bench
+from agentlas_cloud.networking.tokenize import tokenize
 from test_network_cards import make_ready_card
 
 
@@ -38,6 +39,13 @@ def test_routes_to_best_card(tmp_path):
     ledger = (home / "ledgers" / "routing-decisions.jsonl").read_text(encoding="utf-8")
     assert "insta-team" in ledger
     assert "만들어줘" not in ledger  # raw prompt is never persisted verbatim
+
+
+def test_korean_attached_fillers_are_stripped():
+    tokens = tokenize("agentlas 새기능 추천좀")
+    assert "추천" in tokens
+    assert "추천좀" not in tokens
+    assert "천좀" not in tokens
 
 
 def test_english_query_routes_too(tmp_path):

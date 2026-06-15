@@ -29,6 +29,10 @@ KO_FILLERS = {
 KO_JOSA = (
     "에서", "으로", "이랑", "한테", "처럼", "보다", "까지", "부터", "에게",
     "을", "를", "이", "가", "은", "는", "에", "로", "와", "과", "도", "만", "의", "랑",
+    # Sentence-ending politeness/filler particles commonly attach to the real
+    # query word ("추천좀", "알려줘요"). Treat them like josa so they don't leak
+    # into route scoring or Hub redacted queries.
+    "좀", "요", "죠", "네", "까",
 )
 
 KO_VERB_TAILS = ("해줘", "해주세요", "해줄래", "하기", "해라", "하고", "해서", "했어", "할래")

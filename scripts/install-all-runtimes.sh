@@ -35,6 +35,30 @@ have() {
   command -v "$1" >/dev/null 2>&1
 }
 
+python_ok() {
+  "$@" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1
+}
+
+resolve_python_cmd() {
+  if [[ -n "${HEPHAESTUS_PYTHON:-}" ]] && python_ok "$HEPHAESTUS_PYTHON"; then
+    printf '%s\n' "$HEPHAESTUS_PYTHON"
+    return 0
+  fi
+  if have python3 && python_ok python3; then
+    printf '%s\n' python3
+    return 0
+  fi
+  if have python && python_ok python; then
+    printf '%s\n' python
+    return 0
+  fi
+  if have py && py -3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
+    printf '%s\n' 'py -3'
+    return 0
+  fi
+  return 1
+}
+
 run() {
   log "+ $*"
   "$@"
@@ -103,8 +127,32 @@ install_runtime_home() {
   rm -rf "$home_dir"
   mkdir -p "$home_dir"
   cp -R "$source_dir/bin" "$source_dir/agentlas_cloud" "$source_dir/ontology" "$home_dir/" || return 1
+  printf '%s\n' "$version" > "$home_dir/RELEASE"
+  write_python3_shim "$home_dir/bin" || true
   ln -sfn "$home_dir" "$HOME/.agentlas/runtime/current"
   log "Installed runner: $HOME/.agentlas/runtime/current/bin/hephaestus"
+}
+
+write_python3_shim() {
+  local bin_dir="$1"
+  local py
+  py="$(resolve_python_cmd || true)"
+  [[ -n "$py" ]] || return 0
+  mkdir -p "$bin_dir"
+  if [[ "$py" == "py -3" ]]; then
+    cat > "$bin_dir/python3" <<'EOF'
+#!/usr/bin/env bash
+exec py -3 "$@"
+EOF
+    printf '@py -3 %%*\r\n' > "$bin_dir/python3.cmd"
+  else
+    cat > "$bin_dir/python3" <<EOF
+#!/usr/bin/env bash
+exec "$py" "\$@"
+EOF
+    printf '@"%s" %%*\r\n' "$py" > "$bin_dir/python3.cmd"
+  fi
+  chmod +x "$bin_dir/python3"
 }
 
 # AgentSkills-spec universal skill: ~/.agents/skills is read natively by
@@ -445,11 +493,8 @@ install_hermes() {
 # folder).
 bootstrap_networking() {
   local py=""
-  if have python3; then
-    py="python3"
-  elif have python; then
-    py="python"
-  else
+  py="$(resolve_python_cmd || true)"
+  if [[ -z "$py" ]]; then
     warn "python3 not found; skipped Hephaestus Network init. Install Python 3.9+ and run: hephaestus network init"
     return 0
   fi
@@ -459,13 +504,13 @@ bootstrap_networking() {
   fi
   log "== Hephaestus Network (global routing structure) =="
   local init_output
-  if ! init_output="$(PYTHONPATH="$source_dir${PYTHONPATH:+:$PYTHONPATH}" "$py" -m agentlas_cloud network init 2>&1)"; then
+  if ! init_output="$(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$source_dir${PYTHONPATH:+:$PYTHONPATH}" $py -m agentlas_cloud network init 2>&1)"; then
     warn "Hephaestus Network init failed. Error was:"
     printf '%s\n' "$init_output" | tail -5 >&2
     warn "Retry manually: PYTHONPATH=<hephaestus-source> $py -m agentlas_cloud network init"
     return 1
   fi
-  PYTHONPATH="$source_dir${PYTHONPATH:+:$PYTHONPATH}" "$py" -m agentlas_cloud network reindex >/dev/null 2>&1 || true
+  PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$source_dir${PYTHONPATH:+:$PYTHONPATH}" $py -m agentlas_cloud network reindex >/dev/null 2>&1 || true
   log "Initialized ~/.agentlas/networking (cards, policies, ledgers, local memory map)."
 }
 

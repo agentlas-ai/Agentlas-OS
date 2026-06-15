@@ -32,6 +32,7 @@ COMMON_TOKEN_DF = 0.15
 
 _LINT_CACHE: dict[str, str] = {}
 _INDEX_CACHE: dict[str, dict[str, Any]] = {}
+_COMMON_CACHE: dict[str, set[str]] = {}
 
 
 def _card_key(card: dict[str, Any]) -> str:
@@ -53,6 +54,9 @@ def _cached_index(card: dict[str, Any]) -> dict[str, Any]:
 
 
 def _common_tokens(cards: list[dict[str, Any]]) -> set[str]:
+    signature = "|".join(sorted(_card_key(card) for card in cards))
+    if signature in _COMMON_CACHE:
+        return _COMMON_CACHE[signature]
     df: dict[str, int] = {}
     for card in cards:
         index = _cached_index(card)
@@ -62,7 +66,9 @@ def _common_tokens(cards: list[dict[str, Any]]) -> set[str]:
         for token in seen:
             df[token] = df.get(token, 0) + 1
     threshold = max(3, int(COMMON_TOKEN_DF * len(cards)))
-    return {token for token, count in df.items() if count >= threshold}
+    common = {token for token, count in df.items() if count >= threshold}
+    _COMMON_CACHE[signature] = common
+    return common
 
 
 def _card_index(card: dict[str, Any]) -> dict[str, Any]:

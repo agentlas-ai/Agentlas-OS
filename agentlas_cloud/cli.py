@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import platform
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +14,7 @@ from .runtime import AgentlasMockStore, compile_runtime_bundle, read_agent_file,
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_utf8_stdio()
     parser = argparse.ArgumentParser(prog="agentlas-cloud", description="Agentlas Cloud v1 local package tools")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -34,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     read.add_argument("path")
 
     sub.add_parser("field-test", help="Run local fixture field test")
+    sub.add_parser("doctor", help="Diagnose and self-heal local Hephaestus runtime issues")
 
     auth = sub.add_parser("auth", help="Agentlas account sign-in for local runtimes")
     auth_sub = auth.add_subparsers(dest="auth_command", required=True)
@@ -114,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
         return emit(read_agent_file(args.folder, args.path))
     if args.command == "field-test":
         return emit(run_field_test())
+    if args.command == "doctor":
+        return emit(run_doctor())
     if args.command == "auth":
         from .auth import AgentlasAuthError, auth_status, ensure_access_token, login, logout, normalize_base_url, token_path
 
@@ -244,8 +252,95 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def emit(payload: Any) -> int:
+    configure_utf8_stdio()
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
+
+
+def configure_utf8_stdio() -> None:
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+
+
+def run_doctor() -> dict[str, Any]:
+    root = Path(__file__).resolve().parent.parent
+    bin_dir = root / "bin"
+    release = (root / "RELEASE").read_text(encoding="utf-8").strip() if (root / "RELEASE").exists() else None
+    checks: dict[str, Any] = {
+        "platform": platform.platform(),
+        "runtime_root": str(root),
+        "release": release,
+        "current_python": {
+            "executable": sys.executable,
+            "version": platform.python_version(),
+            "stdout_encoding": getattr(sys.stdout, "encoding", None),
+            "PYTHONUTF8": os.environ.get("PYTHONUTF8"),
+            "PYTHONIOENCODING": os.environ.get("PYTHONIOENCODING"),
+        },
+        "external_python3": _probe_python_command("python3"),
+        "python3_shim": str(bin_dir / "python3"),
+        "actions": [],
+    }
+    external = checks["external_python3"]
+    needs_shim = not external.get("ok") or "WindowsApps" in str(external.get("path") or "")
+    if needs_shim:
+        try:
+            _write_python_shims(bin_dir, sys.executable)
+            checks["actions"].append("wrote bin/python3 and bin/python3.cmd shim to current Python")
+            checks["external_python3_after_shim"] = _probe_python_command(str(bin_dir / "python3"))
+        except OSError as exc:
+            checks["actions"].append(f"python3 shim failed: {exc}")
+    if release is None:
+        checks["actions"].append("missing RELEASE marker; reinstall with scripts/install-all-runtimes.sh")
+    checks["status"] = "warn" if checks["actions"] else "ok"
+    return checks
+
+
+def _probe_python_command(command: str) -> dict[str, Any]:
+    path = shutil.which(command) if os.sep not in command else command
+    result: dict[str, Any] = {"command": command, "path": path, "ok": False}
+    if not path:
+        result["error"] = "not found"
+        return result
+    try:
+        completed = subprocess.run(
+            [path, "-c", "import sys,json; print(json.dumps({'version': sys.version.split()[0], 'executable': sys.executable}))"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except OSError as exc:
+        result["error"] = str(exc)
+        return result
+    result["returncode"] = completed.returncode
+    result["stdout"] = completed.stdout.strip()[:200]
+    result["stderr"] = completed.stderr.strip()[:200]
+    if completed.returncode == 0:
+        try:
+            result.update(json.loads(completed.stdout))
+        except ValueError:
+            pass
+        result["ok"] = True
+    elif completed.stdout.strip() == "Python" or "WindowsApps" in str(path):
+        result["store_stub"] = True
+    return result
+
+
+def _write_python_shims(bin_dir: Path, executable: str) -> None:
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    shell_shim = bin_dir / "python3"
+    cmd_shim = bin_dir / "python3.cmd"
+    shell_shim.write_text(f'#!/usr/bin/env bash\nexec "{executable}" "$@"\n', encoding="utf-8")
+    shell_shim.chmod(0o755)
+    cmd_shim.write_text(f'@"{executable}" %*\r\n', encoding="utf-8")
 
 
 def run_field_test() -> dict[str, Any]:
