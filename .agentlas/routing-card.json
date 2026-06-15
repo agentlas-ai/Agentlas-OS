@@ -67,6 +67,6 @@
   "agent_card_ref": {"path": ".agentlas/agent-card.json", "slug": "agentlas-meta-agent", "content_hash": null},
   "data_access": {"reads": ["project_memory"], "writes": ["project_files"], "exports": []},
   "approval_scope": {"grant": "per_call", "ttl_seconds": null},
-  "source": {"kind": "local_path", "ref": null, "package_hash": null, "package_version": "0.6.0"},
+  "source": {"kind": "local_path", "ref": null, "package_hash": null, "package_version": "0.6.1"},
   "updated_at": "2026-06-12T01:00:00+00:00"
 }

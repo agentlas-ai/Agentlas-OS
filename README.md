@@ -70,6 +70,9 @@ four connected control planes:
   emit one agent, a multi-agent team, or a clean package with runtime adapters.
 - **A2A Hub router.** Route requests through local routing cards first, then
   approved Agentlas Hub fallback, with receipts for every handoff.
+- **Robust execution protocol.** Keep long-running work inside a scope lock,
+  plan lock, evidence loop, review gate, and final gate so agents cannot
+  silently stop or claim completion before checks pass.
 - **Project ontology.** Turn approved project sources into local graph, search,
   and source-lineage context agents can query without sweeping unrelated
   folders.
@@ -120,9 +123,29 @@ hephaestus "find the right agent for this task"               # terminal
   permissions when tools actually execute.
 - **Measured, not claimed.** A routing benchmark (Korean + English) gates
   auto-routing: top-3 recall ≥ 90%, zero unsafe routes in the privacy suite.
+- **Execution robustness evals.** A separate scorecard compares native Codex,
+  Hephaestus Network routing, and the upgraded Robustness Protocol on the same
+  task fixtures.
 
 Details: [docs/hephaestus-network-2.0.md](docs/hephaestus-network-2.0.md) ·
-runtime support matrix: [docs/runtime-fallback-adapters.md](docs/runtime-fallback-adapters.md)
+runtime support matrix: [docs/runtime-fallback-adapters.md](docs/runtime-fallback-adapters.md) ·
+robustness protocol: [docs/robustness-protocol.md](docs/robustness-protocol.md)
+
+### Robustness Protocol
+
+Hephaestus Robustness Protocol is a global operating protocol, not a standalone
+agent or skill. It applies to native runtime work, Hephaestus Network-selected
+agents, and Hub bundles:
+
+```text
+scope lock -> plan lock -> evidence loop -> review gate -> final gate
+```
+
+The first benchmark topic is **public agent repo repair** because it tests file
+inspection, package contracts, schema validity, validation scripts, public
+safety, and false completion in one repeatable workflow. See
+[docs/robustness-eval.md](docs/robustness-eval.md), the seed tasks in
+`benchmarks/robustness/`, and `scripts/score-robustness-eval.py`.
 
 ---
 
@@ -135,7 +158,7 @@ tells you the exact command to use next:
 
 ```text
 Set up the Hephaestus Agentlas meta-agent in this workspace. Run
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.0/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.1/scripts/install-all-runtimes.sh | bash`
 in the terminal, then tell me the exact /hephaestus command for the tool I am
 using (Claude Code, Codex, Gemini CLI, Antigravity, or Cursor). If anything
 fails, read the error, fix it, and retry.
@@ -182,7 +205,7 @@ OpenCode, OpenClaw, and Hermes Agent surfaces. It also fixes the common
 old `agentlas-core-engine` entry and adding it again from this repo.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.0/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.1/scripts/install-all-runtimes.sh | bash
 ```
 
 After it finishes, restart any open AI apps. Then use:
@@ -226,7 +249,7 @@ If you already installed the old `agentlas-meta-agent` plugin and Claude says
 `hephaestus` is not found, refresh the marketplace and replace the old plugin:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.0/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.1/scripts/install-all-runtimes.sh | bash
 ```
 
 `/hephaestus ontology` opens a local SaaS-style ontology dashboard for the
@@ -261,7 +284,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.6.0
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.6.1
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
@@ -275,7 +298,7 @@ If Codex still shows `agentlas-meta-agent`, refresh the marketplace and replace
 the old plugin:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.0/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.1/scripts/install-all-runtimes.sh | bash
 ```
 
 The Codex OS-terminal CLI command is singular: `codex plugin`, not
@@ -323,7 +346,7 @@ repo package files in your current project. Open macOS Terminal, Linux terminal,
 Windows Git Bash, or WSL in that project folder and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.0/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.1/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -331,9 +354,9 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\hephaestus-v0.6.0.zip"
-$extract = "$env:TEMP\hephaestus-v0.6.0"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.6.0.zip" -OutFile $zip
+$zip = "$env:TEMP\hephaestus-v0.6.1.zip"
+$extract = "$env:TEMP\hephaestus-v0.6.1"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.6.1.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1

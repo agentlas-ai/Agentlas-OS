@@ -14,7 +14,7 @@ package contract.
 If this workspace does not contain the Hephaestus package files yet, explain
 that the user should run the one-touch installer from an OS terminal:
 
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.0/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.1/scripts/install-all-runtimes.sh | bash`
 
 For creation or packaging work, classify the request as single-agent-builder,
 multi-agent-team-builder, or agentlas-packager. Generate or repair the Agentlas

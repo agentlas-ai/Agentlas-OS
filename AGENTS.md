@@ -22,6 +22,9 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
   `docs/runtime-fallback-adapters.md`, `agentlas_cloud/networking/`,
   `schemas/routing-card.schema.json`, `.agentlas/routing-card.json`, and
   `scripts/verify-routing-cards.sh`.
+- Robust execution contract: `docs/robustness-protocol.md`,
+  `docs/robustness-eval.md`, `schemas/robustness-eval-result.schema.json`,
+  `benchmarks/robustness/`, and `scripts/score-robustness-eval.py`.
 - Portable support contracts: `docs/mode-classifier.md`,
   `docs/clarify-question-loop.md`, `docs/agentlas-auto-activation.md`,
   `docs/local-credential-store.md`, and `docs/skill-lifecycle-promotion.md`.
@@ -80,6 +83,9 @@ become separate sources of truth.
 12. Verify with `scripts/verify-package.sh`.
 13. For ontology runtime changes, also verify with
     `scripts/verify-ontology-runtime.sh`.
+14. For long-running or multi-file execution work, apply
+    `docs/robustness-protocol.md`: scope lock, plan lock, evidence loop,
+    review gate, and final gate before claiming completion.
 
 ## Hephaestus Network Commands
 
@@ -98,6 +104,11 @@ private data export, external tools), never send raw prompts or local memory to
 the Hub, and report the routing `receipt_id`. Generated and packaged repos must
 include `.agentlas/routing-card.json` (see `schemas/routing-card.schema.json`);
 cards below `routing_ready` are excluded from auto routing.
+
+Hephaestus Network chooses the agent, team, plugin, or Hub bundle. The
+Hephaestus Robustness Protocol governs execution after that route is selected:
+it requires scope/plan locking, bounded evidence loops, review gates, and a
+final completion gate for substantial work.
 
 ## Team Roles
 

@@ -80,3 +80,19 @@ rate, unsafe route rate, wrong plugin attachment rate, latency, Hub fallback
 correctness, and Korean/English coverage. Auto-routing is reported as enabled
 only when enough `routing_ready` cards exist **and** the benchmark passes
 (top-3 recall ≥ 0.9, zero unsafe routes in the privacy suite).
+
+## Execution robustness is a separate gate
+
+The Network benchmark answers "did Hephaestus choose the right route?" It does
+not prove that the selected agent finished the user's work correctly.
+
+Use `docs/robustness-protocol.md` for the execution contract after routing and
+`docs/robustness-eval.md` for the three-way comparison:
+
+1. Codex native, no skills and no agent calls.
+2. Existing Hephaestus Network with agent or Hub calls.
+3. Hephaestus Network plus Robustness Protocol gates.
+
+The first recommended topic is public agent repo repair. It is intentionally
+file-heavy, validation-heavy, and safety-sensitive, so false completion and
+scope drift are visible in deterministic verifier output.

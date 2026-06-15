@@ -32,13 +32,13 @@ git --version
 One-command install or update for every supported runtime:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.0/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.6.1/scripts/install-all-runtimes.sh | bash
 ```
 
 Codex-only manual install:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.6.0
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.6.1
 codex plugin add hephaestus@agentlas-core-engine
 cp codex/prompts/*.md ~/.codex/prompts/
 ```
