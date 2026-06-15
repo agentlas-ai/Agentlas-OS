@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from .bootstrap import append_jsonl, networking_home, read_json, read_jsonl, utc_now
+from .card_store import load_global_cards
 from .memory import redact_tokens
 from .tokenize import token_set
 
@@ -61,7 +62,10 @@ def search_hub(
     _ = approved  # Kept for backwards-compatible callers; routing no longer gates Hub lookup.
     safe_tokens = _hub_query_tokens(query_tokens)
     redacted_query = " ".join(dict.fromkeys(safe_tokens))[:200]
-    query_key = _cache_key(redacted_query)
+    local_terms = _local_inventory_terms(base)
+    recommendation_intent = _recommendation_intent(set(safe_tokens))
+    local_fingerprint = _local_inventory_fingerprint(local_terms)
+    query_key = _cache_key(f"{redacted_query}|local:{local_fingerprint}")
     cache_path = base / "cache" / _HUB_CACHE_FILE
     cached_hit = _cached_success(cache_path, query_key)
     if cached_hit is not None:
@@ -103,7 +107,7 @@ def search_hub(
 
     result_object = _extract_result_object(payload)
     if result_object.get("action") == "clarify":
-        clarify = _project_clarify(result_object)
+        clarify = _project_clarify(result_object, local_terms, recommendation_intent)
         append_jsonl(
             cache_path,
             {
@@ -117,7 +121,12 @@ def search_hub(
         )
         return {"status": "clarify", "query": redacted_query, **clarify, "limit": _HUB_RESULT_LIMIT}
 
-    results = _prepare_results(_extract_results_from_object(result_object), set(safe_tokens))
+    results = _prepare_results(
+        _extract_results_from_object(result_object),
+        set(safe_tokens),
+        local_terms,
+        recommendation_intent,
+    )
     append_jsonl(
         cache_path,
         {
@@ -162,14 +171,23 @@ def _extract_results_from_object(result: dict[str, Any]) -> list[dict[str, Any]]
     return []
 
 
-def _project_clarify(result: dict[str, Any]) -> dict[str, Any]:
+def _project_clarify(
+    result: dict[str, Any],
+    local_terms: set[str] | None = None,
+    recommendation_intent: bool = False,
+) -> dict[str, Any]:
     suggestions = result.get("suggestions") if isinstance(result.get("suggestions"), list) else []
     return {
         "action": "clarify",
         "reason": result.get("reason") or "low_confidence",
         "question": result.get("question") or result.get("questionKo") or "Clarify the task before routing.",
         "questionKo": result.get("questionKo"),
-        "suggestions": _prepare_results([item for item in suggestions if isinstance(item, dict)], set()),
+        "suggestions": _prepare_results(
+            [item for item in suggestions if isinstance(item, dict)],
+            set(),
+            local_terms or set(),
+            recommendation_intent,
+        ),
     }
 
 
@@ -209,11 +227,19 @@ def _cached_success(path: Path, key: str) -> dict[str, Any] | None:
     return None
 
 
-def _prepare_results(results: list[dict[str, Any]], query_tokens: set[str]) -> list[dict[str, Any]]:
+def _prepare_results(
+    results: list[dict[str, Any]],
+    query_tokens: set[str],
+    local_terms: set[str] | None = None,
+    recommendation_intent: bool = False,
+) -> list[dict[str, Any]]:
+    local_terms = local_terms or set()
     ranked = sorted(
         results,
         key=lambda item: (
+            _combined_score(item, query_tokens, local_terms, recommendation_intent),
             _result_score(item, query_tokens),
+            _local_context_score(item, local_terms, query_tokens),
             1 if item.get("routingReady") else 0,
             1 if item.get("callable") else 0,
             int(item.get("verifiedInvocations") or 0),
@@ -232,6 +258,11 @@ def _prepare_results(results: list[dict[str, Any]], query_tokens: set[str]) -> l
         projected = _project_result(item)
         if not projected.get("slug"):
             continue
+        local_score = _local_context_score(item, local_terms, query_tokens)
+        if local_score > 0:
+            projected["localContextScore"] = local_score
+            if recommendation_intent:
+                projected["localContextReason"] = "matches-local-inventory"
         deduped.append(projected)
         seen_slugs.add(slug)
         if signature:
@@ -239,6 +270,19 @@ def _prepare_results(results: list[dict[str, Any]], query_tokens: set[str]) -> l
         if len(deduped) >= _HUB_RESULT_LIMIT:
             break
     return deduped
+
+
+def _combined_score(
+    item: dict[str, Any],
+    query_tokens: set[str],
+    local_terms: set[str],
+    recommendation_intent: bool,
+) -> float:
+    base = float(_result_score(item, query_tokens))
+    local = float(_local_context_score(item, local_terms, query_tokens))
+    if recommendation_intent:
+        return base + min(local, 5.0)
+    return base + min(local, 1.0) * 0.15
 
 
 def _result_score(item: dict[str, Any], query_tokens: set[str]) -> int:
@@ -251,11 +295,103 @@ def _result_score(item: dict[str, Any], query_tokens: set[str]) -> int:
     return len(query_tokens & token_set(haystack))
 
 
+def _local_context_score(item: dict[str, Any], local_terms: set[str], query_tokens: set[str]) -> int:
+    if not local_terms:
+        return 0
+    haystack = " ".join(
+        str(item.get(field) or "")
+        for field in ("slug", "name", "nameEn", "tagline", "taglineEn")
+    )
+    result_terms = token_set(haystack)
+    overlap = (result_terms & local_terms) - query_tokens - _GENERIC_LOCAL_TERMS
+    return min(8, len(overlap))
+
+
 def _name_signature(item: dict[str, Any]) -> str:
     raw = " ".join(str(item.get(field) or "") for field in ("name", "nameEn", "slug")).lower()
     raw = re.sub(r"\b(agent|builder|pipeline|eval|evaluation|feedback|assistant|tool)\b", " ", raw)
     parts = [part for part in re.split(r"[^a-z0-9가-힣]+", raw) if len(part) >= 2 and not part.isdigit()]
     return "-".join(parts[:5])
+
+
+_GENERIC_LOCAL_TERMS = {
+    "agent",
+    "agents",
+    "assistant",
+    "builder",
+    "pipeline",
+    "tool",
+    "team",
+    "workflow",
+    "에이전트",
+    "도구",
+    "팀",
+}
+
+_RECOMMENDATION_TERMS = {
+    "recommend",
+    "recommendation",
+    "suggest",
+    "suggestion",
+    "new",
+    "next",
+    "missing",
+    "complement",
+    "complementary",
+    "improve",
+    "upgrade",
+    "추천",
+    "추천좀",
+    "새기능",
+    "신규",
+    "보완",
+    "추가",
+    "필요",
+    "어울",
+}
+
+
+def _recommendation_intent(query_tokens: set[str]) -> bool:
+    return bool(query_tokens & _RECOMMENDATION_TERMS)
+
+
+def _local_inventory_fingerprint(local_terms: set[str]) -> str:
+    if not local_terms:
+        return "none"
+    joined = "\n".join(sorted(local_terms))
+    return sha256(joined.encode("utf-8")).hexdigest()[:10]
+
+
+def _local_inventory_terms(home: Path) -> set[str]:
+    try:
+        cards, _ = load_global_cards(home)
+    except Exception:
+        return set()
+    terms: set[str] = set()
+    for card in cards:
+        if card.get("stale"):
+            continue
+        terms.update(token_set(_local_card_text(card)))
+    return {term for term in terms if term not in _GENERIC_LOCAL_TERMS and len(term) >= 2}
+
+
+def _local_card_text(card: dict[str, Any]) -> str:
+    chunks: list[str] = [
+        str(card.get("id") or ""),
+        str(card.get("canonical_id") or ""),
+        str(card.get("name") or ""),
+        str(card.get("name_ko") or ""),
+        str(card.get("summary") or ""),
+        str(card.get("summary_ko") or ""),
+        " ".join(str(item) for item in card.get("aliases") or []),
+        " ".join(str(item) for item in card.get("capabilities") or []),
+    ]
+    for trigger in card.get("trigger_examples") or []:
+        if isinstance(trigger, dict):
+            chunks.append(str(trigger.get("text") or ""))
+        else:
+            chunks.append(str(trigger))
+    return " ".join(chunks)
 
 
 def _project_result(item: dict[str, Any]) -> dict[str, Any]:
