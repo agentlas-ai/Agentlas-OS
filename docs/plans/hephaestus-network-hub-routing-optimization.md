@@ -59,6 +59,51 @@ Clients can request `verbose=true` only when installing or inspecting details.
 
 ## Target Server Architecture
 
+### 0. General Tool Search Architecture
+
+Do not solve routing by adding one-off tokenizer exceptions. Treat Agentlas Hub
+as a tool/API retrieval system:
+
+1. **Routing document generation.** Every published agent/team/plugin becomes a
+   compact routing document: name, slug, localized descriptions, capabilities,
+   trigger examples, anti-triggers, inputs/outputs, runtime kind, and safety
+   class. Metadata like `routingReady` and trust grade are ranking priors, never
+   lexical relevance fields.
+2. **Two candidate generators.**
+   - Sparse lexical retrieval (BM25/full-text or corpus-IDF fallback) catches
+     exact slug/name/capability matches.
+   - Dense multilingual retrieval catches synonyms, Korean/English mixed
+     phrasing, and intent wording that does not share literal tokens.
+3. **Rank fusion.** Merge sparse and dense result lists with Reciprocal Rank
+   Fusion (RRF), so score scales from different systems do not need brittle
+   hand tuning.
+4. **Second-stage rerank.** Rerank only the top 30-50 candidates using a
+   routing-specific scorer: task/capability fit, trigger support, anti-trigger
+   penalty, trust telemetry, and runtime availability.
+5. **Diversity / dedup.** Use MMR or embedding-cluster representatives so the
+   model sees distinct choices, not generated near-clones.
+6. **Confidence gate.** If top score is low, margin is small, or evidence comes
+   only from weak n-grams/generic terms, return `action: clarify`.
+7. **Evaluation loop.** Store multilingual labeled queries and measure Recall@K,
+   MRR/NDCG, clarify precision, duplicate reduction, payload bytes, p95 latency,
+   and unsafe route rate. New heuristics are only accepted when they improve the
+   benchmark, not because they fix one observed string.
+
+Research basis:
+
+- ToolLLM/ToolBench shows large tool libraries need API retrieval plus
+  evaluation, not prompt-only guessing.
+- Gorilla shows API/tool documentation retrieval reduces wrong API selection and
+  hallucinated calls when tool specs change.
+- ToolRerank shows that better first-stage retrieval alone is not enough; a
+  tool-aware rerank stage improves downstream execution.
+- RRF is a robust way to combine independent sparse/dense rankers without
+  assuming comparable score scales.
+- MMR addresses the exact duplicate/near-clone failure mode by optimizing for
+  relevance plus novelty.
+- MTEB/MMTEB/MIRACL-style benchmarks imply we must test multilingual retrieval
+  explicitly rather than assume one embedding model wins every language/task.
+
 ### 1. Agent Registration Embedding Job
 
 On publish or profile update, compute and persist a semantic routing embedding.
@@ -319,6 +364,14 @@ Phase 4: evaluation gate
 
 ## References Checked
 
+- ToolRerank: https://arxiv.org/html/2403.06551v1
+- ToolLLM / ToolBench: https://arxiv.org/abs/2307.16789
+- Gorilla API retrieval: https://arxiv.org/abs/2305.15334
+- Reciprocal Rank Fusion: https://research.google/pubs/reciprocal-rank-fusion-outperforms-condorcet-and-individual-rank-learning-methods/
+- MongoDB hybrid search / RRF: https://www.mongodb.com/docs/atlas/atlas-search/tutorial/hybrid-search/
+- MMR diversity reranking: https://www.cs.cmu.edu/~jgc/publication/The_Use_MMR_Diversity_Based_LTMIR_1998.pdf
+- MTEB embedding benchmark: https://aclanthology.org/2023.eacl-main.148/
+- MMTEB multilingual embedding benchmark: https://openreview.net/forum?id=zl3pfz4VCV
 - OpenAI embeddings guide: https://developers.openai.com/api/docs/guides/embeddings
 - OpenAI `text-embedding-3-small`: https://developers.openai.com/api/docs/models/text-embedding-3-small
 - OpenAI `text-embedding-3-large`: https://developers.openai.com/api/docs/models/text-embedding-3-large

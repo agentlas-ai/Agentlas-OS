@@ -300,6 +300,21 @@ def route_request(
     if hub_only:
         if use_hub:
             hub = search_hub(sorted(query_tokens), home=base, approved=True)
+            if hub.get("status") == "clarify":
+                return finish(
+                    {
+                        "action": "clarify",
+                        "selected": None,
+                        "candidates": [],
+                        "hub": hub,
+                        "suggestions": hub.get("suggestions") or [],
+                        "clarify_question": hub.get("questionKo") or hub.get("question"),
+                        "local_routing": "skipped",
+                        "reasons": ["hub_only_low_confidence"],
+                    },
+                    [],
+                    ["hub_only", "hub_clarify"],
+                )
             if hub.get("status") == "ok" and hub.get("results"):
                 return finish(
                     {
@@ -455,6 +470,19 @@ def route_request(
     # No usable local match → Hub fallback, then propose-new.
     if use_hub:
         hub = search_hub(sorted(query_tokens), home=base, approved=True)
+        if hub.get("status") == "clarify":
+            return finish(
+                {
+                    "action": "clarify",
+                    "selected": None,
+                    "hub": hub,
+                    "suggestions": hub.get("suggestions") or suggestions,
+                    "clarify_question": hub.get("questionKo") or hub.get("question"),
+                    "reasons": ["hub_low_confidence"],
+                },
+                [],
+                ["hub_fallback", "hub_clarify"],
+            )
         if hub.get("status") == "ok" and hub.get("results"):
             return finish(
                 {

@@ -210,6 +210,25 @@ def test_hub_only_skips_strong_local_match(tmp_path, monkeypatch):
     assert result["reasons"] == ["hub_only_results_found"]
 
 
+def test_hub_only_surfaces_hub_clarify(tmp_path, monkeypatch):
+    home = setup_home(tmp_path)
+
+    def fake_search_hub(query_tokens, home=None, approved=False):
+        assert approved is True
+        return {
+            "status": "clarify",
+            "questionKo": "어떤 작업을 맡길까요?",
+            "suggestions": [{"slug": "generic-agent"}],
+        }
+
+    monkeypatch.setattr("agentlas_cloud.networking.router.search_hub", fake_search_hub)
+    result = route_request("agent routing tokenizer trust", home=home, use_hub=True, hub_approved=True, hub_only=True)
+    assert result["action"] == "clarify"
+    assert result["clarify_question"] == "어떤 작업을 맡길까요?"
+    assert result["local_routing"] == "skipped"
+    assert result["reasons"] == ["hub_only_low_confidence"]
+
+
 def test_secretary_does_not_trigger_secret_privacy_gate(tmp_path, monkeypatch):
     home = setup_home(tmp_path)
 

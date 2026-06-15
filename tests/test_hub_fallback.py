@@ -87,3 +87,42 @@ def test_hub_search_trims_reranks_projects_and_caches(tmp_path, monkeypatch):
     assert "manifestUrl" not in first["results"][0]
     assert "tagline" not in first["results"][0]
     assert sum(1 for item in first["results"] if item["slug"].startswith("privacy-feedback")) <= 1
+
+
+def test_hub_search_surfaces_clarify_without_candidate_dump(tmp_path, monkeypatch):
+    home = tmp_path / "networking"
+    init_networking(home)
+
+    def fake_urlopen(request, timeout):
+        return FakeResponse(
+            mcp_payload([])
+            | {
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "action": "clarify",
+                                    "reason": "low_confidence_or_broad_intent",
+                                    "questionKo": "어떤 작업을 맡길까요?",
+                                    "suggestions": [
+                                        {"slug": "generic-agent", "name": "Generic", "nameEn": "Generic", "kind": "install-only"}
+                                    ],
+                                },
+                                ensure_ascii=False,
+                            ),
+                        }
+                    ]
+                }
+            }
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    result = search_hub(tokenize("agent routing tokenizer trust"), home=home)
+
+    assert result["status"] == "clarify"
+    assert result["reason"] == "low_confidence_or_broad_intent"
+    assert result["questionKo"] == "어떤 작업을 맡길까요?"
+    assert result["suggestions"][0]["slug"] == "generic-agent"
