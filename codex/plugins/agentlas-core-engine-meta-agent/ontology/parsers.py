@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
+from .korean_document_model import HephaestusKoreanDocumentModel, KoreanParseResult
+
 
 @dataclass
 class ParsedRecord:
@@ -31,6 +33,9 @@ class ParsedDocument:
 
 
 class SourceParserRegistry:
+    def __init__(self) -> None:
+        self.korean_model = HephaestusKoreanDocumentModel()
+
     def parse(self, path: Path) -> ParsedDocument:
         suffix = path.suffix.lower()
         if suffix in {".md", ".markdown"}:
@@ -73,8 +78,8 @@ class SourceParserRegistry:
             ("hwpml_parser_adapter", "unsupported_pending_adapter"),
             ("pptx_xml_parser", "available"),
             ("pdf_text_adapter", "available" if shutil.which("pdftotext") else "unavailable_missing_pdftotext"),
-            ("hwpx_xml_parser", "available"),
-            ("hwp5txt_adapter", "available" if shutil.which("hwp5txt") else "unsupported_pending_adapter"),
+            (self.korean_model.hwpx_adapter_name, "available"),
+            (self.korean_model.hwp_adapter_name, "available"),
             ("macos_vision_ocr_adapter", "available" if macos_vision_available() else "unavailable_missing_macos_vision"),
             ("tesseract_ocr_adapter", "available" if shutil.which("tesseract") else "unavailable_missing_tesseract"),
         ]
@@ -222,48 +227,21 @@ class SourceParserRegistry:
         return ParsedDocument("pdf", "parsed", records, adapter_name="pdf_text_adapter")
 
     def _parse_hwpx(self, path: Path) -> ParsedDocument:
-        try:
-            with zipfile.ZipFile(path) as archive:
-                xml_names = sorted(name for name in archive.namelist() if name.lower().endswith(".xml"))
-                records: list[ParsedRecord] = []
-                for index, name in enumerate(xml_names, start=1):
-                    root = ElementTree.fromstring(archive.read(name))
-                    values = []
-                    for node in root.iter():
-                        local = node.tag.rsplit("}", 1)[-1].lower()
-                        if local in {"t", "text"} and node.text and node.text.strip():
-                            values.append(node.text.strip())
-                    text = " ".join(values)
-                    if text:
-                        records.append(
-                            ParsedRecord(
-                                text=text,
-                                span={"kind": "hwpx_xml", "file": name, "index": index},
-                                metadata={"xml_file": name},
-                            )
-                        )
-        except Exception as exc:
-            return ParsedDocument("hwpx", "parser_error", [], str(exc), "hwpx_xml_parser")
-        if not records:
-            return ParsedDocument("hwpx", "parser_error", [], "no extractable text found", "hwpx_xml_parser")
-        return ParsedDocument("hwpx", "parsed", records, adapter_name="hwpx_xml_parser")
+        return self._from_korean_result(self.korean_model.parse_hwpx(path))
 
     def _parse_hwp(self, path: Path) -> ParsedDocument:
-        hwp5txt = shutil.which("hwp5txt")
-        if not hwp5txt:
-            return unsupported("hwp", "hwp5txt_adapter", "binary HWP requires hwp5txt")
-        try:
-            output = subprocess.run([hwp5txt, str(path)], text=True, capture_output=True, check=True, timeout=30)
-        except Exception as exc:
-            return ParsedDocument("hwp", "parser_error", [], str(exc), "hwp5txt_adapter")
-        text = output.stdout.strip()
-        if not text:
-            return ParsedDocument("hwp", "parser_error", [], "no extractable text found", "hwp5txt_adapter")
+        return self._from_korean_result(self.korean_model.parse_hwp(path))
+
+    def _from_korean_result(self, result: KoreanParseResult) -> ParsedDocument:
         return ParsedDocument(
-            "hwp",
-            "parsed",
-            [ParsedRecord(text=text, span={"kind": "hwp_text"}, metadata={})],
-            adapter_name="hwp5txt_adapter",
+            source_type=result.source_type,
+            parser_status=result.parser_status,
+            records=[
+                ParsedRecord(text=record.text, span=record.span, metadata=record.metadata)
+                for record in result.records
+            ],
+            parser_message=result.parser_message,
+            adapter_name=result.adapter_name,
         )
 
     def _parse_image_ocr(self, path: Path) -> ParsedDocument:

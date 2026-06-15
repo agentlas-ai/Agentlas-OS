@@ -107,9 +107,9 @@ Supported local parsers:
 | `.xlsx` | parsed through the OpenXML sheet adapter |
 | `.pptx` | parsed through the OpenXML slide adapter |
 | `.pdf` | parsed through `pdftotext` when installed |
-| `.hwpx` | parsed through the HWPX XML adapter |
+| `.hwpx` | parsed through the first-party HWPX ZIP/XML adapter with paragraph and table spans |
 | images and OCR formats | parsed through macOS Vision OCR or Tesseract when available |
-| `.hwp` binary | parsed through `hwp5txt` when available |
+| `.hwp` binary | parsed through the first-party HWP5 CFB/BodyText adapter |
 
 Parser code shipped in this package must be owned adapter code or thin wrappers
 around explicit local system tools. External parser projects are not vendored
@@ -122,7 +122,8 @@ Registered adapter boundaries do not fake success:
 |---|---|
 | `.xls` / `.hml` before a first-party adapter exists | `unsupported_pending_adapter` |
 | `.pdf` without `pdftotext` | `unsupported_pending_adapter` with the missing parser reason |
-| `.hwp` binary without `hwp5txt` | `unsupported_pending_adapter` with the missing parser reason |
+| encrypted or distribution-protected `.hwp` | `unsupported_pending_adapter` with the parser reason |
+| malformed `.hwp` that is not CFB/HWP5 | `parser_error` |
 | image OCR without macOS Vision or Tesseract | `unsupported_pending_adapter` with the missing OCR engine reason |
 | unknown extensions | `unsupported_pending_adapter` |
 
@@ -210,12 +211,12 @@ The runtime verification covers:
 - TTL eviction;
 - privacy scope filtering;
 - direct durable-memory write prevention;
-- PDF, HWPX, DOCX, XLSX, PPTX, and image OCR adapter ingest;
+- PDF, HWP, HWPX, DOCX, XLSX, PPTX, and image OCR adapter ingest;
 - unsupported adapter status reporting when a required local parser is missing.
 
 ## Runtime Boundaries
 
-- Binary HWP parsing depends on `hwp5txt`; HWPX is parsed directly.
+- HWPX and HWP5 parsing is first-party parser code in this package. HWPX keeps paragraph/table spans; HWP5 reads CFB `FileHeader` plus `BodyText/Section*` streams. Encrypted or distribution-protected HWP files are blocked.
 - PDF text parsing depends on `pdftotext`.
 - Image OCR uses macOS Vision first and Tesseract when available.
 - Vector search is local-only in this package. No API key is required.

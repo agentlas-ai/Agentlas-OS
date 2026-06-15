@@ -135,7 +135,7 @@ tells you the exact command to use next:
 
 ```text
 Set up the Hephaestus Agentlas meta-agent in this workspace. Run
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.4.9/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.5.0/scripts/install-all-runtimes.sh | bash`
 in the terminal, then tell me the exact /hephaestus command for the tool I am
 using (Claude Code, Codex, Gemini CLI, Antigravity, or Cursor). If anything
 fails, read the error, fix it, and retry.
@@ -182,7 +182,7 @@ OpenCode, OpenClaw, and Hermes Agent surfaces. It also fixes the common
 old `agentlas-core-engine` entry and adding it again from this repo.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.4.9/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.5.0/scripts/install-all-runtimes.sh | bash
 ```
 
 After it finishes, restart any open AI apps. Then use:
@@ -226,7 +226,7 @@ If you already installed the old `agentlas-meta-agent` plugin and Claude says
 `hephaestus` is not found, refresh the marketplace and replace the old plugin:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.4.9/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.5.0/scripts/install-all-runtimes.sh | bash
 ```
 
 `/hephaestus ontology` opens a local SaaS-style ontology dashboard for the
@@ -261,7 +261,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.4.9
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.5.0
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
@@ -275,7 +275,7 @@ If Codex still shows `agentlas-meta-agent`, refresh the marketplace and replace
 the old plugin:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.4.9/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.5.0/scripts/install-all-runtimes.sh | bash
 ```
 
 The Codex OS-terminal CLI command is singular: `codex plugin`, not
@@ -323,7 +323,7 @@ repo package files in your current project. Open macOS Terminal, Linux terminal,
 Windows Git Bash, or WSL in that project folder and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.4.9/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.5.0/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -331,9 +331,9 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\hephaestus-v0.4.9.zip"
-$extract = "$env:TEMP\hephaestus-v0.4.9"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.4.9.zip" -OutFile $zip
+$zip = "$env:TEMP\hephaestus-v0.5.0.zip"
+$extract = "$env:TEMP\hephaestus-v0.5.0"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.5.0.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1
@@ -524,7 +524,7 @@ The default export state is conservative. Generated skills are searchable candid
 
 For knowledge-heavy personal or company agents, Hephaestus now ships a real local-first ontology runtime under `ontology/` with the executable CLI `bin/ontology`. It turns approved files into an agent-readable source archive, chunk store, full-text index, vector index, ontology graph, GraphRAG result, Memory Curator candidate ticket, and Agent Working Memory cache.
 
-**New in v0.4.9 — Hub invocation through Hephaestus Network MCP:**
+**Hephaestus Network MCP capabilities:**
 
 - **`hephaestus_hub_invoke` MCP tool.** Hephaestus Network now has a real Hub invocation surface, not only Hub candidate search. The tool skips local routing, calls Agentlas Hub MCP (`marketplace.search_agents`, `agentlas.get_runtime_bundle`, `agentlas.resolve_plugins`), and writes execution receipts under `~/.agentlas/networking/ledgers/executions.jsonl`.
 - **Hub-only local bypass.** `hub_only` routing and Hub invocation can be used with `local_inventory: []` and `reject_paid_slug: true` so local Paid/Free/plugin cards are not selected or executed.
@@ -533,6 +533,7 @@ For knowledge-heavy personal or company agents, Hephaestus now ships a real loca
 
 **Ontology runtime upgrades:**
 
+- **First-party Korean document parsing.** HWPX is parsed as ZIP/XML with paragraph and table spans, and legacy HWP5 `.hwp` is parsed directly from CFB `FileHeader` and `BodyText/Section*` streams. No GPL/AGPL parser or `hwp5txt` binary is required. Encrypted or distribution-protected HWP stays blocked with an explicit parser status.
 - **CJK search works.** The tokenizer now emits character bigrams for Korean/Japanese/Chinese runs and the FTS index uses the `trigram` tokenizer, so Korean corpora (proposals, contracts, and quotes in HWPX and Office formats) are searchable with zero install. Existing databases migrate and re-index automatically on first open.
 - **RRF hybrid ranking.** Full-text and vector rankings fuse via Reciprocal Rank Fusion instead of mixed-scale fixed weights, on a bounded candidate pool (no full-corpus Python scan).
 - **Host-LLM search hooks (optional, zero extra cost).** A host CLI runtime (Claude Code / Codex) can inject query-expansion and rerank hooks — no embedding API or key needed. Chunks scoped private/confidential are never passed to cloud hooks; the gate is enforced inside the search pipeline.
@@ -554,9 +555,9 @@ Supported ingest formats:
 | `.txt`, `.md`, `.json`, `.csv` | parsed |
 | `.docx`, `.xlsx`, `.pptx` | parsed through OpenXML adapters |
 | `.pdf` | parsed through `pdftotext` when installed |
-| `.hwpx` | parsed through the HWPX XML adapter |
+| `.hwpx` | parsed through the first-party HWPX ZIP/XML adapter with paragraph and table spans |
 | images/OCR | parsed through macOS Vision OCR or Tesseract when available |
-| `.hwp` binary | parsed through `hwp5txt` when available; otherwise clearly reported as `unsupported_pending_adapter` |
+| `.hwp` binary | parsed through the first-party HWP5 CFB/BodyText adapter; encrypted or distribution-protected files are blocked |
 | unknown extensions | `unsupported_pending_adapter` |
 
 The storage default is SQLite at `.agentlas/ontology-runtime.sqlite`, ignored by Git. The schema includes `sources`, `source_lineage`, `chunks`, `chunk_fts`, `entities`, `entity_aliases`, `relations`, `memory_candidates`, `memory_candidate_events`, `working_memory`, `runtime_adapters`, and `schema_migrations`.

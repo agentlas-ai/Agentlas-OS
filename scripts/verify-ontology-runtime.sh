@@ -15,6 +15,7 @@ mkdir -p "$adapter_corpus"
 python3 - "$adapter_corpus" <<'PY'
 import json
 import shutil
+import struct
 import sys
 import zipfile
 from pathlib import Path
@@ -50,12 +51,90 @@ def write_zip(path, entries):
         for name, text in entries.items():
             archive.writestr(name, text)
 
+def write_hwp5(path, text):
+    signature = b"HWP Document File" + b"\x00" * (32 - len(b"HWP Document File"))
+    file_header = signature + struct.pack("<II", 0x05000000, 0)
+    section = hwp_record(67, text.encode("utf-16le"))
+    write_minimal_cfb(path, {
+        "FileHeader": file_header,
+        "BodyText/Section0": section,
+    })
+
+def hwp_record(tag_id, payload, level=0):
+    if len(payload) < 0xFFF:
+        return struct.pack("<I", tag_id | (level << 10) | (len(payload) << 20)) + payload
+    return struct.pack("<II", tag_id | (level << 10) | (0xFFF << 20), len(payload)) + payload
+
+def write_minimal_cfb(path, streams):
+    file_header = streams["FileHeader"]
+    section0 = streams["BodyText/Section0"]
+    sector_size = 512
+    file_header_sector = 0
+    section_sector = 1
+    directory_sector = 2
+    fat_sector = 3
+
+    header = bytearray(sector_size)
+    header[:8] = bytes.fromhex("d0cf11e0a1b11ae1")
+    struct.pack_into("<H", header, 24, 0x003E)
+    struct.pack_into("<H", header, 26, 3)
+    struct.pack_into("<H", header, 28, 0xFFFE)
+    struct.pack_into("<H", header, 30, 9)
+    struct.pack_into("<H", header, 32, 6)
+    struct.pack_into("<I", header, 44, 1)
+    struct.pack_into("<I", header, 48, directory_sector)
+    struct.pack_into("<I", header, 56, 4096)
+    struct.pack_into("<I", header, 60, 0xFFFFFFFE)
+    struct.pack_into("<I", header, 68, 0xFFFFFFFE)
+    difat = [fat_sector] + [0xFFFFFFFF] * 108
+    struct.pack_into("<109I", header, 76, *difat)
+
+    directory = (
+        cfb_directory_entry("Root Entry", 5, child=1)
+        + cfb_directory_entry("FileHeader", 2, right=2, start_sector=file_header_sector, stream_size=len(file_header))
+        + cfb_directory_entry("BodyText", 1, child=3)
+        + cfb_directory_entry("Section0", 2, start_sector=section_sector, stream_size=len(section0))
+    )
+    fat = [0xFFFFFFFE, 0xFFFFFFFE, 0xFFFFFFFE, 0xFFFFFFFD] + [0xFFFFFFFF] * 124
+    payload = bytearray(header)
+    payload.extend(pad_sector(file_header, sector_size))
+    payload.extend(pad_sector(section0, sector_size))
+    payload.extend(pad_sector(directory, sector_size))
+    payload.extend(struct.pack("<128I", *fat))
+    path.write_bytes(payload)
+
+def cfb_directory_entry(
+    name,
+    object_type,
+    *,
+    left=0xFFFFFFFF,
+    right=0xFFFFFFFF,
+    child=0xFFFFFFFF,
+    start_sector=0xFFFFFFFE,
+    stream_size=0,
+):
+    entry = bytearray(128)
+    encoded_name = name.encode("utf-16le") + b"\x00\x00"
+    entry[: len(encoded_name)] = encoded_name
+    struct.pack_into("<H", entry, 64, len(encoded_name))
+    entry[66] = object_type
+    entry[67] = 1
+    struct.pack_into("<III", entry, 68, left, right, child)
+    struct.pack_into("<I", entry, 116, start_sector)
+    struct.pack_into("<Q", entry, 120, stream_size)
+    return bytes(entry)
+
+def pad_sector(payload, sector_size):
+    padding = (-len(payload)) % sector_size
+    return payload + (b"\x00" * padding)
+
 write_text_pdf(adapter / "manual.pdf", "Project Helios depends on Memory Curator")
 write_zip(adapter / "manual.hwpx", {
     "Contents/section0.xml": """<?xml version="1.0" encoding="UTF-8"?>
 <hp:section xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"><hp:p><hp:run><hp:t>Project Helios depends on Memory Curator</hp:t></hp:run></hp:p></hp:section>
 """
 })
+write_hwp5(adapter / "manual.hwp", "Project Helios depends on Memory Curator")
 write_zip(adapter / "brief.docx", {
     "word/document.xml": """<?xml version="1.0" encoding="UTF-8"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Project Helios depends on Memory Curator</w:t></w:r></w:p></w:body></w:document>
@@ -126,10 +205,11 @@ assert statuses["markdown"] == "parsed", statuses
 assert statuses["text"] == "parsed", statuses
 assert statuses["json"] == "parsed", statuses
 assert statuses["csv"] == "parsed", statuses
-assert statuses["hwp"] == "unsupported_pending_adapter", statuses
+assert statuses["hwp"] == "parser_error", statuses
 adapter_statuses = {item["display_name"]: item["parser_status"] for item in adapter_ingest["sources"]}
 assert adapter_statuses["manual.pdf"] == "parsed", adapter_statuses
 assert adapter_statuses["manual.hwpx"] == "parsed", adapter_statuses
+assert adapter_statuses["manual.hwp"] == "parsed", adapter_statuses
 assert adapter_statuses["brief.docx"] == "parsed", adapter_statuses
 assert adapter_statuses["matrix.xlsx"] == "parsed", adapter_statuses
 assert adapter_statuses["slides.pptx"] == "parsed", adapter_statuses
@@ -137,7 +217,7 @@ meta = json.loads((tmp / "adapter-corpus" / "adapter-meta.json").read_text())
 if meta["image_expected"]:
     assert adapter_statuses["scan.png"] == "parsed", adapter_statuses
 assert ingest["chunks_written"] >= 4, ingest
-assert adapter_ingest["chunks_written"] >= 5, adapter_ingest
+assert adapter_ingest["chunks_written"] >= 6, adapter_ingest
 assert query["chunks"], query
 assert query["relation_edges"], query
 assert query["memory_candidate_suggestions"], query

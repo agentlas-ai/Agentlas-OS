@@ -1,1 +1,1 @@
-HWP adapter fixture. The runtime must record this as unsupported_pending_adapter.
+Invalid HWP fixture. The runtime must record this as parser_error, while valid HWP5 CFB fixtures are parsed by the first-party adapter.

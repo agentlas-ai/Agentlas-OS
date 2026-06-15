@@ -1,6 +1,6 @@
 {
   "name": "hephaestus",
-  "version": "0.4.9",
+  "version": "0.5.0",
   "description": "Hephaestus creates and packages Agentlas-compatible agents and teams.",
   "contextFileName": "GEMINI.md",
   "mcpServers": {

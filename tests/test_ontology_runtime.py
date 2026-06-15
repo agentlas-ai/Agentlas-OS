@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import sqlite3
+import struct
 import subprocess
 import sys
 import tempfile
@@ -50,7 +51,7 @@ class OntologyRuntimeTests(unittest.TestCase):
             "name,role,depends_on\nProject Helios,knowledge runtime,Memory Curator\n",
             encoding="utf-8",
         )
-        (self.corpus / "unsupported.hwp").write_bytes(b"HWP adapter fixture")
+        (self.corpus / "invalid.hwp").write_bytes(b"HWP adapter fixture")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -79,7 +80,7 @@ class OntologyRuntimeTests(unittest.TestCase):
         self.assertEqual(parsed["text"], "parsed")
         self.assertEqual(parsed["json"], "parsed")
         self.assertEqual(parsed["csv"], "parsed")
-        self.assertEqual(parsed["hwp"], "unsupported_pending_adapter")
+        self.assertEqual(parsed["hwp"], "parser_error")
         self.assertGreaterEqual(ingest["chunks_written"], 4)
         self.assertGreaterEqual(ingest["entities_written"], 3)
         self.assertGreaterEqual(ingest["relations_written"], 2)
@@ -187,6 +188,7 @@ class OntologyRuntimeTests(unittest.TestCase):
         adapter_corpus.mkdir()
         write_text_pdf(adapter_corpus / "manual.pdf", "Project Helios depends on Memory Curator")
         write_hwpx(adapter_corpus / "manual.hwpx", "Project Helios depends on Memory Curator")
+        write_hwp5(adapter_corpus / "manual.hwp", "Project Helios depends on Memory Curator")
         write_docx(adapter_corpus / "brief.docx", "Project Helios depends on Memory Curator")
         write_xlsx(adapter_corpus / "matrix.xlsx", "Project Helios", "Memory Curator")
         write_pptx(adapter_corpus / "slides.pptx", "Project Helios depends on Memory Curator")
@@ -198,6 +200,7 @@ class OntologyRuntimeTests(unittest.TestCase):
 
         self.assertEqual(by_name["manual.pdf"]["parser_status"], "parsed", by_name)
         self.assertEqual(by_name["manual.hwpx"]["parser_status"], "parsed", by_name)
+        self.assertEqual(by_name["manual.hwp"]["parser_status"], "parsed", by_name)
         self.assertEqual(by_name["brief.docx"]["parser_status"], "parsed", by_name)
         self.assertEqual(by_name["matrix.xlsx"]["parser_status"], "parsed", by_name)
         self.assertEqual(by_name["slides.pptx"]["parser_status"], "parsed", by_name)
@@ -210,6 +213,35 @@ class OntologyRuntimeTests(unittest.TestCase):
         answer = rt.query("Project Helios Memory Curator")
         self.assertTrue(answer["chunks"], answer)
         self.assertTrue(answer["relation_edges"], answer)
+
+    def test_hwpx_parser_preserves_table_spans_for_ontology(self):
+        from ontology.parsers import SourceParserRegistry
+
+        source = self.root / "table.hwpx"
+        write_hwpx_table(source)
+        parsed = SourceParserRegistry().parse(source)
+
+        self.assertEqual(parsed.parser_status, "parsed")
+        self.assertEqual(parsed.adapter_name, "hephaestus_hwpx_parser")
+        tables = [record for record in parsed.records if record.span["kind"] == "hwpx_table"]
+        self.assertEqual(len(tables), 1)
+        self.assertEqual(tables[0].span["row_count"], 2)
+        self.assertEqual(tables[0].span["column_count"], 2)
+        self.assertIn("Project Helios", tables[0].text)
+        self.assertIn("parser_model", tables[0].span)
+
+    def test_hwp5_first_party_parser_reads_cfb_bodytext(self):
+        from ontology.parsers import SourceParserRegistry
+
+        source = self.root / "manual.hwp"
+        write_hwp5(source, "Project Helios depends on Memory Curator")
+        parsed = SourceParserRegistry().parse(source)
+
+        self.assertEqual(parsed.parser_status, "parsed", parsed.parser_message)
+        self.assertEqual(parsed.adapter_name, "hephaestus_hwp5_parser")
+        self.assertEqual(parsed.records[0].span["kind"], "hwp5_para_text")
+        self.assertIn("Project Helios", parsed.records[0].text)
+        self.assertIn("parser_model", parsed.records[0].span)
 
     def test_image_ocr_engine_failure_is_adapter_pending(self):
         from ontology.parsers import SourceParserRegistry
@@ -636,6 +668,116 @@ def write_hwpx(path: Path, text: str) -> None:
 </hp:section>
 """,
         )
+
+
+def write_hwpx_table(path: Path) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "Contents/section0.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<hp:section xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p><hp:run><hp:t>Project document table</hp:t></hp:run></hp:p>
+  <hp:tbl>
+    <hp:tr>
+      <hp:tc><hp:p><hp:run><hp:t>Name</hp:t></hp:run></hp:p></hp:tc>
+      <hp:tc><hp:p><hp:run><hp:t>Depends On</hp:t></hp:run></hp:p></hp:tc>
+    </hp:tr>
+    <hp:tr>
+      <hp:tc><hp:p><hp:run><hp:t>Project Helios</hp:t></hp:run></hp:p></hp:tc>
+      <hp:tc><hp:p><hp:run><hp:t>Memory Curator</hp:t></hp:run></hp:p></hp:tc>
+    </hp:tr>
+  </hp:tbl>
+</hp:section>
+""",
+        )
+
+
+def write_hwp5(path: Path, text: str) -> None:
+    signature = b"HWP Document File" + b"\x00" * (32 - len(b"HWP Document File"))
+    file_header = signature + struct.pack("<II", 0x05000000, 0)
+    section = hwp_record(67, text.encode("utf-16le"))
+    write_minimal_cfb(
+        path,
+        {
+            "FileHeader": file_header,
+            "BodyText/Section0": section,
+        },
+    )
+
+
+def hwp_record(tag_id: int, payload: bytes, level: int = 0) -> bytes:
+    if len(payload) < 0xFFF:
+        return struct.pack("<I", tag_id | (level << 10) | (len(payload) << 20)) + payload
+    return struct.pack("<II", tag_id | (level << 10) | (0xFFF << 20), len(payload)) + payload
+
+
+def write_minimal_cfb(path: Path, streams: dict[str, bytes]) -> None:
+    file_header = streams["FileHeader"]
+    section0 = streams["BodyText/Section0"]
+    sector_size = 512
+    file_header_sector = 0
+    section_sector = 1
+    directory_sector = 2
+    fat_sector = 3
+
+    header = bytearray(sector_size)
+    header[:8] = bytes.fromhex("d0cf11e0a1b11ae1")
+    struct.pack_into("<H", header, 24, 0x003E)
+    struct.pack_into("<H", header, 26, 3)
+    struct.pack_into("<H", header, 28, 0xFFFE)
+    struct.pack_into("<H", header, 30, 9)
+    struct.pack_into("<H", header, 32, 6)
+    struct.pack_into("<I", header, 44, 1)
+    struct.pack_into("<I", header, 48, directory_sector)
+    struct.pack_into("<I", header, 56, 4096)
+    struct.pack_into("<I", header, 60, 0xFFFFFFFE)
+    struct.pack_into("<I", header, 64, 0)
+    struct.pack_into("<I", header, 68, 0xFFFFFFFE)
+    struct.pack_into("<I", header, 72, 0)
+    difat = [fat_sector] + [0xFFFFFFFF] * 108
+    struct.pack_into("<109I", header, 76, *difat)
+
+    directory = (
+        cfb_directory_entry("Root Entry", 5, child=1)
+        + cfb_directory_entry("FileHeader", 2, right=2, start_sector=file_header_sector, stream_size=len(file_header))
+        + cfb_directory_entry("BodyText", 1, child=3)
+        + cfb_directory_entry("Section0", 2, start_sector=section_sector, stream_size=len(section0))
+    )
+
+    fat = [0xFFFFFFFE, 0xFFFFFFFE, 0xFFFFFFFE, 0xFFFFFFFD] + [0xFFFFFFFF] * 124
+    payload = bytearray(header)
+    payload.extend(pad_sector(file_header, sector_size))
+    payload.extend(pad_sector(section0, sector_size))
+    payload.extend(pad_sector(directory, sector_size))
+    payload.extend(struct.pack("<128I", *fat))
+    path.write_bytes(payload)
+
+
+def cfb_directory_entry(
+    name: str,
+    object_type: int,
+    *,
+    left: int = 0xFFFFFFFF,
+    right: int = 0xFFFFFFFF,
+    child: int = 0xFFFFFFFF,
+    start_sector: int = 0xFFFFFFFE,
+    stream_size: int = 0,
+) -> bytes:
+    entry = bytearray(128)
+    encoded_name = name.encode("utf-16le") + b"\x00\x00"
+    entry[: len(encoded_name)] = encoded_name
+    struct.pack_into("<H", entry, 64, len(encoded_name))
+    entry[66] = object_type
+    entry[67] = 1
+    struct.pack_into("<III", entry, 68, left, right, child)
+    struct.pack_into("<I", entry, 116, start_sector)
+    struct.pack_into("<Q", entry, 120, stream_size)
+    return bytes(entry)
+
+
+def pad_sector(payload: bytes, sector_size: int) -> bytes:
+    padding = (-len(payload)) % sector_size
+    return payload + (b"\x00" * padding)
 
 
 def write_docx(path: Path, text: str) -> None:
