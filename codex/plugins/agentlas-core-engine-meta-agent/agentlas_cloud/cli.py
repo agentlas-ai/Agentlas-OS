@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .runtime import AgentlasMockStore, compile_runtime_bundle, read_agent_file, run_setup_wizard, scan_agent_folder
+from .update import maybe_print_update_notice, run_update, write_python_shims
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -40,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("field-test", help="Run local fixture field test")
     sub.add_parser("doctor", help="Diagnose and self-heal local Hephaestus runtime issues")
+    update = sub.add_parser("update", help="Check for or install the latest Hephaestus runtime")
+    update.add_argument("--check", action="store_true", help="Only report whether a newer release is available")
 
     auth = sub.add_parser("auth", help="Agentlas account sign-in for local runtimes")
     auth_sub = auth.add_subparsers(dest="auth_command", required=True)
@@ -122,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
         return emit(run_field_test())
     if args.command == "doctor":
         return emit(run_doctor())
+    if args.command == "update":
+        return emit(run_update(check_only=args.check))
     if args.command == "auth":
         from .auth import AgentlasAuthError, auth_status, ensure_access_token, login, logout, normalize_base_url, token_path
 
@@ -236,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
         from .networking import init_networking, route_request
         from .networking.bootstrap import networking_home
 
+        maybe_print_update_notice()
         init_networking(networking_home())
         return emit(
             route_request(
@@ -335,12 +341,7 @@ def _probe_python_command(command: str) -> dict[str, Any]:
 
 
 def _write_python_shims(bin_dir: Path, executable: str) -> None:
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    shell_shim = bin_dir / "python3"
-    cmd_shim = bin_dir / "python3.cmd"
-    shell_shim.write_text(f'#!/usr/bin/env bash\nexec "{executable}" "$@"\n', encoding="utf-8")
-    shell_shim.chmod(0o755)
-    cmd_shim.write_text(f'@"{executable}" %*\r\n', encoding="utf-8")
+    write_python_shims(bin_dir, executable)
 
 
 def run_field_test() -> dict[str, Any]:

@@ -152,6 +152,23 @@ exec "$py" "\$@"
 EOF
     printf '@"%s" %%*\r\n' "$py" > "$bin_dir/python3.cmd"
   fi
+  cat > "$bin_dir/hephaestus.cmd" <<'EOF'
+@echo off
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
+set "PYTHONPATH=%~dp0..;%PYTHONPATH%"
+if exist "%~dp0python3.cmd" (
+  call "%~dp0python3.cmd" -m agentlas_cloud %*
+) else (
+  py -3 -m agentlas_cloud %* || python -m agentlas_cloud %*
+)
+EOF
+  cat > "$bin_dir/hephaestus-env.cmd" <<'EOF'
+@echo off
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
+set "PYTHONPATH=%~dp0..;%PYTHONPATH%"
+EOF
   chmod +x "$bin_dir/python3"
 }
 

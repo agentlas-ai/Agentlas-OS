@@ -28,6 +28,7 @@ code_dirs=(
 
 code_files=(
   "bin/hephaestus"
+  "bin/hephaestus.cmd"
 )
 
 # Byte-mirrored skill copies at the repo root (.agents/skills); plugin skill

@@ -81,7 +81,7 @@ def test_hub_search_trims_reranks_projects_and_caches(tmp_path, monkeypatch):
     assert first["status"] == "ok"
     assert first["limit"] == 10
     assert second["cached"] is True
-    assert first["query"] == "agentlas 새기능 추천"
+    assert first["query"] == "agentlas 새기능 기능 추천"
     assert len(first["results"]) <= 10
     assert first["results"][0]["slug"] == "feature-recommendation-agent"
     assert "manifestUrl" not in first["results"][0]

@@ -49,6 +49,7 @@ Usage:
   bin/hephaestus field-test
 	  bin/hephaestus auth status|login|ensure|logout [--base-url <url>]
 	  bin/hephaestus doctor
+  bin/hephaestus update [--check]
   bin/hephaestus plugins list [--project <dir>]
   bin/hephaestus plugins resolve "<need>" [--project <dir>] [--no-hub]
   bin/hephaestus meta-agent "<request>"
@@ -132,6 +133,9 @@ case "$command" in
 	    ;;
 	  doctor)
 	    run_python_module agentlas_cloud doctor "$@"
+	    ;;
+	  update)
+	    run_python_module agentlas_cloud update "$@"
 	    ;;
 	  plugins)
 	    run_python_module agentlas_cloud plugins "$@"

@@ -44,6 +44,8 @@ def test_routes_to_best_card(tmp_path):
 def test_korean_attached_fillers_are_stripped():
     tokens = tokenize("agentlas 새기능 추천좀")
     assert "추천" in tokens
+    assert "기능" in tokens
+    assert "새기" not in tokens
     assert "추천좀" not in tokens
     assert "천좀" not in tokens
 

@@ -53,6 +53,11 @@ def _strip_korean_word(word: str) -> str:
 def _hangul_bigrams(word: str) -> list[str]:
     if len(word) < 3:
         return []
+    # Three-syllable Korean compounds often start with a one-syllable modifier
+    # ("새기능" → "새기" + "기능"). The prefix bigram is usually weaker than the
+    # whole word and suffix noun, so keep recall without leaking modifier noise.
+    if len(word) == 3:
+        return [word[1:3]]
     return [word[i : i + 2] for i in range(len(word) - 1)]
 
 

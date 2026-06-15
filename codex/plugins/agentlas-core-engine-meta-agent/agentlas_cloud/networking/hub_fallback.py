@@ -180,7 +180,7 @@ def _hub_query_tokens(query_tokens: list[str]) -> list[str]:
     hangul_words = [token for token in redacted if re.fullmatch(r"[가-힣]{3,}", token)]
     cleaned: list[str] = []
     for token in redacted:
-        if re.fullmatch(r"[가-힣]{2}", token) and any(token in word for word in hangul_words):
+        if re.fullmatch(r"[가-힣]{2}", token) and any(word.startswith(token) for word in hangul_words):
             continue
         cleaned.append(token)
     return list(dict.fromkeys(cleaned))
