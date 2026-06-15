@@ -84,18 +84,33 @@ def token_set(text: str) -> set[str]:
 def word_token_set(text: str) -> set[str]:
     """Like token_set but without Hangul bigrams — used as the denominator
     when computing trigger coverage so bigrams add recall, not dilution."""
+    return set(word_tokens(text))
+
+
+def word_tokens(text: str) -> list[str]:
+    """Ordered tokens without Hangul bigrams.
+
+    Local routing uses Hangul bigrams for recall, but remote Hub search should
+    receive a compact whole-word query so substring artifacts do not dominate
+    server-side ranking.
+    """
     tokens: set[str] = set()
+    ordered: list[str] = []
     for raw in TOKEN_RE.findall((text or "").lower()):
         if HANGUL_RE.match(raw):
             word = _strip_korean_word(raw)
             if len(word) < 2 or word in KO_FILLERS:
                 continue
-            tokens.add(word)
+            if word not in tokens:
+                ordered.append(word)
+                tokens.add(word)
         else:
             if len(raw) < 2 or raw in EN_FILLERS:
                 continue
-            tokens.add(raw)
-    return tokens
+            if raw not in tokens:
+                ordered.append(raw)
+                tokens.add(raw)
+    return ordered
 
 
 def has_hangul(text: str) -> bool:

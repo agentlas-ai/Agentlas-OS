@@ -22,7 +22,7 @@ from .bootstrap import append_jsonl, networking_home, read_json, read_jsonl, utc
 from .memory import redact_tokens
 from .tokenize import token_set
 
-_HUB_TIMEOUT_SECONDS = 6
+_HUB_TIMEOUT_SECONDS = int(os.environ.get("HEPHAESTUS_HUB_TIMEOUT_SECONDS", "12") or "12")
 _HUB_RESULT_LIMIT = int(os.environ.get("HEPHAESTUS_HUB_RESULT_LIMIT", "10") or "10")
 _HUB_CACHE_TTL_SECONDS = int(os.environ.get("HEPHAESTUS_HUB_CACHE_TTL_SECONDS", "600") or "600")
 HUB_TARGET = "agentlas-hub"
@@ -41,6 +41,8 @@ _RESULT_FIELDS = (
     "lastRoutingSuccessAt",
     "evalPassRate",
     "rating",
+    "clusterSize",
+    "alternateSlugs",
 )
 
 
@@ -180,7 +182,7 @@ def _hub_query_tokens(query_tokens: list[str]) -> list[str]:
     hangul_words = [token for token in redacted if re.fullmatch(r"[가-힣]{3,}", token)]
     cleaned: list[str] = []
     for token in redacted:
-        if re.fullmatch(r"[가-힣]{2}", token) and any(word.startswith(token) for word in hangul_words):
+        if re.fullmatch(r"[가-힣]{2}", token) and any(token in word for word in hangul_words):
             continue
         cleaned.append(token)
     return list(dict.fromkeys(cleaned))

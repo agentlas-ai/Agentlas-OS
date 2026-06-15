@@ -81,12 +81,32 @@ def test_hub_search_trims_reranks_projects_and_caches(tmp_path, monkeypatch):
     assert first["status"] == "ok"
     assert first["limit"] == 10
     assert second["cached"] is True
-    assert first["query"] == "agentlas 새기능 기능 추천"
+    assert first["query"] == "agentlas 새기능 추천"
     assert len(first["results"]) <= 10
     assert first["results"][0]["slug"] == "feature-recommendation-agent"
     assert "manifestUrl" not in first["results"][0]
     assert "tagline" not in first["results"][0]
     assert sum(1 for item in first["results"] if item["slug"].startswith("privacy-feedback")) <= 1
+
+
+def test_hub_query_removes_hangul_substring_bigrams(tmp_path, monkeypatch):
+    home = tmp_path / "networking"
+    init_networking(home)
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(json.loads(request.data.decode("utf-8")))
+        return FakeResponse(mcp_payload([]))
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    result = search_hub(tokenize("상품 설명 써주는 에이전트"), home=home)
+
+    assert result["query"] == "상품 설명 써주 에이전트"
+    sent_query = calls[0]["params"]["arguments"]["q"]
+    sent_tokens = sent_query.split()
+    assert "이전" not in sent_tokens
+    assert "전트" not in sent_tokens
 
 
 def test_hub_search_surfaces_clarify_without_candidate_dump(tmp_path, monkeypatch):

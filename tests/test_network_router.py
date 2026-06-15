@@ -212,6 +212,25 @@ def test_hub_only_skips_strong_local_match(tmp_path, monkeypatch):
     assert result["reasons"] == ["hub_only_results_found"]
 
 
+def test_hub_only_uses_whole_word_query_tokens(tmp_path, monkeypatch):
+    home = setup_home(tmp_path)
+    seen = {}
+
+    def fake_search_hub(query_tokens, home=None, approved=False):
+        seen["tokens"] = query_tokens
+        return {
+            "status": "ok",
+            "query": " ".join(query_tokens),
+            "results": [{"slug": "shop-product-writer", "name": "Product Copywriter", "kind": "install-only"}],
+        }
+
+    monkeypatch.setattr("agentlas_cloud.networking.router.search_hub", fake_search_hub)
+    result = route_request("상품 설명 써주는 에이전트", home=home, use_hub=True, hub_approved=True, hub_only=True)
+
+    assert result["action"] == "hub_candidates"
+    assert seen["tokens"] == ["상품", "설명", "써주", "에이전트"]
+
+
 def test_hub_only_surfaces_hub_clarify(tmp_path, monkeypatch):
     home = setup_home(tmp_path)
 

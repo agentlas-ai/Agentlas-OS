@@ -24,7 +24,7 @@ from .hub_fallback import search_hub
 from .memory import load_profile, profile_adjustment, redact_tokens
 from .pipeline import plan_pipeline
 from .receipts import write_receipt
-from .tokenize import has_hangul, snake_tokens, token_set, tokenize, word_token_set
+from .tokenize import has_hangul, snake_tokens, token_set, tokenize, word_token_set, word_tokens
 
 # Tokens shared by >= this fraction of all cards carry no routing signal
 # (e.g. "team", "평가", "pipeline" in an agent-engineering inventory).
@@ -270,6 +270,7 @@ def route_request(
     locale = "ko" if has_hangul(query) else "en"
     raw_tokens = tokenize(query)
     query_tokens = set(redact_tokens(raw_tokens)) - {"[redacted]"}
+    hub_query_tokens = word_tokens(query)
     chain = router_chain or ["hephaestus-network"]
 
     def finish(result: dict[str, Any], candidates: list[dict[str, Any]], reasons: list[str]) -> dict[str, Any]:
@@ -299,7 +300,7 @@ def route_request(
 
     if hub_only:
         if use_hub:
-            hub = search_hub(sorted(query_tokens), home=base, approved=True)
+            hub = search_hub(hub_query_tokens, home=base, approved=True)
             if hub.get("status") == "clarify":
                 return finish(
                     {
@@ -469,7 +470,7 @@ def route_request(
 
     # No usable local match → Hub fallback, then propose-new.
     if use_hub:
-        hub = search_hub(sorted(query_tokens), home=base, approved=True)
+        hub = search_hub(hub_query_tokens, home=base, approved=True)
         if hub.get("status") == "clarify":
             return finish(
                 {
