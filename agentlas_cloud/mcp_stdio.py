@@ -46,6 +46,26 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "hephaestus_cloud_search",
+        "description": (
+            "Search ONLY the signed-in user's OWN Agentlas cloud packages (보관함) "
+            "and return a JSON decision with a receipt_id. This is the owner-scoped "
+            "leg of the three-scope model: it skips local cards and the public "
+            "marketplace, querying the Hub with the owner filter (cargo.*). The "
+            "user's own cloud packages are restorable/owned by them and call-priced "
+            "at a flat 1 credit. The router does not execute tools; the caller "
+            "runtime owns execution safety."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "request": {"type": "string", "description": "The natural-language request to match against the owner's own cloud packages."},
+                "project_dir": {"type": "string", "description": "Project directory for context (default: cwd)."},
+            },
+            "required": ["request"],
+        },
+    },
+    {
         "name": "hephaestus_network_status",
         "description": "Report Hephaestus Network state: card counts, benchmark state, auto-routing gate.",
         "inputSchema": {"type": "object", "properties": {}},
@@ -132,6 +152,17 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             use_hub=True,
             hub_approved=bool(arguments.get("approve_hub", False)),
             hub_only=bool(arguments.get("hub_only", False)),
+        )
+    if name == "hephaestus_cloud_search":
+        # Owner-scoped: scope="cloud" implies hub_only inside route_request and
+        # queries only the signed-in user's OWN cloud packages (보관함).
+        return route_request(
+            arguments["request"],
+            project_dir=arguments.get("project_dir", "."),
+            runtime="mcp",
+            use_hub=True,
+            hub_approved=False,
+            scope="cloud",
         )
     if name == "hephaestus_hub_invoke":
         from .networking.hub_invocation import invoke_hub_agent

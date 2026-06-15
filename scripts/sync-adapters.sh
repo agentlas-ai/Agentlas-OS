@@ -50,11 +50,18 @@ skill_mirrors=(
   "skills/hephaestus-network/SKILL.md:gemini/extension/skills/hephaestus-network/SKILL.md"
   "skills/hephaestus-network/SKILL.md:cursor/plugin/skills/hephaestus-network/SKILL.md"
   "skills/hephaestus-network/SKILL.md:hermes/skills/hephaestus-network/SKILL.md"
+  "skills/hephaestus-cloud/SKILL.md:.agents/skills/hephaestus-cloud/SKILL.md"
+  "skills/hephaestus-cloud/SKILL.md:codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-cloud/SKILL.md"
+  "skills/hephaestus-cloud/SKILL.md:gemini/extension/skills/hephaestus-cloud/SKILL.md"
+  "skills/hephaestus-cloud/SKILL.md:cursor/plugin/skills/hephaestus-cloud/SKILL.md"
+  "skills/hephaestus-cloud/SKILL.md:hermes/skills/hephaestus-cloud/SKILL.md"
   "cursor/rules/hephaestus.mdc:cursor/plugin/rules/hephaestus.mdc"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hephaestus.md:.claude/commands/hephaestus.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hephaestus-network.md:.claude/commands/hephaestus-network.md"
+  "claude/plugins/agentlas-core-engine-meta-agent/commands/hephaestus-cloud.md:.claude/commands/hephaestus-cloud.md"
   "antigravity/workflows/hephaestus.md:.agents/workflows/hephaestus.md"
   "antigravity/workflows/hephaestus-network.md:.agents/workflows/hephaestus-network.md"
+  "antigravity/workflows/hephaestus-cloud.md:.agents/workflows/hephaestus-cloud.md"
 )
 
 drift=0

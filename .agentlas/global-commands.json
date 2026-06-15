@@ -134,6 +134,96 @@
       "notes": "AgentSkills spec skill; MCP server registration in ~/.hermes/config.yaml (hermes/README.md)."
     },
     {
+      "runtime": "claude-code",
+      "command": "/hephaestus-cloud",
+      "adapterPath": ".claude/commands/hephaestus-cloud.md",
+      "globalInstallPath": "~/.claude/commands/hephaestus-cloud.md",
+      "scope": "global",
+      "status": "native-slash-command",
+      "notes": "Owner-scoped leg of the three-scope model: searches ONLY the signed-in user's own cloud packages (보관함), call-priced at a flat 1 credit. Maps to `hephaestus route --scope cloud` (implies --hub-only, cargo.* owner query)."
+    },
+    {
+      "runtime": "codex",
+      "command": "/prompts:hephaestus-cloud",
+      "adapterPath": "codex/prompts/hephaestus-cloud.md",
+      "globalInstallPath": "~/.codex/prompts/hephaestus-cloud.md",
+      "scope": "global",
+      "status": "custom-prompt-slash-command",
+      "notes": "Implicit/skill surface: codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-cloud/SKILL.md ($hephaestus-cloud). Tool surface: hephaestus_cloud_search in mcp_servers.hephaestus-network."
+    },
+    {
+      "runtime": "gemini-cli",
+      "command": "/hephaestus-cloud",
+      "adapterPath": "gemini/extension/commands/hephaestus-cloud.toml",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.6.0",
+      "scope": "global",
+      "status": "extension-custom-command",
+      "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus-cloud.toml."
+    },
+    {
+      "runtime": "antigravity",
+      "command": "/hephaestus-cloud",
+      "adapterPath": "antigravity/workflows/hephaestus-cloud.md",
+      "globalInstallPath": "~/.gemini/antigravity/global_workflows/hephaestus-cloud.md",
+      "scope": "global",
+      "status": "workflow-slash-command",
+      "notes": "Project-scope fallback ships at .agents/workflows/hephaestus-cloud.md."
+    },
+    {
+      "runtime": "cursor",
+      "command": "/hephaestus-cloud",
+      "adapterPath": "cursor/plugin/commands/hephaestus-cloud.md",
+      "globalInstallPath": "~/.cursor/commands/hephaestus-cloud.md",
+      "scope": "global",
+      "status": "native-slash-command",
+      "notes": "Owner cloud (보관함) only. cursor/plugin/ is the marketplace-ready bundle."
+    },
+    {
+      "runtime": "opencode",
+      "command": "/hephaestus-cloud",
+      "adapterPath": "opencode/commands/hephaestus-cloud.md",
+      "globalInstallPath": "~/.config/opencode/commands/hephaestus-cloud.md",
+      "scope": "global",
+      "status": "native-slash-command",
+      "notes": "OpenCode also reads the universal skill at ~/.agents/skills/hephaestus-cloud and supports MCP (hephaestus_cloud_search)."
+    },
+    {
+      "runtime": "openclaw",
+      "command": "/skill hephaestus-cloud",
+      "adapterPath": "openclaw/skills/hephaestus-cloud/SKILL.md",
+      "globalInstallPath": "~/.openclaw/skills/hephaestus-cloud/SKILL.md",
+      "scope": "global",
+      "status": "skill-slash-command",
+      "notes": "AgentSkills spec; native /hephaestus-cloud registration follows commands.nativeSkills. Also loaded from ~/.agents/skills."
+    },
+    {
+      "runtime": "hermes-agent",
+      "command": "hephaestus-cloud",
+      "adapterPath": "hermes/skills/hephaestus-cloud/SKILL.md",
+      "globalInstallPath": "~/.hermes/skills/hephaestus-cloud/SKILL.md",
+      "scope": "global",
+      "status": "skill",
+      "notes": "AgentSkills spec skill; MCP server registration in ~/.hermes/config.yaml (hephaestus_cloud_search tool)."
+    },
+    {
+      "runtime": "mcp",
+      "command": "hephaestus_cloud_search",
+      "adapterPath": "agentlas_cloud/mcp_stdio.py",
+      "globalInstallPath": "~/.agentlas/runtime/current/bin/hephaestus mcp serve",
+      "scope": "global",
+      "status": "mcp-tool",
+      "notes": "Owner-scoped (scope=cloud) sibling of hephaestus_route: searches only the signed-in user's own cloud packages (보관함)."
+    },
+    {
+      "runtime": "agentlas-terminal",
+      "command": "hephaestus cloud",
+      "adapterPath": "bin/hephaestus",
+      "globalInstallPath": "hephaestus cloud \"<request>\"",
+      "scope": "terminal",
+      "status": "shell-command",
+      "notes": "hephaestus cloud \"<request>\" is shorthand for hephaestus route \"<request>\" --scope cloud (owner cloud / 보관함 only)."
+    },
+    {
       "runtime": "mcp",
       "command": "hephaestus_route",
       "adapterPath": "agentlas_cloud/mcp_stdio.py",
@@ -162,6 +252,6 @@
   ],
   "postCreationUserMessage": {
     "required": true,
-    "template": "global_commands: Claude Code /hephaestus; Codex /prompts:hephaestus (or $hephaestus-network skill); Gemini CLI /hephaestus; Antigravity /hephaestus; Cursor /hephaestus-network; OpenCode /hephaestus-network; OpenClaw /skill hephaestus-network; Agentlas terminal hephaestus or agentlas run hephaestus"
+    "template": "global_commands: Claude Code /hephaestus, /hephaestus-network, /hephaestus-cloud; Codex /prompts:hephaestus (or $hephaestus-network / $hephaestus-cloud skill); Gemini CLI /hephaestus, /hephaestus-cloud; Antigravity /hephaestus, /hephaestus-cloud; Cursor /hephaestus-network, /hephaestus-cloud; OpenCode /hephaestus-network, /hephaestus-cloud; OpenClaw /skill hephaestus-network or /skill hephaestus-cloud; Agentlas terminal hephaestus, hephaestus cloud, or agentlas run hephaestus. Three-scope model: /hephaestus-cloud = my own cloud packages (보관함, 1 credit/call); /hephaestus-network = public Hub marketplace; plain language = local + cloud + Hub combined."
   }
 }

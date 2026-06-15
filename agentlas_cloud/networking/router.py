@@ -259,7 +259,19 @@ def route_request(
     hub_only: bool = False,
     hop_count: int = 0,
     router_chain: list[str] | None = None,
+    scope: str = "network",
 ) -> dict[str, Any]:
+    # Three-scope command model (docs/hephaestus-network-2.0.md):
+    #   scope="cloud"   → /hephaestus-cloud: search ONLY the signed-in user's
+    #                     OWN cloud packages (보관함). Owner-scoped Hub query,
+    #                     implies hub_only (skip local + public marketplace).
+    #   scope="network" → /hephaestus-network: search ONLY the public Hub
+    #                     marketplace. Used with hub_only by the network command.
+    #   default combined route (hub_only=False, scope="network") → local +
+    #                     own-cloud + Hub together, each priced by origin.
+    cloud_only = scope == "cloud"
+    if cloud_only:
+        hub_only = True
     base = Path(home) if home else networking_home()
     project = Path(project_dir)
     policy = read_json(base / "policies" / "routing-policy.json", default=default_routing_policy()) or default_routing_policy()
@@ -271,7 +283,15 @@ def route_request(
     raw_tokens = tokenize(query)
     query_tokens = set(redact_tokens(raw_tokens)) - {"[redacted]"}
     hub_query_tokens = word_tokens(query)
-    chain = router_chain or ["hephaestus-network"]
+    chain = router_chain or ["hephaestus-cloud" if cloud_only else "hephaestus-network"]
+
+    def _search_hub(query_tokens: list[str], *, search_scope: str) -> dict[str, Any]:
+        # Pass `scope` only when it is the non-default owner cloud, so existing
+        # callers and monkeypatched test fakes with the legacy
+        # (query_tokens, home, approved) signature keep working unchanged.
+        if search_scope == "cloud":
+            return search_hub(query_tokens, home=base, approved=True, scope="cloud")
+        return search_hub(query_tokens, home=base, approved=True)
 
     def finish(result: dict[str, Any], candidates: list[dict[str, Any]], reasons: list[str]) -> dict[str, Any]:
         receipt_id = write_receipt(
@@ -299,8 +319,13 @@ def route_request(
         )
 
     if hub_only:
+        # The owner cloud (보관함) and the public marketplace share this
+        # Hub-only flow; the only difference is the scope passed to the Hub and
+        # the receipt/reason tag, so /hephaestus-cloud and /hephaestus-network
+        # stay one code path with two scopes.
+        scope_tag = "cloud_only" if cloud_only else "hub_only"
         if use_hub:
-            hub = search_hub(hub_query_tokens, home=base, approved=True)
+            hub = _search_hub(hub_query_tokens, search_scope=scope)
             if hub.get("status") == "clarify":
                 return finish(
                     {
@@ -308,13 +333,14 @@ def route_request(
                         "selected": None,
                         "candidates": [],
                         "hub": hub,
+                        "scope": scope,
                         "suggestions": hub.get("suggestions") or [],
                         "clarify_question": hub.get("questionKo") or hub.get("question"),
                         "local_routing": "skipped",
-                        "reasons": ["hub_only_low_confidence"],
+                        "reasons": [f"{scope_tag}_low_confidence"],
                     },
                     [],
-                    ["hub_only", "hub_clarify"],
+                    [scope_tag, "hub_clarify"],
                 )
             if hub.get("status") == "ok" and hub.get("results"):
                 return finish(
@@ -323,22 +349,23 @@ def route_request(
                         "selected": None,
                         "candidates": [],
                         "hub": hub,
+                        "scope": scope,
                         "suggestions": [],
                         "local_routing": "skipped",
-                        "reasons": ["hub_only_results_found"],
+                        "reasons": [f"{scope_tag}_results_found"],
                     },
                     [],
-                    ["hub_only", "hub_results_found"],
+                    [scope_tag, "hub_results_found"],
                 )
             return finish(
-                {"action": "propose_new", "selected": None, "candidates": [], "hub": hub, "suggestions": [], "local_routing": "skipped", "reasons": ["hub_only_no_match_or_unavailable"]},
+                {"action": "propose_new", "selected": None, "candidates": [], "hub": hub, "scope": scope, "suggestions": [], "local_routing": "skipped", "reasons": [f"{scope_tag}_no_match_or_unavailable"]},
                 [],
-                ["hub_only", "propose_new"],
+                [scope_tag, "propose_new"],
             )
         return finish(
-            {"action": "propose_new", "selected": None, "candidates": [], "suggestions": [], "local_routing": "skipped", "reasons": ["hub_only_requested_but_hub_disabled"]},
+            {"action": "propose_new", "selected": None, "candidates": [], "scope": scope, "suggestions": [], "local_routing": "skipped", "reasons": [f"{scope_tag}_requested_but_hub_disabled"]},
             [],
-            ["hub_only_hub_disabled"],
+            [f"{scope_tag}_hub_disabled"],
         )
 
     cards, quarantined = load_global_cards(base)

@@ -33,6 +33,7 @@ def test_initialize_and_tools_list(monkeypatch, tmp_path):
         "agentlas_authenticate",
         "agentlas_auth_status",
         "hephaestus_route",
+        "hephaestus_cloud_search",
         "hephaestus_hub_invoke",
         "hephaestus_network_status",
     }

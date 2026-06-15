@@ -57,9 +57,10 @@ Usage:
   bin/hephaestus network add-source <path> | remove-source <path>
   bin/hephaestus network grant <capability> --target <id> [--scope ...]
   bin/hephaestus cards lint [path] | cards migrate <root> --tier free|paid|plugin|local
-  bin/hephaestus route "<request>" [--project <dir>] [--no-hub] [--approve-hub]
+  bin/hephaestus route "<request>" [--project <dir>] [--no-hub] [--approve-hub] [--hub-only] [--scope network|cloud]
+  bin/hephaestus cloud "<request>" [--project <dir>] [--no-hub]   # search ONLY my own cloud packages (보관함)
   bin/hephaestus mcp serve              # stdio MCP server (hephaestus_route tool)
-  bin/hephaestus "<request>"            # shorthand for route
+  bin/hephaestus "<request>"            # shorthand for route (local + cloud + Hub)
 
 Examples:
   bin/hephaestus ontology
@@ -152,6 +153,12 @@ EOF
     ;;
 	  network|cards|route|mcp)
 	    run_python_module agentlas_cloud "$command" "$@"
+	    ;;
+	  cloud)
+	    # /hephaestus-cloud: route through the owner's OWN cloud packages only
+	    # (보관함). Reuses the route command with the cloud scope (owner-scoped
+	    # Hub query; implies --hub-only).
+	    run_python_module agentlas_cloud route "$@" --scope cloud
 	    ;;
   -*)
     echo "hephaestus: unknown command: $command" >&2

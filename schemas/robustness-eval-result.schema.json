@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hephaestus Robustness Eval Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "taskId",
+    "arm",
+    "startedAt",
+    "finishedAt",
+    "metrics",
+    "verification"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "taskId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "arm": {
+      "type": "string",
+      "enum": [
+        "codex_native",
+        "hephaestus_network",
+        "hephaestus_robustness_protocol"
+      ]
+    },
+    "model": {
+      "type": "string"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "wallSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claimedComplete",
+        "verifiedSuccess",
+        "falseCompletion",
+        "recoveredAfterFailure",
+        "scopeDrift",
+        "secretSafetyFailure",
+        "turns",
+        "toolCalls",
+        "wallSeconds"
+      ],
+      "properties": {
+        "claimedComplete": {
+          "type": "boolean"
+        },
+        "verifiedSuccess": {
+          "type": "boolean"
+        },
+        "falseCompletion": {
+          "type": "boolean"
+        },
+        "recoveredAfterFailure": {
+          "type": "boolean"
+        },
+        "scopeDrift": {
+          "type": "boolean"
+        },
+        "secretSafetyFailure": {
+          "type": "boolean"
+        },
+        "humanInterventionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wallSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "exitCode",
+        "summary"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

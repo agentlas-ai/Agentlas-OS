@@ -1,0 +1,31 @@
+description = "Search ONLY the signed-in user's own Agentlas cloud packages (보관함) and route to one."
+prompt = """
+# /hephaestus-cloud
+
+Raw arguments:
+{{args}}
+
+Owner-scoped leg of the three-scope model: search ONLY my own Agentlas cloud
+packages (보관함). These are restorable/owned by me and call-priced at a flat 1
+credit. `/hephaestus-network` searches the public marketplace; plain language
+searches local + my cloud + Hub together.
+
+1. Find the Hephaestus runner (`~/.agentlas/runtime/current/bin/hephaestus`,
+   `./bin/hephaestus`, or the installed plugin cache copy). The owner cloud
+   requires sign-in, so first run (opens the browser only on first use):
+   `hephaestus auth ensure --timeout 180`
+   Then run: `hephaestus cloud "{{args}}" --project .`
+   (`hephaestus cloud` is shorthand for `hephaestus route "<request>" --scope cloud`.)
+
+2. Act on the JSON decision (`scope: "cloud"`) and never bypass it:
+   - action "hub_candidates": my OWN cloud packages — report them and, on the
+     user's pick, invoke that package with the original request (1 credit/call).
+   - action "clarify": ask the `clarify_question` with the candidates.
+   - action "propose_new": no matching package in my cloud; offer
+     /hephaestus-network (public marketplace) or /hephaestus (build a new agent).
+   - action "refuse": explain the reasons (for example, loop guard).
+
+3. Hard rules: never searches the public marketplace or local cards — only the
+   authenticated owner's own cloud packages. Actual tool execution follows the
+   host runtime's safety and permission model. Include the routing `receipt_id`.
+"""

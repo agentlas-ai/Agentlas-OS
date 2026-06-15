@@ -27,6 +27,8 @@ required_files=(
   "docs/agentlas-auto-activation.md"
   "docs/skill-lifecycle-promotion.md"
   "docs/agentlas-cloud-runtime.md"
+  "docs/robustness-protocol.md"
+  "docs/robustness-eval.md"
   "docs/super-ontology-candidate-contract.md"
   "agent.md"
   "agents/10-single-agent-builder/agent.md"
@@ -123,6 +125,10 @@ required_files=(
   "schemas/super-ontology-strategic-incentive-compatibility.schema.json"
   "schemas/super-ontology-reflexive-feedback-stability.schema.json"
   "schemas/super-ontology-memory-bridge.schema.json"
+  "schemas/robustness-eval-result.schema.json"
+  "benchmarks/robustness/public-agent-repair.tasks.jsonl"
+  "benchmarks/robustness/example-results.jsonl"
+  "scripts/score-robustness-eval.py"
   "templates/activation.json.tpl"
   "templates/agentlas.json.tpl"
   "templates/global-commands.json.tpl"
@@ -307,6 +313,7 @@ fi
 scripts/verify-install-docs.sh
 scripts/verify-global-command-contract.sh
 scripts/verify-ontology-runtime.sh
+python3 scripts/score-robustness-eval.py benchmarks/robustness/example-results.jsonl >/dev/null
 scripts/sync-adapters.sh --check
 scripts/verify-mcp-surface.sh
 examples/ontology-proposal-agent/verify.sh

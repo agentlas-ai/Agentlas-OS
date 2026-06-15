@@ -18,6 +18,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from ..auth import ensure_access_token
 from .bootstrap import append_jsonl, networking_home, read_json, read_jsonl, utc_now
 from .card_store import load_global_cards
 from .memory import redact_tokens
@@ -53,36 +54,66 @@ def _hub_url(home: Path) -> str:
     return base
 
 
+# Hub search scopes (three-scope command model — docs/hephaestus-network-2.0.md):
+#   "network" → public Agentlas Hub marketplace (others' published agents).
+#   "cloud"   → the signed-in user's OWN cloud packages only (보관함). These are
+#               owner-scoped: the Hub filters to packages this account owns, and
+#               they are restorable by the owner (call-priced at a flat 1 credit).
+SCOPE_NETWORK = "network"
+SCOPE_CLOUD = "cloud"
+_SCOPE_TOOL = {
+    SCOPE_NETWORK: "marketplace.search_agents",
+    SCOPE_CLOUD: "cargo.search_agents",
+}
+
+
 def search_hub(
     query_tokens: list[str],
     home: Path | str | None = None,
     approved: bool = False,
+    scope: str = SCOPE_NETWORK,
 ) -> dict[str, Any]:
     base = Path(home) if home else networking_home()
     _ = approved  # Kept for backwards-compatible callers; routing no longer gates Hub lookup.
+    scope = scope if scope in _SCOPE_TOOL else SCOPE_NETWORK
+    owner_scoped = scope == SCOPE_CLOUD
     safe_tokens = _hub_query_tokens(query_tokens)
     redacted_query = " ".join(dict.fromkeys(safe_tokens))[:200]
     local_terms = _local_inventory_terms(base)
     recommendation_intent = _recommendation_intent(set(safe_tokens))
     local_fingerprint = _local_inventory_fingerprint(local_terms)
-    query_key = _cache_key(f"{redacted_query}|local:{local_fingerprint}")
+    # Cache is keyed by scope too, so an owner-cloud lookup never serves (or
+    # poisons) a public-marketplace result for the same query and vice versa.
+    query_key = _cache_key(f"{scope}|{redacted_query}|local:{local_fingerprint}")
     cache_path = base / "cache" / _HUB_CACHE_FILE
     cached_hit = _cached_success(cache_path, query_key)
     if cached_hit is not None:
+        cached_hit["scope"] = scope
         return cached_hit
 
     url = _hub_url(base) + "/api/mcp/v1"
+    # Owner-scoped cloud search asks the Hub to restrict results to the
+    # authenticated owner's own packages (`mine: true`). The marketplace search
+    # has no such filter — it spans every public agent.
+    arguments: dict[str, Any] = {"q": redacted_query, "limit": _HUB_RESULT_LIMIT}
+    if owner_scoped:
+        arguments["mine"] = True
+        arguments["scope"] = "owner"
     body = json.dumps(
         {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "marketplace.search_agents",
-                "arguments": {"q": redacted_query, "limit": _HUB_RESULT_LIMIT},
+                "name": _SCOPE_TOOL[scope],
+                "arguments": arguments,
             },
         }
     ).encode("utf-8")
+    # The owner cloud is a sign-in-gated surface (cargo.*); send the stored
+    # bearer token when this is an owner-scoped lookup so the Hub can resolve
+    # "mine". Marketplace search stays anonymous (token omitted).
+    token = ensure_access_token(_hub_url(base), interactive=False) if owner_scoped else None
     request = urllib.request.Request(
         url,
         data=body,
@@ -90,6 +121,7 @@ def search_hub(
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": "hephaestus-network-router",
+            **({"Authorization": f"Bearer {token}"} if token else {}),
         },
         method="POST",
     )
@@ -100,6 +132,7 @@ def search_hub(
         cached = [entry for entry in read_jsonl(cache_path, limit=20)]
         return {
             "status": "offline",
+            "scope": scope,
             "detail": str(exc),
             "cached": cached,
             "note": "Hub unreachable — falling back to cached results, then local-only routing.",
@@ -119,7 +152,7 @@ def search_hub(
                 "count": 0,
             },
         )
-        return {"status": "clarify", "query": redacted_query, **clarify, "limit": _HUB_RESULT_LIMIT}
+        return {"status": "clarify", "scope": scope, "query": redacted_query, **clarify, "limit": _HUB_RESULT_LIMIT}
 
     results = _prepare_results(
         _extract_results_from_object(result_object),
@@ -139,7 +172,7 @@ def search_hub(
             "slugs": [item.get("slug") for item in results[:_HUB_RESULT_LIMIT]],
         },
     )
-    return {"status": "ok", "query": redacted_query, "results": results, "limit": _HUB_RESULT_LIMIT}
+    return {"status": "ok", "scope": scope, "query": redacted_query, "results": results, "limit": _HUB_RESULT_LIMIT}
 
 
 def _extract_results(payload: Any) -> list[dict[str, Any]]:
