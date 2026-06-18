@@ -81,7 +81,7 @@ message उसके chat box में जैसा है वैसा paste �
 
 ```text
 इस workspace में Hephaestus Agentlas meta-agent set up करो। Terminal में
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.3/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.4/scripts/install-all-runtimes.sh | bash`
 चलाओ, फिर बताओ कि मैं जो tool इस्तेमाल कर रहा/रही हूँ (Claude Code, Codex,
 Gemini CLI, Antigravity, Cursor) उसमें ये तीन commands कैसे इस्तेमाल करनी हैं:
 /hephaestus-build, /hephaestus-network, /hephaestus-cloud। कुछ fail हो तो
@@ -166,7 +166,7 @@ agentlas run agentlas-meta-agent "Package this workflow for Agentlas"
 जिस project folder में package files चाहिए, वहां macOS Terminal, Linux terminal, Windows Git Bash या WSL खोलें:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.3/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.4/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -174,9 +174,9 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\hephaestus-v0.7.3.zip"
-$extract = "$env:TEMP\hephaestus-v0.7.3"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.7.3.zip" -OutFile $zip
+$zip = "$env:TEMP\hephaestus-v0.7.4.zip"
+$extract = "$env:TEMP\hephaestus-v0.7.4"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.7.4.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1
@@ -217,7 +217,7 @@ Codex chat के अंदर `/plugin marketplace add` इस्तेमा�
 **`codex` CLI वाले OS terminal में टाइप करें**:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.3
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.4
 codex plugin list
 codex plugin add hephaestus@agentlas-core-engine
 codex plugin list
@@ -291,7 +291,7 @@ Hephaestus सिर्फ prompt answer नहीं बनाता। यह 
 | "इस workflow के लिए team/company बनाओ" | `20-multi-agent-team-builder` | HQ, PM Soul, Memory Curator, Policy Gate, eval, QA और handoff वाली multi-agent team |
 | "इस existing agent/repo/workspace को package करो" | `30-agentlas-packager` | Desktop import, terminal, Codex, Claude, Gemini या public GitHub release के लिए साफ Agentlas package |
 
-## v0.7.3 में नया
+## v0.7.4 में नया
 
 - **Korean document first-party parsing।** HWPX ZIP/XML से paragraph और table spans निकाले जाते हैं, और legacy `.hwp` CFB `FileHeader` तथा `BodyText/Section*` streams से सीधे पढ़ा जाता है। GPL/AGPL parser या `hwp5txt` की जरूरत नहीं है।
 - **CJK search काम करता है।** tokenizer अब Korean/Japanese/Chinese runs के लिए character bigrams बनाता है और FTS index `trigram` tokenizer इस्तेमाल करता है — zero-install CJK corpus search। मौजूदा databases पहली बार खुलने पर अपने आप re-index होते हैं।

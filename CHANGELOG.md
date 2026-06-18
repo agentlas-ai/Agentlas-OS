@@ -4,6 +4,13 @@
 
 No unreleased changes yet.
 
+## v0.7.4 - 2026-06-18
+
+- Moved the README first-run path to the top: copy-paste install prompt first,
+  then the three commands, then example prompts.
+- Updated the Agentlas web Hephaestus landing hero so the first visible product
+  explanation is the three-command model: create, borrow, share.
+
 ## v0.7.3 - 2026-06-18
 
 - Added the clearer three-command user surface:
