@@ -17,7 +17,7 @@ import sys
 from typing import Any
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "0.7.1"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "0.7.2"}
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -48,6 +48,27 @@ TOOLS: list[dict[str, Any]] = [
                 "caller": {
                     "type": "string",
                     "description": "Alias for caller_id, matching the CLI --caller option.",
+                },
+                "session_inventory": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "session_id": {"type": "string"},
+                                    "provider": {"type": "string"},
+                                    "model": {"type": "string"},
+                                    "trust": {"type": "string"},
+                                    "capabilities": {"type": "array", "items": {"type": "string"}},
+                                    "max_parallel": {"type": "integer"},
+                                },
+                                "additionalProperties": True,
+                            },
+                        ]
+                    },
+                    "description": "Optional host-advertised active sessions (Codex, Claude, GLM, DeepSeek, local models) for Stormbreaker pipeline scheduling.",
                 },
             },
             "required": ["request"],
@@ -161,6 +182,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             hub_approved=bool(arguments.get("approve_hub", False)),
             hub_only=bool(arguments.get("hub_only", False)),
             caller_id=arguments.get("caller_id") or arguments.get("caller"),
+            session_inventory=arguments.get("session_inventory") or None,
         )
     if name == "hephaestus_cloud_search":
         # Owner-scoped: scope="cloud" implies hub_only inside route_request and

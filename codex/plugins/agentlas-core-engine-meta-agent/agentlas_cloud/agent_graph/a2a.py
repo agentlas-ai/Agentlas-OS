@@ -245,3 +245,60 @@ def export_agent_card(project_root: str | Path = ".", agent_id: str | None = Non
         "leaked_private_fields": leaked,
         "well_known_path": WELL_KNOWN_PATH,
     }
+
+
+def build_a2a_registry(project_root: str | Path = ".") -> dict[str, Any]:
+    """Queryable A2A registry of internal agents (Phase 4 discovery surface).
+
+    Each entry carries an identity block. ``verified`` is False until signed
+    cards + per-agent identity hardening land — the non-negotiable prerequisite
+    for external mesh exposure (redesign decision 3).
+    """
+
+    graph = load_graph(project_root).get("graph", {})
+    caps_by_agent: dict[str, set[str]] = {}
+    for edge in graph.get("edges", []):
+        if str(edge.get("relation") or edge.get("kind")) != "has_capability":
+            continue
+        caps_by_agent.setdefault(str(edge.get("from")), set()).add(
+            str(edge.get("to")).removeprefix("capability:")
+        )
+
+    entries: list[dict[str, Any]] = []
+    for agent in graph.get("agents", []):
+        if str(agent.get("type")) == "ExternalAgent":
+            continue
+        aid = str(agent.get("id"))
+        entries.append(
+            {
+                "id": aid,
+                "name": agent.get("name"),
+                "type": agent.get("type"),
+                "capabilities": sorted(caps_by_agent.get(aid, set())),
+                "well_known": WELL_KNOWN_PATH,
+                "identity": {"owner": "local", "sponsor": None, "expiry": None, "verified": False},
+                "routing_status": agent.get("routing_status"),
+            }
+        )
+    return {
+        "format": "a2a-registry-v1",
+        "count": len(entries),
+        "agents": entries,
+        "note": (
+            "identity.verified=false until signed-card + per-agent identity hardening; "
+            "external mesh exposure is gated on that (redesign decision 3)."
+        ),
+    }
+
+
+def can_invoke_external(*, aligned: bool, identity_verified: bool) -> dict[str, Any]:
+    """Phase 4 invoke gate: an external agent is callable only when its capability
+    is curator-aligned AND its identity is verified (defense-in-depth)."""
+
+    allowed = bool(aligned and identity_verified)
+    reasons: list[str] = []
+    if not aligned:
+        reasons.append("capability not curator-aligned (aligned_with missing)")
+    if not identity_verified:
+        reasons.append("agent identity not verified (signed card required)")
+    return {"can_invoke": allowed, "blocked_reasons": reasons}

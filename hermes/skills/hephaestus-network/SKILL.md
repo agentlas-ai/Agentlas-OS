@@ -98,7 +98,10 @@ For demo/distribution/Hub-only requests:
   stage card's canonical command, save artifacts under
   `handoff_dir/<order>-<kind>/`, pass those paths to the next stage. On a stage
   failure: stop and report progress plus the remaining plan — never retry
-  silently.
+  silently. If `task_force` or `execution_fabric` is present, use it as the
+  Stormbreaker packet schedule; parallel groups can be dispatched across active
+  Codex, Claude, GLM, DeepSeek, Gemini, or local sessions when the host has
+  them.
 - `action: "hub_fallback"` or `"hub_candidates"` — Hub lookup already used
   redacted keywords only; the raw prompt and local memory were not sent.
   If the user explicitly asks to avoid all local agents/cards, pass
@@ -116,11 +119,20 @@ For demo/distribution/Hub-only requests:
   If only candidates were returned and no Hub agent was invoked yet, say:
   `Hub 후보 확인: <top candidate name> (<slug>) · 아직 invoke 전 · receipt=<receipt_id>`,
   then invoke the chosen callable Hub agent before proceeding whenever the task
-  needs the agent's runtime bundle.
+  needs the agent's runtime bundle. For composite Hub-only requests,
+  `task_force.stages[]` may already contain stage-level Hub candidates; treat
+  that as the temporary TF shortlist, not as a request to ask the user about
+  every stage.
 - `action: "propose_new"` — offer to build a new agent/team via the Hephaestus
   meta-agent (`/hephaestus`).
 - `action: "refuse"` — explain `reasons` (for example, loop guard). Do not
   retry around it.
+
+Always honor `policy_decision` in Local Operator Mode. Most decisions are
+`allow`, `allow_with_label`, `auto_redact`, or `candidate_only`; do not create a
+human approval loop for ordinary local work. Ask only when the host runtime is
+about to perform a real external export, global memory/playbook promotion, or
+irreversible publish/delete/payment/submit action.
 
 ## 5. Hard rules
 

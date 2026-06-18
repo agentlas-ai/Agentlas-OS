@@ -132,6 +132,29 @@ def main(argv: list[str] | None = None) -> int:
     ao_a2a_export = ao_a2a_sub.add_parser("export", help="Export an internal agent as an A2A AgentCard")
     ao_a2a_export.add_argument("project", nargs="?", default=".")
     ao_a2a_export.add_argument("--agent", default=None, help="Agent id to export (default: local meta-agent)")
+    ao_a2a_registry = ao_a2a_sub.add_parser("registry", help="Queryable A2A registry of internal agents (with identity blocks)")
+    ao_a2a_registry.add_argument("project", nargs="?", default=".")
+    ao_okf = ao_sub.add_parser("okf", help="OKF (Open Knowledge Format) bundle import/export")
+    ao_okf_sub = ao_okf.add_subparsers(dest="okf_command", required=True)
+    ao_okf_export = ao_okf_sub.add_parser("export", help="Serialize the AO graph to an OKF Markdown bundle (redaction-safe)")
+    ao_okf_export.add_argument("project", nargs="?", default=".")
+    ao_okf_export.add_argument("--out", default=None, help="Output bundle directory (default: .agentlas/okf-export)")
+    ao_okf_import = ao_okf_sub.add_parser("import", help="Parse an external OKF bundle into nodes/edges (proposal only)")
+    ao_okf_import.add_argument("bundle", help="Path to an OKF bundle directory")
+    ao_okf_import.add_argument("project", nargs="?", default=".")
+    ao_kernel = ao_sub.add_parser("kernel", help="Super-ontology kernel status (runtime-enforced seed contracts)")
+    ao_kernel.add_argument("project", nargs="?", default=".")
+    ao_pack = ao_sub.add_parser("pack", help="Build an installable Ontology Pack manifest")
+    ao_pack.add_argument("project", nargs="?", default=".")
+    ao_os = ao_sub.add_parser("os", help="Agent OS kernel-module surface (live status)")
+    ao_os.add_argument("project", nargs="?", default=".")
+    ao_catalog = ao_sub.add_parser("catalog", help="Knowledge Catalog descriptor over an OKF export (cross-runtime)")
+    ao_catalog.add_argument("project", nargs="?", default=".")
+    ao_catalog.add_argument("--out", default=None, help="OKF bundle output dir")
+    ao_catalog.add_argument("--no-export", action="store_true", help="Describe without re-exporting the bundle")
+    ao_pipeline = ao_sub.add_parser("pipeline", help="Plan a multi-stage pipeline via produces/consumes edges")
+    ao_pipeline.add_argument("artifact", help="Target artifact the pipeline must produce")
+    ao_pipeline.add_argument("project", nargs="?", default=".")
 
     route = sub.add_parser("route", help="Route a natural-language request to a local agent/team/plugin")
     route.add_argument("query")
@@ -150,6 +173,11 @@ def main(argv: list[str] | None = None) -> int:
         "--caller",
         default=None,
         help="Caller agent id for AO deny/require gating (agent-to-agent calls supply this; omit for top-level user routing).",
+    )
+    route.add_argument(
+        "--session-inventory",
+        default=None,
+        help="JSON array of active host sessions for Stormbreaker pipeline scheduling (for example Codex, Claude, GLM, DeepSeek).",
     )
 
     mcp = sub.add_parser("mcp", help="MCP integration")
@@ -294,6 +322,15 @@ def main(argv: list[str] | None = None) -> int:
 
         maybe_print_update_notice()
         init_networking(networking_home())
+        session_inventory = None
+        if args.session_inventory:
+            try:
+                session_inventory = json.loads(args.session_inventory)
+                if not isinstance(session_inventory, list):
+                    raise ValueError("session inventory must be a JSON array")
+            except (json.JSONDecodeError, ValueError) as exc:
+                emit({"action": "route", "status": "error", "error": f"invalid --session-inventory: {exc}"})
+                return 2
         return emit(
             route_request(
                 args.query,
@@ -304,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
                 hub_only=args.hub_only,
                 scope=args.scope,
                 caller_id=getattr(args, "caller", None),
+                session_inventory=session_inventory,
             )
         )
     if args.command == "ao":
@@ -374,7 +412,52 @@ def main(argv: list[str] | None = None) -> int:
                 return emit(import_agent_card(card, project_root=args.project))
             if args.a2a_command == "export":
                 return emit(export_agent_card(project_root=args.project, agent_id=args.agent))
+            if args.a2a_command == "registry":
+                from .agent_graph import build_a2a_registry
+
+                return emit(build_a2a_registry(args.project))
             return emit({"status": "error", "message": f"unknown a2a command: {args.a2a_command}"}) or 2
+        if args.ao_command == "okf":
+            from .agent_graph import from_okf_bundle, to_okf_bundle
+
+            if args.okf_command == "export":
+                try:
+                    return emit(to_okf_bundle(project_root=args.project, out_dir=args.out))
+                except OSError as exc:
+                    return emit({"status": "error", "error": f"cannot write OKF bundle: {exc}"}) or 2
+            if args.okf_command == "import":
+                return emit(from_okf_bundle(args.bundle))
+            return emit({"status": "error", "message": f"unknown okf command: {args.okf_command}"}) or 2
+        if args.ao_command == "kernel":
+            from .agent_graph import load_kernel, verify_enforcement
+
+            kernel = load_kernel(args.project)
+            verification = verify_enforcement(args.project)
+            emit({"kernel": kernel, "verification": verification})
+            return 0 if verification.get("all_enforced") else 1
+        if args.ao_command == "pack":
+            from .agent_graph import build_pack
+
+            return emit(build_pack(args.project))
+        if args.ao_command == "os":
+            from .agent_graph import os_surface
+
+            surface = os_surface(args.project)
+            emit(surface)
+            return 0 if surface.get("all_live") else 1
+        if args.ao_command == "catalog":
+            from .agent_graph import knowledge_catalog_descriptor
+
+            try:
+                return emit(
+                    knowledge_catalog_descriptor(args.project, okf_dir=args.out, export=not args.no_export)
+                )
+            except OSError as exc:
+                return emit({"status": "error", "error": f"cannot write catalog bundle: {exc}"}) or 2
+        if args.ao_command == "pipeline":
+            from .agent_graph import plan_pipeline_ao
+
+            return emit(plan_pipeline_ao(args.project, args.artifact))
         return emit({"status": "error", "message": f"unknown ao command: {args.ao_command}"}) or 2
     parser.error("unhandled command")
     return 2

@@ -32,7 +32,7 @@ fallback.
 From an OS terminal (not the Antigravity chat box):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.1/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.2/scripts/install-all-runtimes.sh | bash
 ```
 
 Then reopen Antigravity and type `/hephaestus` (or `/hephaestus ontology`).

@@ -22,7 +22,9 @@ from .card_lint import effective_status, lint_card
 from .card_store import load_global_cards
 from .hub_fallback import search_hub
 from .memory import load_profile, profile_adjustment, redact_tokens
-from .pipeline import plan_pipeline
+from .pipeline import detect_stages, plan_pipeline
+from .playbooks import build_memory_playbook_context
+from .policy import evaluate_local_operator_policy
 from .receipts import write_receipt
 from .tokenize import has_hangul, snake_tokens, token_set, tokenize, word_token_set, word_tokens
 
@@ -324,6 +326,143 @@ def _filter_candidates_by_ao(
     }
 
 
+def _compact_hub_result(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: item.get(key)
+        for key in ("slug", "name", "nameEn", "kind", "callable", "routingReady", "trustGrade", "evalPassRate", "rating")
+        if item.get(key) is not None
+    }
+
+
+def _task_force_from_result(result: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(result.get("task_force"), dict):
+        return result["task_force"]
+    if result.get("action") == "pipeline":
+        packets_by_order = {
+            int(packet.get("stage_order") or 0): packet
+            for packet in ((result.get("execution_fabric") or {}).get("packets") or [])
+            if isinstance(packet, dict)
+        }
+        stages = []
+        for stage in result.get("stages") or []:
+            if not isinstance(stage, dict):
+                continue
+            packet = packets_by_order.get(int(stage.get("order") or 0), {})
+            stages.append(
+                {
+                    "order": stage.get("order"),
+                    "stage": stage.get("stage"),
+                    "agent": stage.get("card"),
+                    "ao_agent": stage.get("ao_agent"),
+                    "produces": stage.get("produces") or [],
+                    "consumes": stage.get("consumes") or [],
+                    "session_hint": packet.get("session_hint") or {},
+                    "memory_scope": "stage_artifacts_only",
+                }
+            )
+        return {
+            "mode": "agent_os_router",
+            "formation": "stormbreaker_temporary_tf",
+            "temporary_tf": True,
+            "over_decomposition_guard": "single-intent requests stay single-route",
+            "stages": stages,
+        }
+    if result.get("action") == "route" and result.get("selected"):
+        return {
+            "mode": "agent_os_router",
+            "formation": "single_agent_route",
+            "temporary_tf": False,
+            "over_decomposition_guard": "single matched agent is enough",
+            "stages": [
+                {
+                    "order": 1,
+                    "stage": "direct",
+                    "agent": (result.get("selected") or {}).get("id"),
+                    "memory_scope": "local_runtime_scope",
+                }
+            ],
+        }
+    if result.get("action") == "hub_candidates":
+        hub_results = ((result.get("hub") or {}).get("results") or [])[:5]
+        return {
+            "mode": "agent_os_router",
+            "formation": "single_stage_hub_candidates",
+            "temporary_tf": False,
+            "over_decomposition_guard": "Hub TF only forms after stage decomposition",
+            "stages": [
+                {
+                    "order": 1,
+                    "stage": "direct",
+                    "hub_candidates": [_compact_hub_result(item) for item in hub_results if isinstance(item, dict)],
+                    "memory_scope": "public_playbook_or_redacted_summary",
+                }
+            ],
+        }
+    return {
+        "mode": "agent_os_router",
+        "formation": "none",
+        "temporary_tf": False,
+        "over_decomposition_guard": "no executable route selected",
+        "stages": [],
+    }
+
+
+def _hub_task_force_plan(
+    query: str,
+    *,
+    scope: str,
+    search_hub_fn,
+) -> dict[str, Any] | None:
+    stages_wanted = detect_stages(query)
+    if len(stages_wanted) < 2:
+        return None
+
+    stage_results: list[dict[str, Any]] = []
+    combined: list[dict[str, Any]] = []
+    seen_slugs: set[str] = set()
+    for order, (stage_key, artifact_kind) in enumerate(stages_wanted[:3], start=1):
+        stage_query_tokens = word_tokens(f"{query} {stage_key} {artifact_kind}")
+        hub = search_hub_fn(stage_query_tokens, search_scope=scope)
+        results = [item for item in (hub.get("results") or []) if isinstance(item, dict)] if hub.get("status") == "ok" else []
+        candidates = [_compact_hub_result(item) for item in results[:3]]
+        for item in results:
+            slug = str(item.get("slug") or "")
+            if slug and slug not in seen_slugs:
+                seen_slugs.add(slug)
+                combined.append(item)
+        stage_results.append(
+            {
+                "order": order,
+                "stage": stage_key,
+                "artifact": artifact_kind,
+                "hub_status": hub.get("status"),
+                "hub_query": hub.get("query"),
+                "hub_candidates": candidates,
+                "memory_scope": "public_playbook_or_redacted_summary",
+            }
+        )
+
+    if not combined:
+        return None
+
+    return {
+        "hub": {
+            "status": "ok",
+            "scope": scope,
+            "query": "stagewise_task_force",
+            "results": combined,
+            "stage_results": stage_results,
+        },
+        "task_force": {
+            "mode": "agent_os_router",
+            "formation": "hub_stage_candidates",
+            "temporary_tf": True,
+            "over_decomposition_guard": "only plan-anchored composite requests form Hub TFs",
+            "stages": stage_results,
+        },
+    }
+
+
 def route_request(
     query: str,
     home: Path | str | None = None,
@@ -336,6 +475,7 @@ def route_request(
     router_chain: list[str] | None = None,
     scope: str = "network",
     caller_id: str | None = None,
+    session_inventory: list[Any] | None = None,
 ) -> dict[str, Any]:
     # Three-scope command model (docs/hephaestus-network-2.0.md):
     #   scope="cloud"   → /hephaestus-cloud: search ONLY the signed-in user's
@@ -380,6 +520,21 @@ def route_request(
         blocked_by_axiom: list[str] | None = None,
         fallback_scope: str | None = None,
     ) -> dict[str, Any]:
+        task_force = _task_force_from_result(result)
+        policy_decision = evaluate_local_operator_policy(
+            sorted(query_tokens),
+            action=str(result.get("action") or ""),
+            hub_used=isinstance(result.get("hub"), dict),
+            hub_only=hub_only or result.get("local_routing") == "skipped",
+            scope=str(result.get("scope") or scope),
+            pipeline=bool(result.get("action") == "pipeline" or task_force.get("temporary_tf")),
+        )
+        memory_playbook = build_memory_playbook_context(
+            action=str(result.get("action") or ""),
+            query_tokens=sorted(query_tokens),
+            task_force=task_force,
+            policy_decision=policy_decision,
+        )
         receipt_id = write_receipt(
             action=result["action"],
             query_tokens=sorted(query_tokens),
@@ -395,6 +550,9 @@ def route_request(
             allowed_by=allowed_by,
             blocked_by_axiom=blocked_by_axiom,
             fallback_scope=fallback_scope,
+            task_force=task_force,
+            policy_decision=policy_decision,
+            memory_playbook=memory_playbook,
             home=base,
         )
         result["receipt_id"] = receipt_id
@@ -405,6 +563,15 @@ def route_request(
         result["allowed_by"] = allowed_by or []
         result["blocked_by_axiom"] = blocked_by_axiom or []
         result["fallback_scope"] = fallback_scope
+        result["agent_os_router"] = {
+            "surface": chain[0] if chain else "hephaestus-network",
+            "command_model": "two_command",
+            "router_version": "agent_os_router.v1",
+            "local_operator_mode": True,
+        }
+        result["task_force"] = task_force
+        result["policy_decision"] = policy_decision
+        result["memory_playbook"] = memory_playbook
         return result
 
     if hop_count > max_hops:
@@ -426,6 +593,28 @@ def route_request(
         # stay one code path with two scopes.
         scope_tag = "cloud_only" if cloud_only else "hub_only"
         if use_hub:
+            stagewise = _hub_task_force_plan(query, scope=scope, search_hub_fn=_search_hub)
+            if stagewise is not None:
+                return finish(
+                    {
+                        "action": "hub_candidates",
+                        "selected": None,
+                        "candidates": [],
+                        "hub": stagewise["hub"],
+                        "task_force": stagewise["task_force"],
+                        "scope": scope,
+                        "suggestions": [],
+                        "local_routing": "skipped",
+                        "reasons": [f"{scope_tag}_task_force_results_found"],
+                    },
+                    [],
+                    [scope_tag, "hub_task_force_results_found"],
+                    match_reason=f"{scope_tag}_task_force_results",
+                    graph_path=[],
+                    allowed_by=["hub_results", scope_tag, "task_force_decomposition"],
+                    blocked_by_axiom=[],
+                    fallback_scope=None,
+                )
             hub = _search_hub(hub_query_tokens, search_scope=scope)
             if hub.get("status") == "clarify":
                 return finish(
@@ -609,7 +798,13 @@ def route_request(
     # routing_ready card with the right artifact contract is a candidate.
     ready_cards = [card for card in usable if statuses[str(card.get("id"))] in ("routing_ready", "trusted")]
     score_by_id = {str(item[2].get("id")): item[0] for item in auto_eligible}
-    plan = plan_pipeline(query, ready_cards, lambda card: score_by_id.get(str(card.get("id")), 0.0), project_dir=project)
+    plan = plan_pipeline(
+        query,
+        ready_cards,
+        lambda card: score_by_id.get(str(card.get("id")), 0.0),
+        project_dir=project,
+        session_inventory=session_inventory,
+    )
     if plan is not None:
         stage_candidates = []
         for stage in plan["stages"]:

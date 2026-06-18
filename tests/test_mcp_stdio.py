@@ -26,7 +26,7 @@ def test_initialize_and_tools_list(monkeypatch, tmp_path):
     init = responses[0]["result"]
     assert init["protocolVersion"] == "2025-06-18"
     assert init["serverInfo"]["name"] == "hephaestus-network"
-    assert init["serverInfo"]["version"] == "0.7.1"
+    assert init["serverInfo"]["version"] == "0.7.2"
     tools = responses[1]["result"]["tools"]
     tool_names = {tool["name"] for tool in tools}
     assert tool_names == {
@@ -41,6 +41,7 @@ def test_initialize_and_tools_list(monkeypatch, tmp_path):
     assert "hub_only" in route_tool["inputSchema"]["properties"]
     assert "caller_id" in route_tool["inputSchema"]["properties"]
     assert "caller" in route_tool["inputSchema"]["properties"]
+    assert "session_inventory" in route_tool["inputSchema"]["properties"]
     invoke_tool = next(tool for tool in tools if tool["name"] == "hephaestus_hub_invoke")
     assert "memory_root" in invoke_tool["inputSchema"]["properties"]
     auth_tool = next(tool for tool in tools if tool["name"] == "agentlas_authenticate")
@@ -102,6 +103,7 @@ def test_route_tool_threads_caller_id_to_ao_gate(monkeypatch, tmp_path):
                         "request": "run regression tests",
                         "project_dir": "/tmp/project",
                         "caller_id": "local/caller-agent",
+                        "session_inventory": ["codex", "claude"],
                     },
                 },
             }
@@ -116,6 +118,7 @@ def test_route_tool_threads_caller_id_to_ao_gate(monkeypatch, tmp_path):
     assert calls["kwargs"]["caller_id"] == "local/caller-agent"
     assert calls["kwargs"]["project_dir"] == "/tmp/project"
     assert calls["kwargs"]["runtime"] == "mcp"
+    assert calls["kwargs"]["session_inventory"] == ["codex", "claude"]
 
 
 def test_unknown_tool_and_method(monkeypatch, tmp_path):

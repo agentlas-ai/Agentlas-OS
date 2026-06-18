@@ -74,8 +74,9 @@ local-first router (`docs/hephaestus-network-2.0.md`). Required surfaces:
   (+ `~/.gemini/antigravity*/global_workflows/`).
 - Cursor (no custom slash commands): `cursor/rules/hephaestus.mdc` copied into
   `<project>/.cursor/rules/` — reacts to `/hephaestus*` and `@Hephaestus`.
-- Terminal: `hephaestus "<request>"` is shorthand for
-  `bin/hephaestus route "<request>"`.
+- Terminal: `Hephaestus "<request>"` is the human-facing alias for
+  `bin/hephaestus route "<request>"`; `hephaests-network "<request>"` is the
+  standalone Hub-only Network alias.
 - Generic AGENTS.md / local-model runtimes: see
   `docs/runtime-fallback-adapters.md`.
 

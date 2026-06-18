@@ -1,5 +1,7 @@
 from agentlas_cloud.networking import init_networking, route_request, save_card
+from agentlas_cloud.networking.execution_fabric import evaluate_final_gate
 from agentlas_cloud.networking.pipeline import detect_stages, plan_pipeline
+from agentlas_cloud.networking.receipts import record_execution
 from test_network_cards import make_ready_card
 
 
@@ -64,6 +66,11 @@ def test_plan_pipeline_chains_by_artifacts(tmp_path):
     assert plan["stages"][2]["consumes"] == ["codebase_change"]
     ids = [stage["card"] for stage in plan["stages"]]
     assert len(set(ids)) == 3
+    fabric = plan["execution_fabric"]
+    assert fabric["fabric_version"] == "stormbreaker.execution_fabric.v1"
+    assert fabric["required_packet_ids"] == [packet["packet_id"] for packet in fabric["packets"]]
+    assert fabric["packets"][0]["session_hint"]["session_id"] == "host:primary"
+    assert fabric["resume_policy"]["final_gate"] == "block_success_until_all_required_packets_pass"
 
 
 def test_route_returns_pipeline_plan(tmp_path):
@@ -78,9 +85,82 @@ def test_route_returns_pipeline_plan(tmp_path):
     assert isinstance(result.get("graph_path"), list)
     assert isinstance(result.get("allowed_by"), list) and result["allowed_by"]
     assert result["blocked_by_axiom"] == []
+    assert result["execution_fabric"]["mode"] == "parallel_when_independent"
+    assert len(result["execution_fabric"]["parallel_groups"]) == 3
 
 
 def test_single_intent_is_not_decomposed(tmp_path):
     home = pipeline_home(tmp_path)
     result = route_request("웹앱 구현해줘", home=home, use_hub=False)
     assert result["action"] != "pipeline"
+
+
+def test_pipeline_execution_fabric_uses_host_sessions(tmp_path):
+    home = pipeline_home(tmp_path)
+    from agentlas_cloud.networking.card_store import load_global_cards
+
+    cards, _ = load_global_cards(home)
+    plan = plan_pipeline(
+        "기획부터 구현하고 테스트까지 끝까지",
+        cards,
+        lambda card: 0.0,
+        session_inventory=[
+            {"session_id": "claude:planner", "provider": "claude", "capabilities": ["planning"]},
+            {"session_id": "codex:builder", "provider": "codex", "capabilities": ["coding"]},
+            {"session_id": "deepseek:verifier", "provider": "deepseek", "capabilities": ["verification"]},
+        ],
+    )
+    assert plan is not None
+    hints = [packet["session_hint"]["session_id"] for packet in plan["execution_fabric"]["packets"]]
+    assert hints == ["claude:planner", "codex:builder", "deepseek:verifier"]
+
+
+def test_route_pipeline_threads_session_inventory(tmp_path):
+    home = pipeline_home(tmp_path)
+    result = route_request(
+        "웹앱 기획부터 구현, 테스트 검증까지 끝까지 해줘",
+        home=home,
+        use_hub=False,
+        session_inventory=[
+            {"session_id": "claude:planner", "provider": "claude", "capabilities": ["planning"]},
+            {"session_id": "codex:builder", "provider": "codex", "capabilities": ["coding"]},
+            {"session_id": "deepseek:verifier", "provider": "deepseek", "capabilities": ["verification"]},
+        ],
+    )
+    assert result["action"] == "pipeline"
+    hints = [packet["session_hint"]["session_id"] for packet in result["execution_fabric"]["packets"]]
+    assert hints == ["claude:planner", "codex:builder", "deepseek:verifier"]
+
+
+def test_execution_fabric_final_gate_blocks_incomplete_packets(tmp_path):
+    home = pipeline_home(tmp_path)
+    result = route_request("웹앱 기획부터 구현, 테스트 검증까지 끝까지 해줘", home=home, use_hub=False)
+    fabric = result["execution_fabric"]
+    packet_ids = fabric["required_packet_ids"]
+    gate = evaluate_final_gate(fabric, {packet_ids[0]: "passing"})
+    assert gate["can_report_success"] is False
+    assert gate["missing_or_incomplete"] == packet_ids[1:]
+    passing = evaluate_final_gate(fabric, {packet_id: "passing" for packet_id in packet_ids})
+    assert passing["can_report_success"] is True
+    assert passing["final_gate"] == "success"
+
+
+def test_record_execution_accepts_parallel_metadata(tmp_path):
+    home = pipeline_home(tmp_path)
+    record_execution(
+        "receipt123",
+        "local/dev-team",
+        "passing",
+        home=home,
+        detail="stage passed",
+        pipeline_id="pipe123",
+        packet_id="pipe123:2:build",
+        stage_order=2,
+        session_id="codex:builder",
+        parallel_group="group:2",
+        parent_receipt_id="route123",
+    )
+    ledger = (home / "ledgers" / "executions.jsonl").read_text(encoding="utf-8")
+    assert '"packet_id": "pipe123:2:build"' in ledger
+    assert '"session_id": "codex:builder"' in ledger
+    assert '"parallel_group": "group:2"' in ledger

@@ -1,21 +1,29 @@
 # Hephaestus Network 2.0
 
-Local-first agent and plugin networking: call Hephaestus from any major AI
-runtime, route natural-language requests to your local agents/teams/plugins by
-standardized routing cards, fall back to the Agentlas Hub with redacted
-keywords only, and keep all user/project memory on your machine.
+Local-first Agent OS routing: call Hephaestus from any major AI runtime, route
+natural-language requests to local agents/teams/plugins or Agentlas Hub
+candidates, form a temporary task force for composite work, and keep
+user/project memory on the local machine unless the operator explicitly exports
+it.
 
 ## What you get
 
 - `/hephaestus-network <request>` (and `@Hephaestus <request>`) in Claude Code,
   Codex, Gemini CLI, and Antigravity; a rule adapter for Cursor; and
-  `hephaestus "<request>"` in the terminal.
+  `Hephaestus "<request>"` / `hephaests-network "<request>"` in the terminal.
+- A two-command user surface: `/hephaestus-network` for work routing and
+  `/hephaestus` for creation, repair, memory, playbook, and diagnostics. The
+  lower-level commands stay for automation.
 - A global, local-only structure at `~/.agentlas/networking/`:
   `cards/` (routing cards), `policies/`, `memory/` (routing preferences only),
   `ledgers/` (routing receipts, executions, capability grants), `cache/`,
   `registry.sqlite` (rebuildable index), `sources.json`, `config.json`.
 - Routing receipts for every decision. The router only selects agents or Hub
   bundles; host runtimes enforce permissions when tools actually execute.
+- Local Operator Mode policy labels: most super-ontology signals become
+  `allow`, `allow_with_label`, `auto_redact`, or `candidate_only`. Human
+  approval is reserved for real external export, global promotion, or
+  irreversible execution handled by the host runtime.
 
 ## Core rules
 
@@ -56,6 +64,9 @@ hephaestus network grant <capability> --target <id> --scope per_call|session|pro
 hephaestus cards lint [path]
 hephaestus cards migrate <root> --tier free|paid|plugin|local
 hephaestus route "<request>"     # or just: hephaestus "<request>"
+hephaestus hephaestus-network "<request>"   # Hub-only Network surface
+Hephaestus "<request>"           # human-facing terminal alias
+hephaests-network "<request>"    # standalone Hub-only Network alias
 ```
 
 ## Decisions the router can return
@@ -63,15 +74,24 @@ hephaestus route "<request>"     # or just: hephaestus "<request>"
 | action | meaning |
 |--------|---------|
 | `route` | confident local match |
-| `pipeline` | plan-anchored composite request ("기획부터 구현, QA까지") — a multi-team stage plan chained by the cards' `produces`/`consumes` artifact contracts; each stage hands artifacts to the next via `handoff_dir` |
+| `pipeline` | plan-anchored composite request ("기획부터 구현, QA까지") — a multi-team stage plan chained by Agent Ontology or card `produces`/`consumes` artifact contracts; includes a Stormbreaker `execution_fabric` so host runtimes can run independent packets across active sessions and block success until every required packet passes |
 | `clarify` | low confidence or ambiguous local match — answer the question to continue |
-| `hub_fallback` / `hub_candidates` | no local match; Hub lookup used redacted keywords only |
+| `hub_fallback` / `hub_candidates` | no local match or Hub-only mode; Hub lookup used redacted keywords only. Composite Hub-only requests include a `task_force` with stage-level Hub candidates |
 | `propose_new` | nothing matched locally or on the Hub — build a new agent with `/hephaestus` |
 | `refuse` | loop guard or another technical guard; the reason is in `reasons` |
 
 Every decision writes a receipt to
 `~/.agentlas/networking/ledgers/routing-decisions.jsonl` with normalized,
 redacted tokens — never the raw prompt.
+
+0.7.2 receipts also carry:
+
+- `agent_os_router`: the two-command surface and router version.
+- `task_force`: single-agent route, local pipeline, or Hub stage candidates.
+- `policy_decision`: Local Operator Mode labels such as `auto_redact` or
+  `candidate_only`.
+- `memory_playbook`: candidate-first operational memory/playbook notes. The
+  router never writes durable/global memory directly.
 
 ## Benchmarks gate quality claims
 
@@ -92,6 +112,17 @@ Use `docs/robustness-protocol.md` for the execution contract after routing and
 1. Codex native, no skills and no agent calls.
 2. Existing Hephaestus Network with agent or Hub calls.
 3. Hephaestus Network plus Robustness Protocol gates.
+
+For `pipeline` decisions, the returned JSON includes `execution_fabric`:
+required work packets, dependency groups, session hints, and a resume/final-gate
+policy. The host runtime owns actual calls to Codex, Claude, GLM, DeepSeek, or
+local model sessions; Hephaestus supplies the auditable schedule and blocks a
+success claim until the required packet list is complete.
+
+When an Agent Ontology graph is present, pipeline planning first tries the AO
+`produces`/`consumes` graph and records the resulting `graph_path`. Card-level
+`produces`/`consumes` planning remains the fallback for projects that have not
+materialized AO yet.
 
 The first recommended topic is public agent repo repair. It is intentionally
 file-heavy, validation-heavy, and safety-sensitive, so false completion and

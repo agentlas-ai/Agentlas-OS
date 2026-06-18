@@ -20,7 +20,9 @@ def validate_graph(project_root: str | Path | None = None) -> dict[str, Any]:
     blocked_edges: list[dict[str, Any]] = []
 
     node_index: dict[str, dict[str, Any]] = {
-        str(node.get("id")): node for node in graph.get("agents", []) + graph.get("artifacts", []) if str(node.get("id") or "").strip()
+        str(node.get("id")): node
+        for node in graph.get("agents", []) + graph.get("artifacts", []) + graph.get("scopes", [])
+        if str(node.get("id") or "").strip()
     }
     for capability in graph.get("capabilities", []):
         capability_id = str(capability).strip()
@@ -157,9 +159,14 @@ def _check_requirements(
                             {"edge": edge, "message": f"requirement not met: {edge} -> {requirement}"}
                         )
                 elif requirement.startswith("exists "):
-                    inside = requirement[len("exists ") :]
-                    relation = inside.split("(")[0]
-                    has_relation = any(from_edge.get("relation") == relation for from_edge in outgoing.get(str(edge.get("from") or ""), []))
+                    inside = requirement[len("exists ") :].strip()
+                    relation = inside.split("(")[0].strip()
+                    # `exists rel(to)` anchors on the edge's TARGET node's outgoing
+                    # edges; `exists rel` (or `(from)`) anchors on the source.
+                    anchor = str(edge.get("to") or "") if "(to)" in inside else str(edge.get("from") or "")
+                    has_relation = any(
+                        other.get("relation") == relation for other in outgoing.get(anchor, [])
+                    )
                     if not has_relation:
                         violations.append(
                             {"edge": edge, "message": f"requirement not met: {edge} -> {requirement}"}

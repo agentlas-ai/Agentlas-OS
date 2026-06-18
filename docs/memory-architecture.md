@@ -29,6 +29,30 @@ worker observation
   -> Policy Gate approval for shared team memory
 ```
 
+## Network Memory / Playbook Control Plane
+
+Hephaestus Network 0.7.2 keeps the per-agent `.agentlas` memory architecture,
+but treats those files as scoped memory roots rather than isolated notebooks.
+The router does not write durable memory directly. It emits:
+
+- `memory_playbook.applied`: playbooks that informed this route;
+- `memory_playbook.candidates`: reusable routing, TF, failure, or release
+  patterns that may be promoted later;
+- `policy_decision`: Local Operator labels such as `auto_redact` or
+  `candidate_only`.
+
+The global networking home seeds:
+
+```text
+~/.agentlas/networking/memory/playbook-registry.json
+~/.agentlas/networking/memory/playbook-candidates.jsonl
+~/.agentlas/networking/memory/memory-events.jsonl
+```
+
+External Hub agents and third-party model sessions are proposal sources only.
+Durable or global promotion still goes through Memory Curator, PM Soul, or a
+Policy Gate owner with evidence and rollback notes.
+
 ## In Generated Single-Agent Packages
 
 Single Agent Builder must still include memory architecture:

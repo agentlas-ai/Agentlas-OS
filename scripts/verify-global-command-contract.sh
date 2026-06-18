@@ -38,6 +38,7 @@ required_files=(
   "opencode/commands/hephaestus-network.md"
   "openclaw/skills/hephaestus-network/SKILL.md"
   "hermes/skills/hephaestus-network/SKILL.md"
+  "bin/hephaests-network"
   "agentlas_cloud/mcp_stdio.py"
   "docs/local-models.md"
   "docs/hephaestus-network-2.0.md"
@@ -74,6 +75,22 @@ for item in network_commands:
     adapter = item.get("adapterPath")
     if not adapter or not Path(adapter).exists():
         raise SystemExit(f"/hephaestus-network adapter missing: {adapter}")
+terminal_aliases = {
+    item.get("command"): item
+    for item in registry.get("commands", [])
+    if item.get("runtime") == "agentlas-terminal"
+}
+for alias_command, adapter in {
+    "Hephaestus": "bin/hephaestus",
+    "hephaests-network": "bin/hephaests-network",
+}.items():
+    item = terminal_aliases.get(alias_command)
+    if not item:
+        raise SystemExit(f"missing terminal alias: {alias_command}")
+    if item.get("adapterPath") != adapter:
+        raise SystemExit(f"{alias_command} adapterPath mismatch: {item.get('adapterPath')} != {adapter}")
+    if not Path(adapter).exists():
+        raise SystemExit(f"{alias_command} adapter file does not exist: {adapter}")
 required = {
     "claude-code": ".claude/commands/hephaestus.md",
     "codex": "codex/prompts/hephaestus.md",

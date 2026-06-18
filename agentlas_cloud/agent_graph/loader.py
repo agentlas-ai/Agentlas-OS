@@ -119,7 +119,7 @@ DEFAULT_GRAMMAR: dict[str, Any] = {
     ],
     "require": [
         {"if": "edge.kind == \"shared_memory_write\"", "then": "requires_approval_from(PolicyGate)"},
-        {"if": "from.type == \"ExternalAgent\" and relation == \"can_invoke\"", "then": "exists aligned_with"},
+        {"if": "to.type == \"ExternalAgent\" and relation == \"can_invoke\"", "then": "exists aligned_with(to)"},
     ],
     "capabilities": [
         "create_single_agent",
@@ -228,6 +228,12 @@ def load_graph(project_root: str | Path = ".") -> dict[str, Any]:
     elif caps_payload is not None:
         report["warnings"].append("capabilities.json is malformed; expected {'capabilities': [...]} JSON object")
 
+    # scopes.jsonl is optional (Phase 0 memory ownership); a missing file is benign.
+    if (path / "scopes.jsonl").exists():
+        scopes, errors = _read_jsonl(path / "scopes.jsonl")
+        report["errors"].extend(errors)
+        graph["scopes"] = [_normalize_scope_node(s) for s in scopes]
+
     edges, errors = _read_jsonl(path / "edges.jsonl")
     report["errors"].extend(errors)
     graph["edges"] = [_normalize_edge(edge) for edge in edges]
@@ -235,7 +241,7 @@ def load_graph(project_root: str | Path = ".") -> dict[str, Any]:
     if (path / "migrate-report.json").exists():
         report["migrate_report"] = _read_json(path / "migrate-report.json", default=None)
 
-    node_index = {_as_node_id(node): node for node in graph["agents"] + graph["artifacts"] if _as_node_id(node)}
+    node_index = {_as_node_id(node): node for node in graph["agents"] + graph["artifacts"] + graph["scopes"] if _as_node_id(node)}
     for cap in graph.get("capabilities", []):
         if not str(cap).strip():
             continue
@@ -246,6 +252,7 @@ def load_graph(project_root: str | Path = ".") -> dict[str, Any]:
         "agents": len(graph["agents"]),
         "artifacts": len(graph["artifacts"]),
         "capabilities": len(graph["capabilities"]),
+        "scopes": len(graph["scopes"]),
         "edges": len(graph["edges"]),
     }
 
@@ -279,6 +286,18 @@ def _normalize_artifact_node(node: dict[str, Any]) -> dict[str, Any]:
     if not normalized.get("kind"):
         normalized["kind"] = str(normalized["id"]).removeprefix("artifact:")
     normalized["type"] = "Artifact"
+    return normalized
+
+
+def _normalize_scope_node(node: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(node)
+    normalized["id"] = str(node.get("id") or "").strip()
+    if not normalized["id"]:
+        scope = str(node.get("scope") or node.get("name") or "scope")
+        normalized["id"] = f"scope:{scope}"
+    if not normalized.get("scope"):
+        normalized["scope"] = str(normalized["id"]).removeprefix("scope:")
+    normalized["type"] = "MemoryScope"
     return normalized
 
 

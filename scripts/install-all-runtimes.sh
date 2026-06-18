@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-version="${HEPHAESTUS_REF:-v0.7.1}"
+version="${HEPHAESTUS_REF:-v0.7.2}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Hephaestus}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -129,6 +129,8 @@ install_runtime_home() {
   cp -R "$source_dir/bin" "$source_dir/agentlas_cloud" "$source_dir/ontology" "$home_dir/" || return 1
   printf '%s\n' "$version" > "$home_dir/RELEASE"
   write_python3_shim "$home_dir/bin" || true
+  ln -sfn hephaestus "$home_dir/bin/Hephaestus" 2>/dev/null || true
+  ln -sfn hephaests-network "$home_dir/bin/hephaestus-network" 2>/dev/null || true
   ln -sfn "$home_dir" "$HOME/.agentlas/runtime/current"
   log "Installed runner: $HOME/.agentlas/runtime/current/bin/hephaestus"
 }
@@ -565,6 +567,7 @@ main() {
   log "  OpenCode:    /hephaestus-network"
   log "  OpenClaw:    /skill hephaestus-network <request>"
   log "  Hermes:      hephaestus-network skill (+ MCP, see hermes/README.md)"
+  log "  Terminal:    Hephaestus \"<request>\" or hephaests-network \"<request>\""
   log "  Ollama/Gemma/DeepSeek local models: docs/local-models.md (MCP: hephaestus mcp serve)"
   log ""
   log "agentlas Hub MCP (agentlas.search, marketplace.*, agentlas.teams.*) was registered too."

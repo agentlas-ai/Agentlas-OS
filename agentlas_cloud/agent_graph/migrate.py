@@ -63,6 +63,7 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
     artifacts: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     capabilities: list[str] = []
+    scopes: list[dict[str, Any]] = []
     node_ids: set[str] = set()
     unmapped = report["unmapped"]
 
@@ -90,6 +91,28 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
             unmapped["company_blueprint"].append({"type": "agent_capabilities_missing", "id": node_id})
         agents.append(agent)
         node_ids.add(node_id)
+
+        # Agent I/O contracts -> Artifact nodes + produces/consumes edges.
+        for direction in ("produces", "consumes"):
+            raw = node.get(direction)
+            if not isinstance(raw, list):
+                continue
+            for item in raw:
+                artifact_id = _artifact_ref(item, source="company-blueprint", unmapped=unmapped["company_blueprint"])
+                if not artifact_id:
+                    continue
+                new_artifact = _upsert_artifact(artifacts, artifact_id)
+                if new_artifact is not None:
+                    artifacts.append(new_artifact)
+                edges.append(
+                    {
+                        "from": node_id,
+                        "to": artifact_id,
+                        "relation": direction,
+                        "kind": "derived",
+                        "source": "company-blueprint",
+                    }
+                )
 
     for edge in _iter_records(company_blueprint.get("edges"), default=()):
         source = str(edge.get("from") or edge.get("source") or "").strip()
@@ -175,12 +198,25 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
             }
         )
 
-    # Memory ownership is recorded as unmapped metadata in phase 1.
+    # Memory ownership -> MemoryScope nodes + owns_scope edges (Phase 0).
+    # An owner string may name several agents ("a or b"); each yields an edge.
     if isinstance(memory_map.get("writeOwners"), dict):
-        for scope, owner in memory_map["writeOwners"].items():
+        for scope_name, owner in memory_map["writeOwners"].items():
+            scope_id = f"scope:{_snake(str(scope_name))}"
+            if not any(s.get("id") == scope_id for s in scopes):
+                scopes.append({"id": scope_id, "type": "MemoryScope", "scope": str(scope_name), "source": "memory-map"})
             if not isinstance(owner, str) or not owner.strip():
                 continue
-            unmapped["memory_map"].append({"type": "owner_scope_root", "scope": scope, "value": owner})
+            for owner_id in [o.strip() for o in owner.split(" or ") if o.strip()]:
+                edges.append(
+                    {
+                        "from": owner_id,
+                        "to": scope_id,
+                        "relation": "owns_scope",
+                        "kind": "derived",
+                        "source": "memory-map",
+                    }
+                )
     elif memory_map:
         unmapped["memory_map"].append({"type": "writeOwners_not_dict", "value": memory_map})
 
@@ -190,13 +226,14 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
     # source-type cannot legally use (e.g. Specialist routes_to -> hands_off_to).
     grammar = load_grammar(root)
     _ensure_orchestrator_nodes(agents, edges, node_ids)
-    edges = _reconcile_edges(agents, artifacts, capabilities, edges, grammar, unmapped)
+    edges = _reconcile_edges(agents, artifacts, capabilities, scopes, edges, grammar, unmapped)
 
     # Canonicalize duplicates.
     capabilities = _dedupe(capabilities)
     edges = _dedupe_edges(edges)
     artifacts = _dedupe_by_id(artifacts)
     agents = _dedupe_by_id(agents)
+    scopes = _dedupe_by_id(scopes)
 
     # Normalize artifact nodes for on-disk JSONL.
     artifact_nodes = []
@@ -216,6 +253,7 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
         "agents": agents,
         "artifacts": artifact_nodes,
         "capabilities": capabilities,
+        "scopes": scopes,
         "edges": edges,
     }
 
@@ -223,6 +261,7 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
         "agents": len(agents),
         "artifacts": len(artifact_nodes),
         "capabilities": len(capabilities),
+        "scopes": len(scopes),
         "edges": len(edges),
     }
 
@@ -230,6 +269,7 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
         target_root.mkdir(parents=True, exist_ok=True)
         _write_jsonl(target_root / "agents.jsonl", agents)
         _write_jsonl(target_root / "artifacts.jsonl", artifact_nodes)
+        _write_jsonl(target_root / "scopes.jsonl", scopes)
         _write_jsonl(target_root / "edges.jsonl", edges)
         _write_jsonl(
             target_root / "capabilities.json",
@@ -285,12 +325,13 @@ def diff_ontology(project_root: str | Path = ".") -> dict[str, Any]:
         "agents": current.get("agents", []),
         "artifacts": current.get("artifacts", []),
         "capabilities": current.get("capabilities", []),
+        "scopes": current.get("scopes", []),
         "edges": current.get("edges", []),
     }
 
     drift: dict[str, Any] = {}
     same = True
-    for key in ("agents", "artifacts", "capabilities", "edges"):
+    for key in ("agents", "artifacts", "capabilities", "scopes", "edges"):
         generated_lines = _index_lines(list(baseline.get(key, [])))
         current_lines = _index_lines(list(current_graph.get(key, [])))
         drift[key] = {
@@ -319,7 +360,7 @@ def load_from_disk(project_root: str | Path) -> dict[str, Any]:
 
     root = Path(project_root).resolve()
     base = root / ".agentlas" / AGENT_ONTOLOGY_DIR
-    report = {"project": str(root), "agents": [], "artifacts": [], "capabilities": [], "edges": []}
+    report = {"project": str(root), "agents": [], "artifacts": [], "capabilities": [], "scopes": [], "edges": []}
     if not base.exists():
         return report
 
@@ -327,6 +368,8 @@ def load_from_disk(project_root: str | Path) -> dict[str, Any]:
         report["agents"] = _read_jsonl_lines(base / "agents.jsonl")
     if (base / "artifacts.jsonl").exists():
         report["artifacts"] = _read_jsonl_lines(base / "artifacts.jsonl")
+    if (base / "scopes.jsonl").exists():
+        report["scopes"] = _read_jsonl_lines(base / "scopes.jsonl")
     if (base / "edges.jsonl").exists():
         report["edges"] = _read_jsonl_lines(base / "edges.jsonl")
     if (base / "capabilities.json").exists():
@@ -340,6 +383,7 @@ def load_from_disk(project_root: str | Path) -> dict[str, Any]:
         "agents": len(report["agents"]),
         "artifacts": len(report["artifacts"]),
         "capabilities": len(report["capabilities"]),
+        "scopes": len(report["scopes"]),
         "edges": len(report["edges"]),
     }
     return report
@@ -545,6 +589,7 @@ def _reconcile_edges(
     agents: list[dict[str, Any]],
     artifacts: list[dict[str, Any]],
     capabilities: list[str],
+    scopes: list[dict[str, Any]],
     edges: list[dict[str, Any]],
     grammar: dict[str, Any],
     unmapped: dict[str, list[dict[str, Any]]],
@@ -571,6 +616,10 @@ def _reconcile_edges(
         cap_id = str(cap).strip()
         if cap_id:
             node_type[f"capability:{cap_id}"] = "Capability"
+    for scope in scopes:
+        sid = str(scope.get("id") or "").strip()
+        if sid:
+            node_type[sid] = "MemoryScope"
 
     allowed_from: dict[str, set[str]] = {}
     allowed_to: dict[str, set[str]] = {}

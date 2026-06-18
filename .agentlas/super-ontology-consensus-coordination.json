@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0",
   "kind": "agentlas-super-ontology-consensus-coordination",
-  "state": "export_only",
-  "runtimePromotionAllowed": false,
+  "state": "runtime_enforced",
+  "runtimePromotionAllowed": true,
   "defaultDecision": "treat_agent_agreement_as_candidate_signal_not_write_authority",
   "coordinationTopologies": [
     "independent_parallel",
@@ -85,5 +85,10 @@
     "last_writer_wins_architecture_update",
     "peer_pressure_to_memory_write",
     "validator_disagreement_to_release"
-  ]
+  ],
+  "enforcedBy": {
+    "realized_by": "edge.kind == \"shared_memory_write\" => requires_approval_from(PolicyGate)",
+    "since": "phase-1",
+    "axiom_kind": "require"
+  }
 }

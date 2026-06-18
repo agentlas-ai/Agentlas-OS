@@ -10,19 +10,25 @@
       "id": "10-single-agent-builder",
       "role": "Single Agent Builder",
       "tier": 1,
-      "path": "agents/10-single-agent-builder/agent.md"
+      "path": "agents/10-single-agent-builder/agent.md",
+      "consumes": ["agent-spec"],
+      "produces": ["single-agent-package"]
     },
     {
       "id": "20-multi-agent-team-builder",
       "role": "Multi Agent Team Builder",
       "tier": 1,
-      "path": "agents/20-multi-agent-team-builder/agent.md"
+      "path": "agents/20-multi-agent-team-builder/agent.md",
+      "consumes": ["team-spec"],
+      "produces": ["team-package"]
     },
     {
       "id": "30-agentlas-packager",
       "role": "Agentlas Packager",
       "tier": 1,
-      "path": "agents/30-agentlas-packager/agent.md"
+      "path": "agents/30-agentlas-packager/agent.md",
+      "consumes": ["single-agent-package", "team-package"],
+      "produces": ["release-bundle"]
     }
   ],
   "edges": [

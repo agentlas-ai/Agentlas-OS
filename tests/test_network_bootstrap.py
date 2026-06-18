@@ -12,6 +12,8 @@ def test_init_is_idempotent(tmp_path):
     assert "VERSION" in first["created"]
     assert (home / "cards" / "agents").is_dir()
     assert (home / "policies" / "routing-policy.json").is_file()
+    assert (home / "memory" / "playbook-registry.json").is_file()
+    assert (home / "memory" / "playbook-candidates.jsonl").is_file()
     assert (home / "ledgers" / "routing-decisions.jsonl").is_file()
 
     second = init_networking(home)

@@ -22,7 +22,7 @@ installer):
 | OpenCode | automatic | commands → `~/.config/opencode/commands/` → `/hephaestus-network`; skill via `~/.agents/skills`; MCP via `opencode.json` (see `opencode/README.md`) |
 | OpenClaw | automatic | AgentSkills skill → `~/.openclaw/skills` (or `openclaw skills install --global`); invoke `/skill hephaestus-network <request>`; exec-tool gated on `python3` |
 | Hermes Agent | automatic | AgentSkills skill → `~/.hermes/skills/`; MCP server in `~/.hermes/config.yaml` (see `hermes/README.md`) |
-| Terminal | automatic | `bin/hephaestus` — `hephaestus "<request>"` routes directly |
+| Terminal | automatic | `bin/hephaestus` and `bin/hephaests-network` — `Hephaestus "<request>"` routes directly, `hephaests-network "<request>"` forces Network/Hub TF mode |
 | Ollama / Gemma / DeepSeek local models | via harness or MCP | `ollama launch <harness>` then use that harness's surface above; or register `hephaestus mcp serve` (stdio MCP, tools `hephaestus_route` / `hephaestus_network_status`); raw API loops use an OpenAI-`tools` function — see `docs/local-models.md` |
 | Generic AGENTS.md runtimes | manual fallback | the AGENTS.md command alias section; the runtime reads AGENTS.md and treats `/hephaestus*` or `@Hephaestus` as the routing contract |
 
@@ -41,7 +41,7 @@ Realistic limits, stated plainly:
   (3) honor the decision JSON. The router does not execute tools; host runtime
   permissions apply when an agent actually acts.
 - If command registration fails anywhere, the terminal form always works:
-  `hephaestus "<request>"`.
+  `Hephaestus "<request>"` or `hephaests-network "<request>"`.
 
 First-use memory behavior: whichever runtime calls the router first triggers
 `network init` (also run by the installer). All later calls from any runtime

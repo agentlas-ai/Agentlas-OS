@@ -71,9 +71,9 @@ five connected control planes:
 - **A2A Hub router.** Route requests through local routing cards first, then
   approved Agentlas Hub fallback, with receipts for every handoff.
 - **Hephaestus Stormbreaker.** Keep long-running work inside a scope lock,
-  failure-memory check, verifier-first plan, evidence loop, review gate, and
-  final gate so agents cannot silently stop or claim completion before checks
-  pass.
+  failure-memory check, verifier-first plan, parallel session fabric, evidence
+  loop, review gate, and final gate so agents cannot silently stop or claim
+  completion before checks pass.
 - **Project ontology.** Turn approved project sources into local graph, search,
   and source-lineage context agents can query without sweeping unrelated
   folders.
@@ -107,7 +107,8 @@ One command, every runtime, all local:
 /hephaestus-network turn these meeting notes into a weekly report
 /hephaestus-network draft a launch plan for my product
 @Hephaestus organize and summarize this folder of documents   # runtimes without slash commands
-hephaestus "find the right agent for this task"               # terminal
+Hephaestus "find the right agent for this task"               # terminal
+hephaests-network "split this work into a temporary task force"
 ```
 
 - **Routing cards.** Every agent, team, and plugin ships a standardized
@@ -122,6 +123,15 @@ hephaestus "find the right agent for this task"               # terminal
 - **Receipts, not execution.** Every routing decision writes a receipt. The
   router only selects agents or Hub bundles; the host runtime enforces
   permissions when tools actually execute.
+- **Two commands, one router.** People should only need `/hephaestus-network`
+  or `hephaests-network` for work routing/execution plans and `/hephaestus`
+  or `Hephaestus` for creation, repair, memory, and playbook management. The
+  lower-level `ao`, `network`, `cards`, and `mcp` commands stay available for
+  automation and debugging.
+- **Temporary task forces.** Composite `/hephaestus-network` requests are
+  decomposed only when needed, then returned as a Hub/local TF plan with
+  Stormbreaker packets, session hints, ontology graph paths, Local Operator
+  policy labels, and Memory/Playbook candidates in the receipt.
 - **Measured, not claimed.** A routing benchmark (Korean + English) gates
   auto-routing: top-3 recall ≥ 90%, zero unsafe routes in the privacy suite.
 - **Stormbreaker operational evals.** A separate scorecard compares native
@@ -182,6 +192,7 @@ scope lock
 -> issue contract extraction
 -> failure-memory check
 -> verifier-first plan
+-> parallel session fabric
 -> bounded evidence loop
 -> adversarial review gate
 -> outcome ledger
@@ -192,6 +203,12 @@ The point is practical: Stormbreaker turns "the agent probably handled it" into
 "the agent left enough evidence that a developer can trust, audit, resume, or
 reject the work."
 
+For Hephaestus Network `pipeline` decisions, Stormbreaker now returns an
+`execution_fabric`: work packets, dependency groups, session hints, and the
+required packet list for the final gate. Host runtimes can map those packets to
+active Codex, Claude, GLM, DeepSeek, Gemini, or local model sessions, while
+Hephaestus keeps privacy boundaries and success gating explicit.
+
 ### Robustness Protocol
 
 Hephaestus Robustness Protocol is the generic name for the Stormbreaker
@@ -200,7 +217,7 @@ skill. It applies to native runtime work, Hephaestus Network-selected agents,
 and Hub bundles:
 
 ```text
-scope lock -> issue contract -> failure memory -> verifier-first plan -> evidence loop -> review gate -> final gate
+scope lock -> issue contract -> failure memory -> verifier-first plan -> parallel session fabric -> evidence loop -> review gate -> final gate
 ```
 
 The first benchmark topic is **public agent repo repair** because it tests file
@@ -220,7 +237,7 @@ tells you the exact command to use next:
 
 ```text
 Set up the Hephaestus Agentlas meta-agent in this workspace. Run
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.1/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.2/scripts/install-all-runtimes.sh | bash`
 in the terminal, then tell me the exact /hephaestus command for the tool I am
 using (Claude Code, Codex, Gemini CLI, Antigravity, or Cursor). If anything
 fails, read the error, fix it, and retry.
@@ -267,7 +284,7 @@ OpenCode, OpenClaw, and Hermes Agent surfaces. It also fixes the common
 old `agentlas-core-engine` entry and adding it again from this repo.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.1/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.2/scripts/install-all-runtimes.sh | bash
 ```
 
 After it finishes, restart any open AI apps. Then use:
@@ -311,13 +328,15 @@ If you already installed the old `agentlas-meta-agent` plugin and Claude says
 `hephaestus` is not found, refresh the marketplace and replace the old plugin:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.1/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.2/scripts/install-all-runtimes.sh | bash
 ```
 
-`/hephaestus ontology` opens a local SaaS-style ontology dashboard for the
-current project. The dashboard has a left navigation rail, an Obsidian-style
-knowledge graph, source search, a GraphRAG query builder, a Memory Candidate
-Queue, and copyable commands. It creates these files in that project only:
+`/hephaestus ontology` is now the Knowledge/Memory panel, not the main Agent OS
+surface. Use it when you want to inspect project sources, memory candidates,
+and reusable playbook material that routed agents may later reference. The
+dashboard has a left navigation rail, an Obsidian-style knowledge graph, source
+search, a GraphRAG query builder, a Memory Candidate Queue, and copyable
+commands. It creates these files in that project only:
 
 ```text
 .agentlas/ontology-inbox/
@@ -346,7 +365,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.1
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.2
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
@@ -360,7 +379,7 @@ If Codex still shows `agentlas-meta-agent`, refresh the marketplace and replace
 the old plugin:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.1/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.2/scripts/install-all-runtimes.sh | bash
 ```
 
 The Codex OS-terminal CLI command is singular: `codex plugin`, not
@@ -408,7 +427,7 @@ repo package files in your current project. Open macOS Terminal, Linux terminal,
 Windows Git Bash, or WSL in that project folder and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.1/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.2/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -416,9 +435,9 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\hephaestus-v0.7.1.zip"
-$extract = "$env:TEMP\hephaestus-v0.7.1"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.7.1.zip" -OutFile $zip
+$zip = "$env:TEMP\hephaestus-v0.7.2.zip"
+$extract = "$env:TEMP\hephaestus-v0.7.2"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.7.2.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1

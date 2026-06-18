@@ -28,6 +28,7 @@ code_dirs=(
 
 code_files=(
   "bin/hephaestus"
+  "bin/hephaests-network"
   "bin/hephaestus.cmd"
 )
 

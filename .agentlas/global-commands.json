@@ -24,7 +24,7 @@
       "runtime": "gemini-cli",
       "command": "/hephaestus",
       "adapterPath": "gemini/extension/commands/hephaestus.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.1",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.2",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus.toml."
@@ -54,6 +54,15 @@
       "status": "shell-command"
     },
     {
+      "runtime": "agentlas-terminal",
+      "command": "Hephaestus",
+      "adapterPath": "bin/hephaestus",
+      "globalInstallPath": "Hephaestus \"<request>\"",
+      "scope": "terminal",
+      "status": "shell-command-alias",
+      "notes": "Human-facing terminal alias installed by scripts/install-all-runtimes.sh; same router as hephaestus \"<request>\"."
+    },
+    {
       "runtime": "claude-code",
       "command": "/hephaestus-network",
       "adapterPath": ".claude/commands/hephaestus-network.md",
@@ -74,7 +83,7 @@
       "runtime": "gemini-cli",
       "command": "/hephaestus-network",
       "adapterPath": "gemini/extension/commands/hephaestus-network.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.1",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.2",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus-network.toml."
@@ -134,6 +143,15 @@
       "notes": "AgentSkills spec skill; MCP server registration in ~/.hermes/config.yaml (hermes/README.md)."
     },
     {
+      "runtime": "agentlas-terminal",
+      "command": "hephaests-network",
+      "adapterPath": "bin/hephaests-network",
+      "globalInstallPath": "hephaests-network \"<request>\"",
+      "scope": "terminal",
+      "status": "shell-command-alias",
+      "notes": "Typo-tolerant standalone Network alias; maps to hephaestus hephaests-network \"<request>\" and forces Hub-only Network routing."
+    },
+    {
       "runtime": "claude-code",
       "command": "/hephaestus-cloud",
       "adapterPath": ".claude/commands/hephaestus-cloud.md",
@@ -155,7 +173,7 @@
       "runtime": "gemini-cli",
       "command": "/hephaestus-cloud",
       "adapterPath": "gemini/extension/commands/hephaestus-cloud.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.1",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.2",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus-cloud.toml."
@@ -252,6 +270,6 @@
   ],
   "postCreationUserMessage": {
     "required": true,
-    "template": "global_commands: Claude Code /hephaestus, /hephaestus-network, /hephaestus-cloud; Codex /prompts:hephaestus (or $hephaestus-network / $hephaestus-cloud skill); Gemini CLI /hephaestus, /hephaestus-cloud; Antigravity /hephaestus, /hephaestus-cloud; Cursor /hephaestus-network, /hephaestus-cloud; OpenCode /hephaestus-network, /hephaestus-cloud; OpenClaw /skill hephaestus-network or /skill hephaestus-cloud; Agentlas terminal hephaestus, hephaestus cloud, or agentlas run hephaestus. Three-scope model: /hephaestus-cloud = my own cloud packages (보관함, 1 credit/call); /hephaestus-network = public Hub marketplace; plain language = local + cloud + Hub combined."
+    "template": "global_commands: Claude Code /hephaestus, /hephaestus-network, /hephaestus-cloud; Codex /prompts:hephaestus (or $hephaestus-network / $hephaestus-cloud skill); Gemini CLI /hephaestus, /hephaestus-cloud; Antigravity /hephaestus, /hephaestus-cloud; Cursor /hephaestus-network, /hephaestus-cloud; OpenCode /hephaestus-network, /hephaestus-cloud; OpenClaw /skill hephaestus-network or /skill hephaestus-cloud; Agentlas terminal Hephaestus, hephaests-network, hephaestus cloud, or agentlas run hephaestus. Three-scope model: /hephaestus-cloud = my own cloud packages (보관함, 1 credit/call); /hephaestus-network = public Hub marketplace; plain language = local + cloud + Hub combined."
   }
 }

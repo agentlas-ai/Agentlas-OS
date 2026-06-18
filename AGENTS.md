@@ -90,26 +90,35 @@ become separate sources of truth.
 ## Hephaestus Network Commands
 
 `/hephaestus-network <request>` (alias `@Hephaestus <request>`, terminal
-`hephaestus "<request>"`) routes a natural-language request through the
-local-first router: explicit commands → project `.agentlas/routing-overrides.json`
-→ local routing cards (`routing_ready`+ only) → Agentlas Hub fallback behind a
-user approval → propose building a new agent. Plan-anchored composite requests
-("기획부터 구현, QA까지") return `action: "pipeline"` — a multi-team stage plan
-chained by the cards' `produces`/`consumes` artifact contracts; execute stages
-in order behind per-stage approvals, handing artifacts through `handoff_dir`.
+`hephaestus "<request>"`) is the work-routing surface; `/hephaestus <request>`
+is the creation, repair, memory, playbook, and diagnostics surface. Route
+natural language through the local-first Agent OS router: explicit commands →
+project `.agentlas/routing-overrides.json` → local routing cards
+(`routing_ready`+ only) → redacted Agentlas Hub lookup → propose building a new
+agent. Plan-anchored composite requests ("기획부터 구현, QA까지") return
+`action: "pipeline"` or Hub stage candidates with a `task_force`: a temporary
+TF plan chained by Agent Ontology or card `produces`/`consumes` artifact
+contracts. Execute stages through the returned `execution_fabric`, handing
+artifacts through `handoff_dir`. Independent packets in the same
+`parallel_group` may run concurrently when the host runtime advertises active
+sessions such as Codex, Claude, GLM, DeepSeek, Gemini, or local models.
 Honor the decision JSON exactly:
-ask the `clarify_question` on `clarify`, surface `approval_request` before any
-high-risk capability (file writes, cloud calls, payments, publishing, deletion,
-private data export, external tools), never send raw prompts or local memory to
-the Hub, and report the routing `receipt_id`. Generated and packaged repos must
-include `.agentlas/routing-card.json` (see `schemas/routing-card.schema.json`);
-cards below `routing_ready` are excluded from auto routing.
+ask the `clarify_question` on `clarify`, follow `policy_decision` labels in
+Local Operator Mode, never send raw prompts or local memory to the Hub, and
+report the routing `receipt_id`. Most policy signals are labels,
+`auto_redact`, or `candidate_only`; human approval should be rare and reserved
+for real external export, global memory/playbook promotion, or irreversible
+host-runtime actions. Generated and packaged repos must include
+`.agentlas/routing-card.json` (see `schemas/routing-card.schema.json`); cards
+below `routing_ready` are excluded from auto routing.
 
 Hephaestus Network chooses the agent, team, plugin, or Hub bundle. Hephaestus
 Stormbreaker governs execution after that route is selected: it requires scope
 locking, issue-contract extraction, failure-memory checks, verifier-first
-planning, bounded evidence loops, review gates, outcome ledgers, and a final
-completion gate for substantial work.
+planning, a parallel session fabric for pipeline work, bounded evidence loops,
+review gates, outcome ledgers, and a final completion gate for substantial
+work. Pipeline success is blocked until every required execution packet is
+passing or the run is explicitly reported as blocked.
 
 ## Team Roles
 

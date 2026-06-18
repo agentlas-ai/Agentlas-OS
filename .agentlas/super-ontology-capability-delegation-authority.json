@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0",
   "kind": "agentlas-super-ontology-capability-delegation-authority",
-  "state": "export_only",
-  "runtimePromotionAllowed": false,
+  "state": "runtime_enforced",
+  "runtimePromotionAllowed": true,
   "defaultDecision": "capability_evidence_required_before_graph_memory_public_training_tool_route_scheduled_permission_financial_release_customer_or_physical_authority",
   "principalTypes": [
     "human_user",
@@ -115,5 +115,10 @@
     "auditability",
     "delegation_logic",
     "threat_modeling"
-  ]
+  ],
+  "enforcedBy": {
+    "realized_by": "from.type == \"ExternalAgent\" and relation == \"can_invoke\" => exists aligned_with",
+    "since": "phase-1",
+    "axiom_kind": "require"
+  }
 }

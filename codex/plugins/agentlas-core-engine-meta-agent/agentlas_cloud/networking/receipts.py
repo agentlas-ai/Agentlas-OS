@@ -31,6 +31,9 @@ def write_receipt(
     allowed_by: list[str] | None = None,
     blocked_by_axiom: list[str] | None = None,
     fallback_scope: str | None = None,
+    task_force: dict[str, Any] | None = None,
+    policy_decision: dict[str, Any] | None = None,
+    memory_playbook: dict[str, Any] | None = None,
     home: Path | str | None = None,
 ) -> str:
     base = Path(home) if home else networking_home()
@@ -54,14 +57,40 @@ def write_receipt(
         "allowed_by": allowed_by or [],
         "blocked_by_axiom": blocked_by_axiom or [],
         "fallback_scope": fallback_scope,
+        "task_force": task_force or {},
+        "policy_decision": policy_decision or {},
+        "memory_playbook": memory_playbook or {},
     }
     append_jsonl(base / "ledgers" / "routing-decisions.jsonl", record)
     return receipt_id
 
 
-def record_execution(receipt_id: str, card_id: str, status: str, home: Path | str | None = None, detail: str | None = None) -> None:
+def record_execution(
+    receipt_id: str,
+    card_id: str,
+    status: str,
+    home: Path | str | None = None,
+    detail: str | None = None,
+    *,
+    pipeline_id: str | None = None,
+    packet_id: str | None = None,
+    stage_order: int | None = None,
+    session_id: str | None = None,
+    parallel_group: str | None = None,
+    parent_receipt_id: str | None = None,
+) -> None:
     base = Path(home) if home else networking_home()
+    record = {"ts": utc_now(), "receipt_id": receipt_id, "card_id": card_id, "status": status, "detail": detail}
+    optional = {
+        "pipeline_id": pipeline_id,
+        "packet_id": packet_id,
+        "stage_order": stage_order,
+        "session_id": session_id,
+        "parallel_group": parallel_group,
+        "parent_receipt_id": parent_receipt_id,
+    }
+    record.update({key: value for key, value in optional.items() if value is not None})
     append_jsonl(
         base / "ledgers" / "executions.jsonl",
-        {"ts": utc_now(), "receipt_id": receipt_id, "card_id": card_id, "status": status, "detail": detail},
+        record,
     )

@@ -57,6 +57,8 @@ SUBDIRS = [
 
 JSONL_FILES = [
     "memory/feedback.jsonl",
+    "memory/playbook-candidates.jsonl",
+    "memory/memory-events.jsonl",
     "ledgers/routing-decisions.jsonl",
     "ledgers/executions.jsonl",
     "ledgers/capability-grants.jsonl",
@@ -225,6 +227,12 @@ def default_memory_map() -> dict[str, Any]:
     }
 
 
+def _default_playbook_registry() -> dict[str, Any]:
+    from .playbooks import default_playbook_registry
+
+    return default_playbook_registry()
+
+
 def init_networking(home: Path | str | None = None) -> dict[str, Any]:
     base = Path(home) if home else networking_home()
     base.mkdir(parents=True, exist_ok=True)
@@ -244,6 +252,7 @@ def init_networking(home: Path | str | None = None) -> dict[str, Any]:
                 "policies/approval-policy.json": default_approval_policy(),
                 "memory/routing-profile.json": default_routing_profile(),
                 "memory/hierarchical-memory-map.json": default_memory_map(),
+                "memory/playbook-registry.json": _default_playbook_registry(),
                 "cache/plugin-index.json": {"schemaVersion": SCHEMA_VERSION, "plugins": []},
             }
             for rel, payload in defaults.items():

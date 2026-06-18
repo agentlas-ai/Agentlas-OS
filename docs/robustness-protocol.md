@@ -104,7 +104,23 @@ Every substantial task should move through these states:
    - Define the verification command, expected artifact, and final exit gate
      before implementation begins.
 
-6. `persistence_directive`
+6. `parallel_session_fabric`
+   - When a Hephaestus Network decision returns `action: "pipeline"`, attach a
+     Stormbreaker execution fabric: required work packets, dependency groups,
+     model/session hints, handoff paths, and the final-gate packet list.
+   - The host runtime may advertise active sessions such as Codex, Claude, GLM,
+     DeepSeek, Gemini, or local models. Stormbreaker can then spread independent
+     packets across those sessions, while keeping mutating work behind host
+     approvals and privacy rules.
+   - Parallelism is allowed only across packets whose dependencies are already
+     satisfied. A dependent packet cannot start until its `parallel_group` join
+     policy is satisfied.
+   - The fabric is a scheduling contract, not a remote execution bypass:
+     external sessions receive stage contracts, artifact paths, and redacted
+     receipt metadata only; raw local memory and private prompts stay local
+     unless the host runtime has an explicit export approval.
+
+7. `persistence_directive`
    - Proceed continuously through the remaining plan items until every
      contracted requirement is satisfied or a declared Bounded Retry cap is hit.
    - Do not yield at the first sign of uncertainty — research or deduce the most
@@ -116,13 +132,13 @@ Every substantial task should move through these states:
      never merely because output grew long or a context window is near its
      limit.
 
-7. `evidence_loop`
+8. `evidence_loop`
    - Execute one bounded change batch at a time.
    - After each failure, record the failing evidence, change one hypothesis, and
      retry within a declared cap.
    - Tests are evidence, not the whole definition of done.
 
-8. `review_gate`
+9. `review_gate`
    - Check scope drift, destructive changes, unrelated file edits, secret
      exposure, and unsupported claims.
    - Run an adversarial plan-vs-implementation check (ideally fresh-context,
@@ -131,7 +147,7 @@ Every substantial task should move through these states:
      out-of-scope changed?
    - For high-risk work, run a reviewer path or independent verification script.
 
-9. `outcome_ledger`
+10. `outcome_ledger`
    - Maintain a live, plan-anchored resume journal, updated after each
      `evidence_loop` batch — not only at the end. Each requirement / plan item
      carries `status: pending | in_progress | passing | blocked` plus its
@@ -145,7 +161,7 @@ Every substantial task should move through these states:
    - Record failed attempts, unresolved risks, and follow-up gates so
      continuation after context loss is possible.
 
-10. `final_gate`
+11. `final_gate`
    - Do not finish unless required checks passed, blockers are empty or clearly
      reported, artifacts exist, and the final answer separates verified facts
      from remaining risk.
@@ -155,6 +171,9 @@ Every substantial task should move through these states:
      is the fallback gate only when no executable verifier exists.
    - For multi-file work, confirm the plan's change-impact list was fully
      addressed — no required site silently skipped.
+   - For pipeline work, success is blocked until every
+     `execution_fabric.required_packet_ids` entry is `passing`. A blocked packet
+     may produce a blocked final report, but never a success claim.
 
 ## Risk Tiers
 

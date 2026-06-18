@@ -35,6 +35,10 @@ def _assert_routing_evidence_fields(result: dict) -> None:
     assert isinstance(result.get("graph_path"), list)
     assert isinstance(result.get("allowed_by"), list)
     assert isinstance(result.get("blocked_by_axiom"), list)
+    assert result["agent_os_router"]["command_model"] == "two_command"
+    assert result["policy_decision"]["mode"] == "local_operator"
+    assert result["memory_playbook"]["mode"] == "memory_playbook_control_plane"
+    assert result["task_force"]["mode"] == "agent_os_router"
     assert "fallback_scope" in result
     assert result.get("receipt_id")
 
@@ -282,6 +286,44 @@ def test_hub_only_skips_strong_local_match(tmp_path, monkeypatch):
     _assert_routing_evidence_fields(result)
     assert result["match_reason"] == "hub_only_hub_results"
     assert result["graph_path"] == []
+    assert result["task_force"]["formation"] == "single_stage_hub_candidates"
+
+
+def test_hub_only_composite_request_forms_stagewise_task_force(tmp_path, monkeypatch):
+    home = setup_home(tmp_path)
+    seen = []
+
+    def fake_search_hub(query_tokens, home=None, approved=False):
+        seen.append(list(query_tokens))
+        stage = "generic"
+        if "prd" in query_tokens or "plan" in query_tokens:
+            stage = "planner"
+        elif "codebase_change" in query_tokens or "build" in query_tokens:
+            stage = "builder"
+        elif "qa_report" in query_tokens or "verify" in query_tokens:
+            stage = "verifier"
+        return {
+            "status": "ok",
+            "query": " ".join(query_tokens),
+            "results": [{"slug": f"hub-{stage}", "name": f"Hub {stage}", "kind": "cloud-callable"}],
+        }
+
+    monkeypatch.setattr("agentlas_cloud.networking.router.search_hub", fake_search_hub)
+    result = route_request(
+        "기획부터 구현하고 테스트까지 끝까지 처리해줘",
+        home=home,
+        use_hub=True,
+        hub_only=True,
+    )
+
+    assert result["action"] == "hub_candidates"
+    assert result["match_reason"] == "hub_only_task_force_results"
+    assert result["task_force"]["formation"] == "hub_stage_candidates"
+    assert result["task_force"]["temporary_tf"] is True
+    assert [stage["stage"] for stage in result["task_force"]["stages"]] == ["plan", "build", "verify"]
+    assert len(seen) == 3
+    assert result["policy_decision"]["decision"] == "allow_with_label"
+    assert result["memory_playbook"]["candidates"]
 
 
 def test_hub_only_uses_whole_word_query_tokens(tmp_path, monkeypatch):
@@ -336,6 +378,26 @@ def test_secretary_does_not_trigger_secret_privacy_gate(tmp_path, monkeypatch):
     result = route_request("marketer-schedule-secretary content calendar", home=home, use_hub=True, hub_approved=True, hub_only=True)
     assert result["action"] == "hub_candidates"
     assert result["hub"]["results"][0]["slug"] == "marketer-schedule-secretary"
+    assert result["policy_decision"]["decision"] == "allow_with_label"
+
+
+def test_private_memory_hub_request_auto_redacts_without_human_approval(tmp_path, monkeypatch):
+    home = setup_home(tmp_path)
+
+    def fake_search_hub(query_tokens, home=None, approved=False):
+        return {
+            "status": "ok",
+            "query": " ".join(query_tokens),
+            "results": [{"slug": "safe-memory-agent", "name": "Safe Memory Agent", "kind": "cloud-callable"}],
+        }
+
+    monkeypatch.setattr("agentlas_cloud.networking.router.search_hub", fake_search_hub)
+    result = route_request("내 private memory를 참고해서 hub agent 후보 찾아줘", home=home, use_hub=True, hub_only=True)
+
+    assert result["action"] == "hub_candidates"
+    assert result.get("approval_request") is None
+    assert result["policy_decision"]["decision"] == "auto_redact"
+    assert "privacy_confidentiality_boundary" in result["policy_decision"]["labels"]
 
 
 def test_patent_claim_template_does_not_trigger_payment_or_submit_gate(tmp_path, monkeypatch):

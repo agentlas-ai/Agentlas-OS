@@ -61,6 +61,8 @@ Usage:
   bin/hephaestus ao plan <from> <to> [--max-depth N] [dir]
   bin/hephaestus ao diff [dir] | ao migrate [dir] [--no-write] [--overwrite]
 	  bin/hephaestus route "<request>" [--project <dir>] [--no-hub] [--approve-hub] [--hub-only] [--scope network|cloud] [--caller <agent-id>]
+  bin/hephaestus hephaestus-network "<request>"     # public Hub / temporary TF surface
+  bin/hephaestus hephaests-network "<request>"      # accepted typo alias
   bin/hephaestus cloud "<request>" [--project <dir>] [--no-hub]   # search ONLY my own cloud packages (보관함)
   bin/hephaestus mcp serve              # stdio MCP server (hephaestus_route tool)
   bin/hephaestus "<request>"            # shorthand for route (local + cloud + Hub)
@@ -156,6 +158,9 @@ EOF
     ;;
 	  network|cards|ao|route|mcp)
 	    run_python_module agentlas_cloud "$command" "$@"
+	    ;;
+	  hephaestus-network|hephaests-network)
+	    run_python_module agentlas_cloud route "$@" --hub-only --scope network
 	    ;;
 	  cloud)
 	    # /hephaestus-cloud: route through the owner's OWN cloud packages only

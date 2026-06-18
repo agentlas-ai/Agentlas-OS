@@ -18,10 +18,11 @@ def _as_graph(project_root: str | Path | dict[str, Any]) -> tuple[dict[str, Any]
     graph = graph_data.get("graph", graph_data)
     agents = list(graph.get("agents", []))
     artifacts = list(graph.get("artifacts", []))
+    scopes = list(graph.get("scopes", []))
     edges = list(graph.get("edges", []))
     node_index: dict[str, dict[str, Any]] = {
         str(node.get("id")): node
-        for node in agents + artifacts
+        for node in agents + artifacts + scopes
         if node.get("id")
     }
     for cap in graph_data.get("capabilities", graph.get("capabilities", [])):
@@ -52,6 +53,7 @@ def describe_graph(project_root: str | Path = ".") -> dict[str, Any]:
             "agents": len(graph.get("agents", [])),
             "artifacts": len(graph.get("artifacts", [])),
             "capabilities": len(graph.get("capabilities", [])),
+            "scopes": len(graph.get("scopes", [])),
             "edges": len(graph.get("edges", [])),
         },
         "relation_counts": relation_counts,
@@ -326,4 +328,56 @@ def plan_path(
             }
             for edge in path_edges
         ],
+    }
+
+
+def plan_pipeline_ao(
+    project_root: str | Path | dict[str, Any],
+    target_artifact: str,
+    max_stages: int = 12,
+) -> dict[str, Any]:
+    """Plan a multi-stage pipeline by traversing produces/consumes edges (Phase 0).
+
+    Given a goal artifact, walk backward: the agent that *produces* it, then the
+    agents that produce what *that* agent *consumes*, and so on — yielding an
+    upstream-first ordered chain of stages. This replaces hard-coded stage
+    intent with real AO graph reasoning.
+    """
+
+    graph, _, edges = _as_graph(project_root)
+    target = _artifact_lookup(graph, target_artifact)
+
+    def producers(artifact_id: str) -> list[str]:
+        return [
+            str(e.get("from"))
+            for e in edges
+            if str(e.get("relation") or e.get("kind")) == "produces" and str(e.get("to")) == artifact_id
+        ]
+
+    def consumes_of(agent_id: str) -> list[str]:
+        return [
+            str(e.get("to"))
+            for e in edges
+            if str(e.get("relation") or e.get("kind")) == "consumes" and str(e.get("from")) == agent_id
+        ]
+
+    stages: list[dict[str, Any]] = []
+    visited: set[str] = set()
+    queue: list[str] = [target]
+    while queue and len(stages) < max_stages:
+        artifact = queue.pop(0)
+        for agent in producers(artifact):
+            if agent in visited:
+                continue
+            visited.add(agent)
+            consumed = consumes_of(agent)
+            stages.append({"agent": agent, "produces": artifact, "consumes": consumed})
+            queue.extend(consumed)
+
+    stages.reverse()  # upstream-first execution order
+    return {
+        "target": target,
+        "found": bool(stages),
+        "length": len(stages),
+        "stages": stages,
     }
