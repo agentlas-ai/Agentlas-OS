@@ -1,15 +1,77 @@
 {
   "schemaVersion": "1.0",
   "packageId": "agentlas-core-engine-meta-agent",
-  "canonicalCommand": "/hephaestus",
+  "canonicalCommand": "/hephaestus-build",
   "commands": [
+    {
+      "runtime": "claude-code",
+      "command": "/hephaestus-build",
+      "adapterPath": ".claude/commands/hephaestus-build.md",
+      "globalInstallPath": "~/.claude/commands/hephaestus-build.md",
+      "scope": "global",
+      "status": "native-slash-command",
+      "notes": "Build/create/package surface. Legacy alias: /hephaestus."
+    },
+    {
+      "runtime": "codex",
+      "command": "/prompts:hephaestus-build",
+      "adapterPath": "codex/prompts/hephaestus-build.md",
+      "globalInstallPath": "~/.codex/prompts/hephaestus-build.md",
+      "scope": "global",
+      "status": "custom-prompt-slash-command",
+      "notes": "Codex plugins cannot register slash commands (skills only). The explicit build surface is namespaced as /prompts:hephaestus-build. Legacy alias: /prompts:hephaestus."
+    },
+    {
+      "runtime": "gemini-cli",
+      "command": "/hephaestus-build",
+      "adapterPath": "gemini/extension/commands/hephaestus-build.toml",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.3",
+      "scope": "global",
+      "status": "extension-custom-command",
+      "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus-build.toml. Legacy alias: /hephaestus."
+    },
+    {
+      "runtime": "antigravity",
+      "command": "/hephaestus-build",
+      "adapterPath": "antigravity/workflows/hephaestus-build.md",
+      "globalInstallPath": "~/.gemini/antigravity/global_workflows/hephaestus-build.md",
+      "scope": "global",
+      "status": "workflow-slash-command",
+      "notes": "Installed by scripts/install-all-runtimes.sh. Project-scope fallback ships at .agents/workflows/hephaestus-build.md. Legacy alias: /hephaestus."
+    },
+    {
+      "runtime": "generic-agents-md",
+      "command": "/hephaestus-build",
+      "adapterPath": "AGENTS.md",
+      "scope": "project",
+      "status": "adapter-command-alias",
+      "notes": "Build/create/package surface. AGENTS.md still accepts legacy /hephaestus and @Hephaestus."
+    },
+    {
+      "runtime": "agentlas-terminal",
+      "command": "hephaestus-build",
+      "adapterPath": "bin/hephaestus-build",
+      "globalInstallPath": "hephaestus-build \"<request>\"",
+      "scope": "terminal",
+      "status": "shell-command"
+    },
+    {
+      "runtime": "agentlas-terminal",
+      "command": "Hephaestus-build",
+      "adapterPath": "bin/hephaestus-build",
+      "globalInstallPath": "Hephaestus-build \"<request>\"",
+      "scope": "terminal",
+      "status": "shell-command-alias",
+      "notes": "Human-facing build alias installed by scripts/install-all-runtimes.sh; same builder surface as /hephaestus-build."
+    },
     {
       "runtime": "claude-code",
       "command": "/hephaestus",
       "adapterPath": ".claude/commands/hephaestus.md",
       "globalInstallPath": "~/.claude/commands/hephaestus.md",
       "scope": "global",
-      "status": "native-slash-command"
+      "status": "legacy-native-slash-command",
+      "notes": "Legacy alias for /hephaestus-build."
     },
     {
       "runtime": "codex",
@@ -17,17 +79,17 @@
       "adapterPath": "codex/prompts/hephaestus.md",
       "globalInstallPath": "~/.codex/prompts/hephaestus.md",
       "scope": "global",
-      "status": "custom-prompt-slash-command",
-      "notes": "Codex plugins cannot register slash commands (skills only). The plugin ships the skills; the explicit slash surface is this custom prompt, namespaced as /prompts:hephaestus."
+      "status": "legacy-custom-prompt-slash-command",
+      "notes": "Legacy alias for /prompts:hephaestus-build."
     },
     {
       "runtime": "gemini-cli",
       "command": "/hephaestus",
       "adapterPath": "gemini/extension/commands/hephaestus.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.2",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.3",
       "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus.toml."
+      "status": "legacy-extension-custom-command",
+      "notes": "Legacy alias for /hephaestus-build."
     },
     {
       "runtime": "antigravity",
@@ -35,23 +97,26 @@
       "adapterPath": "antigravity/workflows/hephaestus.md",
       "globalInstallPath": "~/.gemini/antigravity/global_workflows/hephaestus.md",
       "scope": "global",
-      "status": "workflow-slash-command",
-      "notes": "Installed by scripts/install-all-runtimes.sh. Project-scope fallback ships at .agents/workflows/hephaestus.md. Antigravity also auto-loads AGENTS.md and .agents/skills/."
+      "status": "legacy-workflow-slash-command",
+      "notes": "Legacy alias for /hephaestus-build."
     },
     {
-      "runtime": "generic-agents-md",
-      "command": "/hephaestus",
-      "adapterPath": "AGENTS.md",
-      "scope": "project",
-      "status": "adapter-command-alias"
+      "runtime": "cursor",
+      "command": "/hephaestus-build",
+      "adapterPath": "cursor/plugin/commands/hephaestus-build.md",
+      "globalInstallPath": "~/.cursor/commands/hephaestus-build.md",
+      "scope": "global",
+      "status": "native-slash-command",
+      "notes": "Build/create/package surface. Cursor also keeps the @Hephaestus project-rule fallback."
     },
     {
-      "runtime": "agentlas-terminal",
-      "command": "hephaestus",
-      "adapterPath": "bin/hephaestus",
-      "globalInstallPath": "agentlas run hephaestus",
-      "scope": "terminal",
-      "status": "shell-command"
+      "runtime": "opencode",
+      "command": "/hephaestus-build",
+      "adapterPath": "opencode/commands/hephaestus-build.md",
+      "globalInstallPath": "~/.config/opencode/commands/hephaestus-build.md",
+      "scope": "global",
+      "status": "native-slash-command",
+      "notes": "Build/create/package surface."
     },
     {
       "runtime": "agentlas-terminal",
@@ -59,8 +124,8 @@
       "adapterPath": "bin/hephaestus",
       "globalInstallPath": "Hephaestus \"<request>\"",
       "scope": "terminal",
-      "status": "shell-command-alias",
-      "notes": "Human-facing terminal alias installed by scripts/install-all-runtimes.sh; same router as hephaestus \"<request>\"."
+      "status": "legacy-shell-command-alias",
+      "notes": "Legacy general router alias. Prefer Hephaestus-build, hephaests-network, or hephaestus cloud."
     },
     {
       "runtime": "claude-code",
@@ -83,7 +148,7 @@
       "runtime": "gemini-cli",
       "command": "/hephaestus-network",
       "adapterPath": "gemini/extension/commands/hephaestus-network.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.2",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.3",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus-network.toml."
@@ -173,7 +238,7 @@
       "runtime": "gemini-cli",
       "command": "/hephaestus-cloud",
       "adapterPath": "gemini/extension/commands/hephaestus-cloud.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.2",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.3",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hephaestus-cloud.toml."
@@ -270,6 +335,6 @@
   ],
   "postCreationUserMessage": {
     "required": true,
-    "template": "global_commands: Claude Code /hephaestus, /hephaestus-network, /hephaestus-cloud; Codex /prompts:hephaestus (or $hephaestus-network / $hephaestus-cloud skill); Gemini CLI /hephaestus, /hephaestus-cloud; Antigravity /hephaestus, /hephaestus-cloud; Cursor /hephaestus-network, /hephaestus-cloud; OpenCode /hephaestus-network, /hephaestus-cloud; OpenClaw /skill hephaestus-network or /skill hephaestus-cloud; Agentlas terminal Hephaestus, hephaests-network, hephaestus cloud, or agentlas run hephaestus. Three-scope model: /hephaestus-cloud = my own cloud packages (보관함, 1 credit/call); /hephaestus-network = public Hub marketplace; plain language = local + cloud + Hub combined."
+    "template": "global_commands: Claude Code /hephaestus-build, /hephaestus-network, /hephaestus-cloud; Codex /prompts:hephaestus-build, /prompts:hephaestus-network, /prompts:hephaestus-cloud; Gemini CLI /hephaestus-build, /hephaestus-network, /hephaestus-cloud; Antigravity /hephaestus-build, /hephaestus-network, /hephaestus-cloud; Cursor /hephaestus-build, /hephaestus-network, /hephaestus-cloud; OpenCode /hephaestus-build, /hephaestus-network, /hephaestus-cloud; Agentlas terminal Hephaestus-build, hephaests-network, or hephaestus cloud. Meaning: build/create = /hephaestus-build; borrow public Hub agents = /hephaestus-network; share/use my Agentlas Cloud packages = /hephaestus-cloud. Legacy /hephaestus remains as a build alias."
   }
 }

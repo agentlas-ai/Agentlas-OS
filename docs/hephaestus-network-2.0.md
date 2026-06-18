@@ -8,12 +8,14 @@ it.
 
 ## What you get
 
-- `/hephaestus-network <request>` (and `@Hephaestus <request>`) in Claude Code,
-  Codex, Gemini CLI, and Antigravity; a rule adapter for Cursor; and
-  `Hephaestus "<request>"` / `hephaests-network "<request>"` in the terminal.
-- A two-command user surface: `/hephaestus-network` for work routing and
-  `/hephaestus` for creation, repair, memory, playbook, and diagnostics. The
-  lower-level commands stay for automation.
+- `/hephaestus-build`, `/hephaestus-network`, and `/hephaestus-cloud` in Claude
+  Code, Codex, Gemini CLI, Antigravity, Cursor, and OpenCode; terminal aliases
+  are `Hephaestus-build`, `hephaests-network`, and `hephaestus cloud`.
+- A three-command user surface: `/hephaestus-build` for creation and repair,
+  `/hephaestus-network` for borrowing public Hub agents into temporary task
+  forces, and `/hephaestus-cloud` for using agents saved or shared through the
+  signed-in user's Agentlas Cloud. The older `/hephaestus` command remains as a
+  build alias.
 - A global, local-only structure at `~/.agentlas/networking/`:
   `cards/` (routing cards), `policies/`, `memory/` (routing preferences only),
   `ledgers/` (routing receipts, executions, capability grants), `cache/`,
@@ -64,8 +66,10 @@ hephaestus network grant <capability> --target <id> --scope per_call|session|pro
 hephaestus cards lint [path]
 hephaestus cards migrate <root> --tier free|paid|plugin|local
 hephaestus route "<request>"     # or just: hephaestus "<request>"
+hephaestus hephaestus-build "<request>"     # build/create/package surface
 hephaestus hephaestus-network "<request>"   # Hub-only Network surface
 Hephaestus "<request>"           # human-facing terminal alias
+Hephaestus-build "<request>"     # human-facing build alias
 hephaests-network "<request>"    # standalone Hub-only Network alias
 ```
 
@@ -77,16 +81,16 @@ hephaests-network "<request>"    # standalone Hub-only Network alias
 | `pipeline` | plan-anchored composite request ("기획부터 구현, QA까지") — a multi-team stage plan chained by Agent Ontology or card `produces`/`consumes` artifact contracts; includes a Stormbreaker `execution_fabric` so host runtimes can run independent packets across active sessions and block success until every required packet passes |
 | `clarify` | low confidence or ambiguous local match — answer the question to continue |
 | `hub_fallback` / `hub_candidates` | no local match or Hub-only mode; Hub lookup used redacted keywords only. Composite Hub-only requests include a `task_force` with stage-level Hub candidates |
-| `propose_new` | nothing matched locally or on the Hub — build a new agent with `/hephaestus` |
+| `propose_new` | nothing matched locally or on the Hub — build a new agent with `/hephaestus-build` |
 | `refuse` | loop guard or another technical guard; the reason is in `reasons` |
 
 Every decision writes a receipt to
 `~/.agentlas/networking/ledgers/routing-decisions.jsonl` with normalized,
 redacted tokens — never the raw prompt.
 
-0.7.2 receipts also carry:
+0.7.3 receipts also carry:
 
-- `agent_os_router`: the two-command surface and router version.
+- `agent_os_router`: the three-command surface and router version.
 - `task_force`: single-agent route, local pipeline, or Hub stage candidates.
 - `policy_decision`: Local Operator Mode labels such as `auto_redact` or
   `candidate_only`.

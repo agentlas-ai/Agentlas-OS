@@ -124,7 +124,7 @@ For demo/distribution/Hub-only requests:
   that as the temporary TF shortlist, not as a request to ask the user about
   every stage.
 - `action: "propose_new"` — offer to build a new agent/team via the Hephaestus
-  meta-agent (`/hephaestus`).
+  builder (`/hephaestus-build`).
 - `action: "refuse"` — explain `reasons` (for example, loop guard). Do not
   retry around it.
 

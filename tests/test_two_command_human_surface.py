@@ -119,7 +119,7 @@ def _command_aliases(tmp_path: Path) -> Path:
     return aliases
 
 
-def test_two_command_surface_survives_120_human_style_invocations(tmp_path: Path) -> None:
+def test_three_command_surface_keeps_network_120_human_style_invocations(tmp_path: Path) -> None:
     fake_hub, hub_url = _start_fake_hub()
     try:
         aliases = _command_aliases(tmp_path)
@@ -203,7 +203,8 @@ def test_two_command_surface_survives_120_human_style_invocations(tmp_path: Path
             result = run(command)
             action_counts[result["action"]] = action_counts.get(result["action"], 0) + 1
             assert result["receipt_id"]
-            assert result["agent_os_router"]["command_model"] == "two_command"
+            assert result["agent_os_router"]["command_model"] == "three_command"
+            assert result["agent_os_router"]["commands"]["network"] == "hephaests-network"
             assert result["task_force"]["mode"] == "agent_os_router"
             assert result["policy_decision"]["mode"] == "local_operator"
             assert result["memory_playbook"]["mode"] == "memory_playbook_control_plane"

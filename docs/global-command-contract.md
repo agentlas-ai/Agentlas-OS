@@ -62,21 +62,35 @@ leave the user guessing how to run the agent after creation.
 
 ## Hephaestus Network 2.0 additions
 
-Every package now exposes a second canonical command,
-`/hephaestus-network <request>` (alias `@Hephaestus <request>`), backed by the
-local-first router (`docs/hephaestus-network-2.0.md`). Required surfaces:
+Hephaestus itself exposes three user-facing commands:
 
-- Claude Code: `.claude/commands/hephaestus-network.md` (+ global symlink).
-- Codex: `codex/plugins/<package-id>/commands/hephaestus-network.md`.
-- Gemini CLI: `gemini/extension/commands/hephaestus-network.toml`
-  (+ `~/.gemini/commands/hephaestus-network.toml` fallback).
-- Antigravity: `antigravity/workflows/hephaestus-network.md`
+- `/hephaestus-build <request>` — create, repair, or package agents and teams.
+- `/hephaestus-network <request>` — borrow public Hub agents into a temporary
+  task force.
+- `/hephaestus-cloud <request>` — use agents saved or shared through the
+  signed-in user's Agentlas Cloud.
+
+The older `/hephaestus` command remains as a build alias. Network routing is
+backed by the local-first router (`docs/hephaestus-network-2.0.md`). Required
+surfaces:
+
+- Claude Code: `.claude/commands/hephaestus-build.md`,
+  `.claude/commands/hephaestus-network.md`, and
+  `.claude/commands/hephaestus-cloud.md` (+ global symlinks).
+- Codex: `codex/prompts/hephaestus-build.md`,
+  `codex/prompts/hephaestus-network.md`, and
+  `codex/prompts/hephaestus-cloud.md`.
+- Gemini CLI: `gemini/extension/commands/hephaestus-build.toml`,
+  `hephaestus-network.toml`, and `hephaestus-cloud.toml`
+  (+ `~/.gemini/commands/` fallbacks).
+- Antigravity: `antigravity/workflows/hephaestus-build.md`,
+  `hephaestus-network.md`, and `hephaestus-cloud.md`
   (+ `~/.gemini/antigravity*/global_workflows/`).
 - Cursor (no custom slash commands): `cursor/rules/hephaestus.mdc` copied into
   `<project>/.cursor/rules/` — reacts to `/hephaestus*` and `@Hephaestus`.
-- Terminal: `Hephaestus "<request>"` is the human-facing alias for
-  `bin/hephaestus route "<request>"`; `hephaests-network "<request>"` is the
-  standalone Hub-only Network alias.
+- Terminal: `Hephaestus-build "<request>"` is the human-facing build alias,
+  `hephaests-network "<request>"` is the standalone Hub-only Network alias,
+  and `hephaestus cloud "<request>"` is the cloud/share surface.
 - Generic AGENTS.md / local-model runtimes: see
   `docs/runtime-fallback-adapters.md`.
 

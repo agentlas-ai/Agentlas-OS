@@ -16,12 +16,18 @@ required_files=(
   "templates/global-commands.json.tpl"
   "templates/antigravity-workflow.md.tpl"
   ".claude/commands/hephaestus.md"
+  ".claude/commands/hephaestus-build.md"
   "codex/prompts/hephaestus.md"
+  "codex/prompts/hephaestus-build.md"
   "gemini/extension/commands/hephaestus.toml"
+  "gemini/extension/commands/hephaestus-build.toml"
   ".gemini/commands/hephaestus.toml"
+  ".gemini/commands/hephaestus-build.toml"
   "gemini/extension/gemini-extension.json"
   "antigravity/workflows/hephaestus.md"
+  "antigravity/workflows/hephaestus-build.md"
   ".agents/workflows/hephaestus.md"
+  ".agents/workflows/hephaestus-build.md"
   "AGENTS.md"
   ".claude/commands/hephaestus-network.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hephaestus-network.md"
@@ -38,6 +44,7 @@ required_files=(
   "opencode/commands/hephaestus-network.md"
   "openclaw/skills/hephaestus-network/SKILL.md"
   "hermes/skills/hephaestus-network/SKILL.md"
+  "bin/hephaestus-build"
   "bin/hephaests-network"
   "agentlas_cloud/mcp_stdio.py"
   "docs/local-models.md"
@@ -68,6 +75,14 @@ for item in registry.get("commands", []):
     if item.get("command") == command:
         commands[item["runtime"]] = item
 
+build_commands = [item for item in registry.get("commands", []) if item.get("command") == "/hephaestus-build"]
+if len(build_commands) < 4:
+    raise SystemExit("expected /hephaestus-build entries for at least claude-code, codex, gemini-cli, antigravity")
+for item in build_commands:
+    adapter = item.get("adapterPath")
+    if not adapter or not Path(adapter).exists():
+        raise SystemExit(f"/hephaestus-build adapter missing: {adapter}")
+
 network_commands = [item for item in registry.get("commands", []) if item.get("command") == "/hephaestus-network"]
 if len(network_commands) < 4:
     raise SystemExit("expected /hephaestus-network entries for at least claude-code, codex, gemini-cli, antigravity")
@@ -82,6 +97,8 @@ terminal_aliases = {
 }
 for alias_command, adapter in {
     "Hephaestus": "bin/hephaestus",
+    "Hephaestus-build": "bin/hephaestus-build",
+    "hephaestus-build": "bin/hephaestus-build",
     "hephaests-network": "bin/hephaests-network",
 }.items():
     item = terminal_aliases.get(alias_command)
@@ -92,12 +109,12 @@ for alias_command, adapter in {
     if not Path(adapter).exists():
         raise SystemExit(f"{alias_command} adapter file does not exist: {adapter}")
 required = {
-    "claude-code": ".claude/commands/hephaestus.md",
-    "codex": "codex/prompts/hephaestus.md",
-    "gemini-cli": "gemini/extension/commands/hephaestus.toml",
-    "antigravity": "antigravity/workflows/hephaestus.md",
+    "claude-code": ".claude/commands/hephaestus-build.md",
+    "codex": "codex/prompts/hephaestus-build.md",
+    "gemini-cli": "gemini/extension/commands/hephaestus-build.toml",
+    "antigravity": "antigravity/workflows/hephaestus-build.md",
     "generic-agents-md": "AGENTS.md",
-    "agentlas-terminal": "bin/hephaestus",
+    "agentlas-terminal": "bin/hephaestus-build",
 }
 for runtime, adapter in required.items():
     item = commands.get(runtime)

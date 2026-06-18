@@ -28,6 +28,7 @@ code_dirs=(
 
 code_files=(
   "bin/hephaestus"
+  "bin/hephaestus-build"
   "bin/hephaests-network"
   "bin/hephaestus.cmd"
 )
@@ -56,11 +57,16 @@ skill_mirrors=(
   "skills/hephaestus-cloud/SKILL.md:gemini/extension/skills/hephaestus-cloud/SKILL.md"
   "skills/hephaestus-cloud/SKILL.md:cursor/plugin/skills/hephaestus-cloud/SKILL.md"
   "skills/hephaestus-cloud/SKILL.md:hermes/skills/hephaestus-cloud/SKILL.md"
+  ".agentlas/routing-card.json:claude/plugins/agentlas-core-engine-meta-agent/.agentlas/routing-card.json"
+  ".agentlas/routing-card.json:codex/plugins/agentlas-core-engine-meta-agent/.agentlas/routing-card.json"
+  ".agentlas/routing-card.json:gemini/extension/.agentlas/routing-card.json"
   "cursor/rules/hephaestus.mdc:cursor/plugin/rules/hephaestus.mdc"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hephaestus.md:.claude/commands/hephaestus.md"
+  "claude/plugins/agentlas-core-engine-meta-agent/commands/hephaestus-build.md:.claude/commands/hephaestus-build.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hephaestus-network.md:.claude/commands/hephaestus-network.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hephaestus-cloud.md:.claude/commands/hephaestus-cloud.md"
   "antigravity/workflows/hephaestus.md:.agents/workflows/hephaestus.md"
+  "antigravity/workflows/hephaestus-build.md:.agents/workflows/hephaestus-build.md"
   "antigravity/workflows/hephaestus-network.md:.agents/workflows/hephaestus-network.md"
   "antigravity/workflows/hephaestus-cloud.md:.agents/workflows/hephaestus-cloud.md"
 )

@@ -2,7 +2,14 @@
 
 ## Unreleased
 
-- No unreleased changes yet.
+No unreleased changes yet.
+
+## v0.7.3 - 2026-06-18
+
+- Added the clearer three-command user surface:
+  `/hephaestus-build` for creation, `/hephaestus-network` for borrowing public
+  Hub agents, and `/hephaestus-cloud` for using agents saved or shared through
+  Agentlas Cloud. Legacy `/hephaestus` remains as a build alias.
 
 ## v0.7.2 - 2026-06-18
 

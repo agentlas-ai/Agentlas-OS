@@ -1,11 +1,12 @@
-description = "Run Hephaestus to create/package Agentlas agents or open the ontology GUI."
+description = "Build, repair, or package Agentlas agents and teams with Hephaestus."
 prompt = """
-# /hephaestus
+# /hephaestus-build
 
 Raw arguments:
 {{args}}
 
-Use Hephaestus, the Agentlas Core Engine Meta-Agent.
+Use Hephaestus as the Agentlas builder surface. This is the clearer
+build-focused name for the older `/hephaestus` command.
 
 If this workspace contains `AGENTS.md`, `.agentlas/mode-map.json`, and
 `.agentlas/global-commands.json`, read those files first and follow the local

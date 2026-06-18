@@ -38,8 +38,7 @@ fi
      and report — never retry silently.
    - `hub_fallback` / `hub_candidates` — Hub lookup used redacted keywords only;
      the raw prompt and local memory were not sent.
-   - `propose_new` — offer to build a new agent/team via the Hephaestus
-     meta-agent.
+   - `propose_new` — offer to build a new agent/team via `/hephaestus-build`.
    - `refuse` — explain `reasons`; do not retry around the guard.
 
 3. Hard rules: the router only chooses an agent or fetches a BYOM Hub bundle.

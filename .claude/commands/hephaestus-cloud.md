@@ -54,7 +54,7 @@ fi
      re-route with the answer (still cloud-scoped).
    - `action: "propose_new"` — no matching package exists in my cloud. Offer to
      search the public marketplace with `/hephaestus-network`, or to build a new
-     agent via `/hephaestus`.
+     agent via `/hephaestus-build`.
    - `action: "refuse"` — explain `reasons` (e.g. loop guard). Do not retry.
 
 3. Hard rules: this command never searches the public marketplace or local

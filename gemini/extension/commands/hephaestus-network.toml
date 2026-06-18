@@ -24,7 +24,7 @@ Use the Hephaestus Network local-first router.
      `handoff_dir`; stop and report on stage failure.
    - action "hub_fallback"/"hub_candidates": Hub lookup used redacted keywords
      only; the raw prompt and local memory were not sent.
-   - action "propose_new": offer to build a new agent via /hephaestus.
+   - action "propose_new": offer to build a new agent via /hephaestus-build.
    - action "refuse": explain the reasons (for example, loop guard).
 
 3. Hard rules: the router only chooses an agent or fetches a BYOM Hub bundle.

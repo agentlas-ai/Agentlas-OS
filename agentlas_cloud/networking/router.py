@@ -565,7 +565,12 @@ def route_request(
         result["fallback_scope"] = fallback_scope
         result["agent_os_router"] = {
             "surface": chain[0] if chain else "hephaestus-network",
-            "command_model": "two_command",
+            "command_model": "three_command",
+            "commands": {
+                "build": "hephaestus-build",
+                "network": "hephaests-network",
+                "cloud": "hephaestus cloud",
+            },
             "router_version": "agent_os_router.v1",
             "local_operator_mode": True,
         }
@@ -938,7 +943,7 @@ def route_request(
             **({"hub": hub} if hub is not None else {}),
             "suggestions": suggestions,
             "reasons": [
-                "no local match; hub unavailable or empty — propose building a new agent via /hephaestus"
+                "no local match; hub unavailable or empty — propose building a new agent via /hephaestus-build"
                 if use_hub
                 else "no auto-eligible local match (hub disabled)"
             ],

@@ -7,7 +7,7 @@
   "type": "team",
   "name": "Hephaestus meta-agent",
   "name_ko": "헤파이스토스 메타 에이전트",
-  "aliases": ["/hephaestus", "/meta-agent", "@Hephaestus"],
+  "aliases": ["/hephaestus-build", "/hephaestus", "/meta-agent", "@Hephaestus"],
   "summary": "Create, package, or repair Agentlas-compatible agents and multi-agent teams for Claude Code, Codex, Gemini, Antigravity, Cursor, and AGENTS.md runtimes.",
   "summary_ko": "Claude Code·Codex·Gemini·Antigravity·Cursor용 Agentlas 에이전트/팀을 생성·패키징·수리하는 메타 에이전트.",
   "description": "Three-mode meta-agent team: single-agent builder, multi-agent team builder, and Agentlas packager. Includes the ontology runtime and the Hephaestus Network local-first router.",
@@ -43,7 +43,7 @@
   "required_plugins": [],
   "supported_runtimes": ["claude-code", "codex", "gemini-cli", "antigravity", "cursor", "terminal", "agents-md"],
   "entrypoints": {
-    "canonical_command": "/hephaestus",
+    "canonical_command": "/hephaestus-build",
     "agent": ".agents/agentlas-core-engine-meta-agent/agent.md",
     "terminal": "bin/hephaestus"
   },
@@ -67,6 +67,6 @@
   "agent_card_ref": {"path": ".agentlas/agent-card.json", "slug": "agentlas-meta-agent", "content_hash": null},
   "data_access": {"reads": ["project_memory"], "writes": ["project_files"], "exports": []},
   "approval_scope": {"grant": "per_call", "ttl_seconds": null},
-  "source": {"kind": "local_path", "ref": null, "package_hash": null, "package_version": "0.7.2"},
+  "source": {"kind": "local_path", "ref": null, "package_hash": null, "package_version": "0.7.3"},
   "updated_at": "2026-06-12T01:00:00+00:00"
 }

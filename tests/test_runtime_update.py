@@ -36,14 +36,14 @@ def test_update_check_uses_ttl_cache_and_reports_newer_release(tmp_path, monkeyp
     assert fetch_latest_release(force=False)["tag_name"] == "v9.9.9"
     assert len(calls) == 1
 
-    root = tmp_path / "runtime" / "0.7.2"
+    root = tmp_path / "runtime" / "0.7.3"
     root.mkdir(parents=True)
-    (root / "RELEASE").write_text("v0.7.2\n", encoding="utf-8")
+    (root / "RELEASE").write_text("v0.7.3\n", encoding="utf-8")
     monkeypatch.setattr("agentlas_cloud.update.fetch_latest_release", lambda force=True: release)
     result = run_update(check_only=True, root=root)
 
     assert result["status"] == "update_available"
-    assert result["current"] == "v0.7.2"
+    assert result["current"] == "v0.7.3"
     assert result["latest"] == "v9.9.9"
 
 
@@ -64,11 +64,11 @@ def test_install_latest_runtime_flips_current_and_writes_shims(tmp_path, monkeyp
         shutil.copyfile(archive, path)
 
     monkeypatch.setattr("agentlas_cloud.update._download", fake_download)
-    result = install_latest_runtime({"tag_name": "v0.7.2", "tarball_url": "https://example.test/source.tar.gz"})
+    result = install_latest_runtime({"tag_name": "v0.7.3", "tarball_url": "https://example.test/source.tar.gz"})
 
     runtime_root = Path(result["runtime_root"])
     current = tmp_path / "runtime" / "current"
-    assert (runtime_root / "RELEASE").read_text(encoding="utf-8").strip() == "v0.7.2"
+    assert (runtime_root / "RELEASE").read_text(encoding="utf-8").strip() == "v0.7.3"
     assert current.exists() or current.is_symlink()
     assert (runtime_root / "bin" / "python3").exists()
     assert "PYTHONUTF8" in (runtime_root / "bin" / "hephaestus.cmd").read_text(encoding="utf-8")

@@ -53,6 +53,8 @@ Usage:
   bin/hephaestus plugins list [--project <dir>]
   bin/hephaestus plugins resolve "<need>" [--project <dir>] [--no-hub]
   bin/hephaestus meta-agent "<request>"
+  bin/hephaestus hephaestus-build "<request>"      # build/create/package surface
+  bin/hephaestus build "<request>"                 # shorthand for hephaestus-build
   bin/hephaestus network init|status|reindex|bench
   bin/hephaestus network add-source <path> | remove-source <path>
   bin/hephaestus network grant <capability> --target <id> [--scope ...]
@@ -65,7 +67,7 @@ Usage:
   bin/hephaestus hephaests-network "<request>"      # accepted typo alias
   bin/hephaestus cloud "<request>" [--project <dir>] [--no-hub]   # search ONLY my own cloud packages (보관함)
   bin/hephaestus mcp serve              # stdio MCP server (hephaestus_route tool)
-  bin/hephaestus "<request>"            # shorthand for route (local + cloud + Hub)
+  bin/hephaestus "<request>"            # legacy shorthand for route (local + cloud + Hub)
 
 Examples:
   bin/hephaestus ontology
@@ -146,13 +148,16 @@ case "$command" in
 	  plugins)
 	    run_python_module agentlas_cloud plugins "$@"
 	    ;;
-  meta-agent)
+  meta-agent|hephaestus-build|Hephaestus-build|build)
     request="${*:-Create or package an Agentlas-compatible agent.}"
     cat <<EOF
 Hephaestus meta-agent request:
 $request
 
 Open Claude Code or Codex with the installed plugin, then run:
+/hephaestus-build $request
+
+Legacy alias:
 /hephaestus $request
 EOF
     ;;

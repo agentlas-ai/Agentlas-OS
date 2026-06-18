@@ -48,7 +48,7 @@ fi
      never retry silently.
    - `action: "hub_fallback"` or `"hub_candidates"` — Hub lookup used redacted
      keywords only; the raw prompt and local memory were not sent.
-   - `action: "propose_new"` — offer to build a new agent/team via `/hephaestus`.
+   - `action: "propose_new"` — offer to build a new agent/team via `/hephaestus-build`.
    - `action: "refuse"` — explain `reasons` (for example, loop guard). Do not retry around it.
 
 3. Hard rules: the router only chooses an agent or fetches a BYOM Hub bundle.
