@@ -15,12 +15,24 @@ package contract.
 If this workspace does not contain the Hephaestus package files yet, explain
 that the user should run the one-touch installer from an OS terminal:
 
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.9/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.10/scripts/install-all-runtimes.sh | bash`
 
-For creation or packaging work, classify the request as single-agent-builder,
-multi-agent-team-builder, or agentlas-packager. Generate or repair the Agentlas
-package, verify it, and include the `global_commands` section from
-`.agentlas/global-commands.json` in the final response.
+For creation or behavior-changing packaging work, classify the request as
+single-agent-builder, multi-agent-team-builder, or agentlas-packager, then run
+the Builder Interview and Research Gate from
+`docs/builder-interview-research-gate.md` before writing substantial package
+files. Ask an 8-12 question first batch when the request is vague, continue
+follow-ups until the functional brief is clear, research official sources,
+similar agent repositories or comparables, academic/professional theory, and
+plugin docs, compare selected and rejected tools/plugins, synthesize
+domain-expert behavior, and create `docs/builder-interview.md`,
+`docs/research-sources.md`, `docs/tool-selection.md`,
+`docs/domain-expert-synthesis.md`, `docs/prompt-performance-contract.md`, and
+`.agentlas/capability-eval-plan.json`.
+
+Generate or repair the Agentlas package, verify it, and include the
+`global_commands` section from `.agentlas/global-commands.json` and
+`interview_research` evidence in the final response.
 
 If the first argument is `ontology`, open the project ontology GUI by running
 `./bin/hephaestus ontology --gui .` when the local shell command is available,

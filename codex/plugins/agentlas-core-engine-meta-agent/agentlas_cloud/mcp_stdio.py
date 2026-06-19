@@ -13,11 +13,12 @@ only redacted keywords and does not add a routing-time safety gate.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Any
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "0.7.9"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "0.7.10"}
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -224,6 +225,15 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
     init_networking(networking_home())
     if name == "hephaestus_route":
+        if bool(arguments.get("hub_only", False)):
+            from .networking.gui_shortcut import open_local_gui_shortcut
+
+            shortcut = open_local_gui_shortcut(
+                arguments["request"],
+                no_open=os.environ.get("HEPHAESTUS_NETWORK_GUI_NO_OPEN") == "1",
+            )
+            if shortcut.get("action") != "no_local_gui_shortcut":
+                return shortcut
         return route_request(
             arguments["request"],
             project_dir=arguments.get("project_dir", "."),

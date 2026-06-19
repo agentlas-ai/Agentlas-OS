@@ -69,7 +69,7 @@ AI install Hephaestus and tell you which command surface is active in that tool.
 
 ```text
 Install Hephaestus Agentlas for this workspace. Run:
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.9/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.10/scripts/install-all-runtimes.sh | bash
 
 After it finishes, tell me the three primary commands I should use:
 1. create/build agents
@@ -102,6 +102,27 @@ Codex, Gemini CLI, Antigravity, and Cursor registration status.
 Fresh installs and updates prune the old visible `/hephaestus` chat command so
 new users see the clean command surface above: three primary commands, plus two
 power-user commands when they need explicit search/call control.
+
+## New In v0.7.10
+
+- **Builder interview is now mandatory.** `/hephaestus-build` must ask an
+  8-12 question first batch before substantial single-agent, team-builder, or
+  packager output. If key answers are still missing, it returns
+  `needs_clarification` instead of shipping a generic agent.
+- **Comparable-agent and repository research is required.** Public or
+  marketplace-ready builds must compare at least 3 similar agents,
+  repositories, systems, examples, or benchmarks, or record no-match search
+  evidence and nearest useful analogs.
+- **Academic or professional theory is part of the prompt contract.** Builds
+  use the baseline agent-design research basis plus domain-specific academic,
+  standard, legal, or professional sources when available.
+- **Domain-expert synthesis bridges research to prompts.** Generated packages
+  now include `docs/domain-expert-synthesis.md`, which turns interview answers,
+  repo patterns, theory, and tool/plugin decisions into specialist heuristics,
+  examples, counterexamples, and eval cases.
+- **Verification catches regressions.** `scripts/verify-builder-quality-contract.sh`
+  is now part of package verification, so runtime adapters cannot drop the
+  interview/research/theory/synthesis gate.
 
 Hephaestus is the open core engine that makes Agentlas behave like an agent
 operating system instead of a one-off prompt generator. It gives developers
@@ -282,7 +303,7 @@ tells you the exact command to use next:
 
 ```text
 Set up the Hephaestus Agentlas meta-agent in this workspace. Run
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.9/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.10/scripts/install-all-runtimes.sh | bash`
 in the terminal, then tell me the exact three-command surface for the tool I am
 using (Claude Code, Codex, Gemini CLI, Antigravity, or Cursor). Also tell me
 the optional search/call power-user commands. If anything fails, read the
@@ -332,7 +353,7 @@ OpenCode, OpenClaw, and Hermes Agent surfaces. It also fixes the common
 old `agentlas-core-engine` entry and adding it again from this repo.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.9/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.10/scripts/install-all-runtimes.sh | bash
 ```
 
 After it finishes, restart any open AI apps. Then use:
@@ -376,7 +397,7 @@ If you already installed the old `agentlas-meta-agent` plugin and Claude says
 `hephaestus` is not found, refresh the marketplace and replace the old plugin:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.9/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.10/scripts/install-all-runtimes.sh | bash
 ```
 
 `/hephaestus-build ontology` is now the Knowledge/Memory panel, not the main Agent OS
@@ -413,7 +434,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.9
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.10
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
@@ -427,7 +448,7 @@ If Codex still shows `agentlas-meta-agent` or internal support names like
 `mode-classification`, refresh the marketplace and replace the old plugin:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.9/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.10/scripts/install-all-runtimes.sh | bash
 ```
 
 The Codex OS-terminal CLI command is singular: `codex plugin`, not
@@ -475,7 +496,7 @@ repo package files in your current project. Open macOS Terminal, Linux terminal,
 Windows Git Bash, or WSL in that project folder and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.9/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.10/scripts/install.sh | bash
 scripts/verify-package.sh
 scripts/public_safety_check.sh
 ```
@@ -483,9 +504,9 @@ scripts/public_safety_check.sh
 Windows PowerShell:
 
 ```powershell
-$zip = "$env:TEMP\hephaestus-v0.7.9.zip"
-$extract = "$env:TEMP\hephaestus-v0.7.9"
-Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.7.9.zip" -OutFile $zip
+$zip = "$env:TEMP\hephaestus-v0.7.10.zip"
+$extract = "$env:TEMP\hephaestus-v0.7.10"
+Invoke-WebRequest "https://github.com/agentlas-ai/Hephaestus/archive/refs/tags/v0.7.10.zip" -OutFile $zip
 Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $zip -DestinationPath $extract -Force
 $src = Get-ChildItem $extract -Directory | Select-Object -First 1

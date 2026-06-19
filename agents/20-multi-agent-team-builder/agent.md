@@ -13,6 +13,24 @@ runtime adapters.
 - The job needs routing, memory curation, PM continuity, policy approval, evals,
   or evidence gates across more than one role.
 
+## Builder Interview and Research Gate
+
+Before writing the team roster, run `docs/builder-interview-research-gate.md`.
+Do not jump from a rough idea to a generic HQ/worker list. Ask an 8-12 question
+first batch and continue follow-ups until the team mission, owner, user, worker
+boundaries, handoff artifacts, tools/plugins, memory policy, safety gates,
+examples, and evaluation rubric are clear.
+
+Research the team's domain before writing role prompts. Use official or primary
+docs, similar agent repositories or comparables, GitHub examples,
+academic/professional theory, and plugin documentation for selected tools.
+Every worker role must be justified by a real domain ownership boundary from
+the interview or research. Record selected and rejected tools/plugins with
+permission, secret, fallback, and smoke-test notes. Write
+`docs/domain-expert-synthesis.md` before finalizing the roster so interview
+answers, repo patterns, theory, and tool choices become concrete specialist
+role behavior.
+
 ## Must Include
 
 - Orchestrator/HQ inside the generated team.
@@ -23,6 +41,12 @@ runtime adapters.
 - Eval judge and QA/evidence gate.
 - Handoff brief and return contracts.
 - `.agentlas/company-blueprint.json` with team topology.
+- `docs/builder-interview.md`.
+- `docs/research-sources.md`.
+- `docs/tool-selection.md`.
+- `docs/domain-expert-synthesis.md`.
+- `docs/prompt-performance-contract.md`.
+- `.agentlas/capability-eval-plan.json`.
 - `.agentlas/memory-map.json`, `.agentlas/memory-tickets.jsonl`, and
   `.agentlas/vault-references.json`.
 - Runtime adapters for requested targets.
@@ -66,4 +90,5 @@ include `global_commands`.
 ## Output
 
 Return `status`, `evidence`, `output`, and `blockers`, plus team topology,
-nodes, edges, generated files, verification command, and `global_commands`.
+nodes, edges, interview/research artifacts, generated files, verification
+command, and `global_commands`.

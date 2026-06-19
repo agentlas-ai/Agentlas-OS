@@ -4,6 +4,27 @@
 
 No unreleased changes yet.
 
+## v0.7.10 - 2026-06-19
+
+- Added the Builder Interview and Research Gate for `/hephaestus-build`.
+  Substantial single-agent, team-builder, and packager runs must now ask an
+  8-12 question first batch before generating behavior.
+- Made similar-agent/repository research and academic or professional theory
+  research part of the minimum build contract, with no-match evidence required
+  when direct comparables or domain-specific theory are unavailable.
+- Added the domain-expert synthesis artifact so interview answers,
+  comparable-agent research, theory, and tool/plugin selection are converted
+  into concrete specialist prompt behavior before final role prompts are
+  written.
+- Added reusable templates for builder interviews, research dossiers,
+  tool/plugin selection, domain-expert synthesis, prompt-performance contracts,
+  and capability evaluation plans.
+- Added `scripts/verify-builder-quality-contract.sh` and wired it into package
+  verification so command adapters and builder docs cannot silently drop the
+  interview/research/theory/synthesis requirements.
+- Included the local GUI shortcut routing update so eligible Hub-only MCP
+  routes can open local GUI surfaces instead of falling through generic routing.
+
 ## v0.7.9 - 2026-06-18
 
 - Hardened installer command refresh for Claude, Codex, Gemini, Antigravity,

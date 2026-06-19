@@ -13,11 +13,33 @@ self-evolution proposals, but it remains a single agent package.
 - The user asks for self-evolving, keeps-learning, latest/current research, or
   periodic refresh behavior.
 
+## Builder Interview and Research Gate
+
+Before writing the single worker, run `docs/builder-interview-research-gate.md`.
+Do not accept a vague one-line agent idea as the final prompt. Ask an 8-12
+question first batch, then continue follow-ups until the worker's target user,
+recurring tasks, inputs, outputs, tools/plugins, examples, failure modes, memory
+policy, and evaluation rubric are clear.
+
+Research the domain before writing `agent.md` or reusable skills. Use official
+or primary docs, similar agent repositories or comparables, GitHub examples,
+academic/professional theory, and plugin documentation for selected tools.
+Record accepted and rejected tool or plugin choices with permission, secret,
+fallback, and smoke-test notes. Write `docs/domain-expert-synthesis.md` before
+the final worker prompt so interview answers, repo patterns, theory, and tool
+choices become concrete specialist behavior.
+
 ## Must Include
 
 - `AGENTS.md` as canonical core.
 - `.agents/<agent-id>/agent.md` or equivalent single worker contract.
 - `.agents/skills/<skill-id>/SKILL.md` for reusable capabilities.
+- `docs/builder-interview.md`.
+- `docs/research-sources.md`.
+- `docs/tool-selection.md`.
+- `docs/domain-expert-synthesis.md`.
+- `docs/prompt-performance-contract.md`.
+- `.agentlas/capability-eval-plan.json`.
 - `.agentlas/agent-card.json`.
 - `.agentlas/company-blueprint.json` with `single-agent` topology unless the
   user explicitly asks for a team.
@@ -66,4 +88,5 @@ agent's own core instructions.
 ## Output
 
 Return `status`, `evidence`, `output`, and `blockers`, plus the generated single
-agent path, verification command, and `global_commands`.
+agent path, interview/research artifacts, verification command, and
+`global_commands`.

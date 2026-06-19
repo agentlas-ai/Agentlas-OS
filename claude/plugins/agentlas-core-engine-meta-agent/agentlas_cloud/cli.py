@@ -180,6 +180,10 @@ def main(argv: list[str] | None = None) -> int:
         help="JSON array of active host sessions for Stormbreaker pipeline scheduling (for example Codex, Claude, GLM, DeepSeek).",
     )
 
+    local_gui = sub.add_parser("local-gui", help=argparse.SUPPRESS)
+    local_gui.add_argument("query")
+    local_gui.add_argument("--no-open", action="store_true")
+
     search = sub.add_parser("search", help="Show top owner-cloud and public Hub agent candidates without invoking")
     search.add_argument("query")
     search.add_argument("--project", default=".")
@@ -395,6 +399,17 @@ def main(argv: list[str] | None = None) -> int:
                 session_inventory=session_inventory,
             )
         )
+    if args.command == "local-gui":
+        from .networking import init_networking
+        from .networking.bootstrap import networking_home
+        from .networking.gui_shortcut import open_local_gui_shortcut
+
+        init_networking(networking_home())
+        result = open_local_gui_shortcut(args.query, no_open=args.no_open)
+        emit(result)
+        if result.get("action") == "no_local_gui_shortcut":
+            return 4
+        return 0 if result.get("status") == "opened" else 1
     if args.command == "ao":
         from .agent_graph import (
             describe_graph,

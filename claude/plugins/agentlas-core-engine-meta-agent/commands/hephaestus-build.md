@@ -66,10 +66,25 @@ Meta-Agent team:
 2. Read `.agentlas/mode-map.json`.
 3. Classify the request as single-agent builder, multi-agent team builder, or
    packager.
-4. Load only the matching public skills.
-5. Generate or repair `.agentlas/global-commands.json` and matching runtime
+4. Run the Builder Interview and Research Gate in
+   `docs/builder-interview-research-gate.md` before writing substantial package
+   files. Ask an 8-12 question first batch when the request is vague; continue
+   follow-ups until target user, tasks, inputs, outputs, examples,
+   tools/plugins, memory, failure modes, and evals are clear. Research official
+   or primary docs, similar agent repositories or comparables, GitHub examples,
+   academic/professional theory, and tool/plugin docs. Record selected and
+   rejected tools/plugins with permission, secret, fallback, and smoke-test
+   notes, then synthesize domain-expert behavior before writing prompts.
+5. Generate `docs/builder-interview.md`, `docs/research-sources.md`,
+   `docs/tool-selection.md`, `docs/domain-expert-synthesis.md`,
+   `docs/prompt-performance-contract.md`, and
+   `.agentlas/capability-eval-plan.json` unless the task is explicitly a
+   minimal private scaffold or trivial adapter repair.
+6. Load only the matching public skills.
+7. Generate or repair `.agentlas/global-commands.json` and matching runtime
    command files or aliases.
-6. Return `status`, `evidence`, `output`, `global_commands`, and `blockers`.
+8. Return `status`, `evidence`, `output`, `global_commands`,
+   `interview_research`, and `blockers`.
    The `global_commands` section must tell the user the exact Claude Code,
    Codex, Gemini CLI, generic AGENTS.md, and terminal commands for the generated
    agent.

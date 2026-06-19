@@ -29,6 +29,8 @@ required_files=(
   "docs/agentlas-cloud-runtime.md"
   "docs/robustness-protocol.md"
   "docs/robustness-eval.md"
+  "docs/builder-interview-research-gate.md"
+  "docs/builder-quality-research-basis.md"
   "docs/super-ontology-candidate-contract.md"
   "agent.md"
   "agents/10-single-agent-builder/agent.md"
@@ -53,6 +55,7 @@ required_files=(
   "examples/ontology-proposal-agent/.agentlas/injected-contracts.json"
   "scripts/sync-adapters.sh"
   "scripts/verify-mcp-surface.sh"
+  "scripts/verify-builder-quality-contract.sh"
   ".agents/agentlas-core-engine-meta-agent/agent.md"
   ".agents/plugins/marketplace.json"
   ".agentlas/mode-map.json"
@@ -134,6 +137,12 @@ required_files=(
   "templates/global-commands.json.tpl"
   "templates/antigravity-workflow.md.tpl"
   "templates/skill-registry.json.tpl"
+  "templates/builder-interview.md.tpl"
+  "templates/research-sources.md.tpl"
+  "templates/tool-selection.md.tpl"
+  "templates/domain-expert-synthesis.md.tpl"
+  "templates/prompt-performance-contract.md.tpl"
+  "templates/capability-eval-plan.json.tpl"
   "templates/super-ontology-contract.json.tpl"
   "templates/super-ontology-open-world-coverage.json.tpl"
   "templates/super-ontology-consensus-coordination.json.tpl"
@@ -263,6 +272,7 @@ required_files=(
   "scripts/install-all-runtimes.sh"
   "scripts/verify-install-docs.sh"
   "scripts/verify-global-command-contract.sh"
+  "scripts/verify-builder-quality-contract.sh"
   "scripts/verify-one-touch-install.sh"
   "scripts/run-one-touch-terminal.command"
   "scripts/verify-ontology-runtime.sh"
@@ -367,6 +377,7 @@ fi
 
 scripts/verify-install-docs.sh
 scripts/verify-global-command-contract.sh
+scripts/verify-builder-quality-contract.sh
 scripts/verify-ontology-runtime.sh
 python3 scripts/score-robustness-eval.py benchmarks/robustness/example-results.jsonl >/dev/null
 scripts/sync-adapters.sh --check

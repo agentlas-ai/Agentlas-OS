@@ -14,12 +14,22 @@ an Agentlas-compatible agent or agent-team repository.
    - `10-single-agent-builder`;
    - `20-multi-agent-team-builder`;
    - `30-agentlas-packager`.
-6. Read `.agentlas/memory-map.json`.
-7. Select relevant skills from `.agents/skills`.
-8. Use `.agents/skills/agentlas-auto-activation/SKILL.md` when local project
+6. Run `docs/builder-interview-research-gate.md` before writing substantial
+   package files. Ask an 8-12 question first batch when the request is vague,
+   research official sources, similar agent repositories or comparables,
+   academic/professional theory, and plugin docs, compare tools/plugins, and
+   create the generated interview, research, tool-selection,
+   domain-expert-synthesis, prompt-performance, and capability-eval artifacts:
+   `docs/builder-interview.md`, `docs/research-sources.md`,
+   `docs/tool-selection.md`, `docs/domain-expert-synthesis.md`,
+   `docs/prompt-performance-contract.md`, and
+   `.agentlas/capability-eval-plan.json`.
+7. Read `.agentlas/memory-map.json`.
+8. Select relevant skills from `.agents/skills`.
+9. Use `.agents/skills/agentlas-auto-activation/SKILL.md` when local project
    continuity or `.agentlas` activation is part of the output.
-9. Verify with `scripts/verify-package.sh`.
+10. Verify with `scripts/verify-package.sh`.
 
 ## Output
 
-Return `status`, `evidence`, `output`, and `blockers`.
+Return `status`, `evidence`, `output`, `interview_research`, and `blockers`.

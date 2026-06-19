@@ -71,11 +71,22 @@ Read `$ENGINE/AGENTS.md` if it exists, otherwise `$ENGINE/SKILL.md`, then:
    `$ENGINE/.agentlas/global-commands.json` when present.
 2. Classify the request with the mode-classification skill as single-agent
    builder, multi-agent team builder, or agentlas-packager.
-3. If missing details would change files, adapters, or the public/private
+3. Run the Builder Interview and Research Gate from
+   `docs/builder-interview-research-gate.md` before writing substantial package
+   files. Ask an 8-12 question first batch when the request is vague, continue
+   follow-ups until the functional brief is clear, research official sources,
+   similar agent repositories or comparables, academic/professional theory, and
+   plugin docs, compare selected and rejected tools/plugins, synthesize
+   domain-expert behavior, and create `docs/builder-interview.md`,
+   `docs/research-sources.md`, `docs/tool-selection.md`,
+   `docs/domain-expert-synthesis.md`, `docs/prompt-performance-contract.md`, and
+   `.agentlas/capability-eval-plan.json`.
+4. If missing narrow details would change files, adapters, or the public/private
    boundary, run the clarify-question-loop skill first.
-4. Generate or repair the smallest useful Agentlas package in the current
+5. Generate or repair the smallest useful Agentlas package in the current
    workspace, then verify it.
-5. Return `status`, `evidence`, `output`, `global_commands`, and `blockers`.
+6. Return `status`, `evidence`, `output`, `global_commands`,
+   `interview_research`, and `blockers`.
 
 ## If no engine root was found
 

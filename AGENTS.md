@@ -25,6 +25,12 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
 - Stormbreaker robust execution contract: `docs/robustness-protocol.md`,
   `docs/robustness-eval.md`, `schemas/robustness-eval-result.schema.json`,
   `benchmarks/robustness/`, and `scripts/score-robustness-eval.py`.
+- Builder quality gate: `docs/builder-interview-research-gate.md`,
+  `docs/builder-quality-research-basis.md`,
+  `templates/builder-interview.md.tpl`, `templates/research-sources.md.tpl`,
+  `templates/tool-selection.md.tpl`, `templates/domain-expert-synthesis.md.tpl`,
+  `templates/prompt-performance-contract.md.tpl`, and
+  `templates/capability-eval-plan.json.tpl`.
 - Portable support contracts: `docs/mode-classifier.md`,
   `docs/clarify-question-loop.md`, `docs/agentlas-auto-activation.md`,
   `docs/local-credential-store.md`, and `docs/skill-lifecycle-promotion.md`.
@@ -61,29 +67,42 @@ become separate sources of truth.
    - `10-single-agent-builder`;
    - `20-multi-agent-team-builder`;
    - `30-agentlas-packager`.
-4. Inspect current files before making claims. Prefer real files over remembered
+4. Run the Builder Interview and Research Gate
+   (`docs/builder-interview-research-gate.md`) before writing substantial
+   generated package files. Ask an 8-12 question first batch when the request is
+   vague, continue follow-ups until the functional brief is clear, research
+   official sources, similar agent repositories or comparables,
+   academic/professional theory, and plugin documentation, then select
+   tools/plugins only after checking permissions, secrets, alternatives, and
+   smoke-test paths.
+5. Inspect current files before making claims. Prefer real files over remembered
    assumptions.
-5. Emit or repair the smallest useful Agentlas package.
-6. Add the required architecture contracts for the selected mode.
-7. Add thin adapters for Codex, Claude Code, Gemini CLI, Antigravity, and
+6. Emit or repair the smallest useful Agentlas package.
+7. Add the required architecture contracts for the selected mode.
+8. Add `docs/builder-interview.md`, `docs/research-sources.md`,
+   `docs/tool-selection.md`, `docs/domain-expert-synthesis.md`,
+   `docs/prompt-performance-contract.md`, and
+   `.agentlas/capability-eval-plan.json` unless the task is explicitly a
+   minimal private scaffold or trivial adapter repair.
+9. Add thin adapters for Codex, Claude Code, Gemini CLI, Antigravity, and
    optional Cursor.
-8. Assign one canonical global command during creation, write
+10. Assign one canonical global command during creation, write
    `.agentlas/global-commands.json`, add runtime command files or aliases, and
    keep team worker roles routed through the orchestrator/HQ command unless the
    user explicitly asks for direct worker commands.
-9. Add `.agentlas` seed files when the generated or packaged output needs local
+11. Add `.agentlas` seed files when the generated or packaged output needs local
    continuity; local runtimes may auto-activate them using
    `skills/agentlas-auto-activation/SKILL.md`.
-10. Add or repair `agentlas.json` so Agentlas Cloud can compile a runtime
+12. Add or repair `agentlas.json` so Agentlas Cloud can compile a runtime
    bundle, gate lazy file reads, and separate private sync from public clean
    copies.
-11. Add skill lifecycle metadata using
+13. Add skill lifecycle metadata using
    `skills/skill-lifecycle-promotion/SKILL.md` when the package contains
    reusable skills.
-12. Verify with `scripts/verify-package.sh`.
-13. For ontology runtime changes, also verify with
+14. Verify with `scripts/verify-package.sh`.
+15. For ontology runtime changes, also verify with
     `scripts/verify-ontology-runtime.sh`.
-14. For long-running or multi-file execution work, apply
+16. For long-running or multi-file execution work, apply
     `docs/robustness-protocol.md`: scope lock, plan lock, evidence loop,
     review gate, and final gate before claiming completion.
 
@@ -144,6 +163,10 @@ When asked to create, repair, or package an agent repo, return:
 - `output`: generated path, changed files, or exact design.
 - `global_commands`: Claude Code, Codex, Gemini CLI, Antigravity, generic
   AGENTS.md, and terminal commands from `.agentlas/global-commands.json`.
+- `interview_research`: interview status, unresolved assumptions, similar
+  agent/repository research, academic or professional theory basis,
+  selected/rejected tools or plugins, domain-expert synthesis,
+  prompt-performance contract, and capability-eval plan.
 - `blockers`: only blockers that require the user or external state.
 
 Generated or packaged repos must include the relevant subset of:
@@ -155,6 +178,12 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/company-blueprint.json`;
 - `.agentlas/global-commands.json`;
 - `agentlas.json`;
+- `docs/builder-interview.md`;
+- `docs/research-sources.md`;
+- `docs/tool-selection.md`;
+- `docs/domain-expert-synthesis.md`;
+- `docs/prompt-performance-contract.md`;
+- `.agentlas/capability-eval-plan.json`;
 - `.agentlas/memory-map.json`;
 - `.agentlas/memory-tickets.jsonl`;
 - `.agentlas/vault-references.json`;

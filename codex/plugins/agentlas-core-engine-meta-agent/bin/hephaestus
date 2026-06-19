@@ -163,6 +163,23 @@ EOF
 	    run_python_module agentlas_cloud "$command" "$@"
 	    ;;
 	  hephaestus-network|hephaests-network)
+	    if [[ "${HEPHAESTUS_NETWORK_LOCAL_GUI_SHORTCUTS:-1}" != "0" ]]; then
+	      set +e
+	      gui_args=("$@")
+	      if [[ "${HEPHAESTUS_NETWORK_GUI_NO_OPEN:-0}" == "1" ]]; then
+	        gui_args+=("--no-open")
+	      fi
+	      gui_output="$(run_python_module agentlas_cloud local-gui "${gui_args[@]}" 2>/dev/null)"
+	      gui_status=$?
+	      set -e
+	      if [[ "$gui_status" == "0" ]]; then
+	        printf '%s\n' "$gui_output"
+	        exit 0
+	      elif [[ "$gui_status" != "4" ]]; then
+	        printf '%s\n' "$gui_output"
+	        exit "$gui_status"
+	      fi
+	    fi
 	    run_python_module agentlas_cloud route "$@" --hub-only --scope network
 	    ;;
 	  search|hephaestus-search|Hephaestus-search)

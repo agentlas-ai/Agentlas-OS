@@ -32,12 +32,23 @@ portable Agentlas-compatible package.
 - A canonical global command registry in `.agentlas/global-commands.json` and
   matching command files or aliases for each supported runtime.
 - Install and verification scripts when packaging for reuse.
+- Builder Interview and Research Gate artifacts:
+  `docs/builder-interview.md`, `docs/research-sources.md`,
+  `docs/tool-selection.md`, `docs/domain-expert-synthesis.md`,
+  `docs/prompt-performance-contract.md`, and
+  `.agentlas/capability-eval-plan.json`.
 
 ## Core Rules
 
 - Keep the canonical instructions in `AGENTS.md`.
 - Keep adapters thin.
 - Run mode classification before routing.
+- Run `docs/builder-interview-research-gate.md` before generation. A rough user
+  prompt is not enough: ask an 8-12 question first batch, research official
+  sources, similar agent repositories or comparables, academic/professional
+  theory, and plugin docs, compare tool/plugin options, synthesize the domain
+  expert behavior, and turn the results into a prompt-performance contract
+  before writing role prompts or skills.
 - Ask clarify questions when missing details would change the generated files,
   runtime adapters, or public/private boundary.
 - Do not create a team when one agent is enough.
@@ -62,6 +73,9 @@ The generated or packaged output is done only when a user can:
 4. call it from Codex, Claude Code, Gemini CLI, generic AGENTS.md tools, or
    terminal using the generated global command;
 5. see the Agentlas architecture contracts as files;
-6. run a verification command without hidden private dependencies;
-7. read the `global_commands` section in the final handoff without guessing
+6. inspect the interview, research, tool-selection, domain-expert synthesis,
+   prompt-performance, and capability-eval artifacts that explain why the agent
+   should perform well;
+7. run a verification command without hidden private dependencies;
+8. read the `global_commands` section in the final handoff without guessing
    which command to type next.
