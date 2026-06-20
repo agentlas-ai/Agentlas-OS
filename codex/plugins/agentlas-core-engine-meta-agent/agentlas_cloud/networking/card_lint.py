@@ -13,6 +13,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .domains import DOMAIN_IDS
+
 VERB_CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)+$")
 BROAD_CAPABILITIES = {
     "do_anything",
@@ -113,6 +115,20 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     if broad:
         score -= 0.25
     score = max(0.0, min(1.0, round(score, 3)))
+
+    # Domain tags (soft): validate the vocabulary but never block a route — the
+    # router infers domains from text when the field is absent, so this is a
+    # quality nudge, not a gate.
+    declared_domains = card.get("domains")
+    if declared_domains:
+        if not isinstance(declared_domains, list):
+            warnings.append("domains must be a list of domain ids")
+        else:
+            unknown = [str(d) for d in declared_domains if str(d) not in DOMAIN_IDS]
+            if unknown:
+                warnings.append(f"unknown domain tags (not in vocab): {unknown[:3]}")
+    else:
+        warnings.append("no domain tags declared (router will infer from text)")
 
     claimed = str(card.get("routing_status") or "draft")
     if errors:

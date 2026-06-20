@@ -169,6 +169,10 @@ def default_routing_policy() -> dict[str, Any]:
         "min_ready_cards": 5,
         "max_hops": 2,
         "clarify_max_candidates": 3,
+        # Semantic + domain-coherence routing signals (see networking/domains.py).
+        "semantic_weight": 1.5,
+        "domain_boost": 1.5,
+        "domain_penalty": 6.0,
     }
 
 

@@ -6,6 +6,7 @@ graph queries, and migrates legacy .agentlas files into AO materialized views.
 
 from __future__ import annotations
 
+from .card_mapper import build_card_ontology, card_route_path, ingest_routing_cards
 from .loader import AGENT_ONTOLOGY_DIR, load_grammar, load_graph
 from .migrate import migrate_ontology, diff_ontology
 from .query import (
@@ -37,6 +38,9 @@ from .memory import BiTemporalStore, MemoryEntry
 
 __all__ = [
     "AGENT_ONTOLOGY_DIR",
+    "build_card_ontology",
+    "card_route_path",
+    "ingest_routing_cards",
     "BiTemporalStore",
     "MemoryEntry",
     "WELL_KNOWN_PATH",

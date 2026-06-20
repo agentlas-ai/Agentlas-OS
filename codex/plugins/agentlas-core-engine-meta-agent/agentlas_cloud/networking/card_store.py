@@ -117,6 +117,16 @@ def reindex(home: Path | str | None = None) -> dict[str, Any]:
 
     cards, _ = load_global_cards(base)
     _rebuild_registry(base, cards)
+    # Materialize the card-derived Agent Ontology graph so global cards are
+    # actually mapped (ExternalAgent nodes + in_domain/has_capability edges).
+    # Best-effort: never let AO materialization break a reindex.
+    ao_summary: dict[str, Any] = {}
+    try:
+        from ..agent_graph import ingest_routing_cards
+
+        ao_summary = ingest_routing_cards(base, cards)
+    except Exception:  # pragma: no cover
+        ao_summary = {"status": "skipped"}
     return {
         "home": str(base),
         "sources": len(sources),
@@ -124,6 +134,7 @@ def reindex(home: Path | str | None = None) -> dict[str, Any]:
         "total_cards": len(cards),
         "stale": stale,
         "quarantined": quarantined,
+        "agent_ontology": ao_summary,
     }
 
 

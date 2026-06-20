@@ -5,13 +5,13 @@ from agentlas_cloud.networking.card_lint import effective_status, lint_card
 from agentlas_cloud.networking.card_migrate import migrate_package
 
 
-def make_ready_card(tmp_path, slug, *, triggers_ko, triggers_en, antis, capabilities):
+def make_ready_card(tmp_path, slug, *, triggers_ko, triggers_en, antis, capabilities, domains=None):
     fixture = tmp_path / f"bench-{slug}.jsonl"
     fixture.write_text(
         "\n".join(json.dumps({"id": f"{slug}-{i}", "query": f"case {i}"}) for i in range(10)) + "\n",
         encoding="utf-8",
     )
-    return {
+    card = {
         "schemaVersion": "routing-card/2.0",
         "id": f"local/{slug}",
         "canonical_id": f"local/{slug}",
@@ -31,6 +31,9 @@ def make_ready_card(tmp_path, slug, *, triggers_ko, triggers_en, antis, capabili
         "locale_coverage": {"primary": "en", "ready": ["ko", "en"], "partial": []},
         "routing_status": "routing_ready",
     }
+    if domains is not None:
+        card["domains"] = domains
+    return card
 
 
 def test_lint_gates_ready_status(tmp_path):

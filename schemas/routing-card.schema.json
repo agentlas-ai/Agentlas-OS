@@ -32,6 +32,11 @@
       "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)+$" },
       "minItems": 1
     },
+    "domains": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Coarse domain tags (see agentlas_cloud/networking/domains.py) driving the router's domain-coherence guard; populated by card generation/backfill."
+    },
     "trigger_examples": {
       "type": "array",
       "items": {
