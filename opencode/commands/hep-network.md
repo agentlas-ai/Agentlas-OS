@@ -1,5 +1,5 @@
 ---
-description: Route a request through the Hephaestus Network local-first router (cards, Hub fallback).
+description: Route a request through the public Agentlas Hub via Hephaestus Network.
 ---
 
 # Hephaestus Network routing

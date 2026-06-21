@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## v0.7.16 - 2026-06-21
+## v0.7.17 - 2026-06-21
 
 - Added deterministic GUI shortcut launch for Hub-distributed packages:
   `/hep-network startup` now restores the Startup Founder Studio cloud package
@@ -11,6 +11,8 @@
 - Changed Network MCP/GUI shortcut defaults to ignore local `Paid/` and `Free/`
   routing cards. Local routing is now an explicit operator/debug escape hatch
   only, via `allow_local_routing`, `--allow-local`, or `--local-first`.
+- Changed the raw `hephaestus route` CLI default to Hub-only as well; local
+  cards require the hidden `--allow-local-routing` debug flag.
 - Added the `hephaestus local-gui` runtime command and wired `/hep-network`
   surfaces to use it before falling back to plain candidate routing for GUI
   shortcuts.

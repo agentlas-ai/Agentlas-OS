@@ -22,7 +22,7 @@ Use Agentlas Hub invocation only:
 - A bundled local agent folder is applied separately by opening/reading its
   `AGENTS.md`; it is not the same thing as a Hephaestus Network Hub call.
 
-Only use local-first routing when the user explicitly asks to test Mason's
+Only use local debug routing when the user explicitly asks to test Mason's
 installed local inventory or a named local folder.
 
 ## 1. Resolve the runner

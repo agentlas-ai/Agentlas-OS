@@ -93,7 +93,7 @@ def os_surface(project_root: str | Path = ".") -> dict[str, Any]:
         },
         {
             "os_role": "scheduler / dispatcher",
-            "subsystem": "Network router (deterministic, local-first)",
+            "subsystem": "Network router (deterministic, Hub-first public default)",
             "live": _module_present("agentlas_cloud.networking.router"),
             "detail": "AO-filtered candidate routing + receipts",
         },

@@ -156,13 +156,14 @@ def main(argv: list[str] | None = None) -> int:
     ao_pipeline.add_argument("artifact", help="Target artifact the pipeline must produce")
     ao_pipeline.add_argument("project", nargs="?", default=".")
 
-    route = sub.add_parser("route", help="Route a natural-language request to a local agent/team/plugin")
+    route = sub.add_parser("route", help="Route a natural-language request through Agentlas Hub by default")
     route.add_argument("query")
     route.add_argument("--project", default=".")
     route.add_argument("--runtime", default="terminal")
     route.add_argument("--no-hub", action="store_true")
     route.add_argument("--approve-hub", action="store_true", help="Legacy no-op; Hub lookup already uses redacted keywords only")
-    route.add_argument("--hub-only", action="store_true", help="Skip local cards and search Agentlas Hub marketplace only (/hep-network)")
+    route.add_argument("--hub-only", action="store_true", help="Skip local cards and search Agentlas Hub marketplace only (default unless --allow-local-routing is set)")
+    route.add_argument("--allow-local-routing", action="store_true", help=argparse.SUPPRESS)
     route.add_argument(
         "--scope",
         choices=["network", "cloud"],
@@ -437,13 +438,14 @@ def main(argv: list[str] | None = None) -> int:
             except (json.JSONDecodeError, ValueError) as exc:
                 emit({"action": "route", "status": "error", "error": f"invalid --session-inventory: {exc}"})
                 return 2
+        hub_only = True if not args.allow_local_routing else args.hub_only
         decision = route_request(
             args.query,
             project_dir=args.project,
             runtime=args.runtime,
             use_hub=not args.no_hub,
             hub_approved=args.approve_hub,
-            hub_only=args.hub_only,
+            hub_only=hub_only,
             scope=args.scope,
             caller_id=getattr(args, "caller", None),
             session_inventory=session_inventory,

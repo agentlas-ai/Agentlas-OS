@@ -1,10 +1,11 @@
-"""Hephaestus Network 2.0 — local-first agent/plugin routing layer.
+"""Hephaestus Network 2.0 — Hub-first public agent/plugin routing layer.
 
 Contract: docs/hephaestus-network-2.0.md and docs/plans/hephaestus-network-2.0-plan.md.
 
-Local cards under ~/.agentlas/networking/cards/ are the source of truth;
-registry.sqlite is a rebuildable cache. The router is deterministic (no LLM),
-local-first, and never sends raw prompts or local memory to the Hub.
+Hub routing is the public default. Local cards under ~/.agentlas/networking/cards/
+exist only for explicit operator/debug routing; registry.sqlite is a rebuildable
+cache. The router is deterministic (no LLM) and never sends raw prompts or local
+memory to the Hub.
 """
 
 from .bootstrap import (

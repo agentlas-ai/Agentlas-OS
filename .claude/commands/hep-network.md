@@ -6,8 +6,9 @@ allowed-tools: Bash, Read, Glob, Grep
 
 # /hep-network
 
-Route a natural-language request through the Hephaestus Network local-first
-router. Also triggered by `@Hephaestus <request>` in chat.
+Route a natural-language request through the public Agentlas Hub via
+Hephaestus Network. Local Paid/Free cards are ignored by default. Also triggered
+by `@Hephaestus <request>` in chat.
 
 Raw arguments: `$ARGUMENTS`
 

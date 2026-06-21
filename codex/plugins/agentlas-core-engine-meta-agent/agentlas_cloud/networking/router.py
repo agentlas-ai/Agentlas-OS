@@ -1,11 +1,11 @@
-"""Deterministic local-first router (no LLM).
+"""Deterministic Hub-first/public router with explicit local debug mode (no LLM).
 
 Pipeline (docs/hephaestus-network-2.0.md):
 1. explicit command/alias match
 2. project-local .agentlas/routing-overrides.json
-3. score local routing cards (only routing_ready/trusted cards can auto-route)
+3. public/default calls search Hub only; explicit local debug mode scores local routing cards
 4. ambiguity / quality checks
-5. high confidence → route; medium → clarify; none → Hub fallback
+5. high confidence → route; medium → clarify; none → Hub candidate/proposal
 6. Hub has no match → propose building a new agent (meta-agent modes)
 
 Every decision writes a routing receipt. Raw prompts are never persisted and
@@ -599,8 +599,9 @@ def route_request(
     #                     implies hub_only (skip local + public marketplace).
     #   scope="network" -> /hep-network: search ONLY the public Hub
     #                     marketplace. Used with hub_only by the network command.
-    #   default combined route (hub_only=False, scope="network") → local +
-    #                     own-cloud + Hub together, each priced by origin.
+    #   operator debug route (hub_only=False, scope="network") → local +
+    #                     own-cloud + Hub together, each priced by origin. Public
+    #                     command/MCP surfaces default hub_only=True.
     cloud_only = scope == "cloud"
     if cloud_only:
         hub_only = True
@@ -986,7 +987,7 @@ def route_request(
         and ((top_score - second_score) >= margin or second_score <= top_score * 0.7)
     )
 
-    # Multi-routing (Network 2.0): normal mode is local-first BUT also consults
+    # Multi-routing (Network 2.0): explicit operator-debug mode can consult
     # the Hub so a better Hub agent for a not-installed capability is surfaced
     # next to local candidates — instead of clarifying on weak local matches or
     # missing the Hub entirely. The Hub call uses only redacted keywords, is TTL
@@ -1001,7 +1002,7 @@ def route_request(
     hub_ok = bool(hub and hub.get("status") == "ok" and hub.get("results"))
     hub_clarify = bool(hub and hub.get("status") == "clarify")
 
-    # Confident local match → route locally (local-first wins), but attach Hub
+    # Confident local match in explicit debug mode → route locally, but attach Hub
     # alternatives when present so the caller can still pick a better Hub agent.
     if confident_local:
         top_card = auto_eligible[0][2]
