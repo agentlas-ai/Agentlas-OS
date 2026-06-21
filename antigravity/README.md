@@ -34,7 +34,7 @@ same way the Gemini adapter ships both extension commands and
 From an OS terminal (not the Antigravity chat box):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.13/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/v0.7.14/scripts/install-all-runtimes.sh | bash
 ```
 
 Then reopen Antigravity and type `/hep-build`, `/hep-network`,

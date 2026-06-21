@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## v0.7.13 - 2026-06-20
+## v0.7.14 - 2026-06-20
 
 - Renamed the visible command surface to the short `/hep-*` family across app,
   web/docs, terminal, and runtime adapters: `/hep-build`, `/hep-network`,
