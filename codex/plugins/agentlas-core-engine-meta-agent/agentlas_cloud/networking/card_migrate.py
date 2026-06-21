@@ -14,6 +14,7 @@ from typing import Any
 
 from .bootstrap import read_json, utc_now
 from .card_store import save_card
+from .domains import DOMAIN_IDS, classify_domains
 
 SCHEMA = "routing-card/2.0"
 DEFAULT_RUNTIMES = ["claude-code", "codex", "gemini-cli", "agents-md"]
@@ -107,6 +108,23 @@ def migrate_package(
     if str(agent_card.get("language") or "").startswith("ko") or name_ko:
         locale_ready.append("ko")
 
+    capabilities = _derive_capabilities(agent_card, slug)
+    # Domain tags: trust an explicit agent-card `domains`/`category` (this is the
+    # field the generator used to silently drop), else infer from the card text.
+    raw_domains = agent_card.get("domains")
+    if not raw_domains and agent_card.get("category"):
+        raw_domains = [agent_card.get("category")]
+    # Normalize before the DOMAIN_IDS membership filter so a non-canonical
+    # category casing ("Finance", "GAME ") still maps to its domain id instead
+    # of being silently dropped.
+    domains = []
+    for raw in (raw_domains or []):
+        norm = str(raw).strip().lower()
+        if norm in DOMAIN_IDS:
+            domains.append(norm)
+    if not domains:
+        domains = classify_domains(name, description, " ".join(str(c) for c in capabilities))
+
     card_id = f"{tier}/{slug}"
     card: dict[str, Any] = {
         "schemaVersion": SCHEMA,
@@ -121,7 +139,8 @@ def migrate_package(
         "summary": summary,
         "summary_ko": None,
         "description": description,
-        "capabilities": _derive_capabilities(agent_card, slug),
+        "capabilities": capabilities,
+        "domains": domains,
         "trigger_examples": [
             {"text": name, "locale": "en"},
             {"text": " ".join(description.split()[:10]), "locale": "en"},
@@ -214,3 +233,52 @@ def migrate_tree(
         "skipped": skipped,
         "results": results,
     }
+
+
+def _infer_card_domains(card: dict[str, Any]) -> list[str]:
+    triggers = " ".join(
+        str(entry.get("text") or "")
+        for entry in (card.get("trigger_examples") or [])
+        if isinstance(entry, dict)
+    )
+    return classify_domains(
+        str(card.get("name") or ""),
+        str(card.get("name_ko") or ""),
+        str(card.get("summary") or ""),
+        str(card.get("summary_ko") or ""),
+        " ".join(str(c) for c in (card.get("capabilities") or [])),
+        triggers,
+    )
+
+
+def backfill_domains(home: Path | str | None = None, *, write: bool = True, overwrite: bool = False) -> dict[str, Any]:
+    """Backfill ``domains`` onto existing global routing cards.
+
+    Idempotent: cards that already declare domains are skipped unless
+    ``overwrite=True``. Cards whose text yields no confident domain are left
+    untouched (the router still infers at routing time).
+    """
+    from .bootstrap import networking_home
+    from .card_store import load_global_cards, save_card
+
+    base = Path(home) if home is not None else networking_home()
+    cards, _quarantined = load_global_cards(base)
+    updated: list[dict[str, Any]] = []
+    skipped = 0
+    for card in cards:
+        if card.get("domains") and not overwrite:
+            skipped += 1
+            continue
+        domains = _infer_card_domains(card)
+        if not domains:
+            skipped += 1
+            continue
+        card["domains"] = domains
+        if write:
+            # Strip internal (underscore-prefixed) keys such as _card_path before
+            # persisting, so machine-absolute paths don't leak into the on-disk
+            # card and the content hash isn't taken over them.
+            clean = {k: v for k, v in card.items() if not str(k).startswith("_")}
+            save_card(base, clean)
+        updated.append({"id": card.get("id"), "domains": domains})
+    return {"status": "ok", "home": str(base), "updated": len(updated), "skipped": skipped, "cards": updated}

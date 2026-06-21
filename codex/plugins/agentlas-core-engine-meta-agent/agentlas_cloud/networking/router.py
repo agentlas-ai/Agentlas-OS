@@ -20,6 +20,7 @@ from typing import Any
 from .bootstrap import default_routing_policy, networking_home, read_json
 from .card_lint import effective_status, lint_card
 from .card_store import load_global_cards
+from .domains import classify_domains
 from .hub_fallback import search_hub
 from .memory import load_profile, profile_adjustment, redact_tokens
 from .pipeline import detect_stages, plan_pipeline
@@ -28,6 +29,21 @@ from .policy import evaluate_local_operator_policy
 from .receipts import write_receipt
 from .tokenize import has_hangul, snake_tokens, token_set, tokenize, word_token_set, word_tokens
 
+# Optional semantic signal. The ontology ships a deterministic, offline hashed
+# vector adapter (no provider key, Korean-aware bigrams). It's a recall enhancer
+# layered on top of lexical scoring, not a replacement — and routing must keep
+# working if it's ever unavailable, so the import degrades to None.
+try:  # pragma: no cover - exercised indirectly
+    from ontology.embeddings import LocalHashingVectorAdapter, cosine_similarity as _cosine_similarity
+
+    _VECTOR_ADAPTER: Any = LocalHashingVectorAdapter()
+except Exception:  # pragma: no cover
+    _VECTOR_ADAPTER = None
+
+    def _cosine_similarity(left: Any, right: Any) -> float:  # type: ignore[misc]
+        return 0.0
+
+
 # Tokens shared by >= this fraction of all cards carry no routing signal
 # (e.g. "team", "평가", "pipeline" in an agent-engineering inventory).
 COMMON_TOKEN_DF = 0.15
@@ -35,6 +51,7 @@ COMMON_TOKEN_DF = 0.15
 _LINT_CACHE: dict[str, str] = {}
 _INDEX_CACHE: dict[str, dict[str, Any]] = {}
 _COMMON_CACHE: dict[str, set[str]] = {}
+_EMBED_CACHE: dict[str, list[float] | None] = {}
 
 
 def _card_key(card: dict[str, Any]) -> str:
@@ -53,6 +70,38 @@ def _cached_index(card: dict[str, Any]) -> dict[str, Any]:
     if key not in _INDEX_CACHE:
         _INDEX_CACHE[key] = _card_index(card)
     return _INDEX_CACHE[key]
+
+
+def _card_vector(card: dict[str, Any]) -> list[float] | None:
+    """Cached semantic vector for a card (name + summary + capabilities), or
+    None when the embedding adapter is unavailable."""
+    if _VECTOR_ADAPTER is None:
+        return None
+    key = _card_key(card)
+    if key not in _EMBED_CACHE:
+        text = " ".join(
+            [
+                str(card.get("name") or ""),
+                str(card.get("name_ko") or ""),
+                str(card.get("summary") or ""),
+                str(card.get("summary_ko") or ""),
+                " ".join(str(c) for c in (card.get("capabilities") or [])),
+            ]
+        ).strip()
+        try:
+            _EMBED_CACHE[key] = _VECTOR_ADAPTER.embed(text) if text else None
+        except Exception:  # pragma: no cover - never let embedding break routing
+            _EMBED_CACHE[key] = None
+    return _EMBED_CACHE[key]
+
+
+def _embed_query(query: str) -> list[float] | None:
+    if _VECTOR_ADAPTER is None or not query.strip():
+        return None
+    try:
+        return _VECTOR_ADAPTER.embed(query)
+    except Exception:  # pragma: no cover
+        return None
 
 
 def _common_tokens(cards: list[dict[str, Any]]) -> set[str]:
@@ -104,12 +153,35 @@ def _card_index(card: dict[str, Any]) -> dict[str, Any]:
     for capability in card.get("capabilities") or []:
         capability_tokens |= snake_tokens(str(capability))
     summary_tokens = token_set(f"{card.get('summary') or ''} {card.get('summary_ko') or ''}")
+    # Card domains: trust the explicit `domains` field when present (set by card
+    # generation/backfill), else infer from the card's own text. Either way the
+    # router treats it as a coarse semantic frame for the coherence guard.
+    explicit = card.get("domains")
+    if isinstance(explicit, list) and explicit:
+        domains = {str(d) for d in explicit if str(d)}
+    else:
+        trigger_text = " ".join(
+            str(entry.get("text") or "")
+            for entry in (card.get("trigger_examples") or [])
+            if isinstance(entry, dict)
+        )
+        domains = set(
+            classify_domains(
+                str(card.get("name") or ""),
+                str(card.get("name_ko") or ""),
+                str(card.get("summary") or ""),
+                str(card.get("summary_ko") or ""),
+                " ".join(str(c) for c in (card.get("capabilities") or [])),
+                trigger_text,
+            )
+        )
     return {
         "name": name_tokens,
         "triggers": triggers,
         "antis": antis,
         "capabilities": capability_tokens,
         "summary": summary_tokens,
+        "domains": domains,
     }
 
 
@@ -121,6 +193,11 @@ def _score_card(
     t_high: float,
     common: set[str] | None = None,
     min_shared_words: int = 2,
+    query_domains: set[str] | None = None,
+    query_vector: list[float] | None = None,
+    semantic_weight: float = 0.0,
+    domain_boost: float = 1.5,
+    domain_penalty: float = 6.0,
 ) -> tuple[float, list[str]]:
     index = _cached_index(card)
     common = common or set()
@@ -191,6 +268,45 @@ def _score_card(
     elif capability_count > 12:
         score -= 2.0
         reasons.append("breadth penalty (>12 capabilities)")
+
+    # Domain coherence: when the query resolves to exactly ONE domain, a card in
+    # that domain gets a small edge and a card living only in OTHER known domains
+    # is penalized (the polysemy guard — keeps a finance team out of a game-asset
+    # route). Ambiguous / domain-less queries and cards are untouched, so the
+    # guard is purely additive and cannot regress existing routes.
+    if query_domains:
+        card_domains: set[str] = index.get("domains") or set()
+        if card_domains:
+            if card_domains & query_domains:
+                score += domain_boost
+                reasons.append("domain match")
+            elif len(query_domains) == 1:
+                # Demote a clear cross-domain card hard, but never let the
+                # penalty ALONE drop a lexically-relevant card below the
+                # eligibility gate (score > 0) — otherwise a single domain
+                # misclassification would silently delete the correct card
+                # instead of merely ranking it lower.
+                penalized = score - domain_penalty
+                score = penalized if penalized > 0 else (0.01 if score > 0 else penalized)
+                reasons.append(
+                    "cross-domain penalty (query="
+                    + "/".join(sorted(query_domains))
+                    + " vs card="
+                    + "/".join(sorted(card_domains))
+                    + ")"
+                )
+
+    # Semantic similarity (deterministic offline hashed vectors): a bounded
+    # recall enhancer so a naturally-phrased query still reaches the right card
+    # when it doesn't restate a trigger verbatim. Disabled when semantic_weight
+    # is 0 or the embedding adapter is unavailable.
+    if semantic_weight > 0 and query_vector is not None:
+        card_vector = _card_vector(card)
+        if card_vector:
+            sim = _cosine_similarity(query_vector, card_vector)
+            if sim > 0.15:
+                score += min(semantic_weight * sim, semantic_weight)
+                reasons.append(f"semantic match {sim:.2f}")
 
     adjustment = profile_adjustment(profile, str(card.get("id")))
     if adjustment:
@@ -704,14 +820,32 @@ def route_request(
         blocked = ao_filter_report.get("blocked_by_axiom") or []
         ao_blocked_by_axiom = list(dict.fromkeys([str(item) for item in blocked if isinstance(item, str)]))
         ao_fallback_scope = "local_graph_and_caller_gate"
-    elif ao_filter_report.get("status") == "missing":
-        chain.append("ao:missing")
-        ao_allowed_by = ["local_keyword_match"]
-        ao_fallback_scope = "ontology_missing"
-    elif ao_filter_report.get("status") == "available_but_unmapped":
-        chain.append("ao:unmapped-fallback")
-        ao_allowed_by = ["local_keyword_match"]
-        ao_fallback_scope = "ontology_unmapped_fallback"
+    elif ao_filter_report.get("status") in ("missing", "available_but_unmapped"):
+        # No project AO graph for these (global/network) cards — but the global
+        # card store IS a graph: every card is an ExternalAgent node with
+        # in_domain/has_capability edges (agent_graph.card_mapper). So routing is
+        # ontology-backed (a routed card gets a real graph_path below), not blind
+        # lexical fallback.
+        chain.append("ao:card-derived")
+        ao_allowed_by = ["agent_ontology_graph_cards"]
+        ao_fallback_scope = "card_derived_ontology"
+
+    query_domains = set(classify_domains(query))
+
+    def _route_graph_path(card: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """A concrete AO edge (domain→agent) for a routed card under the
+        card-derived ontology scope; empty for any other scope so non-card
+        routes are unchanged. Used by every route branch so a routed card never
+        reports the empty graph_path this feature was meant to eliminate."""
+        if ao_fallback_scope != "card_derived_ontology" or not card:
+            return []
+        from ..agent_graph import card_route_path
+
+        return card_route_path(
+            str(card.get("id")),
+            _cached_index(card).get("domains") or set(),
+            query_domains,
+        )
 
     explicit = _explicit_match(query, usable)
     if explicit is None:
@@ -730,7 +864,7 @@ def route_request(
             [selected],
             ["explicit_match"],
             match_reason="explicit_match",
-            graph_path=[],
+            graph_path=_route_graph_path(explicit),
             allowed_by=ao_allowed_by or ["explicit_match"],
             blocked_by_axiom=ao_blocked_by_axiom,
             fallback_scope=ao_fallback_scope,
@@ -767,7 +901,7 @@ def route_request(
                 [selected],
                 ["creation_intent"],
                 match_reason="creation_intent",
-                graph_path=[],
+                graph_path=_route_graph_path(creator),
                 allowed_by=ao_allowed_by or ["creation_intent"],
                 blocked_by_axiom=ao_blocked_by_axiom,
                 fallback_scope=ao_fallback_scope,
@@ -778,10 +912,25 @@ def route_request(
     # A one-content-word query ("웹사이트 만들어줘") can never share two words;
     # scale the trigger qualification down to the query's own word count.
     min_shared_words = min(2, max(1, len(word_token_set(query))))
+    semantic_weight = float(policy.get("semantic_weight", 0.5))
+    domain_boost = float(policy.get("domain_boost", 1.5))
+    domain_penalty = float(policy.get("domain_penalty", 6.0))
+    query_vector = _embed_query(query) if semantic_weight > 0 else None
     scored: list[tuple[float, list[str], dict[str, Any]]] = []
     for card in usable:
         score, reasons = _score_card(
-            card, query_tokens, profile, locale == "ko", t_high, common=common, min_shared_words=min_shared_words
+            card,
+            query_tokens,
+            profile,
+            locale == "ko",
+            t_high,
+            common=common,
+            min_shared_words=min_shared_words,
+            query_domains=query_domains,
+            query_vector=query_vector,
+            semantic_weight=semantic_weight,
+            domain_boost=domain_boost,
+            domain_penalty=domain_penalty,
         )
         if score > 0:
             scored.append((score, reasons, card))
@@ -870,12 +1019,13 @@ def route_request(
             chain_note.append("multi_route_hub_alternatives")
         if ao_filter_report.get("status") == "caller_filtered":
             chain_note.append("ao:caller-gated")
+        route_graph_path = _route_graph_path(top_card)
         return finish(
             result,
             candidates,
             chain_note,
             match_reason="local_confident",
-            graph_path=[],
+            graph_path=route_graph_path,
             allowed_by=(ao_allowed_by or ["local_keyword_score"]) + ["route_confident_threshold"],
             blocked_by_axiom=ao_blocked_by_axiom,
             fallback_scope=ao_fallback_scope,

@@ -5,13 +5,13 @@ from agentlas_cloud.networking.card_lint import effective_status, lint_card
 from agentlas_cloud.networking.card_migrate import migrate_package
 
 
-def make_ready_card(tmp_path, slug, *, triggers_ko, triggers_en, antis, capabilities):
+def make_ready_card(tmp_path, slug, *, triggers_ko, triggers_en, antis, capabilities, domains=None):
     fixture = tmp_path / f"bench-{slug}.jsonl"
     fixture.write_text(
         "\n".join(json.dumps({"id": f"{slug}-{i}", "query": f"case {i}"}) for i in range(10)) + "\n",
         encoding="utf-8",
     )
-    return {
+    card = {
         "schemaVersion": "routing-card/2.0",
         "id": f"local/{slug}",
         "canonical_id": f"local/{slug}",
@@ -31,6 +31,9 @@ def make_ready_card(tmp_path, slug, *, triggers_ko, triggers_en, antis, capabili
         "locale_coverage": {"primary": "en", "ready": ["ko", "en"], "partial": []},
         "routing_status": "routing_ready",
     }
+    if domains is not None:
+        card["domains"] = domains
+    return card
 
 
 def test_lint_gates_ready_status(tmp_path):
@@ -150,3 +153,62 @@ def test_migrate_package_produces_draft(tmp_path):
 
     again = migrate_package(package, tier="free", home=home)
     assert again["status"] == "kept_existing"
+
+
+def _agent_card_package(tmp_path, slug, **card_fields):
+    package = tmp_path / "Free" / slug
+    (package / ".agentlas").mkdir(parents=True)
+    (package / "AGENTS.md").write_text("# helper\n", encoding="utf-8")
+    payload = {
+        "protocolVersion": "a2a-1.0-draft",
+        "name": slug,
+        "description": "Domain-neutral helper.",
+        "capabilities": {"skills": ["help"], "runtimeTargets": ["claude-code"]},
+    }
+    payload.update(card_fields)
+    (package / ".agentlas" / "agent-card.json").write_text(json.dumps(payload), encoding="utf-8")
+    return package
+
+
+def test_migrate_package_maps_category_to_domain(tmp_path):
+    # The bug the commit set out to fix: an agent-card `category` was silently
+    # dropped. It must map to the routing card's `domains`, including when the
+    # category casing/whitespace isn't already canonical.
+    home = tmp_path / "networking"
+    init_networking(home)
+    migrate_package(_agent_card_package(tmp_path, "finhelper-001", category="finance"), tier="free", home=home)
+    migrate_package(_agent_card_package(tmp_path, "finhelper-002", category="  Finance "), tier="free", home=home)
+    cards, _ = load_global_cards(home)
+    by_id = {c["id"]: c for c in cards}
+    assert by_id["free/finhelper-001"]["domains"] == ["finance"]
+    # normalization (strip + lowercase) recovers a non-canonical category
+    assert by_id["free/finhelper-002"]["domains"] == ["finance"]
+
+
+def test_backfill_domains_does_not_leak_internal_keys(tmp_path):
+    from agentlas_cloud.networking.card_migrate import backfill_domains
+
+    home = tmp_path / "networking"
+    init_networking(home)
+    card = make_ready_card(
+        tmp_path, "stocks",
+        triggers_ko=["증권 종목 포트폴리오 리밸런싱 발굴해줘"],
+        triggers_en=["screen stock ideas", "rebalance portfolio", "equity research report"],
+        antis=["game art", "sprite sheet", "tileset"],
+        capabilities=["screen_stock_ideas"],
+    )
+    save_card(home, card)
+    report = backfill_domains(home, write=True)
+    assert report["updated"] >= 1
+
+    # Read the persisted card file RAW (load_global_cards re-adds _card_path on
+    # read, so inspect the on-disk JSON directly): no internal key, and no
+    # absolute machine path, may have leaked into the stored card.
+    files = list((home / "cards").rglob("*.json"))
+    assert files
+    for path in files:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        assert not any(str(key).startswith("_") for key in raw), f"internal key leaked into {path.name}"
+        assert "_card_path" not in raw
+    cards, _ = load_global_cards(home)
+    assert "finance" in (cards[0].get("domains") or [])

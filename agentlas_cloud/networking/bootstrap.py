@@ -169,6 +169,13 @@ def default_routing_policy() -> dict[str, Any]:
         "min_ready_cards": 5,
         "max_hops": 2,
         "clarify_max_candidates": 3,
+        # Semantic + domain-coherence routing signals (see networking/domains.py).
+        # semantic_weight is kept below the route margin (0.8) so the offline
+        # semantic recall enhancer can break ties but never overturns the lexical
+        # route/clarify decision.
+        "semantic_weight": 0.5,
+        "domain_boost": 1.5,
+        "domain_penalty": 6.0,
     }
 
 
