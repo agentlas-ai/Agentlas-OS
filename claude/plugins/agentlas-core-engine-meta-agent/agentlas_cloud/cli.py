@@ -232,6 +232,8 @@ def main(argv: list[str] | None = None) -> int:
     local_gui.add_argument("--no-open", action="store_true")
     local_gui.add_argument("--detach", action="store_true")
     local_gui.add_argument("--quiet-not-found", action="store_true")
+    local_gui.add_argument("--allow-local", action="store_true", help=argparse.SUPPRESS)
+    local_gui.add_argument("--local-first", action="store_true", help=argparse.SUPPRESS)
 
     search = sub.add_parser("search", help="Show top owner-cloud and public Hub agent candidates without invoking")
     search.add_argument("query")
@@ -550,7 +552,13 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.gui_shortcut import open_local_gui_shortcut
 
         init_networking(networking_home())
-        result = open_local_gui_shortcut(args.query, no_open=args.no_open, detach=args.detach)
+        result = open_local_gui_shortcut(
+            args.query,
+            no_open=args.no_open,
+            detach=args.detach,
+            allow_local=args.allow_local,
+            local_first=args.local_first,
+        )
         if not (args.quiet_not_found and result.get("action") == "no_local_gui_shortcut"):
             emit(result)
         if result.get("action") == "no_local_gui_shortcut":

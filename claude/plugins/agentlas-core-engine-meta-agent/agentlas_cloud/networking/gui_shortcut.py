@@ -1,9 +1,12 @@
-"""Explicit local GUI shortcuts for the Network surface.
+"""Explicit GUI shortcuts for the Network surface.
 
-The public `/hep-network` surface is Hub-only by default. This module
-adds a narrow escape hatch: a local routing card can opt in to a GUI shortcut
-with `network_shortcut.enabled=true` and exact phrases. Nothing else is routed
-locally from the Network command.
+The public `/hep-network` surface is Hub-only by default. Hub-registered GUI
+shortcuts restore their cloud package and launch that packaged GUI even when
+the operator machine also has a local `Paid/` or `Free/` source folder.
+
+Local GUI cards are an explicit operator/debug escape hatch only. They are not
+consulted unless `allow_local=True`, `local_first=True`, or
+`HEPHAESTUS_NETWORK_ALLOW_LOCAL_GUI_SHORTCUTS=1` is set.
 """
 
 from __future__ import annotations
@@ -65,10 +68,61 @@ def open_local_gui_shortcut(
     home: Path | str | None = None,
     no_open: bool = False,
     detach: bool = False,
+    allow_local: bool = False,
+    local_first: bool = False,
 ) -> dict[str, Any]:
     base = Path(home) if home else networking_home()
-    cards, quarantined = load_global_cards(base)
     wanted = _norm(query)
+    local_allowed = (
+        allow_local
+        or local_first
+        or os.environ.get("HEPHAESTUS_NETWORK_ALLOW_LOCAL_GUI_SHORTCUTS") == "1"
+    )
+
+    if local_first:
+        local_result, quarantined = _open_registered_local_gui_shortcut(
+            base,
+            wanted,
+            no_open=no_open,
+            detach=detach,
+        )
+        if local_result is not None:
+            return local_result
+    else:
+        quarantined = 0
+
+    hub_result = _open_hub_gui_shortcut(wanted, home=base, no_open=no_open, detach=detach)
+    if hub_result is not None:
+        return hub_result
+
+    if local_allowed and not local_first:
+        local_result, quarantined = _open_registered_local_gui_shortcut(
+            base,
+            wanted,
+            no_open=no_open,
+            detach=detach,
+        )
+        if local_result is not None:
+            return local_result
+
+    return {
+        "action": "no_local_gui_shortcut",
+        "status": "not_found",
+        "query": wanted,
+        "quarantined": quarantined,
+        "local_routing": "enabled_for_operator_debug" if local_allowed else "disabled_by_default",
+        "hub_routing": "no_registered_gui_shortcut",
+    }
+
+
+def _open_registered_local_gui_shortcut(
+    base: Path,
+    wanted: str,
+    *,
+    no_open: bool,
+    detach: bool,
+) -> tuple[dict[str, Any] | None, int]:
+    cards, quarantined = load_global_cards(base)
 
     for card in cards:
         if effective_status(card) not in {"routing_ready", "trusted"}:
@@ -92,14 +146,14 @@ def open_local_gui_shortcut(
                 "status": "error",
                 "error": "shortcut source folder is missing",
                 "selected": selected,
-            }
+            }, len(quarantined)
         if not launcher:
             return {
                 "action": "open_gui",
                 "status": "error",
                 "error": "shortcut card has no gui_launcher entrypoint",
                 "selected": selected,
-            }
+            }, len(quarantined)
 
         launcher_path = (source / launcher).resolve()
         if not launcher_path.is_file():
@@ -109,7 +163,7 @@ def open_local_gui_shortcut(
                 "error": "gui_launcher file is missing",
                 "selected": selected,
                 "launcher": str(launcher_path),
-            }
+            }, len(quarantined)
 
         launch = _launch_python_gui(launcher_path, source, no_open=no_open, detach=detach)
         return {
@@ -125,18 +179,9 @@ def open_local_gui_shortcut(
             "pid": launch.get("pid"),
             "local_routing": "used_for_explicit_gui_shortcut",
             "hub_routing": "skipped",
-        }
+        }, len(quarantined)
 
-    hub_result = _open_hub_gui_shortcut(wanted, home=base, no_open=no_open, detach=detach)
-    if hub_result is not None:
-        return hub_result
-
-    return {
-        "action": "no_local_gui_shortcut",
-        "status": "not_found",
-        "query": wanted,
-        "quarantined": len(quarantined),
-    }
+    return None, len(quarantined)
 
 
 def _open_hub_gui_shortcut(

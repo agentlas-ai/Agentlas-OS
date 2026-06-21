@@ -103,8 +103,9 @@ For demo/distribution/Hub-only requests:
   If only candidates were returned and no Hub agent was invoked yet, do not stop
   at candidate reporting when the request is a GUI shortcut such as `startup`.
   First run `hephaestus local-gui "<request>" --detach --quiet-not-found`; this
-  opens a local GUI if present, or restores the Hub cloud package and launches
-  the packaged GUI on another machine. For non-GUI tasks, invoke the chosen
+  restores the Hub cloud package and launches the packaged GUI. It does not
+  inspect local Paid/Free shortcut cards unless operator debug routing is
+  explicitly enabled. For non-GUI tasks, invoke the chosen
   callable Hub agent before proceeding whenever the task needs the agent's
   runtime bundle.
 - `action: "propose_new"` — offer to build a new agent/team via the Hephaestus

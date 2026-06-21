@@ -1,13 +1,13 @@
 """Local stdio MCP server for the Hephaestus Network router.
 
-Exposes the deterministic local-first router as MCP tools so any MCP-capable
+Exposes the Hub-first Hephaestus Network router as MCP tools so any MCP-capable
 harness (OpenCode, Goose, Crush, Hermes Agent, Cursor, Codex, Gemini CLI, and
 Ollama-launched harnesses running local models such as Gemma or DeepSeek) can
 call routing without a runtime-specific command surface.
 
 Transport: newline-delimited JSON-RPC 2.0 on stdin/stdout (MCP stdio). No
-third-party dependencies. Raw prompts are routed locally first; Hub lookup uses
-only redacted keywords and does not add a routing-time safety gate.
+third-party dependencies. Public Network calls skip local Paid/Free cards by
+default; local routing requires the explicit `allow_local_routing` debug flag.
 """
 
 from __future__ import annotations
@@ -18,14 +18,14 @@ import sys
 from typing import Any
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "0.7.15"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "0.7.16"}
 
 TOOLS: list[dict[str, Any]] = [
     {
         "name": "hephaestus_route",
         "description": (
             "Route a natural-language request through the Hephaestus Network "
-            "local-first router. Returns a JSON decision (route, clarify, "
+            "Hub-first router. Returns a JSON decision (route, clarify, "
             "pipeline, hub_fallback, propose_new, or refuse) with a receipt_id. "
             "The router does not execute tools; the caller runtime owns execution safety."
         ),
@@ -40,7 +40,11 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "hub_only": {
                     "type": "boolean",
-                    "description": "Skip local routing cards and search Agentlas Hub only.",
+                    "description": "Skip local routing cards and search Agentlas Hub only. This is the default unless allow_local_routing is true.",
+                },
+                "allow_local_routing": {
+                    "type": "boolean",
+                    "description": "Operator/debug escape hatch. When false or omitted, local Paid/Free/plugin cards are ignored.",
                 },
                 "caller_id": {
                     "type": "string",
@@ -217,7 +221,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
     init_networking(networking_home())
     if name == "hephaestus_route":
-        if bool(arguments.get("hub_only", False)):
+        allow_local_routing = bool(arguments.get("allow_local_routing", False))
+        hub_only = True if not allow_local_routing else bool(arguments.get("hub_only", False))
+        if hub_only:
             from .networking.gui_shortcut import open_local_gui_shortcut
 
             shortcut = open_local_gui_shortcut(
@@ -232,7 +238,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             runtime="mcp",
             use_hub=True,
             hub_approved=bool(arguments.get("approve_hub", False)),
-            hub_only=bool(arguments.get("hub_only", False)),
+            hub_only=hub_only,
             caller_id=arguments.get("caller_id") or arguments.get("caller"),
             session_inventory=arguments.get("session_inventory") or None,
         )

@@ -43,9 +43,9 @@ DECISION="$("$RUNNER" route "$ARGUMENTS" --runtime claude-code)"
 printf '%s\n' "$DECISION"
 
 # Deterministic GUI auto-launch (Network surface). Exact GUI shortcuts such as
-# `startup` open a local GUI when available; on another machine with no local
-# Paid/Free folder, the runtime restores the Hub cloud package and launches its
-# packaged GUI. Disable with HEPHAESTUS_GUI_AUTOLAUNCH=0.
+# `startup` restore the Hub cloud package and launch its packaged GUI. Local
+# Paid/Free shortcut cards are ignored unless an operator explicitly enables
+# local debug routing. Disable with HEPHAESTUS_GUI_AUTOLAUNCH=0.
 if [ "${HEPHAESTUS_GUI_AUTOLAUNCH:-1}" != "0" ]; then
   GUI_SHORTCUT="$($RUNNER local-gui "$ARGUMENTS" --detach --quiet-not-found 2>/dev/null || true)"
   [ -n "$GUI_SHORTCUT" ] && printf '%s

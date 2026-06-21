@@ -260,7 +260,7 @@ EOF
 	    run_python_module agentlas_cloud "$command" "$@"
 	    ;;
 	  hep-network|hephaestus-network|hephaests-network)
-	    if [[ "${HEPHAESTUS_NETWORK_LOCAL_GUI_SHORTCUTS:-1}" != "0" ]]; then
+	    if [[ "${HEPHAESTUS_NETWORK_GUI_SHORTCUTS:-${HEPHAESTUS_NETWORK_LOCAL_GUI_SHORTCUTS:-1}}" != "0" ]]; then
 	      set +e
 	      gui_args=("$@" "--detach")
 	      if [[ "${HEPHAESTUS_NETWORK_GUI_NO_OPEN:-0}" == "1" ]]; then
