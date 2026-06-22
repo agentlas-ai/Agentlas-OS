@@ -290,7 +290,7 @@ Hephaestus は prompt だけを返すものではありません。他の runtim
 | "この workflow の team/company を作って" | `20-multi-agent-team-builder` | HQ、PM Soul、Memory Curator、Policy Gate、eval、QA、handoff を持つ multi-agent team |
 | "既存 agent/repo/workspace を package して" | `30-agentlas-packager` | Desktop import、terminal、Codex、Claude、Gemini、public GitHub release に対応した Agentlas package |
 
-## v0.7.19 の新機能
+## v0.7.20 の新機能
 
 - **短い command surface。** Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode、terminal install は `/hep-build`、`/hep-network`、`/hep-cloud`、`/hep-search`、`/hep-call`、`/hep-upload` を同じ形で公開します。
 - **明示的な upload gate。** `/hep-upload` は package、publish、register、upload を行う前に、private Agentlas Cloud か public Agentlas Hub かを必ず確認します。

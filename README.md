@@ -107,18 +107,16 @@ Fresh installs and updates prune the old visible `/hephaestus` chat command so
 new users see the clean command surface above: three primary commands, plus
 search, call, and upload utilities when they need explicit control.
 
-## New In v0.7.19
+## New In v0.7.20
 
-- **Short command surface.** The visible commands are now `/hep-build`,
-  `/hep-network`, `/hep-cloud`, `/hep-search`, `/hep-call`, and `/hep-upload`
-  across Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, and
-  terminal installs.
-- **Explicit upload gate.** `/hep-upload` always asks whether you mean private
-  Agentlas Cloud or public Agentlas Hub before it packages, publishes,
-  registers, or uploads anything.
-- **Cleaner installs.** Fresh installs and updates prune stale
-  `/hephaestus-*` chat command files while preserving compatibility for older
-  terminal callers.
+- **Hub taxonomy cleanup.** Public Hub surfaces now separate Agents, Teams, and
+  Plugins, and show invocation credits separately from downloadable packages.
+- **Local trust stays local.** Local routing-card `trusted` remains the
+  local-first Network trust path, while upload and Hub publication security
+  review stay a separate gate.
+- **Private namespace redaction.** Mason-local package buckets are no longer
+  exposed in docs, adapter skills, CLI tier names, benchmarks, or mirrored
+  runtime packages.
 
 Hephaestus is the open core engine that makes Agentlas behave like an agent
 operating system instead of a one-off prompt generator. It gives developers
@@ -431,7 +429,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.20
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
@@ -705,7 +703,7 @@ For knowledge-heavy personal or company agents, Hephaestus now ships a real loca
 **Hephaestus Network MCP capabilities:**
 
 - **`hephaestus_hub_invoke` MCP tool.** Hephaestus Network now has a real Hub invocation surface, not only Hub candidate search. The tool skips local routing, calls Agentlas Hub MCP (`marketplace.search_agents`, `agentlas.get_runtime_bundle`, `agentlas.resolve_plugins`), and writes execution receipts under `~/.agentlas/networking/ledgers/executions.jsonl`.
-- **Hub-only local bypass.** `hub_only` routing and Hub invocation can be used with `local_inventory: []` and `reject_paid_slug: true` so local Paid/Free/plugin cards are not selected or executed.
+- **Hub-only local bypass.** `hub_only` routing with `local_inventory: []` and `hub_only: true` ensures local private/restricted/plugin cards are not selected or executed.
 - **Global Agentlas memory bootstrap.** Hub invocation can create the missing shared files under `~/.agentlas/` (`memory-map.json`, `project-soul-memory.md`, `invocation-ledger.jsonl`, etc.) and appends invocation evidence without storing raw prompts or secrets.
 - **Installed-runtime verification.** The one-touch installer now verifies five runtime surfaces and keeps the neutral runner at `~/.agentlas/runtime/current/bin/hephaestus`.
 

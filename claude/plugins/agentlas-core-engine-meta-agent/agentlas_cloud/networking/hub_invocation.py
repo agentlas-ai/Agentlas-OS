@@ -52,8 +52,8 @@ def invoke_hub_agent(
 
     selected_slug = str(selected.get("slug") or slug or "")
     selected_norm = _norm_slug(selected_slug)
-    # Paid agents are NOT short-circuited locally. Every caller — including one
-    # who happens to hold the agent's source in a local /Paid/ folder — goes
+    # Locally mirrored cards are NOT short-circuited. Every caller — including one
+    # whose agent source is in a local private/restricted folder — goes
     # through the SAME server policy: Agentlas OAuth sign-in (handled by
     # call_hub_tool's auto re-auth) plus the server-side credit gate, where
     # calling your OWN cloud package is priced at OWN_CALL_CREDITS. The server is
@@ -176,8 +176,8 @@ def invoke_hub_agent(
         "routing_action": (hub_decision or {}).get("action"),
         "local_route_used": False,
         "local_slug_present": selected_norm in local["all"],
-        "paid_slug_present": selected_norm in local["paid"],
-        "free_slug_present": selected_norm in local["free"],
+        "restricted_slug_present": selected_norm in local["restricted"],
+        "private_slug_present": selected_norm in local["private"],
         "plugin_needs": needs,
         "plugin_resolution": plugin_resolution,
         "memory": memory,
@@ -213,7 +213,13 @@ def _first_callable(results: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 def _local_slug_audit(home: Path) -> dict[str, Any]:
     cards, _ = load_global_cards(home)
-    buckets: dict[str, set[str]] = {"all": set(), "paid": set(), "free": set(), "plugin": set(), "local": set()}
+    buckets: dict[str, set[str]] = {
+        "all": set(),
+        "private": set(),
+        "restricted": set(),
+        "plugin": set(),
+        "local": set(),
+    }
     for card in cards:
         card_id = str(card.get("id") or "")
         tier, _, raw_slug = card_id.partition("/")
@@ -221,11 +227,6 @@ def _local_slug_audit(home: Path) -> dict[str, Any]:
         buckets["all"].add(slug)
         if tier in buckets:
             buckets[tier].add(slug)
-        source = str((card.get("source") or {}).get("ref") or "")
-        if "/Paid/" in source:
-            buckets["paid"].add(slug)
-        if "/Free/" in source:
-            buckets["free"].add(slug)
     return {key: sorted(value) for key, value in buckets.items()}
 
 

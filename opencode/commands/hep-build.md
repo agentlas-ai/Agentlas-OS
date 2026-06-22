@@ -24,3 +24,14 @@ and create `docs/builder-interview.md`, `docs/research-sources.md`,
 Include `interview_research` evidence in the final response.
 
 This is the clearer build-focused name for the older Hephaestus command.
+
+If a package was created or repaired in the current workspace, register it to
+local discovery immediately so it is included in local search:
+
+```bash
+if [ -x "./bin/hephaestus" ]; then
+  ./bin/hephaestus cards migrate . --tier local --overwrite
+fi
+```
+
+Include the migration result in `evidence`.

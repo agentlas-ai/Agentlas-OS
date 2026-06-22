@@ -7,7 +7,7 @@ allowed-tools: Bash, Read, Glob, Grep
 # /hep-network
 
 Route a natural-language request through the public Agentlas Hub via
-Hephaestus Network. Local Paid/Free cards are ignored by default. Also triggered
+Hephaestus Network. Local private/restricted cards are ignored by default. Also triggered
 by `@Hephaestus <request>` in chat.
 
 Raw arguments: `$ARGUMENTS`
@@ -45,7 +45,7 @@ printf '%s\n' "$DECISION"
 
 # Deterministic GUI auto-launch (Network surface). Exact GUI shortcuts such as
 # `startup` restore the Hub cloud package and launch its packaged GUI. Local
-# Paid/Free shortcut cards are ignored unless an operator explicitly enables
+# private/restricted shortcut cards are ignored unless an operator explicitly enables
 # local debug routing. Disable with HEPHAESTUS_GUI_AUTOLAUNCH=0.
 if [ "${HEPHAESTUS_GUI_AUTOLAUNCH:-1}" != "0" ]; then
   GUI_SHORTCUT="$($RUNNER local-gui "$ARGUMENTS" --detach --quiet-not-found 2>/dev/null || true)"

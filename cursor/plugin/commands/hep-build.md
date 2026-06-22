@@ -20,3 +20,14 @@ Include `interview_research` evidence in the final response.
 
 Expose this as the public build command next to `/hep-network` and
 `/hep-cloud`.
+
+If a package was created or repaired in the current workspace, register it to local
+discovery immediately so it is searchable in local routing:
+
+```bash
+if [ -x "./bin/hephaestus" ]; then
+  ./bin/hephaestus cards migrate . --tier local --overwrite
+fi
+```
+
+Include the migration result in `evidence`.

@@ -85,7 +85,16 @@ Read `$ENGINE/AGENTS.md` if it exists, otherwise `$ENGINE/SKILL.md`, then:
    boundary, run the clarify-question-loop skill first.
 5. Generate or repair the smallest useful Agentlas package in the current
    workspace, then verify it.
-6. Return `status`, `evidence`, `output`, `global_commands`,
+6. If the package exists in the current workspace, register its routing-card to
+   local discovery so it can participate in local routing priority:
+
+```bash
+if [ -x "./bin/hephaestus" ]; then
+  ./bin/hephaestus cards migrate . --tier local --overwrite
+fi
+```
+
+7. Return `status`, `evidence`, `output`, `global_commands`,
    `interview_research`, and `blockers`.
 
 ## If no engine root was found

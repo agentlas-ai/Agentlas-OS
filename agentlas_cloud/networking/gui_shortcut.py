@@ -2,7 +2,7 @@
 
 The public `/hep-network` surface is Hub-only by default. Hub-registered GUI
 shortcuts restore their cloud package and launch that packaged GUI even when
-the operator machine also has a local `Paid/` or `Free/` source folder.
+the operator machine also has a local `private` or `restricted` source folder.
 
 Local GUI cards are an explicit operator/debug escape hatch only. They are not
 consulted unless `allow_local=True`, `local_first=True`, or

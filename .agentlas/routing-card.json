@@ -1,72 +1,114 @@
 {
-  "schemaVersion": "routing-card/2.0",
-  "card_version": "2.0.0",
-  "revision": 1,
-  "id": "local/hephaestus-meta-agent",
-  "canonical_id": "local/hephaestus-meta-agent",
-  "type": "team",
-  "name": "Hephaestus meta-agent",
-  "name_ko": "헤파이스토스 메타 에이전트",
-  "aliases": ["/hep-build", "/hep-upload", "/meta-agent", "@Hephaestus"],
-  "summary": "Create, package, or repair Agentlas-compatible agents and multi-agent teams for Claude Code, Codex, Gemini, Antigravity, Cursor, and AGENTS.md runtimes.",
-  "summary_ko": "Claude Code·Codex·Gemini·Antigravity·Cursor용 Agentlas 에이전트/팀을 생성·패키징·수리하는 메타 에이전트.",
-  "description": "Three-mode meta-agent team: single-agent builder, multi-agent team builder, and Agentlas packager. Includes the ontology runtime and the Hephaestus Network local-first router.",
+  "agent_card_ref": {
+    "content_hash": null,
+    "path": ".agentlas/agent-card.json",
+    "slug": ""
+  },
+  "aliases": [],
+  "anti_triggers": [],
+  "approval_requirements": [],
+  "approval_scope": {
+    "grant": "per_call",
+    "ttl_seconds": null
+  },
+  "benchmark_fixtures": null,
+  "canonical_id": "local/",
   "capabilities": [
-    "create_single_agent",
-    "build_agent_team",
-    "package_existing_agent",
-    "repair_agent_repo",
-    "generate_routing_cards",
-    "open_ontology_gui"
+    "single_agent_builder",
+    "multi_agent_team_builder",
+    "agentlas_packager",
+    "self_evolving_single_agent",
+    "package_existing_agents",
+    "agent_repo_design",
+    "agent_team_design",
+    "runtime_adapter_generation",
+    "global_command_generation",
+    "memory_ticket_contracts",
+    "sitemap_task_bias",
+    "pm_soul_architecture",
+    "llm_runtime_architecture",
+    "public_plugin_packaging",
+    "install_verification"
+  ],
+  "card_quality_score": 0.0,
+  "card_version": "2.0.0",
+  "cloud_delegation_policy": "ask",
+  "cost_hints": {
+    "model_calls": "medium",
+    "paid_api": false
+  },
+  "data_access": {
+    "exports": [],
+    "reads": [
+      "project_memory"
+    ],
+    "writes": [
+      "project_files"
+    ]
+  },
+  "description": "Portable three-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
+  "domains": [],
+  "entrypoints": {
+    "agent": "AGENTS.md",
+    "canonical_command": "/hep-build"
+  },
+  "id": "local/",
+  "known_failure_cases": [],
+  "locale_coverage": {
+    "partial": [],
+    "primary": "en",
+    "ready": [
+      "en"
+    ]
+  },
+  "memory_behavior": {
+    "exports_to_cloud": false,
+    "reads": "project",
+    "writes": "project"
+  },
+  "name": "agentlas-meta-agent",
+  "name_ko": null,
+  "optional_inputs": [],
+  "quality": {
+    "benchmark_suites": [],
+    "evaluated_at": "2026-06-21T23:52:53+00:00",
+    "lint_version": "routing-card/2.0",
+    "score": 0.0
+  },
+  "required_inputs": [],
+  "required_plugins": [],
+  "revision": 1,
+  "risk_profile": {
+    "capabilities_at_risk": [],
+    "tier": "medium"
+  },
+  "routing_status": "draft",
+  "routing_status_reason": "auto-migrated from agent-card.json; needs human review of triggers and benchmarks",
+  "schemaVersion": "routing-card/2.0",
+  "source": {
+    "kind": "local_path",
+    "package_hash": null,
+    "package_version": "0.7.20",
+    "ref": null
+  },
+  "summary": "Portable three-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
+  "summary_ko": null,
+  "supported_runtimes": [
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "agents-md"
   ],
   "trigger_examples": [
-    {"text": "새 에이전트 만들어줘", "locale": "ko"},
-    {"text": "이 에이전트를 Agentlas 구조로 패키징해줘", "locale": "ko"},
-    {"text": "멀티 에이전트 팀 구성해줘", "locale": "ko"},
-    {"text": "create a self-evolving research agent", "locale": "en"},
-    {"text": "package this existing Claude agent into Agentlas architecture", "locale": "en"},
-    {"text": "build a multi-agent team with an orchestrator", "locale": "en"},
-    {"text": "repair this agent repo to match Agentlas contracts", "locale": "en"}
+    {
+      "locale": "en",
+      "text": "agentlas-meta-agent"
+    },
+    {
+      "locale": "en",
+      "text": "Portable three-agent meta-agent team with a local-first ontology runtime for"
+    }
   ],
-  "anti_triggers": [
-    {"text": "단순 코드 리뷰", "locale": "ko"},
-    {"text": "fix a css bug on my landing page", "locale": "en"},
-    {"text": "write marketing copy for my product", "locale": "en"},
-    {"text": "앱스토어 리뷰 답글 달아줘", "locale": "ko"}
-  ],
-  "required_inputs": [
-    {"name": "request", "type": "text", "description": "What to create, package, or repair"}
-  ],
-  "optional_inputs": [
-    {"name": "target_path", "type": "path", "description": "Existing agent folder when packaging or repairing"}
-  ],
-  "required_plugins": [],
-  "supported_runtimes": ["claude-code", "codex", "gemini-cli", "antigravity", "cursor", "terminal", "agents-md"],
-  "entrypoints": {
-    "canonical_command": "/hep-build",
-    "agent": ".agents/agentlas-core-engine-meta-agent/agent.md",
-    "terminal": "bin/hephaestus"
-  },
-  "risk_profile": {
-    "tier": "medium",
-    "capabilities_at_risk": ["file_write"]
-  },
-  "approval_requirements": ["file_write"],
-  "memory_behavior": {"reads": "project", "writes": "project", "exports_to_cloud": false},
-  "cloud_delegation_policy": "ask",
-  "cost_hints": {"model_calls": "medium", "paid_api": false},
-  "benchmark_fixtures": "benchmarks/routing/local-hephaestus.jsonl",
-  "known_failure_cases": [
-    "Vague one-word requests route better through /hep-network clarify flow",
-    "Packaging requests without a target_path need one clarify round"
-  ],
-  "locale_coverage": {"primary": "en", "ready": ["ko", "en"], "partial": []},
-  "card_quality_score": 0.0,
-  "routing_status": "routing_ready",
-  "routing_status_reason": "seed card: human-authored triggers, anti-triggers, and benchmark fixtures",
-  "agent_card_ref": {"path": ".agentlas/agent-card.json", "slug": "agentlas-meta-agent", "content_hash": null},
-  "data_access": {"reads": ["project_memory"], "writes": ["project_files"], "exports": []},
-  "approval_scope": {"grant": "per_call", "ttl_seconds": null},
-  "source": {"kind": "local_path", "ref": null, "package_hash": null, "package_version": "0.7.5"},
-  "updated_at": "2026-06-12T01:00:00+00:00"
+  "type": "team",
+  "updated_at": "2026-06-21T23:52:53+00:00"
 }

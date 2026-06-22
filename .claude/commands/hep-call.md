@@ -51,8 +51,8 @@ CONTEXT="$(printf '%s' "$CONTEXT" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
    a call still reports an auth/sign-in status, relay it and stop.
 4. If an agent fails for any other reason, continue with prepared agents and
    clearly list each failure with its `status`.
-5. NEVER substitute for a blocked, failed, or unpaid agent by reading its local
-   source files and role-playing the persona yourself. A paid agent runs only
+5. NEVER substitute for a blocked, failed, or metered agent by reading its local
+   source files and role-playing the persona yourself. A Hub agent runs only
    through the server's metered bundle; if it did not return `prepared`, report
    why — never fabricate a run.
 6. Include `receipt_id` and each prepared `execution_id`.

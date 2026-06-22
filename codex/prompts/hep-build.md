@@ -28,3 +28,11 @@ Expose `/prompts:hep-build` as the public Codex build prompt next to
   and `.agentlas/capability-eval-plan.json`.
 - Include `global_commands` for the created agent or team in the final
   response, plus `interview_research` evidence.
+- If a package was created/repaired in the current workspace, register it to
+  local discovery immediately: run `./bin/hephaestus cards migrate . --tier local
+  --overwrite` (or the same `hephaestus` runner in cache if local binary is
+  unavailable), and include migration result in `evidence`.
+
+If runtime discovery migration isn't needed, still validate that the package has
+`./.agentlas/routing-card.json` and include that local-card artifact in `evidence`
+when skipping migration.

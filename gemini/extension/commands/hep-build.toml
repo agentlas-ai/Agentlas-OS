@@ -37,4 +37,11 @@ Generate or repair the Agentlas package, verify it, and include the
 If the first argument is `ontology`, open the project ontology GUI by running
 `./bin/hephaestus ontology --gui .` when the local shell command is available,
 then report `gui_url`, `db_path`, `inbox_path`, and verification status.
+
+If a package was created or repaired in the current workspace, register it to local
+discovery before final reporting:
+
+`./bin/hephaestus cards migrate . --tier local --overwrite`
+
+Include the migration result in `interview_research`.
 """

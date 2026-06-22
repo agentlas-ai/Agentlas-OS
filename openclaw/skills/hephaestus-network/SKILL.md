@@ -1,6 +1,6 @@
 ---
 name: hephaestus-network
-description: "Use when the user types /hep-network, mentions @Hephaestus, or asks to find/invoke the right Agentlas Hub agent, team, or plugin for a task. For public demos, distribution docs, README GIFs, and user-facing MCP tests, Hephaestus Network means Hub-first/Hub-only invocation, not Mason's local Paid/Free folders."
+description: "Use when the user types /hep-network, mentions @Hephaestus, or asks to find/invoke the right Agentlas Hub agent, team, or plugin for a task. For public demos, distribution docs, README GIFs, and user-facing MCP tests, Hephaestus Network means Hub-first/Hub-only invocation, not Mason's local private scope folders."
 metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Hephaestus"}}
 ---
 
@@ -13,13 +13,13 @@ guess an agent yourself when this skill is active — the router or Hub decides.
 
 For public demos, README GIFs, packaged-agent distribution, Threads/Instagram
 share kits, or any request where the end user will not have Mason's local
-`Paid/`, `Free/`, or plugin inventory, do **not** route to local cards.
+`private`, `restricted`, or plugin inventory, do **not** route to local cards.
 Use Agentlas Hub invocation only:
 
 - Prefer the MCP tool `hephaestus_hub_invoke` with
-  `local_inventory: []` and `reject_paid_slug: true`.
+  `local_inventory: []` and `hub_only: true`.
 - If using the CLI, pass `--hub-only`.
-- Do not report or rely on machine-local Paid/Free folder paths.
+- Do not report or rely on machine-local private scope folder paths.
 - A bundled local agent folder is applied separately by opening/reading its
   `AGENTS.md`; it is not the same thing as a Hephaestus Network Hub call.
 
@@ -95,7 +95,7 @@ For demo/distribution/Hub-only requests:
   redacted keywords only; the raw prompt and local memory were not sent.
   If the user asks to actually invoke an Agentlas Hub agent through this MCP
   surface, use `hephaestus_hub_invoke` with `local_inventory: []` and
-  `reject_paid_slug: true`. Hub public agents are BYOM runtime bundles — the
+  `hub_only: true`. Hub public agents are BYOM runtime bundles — the
   Hub returns instructions, not a server-side LLM completion.
   Before doing the user's substantive task, always send a short fixed
   user-visible receipt line that makes the Hub invocation obvious:
@@ -104,7 +104,7 @@ For demo/distribution/Hub-only requests:
   at candidate reporting when the request is a GUI shortcut such as `startup`.
   First run `hephaestus local-gui "<request>" --detach --quiet-not-found`; this
   restores the Hub cloud package and launches the packaged GUI. It does not
-  inspect local Paid/Free shortcut cards unless operator debug routing is
+  inspect local private shortcut cards unless operator debug routing is
   explicitly enabled. For non-GUI tasks, invoke the chosen
   callable Hub agent before proceeding whenever the task needs the agent's
   runtime bundle.
@@ -123,6 +123,6 @@ For demo/distribution/Hub-only requests:
   receipt before the main answer or work summary so the user can tell the
   Network actually ran.
 - Hephaestus Network user-facing demos must summarize Hub-called agents and
-  reasons. Do not summarize local `Paid/` candidates as if they were Hub MCP
+  reasons. Do not summarize local `private` candidates as if they were Hub MCP
   calls.
 - Report the routing `receipt_id` in your final message.

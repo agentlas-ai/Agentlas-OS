@@ -83,7 +83,20 @@ Meta-Agent team:
 6. Load only the matching public skills.
 7. Generate or repair `.agentlas/global-commands.json` and matching runtime
    command files or aliases.
-8. Return `status`, `evidence`, `output`, `global_commands`,
+8. If a package was created or repaired in the current workspace, register it to
+   local discovery before reporting:
+   ```bash
+   RUNNER="./bin/hephaestus"
+   if [ ! -x "$RUNNER" ] && [ -x "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus" ]; then
+     RUNNER="./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
+   fi
+   if [ -x "$RUNNER" ]; then
+     "$RUNNER" cards migrate . --tier local --overwrite
+   else
+     echo "Hephaestus runner not found for routing-card migration."
+   fi
+   ```
+9. Return `status`, `evidence`, `output`, `global_commands`,
    `interview_research`, and `blockers`.
    The `global_commands` section must tell the user the exact Claude Code,
    Codex, Gemini CLI, generic AGENTS.md, and terminal commands for the generated

@@ -120,7 +120,7 @@ run_upload_gate() {
           (cd "$forge_root" && node scripts/forge-sync.mjs --path "$rel" --publish --json)
           ;;
         *)
-          echo "Hub 업로드는 Forge 패키지에서 실행해야 합니다: $forge_root/Free 또는 $forge_root/Paid 아래 폴더를 지정하세요." >&2
+          echo "Hub 업로드는 Forge 패키지에서 실행해야 합니다. $forge_root 아래의 패키지 폴더를 지정하세요." >&2
           return 2
           ;;
       esac
@@ -153,7 +153,7 @@ Usage:
   bin/hephaestus network init|status|reindex|bench
   bin/hephaestus network add-source <path> | remove-source <path>
   bin/hephaestus network grant <capability> --target <id> [--scope ...]
-  bin/hephaestus cards lint [path] | cards migrate <root> --tier free|paid|plugin|local
+  bin/hephaestus cards lint [path] | cards migrate <root> --tier restricted|private|plugin|local
   bin/hephaestus ao lint [dir] | ao graph [--agent <agent>] [dir] | ao query "<query>" [dir]
   bin/hephaestus ao plan <from> <to> [--max-depth N] [dir]
   bin/hephaestus ao diff [dir] | ao migrate [dir] [--no-write] [--overwrite]

@@ -20,8 +20,8 @@ check_pattern() {
   fi
 }
 
-check_pattern "private user path" '/Users/mason/'
-check_pattern "private local volume" '/Volumes/X31/'
+check_pattern "private user path" '/Users/[A-Za-z0-9._-]+/'
+check_pattern "private local volume" '/Volumes/[A-Za-z0-9._ -]+/'
 check_pattern "GitHub token" 'gh[opsu]_[A-Za-z0-9_]{20,}'
 check_pattern "OpenAI-style API token" 'sk-[A-Za-z0-9_-]{20,}'
 check_pattern "Google API key" 'AIza[0-9A-Za-z_-]{20,}'

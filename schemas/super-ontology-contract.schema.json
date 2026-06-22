@@ -54,7 +54,7 @@
         "securityGateMode",
         "blockingSecurityGate",
         "requiredBeforePromotion",
-        "publicExportRemainsValueFree"
+        "publicExportRemainsNoCharge"
       ],
       "properties": {
         "enabled": {
@@ -76,7 +76,7 @@
           },
           "minItems": 1
         },
-        "publicExportRemainsValueFree": {
+        "publicExportRemainsNoCharge": {
           "const": true
         },
         "notes": {

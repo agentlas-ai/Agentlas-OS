@@ -6,7 +6,7 @@ Ollama-launched harnesses running local models such as Gemma or DeepSeek) can
 call routing without a runtime-specific command surface.
 
 Transport: newline-delimited JSON-RPC 2.0 on stdin/stdout (MCP stdio). No
-third-party dependencies. Public Network calls skip local Paid/Free cards by
+third-party dependencies. Public Network calls skip local private cards by
 default; local routing requires the explicit `allow_local_routing` debug flag.
 """
 
@@ -18,7 +18,7 @@ import sys
 from typing import Any
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "0.7.19"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "0.7.20"}
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -44,7 +44,7 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "allow_local_routing": {
                     "type": "boolean",
-                    "description": "Operator/debug escape hatch. When false or omitted, local Paid/Free/plugin cards are ignored.",
+                    "description": "Operator/debug escape hatch. When false or omitted, local private/plugin cards are ignored.",
                 },
                 "caller_id": {
                     "type": "string",

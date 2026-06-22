@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     cards_lint.add_argument("path", nargs="?", default=None, help="Folder to scan for routing-card.json (default: global cards)")
     cards_migrate = cards_sub.add_parser("migrate", help="Generate draft routing cards from existing packages")
     cards_migrate.add_argument("root")
-    cards_migrate.add_argument("--tier", required=True, choices=["free", "paid", "plugin", "local"])
+    cards_migrate.add_argument("--tier", required=True, choices=["restricted", "private", "plugin", "local"])
     cards_migrate.add_argument("--overwrite", action="store_true")
     cards_migrate.add_argument("--no-global", action="store_true", help="Write package-local cards only")
 

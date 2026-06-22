@@ -9,8 +9,8 @@
 
 | 영역 | 현재 상태 | Network 2.0 관점 갭 |
 |------|----------|---------------------|
-| Forge `Free/` (74개) | 100% `agent-card.json` 보유, `protocolVersion: a2a-1.0-draft`, `capabilities.tools/runtimeTargets` | trigger_examples / anti_triggers / risk_tier 없음 |
-| Forge `Paid/` (12개) | 100% 카드 보유, orchestrator/governance/workers 구조 | 카드 스키마가 Free와 불일치 (id/runtime vs urlPath/runtimeTargets) |
+| Forge `restricted` (74개) | 100% `agent-card.json` 보유, `protocolVersion: a2a-1.0-draft`, `capabilities.tools/runtimeTargets` | trigger_examples / anti_triggers / risk_tier 없음 |
+| Forge `private` (12개) | 100% 카드 보유, orchestrator/governance/workers 구조 | 카드 스키마가 restricted 계열과 불일치 (id/runtime vs urlPath/runtimeTargets) |
 | Forge `plugin/` (24개) | `plugin.json` 정적 카탈로그 | 라우팅 카드 자체가 없음 |
 | Hephaestus repo | `schemas/agent-card.schema.json` (최소 필드, `additionalProperties: true`), `agentlas_cloud/plugin_discovery.py` (로컬 우선 + `https://agentlas.cloud/api/plugins` 머지, 오프라인 폴백) | routing-card 스키마·라우터·`~/.agentlas/networking/` 미구현 |
 | agentlas_desktop | `electron/agents/auto-router.ts` 키워드 스코어링 라우터(한글 지원), SQLite `installed_agents`, `surface-trust.ts` 승인 게이트 | 라우팅 카드 미연동, 라우팅 영수증 없음 |
@@ -72,7 +72,7 @@
 ```jsonc
 {
   "schemaVersion": "routing-card/2.0",
-  "id": "free/researcher-001-public-safe-marketplace-packager",  // <tier>/<slug> 네임스페이스
+  "id": "restricted/researcher-001-public-safe-marketplace-packager",  // <tier>/<slug> 네임스페이스
   "type": "agent | team | plugin",
   "name": "...", "name_ko": "...",                // i18n 1급 필드 (한국어 커버리지 요건)
   "summary": "...", "summary_ko": "...",
@@ -169,11 +169,11 @@ Codex 리뷰 반영 보강:
 
 `@Hephaestus <요청>` 형태는 명령 등록이 안 되는 런타임의 공통 폴백 (AGENTS.md 계약에 명시).
 
-## 7. Free/Paid/plugin 마이그레이션 계획
+## 7. private/restricted/plugin 마이그레이션 계획
 
 1. `agentlas_cloud/networking/card_migrate.py` (신규): 기존 `agent-card.json` + `AGENTS.md` + `manifest.json`에서 routing-card v2 **초안(draft)** 자동 생성. trigger/anti-trigger는 자동 생성하되 품질 게이트 미달이므로 전부 `routing_status: draft`로 시작 — **자동 라우팅에 즉시 노출되지 않음** (안전 기본값).
-2. Forge에서 `node scripts/forge-sync.mjs`와 별도로 `hephaestus cards migrate Free/ Paid/ plugin/` 1회 실행 → 110개 draft 카드.
-3. 시드 승급: MVP용으로 대표 카드 ~15개(Paid 12 + Free 3)를 수동 검수해 trigger/anti/벤치마크 작성, `routing_ready`로 승급. 나머지는 `searchable`.
+2. Forge에서 `node scripts/forge-sync.mjs`와 별도로 `hephaestus cards migrate private/ restricted/ plugin/` 1회 실행 → 110개 draft 카드.
+3. 시드 승급: MVP용으로 대표 카드 ~15개(private 12 + restricted 3)를 수동 검수해 trigger/anti/벤치마크 작성, `routing_ready`로 승급. 나머지는 `searchable`.
 4. 패키저(`agents/30-agentlas-packager`)·single/team 빌더의 출력 계약에 routing-card 생성 의무 추가. `verify-package.sh` 카드 게이트는 **2단계 도입** (Codex 리뷰 반영): Hub 서버가 routingCard를 수용하기 전까지는 `warn`, Hub 지원 랜딩 후 `block`으로 승격 — 기존 발행 파이프라인이 조기에 멈추는 것을 방지.
 5. Hub 측(별도 저장소 작업): `cloud-agents/v1/register`가 manifest의 routingCard를 스키마 검증, `marketplace.search_agents` 응답에 routing_status 포함. — *이번 구현 범위에서는 Hephaestus repo의 계약 문서와 클라이언트만, Hub 서버 변경은 후속 PR.*
 

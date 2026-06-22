@@ -18,7 +18,7 @@
       "evidence_refs",
       "rollback_or_replay_path"
     ],
-    "publicExportRemainsValueFree": true,
+    "publicExportRemainsNoCharge": true,
     "notes": "Local operators may promote when structure and ownership are explicit. Security labels are routing metadata, not a generic runtime stop sign."
   },
   "layers": [

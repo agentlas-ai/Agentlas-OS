@@ -289,7 +289,7 @@ Hephaestus सिर्फ prompt answer नहीं बनाता। यह 
 | "इस workflow के लिए team/company बनाओ" | `20-multi-agent-team-builder` | HQ, PM Soul, Memory Curator, Policy Gate, eval, QA और handoff वाली multi-agent team |
 | "इस existing agent/repo/workspace को package करो" | `30-agentlas-packager` | Desktop import, terminal, Codex, Claude, Gemini या public GitHub release के लिए साफ Agentlas package |
 
-## v0.7.19 में नया
+## v0.7.20 में नया
 
 - **Short command surface।** Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode और terminal installs अब `/hep-build`, `/hep-network`, `/hep-cloud`, `/hep-search`, `/hep-call`, और `/hep-upload` एक जैसा expose करते हैं।
 - **Explicit upload gate।** `/hep-upload` किसी package, publish, register, या upload action से पहले हमेशा पूछता है कि target private Agentlas Cloud है या public Agentlas Hub।

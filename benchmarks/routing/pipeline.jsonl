@@ -12,9 +12,9 @@
 {"id": "pipe-12", "query": "draft a product spec and build the app", "locale": "en", "expected": {"action": "pipeline", "stage_kinds": ["prd", "codebase_change"]}}
 {"id": "pipe-13", "query": "requirements first, then code it and test it all the way to the end", "locale": "en", "expected": {"action": "pipeline", "stage_kinds": ["prd", "codebase_change", "qa_report"]}}
 {"id": "pipe-14", "query": "turn this idea into a PRD and implement the site", "locale": "en", "expected": {"action": "pipeline", "stage_kinds": ["prd", "codebase_change"]}}
-{"id": "pipe-15", "query": "웹사이트 만들어줘", "locale": "ko", "tags": ["single"], "expected": {"action": "route", "top3_any": ["paid/Web_master"]}}
-{"id": "pipe-16", "query": "계약서 검토해줘", "locale": "ko", "tags": ["single"], "expected": {"action": "route", "top3_any": ["paid/legal-contract-review-hq"]}}
-{"id": "pipe-17", "query": "review this contract for legal risks", "locale": "en", "tags": ["single"], "expected": {"action": "route", "top3_any": ["paid/legal-contract-review-hq"]}}
-{"id": "pipe-18", "query": "인스타 릴스 캠페인 기획해줘", "locale": "ko", "tags": ["single"], "expected": {"action": "route", "top3_any": ["paid/instagram-marketing-agent-team"]}}
-{"id": "pipe-19", "query": "create instagram reels campaign content", "locale": "en", "tags": ["single"], "expected": {"top3_any": ["paid/instagram-marketing-agent-team"]}}
+{"id": "pipe-15", "query": "웹사이트 만들어줘", "locale": "ko", "tags": ["single"], "expected": {"action": "route", "top3_any": ["private/Web_master"]}}
+{"id": "pipe-16", "query": "계약서 검토해줘", "locale": "ko", "tags": ["single"], "expected": {"action": "route", "top3_any": ["private/legal-contract-review-hq"]}}
+{"id": "pipe-17", "query": "review this contract for legal risks", "locale": "en", "tags": ["single"], "expected": {"action": "route", "top3_any": ["private/legal-contract-review-hq"]}}
+{"id": "pipe-18", "query": "인스타 릴스 캠페인 기획해줘", "locale": "ko", "tags": ["single"], "expected": {"action": "route", "top3_any": ["private/instagram-marketing-agent-team"]}}
+{"id": "pipe-19", "query": "create instagram reels campaign content", "locale": "en", "tags": ["single"], "expected": {"top3_any": ["private/instagram-marketing-agent-team"]}}
 {"id": "pipe-20", "query": "크롬 브라우저 원격 조작해 줘", "locale": "ko", "tags": ["single"], "expected": {"action": "route", "top3_any": ["plugin/chrome"]}}

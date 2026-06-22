@@ -1,9 +1,8 @@
-"""Migrate existing Forge/Agentlas packages to routing-card v2 drafts.
+"""Migrate existing Forge/Agentlas packages to routing-card v2.
 
-Generated cards always start as ``routing_status: draft`` — they are visible
-to search but excluded from auto routing until a human review adds real
-triggers, anti-triggers, and benchmark fixtures (the quality gates in
-card_lint.py).
+Default status is ``draft`` for Hub/private/restricted/plugin cards, while local cards use
+``trusted`` so they can be auto-routed without extra local promotion.
+Auto routing still depends on ``effective_status`` for hard-gated errors.
 """
 
 from __future__ import annotations
@@ -126,6 +125,8 @@ def migrate_package(
         domains = classify_domains(name, description, " ".join(str(c) for c in capabilities))
 
     card_id = f"{tier}/{slug}"
+    default_local_status = "trusted" if tier == "local" else "draft"
+
     card: dict[str, Any] = {
         "schemaVersion": SCHEMA,
         "card_version": "2.0.0",
@@ -163,7 +164,7 @@ def migrate_package(
         "known_failure_cases": [],
         "locale_coverage": {"primary": "en", "ready": locale_ready, "partial": []},
         "card_quality_score": 0.0,
-        "routing_status": "draft",
+        "routing_status": default_local_status,
         "routing_status_reason": "auto-migrated from agent-card.json; needs human review of triggers and benchmarks",
         "agent_card_ref": {"path": ".agentlas/agent-card.json", "slug": slug, "content_hash": None}
         if agent_card
@@ -213,12 +214,21 @@ def migrate_tree(
     root_path = Path(root)
     results: list[dict[str, Any]] = []
     skipped: list[str] = []
-    for child in sorted(root_path.iterdir()) if root_path.is_dir() else []:
-        if not child.is_dir() or child.name.startswith("."):
-            continue
-        has_metadata = (
-            (child / ".agentlas").is_dir() or (child / "plugin.json").is_file() or (child / "AGENTS.md").is_file()
+
+    def _has_package_metadata(path: Path) -> bool:
+        return (
+            (path / ".agentlas").is_dir() or (path / "plugin.json").is_file() or (path / "AGENTS.md").is_file()
         )
+
+    if root_path.is_dir() and _has_package_metadata(root_path):
+        result = migrate_package(root_path, tier=tier, home=home, overwrite=overwrite)
+        if result:
+            results.append(result)
+
+    for child in sorted(root_path.iterdir()) if root_path.is_dir() else []:
+        if not child.is_dir() or child.name.startswith(".") or child == root_path:
+            continue
+        has_metadata = _has_package_metadata(child)
         if not has_metadata:
             skipped.append(child.name)
             continue

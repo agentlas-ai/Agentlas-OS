@@ -1,6 +1,6 @@
 ---
 name: hephaestus-network
-description: "Use when the user types /hep-network, mentions @Hephaestus, or asks to find/invoke the right Agentlas Hub agent, team, or plugin for a task. For public demos, distribution docs, README GIFs, and user-facing MCP tests, Hephaestus Network means Hub-first/Hub-only invocation, not Mason's local Paid/Free folders."
+description: "Use when the user types /hep-network, mentions @Hephaestus, or asks to find/invoke the right Agentlas Hub agent, team, or plugin for a task. For public demos, distribution docs, README GIFs, and user-facing MCP tests, Hephaestus Network means Hub-first/Hub-only invocation, not Mason's local private scope folders."
 ---
 
 # Hephaestus Network Routing
@@ -12,17 +12,17 @@ when this skill is active — the router or Hub decides.
 
 For public demos, README GIFs, packaged-agent distribution, Threads/Instagram
 share kits, or any request where the end user will not have Mason's local
-`Paid/`, `Free/`, or plugin inventory, do **not** route to local cards.
+`private`, `restricted`, or plugin inventory, do **not** route to local cards.
 Use Agentlas Hub invocation only:
 
 - Prefer the MCP tool `hephaestus_hub_invoke` with
-  `local_inventory: []` and `reject_paid_slug: true`.
+  `local_inventory: []` and `hub_only: true`.
 - If using the CLI, pass `--hub-only`.
-- Do not report or rely on machine-local Paid/Free folder paths.
+- Do not report or rely on machine-local private scope folder paths.
 - A bundled local agent folder is applied separately by opening/reading its
   `AGENTS.md`; it is not the same thing as a Hephaestus Network Hub call.
 
-Only use local-first routing when the user explicitly asks to test Mason's
+Only use local debug routing when the user explicitly asks to test Mason's
 installed local inventory or a named local folder.
 
 ## 1. Resolve the runner
@@ -110,20 +110,24 @@ For demo/distribution/Hub-only requests:
   redacted keywords only; the raw prompt and local memory were not sent.
   If the user explicitly asks to avoid all local agents/cards, pass
   `hub_only: true` to the MCP tool or `--hub-only` to the CLI so local
-  paid/free/plugin cards are skipped entirely.
+  private/restricted cards are skipped entirely.
   If the user asks to actually invoke an Agentlas Hub agent through this MCP
   surface, use `hephaestus_hub_invoke` with `local_inventory: []` and
-  `reject_paid_slug: true`. This tool still skips local routing; it calls Hub MCP (`marketplace.search_agents`,
+  `hub_only: true`. This tool still skips local routing; it calls Hub MCP (`marketplace.search_agents`,
   `agentlas.get_runtime_bundle`, `agentlas.resolve_plugins`) and writes a
   Hephaestus execution receipt. Hub public agents are BYOM runtime bundles —
   the Hub returns instructions, not a server-side LLM completion.
   Before doing the user's substantive task, always send a short fixed
   user-visible receipt line that makes the Hub invocation obvious:
   `Hub 호출: <agent name> (<slug>) · local_routing=skipped · receipt=<routing_receipt_id> · execution=<execution_id>`.
-  If only candidates were returned and no Hub agent was invoked yet, say:
-  `Hub 후보 확인: <top candidate name> (<slug>) · 아직 invoke 전 · receipt=<receipt_id>`,
-  then invoke the chosen callable Hub agent before proceeding whenever the task
-  needs the agent's runtime bundle. For composite Hub-only requests,
+  If only candidates were returned and no Hub agent was invoked yet, do not stop
+  at candidate reporting when the request is a GUI shortcut such as `startup`.
+  First run `hephaestus local-gui "<request>" --detach --quiet-not-found`; this
+  restores the Hub cloud package and launches the packaged GUI. It does not
+  inspect local private shortcut cards unless operator debug routing is
+  explicitly enabled. For non-GUI tasks, invoke the chosen
+  callable Hub agent before proceeding whenever the task needs the agent's
+  runtime bundle. For composite Hub-only requests,
   `task_force.stages[]` may already contain stage-level Hub candidates; treat
   that as the temporary TF shortlist, not as a request to ask the user about
   every stage.
@@ -148,6 +152,6 @@ irreversible publish/delete/payment/submit action.
   receipt before the main answer or work summary so the user can tell the
   Network actually ran.
 - Hephaestus Network user-facing demos must summarize Hub-called agents and
-  reasons. Do not summarize local `Paid/` candidates as if they were Hub MCP
+  reasons. Do not summarize local `private` candidates as if they were Hub MCP
   calls.
 - Report the routing `receipt_id` in your final message.

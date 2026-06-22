@@ -283,7 +283,7 @@ Hephaestus 不只是生成一段提示词。它会留下一个其他运行时可
 | “为这个 workflow 做一个 team/company” | `20-multi-agent-team-builder` | 带 HQ、PM Soul、Memory Curator、Policy Gate、eval、QA、handoff 的多智能体团队 |
 | “把这个已有 agent/repo/workspace 打包” | `30-agentlas-packager` | 可用于 Desktop import、terminal、Codex、Claude、Gemini 或公开 GitHub release 的 Agentlas 包 |
 
-## v0.7.19 新特性
+## v0.7.20 新特性
 
 - **更短的命令表面。** Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode 和 terminal 现在统一暴露 `/hep-build`、`/hep-network`、`/hep-cloud`、`/hep-search`、`/hep-call`、`/hep-upload`。
 - **明确的上传门禁。** `/hep-upload` 在任何 package、publish、register 或 upload 动作之前，都会先询问目标是私有 Agentlas Cloud 还是公开 Agentlas Hub。

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v0.7.20 - 2026-06-22
+
+- Aligned Hub-facing language around Agents, Teams, and Plugins so public
+  surfaces show invocation credits separately from downloadable packages.
+- Kept local `trusted` routing-card behavior as the local-first Network
+  trust path while keeping upload and Hub publication security review as a
+  separate gate.
+- Removed Mason-local package bucket label leakage from routing docs,
+  benchmarks, adapter skills, CLI tier choices, ontology contracts, and
+  mirrored runtime packages.
+- Tightened public safety scanning so real `/Users/...` and `/Volumes/...`
+  local paths are still blocked without flagging the redaction regex literals
+  used by the runtime itself.
+
 ## v0.7.19 - 2026-06-21
 
 - Fixed one-touch installer Python shim recursion: installer now rejects
@@ -13,9 +27,9 @@
   `main` one-touch installer instead of release-pinned install URLs.
 - Added deterministic GUI shortcut launch for Hub-distributed packages:
   `/hep-network startup` now restores the Startup Founder Studio cloud package
-  and launches its packaged GUI even when Mason's local `Paid/` folder is not
+  and launches its packaged GUI even when Mason's local `private` folder is not
   present.
-- Changed Network MCP/GUI shortcut defaults to ignore local `Paid/` and `Free/`
+- Changed Network MCP/GUI shortcut defaults to ignore local `private` and `restricted`
   routing cards. Local routing is now an explicit operator/debug escape hatch
   only, via `allow_local_routing`, `--allow-local`, or `--local-first`.
 - Changed the raw `hephaestus route` CLI default to Hub-only as well; local

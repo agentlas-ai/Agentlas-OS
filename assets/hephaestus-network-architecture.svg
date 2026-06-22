@@ -90,7 +90,7 @@
 
   <rect class="boxGreen" x="1050" y="346" width="460" height="178" rx="8"/>
   <text class="h2g" x="1070" y="374">Local Agents · Teams · Plugins</text>
-  <text class="t" x="1070" y="400">Forge Free 74 · Paid 12 · plugins 23</text>
+  <text class="t" x="1070" y="400">local packages · teams · plugins</text>
   <text class="t" x="1070" y="422">user-created · repackaged · Hub-installed</text>
   <text class="ts" x="1070" y="446">every package ships .agentlas/routing-card.json</text>
   <text class="ts" x="1070" y="466">registration without a routing card is blocked</text>

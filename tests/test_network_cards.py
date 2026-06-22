@@ -55,7 +55,7 @@ def test_lint_gates_ready_status(tmp_path):
 def test_lint_blocks_draft_and_broad_cards(tmp_path):
     draft = {
         "schemaVersion": "routing-card/2.0",
-        "id": "free/some-agent",
+        "id": "restricted/some-agent",
         "type": "agent",
         "name": "some agent",
         "summary": "auto migrated",
@@ -127,7 +127,7 @@ def test_reindex_imports_and_marks_stale(tmp_path):
 def test_migrate_package_produces_draft(tmp_path):
     home = tmp_path / "networking"
     init_networking(home)
-    package = tmp_path / "Free" / "researcher-099-sample-packager"
+    package = tmp_path / "restricted" / "researcher-099-sample-packager"
     (package / ".agentlas").mkdir(parents=True)
     (package / "AGENTS.md").write_text("# Sample packager\n", encoding="utf-8")
     (package / ".agentlas" / "agent-card.json").write_text(
@@ -141,22 +141,48 @@ def test_migrate_package_produces_draft(tmp_path):
         ),
         encoding="utf-8",
     )
-    result = migrate_package(package, tier="free", home=home)
+    result = migrate_package(package, tier="restricted", home=home)
     assert result["status"] == "migrated"
     cards, _ = load_global_cards(home)
     assert len(cards) == 1
     card = cards[0]
     assert card["routing_status"] == "draft"
-    assert card["id"] == "free/researcher-099-sample-packager"
+    assert card["id"] == "restricted/researcher-099-sample-packager"
     assert card["risk_profile"]["capabilities_at_risk"] == ["file_write"]
     assert effective_status(card) in ("draft", "searchable")
 
-    again = migrate_package(package, tier="free", home=home)
+    again = migrate_package(package, tier="restricted", home=home)
     assert again["status"] == "kept_existing"
 
 
+def test_migrate_package_local_becomes_trusted(tmp_path):
+    home = tmp_path / "networking"
+    init_networking(home)
+    package = tmp_path / "local" / "fast-local-agent"
+    (package / ".agentlas").mkdir(parents=True)
+    (package / "AGENTS.md").write_text("# Fast local agent\n", encoding="utf-8")
+    (package / ".agentlas" / "agent-card.json").write_text(
+        json.dumps(
+            {
+                "protocolVersion": "a2a-1.0-draft",
+                "name": "fast-local-agent",
+                "description": "Local agent package for quick run tests.",
+                "capabilities": {"skills": ["run-local"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = migrate_package(package, tier="local", home=home)
+    assert result["status"] == "migrated"
+    cards, _ = load_global_cards(home)
+    assert len(cards) == 1
+    card = cards[0]
+    assert card["routing_status"] == "trusted"
+    assert effective_status(card) == "trusted"
+
+
 def _agent_card_package(tmp_path, slug, **card_fields):
-    package = tmp_path / "Free" / slug
+    package = tmp_path / "restricted" / slug
     (package / ".agentlas").mkdir(parents=True)
     (package / "AGENTS.md").write_text("# helper\n", encoding="utf-8")
     payload = {
@@ -176,13 +202,13 @@ def test_migrate_package_maps_category_to_domain(tmp_path):
     # category casing/whitespace isn't already canonical.
     home = tmp_path / "networking"
     init_networking(home)
-    migrate_package(_agent_card_package(tmp_path, "finhelper-001", category="finance"), tier="free", home=home)
-    migrate_package(_agent_card_package(tmp_path, "finhelper-002", category="  Finance "), tier="free", home=home)
+    migrate_package(_agent_card_package(tmp_path, "finhelper-001", category="finance"), tier="restricted", home=home)
+    migrate_package(_agent_card_package(tmp_path, "finhelper-002", category="  Finance "), tier="restricted", home=home)
     cards, _ = load_global_cards(home)
     by_id = {c["id"]: c for c in cards}
-    assert by_id["free/finhelper-001"]["domains"] == ["finance"]
+    assert by_id["restricted/finhelper-001"]["domains"] == ["finance"]
     # normalization (strip + lowercase) recovers a non-canonical category
-    assert by_id["free/finhelper-002"]["domains"] == ["finance"]
+    assert by_id["restricted/finhelper-002"]["domains"] == ["finance"]
 
 
 def test_backfill_domains_does_not_leak_internal_keys(tmp_path):

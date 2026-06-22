@@ -13,7 +13,7 @@ Never guess an agent yourself when this skill is active — the router/Hub decid
 
 `/hep-cloud` is owner-scoped: it queries ONLY the authenticated owner's
 own cloud packages (보관함) via the Hub owner filter (`cargo.*`). It does **not**
-search the public marketplace and does **not** search local Paid/Free/plugin
+search the public marketplace and does **not** search local private/plugin
 cards.
 
 - The user's own cloud packages are restorable/owned by them, call-priced at a
@@ -88,7 +88,7 @@ yet, and reuses a saved sign-in silently. For CI/headless checks only, set
 
 ## 5. Hard rules
 
-- Never report public marketplace agents or local Paid/Free/plugin cards as if
+- Never report public marketplace agents or local private/plugin cards as if
   they were the user's own cloud packages.
 - The router only chooses a package or fetches a BYOM bundle; it does not
   execute payments, deletes, publishes, file writes, or external submissions.

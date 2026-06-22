@@ -29,6 +29,11 @@ REQUIRED_FIELDS = ["schemaVersion", "id", "type", "name", "summary", "capabiliti
 BREADTH_PENALTY_THRESHOLD = 12
 
 
+def _is_local_card(card: dict[str, Any]) -> bool:
+    card_id = str(card.get("id") or "")
+    return card_id.startswith("local/")
+
+
 def _triggers_by_locale(card: dict[str, Any], field: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     for entry in card.get(field) or []:
@@ -134,7 +139,10 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     if errors:
         allowed = "quarantined"
     elif ready_blockers:
-        allowed = "searchable" if trigger_total >= 1 else "draft"
+        if _is_local_card(card) and claimed == "trusted":
+            allowed = "trusted"
+        else:
+            allowed = "searchable" if trigger_total >= 1 else "draft"
     else:
         allowed = claimed if claimed in ("routing_ready", "trusted") else "routing_ready"
 
@@ -158,6 +166,8 @@ def effective_status(card: dict[str, Any]) -> str:
     if report["errors"]:
         return "quarantined"
     claimed = report["claimed_status"]
-    if claimed in ("routing_ready", "trusted") and report["ready_blockers"]:
+    if claimed in ("routing_ready", "trusted") and report["ready_blockers"] and not (
+        claimed == "trusted" and _is_local_card(card)
+    ):
         return "searchable"
     return claimed if claimed in VALID_STATUSES else "draft"
