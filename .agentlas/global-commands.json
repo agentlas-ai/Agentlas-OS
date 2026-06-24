@@ -25,7 +25,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-build",
       "adapterPath": "gemini/extension/commands/hep-build.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.22",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.23",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-build.toml."
@@ -95,7 +95,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-network",
       "adapterPath": "gemini/extension/commands/hep-network.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.22",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.23",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-network.toml."
@@ -194,7 +194,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-cloud",
       "adapterPath": "gemini/extension/commands/hep-cloud.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.22",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.23",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-cloud.toml."
@@ -489,6 +489,6 @@
   ],
   "postCreationUserMessage": {
     "required": true,
-    "template": "global_commands: Claude Code /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload; Codex /prompts:hep-build, /prompts:hep-network, /prompts:hep-cloud, /prompts:hep-search, /prompts:hep-call, /prompts:hep-upload; Gemini CLI /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload; Antigravity /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload; Cursor /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload; OpenCode /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload; Agentlas terminal hep-build, hep-network, hep-cloud, hep-search, hep-call, hep-upload, or hep-storm. Meaning: build/create = /hep-build; borrow public Hub agents = /hep-network; auto-run Stormbreaker packets = hep-storm; share/use my Agentlas Cloud packages = /hep-cloud; upload gate = /hep-upload."
+    "template": "global_commands: Agentlas terminal/app plain language through native Agentlas/Hephaestus tools; Claude Code /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload; Codex /prompts:hep-build, /prompts:hep-network, /prompts:hep-cloud, /prompts:hep-search, /prompts:hep-call, /prompts:hep-upload; Gemini CLI /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload; Antigravity /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload; Cursor /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload; OpenCode /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload. Meaning: build/create = /hep-build; borrow public Hub agents = /hep-network; share/use my Agentlas Cloud packages = /hep-cloud; search candidates = /hep-search; explicit named agent call = /hep-call; upload gate = /hep-upload. Research loadouts, Stormbreaker, and lower-level options are selected automatically by context."
   }
 }

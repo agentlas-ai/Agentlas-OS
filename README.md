@@ -73,56 +73,63 @@ https://github.com/agentlas-ai/Hephaestus
 
 Use the latest release/instructions. If anything errors, diagnose and fix it, retry, and confirm which command surface is active in this tool.
 
-After it finishes, tell me the three primary commands I should use:
-1. create/build agents
-2. borrow public Hub agents
-3. use agents saved in my Agentlas Cloud
-
-Then also tell me the two power-user commands:
-4. search Cloud and Hub candidates without invoking
-5. call exact agent slugs I name
-6. upload agents only after asking whether I mean private Cloud or public Hub
+After it finishes, tell me the command boundary:
+- Agentlas Terminal and the Agentlas app should work from plain language through native Agentlas/Hephaestus tools.
+- External LLM hosts such as Claude Code, Codex, Gemini CLI, Antigravity,
+  Cursor, and OpenCode expose exactly six explicit commands: build, network,
+  cloud, search, call, and upload.
+- Stormbreaker, research loadouts, and lower-level options are attached
+  automatically from context.
 
 If anything fails, read the error, fix it, retry, and confirm Claude Code,
 Codex, Gemini CLI, Antigravity, and Cursor registration status.
 ```
 
-## Three Primary Commands
+## Native And External Surfaces
+
+Agentlas-native surfaces are commandless: in Agentlas Terminal or the Agentlas
+app, describe the work in plain language and the native router chooses the
+Hephaestus/Agentlas tool path.
+
+External LLM hosts still need explicit slash/prompt commands. Keep that visible
+surface to six commands; everything else is selected by context.
 
 | Job | Command | Example prompt |
 |---|---|---|
 | Create | `/hep-build` | `/hep-build create a customer support agent for Shopify refunds` |
 | Borrow | `/hep-network` | `/hep-network split this launch plan into research, copy, QA, and release agents` |
 | Share | `/hep-cloud` | `/hep-cloud use my saved finance analyst agent to review this report` |
-
-### Utility Commands
-
-| Job | Command | Example prompt |
-|---|---|---|
 | Search | `/hep-search` | `/hep-search 시장 리포트 써야 하는데 쓸만한 에이전트 찾아줘` |
 | Call | `/hep-call` | `/hep-call market-researcher, report-writer {시장 리포트 초안 만들어줘}` |
 | Upload | `/hep-upload` | `/hep-upload ./agents/customer-support-hq` |
 
 Fresh installs and updates prune the old visible `/hephaestus` chat command so
-new users see the clean command surface above: three primary commands, plus
-search, call, and upload utilities when they need explicit control.
+new users see the clean command surface above: six explicit commands in
+external LLM hosts, and plain-language native routing inside Agentlas.
 
-## New In v0.7.22
+## New In v0.7.23
 
-- **Memory Relation Graph.** Durable memory is now a graph: Memory Curator
-  candidate tickets are linked with typed edges (similar, supersedes,
-  contradicts), near-duplicates are detected automatically, and a replacement
-  records a supersedes edge so a new learning never silently overwrites an old
-  one. New `ontology memory dedup | graph | link` commands.
-- **Stormbreaker Run Journal.** Long-horizon runs write an append-only step
-  ledger and resume from the first unfinished step instead of restarting; a loop
-  guard hard-stops a step that keeps restarting, and dangling steps are sealed
-  for retry. New `stormbreaker journal status | repair | verify`.
-- **Verifier-first gate and clarification interrupt.** A step can declare how it
-  will be checked and record the result, so completed-but-unverified work is
-  flagged; ambiguity pauses the run instead of guessing. `stormbreaker journal
-  gate` gives one ok/blockers verdict so a run is never called done before the
-  checks pass.
+- **Native Agentlas, six explicit external commands.** Agentlas Terminal and
+  the Agentlas app are plain-language native surfaces: describe the work and the
+  native Agentlas/Hephaestus tools choose the path. External LLM hosts expose
+  the explicit six-command surface: `/hep-build`, `/hep-network`, `/hep-cloud`,
+  `/hep-search`, `/hep-call`, and `/hep-upload`.
+- **Research Engine phase-0 core.** Hephaestus now ships a public-safe research
+  engine with detachable loadouts (`auto`, `safe`, `public-web`, `social`,
+  `browser`, `full`, and `recommended`), dependency-free built-in cartridges,
+  SSRF-safe readers, receipt ledgers, and CLI flows for plan, gather, search,
+  read, status, proofs, verify, credentials, and hardpoints.
+- **Insane-search as a cartridge, not the whole engine.** The adaptive
+  `read.insane_fetch` reader is mounted only by heavier public-web/social/
+  browser/full loadouts or an explicit allow-list. It records route evidence for
+  direct reads, Reddit RSS, Jina Reader fallback, metadata/feed parsing, and
+  login/paywall stops without becoming the default research brain.
+- **Stormbreaker research evidence.** Stormbreaker packets can attach research
+  receipts, preflight files, readiness snapshots, capability summaries, and
+  compact evidence-quality/coverage signals. The `recommended` loadout resolves
+  per packet from the original user request, so public social/page research can
+  use `public-web` without mounting official social APIs or browser modules by
+  default.
 
 Hephaestus is the open core engine that makes Agentlas behave like an agent
 operating system instead of a one-off prompt generator. It gives developers
@@ -192,13 +199,16 @@ One command, every runtime, all local:
 - **Receipts, not execution.** Every routing decision writes a receipt. The
   router only selects agents or Hub bundles; the host runtime enforces
   permissions when tools actually execute.
-- **Three primary commands.** Use `/hep-build` to create or repair agents,
-  `/hep-network` to borrow public Hub agents into a temporary task
-  force, and `/hep-cloud` to use agents you saved or shared through
-  Agentlas Cloud. Heavy users can add `/hep-search` to compare Cloud and
-  Hub candidates without invoking, and `/hep-call` to prepare exact
-  named agents. The lower-level `ao`, `network`, `cards`, and `mcp` commands
-  stay available for automation and debugging.
+- **Six external commands, native commandless Agentlas.** Use `/hep-build` to
+  create or repair agents, `/hep-network` to borrow public Hub agents into a
+  temporary task force, `/hep-cloud` to use agents you saved or shared through
+  Agentlas Cloud, `/hep-search` to compare candidates without invoking,
+  `/hep-call` to prepare exact named agents, and `/hep-upload` as the
+  Cloud-vs-Hub upload gate. In Agentlas Terminal and the Agentlas app, plain
+  language should select these paths natively. Stormbreaker, research loadouts,
+  and the lower-level `ao`, `network`, `cards`, and `mcp` surfaces stay
+  available for automation/debugging and are attached by context rather than
+  exposed as extra user commands.
 - **Temporary task forces.** Composite `/hep-network` requests are
   decomposed only when needed, then returned as a Hub/local TF plan with
   Stormbreaker packets, session hints, ontology graph paths, Local Operator
@@ -336,15 +346,16 @@ tells you the exact command to use next:
 Set up the Hephaestus Agentlas meta-agent in this workspace from this GitHub repo:
 https://github.com/agentlas-ai/Hephaestus
 
-Use the latest release/instructions, then tell me the exact three-command surface
-for the tool I am using (Claude Code, Codex, Gemini CLI, Antigravity, or Cursor).
-Also tell me the optional search/call power-user commands. If anything fails,
-read the error, fix it, and retry.
+Use the latest release/instructions, then tell me the exact six-command surface
+for the tool I am using (Claude Code, Codex, Gemini CLI, Antigravity, or Cursor)
+and the Agentlas native plain-language boundary. If anything fails, read the
+error, fix it, and retry.
 ```
 
-When it finishes, use `/hep-build`, `/hep-network`, or
-`/hep-cloud` in your tool. Use `/hep-search` and
-`/hep-call` when you want to compare candidates or call exact slugs.
+When it finishes, use `/hep-build`, `/hep-network`, `/hep-cloud`,
+`/hep-search`, `/hep-call`, or `/hep-upload` in external LLM hosts. In Agentlas
+Terminal or the Agentlas app, just describe the task; native routing should
+attach research or Stormbreaker behavior when the context calls for it.
 Prefer to run the commands yourself? Use the terminal **Quickstart** below.
 
 ---
@@ -466,7 +477,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.22
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.23
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
@@ -643,9 +654,9 @@ and Gemini CLI from the extension manifest. No separate MCP setup needed.
 **borrowing** public Hub agents. `/hep-cloud` is for **sharing/using**
 agents in your own Agentlas Cloud. `/hep-search` lists Cloud and Hub
 candidates without invoking. `/hep-call` prepares the exact agent slugs
-you name. `/hep-upload` asks Cloud-vs-Hub before any upload action. Fresh chat
-installs no longer expose the old general `/hephaestus`
-command as a visible command.
+you name. `/hep-upload` asks Cloud-vs-Hub before any upload action. Research
+and Stormbreaker behavior are attached by context. Fresh chat installs no
+longer expose the old general `/hephaestus` command as a visible command.
 
 ### 2. MCP tools are used in plain language, not commands
 

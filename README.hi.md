@@ -86,11 +86,13 @@ https://github.com/agentlas-ai/Hephaestus
 Latest release/install instructions follow करो, फिर बताओ कि मैं जो tool इस्तेमाल कर रहा/रही हूँ (Claude Code, Codex, Gemini CLI, Antigravity, Cursor) उसमें ये commands कैसे इस्तेमाल करनी हैं: /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload। कुछ fail हो तो error पढ़कर ठीक करो और दोबारा try करो।
 ```
 
-खत्म होने पर तीन बातें याद रखें: create/build के लिए `/hep-build`,
-Hub से agent borrow करने के लिए `/hep-network`, और अपने Agentlas Cloud
-में saved agents के लिए `/hep-cloud`। Upload के लिए `/hep-upload` पहले private
-Cloud या public Hub पूछता है। खुद commands चलाना चाहते हैं? नीचे दिया **Quickstart**
-इस्तेमाल करें।
+खत्म होने पर यह boundary याद रखें: Agentlas Terminal और Agentlas app में आप सीधे
+natural language में काम बताएं; native Agentlas/Hephaestus tools context से path
+चुनेंगे। Claude Code, Codex, Gemini CLI, Antigravity, Cursor और OpenCode जैसे
+external LLM hosts में सिर्फ़ छह explicit commands दिखती हैं: `/hep-build`,
+`/hep-network`, `/hep-cloud`, `/hep-search`, `/hep-call`, और `/hep-upload`।
+Stormbreaker, research loadouts और lower-level options context से automatically
+attach होते हैं। खुद commands चलाना चाहते हैं? नीचे दिया **Quickstart** इस्तेमाल करें।
 
 ---
 
@@ -289,11 +291,12 @@ Hephaestus सिर्फ prompt answer नहीं बनाता। यह 
 | "इस workflow के लिए team/company बनाओ" | `20-multi-agent-team-builder` | HQ, PM Soul, Memory Curator, Policy Gate, eval, QA और handoff वाली multi-agent team |
 | "इस existing agent/repo/workspace को package करो" | `30-agentlas-packager` | Desktop import, terminal, Codex, Claude, Gemini या public GitHub release के लिए साफ Agentlas package |
 
-## v0.7.22 में नया
+## v0.7.23 में नया
 
-- **Short command surface।** Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode और terminal installs अब `/hep-build`, `/hep-network`, `/hep-cloud`, `/hep-search`, `/hep-call`, और `/hep-upload` एक जैसा expose करते हैं।
-- **Explicit upload gate।** `/hep-upload` किसी package, publish, register, या upload action से पहले हमेशा पूछता है कि target private Agentlas Cloud है या public Agentlas Hub।
-- **Cleaner installs।** Fresh installs और updates पुराने `/hephaestus-*` chat command files हटाते हैं, लेकिन पुराने terminal callers की compatibility रखते हैं।
+- **Native Agentlas, external LLMs में छह commands।** Agentlas Terminal और Agentlas app plain-language native surfaces हैं: काम बताइए और native Agentlas/Hephaestus tools path चुनते हैं। External LLM hosts `/hep-build`, `/hep-network`, `/hep-cloud`, `/hep-search`, `/hep-call`, और `/hep-upload` expose करते हैं।
+- **Research Engine phase-0 core।** Hephaestus अब public-safe research engine ship करता है, detachable loadouts (`auto`, `safe`, `public-web`, `social`, `browser`, `full`, `recommended`), built-in cartridges, SSRF-safe readers, receipt ledgers, और plan/gather/search/read/status/proofs/verify/credentials/hardpoints CLI flows के साथ।
+- **insane-search cartridge है, पूरा engine नहीं।** `read.insane_fetch` reader सिर्फ़ heavier `public-web`, `social`, `browser`, `full` loadouts या explicit allow-list से mount होता है। यह direct reads, Reddit RSS, Jina Reader fallback, metadata/feed parsing और login/paywall stops की evidence record करता है, लेकिन default research brain नहीं बनता।
+- **Stormbreaker research evidence।** Stormbreaker packets अब research receipts, preflight files, readiness snapshots, capability summaries और compact evidence-quality/coverage signals attach कर सकते हैं। `recommended` loadout original user request से per packet resolve होता है।
 
 ## Architecture
 

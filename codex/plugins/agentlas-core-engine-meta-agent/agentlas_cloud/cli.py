@@ -14,6 +14,21 @@ from .runtime import AgentlasMockStore, compile_runtime_bundle, read_agent_file,
 from .update import maybe_print_update_notice, run_update, write_python_shims
 
 
+RESEARCH_SEARCH_PROVIDERS = ("ddg-html", "news-rss", "github", "jina")
+RESEARCH_SEARCH_PROVIDER_MODULES = {
+    "ddg-html": "search.ddg_html",
+    "news-rss": "search.news_rss",
+    "github": "search.github_repos",
+    "jina": "search.jina",
+}
+RESEARCH_SEARCH_PROVIDER_HINTS = {
+    "ddg-html": "ddg_html",
+    "news-rss": "news_rss",
+    "github": "github",
+    "jina": "jina",
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_utf8_stdio()
     parser = argparse.ArgumentParser(prog="agentlas-cloud", description="Agentlas Cloud v1 local package tools")
@@ -183,6 +198,11 @@ def main(argv: list[str] | None = None) -> int:
     route.add_argument("--auto-run", action="store_true", help="When routing returns a pipeline execution_fabric, run it with Stormbreaker.")
     route.add_argument("--plan-only", action="store_true", help="Return the route/plan only, even when --auto-run is present.")
     route.add_argument("--background", action="store_true", help="With --auto-run, detach the Stormbreaker packet runner.")
+    route.add_argument("--research-evidence", action="store_true", help="With --auto-run, attach Research Engine receipts to research/planning packets.")
+    route.add_argument("--research-loadout", default="safe", choices=["auto", "safe", "public-web", "social", "browser", "full", "recommended"], help="With --research-evidence, choose the detachable research module loadout or let Stormbreaker recommend one.")
+    route.add_argument("--research-depth", default="quick", choices=["quick", "deep"], help="With --research-evidence, choose quick or deep follow-up reads.")
+    route.add_argument("--research-follow-results", type=int, default=1, help="With --research-evidence, read the top N search results, bounded to 10.")
+    route.add_argument("--research-variant", action="append", default=[], help="With --research-evidence, add a bounded query variant such as docs, github, reddit, threads, or news.")
     route.add_argument(
         "--executor-command",
         default=None,
@@ -227,6 +247,11 @@ def main(argv: list[str] | None = None) -> int:
     stormbreaker_run.add_argument("--output-file", default=None, help=argparse.SUPPRESS)
     stormbreaker_run.add_argument("--max-workers", type=int, default=None)
     stormbreaker_run.add_argument("--timeout", type=int, default=900, help="Per-packet executor timeout in seconds")
+    stormbreaker_run.add_argument("--research-evidence", action="store_true", help="Attach Research Engine receipts to research/planning packets.")
+    stormbreaker_run.add_argument("--research-loadout", default="safe", choices=["auto", "safe", "public-web", "social", "browser", "full", "recommended"], help="With --research-evidence, choose the detachable research module loadout or let Stormbreaker recommend one.")
+    stormbreaker_run.add_argument("--research-depth", default="quick", choices=["quick", "deep"], help="With --research-evidence, choose quick or deep follow-up reads.")
+    stormbreaker_run.add_argument("--research-follow-results", type=int, default=1, help="With --research-evidence, read the top N search results, bounded to 10.")
+    stormbreaker_run.add_argument("--research-variant", action="append", default=[], help="With --research-evidence, add a bounded query variant such as docs, github, reddit, threads, or news.")
 
     stormbreaker_journal = stormbreaker_sub.add_parser(
         "journal", help="Inspect or repair a run journal so an interrupted run can resume"
@@ -266,6 +291,123 @@ def main(argv: list[str] | None = None) -> int:
     call.add_argument("--runtime", default="terminal")
     call.add_argument("--version", default="latest")
     call.add_argument("--local-inventory", default=None, help="JSON array or comma list of installed plugin names for Hub plugin resolution")
+
+    research = sub.add_parser("research", help="Agentlas Research Engine phase-0 tools")
+    research_sub = research.add_subparsers(dest="research_command", required=True)
+    research_doctor = research_sub.add_parser("doctor", help="Diagnose research engine readiness without running modules")
+    research_doctor.add_argument("--home", default=None, help="Networking home to scan for research proof receipts")
+    research_status = research_sub.add_parser("status", help="Summarize research engine goal readiness without running modules")
+    research_status.add_argument("--home", default=None, help="Networking home to scan for research proof receipts")
+    research_credentials = research_sub.add_parser("credentials", help="Show secret-safe Reddit/Threads credential setup state")
+    research_credentials.add_argument("--home", default=None, help="Networking home to scan for research proof receipts")
+    research_social_fallbacks = research_sub.add_parser("social-fallbacks", help="Explain no-token Reddit/Threads/public-page fallback coverage")
+    research_social_fallbacks.add_argument("--home", default=None, help="Networking home to include local hardpoint config in readiness")
+    research_proofs = research_sub.add_parser("proofs", help="List research live proof receipts without running modules")
+    research_proofs.add_argument("--home", default=None, help="Networking home to scan for research proof receipts")
+    research_proofs.add_argument("--limit", type=int, default=50, help="Recent receipt summaries to include, max 200")
+    research_verify = research_sub.add_parser("verify", help="Run live public/browser checks and ready credentialed checks")
+    research_verify.add_argument("--home", default=None, help="Networking home for research receipts")
+    research_verify.add_argument("--skip-public", action="store_true", help="Skip public Reddit/Threads fallback checks")
+    research_verify.add_argument("--skip-browser", action="store_true", help="Skip browser hardpoint check")
+    research_verify.add_argument("--skip-credentialed", action="store_true", help="Skip credentialed Reddit/Threads checks even when configured")
+    research_verify.add_argument("--browser-url", default="https://example.com", help="Public URL to use for the browser hardpoint check")
+    research_hardpoints = research_sub.add_parser("hardpoints", help="List or configure approved local browser hardpoints")
+    research_hardpoints.add_argument("--home", default=None, help="Networking home for local hardpoint config")
+    hardpoint_action = research_hardpoints.add_mutually_exclusive_group()
+    hardpoint_action.add_argument("--arm", choices=["browser.agent_cli"], default="", help="Enable an approved hardpoint recipe")
+    hardpoint_action.add_argument("--disarm", choices=["browser.agent_cli"], default="", help="Disable a configured hardpoint")
+    research_hardpoints.add_argument("--recipe", choices=["npx-agent-browser"], default="npx-agent-browser", help="Approved recipe to arm")
+    research_sub.add_parser("modules", help="List detachable research modules and weights")
+    research_armory = research_sub.add_parser("armory", help="List research modules with local readiness checks")
+    research_armory.add_argument("--loadout", default="auto", choices=["auto", "safe", "public-web", "social", "browser", "full"])
+    research_armory.add_argument("--slot", default="", choices=["", "search", "reader", "platform", "browser"], help="Filter by module slot")
+    research_armory.add_argument("--home", default=None, help="Networking home to include local hardpoint config in readiness")
+    research_profile = research_sub.add_parser("profile", help="Compare loadout footprint, weight, and readiness without running modules")
+    research_profile.add_argument("--loadout", default="", choices=["", "auto", "safe", "public-web", "social", "browser", "full"])
+    research_profile.add_argument("--source", action="append", default=[], help="Optional source hint to consider for source-aware auto loadout, repeatable")
+    research_profile.add_argument("--home", default=None, help="Networking home to include local hardpoint config in readiness")
+    research_recommend = research_sub.add_parser("recommend", help="Recommend a detachable research loadout without running modules")
+    research_recommend.add_argument("query", nargs="+")
+    research_recommend.add_argument("--source", action="append", default=[], help="Optional source hint or URL to consider, repeatable")
+    research_recommend.add_argument("--home", default=None, help="Networking home to include local hardpoint config in readiness")
+    research_preflight = research_sub.add_parser("preflight", help="Preview recommended module mounts before running build research")
+    research_preflight.add_argument("query", nargs="+")
+    research_preflight.add_argument("--source", action="append", default=[], help="Optional source hint or URL to consider, repeatable")
+    research_preflight.add_argument("--loadout", default="recommended", choices=["auto", "safe", "public-web", "social", "browser", "full", "recommended"])
+    research_preflight.add_argument("--depth", default="quick", choices=["quick", "deep"])
+    research_preflight.add_argument("--follow-results", type=int, default=None, help="Override recommended follow-up read count")
+    research_preflight.add_argument("--variant", action="append", default=[], help="Override recommended query variants")
+    research_preflight.add_argument("--max-requests", type=int, default=None, help="Override recommended request budget")
+    research_preflight.add_argument("--max-weight", default="", choices=["", "light", "external_light", "adaptive_medium", "credentialed_medium", "browser_heavy"])
+    research_preflight.add_argument("--allow-module", action="append", default=[], help="Additional allowed module id, repeatable")
+    research_preflight.add_argument("--forbid-module", action="append", default=[], help="Forbidden module id, repeatable")
+    research_preflight.add_argument("--home", default=None, help="Networking home to include local hardpoint config in readiness")
+    research_bridge = research_sub.add_parser("bridge-contract", help="Describe browser hardpoint command contracts without running them")
+    research_bridge.add_argument("--module", default="", help="Browser module id to describe, for example browser.stagehand")
+    research_browser_candidates = research_sub.add_parser("browser-candidates", help="List source-backed browser hardpoint candidates without running them")
+    research_browser_candidates.add_argument("--module", default="", help="Browser module id to inspect, for example browser.agent_cli")
+    research_browser_candidates.add_argument("--query", default="", help="Optional task text for a read-only browser hardpoint recommendation")
+    research_browser_candidates.add_argument("--home", default=None, help="Networking home to include local hardpoint config in readiness")
+    research_bridge_check = research_sub.add_parser("bridge-check", help="Run one configured browser hardpoint against a URL")
+    research_bridge_check.add_argument("--module", required=True, help="Browser module id to check, for example browser.stagehand")
+    research_bridge_check.add_argument("--url", required=True, help="Public http/https URL to read through the hardpoint")
+    research_bridge_check.add_argument("--home", default=None, help="Networking home for research receipts")
+    research_platform = research_sub.add_parser("platform-contract", help="Describe Reddit/Threads platform cartridge contracts")
+    research_platform.add_argument("--module", default="", help="Platform module id to describe, for example platform.threads")
+    research_platform_check = research_sub.add_parser("platform-check", help="Run one selected Reddit/Threads platform cartridge")
+    research_platform_check.add_argument("--module", required=True, help="Platform module id to check, for example platform.threads")
+    research_platform_check.add_argument("--source", required=True, help="Platform source hint, for example threads:keyword:agent browser")
+    research_platform_check.add_argument("--home", default=None, help="Networking home for research receipts")
+    research_sub.add_parser("loadouts", help="List named research module loadouts")
+    research_plan = research_sub.add_parser("plan", help="Preview module routing without running network or browser work")
+    research_plan.add_argument("source_hints", nargs="*")
+    research_plan.add_argument("--query", default=None)
+    research_plan.add_argument("--search", action="store_true", help="Preview search:auto expansion for the query")
+    research_plan.add_argument("--provider", action="append", choices=RESEARCH_SEARCH_PROVIDERS, default=[], help="Search provider to preview, repeatable")
+    research_plan.add_argument("--variant", action="append", default=[], help="Search query variant, repeatable: official, docs, github, reddit, threads, news, or a short literal suffix")
+    research_plan.add_argument("--loadout", default="auto", choices=["auto", "safe", "public-web", "social", "browser", "full", "recommended"])
+    research_plan.add_argument("--depth", default="quick", choices=["quick", "deep"])
+    research_plan.add_argument("--max-weight", default=None, choices=["light", "external_light", "adaptive_medium", "credentialed_medium", "browser_heavy"])
+    research_plan.add_argument("--max-requests", type=int, default=None, help="Optional request budget for source expansion and follow-up reads")
+    research_plan.add_argument("--follow-results", type=int, default=0)
+    research_plan.add_argument("--home", default=None, help="Accepted for symmetry; plan does not write receipts")
+    research_plan.add_argument("--allow-module", action="append", default=[], help="Allowed module id, repeatable")
+    research_plan.add_argument("--forbid-module", action="append", default=[], help="Forbidden module id, repeatable")
+    research_read = research_sub.add_parser("read", help="Read explicit URLs through the lightweight research core")
+    research_read.add_argument("urls", nargs="+")
+    research_read.add_argument("--query", default=None)
+    research_read.add_argument("--loadout", default="auto", choices=["auto", "safe", "public-web", "social", "browser", "full", "recommended"])
+    research_read.add_argument("--depth", default="quick", choices=["quick", "deep"], help="quick stops at first usable reader; deep also mounts one configured browser snapshot when allowed.")
+    research_read.add_argument("--max-weight", default=None, choices=["light", "external_light", "adaptive_medium", "credentialed_medium", "browser_heavy"], help="Override the mounted loadout's module weight ceiling.")
+    research_read.add_argument("--max-requests", type=int, default=None, help="Optional request budget for source expansion and follow-up reads")
+    research_read.add_argument("--follow-results", type=int, default=0, help="Read the top N discovered result URLs after platform/search fallback, bounded to 10.")
+    research_read.add_argument("--home", default=None, help="Networking home for research receipts")
+    research_read.add_argument("--allow-module", action="append", default=[], help="Allowed module id, repeatable")
+    research_read.add_argument("--forbid-module", action="append", default=[], help="Forbidden module id, repeatable")
+    research_search = research_sub.add_parser("search", help="Search the web through an explicitly selected research module")
+    research_search.add_argument("query", nargs="+")
+    research_search.add_argument("--provider", choices=RESEARCH_SEARCH_PROVIDERS, default="ddg-html")
+    research_search.add_argument("--variant", action="append", default=[], help="Search query variant, repeatable: official, docs, github, reddit, threads, news, or a short literal suffix")
+    research_search.add_argument("--loadout", default="auto", choices=["auto", "safe", "public-web", "social", "browser", "full", "recommended"])
+    research_search.add_argument("--depth", default="quick", choices=["quick", "deep"], help="Use deep follow-up reads when browser modules are mounted.")
+    research_search.add_argument("--max-weight", default=None, choices=["light", "external_light", "adaptive_medium", "credentialed_medium", "browser_heavy"], help="Override the mounted loadout's module weight ceiling.")
+    research_search.add_argument("--max-requests", type=int, default=None, help="Optional request budget for source expansion and follow-up reads")
+    research_search.add_argument("--follow-results", type=int, default=0, help="Read the top N result URLs after search, bounded to 10.")
+    research_search.add_argument("--home", default=None, help="Networking home for research receipts")
+    research_search.add_argument("--allow-module", action="append", default=[], help="Additional allowed module id, repeatable")
+    research_search.add_argument("--forbid-module", action="append", default=[], help="Forbidden module id, repeatable")
+    research_gather = research_sub.add_parser("gather", help="Fan out search modules, then read top result URLs")
+    research_gather.add_argument("query", nargs="+")
+    research_gather.add_argument("--provider", action="append", choices=RESEARCH_SEARCH_PROVIDERS, default=[], help="Search provider to mount, repeatable. Defaults to the selected loadout.")
+    research_gather.add_argument("--variant", action="append", default=[], help="Search query variant, repeatable: official, docs, github, reddit, threads, news, or a short literal suffix")
+    research_gather.add_argument("--loadout", default="public-web", choices=["auto", "safe", "public-web", "social", "browser", "full", "recommended"])
+    research_gather.add_argument("--depth", default="quick", choices=["quick", "deep"], help="Use deep follow-up reads when browser modules are mounted.")
+    research_gather.add_argument("--max-weight", default=None, choices=["light", "external_light", "adaptive_medium", "credentialed_medium", "browser_heavy"], help="Override the mounted loadout's module weight ceiling.")
+    research_gather.add_argument("--max-requests", type=int, default=None, help="Optional request budget for source expansion and follow-up reads")
+    research_gather.add_argument("--follow-results", type=int, default=3, help="Read the top N result URLs after search, bounded to 10.")
+    research_gather.add_argument("--home", default=None, help="Networking home for research receipts")
+    research_gather.add_argument("--allow-module", action="append", default=[], help="Additional allowed module id, repeatable")
+    research_gather.add_argument("--forbid-module", action="append", default=[], help="Forbidden module id, repeatable")
 
     mcp = sub.add_parser("mcp", help="MCP integration")
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
@@ -403,6 +545,215 @@ def main(argv: list[str] | None = None) -> int:
         from .mcp_stdio import serve
 
         return serve()
+    if args.command == "research" and args.research_command == "read":
+        from .research import run_research
+
+        request = _resolve_recommended_research_request(
+            {
+                "query": args.query or "Read explicit web sources",
+                "source_hints": args.urls,
+                "loadout": args.loadout,
+                "depth": args.depth,
+                "max_weight": args.max_weight,
+                "follow_results": args.follow_results,
+                "max_cost": _max_cost_from_args(args),
+                "allowed_modules": args.allow_module,
+                "forbidden_modules": args.forbid_module,
+            },
+            home=args.home,
+        )
+        return emit(
+            run_research(
+                request,
+                home=args.home,
+            )
+        )
+    if args.command == "research" and args.research_command == "plan":
+        from .research import run_research_plan
+
+        query = args.query or " ".join(args.source_hints).strip()
+        provider_modules = [_research_search_provider_module(provider) for provider in args.provider]
+        source_hints = list(args.source_hints)
+        if args.search:
+            if args.provider:
+                source_hints = [f"search:{_research_search_provider_hint(provider)}:{query}" for provider in args.provider]
+            else:
+                source_hints = [f"search:auto:{query}"] if query else []
+        request = _resolve_recommended_research_request(
+            {
+                "query": query or "Preview research plan",
+                "intent": "plan",
+                "source_hints": source_hints,
+                "loadout": args.loadout,
+                "depth": args.depth,
+                "max_weight": args.max_weight,
+                "follow_results": args.follow_results,
+                "query_variants": args.variant,
+                "max_cost": _max_cost_from_args(args),
+                "allowed_modules": _dedupe(args.allow_module + provider_modules),
+                "forbidden_modules": args.forbid_module,
+            },
+            home=args.home,
+            allow_override_fields={"query_variants", "max_cost"},
+        )
+        return emit(run_research_plan(request))
+    if args.command == "research" and args.research_command == "search":
+        from .research import run_research
+
+        query = " ".join(args.query).strip()
+        provider_id = _research_search_provider_hint(args.provider)
+        provider_module = _research_search_provider_module(args.provider)
+        request = _resolve_recommended_research_request(
+            {
+                "query": query,
+                "intent": "search",
+                "source_hints": [f"search:{provider_id}:{query}"],
+                "loadout": args.loadout,
+                "depth": args.depth,
+                "max_weight": args.max_weight,
+                "follow_results": args.follow_results,
+                "query_variants": args.variant,
+                "max_cost": _max_cost_from_args(args),
+                "allowed_modules": _dedupe(args.allow_module + [provider_module]),
+                "forbidden_modules": args.forbid_module,
+            },
+            home=args.home,
+            allow_override_fields={"query_variants", "max_cost"},
+        )
+        return emit(run_research(request, home=args.home))
+    if args.command == "research" and args.research_command == "gather":
+        from .research import run_research
+
+        query = " ".join(args.query).strip()
+        provider_modules = [_research_search_provider_module(provider) for provider in args.provider]
+        source_hints = (
+            [f"search:{_research_search_provider_hint(provider)}:{query}" for provider in args.provider]
+            if args.provider
+            else [f"search:auto:{query}"]
+        )
+        request = _resolve_recommended_research_request(
+            {
+                "query": query,
+                "intent": "gather",
+                "source_hints": source_hints,
+                "loadout": args.loadout,
+                "depth": args.depth,
+                "max_weight": args.max_weight,
+                "follow_results": args.follow_results,
+                "query_variants": args.variant,
+                "max_cost": _max_cost_from_args(args),
+                "allowed_modules": _dedupe(args.allow_module + provider_modules),
+                "forbidden_modules": args.forbid_module,
+            },
+            home=args.home,
+            allow_override_fields={"query_variants", "max_cost"},
+        )
+        return emit(run_research(request, home=args.home))
+    if args.command == "research" and args.research_command == "modules":
+        from .research.engine import default_registry
+
+        return emit(
+            {
+                "schema": "agentlas.research.modules.v0",
+                "modules": default_registry().module_manifests(),
+            }
+        )
+    if args.command == "research" and args.research_command == "doctor":
+        from .research import run_research_doctor
+
+        return emit(run_research_doctor(home=args.home))
+    if args.command == "research" and args.research_command == "status":
+        from .research import run_research_status
+
+        return emit(run_research_status(home=args.home))
+    if args.command == "research" and args.research_command == "credentials":
+        from .research import run_research_credentials
+
+        return emit(run_research_credentials(home=args.home))
+    if args.command == "research" and args.research_command == "social-fallbacks":
+        from .research import run_research_social_fallbacks
+
+        return emit(run_research_social_fallbacks(home=args.home))
+    if args.command == "research" and args.research_command == "proofs":
+        from .research import run_research_proofs
+
+        return emit(run_research_proofs(home=args.home, limit=args.limit))
+    if args.command == "research" and args.research_command == "verify":
+        from .research import run_research_verify
+
+        return emit(
+            run_research_verify(
+                home=args.home,
+                include_public=not args.skip_public,
+                include_browser=not args.skip_browser,
+                include_credentialed=not args.skip_credentialed,
+                browser_url=args.browser_url,
+            )
+        )
+    if args.command == "research" and args.research_command == "hardpoints":
+        from .research import run_research_hardpoints
+
+        action = "arm" if args.arm else ("disarm" if args.disarm else "list")
+        return emit(run_research_hardpoints(action=action, module_id=args.arm or args.disarm, recipe=args.recipe, home=args.home))
+    if args.command == "research" and args.research_command == "armory":
+        from .research import run_research_armory
+
+        return emit(run_research_armory(loadout=args.loadout, slot=args.slot, home=args.home))
+    if args.command == "research" and args.research_command == "profile":
+        from .research import run_research_profile
+
+        return emit(run_research_profile(loadout=args.loadout, source_hints=args.source, home=args.home))
+    if args.command == "research" and args.research_command == "recommend":
+        from .research import run_research_recommendation
+
+        return emit(run_research_recommendation(query=" ".join(args.query), source_hints=args.source, home=args.home))
+    if args.command == "research" and args.research_command == "preflight":
+        from .research import run_research_preflight
+
+        return emit(
+            run_research_preflight(
+                query=" ".join(args.query),
+                source_hints=args.source,
+                loadout=args.loadout,
+                depth=args.depth,
+                follow_results=args.follow_results,
+                query_variants=args.variant,
+                max_requests=args.max_requests,
+                max_weight=args.max_weight,
+                allowed_modules=args.allow_module,
+                forbidden_modules=args.forbid_module,
+                home=args.home,
+            )
+        )
+    if args.command == "research" and args.research_command == "bridge-contract":
+        from .research import run_research_bridge_contracts
+
+        return emit(run_research_bridge_contracts(module_id=args.module))
+    if args.command == "research" and args.research_command == "browser-candidates":
+        from .research import run_research_browser_candidates
+
+        return emit(run_research_browser_candidates(module_id=args.module, query=args.query, home=args.home))
+    if args.command == "research" and args.research_command == "bridge-check":
+        from .research import run_research_bridge_check
+
+        return emit(run_research_bridge_check(module_id=args.module, url=args.url, home=args.home))
+    if args.command == "research" and args.research_command == "platform-contract":
+        from .research import run_research_platform_contracts
+
+        return emit(run_research_platform_contracts(module_id=args.module))
+    if args.command == "research" and args.research_command == "platform-check":
+        from .research import run_research_platform_check
+
+        return emit(run_research_platform_check(module_id=args.module, source_hint=args.source, home=args.home))
+    if args.command == "research" and args.research_command == "loadouts":
+        from .research import loadout_catalog
+
+        return emit(
+            {
+                "schema": "agentlas.research.loadouts.v0",
+                "loadouts": loadout_catalog(),
+            }
+        )
     if args.command == "search":
         from .networking import init_networking, search_agents
         from .networking.bootstrap import networking_home
@@ -454,7 +805,7 @@ def main(argv: list[str] | None = None) -> int:
             except (json.JSONDecodeError, ValueError) as exc:
                 emit({"action": "route", "status": "error", "error": f"invalid --session-inventory: {exc}"})
                 return 2
-        hub_only = True if not args.allow_local_routing else args.hub_only
+        hub_only = False if args.no_hub else (True if not args.allow_local_routing else args.hub_only)
         decision = route_request(
             args.query,
             project_dir=args.project,
@@ -478,6 +829,11 @@ def main(argv: list[str] | None = None) -> int:
                     execute_card_commands=args.execute_card_commands,
                     max_workers=args.max_workers,
                     timeout_seconds=args.timeout,
+                    research_evidence=args.research_evidence,
+                    research_loadout=args.research_loadout,
+                    research_depth=args.research_depth,
+                    research_follow_results=args.research_follow_results,
+                    research_variants=args.research_variant,
                 )
                 result["route_decision"] = {
                     "action": decision.get("action"),
@@ -565,6 +921,11 @@ def main(argv: list[str] | None = None) -> int:
                 execute_card_commands=args.execute_card_commands,
                 max_workers=args.max_workers,
                 timeout_seconds=args.timeout,
+                research_evidence=args.research_evidence,
+                research_loadout=args.research_loadout,
+                research_depth=args.research_depth,
+                research_follow_results=args.research_follow_results,
+                research_variants=args.research_variant,
             )
         else:
             if not args.query:
@@ -585,6 +946,11 @@ def main(argv: list[str] | None = None) -> int:
                 execute_card_commands=args.execute_card_commands,
                 max_workers=args.max_workers,
                 timeout_seconds=args.timeout,
+                research_evidence=args.research_evidence,
+                research_loadout=args.research_loadout,
+                research_depth=args.research_depth,
+                research_follow_results=args.research_follow_results,
+                research_variants=args.research_variant,
             )
         emit(result)
         if args.output_file:
@@ -751,6 +1117,70 @@ def configure_utf8_stdio() -> None:
                 pass
 
 
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def _research_search_provider_module(provider: str) -> str:
+    return RESEARCH_SEARCH_PROVIDER_MODULES.get(provider, f"search.{provider.replace('-', '_')}")
+
+
+def _research_search_provider_hint(provider: str) -> str:
+    return RESEARCH_SEARCH_PROVIDER_HINTS.get(provider, provider.replace("-", "_"))
+
+
+def _max_cost_from_args(args: argparse.Namespace) -> dict[str, int] | None:
+    value = getattr(args, "max_requests", None)
+    if value is None:
+        return None
+    return {"requests": max(0, int(value))}
+
+
+def _resolve_recommended_research_request(
+    request: dict[str, Any],
+    *,
+    home: str | None,
+    allow_override_fields: set[str] | None = None,
+) -> dict[str, Any]:
+    if request.get("loadout") != "recommended":
+        return request
+    from .research import run_research_recommendation
+
+    protected = allow_override_fields or set()
+    recommendation = run_research_recommendation(
+        query=str(request.get("query") or ""),
+        source_hints=[str(item) for item in request.get("source_hints") or []],
+        home=home,
+    )
+    rec = recommendation.get("recommendation") if isinstance(recommendation, dict) else {}
+    if not isinstance(rec, dict):
+        rec = {}
+    resolved = dict(request)
+    resolved["loadout"] = str(rec.get("loadout") or "safe")
+    if "depth" not in protected:
+        resolved["depth"] = str(rec.get("depth") or resolved.get("depth") or "quick")
+    if "follow_results" not in protected:
+        resolved["follow_results"] = rec.get("follow_results", resolved.get("follow_results", 0))
+    if "query_variants" in protected:
+        resolved["query_variants"] = _dedupe([str(item) for item in resolved.get("query_variants") or []] + [str(item) for item in rec.get("query_variants") or []])
+    else:
+        resolved["query_variants"] = [str(item) for item in rec.get("query_variants") or resolved.get("query_variants") or []]
+    if "max_cost" in protected:
+        max_requests = rec.get("max_requests")
+        if isinstance(max_requests, int) and max_requests > 0:
+            max_cost = dict(resolved.get("max_cost") or {})
+            max_cost.setdefault("requests", max_requests)
+            resolved["max_cost"] = max_cost
+    return resolved
+
+
 def _start_stormbreaker_background(args: argparse.Namespace, decision: dict[str, Any] | None = None) -> dict[str, Any]:
     import uuid
     from .networking.bootstrap import atomic_write_json
@@ -822,6 +1252,16 @@ def _stormbreaker_child_argv(args: argparse.Namespace, result_file: Path, decisi
         child.append("--execute-card-commands")
     if args.max_workers is not None:
         child.extend(["--max-workers", str(args.max_workers)])
+    if getattr(args, "research_evidence", False):
+        child.append("--research-evidence")
+    if getattr(args, "research_loadout", None):
+        child.extend(["--research-loadout", args.research_loadout])
+    if getattr(args, "research_depth", None):
+        child.extend(["--research-depth", args.research_depth])
+    if getattr(args, "research_follow_results", None) is not None:
+        child.extend(["--research-follow-results", str(args.research_follow_results)])
+    for variant in getattr(args, "research_variant", []) or []:
+        child.extend(["--research-variant", variant])
     return child
 
 

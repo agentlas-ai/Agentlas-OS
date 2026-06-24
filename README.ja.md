@@ -88,10 +88,13 @@ https://github.com/agentlas-ai/Hephaestus
 最新リリース/インストール手順に従い、私が使っているツール（Claude Code, Codex, Gemini CLI, Antigravity, Cursor）で使うコマンドを教えて: /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload。失敗したらエラーを読んで直し、もう一度試して。
 ```
 
-終わったら 3 つだけ覚えれば十分です。作成は `/hep-build`、Hub から
-借りるときは `/hep-network`、自分の Agentlas Cloud に保存した agent は
-`/hep-cloud`。アップロードは `/hep-upload` で、private Cloud か public Hub かを先に確認します。
-自分でコマンドを実行したい場合は、下の **Quickstart** を使ってください。
+終わったら、この境界を覚えてください。Agentlas Terminal と Agentlas app では、
+自然言語で作業を説明すれば native Agentlas/Hephaestus tools が context に応じて
+path を選びます。Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode
+などの外部 LLM host では、明示的な command は `/hep-build`、`/hep-network`、
+`/hep-cloud`、`/hep-search`、`/hep-call`、`/hep-upload` の 6 つです。
+Stormbreaker、research loadout、lower-level options は context から自動で
+attached されます。自分でコマンドを実行したい場合は、下の **Quickstart** を使ってください。
 
 ---
 
@@ -290,11 +293,12 @@ Hephaestus は prompt だけを返すものではありません。他の runtim
 | "この workflow の team/company を作って" | `20-multi-agent-team-builder` | HQ、PM Soul、Memory Curator、Policy Gate、eval、QA、handoff を持つ multi-agent team |
 | "既存 agent/repo/workspace を package して" | `30-agentlas-packager` | Desktop import、terminal、Codex、Claude、Gemini、public GitHub release に対応した Agentlas package |
 
-## v0.7.22 の新機能
+## v0.7.23 の新機能
 
-- **短い command surface。** Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode、terminal install は `/hep-build`、`/hep-network`、`/hep-cloud`、`/hep-search`、`/hep-call`、`/hep-upload` を同じ形で公開します。
-- **明示的な upload gate。** `/hep-upload` は package、publish、register、upload を行う前に、private Agentlas Cloud か public Agentlas Hub かを必ず確認します。
-- **よりクリーンな install。** 新規 install と update は古い `/hephaestus-*` chat command files を整理しつつ、古い terminal caller との互換性を維持します。
+- **Agentlas native、外部 LLM は 6 commands。** Agentlas Terminal と Agentlas app は自然言語 native surface です。作業を説明すると native Agentlas/Hephaestus tools が path を選びます。外部 LLM host は `/hep-build`、`/hep-network`、`/hep-cloud`、`/hep-search`、`/hep-call`、`/hep-upload` の 6 commands を公開します。
+- **Research Engine phase-0 core。** Hephaestus は public-safe research engine を同梱し、detachable loadouts（`auto`、`safe`、`public-web`、`social`、`browser`、`full`、`recommended`）、built-in cartridges、SSRF-safe readers、receipt ledgers、plan/gather/search/read/status/proofs/verify/credentials/hardpoints CLI flows を提供します。
+- **insane-search は cartridge であり、engine 全体ではありません。** `read.insane_fetch` reader は重い `public-web`、`social`、`browser`、`full` loadout、または explicit allow-list でのみ mount されます。direct reads、Reddit RSS、Jina Reader fallback、metadata/feed parsing、login/paywall stops の evidence を残しますが、default research brain にはなりません。
+- **Stormbreaker research evidence。** Stormbreaker packets は research receipts、preflight files、readiness snapshots、capability summaries、compact evidence-quality/coverage signals を添付できます。`recommended` loadout は元の user request から packet ごとに解決されます。
 
 ## Architecture
 

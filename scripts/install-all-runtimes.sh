@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-version="${HEPHAESTUS_REF:-v0.7.22}"
+version="${HEPHAESTUS_REF:-v0.7.23}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Hephaestus}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -672,9 +672,10 @@ main() {
   log "Installed/updated runtimes: $ok"
   log "Failed runtimes: $failed"
   log ""
-  log "Public chat surface: three primary commands plus two power-user commands are installed or refreshed."
+  log "Public chat surface: six external commands are installed or refreshed; Agentlas native surfaces use plain language."
   log "Restart open Claude Code, Codex, Gemini, Antigravity, Cursor, OpenCode, OpenClaw, and Hermes apps."
   log "Then use:"
+  log "  Agentlas:    describe the task in plain language; native tools choose the path"
   log "  Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload"
   log "  Codex:       /prompts:hep-build, /prompts:hep-network, /prompts:hep-cloud, /prompts:hep-search, /prompts:hep-call, /prompts:hep-upload"
   log "  Gemini CLI:  /extensions list or /commands list, then /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload"
@@ -683,7 +684,7 @@ main() {
   log "  OpenCode:    /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload"
   log "  OpenClaw:    /skill hephaestus-network <request>"
   log "  Hermes:      hephaestus-network skill (+ MCP, see hermes/README.md)"
-  log "  Terminal:    hep-build \"<request>\", hep-network \"<request>\", hep-cloud \"<request>\", hep-search \"<request>\", hep-call \"agent-a,agent-b\" \"<context>\", hep-upload <agent-folder>, or hep-storm \"<request>\" --background"
+  log "  Shell/debug: hep-build \"<request>\", hep-network \"<request>\", hep-cloud \"<request>\", hep-search \"<request>\", hep-call \"agent-a,agent-b\" \"<context>\", hep-upload <agent-folder>, or hep-storm \"<request>\" --background"
   log "  Ollama/Gemma/DeepSeek local models: docs/local-models.md (MCP: hephaestus mcp serve)"
   log ""
   log "agentlas Hub MCP (agentlas.search, marketplace.*, agentlas.teams.*) was registered too."

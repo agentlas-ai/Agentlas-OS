@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+## v0.7.23 - 2026-06-25
+
+- **Agentlas native vs external LLM command boundary.** Agentlas Terminal and
+  the Agentlas app are documented as plain-language native surfaces: users
+  describe the task and the native Agentlas/Hephaestus tools choose the path.
+  External LLM hosts keep the explicit six-command surface:
+  `/hep-build`, `/hep-network`, `/hep-cloud`, `/hep-search`, `/hep-call`, and
+  `/hep-upload`. Stormbreaker, research loadouts, and lower-level route options
+  are attached by context instead of becoming more commands to memorize.
+- **Agentlas Research Engine phase-0 core.** Added the public-safe research
+  engine contract, CLI surfaces, and docs for detachable loadouts (`auto`,
+  `safe`, `public-web`, `social`, `browser`, `full`, and `recommended`), with
+  dependency-free built-in cartridges, SSRF-safe readers, receipt ledgers,
+  search/read/gather/plan/status/proofs/verify flows, and credential guidance
+  that exposes env names and setup commands without printing secret values.
+- **Detachable public-page reader inspired by insane-search.** The adaptive
+  `read.insane_fetch` cartridge is mounted only through `public-web`, `social`,
+  `browser`, `full`, or explicit allow-lists. It records bounded route evidence
+  for direct reads, Reddit RSS, Jina Reader fallback, metadata/feed parsing, and
+  login/paywall hard stops, while keeping `insane-search` as a reader
+  cartridge reference rather than the whole research engine.
+- **Stormbreaker research evidence integration.** Stormbreaker packets can now
+  attach research receipts, preflight files, readiness snapshots, capability
+  summaries, recommendation metadata, and compact evidence-quality/coverage
+  signals. The `recommended` research loadout resolves per packet from the
+  original user request, so planning packets can choose `public-web` for public
+  social/page research without mounting official social APIs or browser modules
+  by default.
+
 ## v0.7.22 - 2026-06-24
 
 - **Memory Relation Graph.** The local ontology runtime now links Memory Curator

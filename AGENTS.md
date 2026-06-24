@@ -108,22 +108,35 @@ become separate sources of truth.
 
 ## Hephaestus Network Commands
 
+Agentlas-native surfaces are commandless: Agentlas Terminal and the Agentlas
+app should accept plain language and dispatch through native Agentlas/
+Hephaestus tools without requiring a `/hep-*` command. External LLM hosts
+registered through MCP, plugins, prompts, or command files expose exactly six
+explicit commands: `/hep-build`, `/hep-network`, `/hep-cloud`, `/hep-search`,
+`/hep-call`, and `/hep-upload` (Codex prompt equivalents use
+`/prompts:hep-*`). Stormbreaker, research loadouts, route options, and other
+lower-level controls must be selected automatically from context unless the
+operator is using a debug/automation shell directly.
+
 `/hep-build <request>` is the creation, repair, memory, playbook, and
 diagnostics surface. `/hep-network <request>` (alias
 `@Hephaestus <request>`, terminal `hep-network "<request>"`) is the
-work-routing surface. `/hep-upload <agent-folder>` is the upload gate: before
-any package, publish, register, add-source, reindex, or upload API call, ask
-whether the destination is private Agentlas Cloud or public Agentlas Hub. Route
-natural language through the local-first Agent OS router: explicit commands →
-project `.agentlas/routing-overrides.json` → local routing cards
-(`routing_ready`+ only) → redacted Agentlas Hub lookup → propose building a new
-agent. Plan-anchored composite requests ("기획부터 구현, QA까지") return
-`action: "pipeline"` or Hub stage candidates with a `task_force`: a temporary
-TF plan chained by Agent Ontology or card `produces`/`consumes` artifact
-contracts. Execute stages through the returned `execution_fabric`, handing
-artifacts through `handoff_dir`. Independent packets in the same
-`parallel_group` may run concurrently when the host runtime advertises active
-sessions such as Codex, Claude, GLM, DeepSeek, Gemini, or local models.
+work-routing surface. `/hep-cloud <request>` uses the signed-in user's own
+Agentlas Cloud packages. `/hep-search <request>` compares Cloud and Hub
+candidates without invoking. `/hep-call <slugs> <context>` prepares explicitly
+named agents. `/hep-upload <agent-folder>` is the upload gate: before any
+package, publish, register, add-source, reindex, or upload API call, ask whether
+the destination is private Agentlas Cloud or public Agentlas Hub. Route natural
+language through the local-first Agent OS router: explicit commands → project
+`.agentlas/routing-overrides.json` → local routing cards (`routing_ready`+
+only) → redacted Agentlas Hub lookup → propose building a new agent.
+Plan-anchored composite requests ("기획부터 구현, QA까지") return `action:
+"pipeline"` or Hub stage candidates with a `task_force`: a temporary TF plan
+chained by Agent Ontology or card `produces`/`consumes` artifact contracts.
+Execute stages through the returned `execution_fabric`, handing artifacts
+through `handoff_dir`. Independent packets in the same `parallel_group` may run
+concurrently when the host runtime advertises active sessions such as Codex,
+Claude, GLM, DeepSeek, Gemini, or local models.
 Honor the decision JSON exactly:
 ask the `clarify_question` on `clarify`, follow `policy_decision` labels in
 Local Operator Mode, never send raw prompts or local memory to the Hub, and

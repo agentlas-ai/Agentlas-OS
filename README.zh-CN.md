@@ -81,10 +81,12 @@ https://github.com/agentlas-ai/Hephaestus
 请按最新 release/安装说明进行，然后告诉我在当前工具（Claude Code、Codex、Gemini CLI、Antigravity、Cursor）里应该使用的命令：/hep-build、/hep-network、/hep-cloud、/hep-search、/hep-call、/hep-upload。如果出错，请读取报错、修复并重试。
 ```
 
-完成后，只记住三件事：创建用 `/hep-build`，从 Hub 借 agent 用
-`/hep-network`，使用你 Agentlas Cloud 里保存的 agent 用
-`/hep-cloud`。上传用 `/hep-upload`，它会先询问是私有 Cloud 还是公开 Hub。
-想自己运行命令？请使用下面的 **快速开始**。
+完成后，请记住这个边界：在 Agentlas Terminal 或 Agentlas app 里，直接用自然语言
+描述任务即可，native Agentlas/Hephaestus tools 会按上下文选择路径。在 Claude
+Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode 等外部 LLM host 里，
+显式命令只有六个：`/hep-build`、`/hep-network`、`/hep-cloud`、`/hep-search`、
+`/hep-call`、`/hep-upload`。Stormbreaker、research loadout 和更底层选项会按
+上下文自动附加。想自己运行命令？请使用下面的 **快速开始**。
 
 ---
 
@@ -283,11 +285,12 @@ Hephaestus 不只是生成一段提示词。它会留下一个其他运行时可
 | “为这个 workflow 做一个 team/company” | `20-multi-agent-team-builder` | 带 HQ、PM Soul、Memory Curator、Policy Gate、eval、QA、handoff 的多智能体团队 |
 | “把这个已有 agent/repo/workspace 打包” | `30-agentlas-packager` | 可用于 Desktop import、terminal、Codex、Claude、Gemini 或公开 GitHub release 的 Agentlas 包 |
 
-## v0.7.22 新特性
+## v0.7.23 新特性
 
-- **更短的命令表面。** Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode 和 terminal 现在统一暴露 `/hep-build`、`/hep-network`、`/hep-cloud`、`/hep-search`、`/hep-call`、`/hep-upload`。
-- **明确的上传门禁。** `/hep-upload` 在任何 package、publish、register 或 upload 动作之前，都会先询问目标是私有 Agentlas Cloud 还是公开 Agentlas Hub。
-- **更干净的安装。** 新安装和更新会清理旧的 `/hephaestus-*` chat command 文件，同时保留旧 terminal 调用的兼容性。
+- **Agentlas native，外部 LLM 六个命令。** Agentlas Terminal 和 Agentlas app 是自然语言 native surface：描述任务即可，native Agentlas/Hephaestus tools 会选择路径。外部 LLM host 暴露六个显式命令：`/hep-build`、`/hep-network`、`/hep-cloud`、`/hep-search`、`/hep-call`、`/hep-upload`。
+- **Research Engine phase-0 core。** Hephaestus 现在包含 public-safe research engine，支持 detachable loadouts（`auto`、`safe`、`public-web`、`social`、`browser`、`full`、`recommended`）、built-in cartridges、SSRF-safe readers、receipt ledgers，以及 plan/gather/search/read/status/proofs/verify/credentials/hardpoints CLI flows。
+- **insane-search 是 cartridge，不是整个 engine。** `read.insane_fetch` reader 只会通过较重的 `public-web`、`social`、`browser`、`full` loadout 或显式 allow-list 挂载。它记录 direct reads、Reddit RSS、Jina Reader fallback、metadata/feed parsing、login/paywall stops 的 evidence，但不会成为默认 research brain。
+- **Stormbreaker research evidence。** Stormbreaker packets 现在可以附加 research receipts、preflight files、readiness snapshots、capability summaries 和 compact evidence-quality/coverage signals。`recommended` loadout 会按原始用户请求为每个 packet 解析。
 
 ## 架构
 

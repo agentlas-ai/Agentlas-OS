@@ -8,17 +8,20 @@ it.
 
 ## What you get
 
-- `/hep-build`, `/hep-network`, `/hep-cloud`,
-  `/hep-search`, `/hep-call`, and `/hep-upload` in Claude Code, Codex, Gemini
-  CLI, Antigravity, Cursor, and OpenCode; terminal aliases are
-  `hep-build`, `hep-network`, `hep-cloud`, `hep-upload`,
-  `hep-storm`, `hep-search`, and `hep-call`.
-- A three-primary-command user surface: `/hep-build` for creation and repair,
-  `/hep-network` for borrowing public Hub agents into temporary task
-  forces, and `/hep-cloud` for using agents saved or shared through the
-  signed-in user's Agentlas Cloud. Power users add `/hep-search` to
-  compare Cloud/Hub candidates without invoking and `/hep-call` to
-  prepare exact named agents.
+- Agentlas-native surfaces (Agentlas Terminal and the Agentlas app) accept plain
+  language and infer the native Agentlas/Hephaestus tool path without requiring
+  a `/hep-*` command.
+- Six explicit external commands in Claude Code, Codex, Gemini CLI,
+  Antigravity, Cursor, and OpenCode: `/hep-build`, `/hep-network`,
+  `/hep-cloud`, `/hep-search`, `/hep-call`, and `/hep-upload`. Stormbreaker,
+  research loadouts, and lower-level route options are attached automatically
+  from context.
+- A visible command surface where `/hep-build` creates and repairs agents,
+  `/hep-network` borrows public Hub agents into temporary task forces,
+  `/hep-cloud` uses agents saved or shared through the signed-in user's
+  Agentlas Cloud, `/hep-search` compares Cloud/Hub candidates without invoking,
+  `/hep-call` prepares exact named agents, and `/hep-upload` gates Cloud-vs-Hub
+  upload decisions.
 - A global, local-only structure at `~/.agentlas/networking/`:
   `cards/` (routing cards), `policies/`, `memory/` (routing preferences only),
   `ledgers/` (routing receipts, executions, capability grants), `cache/`,
@@ -83,6 +86,10 @@ hep-search "<request>"    # human-facing search alias
 hep-call "agent-a,agent-b" "<ctx>"    # human-facing call alias
 hep-network "<request>"    # standalone Hub-only Network alias
 ```
+
+Lower-level automation/debug helpers such as `hep-storm` may exist on disk for
+native tool selection and test harnesses, but they are not part of the visible
+external LLM command set.
 
 ## Decisions the router can return
 

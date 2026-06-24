@@ -160,9 +160,11 @@ Usage:
   bin/hephaestus route "<request>" [--project <dir>] [--no-hub] [--approve-hub] [--hub-only] [--scope network|cloud] [--caller <agent-id>]
   bin/hephaestus local-gui "<shortcut>" [--detach] [--no-open]   # restore/open packaged GUI shortcuts
   bin/hephaestus hep-network "<request>"           # public Hub / temporary TF surface
-  bin/hephaestus hep-storm "<request>" [--background] [--executor-command <cmd>]  # auto-run pipeline packets
+  bin/hephaestus stormbreaker run "<request>" [--background] [--executor-command <cmd>] [--research-evidence] [--research-loadout auto|safe|public-web|social|browser|full|recommended]  # auto-run pipeline packets
+  bin/hephaestus hep-storm "<request>" [--background] [--executor-command <cmd>] [--research-evidence] [--research-loadout auto|safe|public-web|social|browser|full|recommended]  # shorthand
   bin/hephaestus hep-cloud "<request>" [--project <dir>] [--no-hub]   # search ONLY my own cloud packages (보관함)
   bin/hephaestus hep-search "<request>" [--limit 10]     # show cloud + Hub candidates only
+  bin/hephaestus research doctor|status|credentials|modules|armory|profile|bridge-contract|bridge-check|platform-contract|platform-check|loadouts | research plan <url> [--loadout public-web|browser] [--depth deep] | research gather "<query>" [--variant docs] [--follow-results 3] | research search "<query>" [--variant reddit] [--loadout safe|public-web|social] | research read <url> [--loadout public-web|browser] [--depth deep] [--max-weight browser_heavy]  # lightweight Research Engine
   bin/hephaestus hep-call "agent-a,agent-b" "<context>"  # prepare named Hub/cloud agents
   bin/hephaestus hep-upload <agent-folder>          # ask Cloud vs Hub before upload
   bin/hephaestus mcp serve              # stdio MCP server (hephaestus_route tool)
@@ -283,11 +285,17 @@ EOF
 	      run_python_module agentlas_cloud route "$@" --hub-only --scope network --auto-run --background
 	    fi
 	    ;;
+		  stormbreaker)
+		    run_python_module agentlas_cloud stormbreaker "$@"
+		    ;;
 		  hep-storm|hephaestus-storm|storm)
 		    run_python_module agentlas_cloud stormbreaker run "$@"
 		    ;;
 		  search|hep-search|hephaestus-search|Hephaestus-search)
 		    run_python_module agentlas_cloud search "$@"
+		    ;;
+		  research)
+		    run_python_module agentlas_cloud research "$@"
 		    ;;
 		  call|hep-call|hephaestus-call|Hephaestus-call)
 		    run_python_module agentlas_cloud call "$@"
@@ -308,6 +316,6 @@ EOF
     ;;
 	  *)
 	    # Natural-language shorthand: hephaestus "<request>" routes through the network router.
-	    run_python_module agentlas_cloud route "$command $*"
+	    run_python_module agentlas_cloud route "$command $*" --allow-local-routing
 	    ;;
 esac

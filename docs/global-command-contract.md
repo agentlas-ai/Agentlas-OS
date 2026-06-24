@@ -62,46 +62,61 @@ leave the user guessing how to run the agent after creation.
 
 ## Hephaestus Network 2.0 additions
 
-Hephaestus itself exposes three primary chat commands:
+Hephaestus has two user-facing surfaces:
+
+- **Agentlas native:** Agentlas Terminal and the Agentlas app accept plain
+  language. Native Agentlas/Hephaestus tools infer whether the request needs
+  build, network, cloud, call, upload, search, research, or Stormbreaker
+  behavior.
+- **External LLM hosts:** Claude Code, Codex, Gemini CLI, Antigravity, Cursor,
+  OpenCode, and similar plugin/MCP/prompt hosts expose exactly six explicit
+  user commands. Stormbreaker, research loadouts, and lower-level route options
+  are attached automatically from context.
+
+External LLM hosts expose these commands:
 
 - `/hep-build <request>` — create, repair, or package agents and teams.
 - `/hep-network <request>` — borrow public Hub agents into a temporary
   task force.
 - `/hep-cloud <request>` — use agents saved or shared through the
   signed-in user's Agentlas Cloud.
+- `/hep-search <request>` — compare Cloud and Hub candidates without invoking.
+- `/hep-call <slugs> <context>` — prepare explicitly named Hub/cloud agents.
+- `/hep-upload <agent-folder>` — ask Cloud-vs-Hub before any upload action.
 
 Network routing is backed by the local-first router
-(`docs/hephaestus-network-2.0.md`). Fresh installs expose only these three
-primary chat commands plus `/hep-search`, `/hep-call`, and the `/hep-upload`
-destination gate. Stormbreaker packet auto-run is available through the terminal runner `hep-storm`; terminal
-`hep-network` may also auto-start it when routing returns a runnable
-`execution_fabric` and `--plan-only` is not present. Required surfaces:
+(`docs/hephaestus-network-2.0.md`). Fresh installs expose only the six external
+commands above. `hep-storm` and other lower-level controls may remain available
+to native tools, MCP tool selection, automation, and debugging, but they are not
+part of the visible external command set. Stormbreaker packet auto-run is
+available through the runner when routing returns a runnable `execution_fabric`
+and `--plan-only` is not present. Required visible external surfaces:
 
 - Claude Code: `.claude/commands/hep-build.md`,
   `.claude/commands/hep-network.md`, `.claude/commands/hep-cloud.md`,
   `.claude/commands/hep-search.md`, `.claude/commands/hep-call.md`, and
-  `.claude/commands/hep-upload.md` (+ global symlinks).
+  `.claude/commands/hep-upload.md` (+ global copies).
 - Codex: `codex/prompts/hep-build.md`,
   `codex/prompts/hep-network.md`, `codex/prompts/hep-cloud.md`,
   `codex/prompts/hep-search.md`, `codex/prompts/hep-call.md`, and
   `codex/prompts/hep-upload.md`.
 - Gemini CLI: `gemini/extension/commands/hep-build.toml`,
   `hep-network.toml`, `hep-cloud.toml`, `hep-search.toml`, `hep-call.toml`,
-  and `hep-upload.toml`
-  (+ `~/.gemini/commands/` fallbacks).
+  and `hep-upload.toml` (+ `~/.gemini/commands/` fallbacks).
 - Antigravity: `antigravity/workflows/hep-build.md`,
   `hep-network.md`, `hep-cloud.md`, `hep-search.md`, `hep-call.md`, and
   `hep-upload.md`
   (+ `~/.gemini/antigravity*/global_workflows/`).
 - Cursor: command files under `cursor/plugin/commands/hep-*.md`, with
   `cursor/rules/hephaestus.mdc` as the per-project fallback — reacts to
-  `/hep-*` and `@Hephaestus`.
-- Terminal: `hep-build "<request>"` is the human-facing build alias,
+  the six `/hep-*` commands and `@Hephaestus`.
+- Terminal shell/debug: `hep-build "<request>"` is the build alias,
   `hep-network "<request>"` is the standalone Hub-only Network alias,
-  `hep-cloud "<request>"` is the cloud/share surface, `hep-search` and
-  `hep-call` are explicit power-user tools, `hep-upload <agent-folder>` asks
-  Cloud-vs-Hub first, and `hep-storm "<request>" --background` runs
-  Stormbreaker packets.
+  `hep-cloud "<request>"` is the cloud/share surface, `hep-search` compares
+  Cloud/Hub candidates, `hep-call` prepares exact named agents, and
+  `hep-upload <agent-folder>` asks Cloud-vs-Hub first. Native Agentlas Terminal
+  should prefer plain language over exposing these as required commands.
+  `hep-storm` is a lower-level automation helper.
 - Generic AGENTS.md / local-model runtimes: see
   `docs/runtime-fallback-adapters.md`.
 
