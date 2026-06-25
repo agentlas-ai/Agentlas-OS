@@ -420,6 +420,14 @@ ref:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | HEPHAESTUS_REF=main bash
 ```
 
+After the first install, Hephaestus keeps itself fresh automatically. When you
+use `hep-network`, `hep-build`, `hep-search`, `hep-call`, or the matching
+slash/prompt commands, the runtime starts a silent background check at most once
+per day. If a newer GitHub release is available, it updates
+`~/.agentlas/runtime/current` and refreshes the Hephaestus command/skill
+adapters that already exist on your machine. To turn this off, set
+`HEPHAESTUS_AUTO_UPDATE=0` before running Hephaestus.
+
 ### Option A. Claude Code plugin
 
 Open your normal OS terminal, not the Claude chat box, and run:

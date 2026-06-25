@@ -1,8 +1,9 @@
 """Runtime update checks for the Hephaestus CLI.
 
-The route path only does a small TTL-gated check and prints to stderr. The
-explicit ``hephaestus update`` command can install the latest runtime into
-``~/.agentlas/runtime/<version>`` and atomically point ``current`` at it.
+The explicit ``hephaestus update`` command can install the latest runtime into
+``~/.agentlas/runtime/<version>`` and atomically point ``current`` at it. Normal
+command paths start a detached, fail-silent auto-update worker at most once per
+TTL window so the user's command does not wait on network or install work.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -25,6 +27,9 @@ LATEST_RELEASE_URL = os.environ.get(
 )
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 CORE_DIRS = ("bin", "agentlas_cloud", "ontology")
+HEP_COMMANDS = ("hep-build", "hep-network", "hep-cloud", "hep-search", "hep-call", "hep-upload")
+HEP_SKILLS = ("hephaestus-network", "hephaestus-cloud")
+AUTO_UPDATE_MARKER = "auto-update.json"
 
 
 def current_release(root: Path | None = None) -> str | None:
@@ -55,6 +60,45 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
     result.update(installed)
     result["status"] = "updated"
     return result
+
+
+def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> None:
+    """Start a fail-silent runtime auto-update check.
+
+    This function intentionally returns ``None`` for every outcome. It never
+    raises, never prints, and by default never performs network or install work
+    in the caller process.
+    """
+
+    try:
+        if _auto_update_disabled():
+            return
+        runtime_root = root or Path(__file__).resolve().parent.parent
+        current = current_release(runtime_root)
+        if not _is_comparable_release(current):
+            return
+        base = _runtime_base()
+        if (base / ".update.lock").exists():
+            return
+        marker_path = base / AUTO_UPDATE_MARKER
+        marker = _read_json(marker_path)
+        if _marker_recent(marker.get("last_started_epoch")):
+            return
+        _write_json(
+            marker_path,
+            {
+                **marker,
+                "last_started_epoch": int(time.time()),
+                "current": current,
+                "runtime_root": str(runtime_root),
+            },
+        )
+        if background:
+            _spawn_auto_update_worker(runtime_root)
+        else:
+            _run_auto_update_once(runtime_root)
+    except Exception:
+        return
 
 
 def maybe_print_update_notice(root: Path | None = None) -> None:
@@ -112,6 +156,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     base = _runtime_base()
     target = base / tag.lstrip("v")
     lock = base / ".update.lock"
+    adapter_sync: dict[str, Any] = {"updated": [], "skipped_missing": [], "failed": []}
     _acquire_lock(lock)
     try:
         with tempfile.TemporaryDirectory(prefix="hephaestus-update-") as tmp:
@@ -138,6 +183,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
                 shutil.rmtree(target)
             tmp_target.rename(target)
             _point_current_at(target)
+            adapter_sync = sync_installed_runtime_adapters(source)
     finally:
         try:
             lock.unlink()
@@ -148,6 +194,49 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
         "runtime_root": str(target),
         "current_link": str(base / "current"),
         "updated_to": tag,
+        "adapter_sync": adapter_sync,
+    }
+
+
+def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> dict[str, Any]:
+    """Refresh already-installed command and skill adapters from ``source``.
+
+    Only exact destination paths that already exist are overwritten. This keeps
+    auto-update from installing a runtime surface the user never set up.
+    """
+
+    home_dir = home or Path.home()
+    updated: list[str] = []
+    skipped_missing: list[str] = []
+    failed: list[dict[str, str]] = []
+
+    for src_rel, dest in _installed_adapter_file_targets(source, home_dir):
+        src = source / src_rel
+        if not src.exists() or not dest.exists():
+            skipped_missing.append(str(dest))
+            continue
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            updated.append(str(dest))
+        except Exception as exc:
+            failed.append({"path": str(dest), "error": str(exc)})
+
+    for src_rel, dest in _installed_adapter_dir_targets(source, home_dir):
+        src = source / src_rel
+        if not src.is_dir() or not dest.exists():
+            skipped_missing.append(str(dest))
+            continue
+        try:
+            _replace_directory(src, dest)
+            updated.append(str(dest))
+        except Exception as exc:
+            failed.append({"path": str(dest), "error": str(exc)})
+
+    return {
+        "updated": updated,
+        "skipped_missing": skipped_missing,
+        "failed": failed,
     }
 
 
@@ -187,6 +276,8 @@ def _release_status(current: str | None, latest: Any) -> str:
         return "unknown"
     if not current:
         return "missing_release_marker"
+    if not _is_comparable_release(current) or not _is_comparable_release(str(latest)):
+        return "unknown"
     if _version_tuple(str(latest)) > _version_tuple(str(current)):
         return "update_available"
     return "current"
@@ -201,8 +292,137 @@ def _version_tuple(value: str) -> tuple[int, ...]:
     return tuple(parts or [0])
 
 
+def _is_comparable_release(value: str | None) -> bool:
+    if not value:
+        return False
+    cleaned = value.strip().lstrip("vV")
+    return any(ch.isdigit() for ch in cleaned)
+
+
 def _runtime_base() -> Path:
     return Path(os.environ.get("HEPHAESTUS_RUNTIME_BASE") or Path.home() / ".agentlas" / "runtime")
+
+
+def _auto_update_disabled() -> bool:
+    return os.environ.get("HEPHAESTUS_AUTO_UPDATE", "1") == "0" or os.environ.get("HEPHAESTUS_UPDATE_CHECK", "1") == "0"
+
+
+def _marker_recent(epoch: Any, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
+    return isinstance(epoch, (int, float)) and time.time() - float(epoch) < ttl_seconds
+
+
+def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
+    runtime_root = root or Path(__file__).resolve().parent.parent
+    current = current_release(runtime_root)
+    marker_path = _runtime_base() / AUTO_UPDATE_MARKER
+    marker = _read_json(marker_path)
+    if not _is_comparable_release(current):
+        result = {"status": "skipped", "reason": "missing_or_uncomparable_release", "current": current}
+        _write_json(marker_path, {**marker, **result, "last_checked_epoch": int(time.time())})
+        return result
+
+    latest = fetch_latest_release(force=False)
+    latest_tag = latest.get("tag_name")
+    status = _release_status(current, latest_tag)
+    result: dict[str, Any] = {
+        "status": status,
+        "current": current,
+        "latest": latest_tag,
+        "last_checked_epoch": int(time.time()),
+    }
+    if status != "update_available":
+        _write_json(marker_path, {**marker, **result})
+        return result
+    if marker.get("last_applied_tag") == latest_tag and _marker_recent(marker.get("last_applied_epoch")):
+        result["status"] = "skipped"
+        result["reason"] = "already_applied_recently"
+        _write_json(marker_path, {**marker, **result})
+        return result
+
+    installed = install_latest_runtime(latest)
+    result.update(installed)
+    result["status"] = "updated"
+    result["last_applied_tag"] = latest_tag
+    result["last_applied_epoch"] = int(time.time())
+    _write_json(marker_path, {**marker, **result})
+    return result
+
+
+def _spawn_auto_update_worker(runtime_root: Path) -> None:
+    env = os.environ.copy()
+    env["HEPHAESTUS_AUTO_UPDATE_WORKER"] = "1"
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
+    with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as stdout, open(os.devnull, "wb") as stderr:
+        subprocess.Popen(
+            [sys.executable, "-m", "agentlas_cloud.update", "--auto-update-worker", str(runtime_root)],
+            cwd=str(runtime_root),
+            env=env,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            close_fds=True,
+            start_new_session=True,
+        )
+
+
+def _installed_adapter_file_targets(source: Path, home: Path) -> list[tuple[Path, Path]]:
+    targets: list[tuple[Path, Path]] = []
+    for command in HEP_COMMANDS:
+        targets.extend(
+            [
+                (Path(".claude") / "commands" / f"{command}.md", home / ".claude" / "commands" / f"{command}.md"),
+                (Path("codex") / "prompts" / f"{command}.md", home / ".codex" / "prompts" / f"{command}.md"),
+                (Path("cursor") / "plugin" / "commands" / f"{command}.md", home / ".cursor" / "commands" / f"{command}.md"),
+                (Path("opencode") / "commands" / f"{command}.md", home / ".config" / "opencode" / "commands" / f"{command}.md"),
+                (Path("antigravity") / "workflows" / f"{command}.md", home / ".gemini" / "antigravity" / "global_workflows" / f"{command}.md"),
+                (
+                    Path("antigravity") / "workflows" / f"{command}.md",
+                    home / ".gemini" / "antigravity-ide" / "global_workflows" / f"{command}.md",
+                ),
+                (
+                    Path("gemini") / "extension" / "commands" / f"{command}.toml",
+                    home / ".gemini" / "commands" / f"{command}.toml",
+                ),
+                (
+                    Path("gemini") / "extension" / "commands" / f"{command}.toml",
+                    home / ".gemini" / "hephaestus-extension-source" / "commands" / f"{command}.toml",
+                ),
+            ]
+        )
+    return [(src_rel, dest) for src_rel, dest in targets if (source / src_rel).exists()]
+
+
+def _installed_adapter_dir_targets(source: Path, home: Path) -> list[tuple[Path, Path]]:
+    targets: list[tuple[Path, Path]] = []
+    if (source / "gemini" / "extension").is_dir():
+        targets.append((Path("gemini") / "extension", home / ".gemini" / "hephaestus-extension-source"))
+    for skill in HEP_SKILLS:
+        targets.extend(
+            [
+                (Path("skills") / skill, home / ".agents" / "skills" / skill),
+                (Path("skills") / skill, home / ".cursor" / "skills" / skill),
+                (Path("openclaw") / "skills" / skill, home / ".openclaw" / "skills" / skill),
+                (Path("skills") / skill, home / ".hermes" / "skills" / skill),
+            ]
+        )
+    return [(src_rel, dest) for src_rel, dest in targets if (source / src_rel).is_dir()]
+
+
+def _replace_directory(src: Path, dest: Path) -> None:
+    tmp = dest.parent / f".{dest.name}.tmp-{os.getpid()}"
+    if tmp.exists() or tmp.is_symlink():
+        if tmp.is_dir() and not tmp.is_symlink():
+            shutil.rmtree(tmp)
+        else:
+            tmp.unlink()
+    shutil.copytree(src, tmp)
+    if dest.exists() or dest.is_symlink():
+        if dest.is_dir() and not dest.is_symlink():
+            shutil.rmtree(dest)
+        else:
+            dest.unlink()
+    tmp.rename(dest)
 
 
 def _download(url: str, path: Path) -> None:
@@ -258,3 +478,18 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     tmp.replace(path)
+
+
+def _main(argv: list[str] | None = None) -> int:
+    args = argv if argv is not None else sys.argv[1:]
+    if len(args) == 2 and args[0] == "--auto-update-worker":
+        try:
+            _run_auto_update_once(Path(args[1]))
+        except Exception:
+            return 0
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

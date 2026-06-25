@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .runtime import AgentlasMockStore, compile_runtime_bundle, read_agent_file, run_setup_wizard, scan_agent_folder
-from .update import maybe_print_update_notice, run_update, write_python_shims
+from .update import maybe_auto_update, run_update, write_python_shims
 
 
 RESEARCH_SEARCH_PROVIDERS = ("ddg-html", "news-rss", "github", "jina")
@@ -758,7 +758,7 @@ def main(argv: list[str] | None = None) -> int:
         from .networking import init_networking, search_agents
         from .networking.bootstrap import networking_home
 
-        maybe_print_update_notice()
+        maybe_auto_update()
         init_networking(networking_home())
         return emit(
             search_agents(
@@ -773,7 +773,7 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.bootstrap import networking_home
         from .networking.search_call import parse_local_inventory
 
-        maybe_print_update_notice()
+        maybe_auto_update()
         init_networking(networking_home())
         context = args.context_text or " ".join(args.context).strip()
         if not context:
@@ -793,7 +793,7 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.bootstrap import networking_home
         from .networking.stormbreaker_runner import run_stormbreaker_decision
 
-        maybe_print_update_notice()
+        maybe_auto_update()
         home = networking_home()
         init_networking(home)
         session_inventory = None
@@ -885,7 +885,7 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.bootstrap import networking_home
         from .networking.stormbreaker_runner import run_stormbreaker_decision, run_stormbreaker_query
 
-        maybe_print_update_notice()
+        maybe_auto_update()
         home = networking_home()
         init_networking(home)
         session_inventory = None
