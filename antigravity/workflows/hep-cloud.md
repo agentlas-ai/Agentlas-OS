@@ -1,6 +1,7 @@
+Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
+
 # /hep-cloud
 
-Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
 Search ONLY the signed-in user's own Agentlas cloud packages (보관함) and route
 the request to one of them. Owner-scoped leg of the three-scope model:

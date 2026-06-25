@@ -1,10 +1,10 @@
 ---
 description: Build, repair, or package Agentlas agents and teams with Hephaestus.
 ---
+Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
 # /hep-build
 
-Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
 Run Hephaestus, the Agentlas Core Engine builder, inside this Antigravity
 workspace. The request is the text the user typed after `/hep-build`.

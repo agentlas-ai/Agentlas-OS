@@ -107,7 +107,7 @@ Fresh installs and updates prune the old visible `/hephaestus` chat command so
 new users see the clean command surface above: six explicit commands in
 external LLM hosts, and plain-language native routing inside Agentlas.
 
-## New In v0.7.26
+## New In v0.7.27
 
 - **Update fallback on every command.** Each `/hep-*` command/prompt now starts
   with a one-line fallback: run `hephaestus update` if automatic update did not
@@ -471,7 +471,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.26
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.27
 codex plugin add hephaestus@agentlas-core-engine
 ```
 

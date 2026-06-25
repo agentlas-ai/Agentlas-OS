@@ -44,7 +44,21 @@ def test_standalone_build_wrapper_points_to_hephaestus_build() -> None:
     assert "/hep-build create a finance agent" in completed.stdout
 
 
-def test_all_hep_command_surfaces_include_update_fallback_line() -> None:
+def _first_command_body_line(path: Path) -> str:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if path.suffix == ".toml":
+        start = lines.index('prompt = """') + 1
+    elif lines and lines[0] == "---":
+        start = lines.index("---", 1) + 1
+    else:
+        start = 0
+    for line in lines[start:]:
+        if line.strip():
+            return line
+    return ""
+
+
+def test_all_hep_command_surfaces_start_body_with_update_fallback_line() -> None:
     command_dirs = [
         ROOT / "claude" / "plugins" / "agentlas-core-engine-meta-agent" / "commands",
         ROOT / ".claude" / "commands",
@@ -62,5 +76,5 @@ def test_all_hep_command_surfaces_include_update_fallback_line() -> None:
         files.extend(sorted(directory.glob("hep-*.toml")))
 
     assert files
-    missing = [str(path.relative_to(ROOT)) for path in files if UPDATE_FALLBACK not in path.read_text(encoding="utf-8")]
-    assert missing == []
+    misplaced = [str(path.relative_to(ROOT)) for path in files if _first_command_body_line(path) != UPDATE_FALLBACK]
+    assert misplaced == []

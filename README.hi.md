@@ -291,7 +291,7 @@ Hephaestus सिर्फ prompt answer नहीं बनाता। यह 
 | "इस workflow के लिए team/company बनाओ" | `20-multi-agent-team-builder` | HQ, PM Soul, Memory Curator, Policy Gate, eval, QA और handoff वाली multi-agent team |
 | "इस existing agent/repo/workspace को package करो" | `30-agentlas-packager` | Desktop import, terminal, Codex, Claude, Gemini या public GitHub release के लिए साफ Agentlas package |
 
-## v0.7.26 में नया
+## v0.7.27 में नया
 
 - **हर command में update fallback।** हर `/hep-*` command/prompt की शुरुआत में लिखा है कि automatic update न चले तो `hephaestus update` run करें।
 - **Current version फिर भी चलता है।** Notice साफ कहता है कि update optional है; installed command बिना update भी काम करता है।

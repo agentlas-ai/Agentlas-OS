@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v0.7.27 - 2026-06-25
+
+- **Update fallback is the first command body line.** The `/hep-*` chat
+  command/prompt surfaces now put the `hephaestus update` fallback before the
+  command title, immediately after host metadata where metadata is required.
+- **Regression coverage locks the placement.** The command-surface test now
+  verifies that the fallback is the first non-metadata body line, not merely
+  present somewhere in the file.
+- **Machine-readable CLI output is unchanged.** The fallback remains limited to
+  chat command/prompt surfaces, not JSON-emitting shell commands.
+
 ## v0.7.26 - 2026-06-25
 
 - **Update fallback on every `/hep-*` command surface.** Claude, Codex,
