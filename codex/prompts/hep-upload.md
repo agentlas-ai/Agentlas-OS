@@ -21,14 +21,20 @@ Upload to Agentlas Hub? Other people can borrow it.
 Do not package, publish, register, add-source, reindex, or call an upload API
 until the user answers Cloud or Agentlas Hub.
 
+After the user chooses a destination, use the bundled Hephaestus runtime gate.
+It must work for any local package folder and must not assume any private
+checkout.
+
 After the user chooses:
 
 - Cloud: upload as the signed-in owner's private Cloud package. Prefer
-  `agentlas cloud publish <agent-folder> --visibility private-link --json`.
-- Agentlas Hub: publish through the Forge gate. Prefer
-  `node scripts/validate-routing-cards.mjs --path <agent-folder> --json`, then
-  `node scripts/forge-sync.mjs --path <agent-folder> --publish --json` from the
-  Forge root when the folder is a Forge package.
+  `bin/hephaestus publish <agent-folder> --visibility private-link`.
+- Agentlas Hub: publish to the public marketplace. Prefer
+  `bin/hephaestus publish <agent-folder> --visibility marketplace`.
+
+For Hub upload, the bundled gate blocks missing or generic `publicProfile`, bad
+`routing-card.json`, missing package hashes, static security blockers, and
+packages that exceed the public bundle limits.
 
 If the destination is answered but the target folder is ambiguous, ask for the
 exact agent folder before running any upload.

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## v0.7.25 - 2026-06-25
+
+- **Self-contained `/hep-upload`.** Cloud and Hub uploads now use the bundled
+  Hephaestus package/publish runtime instead of any private local checkout or
+  external publish script. Hub uploads run through
+  `bin/hephaestus publish <agent-folder> --visibility marketplace`; private
+  Cloud uploads use `--visibility private-link`.
+- **Public upload gates moved into Hephaestus.** The bundled uploader now
+  validates marketplace `publicProfile` copy, `routing-card/2.0` readiness,
+  static security, bundle size limits, and the server-compatible package hash
+  before registration.
+- **Routing-card hash repair.** Auto-migrated routing cards now get
+  `agent_card_ref.content_hash` and `source.package_hash` instead of null
+  placeholders, and the bundled meta-agent card is promoted to
+  `routing_ready` with benchmark fixtures.
+
 ## v0.7.24 - 2026-06-25
 
 - **Silent runtime auto-update.** `hep-network`, `hep-build`, `hep-search`,
@@ -98,7 +114,7 @@
 - Kept local `trusted` routing-card behavior as the local-first Network
   trust path while keeping upload and Hub publication security review as a
   separate gate.
-- Removed Mason-local package bucket label leakage from routing docs,
+- Removed developer-local package bucket label leakage from routing docs,
   benchmarks, adapter skills, CLI tier choices, ontology contracts, and
   mirrored runtime packages.
 - Tightened public safety scanning so real `/Users/...` and `/Volumes/...`
@@ -116,7 +132,7 @@
   `main` one-touch installer instead of release-pinned install URLs.
 - Added deterministic GUI shortcut launch for Hub-distributed packages:
   `/hep-network startup` now restores the Startup Founder Studio cloud package
-  and launches its packaged GUI even when Mason's local `private` folder is not
+  and launches its packaged GUI even when the developer's local `private` folder is not
   present.
 - Changed Network MCP/GUI shortcut defaults to ignore local `private` and `restricted`
   routing cards. Local routing is now an explicit operator/debug escape hatch

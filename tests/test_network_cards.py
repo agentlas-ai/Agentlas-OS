@@ -149,6 +149,8 @@ def test_migrate_package_produces_draft(tmp_path):
     assert card["routing_status"] == "draft"
     assert card["id"] == "restricted/researcher-099-sample-packager"
     assert card["risk_profile"]["capabilities_at_risk"] == ["file_write"]
+    assert card["agent_card_ref"]["content_hash"].startswith("sha256:")
+    assert card["source"]["package_hash"].startswith("sha256:")
     assert effective_status(card) in ("draft", "searchable")
 
     again = migrate_package(package, tier="restricted", home=home)

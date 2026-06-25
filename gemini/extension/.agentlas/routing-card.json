@@ -1,36 +1,54 @@
 {
   "agent_card_ref": {
-    "content_hash": null,
+    "content_hash": "04919af421b4fc241de19586bd4da0a1efd191e4f47298ee78d03623e30698d4",
     "path": ".agentlas/agent-card.json",
-    "slug": ""
+    "slug": "agentlas-meta-agent"
   },
-  "aliases": [],
-  "anti_triggers": [],
-  "approval_requirements": [],
+  "aliases": [
+    "hephaestus",
+    "agentlas-core-engine",
+    "agentlas-meta-agent"
+  ],
+  "anti_triggers": [
+    {
+      "locale": "ko",
+      "text": "법률 계약서를 검토하고 소송 전략을 작성해줘"
+    },
+    {
+      "locale": "ko",
+      "text": "인스타그램 게시물을 바로 업로드해줘"
+    },
+    {
+      "locale": "en",
+      "text": "generate a standalone marketing image"
+    },
+    {
+      "locale": "en",
+      "text": "run live stock trading or portfolio rebalancing"
+    }
+  ],
+  "approval_requirements": [
+    "Ask before public publishing, production deployment, paid API spend, destructive file actions, or permission widening."
+  ],
   "approval_scope": {
     "grant": "per_call",
     "ttl_seconds": null
   },
-  "benchmark_fixtures": null,
-  "canonical_id": "local/",
+  "benchmark_fixtures": "benchmarks/routing/local-hephaestus.jsonl",
+  "canonical_id": "local/hephaestus-meta-agent",
   "capabilities": [
-    "single_agent_builder",
-    "multi_agent_team_builder",
-    "agentlas_packager",
-    "self_evolving_single_agent",
+    "create_single_agents",
+    "build_agent_teams",
     "package_existing_agents",
-    "agent_repo_design",
-    "agent_team_design",
-    "runtime_adapter_generation",
-    "global_command_generation",
-    "memory_ticket_contracts",
-    "sitemap_task_bias",
-    "pm_soul_architecture",
-    "llm_runtime_architecture",
-    "public_plugin_packaging",
-    "install_verification"
+    "repair_agent_repos",
+    "generate_routing_cards",
+    "verify_agent_packages",
+    "publish_cloud_agents",
+    "sync_runtime_adapters",
+    "manage_memory_tickets",
+    "coordinate_ontology_runtime"
   ],
-  "card_quality_score": 0.0,
+  "card_quality_score": 0.91,
   "card_version": "2.0.0",
   "cloud_delegation_policy": "ask",
   "cost_hints": {
@@ -40,24 +58,36 @@
   "data_access": {
     "exports": [],
     "reads": [
-      "project_memory"
+      "project_memory",
+      "agent_package_files",
+      "routing_cards"
     ],
     "writes": [
-      "project_files"
+      "project_files",
+      "agent_package_contracts"
     ]
   },
-  "description": "Portable three-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
-  "domains": [],
+  "description": "Portable three-agent Agentlas meta-agent team for creating, repairing, packaging, validating, and publishing Agentlas-compatible agents and multi-agent teams across Codex, Claude Code, Gemini, Antigravity, Cursor, terminal, and AGENTS.md runtimes.",
+  "domains": [
+    "software",
+    "devops",
+    "research"
+  ],
   "entrypoints": {
     "agent": "AGENTS.md",
-    "canonical_command": "/hep-build"
+    "canonical_command": "/hep-build",
+    "terminal": "bin/hephaestus hep-build"
   },
-  "id": "local/",
-  "known_failure_cases": [],
+  "id": "local/hephaestus-meta-agent",
+  "known_failure_cases": [
+    "Requests that only need legal, medical, trading, or social-media execution should route to a domain agent instead of this builder.",
+    "Public upload is blocked until routing-card quality, publicProfile copy, static security, and package hash gates pass."
+  ],
   "locale_coverage": {
     "partial": [],
     "primary": "en",
     "ready": [
+      "ko",
       "en"
     ]
   },
@@ -66,49 +96,100 @@
     "reads": "project",
     "writes": "project"
   },
-  "name": "agentlas-meta-agent",
-  "name_ko": null,
-  "optional_inputs": [],
+  "name": "Hephaestus Agentlas Meta-Agent",
+  "name_ko": "헤파이스토스 Agentlas 메타 에이전트",
+  "optional_inputs": [
+    {
+      "description": "Existing agent, team, or plugin folder to repair or package.",
+      "name": "agent_folder",
+      "type": "path"
+    },
+    {
+      "description": "Desired public command slug for newly generated packages.",
+      "name": "global_command",
+      "type": "string"
+    },
+    {
+      "description": "Target runtime adapter set such as Codex, Claude Code, Gemini, Antigravity, Cursor, terminal, or AGENTS.md.",
+      "name": "runtime_targets",
+      "type": "array"
+    }
+  ],
   "quality": {
-    "benchmark_suites": [],
-    "evaluated_at": "2026-06-21T23:52:53+00:00",
+    "benchmark_suites": [
+      "benchmarks/routing/local-hephaestus.jsonl"
+    ],
+    "evaluated_at": "2026-06-25T00:00:00Z",
     "lint_version": "routing-card/2.0",
-    "score": 0.0
+    "score": 0.91
   },
   "required_inputs": [],
   "required_plugins": [],
-  "revision": 1,
+  "revision": 2,
   "risk_profile": {
-    "capabilities_at_risk": [],
+    "capabilities_at_risk": [
+      "file_write",
+      "cloud_call",
+      "publish"
+    ],
     "tier": "medium"
   },
-  "routing_status": "draft",
-  "routing_status_reason": "auto-migrated from agent-card.json; needs human review of triggers and benchmarks",
+  "routing_status": "routing_ready",
+  "routing_status_reason": "Human-repaired routing-card with concrete triggers, anti-triggers, benchmark fixtures, entrypoint, memory, and upload validation gates.",
   "schemaVersion": "routing-card/2.0",
   "source": {
     "kind": "local_path",
-    "package_hash": null,
-    "package_version": "0.7.24",
+    "package_hash": "sha256:11c24e32cb2d841c1e909340dfb747bdf7623388012044a725c033251208c1d1",
+    "package_version": "0.7.25",
     "ref": null
   },
-  "summary": "Portable three-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
-  "summary_ko": null,
+  "summary": "Build, repair, package, validate, and publish Agentlas-compatible agents and teams across major agent runtimes.",
+  "summary_ko": "Agentlas 호환 에이전트와 팀을 만들고, 고치고, 패키징하고, 검증하고, 공개/비공개 업로드까지 처리합니다.",
   "supported_runtimes": [
     "claude-code",
     "codex",
     "gemini-cli",
-    "agents-md"
+    "antigravity",
+    "cursor",
+    "terminal",
+    "agents-md",
+    "agentlas-desktop",
+    "agentlas-web"
   ],
   "trigger_examples": [
     {
-      "locale": "en",
-      "text": "agentlas-meta-agent"
+      "locale": "ko",
+      "text": "새 리서치 에이전트 만들어줘"
+    },
+    {
+      "locale": "ko",
+      "text": "이 로컬 에이전트를 Agentlas 구조로 패키징해줘"
+    },
+    {
+      "locale": "ko",
+      "text": "멀티 에이전트 팀을 오케스트레이터와 QA 게이트까지 포함해서 만들어줘"
+    },
+    {
+      "locale": "ko",
+      "text": "routing-card가 깨진 에이전트 저장소를 업로드 가능하게 고쳐줘"
     },
     {
       "locale": "en",
-      "text": "Portable three-agent meta-agent team with a local-first ontology runtime for"
+      "text": "create a self-evolving research agent"
+    },
+    {
+      "locale": "en",
+      "text": "package this existing Claude agent into Agentlas architecture"
+    },
+    {
+      "locale": "en",
+      "text": "repair an existing agent repo to match the Agentlas contracts"
+    },
+    {
+      "locale": "en",
+      "text": "publish this Agentlas package to the Hub after validation"
     }
   ],
   "type": "team",
-  "updated_at": "2026-06-21T23:52:53+00:00"
+  "updated_at": "2026-06-25T00:00:00Z"
 }

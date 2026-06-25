@@ -285,11 +285,11 @@ Hephaestus 不只是生成一段提示词。它会留下一个其他运行时可
 | “为这个 workflow 做一个 team/company” | `20-multi-agent-team-builder` | 带 HQ、PM Soul、Memory Curator、Policy Gate、eval、QA、handoff 的多智能体团队 |
 | “把这个已有 agent/repo/workspace 打包” | `30-agentlas-packager` | 可用于 Desktop import、terminal、Codex、Claude、Gemini 或公开 GitHub release 的 Agentlas 包 |
 
-## v0.7.24 新特性
+## v0.7.25 新特性
 
-- **首次安装后静默自动更新。** `hep-network`、`hep-build`、`hep-search`、`hep-call` 以及对应的 slash/prompt commands 现在最多每天启动一次后台更新检查。如果有新的 GitHub release，Hephaestus 会更新 `~/.agentlas/runtime/current`，不会阻塞当前命令。
-- **已安装的 adapters 也会更新。** 自动更新会从 release tarball 刷新已经存在的 Claude、Codex、Gemini、Antigravity、Cursor、OpenCode 和 AgentSkills command/skill adapters。没有安装过的 runtime 不会被新建。
-- **需要时可以关闭。** Auto-update 默认开启。运行 Hephaestus 前设置 `HEPHAESTUS_AUTO_UPDATE=0` 即可关闭；旧的 `HEPHAESTUS_UPDATE_CHECK=0` 仍然生效。
+- **`/hep-upload` 自带上传流程。** Cloud/Hub 上传不再依赖私有本地 checkout 或外部 publish script，而是使用 bundled Hephaestus package/publish runtime。
+- **内置 Hub 上传 gate。** marketplace 上传前会验证 `publicProfile`、`routing-card/2.0`、package hash、static security 和 bundle size。
+- **修复 routing-card migration。** 自动迁移的 card 不再输出 null package hash，bundled meta-agent card 也已恢复为 `routing_ready`。
 
 ## 架构
 

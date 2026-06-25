@@ -13,4 +13,8 @@ Upload to Agentlas Hub? Other people can borrow it.
 
 Do not package, publish, register, add-source, reindex, or call an upload API
 until the user answers Cloud or Agentlas Hub. Cloud means private-link owner
-Cloud upload. Agentlas Hub means Forge publish after routing-card validation.
+Cloud upload through `bin/hephaestus publish <agent-folder> --visibility
+private-link`. Agentlas Hub means public marketplace upload through
+`bin/hephaestus publish <agent-folder> --visibility marketplace` after the
+bundled publicProfile, routing-card, hash, static security, and bundle-size
+gates pass.

@@ -434,6 +434,43 @@ for name in sorted(contract_names):
     tpl_jsonl = Path("templates") / f"{name}.jsonl.tpl"
     if not tpl.exists() and not tpl_jsonl.exists():
         raise SystemExit(f"contract-injection-map references unknown template: {name}")
+
+# Append-only event ledgers: writers are runtime-gated off on export
+# (runtimeGraphWriteEnabled / runtimePromotionAllowed / runtimeFirstClassRecallEnabled
+# = false). Their contracts in docs/skill-lifecycle-promotion.md and
+# docs/super-ontology-candidate-contract.md require them to be EMPTY on export, so a
+# frozen/empty ledger here is the verified-correct state, not a stalled writer. This
+# gate enforces that invariant and blocks any real evidence/decision/trial/replay row
+# (a privacy + overclaim leak) from being committed into the public-core export.
+empty_on_export = [
+    ".agentlas/skill-trials.jsonl",
+    ".agentlas/curator-decisions.jsonl",
+    ".agentlas/super-ontology-evidence.jsonl",
+    ".agentlas/super-ontology-replays.jsonl",
+]
+for rel in empty_on_export:
+    records = [ln for ln in Path(rel).read_text(encoding="utf-8").splitlines() if ln.strip()]
+    if records:
+        raise SystemExit(
+            f"append-only ledger must be empty on export (contract: 'Empty on export'): "
+            f"{rel} has {len(records)} record(s)"
+        )
+
+# Seeded ledgers may carry rows (validation results, schema-visibility bridge seed),
+# but every non-empty line must stay well-formed JSON so future appends remain valid.
+seeded_jsonl = [
+    ".agentlas/validation-ledger.jsonl",
+    ".agentlas/memory-tickets.jsonl",
+    ".agentlas/super-ontology-memory-bridge.jsonl",
+]
+for rel in seeded_jsonl:
+    for n, ln in enumerate(Path(rel).read_text(encoding="utf-8").splitlines(), start=1):
+        if not ln.strip():
+            continue
+        try:
+            json.loads(ln)
+        except Exception as exc:
+            raise SystemExit(f"malformed jsonl line {n} in {rel}: {exc}")
 PY
 
 if grep -R -nE '00-meta|05-mode|10-agent-repo|20-runtime|30-memory|40-pm|50-policy|60-eval|70-sitemap|80-llm' \

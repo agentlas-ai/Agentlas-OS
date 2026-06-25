@@ -1,6 +1,6 @@
 ---
 name: hephaestus-network
-description: "Use when the user types /hep-network, mentions @Hephaestus, or asks to find/invoke the right Agentlas Hub agent, team, or plugin for a task. For public demos, distribution docs, README GIFs, and user-facing MCP tests, Hephaestus Network means Hub-first/Hub-only invocation, not Mason's local private scope folders."
+description: "Use when the user types /hep-network, mentions @Hephaestus, or asks to find/invoke the right Agentlas Hub agent, team, or plugin for a task. For public demos, distribution docs, README GIFs, and user-facing MCP tests, Hephaestus Network means Hub-first/Hub-only invocation, not developer-local private scope folders."
 metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Hephaestus"}}
 ---
 
@@ -12,7 +12,7 @@ guess an agent yourself when this skill is active — the router or Hub decides.
 ## 0. Hub-first rule for demos and user distribution
 
 For public demos, README GIFs, packaged-agent distribution, Threads/Instagram
-share kits, or any request where the end user will not have Mason's local
+share kits, or any request where the end user will not have developer-local
 `private`, `restricted`, or plugin inventory, do **not** route to local cards.
 Use Agentlas Hub invocation only:
 
@@ -23,7 +23,7 @@ Use Agentlas Hub invocation only:
 - A bundled local agent folder is applied separately by opening/reading its
   `AGENTS.md`; it is not the same thing as a Hephaestus Network Hub call.
 
-Only use local debug routing when the user explicitly asks to test Mason's
+Only use local debug routing when the user explicitly asks to test this machine's
 installed local inventory or a named local folder.
 
 ## 1. Resolve the runner

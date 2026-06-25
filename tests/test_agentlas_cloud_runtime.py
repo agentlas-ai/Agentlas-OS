@@ -32,6 +32,29 @@ def test_setup_wizard_repairs_agentlas_manifest(tmp_path: Path):
     assert (agent / ".agentlas" / "security-scan.json").exists()
 
 
+def test_setup_wizard_preserves_public_profile_and_bundle_ignores_extra_manifest_keys(tmp_path: Path):
+    agent = make_agent(tmp_path)
+    public_profile = {
+        "titleKo": "인스타그램 운영 에이전트",
+        "descriptionKo": "주간 인스타그램 게시물 기획, 캡션, 운영 체크리스트를 생성하는 에이전트입니다.",
+        "guide": {
+            "what-it-does": ["주간 콘텐츠 방향을 정합니다."],
+            "best-for": ["소규모 브랜드 인스타그램 운영"],
+            "expected-outputs": ["캡션 초안과 게시 일정"],
+            "careful-with": ["계정 권한과 토큰은 직접 입력해야 합니다."],
+        },
+    }
+    (agent / "agentlas.json").write_text(json.dumps({"schemaVersion": "0", "publicProfile": public_profile}), encoding="utf-8")
+
+    run_setup_wizard(agent, "instagram-operator")
+    manifest = json.loads((agent / "agentlas.json").read_text(encoding="utf-8"))
+    bundle = compile_runtime_bundle(agent)
+
+    assert manifest["schemaVersion"] == "1.0"
+    assert manifest["publicProfile"] == public_profile
+    assert bundle["agent"] == "instagram-operator"
+
+
 def test_security_scan_blocks_secret_without_printing_value(tmp_path: Path):
     agent = make_agent(tmp_path)
     (agent / ".env").write_text(f"OPENAI_API_KEY={FAKE_SECRET}\n", encoding="utf-8")

@@ -1,4 +1,4 @@
-"""Migrate existing Forge/Agentlas packages to routing-card v2.
+"""Migrate existing Agentlas packages to routing-card v2.
 
 Default status is ``draft`` for Hub/private/restricted/plugin cards, while local cards use
 ``trusted`` so they can be auto-routed without extra local promotion.
@@ -14,6 +14,7 @@ from typing import Any
 from .bootstrap import read_json, utc_now
 from .card_store import save_card
 from .domains import DOMAIN_IDS, classify_domains
+from ..runtime import collect_package_files, package_hash
 
 SCHEMA = "routing-card/2.0"
 DEFAULT_RUNTIMES = ["claude-code", "codex", "gemini-cli", "agents-md"]
@@ -45,6 +46,25 @@ def _derive_capabilities(card: dict[str, Any], slug: str) -> list[str]:
         if capability and capability not in seen:
             seen.append(capability)
     return seen[:16]
+
+
+def _file_content_hash(path: Path) -> str | None:
+    try:
+        import hashlib
+
+        return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+    except OSError:
+        return None
+
+
+def _package_content_hash(pkg_dir: Path) -> str:
+    return package_hash(
+        [
+            item
+            for item in collect_package_files(pkg_dir)
+            if item.path != "agentlas.json" and not item.path.endswith(".agentlas/routing-card.json")
+        ]
+    )
 
 
 def _safety_risk(card: dict[str, Any]) -> dict[str, Any]:
@@ -82,11 +102,11 @@ def migrate_package(
         else:
             card_type = "agent"
 
-    name = str(agent_card.get("name") or plugin_manifest.get("name") or manifest.get("name") or slug)
+    name = str(agent_card.get("name") or plugin_manifest.get("name") or manifest.get("name") or slug).strip() or slug
     name_ko = agent_card.get("display_name_ko") or agent_card.get("name_ko")
     description = str(
         agent_card.get("description") or plugin_manifest.get("description") or manifest.get("description") or name
-    ).strip()
+    ).strip() or name
     summary = description[:240]
 
     runtimes = agent_card.get("runtime_targets") or agent_card.get("runtime")
@@ -124,7 +144,8 @@ def migrate_package(
     if not domains:
         domains = classify_domains(name, description, " ".join(str(c) for c in capabilities))
 
-    card_id = f"{tier}/{slug}"
+    card_slug = slug.strip() or _snake(name) or "agent"
+    card_id = f"{tier}/{card_slug}"
     default_local_status = "trusted" if tier == "local" else "draft"
 
     card: dict[str, Any] = {
@@ -166,7 +187,7 @@ def migrate_package(
         "card_quality_score": 0.0,
         "routing_status": default_local_status,
         "routing_status_reason": "auto-migrated from agent-card.json; needs human review of triggers and benchmarks",
-        "agent_card_ref": {"path": ".agentlas/agent-card.json", "slug": slug, "content_hash": None}
+        "agent_card_ref": {"path": ".agentlas/agent-card.json", "slug": slug, "content_hash": _file_content_hash(pkg_dir / ".agentlas" / "agent-card.json")}
         if agent_card
         else None,
         "data_access": {"reads": ["project_memory"], "writes": ["project_files"], "exports": []},
@@ -177,7 +198,7 @@ def migrate_package(
         "source": {
             "kind": "local_path",
             "ref": None,
-            "package_hash": None,
+            "package_hash": _package_content_hash(pkg_dir),
             "package_version": manifest.get("version") or agent_card.get("version"),
         },
         "updated_at": utc_now(),

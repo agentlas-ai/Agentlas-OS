@@ -97,9 +97,9 @@ Meta-Agent team:
    must answer: who it's for, what the user gives it, what it does in plain
    words, what it returns (name ≥ 2 deliverables), what it can access, and where
    a human approves. This is BYOK work — the builder's own model writes the copy.
-   When the Forge is present, follow `docs/market-page-copy-gate.md` and verify
-   with `node scripts/lint-public-profile.mjs --path <pkg>` until clean.
-   Recompute the package hash after writing `agentlas.json`.
+   Verify with the bundled runtime gate:
+   `bin/hephaestus package <pkg> --visibility marketplace`. Recompute the
+   package hash after writing `agentlas.json`.
 9. If a package was created or repaired in the current workspace, register it to
    local discovery before reporting:
    ```bash

@@ -50,6 +50,20 @@ def main(argv: list[str] | None = None) -> int:
     bundle = sub.add_parser("bundle", help="Compile runtime bundle")
     bundle.add_argument("folder")
 
+    package_cmd = sub.add_parser("package", help="Package and statically review an agent folder for Cloud/Hub upload")
+    package_cmd.add_argument("folder")
+    package_cmd.add_argument("--slug")
+    package_cmd.add_argument("--visibility", choices=["marketplace", "private-link"], default="marketplace")
+    package_cmd.add_argument("--no-write", action="store_true", help="Do not refresh agentlas.json before review")
+
+    publish_cmd = sub.add_parser("publish", help="Register a reviewed package with Agentlas Cloud or Hub")
+    publish_cmd.add_argument("folder")
+    publish_cmd.add_argument("--slug")
+    publish_cmd.add_argument("--visibility", choices=["marketplace", "private-link"], default="marketplace")
+    publish_cmd.add_argument("--base-url", default=None)
+    publish_cmd.add_argument("--dry-run", action="store_true", help="Package and review without registering")
+    publish_cmd.add_argument("--no-open", action="store_true", help="Do not open a browser for sign-in")
+
     read = sub.add_parser("read-agent-file", help="Lazy file read with manifest gates")
     read.add_argument("folder")
     read.add_argument("path")
@@ -427,6 +441,31 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "bundle":
         return emit(compile_runtime_bundle(args.folder))
+    if args.command == "package":
+        from .upload import UploadError, package_agent
+
+        try:
+            result = package_agent(args.folder, slug=args.slug, visibility=args.visibility, write_manifest=not args.no_write)
+        except UploadError as exc:
+            return emit({"status": "error", "error": str(exc)}) or 1
+        emit(result)
+        return 1 if result.get("status") == "blocked" else 0
+    if args.command == "publish":
+        from .upload import UploadError, publish_agent
+
+        try:
+            result = publish_agent(
+                args.folder,
+                slug=args.slug,
+                visibility=args.visibility,
+                base_url=args.base_url,
+                dry_run=args.dry_run,
+                interactive=not args.no_open,
+            )
+        except UploadError as exc:
+            return emit({"status": "error", "error": str(exc)}) or 1
+        emit(result)
+        return 1 if result.get("status") == "blocked" else 0
     if args.command == "read-agent-file":
         return emit(read_agent_file(args.folder, args.path))
     if args.command == "field-test":

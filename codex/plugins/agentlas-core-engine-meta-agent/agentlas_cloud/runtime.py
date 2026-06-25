@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import fnmatch
 import hashlib
 import json
@@ -268,23 +269,39 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
     manifest = build_manifest(files, name or base.name)
     scan = scan_files(files)
     state = "Ready for MCP call" if scan.verdict != "BLOCK" else "Blocked"
+    manifest_payload = manifest.to_json()
+    existing_manifest = _read_existing_manifest(base)
+    if existing_manifest:
+        # Preserve uploader-authored display metadata such as publicProfile while
+        # refreshing the runtime contract fields that Hephaestus owns.
+        manifest_payload = {**existing_manifest, **manifest_payload}
     if write:
-        (base / "agentlas.json").write_text(json.dumps(manifest.to_json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        (base / "agentlas.json").write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         agentlas_dir = base / ".agentlas"
         agentlas_dir.mkdir(exist_ok=True)
         (agentlas_dir / "security-scan.json").write_text(json.dumps(scan.to_json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {
         "status": state,
-        "manifest": manifest.to_json(),
+        "manifest": manifest_payload,
         "scanReport": scan.to_json(),
         "stateTransitionLog": ["Started setup wizard", "Generated agentlas.json", f"Security scan: {scan.verdict}", state],
         "blockers": [] if state == "Ready for MCP call" else ["Security scan blocked package upload."],
     }
 
 
+def _read_existing_manifest(base: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads((base / "agentlas.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError, OSError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def load_manifest(root: str | Path) -> AgentlasManifest:
     payload = json.loads((Path(root) / "agentlas.json").read_text(encoding="utf-8"))
-    return AgentlasManifest(**payload)
+    allowed = {field.name for field in dataclasses.fields(AgentlasManifest)}
+    filtered = {key: value for key, value in payload.items() if key in allowed}
+    return AgentlasManifest(**filtered)
 
 
 def compile_runtime_bundle(root: str | Path) -> dict[str, Any]:
