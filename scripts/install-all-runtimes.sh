@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-version="${HEPHAESTUS_REF:-v0.7.29}"
+version="${HEPHAESTUS_REF:-v0.7.30}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Hephaestus}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -347,6 +347,25 @@ install_codex() {
   ok=$((ok + 1))
 }
 
+stamp_plugin_cache_releases() {
+  local root dir count=0
+  for root in \
+    "$HOME/.claude/plugins/cache/$marketplace_name/$plugin_name" \
+    "${CODEX_HOME:-$HOME/.codex}/plugins/cache/$marketplace_name/$plugin_name"
+  do
+    [[ -d "$root" ]] || continue
+    while IFS= read -r -d '' dir; do
+      [[ -f "$dir/bin/hephaestus" ]] || continue
+      printf '%s\n' "$version" > "$dir/RELEASE" || true
+      write_python3_shim "$dir/bin" || true
+      count=$((count + 1))
+    done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+  done
+  if [[ "$count" -gt 0 ]]; then
+    log "Stamped plugin cache release markers: $count"
+  fi
+}
+
 # Codex 플러그인은 MCP 번들을 지원하지 않으므로 config.toml에 직접 등록한다.
 # rmcp 클라이언트 플래그가 없으면 HTTP MCP 자체가 붙지 않는다.
 register_codex_mcp() {
@@ -659,6 +678,7 @@ main() {
   install_agents_skills || { warn "Universal ~/.agents/skills install failed."; failed=$((failed + 1)); }
   install_claude || { warn "Claude install failed."; failed=$((failed + 1)); }
   install_codex || { warn "Codex install failed."; failed=$((failed + 1)); }
+  stamp_plugin_cache_releases || warn "Plugin cache release marker refresh failed."
   install_gemini || { warn "Gemini install failed."; failed=$((failed + 1)); }
   install_antigravity || { warn "Antigravity install failed."; failed=$((failed + 1)); }
   install_cursor || { warn "Cursor install failed."; failed=$((failed + 1)); }

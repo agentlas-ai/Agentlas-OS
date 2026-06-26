@@ -209,3 +209,26 @@ def test_bin_hephaestus_upload_rejects_missing_visibility_value(tmp_path: Path):
 
     assert completed.returncode == 2
     assert "Missing value for --visibility" in completed.stderr
+
+
+def test_bin_hephaestus_ignores_shadow_agentlas_cloud_in_cwd(tmp_path: Path):
+    shadow = tmp_path / "shadow-project"
+    fake_home = tmp_path / "home"
+    (shadow / "agentlas_cloud").mkdir(parents=True)
+    fake_home.mkdir()
+    (shadow / "agentlas_cloud" / "__init__.py").write_text("", encoding="utf-8")
+    (shadow / "agentlas_cloud" / "__main__.py").write_text("raise SystemExit(99)\n", encoding="utf-8")
+
+    repo = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [str(repo / "bin" / "hephaestus"), "auth", "status"],
+        cwd=shadow,
+        env={**os.environ, "HOME": str(fake_home), "PYTHONUTF8": "1"},
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout)["status"] == "signed_out"

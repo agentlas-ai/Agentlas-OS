@@ -107,8 +107,14 @@ Fresh installs and updates prune the old visible `/hephaestus` chat command so
 new users see the clean command surface above: six explicit commands in
 external LLM hosts, and plain-language native routing inside Agentlas.
 
-## New In v0.7.29
+## New In v0.7.30
 
+- **One-touch install hardening.** Fresh installs now stamp `RELEASE` markers
+  and Python shims into Claude Code and Codex plugin caches, and the verifier
+  fails if `update --check` cannot see the current release.
+- **Stable runner imports.** The bundled `bin/hephaestus` forces its own
+  runtime root ahead of the current working directory so another
+  `agentlas_cloud/` folder cannot hijack the installed command.
 - **Plugin-cache self-healing updates.** `hephaestus update` now recovers
   installs that are missing a `RELEASE` marker and refreshes existing Claude
   Code and Codex plugin cache directories, so standalone runtime updates do
@@ -505,7 +511,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.29
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.30
 codex plugin add hephaestus@agentlas-core-engine
 ```
 

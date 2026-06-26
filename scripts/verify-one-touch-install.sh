@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo="${HEPHAESTUS_REPO:-https://github.com/agentlas-ai/Hephaestus}"
 codex_repo="${HEPHAESTUS_CODEX_REPO:-agentlas-ai/Hephaestus}"
-version="${HEPHAESTUS_VERSION:-v0.7.29}"
+version="${HEPHAESTUS_VERSION:-v0.7.30}"
 keep="${HEPHAESTUS_KEEP_SMOKE_DIR:-0}"
 
 fail() {
@@ -71,6 +71,12 @@ echo
 echo "4/7 Codex plugin installed by one-touch script"
 HOME="$shell_home" CODEX_HOME="$codex_home" codex plugin list | tee "$tmp/codex-plugin-list.txt"
 rg -q 'hephaestus@agentlas-core-engine' "$tmp/codex-plugin-list.txt" || fail "Codex plugin list does not show Hephaestus"
+claude_release="$(find "$shell_home/.claude/plugins/cache/agentlas-core-engine/hephaestus" -path '*/RELEASE' -type f | sort | tail -1)"
+codex_release="$(find "$codex_home/plugins/cache/agentlas-core-engine/hephaestus" -path '*/RELEASE' -type f | sort | tail -1)"
+[[ -n "$claude_release" ]] || fail "Claude plugin cache is missing RELEASE marker"
+[[ -n "$codex_release" ]] || fail "Codex plugin cache is missing RELEASE marker"
+grep -qx "$version" "$claude_release" || fail "Claude plugin RELEASE marker is not $version"
+grep -qx "$version" "$codex_release" || fail "Codex plugin RELEASE marker is not $version"
 echo "PASS Codex install"
 echo
 
@@ -90,6 +96,20 @@ echo
 echo "6/7 First-run Agentlas sign-in surface"
 runtime_runner="$shell_home/.agentlas/runtime/current/bin/hephaestus"
 [[ -x "$runtime_runner" ]] || fail "runtime runner is not executable: $runtime_runner"
+grep -qx "$version" "$shell_home/.agentlas/runtime/current/RELEASE" || fail "runtime current RELEASE marker is not $version"
+HOME="$shell_home" CODEX_HOME="$codex_home" "$runtime_runner" update --check | tee "$tmp/update-check.json"
+python3 - "$tmp/update-check.json" "$version" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text())
+expected = sys.argv[2]
+if payload.get("current") != expected:
+    raise SystemExit(f"unexpected current release: {payload.get('current')}")
+if payload.get("status") != "current":
+    raise SystemExit(f"unexpected update status: {payload.get('status')}")
+PY
 rg -q 'auth ensure --timeout' "$shell_home/.agents/skills/hephaestus-network/SKILL.md" || fail "universal skill does not auto-trigger Agentlas sign-in"
 rg -q 'auth ensure --timeout' "$shell_home/.agents/skills/hephaestus-cloud/SKILL.md" || fail "universal cloud skill does not auto-trigger Agentlas sign-in"
 rg -q 'auth ensure --timeout' "$codex_home/prompts/hep-network.md" || fail "Codex prompt does not auto-trigger Agentlas sign-in"

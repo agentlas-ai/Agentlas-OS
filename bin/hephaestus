@@ -34,7 +34,7 @@ run_python_module() {
     exit 127
   fi
   # shellcheck disable=SC2086
-  PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" $HEPHAESTUS_PY -m "$@"
+  HEPHAESTUS_RUNTIME_ROOT="$root" PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" $HEPHAESTUS_PY -c 'import os, runpy, sys; cwd=os.getcwd(); root=os.environ["HEPHAESTUS_RUNTIME_ROOT"]; sys.path=[p for p in sys.path if p not in ("", cwd, root)]; sys.path.insert(0, root); sys.argv=sys.argv[1:]; runpy.run_module(sys.argv[0], run_name="__main__", alter_sys=True)' "$@"
 }
 
 upload_question() {

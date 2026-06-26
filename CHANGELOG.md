@@ -2,8 +2,19 @@
 
 ## Unreleased
 
-## v0.7.29 - 2026-06-26
+## v0.7.30 - 2026-06-26
 
+- **One-touch installs now stamp plugin release markers.** Fresh installs write
+  `RELEASE` and Python shims into Claude Code and Codex plugin cache
+  directories, and the one-touch verifier now fails if `update --check` does
+  not report `current`.
+- **Update cache writes are race-safe.** Manual `hephaestus update --check` and
+  fail-silent background auto-update no longer share the same temporary JSON
+  filename.
+- **Bundled runners ignore shadow packages in the working directory.**
+  `bin/hephaestus` now forces its own runtime root to the front of Python's
+  module path, so a project checkout with another `agentlas_cloud/` folder does
+  not hijack the installed runner.
 - **Self-healing updates for stale plugin caches.** `hephaestus update` now
   recovers runtimes with no `RELEASE` marker and refreshes existing Claude Code
   and Codex plugin cache directories in addition to the neutral
