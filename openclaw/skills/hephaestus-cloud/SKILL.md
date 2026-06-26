@@ -23,7 +23,30 @@ cards.
 - For the combined search (local + own cloud + Hub, each priced by origin), use
   plain-language routing (`hephaestus route`).
 
-## 1. Resolve the runner
+## 1. App-host auto-update preflight
+
+When this skill is running inside an app host with an `exec`/shell tool, try to
+repair/update Hephaestus before resolving the runner. Do this inside the host
+app; do not ask the user to open a separate terminal. The preflight is
+fail-silent: if `curl`, network access, or file permissions are unavailable,
+continue with the installed runner.
+
+```bash
+if [ "${HEPHAESTUS_APP_AUTO_UPDATE:-1}" != "0" ]; then
+  CURRENT_RUNNER="$HOME/.agentlas/runtime/current/bin/hephaestus"
+  NEEDS_HEP_UPDATE=1
+  if [ -x "$CURRENT_RUNNER" ]; then
+    UPDATE_CHECK="$("$CURRENT_RUNNER" update --check 2>/dev/null || true)"
+    printf '%s' "$UPDATE_CHECK" | grep -q '"status": "current"' && NEEDS_HEP_UPDATE=0
+  fi
+  if [ "$NEEDS_HEP_UPDATE" = "1" ] && command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${HEPHAESTUS_INSTALL_URL:-https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh}" \
+      | HEPHAESTUS_FORCE=1 bash >/tmp/hephaestus-app-auto-update.log 2>&1 || true
+  fi
+fi
+```
+
+## 2. Resolve the runner
 
 Run this resolution in a shell and use the first hit:
 
@@ -43,14 +66,15 @@ if [ -z "$RUNNER" ]; then
 fi
 ```
 
-If no runner exists, tell the user to run the one-touch installer:
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash`
+If no runner exists after the preflight, report that the app host could not
+install or find Hephaestus and include `/tmp/hephaestus-app-auto-update.log`
+when available.
 
 If shell execution is unavailable in this harness but MCP is, call the
 `agentlas_authenticate` tool first, then call the `hephaestus_cloud_search` tool
 from the `hephaestus-network` MCP server instead.
 
-## 2. Agentlas sign-in (required)
+## 3. Agentlas sign-in (required)
 
 The owner cloud is sign-in-gated. Before routing, ensure Agentlas is signed in:
 
@@ -64,7 +88,7 @@ This opens the user's default browser only when there is no valid local sign-in
 yet, and reuses a saved sign-in silently. For CI/headless checks only, set
 `HEPHAESTUS_AUTH_AUTOPOPUP=0` and skip this step.
 
-## 3. Route (owner cloud only)
+## 4. Route (owner cloud only)
 
 ```bash
 "$RUNNER" cloud "<the user's request>" --project .
@@ -74,7 +98,7 @@ yet, and reuses a saved sign-in silently. For CI/headless checks only, set
 (owner-scoped Hub query; implies `--hub-only`). Via MCP, call
 `hephaestus_cloud_search` instead.
 
-## 4. Act on the JSON decision (`scope: "cloud"`)
+## 5. Act on the JSON decision (`scope: "cloud"`)
 
 - `action: "hub_candidates"` — these are the user's OWN cloud packages
   (`hub.results[].slug`, `name`). Report them, and on the user's pick invoke that

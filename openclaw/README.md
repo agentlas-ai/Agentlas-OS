@@ -24,3 +24,8 @@ body in sync when the canonical skill changes.
 The runner itself is installed by the one-touch installer to
 `~/.agentlas/runtime/current/bin/hephaestus`; the skill gates on `python3`
 being available on PATH.
+
+The OpenClaw skills include the app-host auto-update preflight. When OpenClaw's
+`exec` tool is available, the skill tries to refresh
+`~/.agentlas/runtime/current` from inside OpenClaw before resolving the runner,
+without asking the user to open a separate terminal.

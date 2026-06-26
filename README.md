@@ -107,8 +107,17 @@ Fresh installs and updates prune the old visible `/hephaestus` chat command so
 new users see the clean command surface above: six explicit commands in
 external LLM hosts, and plain-language native routing inside Agentlas.
 
-## New In v0.7.30
+## New In v0.7.31
 
+- **No-terminal app-host auto-update.** Every `/hep-*` command/prompt surface
+  now starts with a fail-silent app-host preflight: if Claude Code, Codex,
+  Gemini, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Pi, DeepSeek, GLM,
+  or Agentlas exposes a local shell/exec tool, Hephaestus tries to install or
+  update itself from inside the app before resolving the runner. Users do not
+  need to open a separate terminal for normal self-repair.
+- **Runtime-current wins before stale caches.** Command surfaces resolve
+  `~/.agentlas/runtime/current/bin/hephaestus` before Claude/Codex plugin cache
+  copies, so a fresh neutral runtime is not shadowed by an older cached plugin.
 - **One-touch install hardening.** Fresh installs now stamp `RELEASE` markers
   and Python shims into Claude Code and Codex plugin caches, and the verifier
   fails if `update --check` cannot see the current release.
@@ -447,12 +456,27 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts
 ```
 
 After the first install, Hephaestus keeps itself fresh automatically. When you
-use `hep-network`, `hep-build`, `hep-search`, `hep-call`, or the matching
-slash/prompt commands, the runtime starts a silent background check at most once
-per day. If a newer GitHub release is available, it updates
-`~/.agentlas/runtime/current` and refreshes the Hephaestus command/skill
-adapters that already exist on your machine. To turn this off, set
-`HEPHAESTUS_AUTO_UPDATE=0` before running Hephaestus.
+use `hep-network`, `hep-build`, `hep-search`, `hep-call`, `hep-upload`, or the
+matching slash/prompt commands, two safeguards run:
+
+1. The command surface first tries an app-host repair preflight from inside the
+   AI app itself (`HEPHAESTUS_APP_AUTO_UPDATE=1`). If the host can run a local
+   shell/exec tool, it fetches the one-touch installer and refreshes
+   `~/.agentlas/runtime/current` plus existing adapters before resolving the
+   runner. This is what lets app-only users recover without opening a separate
+   terminal.
+2. The runtime still performs its fail-silent background update check for
+   already-running commands and refreshes existing Claude/Codex caches when a
+   newer release is available.
+
+To turn off the app-host preflight, set `HEPHAESTUS_APP_AUTO_UPDATE=0`. To turn
+off the runtime background updater, set `HEPHAESTUS_AUTO_UPDATE=0`.
+
+Boundary: an app that exposes no shell/exec/MCP/local-file mutation path cannot
+modify a local install from chat alone. Also, a very old command surface that
+does not contain the preflight instruction cannot self-rewrite until it is
+refreshed once through the marketplace/plugin manager or the one-touch
+installer above.
 
 ### Option A. Claude Code plugin
 
@@ -511,7 +535,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.30
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.31
 codex plugin add hephaestus@agentlas-core-engine
 ```
 

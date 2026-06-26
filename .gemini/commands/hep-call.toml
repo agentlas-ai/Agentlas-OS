@@ -11,6 +11,11 @@ Raw arguments:
 Syntax: `/hep-call agent-a, agent-b {context}`. Prefix owner packages
 with `cloud:` and public Hub agents with `hub:` when you want to be explicit.
 
+If Gemini can run a local shell command, run the app-host auto-update preflight
+first (`HEPHAESTUS_APP_AUTO_UPDATE=1`; installer URL:
+`https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh`).
+Do this inside Gemini; do not ask the user to open a separate terminal.
+
 Find the Hephaestus runner at `~/.agentlas/runtime/current/bin/hephaestus` or
 `./bin/hephaestus`, ensure Agentlas sign-in with `hephaestus auth ensure
 --timeout 180`, split the arguments into an agent list and context, then run:

@@ -37,6 +37,11 @@ From an OS terminal (not the Antigravity chat box):
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
 ```
 
+The installed `/hep-*` workflows include the app-host auto-update preflight.
+When Antigravity can run local shell commands, Hephaestus refreshes
+`~/.agentlas/runtime/current` and existing workflow/skill surfaces from inside
+Antigravity before resolving the runner.
+
 Then reopen Antigravity and type `/hep-build`, `/hep-network`,
 or `/hep-cloud`. Antigravity shares the `~/.gemini/` home with the
 Gemini CLI, so this install also keeps the Gemini extension and commands in

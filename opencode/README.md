@@ -24,6 +24,11 @@ OpenCode reads three Hephaestus surfaces — all installed by
 }
 ```
 
+The installed `/hep-*` OpenCode commands include the app-host auto-update
+preflight. When OpenCode can run local shell commands, Hephaestus refreshes
+`~/.agentlas/runtime/current` and existing adapters from inside the app before
+resolving the runner.
+
 Manual install without the one-touch script:
 
 ```bash

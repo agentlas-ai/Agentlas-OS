@@ -37,10 +37,19 @@ One-command install or update for every supported runtime:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
 ```
 
+Inside the Codex app, `/prompts:hep-build`, `/prompts:hep-network`,
+`/prompts:hep-cloud`, `/prompts:hep-search`, `/prompts:hep-call`, and
+`/prompts:hep-upload` first run the app-host auto-update preflight when Codex
+has local command execution. That preflight refreshes
+`~/.agentlas/runtime/current` and installed prompt/plugin surfaces without
+asking the user to open a separate terminal. If this Codex install is too old to
+contain the preflight, run the one-command installer once or refresh the plugin
+from the plugin manager.
+
 Codex-only manual install:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.30
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v0.7.31
 codex plugin add hephaestus@agentlas-core-engine
 mkdir -p ~/.codex/prompts
 cp codex/prompts/hep-build.md codex/prompts/hep-network.md codex/prompts/hep-cloud.md codex/prompts/hep-search.md codex/prompts/hep-call.md codex/prompts/hep-upload.md ~/.codex/prompts/

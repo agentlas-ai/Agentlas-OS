@@ -10,6 +10,11 @@ Raw arguments:
 
 Use the Hephaestus Network local-first router.
 
+0. If Gemini can run a local shell command, run the app-host auto-update
+   preflight first (`HEPHAESTUS_APP_AUTO_UPDATE=1`; installer URL:
+   `https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh`).
+   Do this inside Gemini; do not ask the user to open a separate terminal.
+
 1. Find the Hephaestus runner — first executable wins:
    `~/.agentlas/runtime/current/bin/hephaestus`, `./bin/hephaestus`, or the
    newest `~/.claude/plugins/cache/agentlas-core-engine/hephaestus/*/bin/hephaestus`

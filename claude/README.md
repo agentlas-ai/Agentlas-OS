@@ -15,6 +15,14 @@ One-command install or update for Claude, Codex, and Gemini:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
 ```
 
+After this surface is installed, `/hep-build`, `/hep-network`, `/hep-cloud`,
+`/hep-search`, `/hep-call`, and `/hep-upload` first run the app-host
+auto-update preflight inside Claude Code when the Bash tool is available. That
+preflight refreshes `~/.agentlas/runtime/current` and existing plugin cache
+surfaces without asking the user to open a separate terminal. If the existing
+Claude command file is too old to contain this preflight, refresh the plugin
+once from Claude's plugin manager or run the one-command installer above.
+
 ```bash
 claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine

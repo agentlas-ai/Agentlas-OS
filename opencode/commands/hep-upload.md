@@ -16,14 +16,19 @@ Upload to Agentlas Hub? Other people can borrow it.
 
 Do not package, publish, register, add-source, reindex, or call an upload API
 until the user answers Cloud or Agentlas Hub. Cloud means private-link owner
-Cloud upload through `bin/hephaestus publish <agent-folder> --visibility
+Cloud upload through `"$RUNNER" publish <agent-folder> --visibility
 private-link`. Agentlas Hub means public marketplace upload through
-`bin/hephaestus publish <agent-folder> --visibility marketplace` after the
+`"$RUNNER" publish <agent-folder> --visibility marketplace` after the
 bundled publicProfile, routing-card, hash, static security, and bundle-size
 gates pass.
+
+After the user chooses a destination, run the app-host auto-update preflight
+from the `hephaestus-network` skill inside OpenCode, then resolve `RUNNER` at
+`~/.agentlas/runtime/current/bin/hephaestus` or `./bin/hephaestus`. Do not ask
+the user to open a separate terminal.
 
 When running through a non-interactive host without a TTY, do not call the
 question-only gate again after the user has answered. Use one explicit command:
 
-- Cloud: `bin/hephaestus hep-upload <agent-folder> --visibility private-link`
-- Agentlas Hub: `bin/hephaestus hep-upload <agent-folder> --visibility marketplace`
+- Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
+- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`

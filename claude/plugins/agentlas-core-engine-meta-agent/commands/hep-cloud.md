@@ -26,13 +26,26 @@ Raw arguments: `$ARGUMENTS`
 1. Find the first executable Hephaestus runner:
 
 ```bash
+if [ "${HEPHAESTUS_APP_AUTO_UPDATE:-1}" != "0" ]; then
+  CURRENT_RUNNER="$HOME/.agentlas/runtime/current/bin/hephaestus"
+  NEEDS_HEP_UPDATE=1
+  if [ -x "$CURRENT_RUNNER" ]; then
+    UPDATE_CHECK="$("$CURRENT_RUNNER" update --check 2>/dev/null || true)"
+    printf '%s' "$UPDATE_CHECK" | grep -q '"status": "current"' && NEEDS_HEP_UPDATE=0
+  fi
+  if [ "$NEEDS_HEP_UPDATE" = "1" ] && command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${HEPHAESTUS_INSTALL_URL:-https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh}" \
+      | HEPHAESTUS_FORCE=1 bash >/tmp/hephaestus-app-auto-update.log 2>&1 || true
+  fi
+fi
+
 RUNNER=""
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
   "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
   "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
   "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
-  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
   "./bin/hephaestus" \
   "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
 do
@@ -45,7 +58,7 @@ if [ -z "$RUNNER" ]; then
     if [ -n "$newest" ] && [ -x "$newest" ]; then RUNNER="$newest"; break; fi
   done
 fi
-[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
+[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found after app auto-update preflight. See /tmp/hephaestus-app-auto-update.log if it exists." >&2; exit 1; }
 # The owner cloud (보관함) requires sign-in; ensure a reusable Agentlas session.
 "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
 "$RUNNER" cloud "$ARGUMENTS" --project . 
