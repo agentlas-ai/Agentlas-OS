@@ -25,7 +25,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-build",
       "adapterPath": "gemini/extension/commands/hep-build.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.31",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.32",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-build.toml."
@@ -95,7 +95,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-network",
       "adapterPath": "gemini/extension/commands/hep-network.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.31",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.32",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-network.toml."
@@ -194,7 +194,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-cloud",
       "adapterPath": "gemini/extension/commands/hep-cloud.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.31",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v0.7.32",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-cloud.toml."

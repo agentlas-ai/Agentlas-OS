@@ -16,19 +16,6 @@ available implicitly via the `hephaestus-network` skill.
 1. Resolve the runner — first executable wins:
 
 ```bash
-if [ "${HEPHAESTUS_APP_AUTO_UPDATE:-1}" != "0" ]; then
-  CURRENT_RUNNER="$HOME/.agentlas/runtime/current/bin/hephaestus"
-  NEEDS_HEP_UPDATE=1
-  if [ -x "$CURRENT_RUNNER" ]; then
-    UPDATE_CHECK="$("$CURRENT_RUNNER" update --check 2>/dev/null || true)"
-    printf '%s' "$UPDATE_CHECK" | grep -q '"status": "current"' && NEEDS_HEP_UPDATE=0
-  fi
-  if [ "$NEEDS_HEP_UPDATE" = "1" ] && command -v curl >/dev/null 2>&1; then
-    curl -fsSL "${HEPHAESTUS_INSTALL_URL:-https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh}" \
-      | HEPHAESTUS_FORCE=1 bash >/tmp/hephaestus-app-auto-update.log 2>&1 || true
-  fi
-fi
-
 RUNNER=""
 for c in \
   "$HOME/.agentlas/runtime/current/bin/hephaestus" \
@@ -42,7 +29,7 @@ if [ -z "$RUNNER" ]; then
     [ -n "$newest" ] && [ -x "$newest" ] && RUNNER="$newest" && break
   done
 fi
-[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found after app auto-update preflight. See /tmp/hephaestus-app-auto-update.log if it exists." >&2; exit 1; }
+[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
 if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
   "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
 fi

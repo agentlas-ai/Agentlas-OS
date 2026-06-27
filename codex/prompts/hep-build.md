@@ -15,11 +15,6 @@ Expose `/prompts:hep-build` as the public Codex build prompt next to
 
 - If the arguments are `ontology`, resolve the runner exactly as in
   `/prompts:hep-network` and run `"$RUNNER" ontology`.
-- Before resolving the runner for ontology, local discovery migration, or any
-  other Hephaestus CLI call, run the app-host auto-update preflight from the
-  `hephaestus-network` skill inside Codex. Do not ask the user to open a
-  separate terminal; if the preflight fails, continue with the installed runner
-  or report `/tmp/hephaestus-app-auto-update.log`.
 - Otherwise classify the request as single-agent-builder,
   multi-agent-team-builder, or agentlas-packager by independent ownership
   boundaries and execute the meta-agent procedure on: `$ARGUMENTS`. If
@@ -44,9 +39,9 @@ Expose `/prompts:hep-build` as the public Codex build prompt next to
 - Include `global_commands` for the created agent or team in the final
   response, plus `interview_research` evidence.
 - If a package was created/repaired in the current workspace, register it to
-  local discovery immediately after the preflight: run `"$RUNNER" cards migrate
-  . --tier local --overwrite` (or `./bin/hephaestus` only if no resolved runner
-  exists), and include migration result in `evidence`.
+  local discovery immediately: run `./bin/hephaestus cards migrate . --tier local
+  --overwrite` (or the same `hephaestus` runner in cache if local binary is
+  unavailable), and include migration result in `evidence`.
 
 If runtime discovery migration isn't needed, still validate that the package has
 `./.agentlas/routing-card.json` and include that local-card artifact in `evidence`

@@ -161,7 +161,7 @@ def invoke_hub_agent(
         "entry_excerpt": _compact(entry.get("content") or "", 700),
         "prompt_summary": _compact(request, 260),
         "grounding": grounding,
-        "next_step": "Caller runtime executes the returned entry instructions with its own model; Agentlas Hub itself does not run an LLM completion. Follow `grounding.directive` to decide whether to consult this agent's local memory and the super ontology — do so only when the task needs grounding.",
+        "next_step": "Caller runtime executes the returned entry instructions with its own model; Agentlas Hub itself does not run an LLM completion. Follow `grounding.directive`: attach to the live project codebase at `grounding.project_dir` FIRST (mandatory), then consult this agent's local memory and the super ontology only when the task needs deeper grounding.",
     }
     record = {
         "action": "hub_invoke",
@@ -474,27 +474,38 @@ def _grounding_directive(
 ) -> dict[str, Any]:
     """Tell the executing runtime HOW (and WHEN) to ground a borrowed agent.
 
-    The borrowed agent must reference its own local memory and the super
-    ontology ONLY when the task needs grounding (brand facts, prior decisions,
-    domain knowledge) — never unconditionally. Retrieval is relevance-gated
-    (ontology query returns nothing for unrelated tasks), and this directive
-    makes the host LLM the judge of whether to consult at all.
+    Grounding has two tiers. The FIRST is unconditional: a borrowed agent must
+    attach to the live working project it was invoked in — the actual codebase at
+    ``project_dir`` — and operate on that, never as a context-less generic call.
+    The SECOND tier (the agent's own memory and the super ontology) is selective:
+    consult it ONLY when the task needs deeper grounding (brand facts, prior
+    decisions, domain knowledge). Retrieval is relevance-gated, and this directive
+    makes the host LLM the judge of whether to consult the second tier at all.
     """
 
-    ontology_db = _ontology_db_path(project_dir)
+    project = Path(project_dir).resolve()
+    ontology_db = _ontology_db_path(project)
     return {
         "agent_id": agent_id,
+        "project_dir": str(project),
         "memory_root": str(memory_root),
         "ontology_db": str(ontology_db),
-        "policy": "selective",
+        "policy": "attach_codebase_then_selective_memory",
         "directive": (
-            "Decide if this task needs grounding (brand facts, prior decisions, domain context). "
-            "If yes: (1) read this borrowed agent's local memory under memory_root "
-            "(project-soul-memory.md, invocation-ledger.jsonl); (2) query the super ontology with "
-            "`ontology_query` below. If the task is trivial or self-contained, skip both. "
-            "Do not load all memory/ontology unconditionally — consult only when relevant."
+            "You are running INSIDE the user's working project at `project_dir`. "
+            "FIRST, attach to that live codebase: read the relevant source files and "
+            "honor the existing structure, stack, and conventions before producing "
+            "anything. This step is mandatory — never answer as a context-less generic "
+            "agent and never improvise outside the actual repo. "
+            "THEN decide if the task needs deeper grounding (brand facts, prior "
+            "decisions, domain context). If yes: (1) read this borrowed agent's local "
+            "memory under memory_root (project-soul-memory.md, invocation-ledger.jsonl); "
+            "(2) query the super ontology with `ontology_query` below. If the task is "
+            "trivial or self-contained, skip the memory/ontology lookups — but the "
+            "codebase attachment above is not optional."
         ),
         "commands": {
+            "project_overview": f"ls -la {_shell_quote(str(project))}",
             "ontology_query": (
                 f"python3 -m ontology query {_shell_quote(_compact(request, 160))} "
                 f"--agent {agent_id} --db {_shell_quote(str(ontology_db))}"

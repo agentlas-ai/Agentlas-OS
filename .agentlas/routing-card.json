@@ -140,7 +140,7 @@
   "source": {
     "kind": "local_path",
     "package_hash": "sha256:5e39f294f7b0059f03fc5d7b7a12dc1ce056aa4a9111710929fe3308fec43f73",
-    "package_version": "0.7.31",
+    "package_version": "0.7.32",
     "ref": null
   },
   "summary": "Build, repair, package, validate, and publish Agentlas-compatible agents and teams across major agent runtimes.",

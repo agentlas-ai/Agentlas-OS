@@ -450,6 +450,80 @@ def _compact_hub_result(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _is_borrowable(item: dict[str, Any]) -> bool:
+    return bool(
+        isinstance(item, dict)
+        and item.get("slug")
+        and (item.get("callable") is True or item.get("kind") == "cloud-callable" or item.get("routingReady"))
+    )
+
+
+def _byom_execution_plan(
+    *,
+    project: Path,
+    results: list[dict[str, Any]] | None = None,
+    stages: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Turn Hub candidates into an actionable, context-attached execution plan.
+
+    A `hub_candidates` decision must never dead-end at "here are options, you
+    decide" — that is exactly what makes the network feel useless and pushes the
+    operator to skip it and improvise locally. Instead we name the agent(s) to
+    BORROW and instruct the runtime to execute them LOCALLY, grounded in the
+    current project codebase + memory + ontology (the BYOM bundle path, where
+    `hep-call` attaches `project_dir`). Returns None only when no candidate is
+    borrowable.
+    """
+
+    recommended: list[dict[str, Any]] = []
+    alternatives: list[dict[str, Any]] = []
+    if stages:
+        for stage in stages:
+            stage_candidates = [c for c in (stage.get("hub_candidates") or []) if _is_borrowable(c)]
+            if stage_candidates:
+                recommended.append(
+                    {
+                        "stage": stage.get("stage"),
+                        "agent": str(stage_candidates[0].get("slug")),
+                        "alternatives": [str(c.get("slug")) for c in stage_candidates[1:4]],
+                    }
+                )
+    else:
+        borrowable = [item for item in (results or []) if _is_borrowable(item)]
+        if borrowable:
+            recommended.append({"stage": "direct", "agent": str(borrowable[0].get("slug"))})
+            alternatives = [str(c.get("slug")) for c in borrowable[1:5]]
+    if not recommended:
+        return None
+
+    primary = recommended[0]["agent"]
+    return {
+        "mode": "byom_local_grounded",
+        "primary_agent": primary,
+        "recommended_agents": recommended,
+        # The Hub ranks by its own keyword relevance and can mis-rank the #1 for a
+        # sparse query, so the operator — who can see the actual task — gets the
+        # ranked borrowable alternatives and is told to pick the best fit, not to
+        # borrow #1 blindly.
+        "alternatives": alternatives,
+        "project_dir": str(project),
+        "attach": ["project_codebase", "agentlas_memory", "super_ontology"],
+        "borrow_command": f'hephaestus hep-call "{primary}" "<request>" --project {project}',
+        "directive": (
+            "Resolve this request by BORROWING the best-fit Hub agent and running it "
+            "LOCALLY, grounded in the current project. Pick the agent that actually fits "
+            "THIS task: start from `primary_agent`/`recommended_agents`, but if the top "
+            "pick is clearly off-domain, choose a better one from `alternatives` (the Hub "
+            "ranks by keyword relevance and can mis-rank a sparse query). Use `hep-call` "
+            "(it fetches the BYOM runtime bundle and attaches project_dir); for a staged "
+            "plan, run each stage's agent in order. Each borrowed agent must attach to this "
+            "repo's actual codebase + memory before producing output. Do NOT call agents "
+            "context-less in the cloud, and do NOT skip the network to improvise a local "
+            "answer yourself — run the borrowed specialist attached to this project."
+        ),
+    }
+
+
 def _task_force_from_result(result: dict[str, Any]) -> dict[str, Any]:
     if isinstance(result.get("task_force"), dict):
         return result["task_force"]
@@ -748,6 +822,9 @@ def route_request(
         if use_hub:
             stagewise = _hub_task_force_plan(query, scope=scope, search_hub_fn=_search_hub_ordered)
             if stagewise is not None:
+                execution = _byom_execution_plan(
+                    project=project, stages=(stagewise["task_force"].get("stages") or [])
+                )
                 return finish(
                     {
                         "action": "hub_candidates",
@@ -758,6 +835,7 @@ def route_request(
                         "scope": scope,
                         "suggestions": [],
                         "local_routing": "skipped",
+                        **({"execution": execution} if execution else {}),
                         "reasons": [f"{scope_tag}_task_force_results_found"],
                     },
                     [],
@@ -794,6 +872,7 @@ def route_request(
                     fallback_scope=None,
                 )
             if hub.get("status") == "ok" and hub.get("results"):
+                execution = _byom_execution_plan(project=project, results=hub.get("results") or [])
                 return finish(
                     {
                         "action": "hub_candidates",
@@ -803,6 +882,7 @@ def route_request(
                         "scope": hub_scope,
                         "suggestions": [],
                         "local_routing": "skipped",
+                        **({"execution": execution} if execution else {}),
                         "reasons": [selected_reason],
                     },
                     [],
@@ -1084,6 +1164,7 @@ def route_request(
             fallback_scope="local_hub_low_confidence",
         )
     if hub_ok:
+        execution = _byom_execution_plan(project=project, results=(hub or {}).get("results") or [])
         return finish(
             {
                 "action": "hub_candidates",
@@ -1091,6 +1172,7 @@ def route_request(
                 "hub": hub,
                 "candidates": candidates,
                 "suggestions": (candidates + suggestions) or suggestions,
+                **({"execution": execution} if execution else {}),
                 "reasons": ["multi_route_local_plus_hub"],
             },
             candidates,

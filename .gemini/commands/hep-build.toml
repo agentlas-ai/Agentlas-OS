@@ -16,9 +16,7 @@ If this workspace contains `AGENTS.md`, `.agentlas/mode-map.json`, and
 package contract.
 
 If this workspace does not contain the Hephaestus package files yet, explain
-that Gemini should first try the app-host auto-update preflight
-(`HEPHAESTUS_APP_AUTO_UPDATE=1`) inside Gemini. Do not ask the user to open a
-separate terminal unless this host cannot run local shell commands at all:
+that the user should run the one-touch installer from an OS terminal:
 
 `curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash`
 
@@ -51,14 +49,13 @@ collapsing to a valid single-agent shape or adding orchestrator/HQ plus
 company-blueprint topology, then rerun the gate.
 
 If the first argument is `ontology`, open the project ontology GUI by running
-the preflight-resolved `"$RUNNER" ontology --gui .` when the local shell command
-is available, then report `gui_url`, `db_path`, `inbox_path`, and verification
-status.
+`./bin/hephaestus ontology --gui .` when the local shell command is available,
+then report `gui_url`, `db_path`, `inbox_path`, and verification status.
 
 If a package was created or repaired in the current workspace, register it to local
 discovery before final reporting:
 
-`"$RUNNER" cards migrate . --tier local --overwrite`
+`./bin/hephaestus cards migrate . --tier local --overwrite`
 
 Include the migration result in `interview_research`.
 """

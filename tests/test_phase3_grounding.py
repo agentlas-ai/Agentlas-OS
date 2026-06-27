@@ -71,8 +71,13 @@ def test_borrowed_agent_grounding_and_selective_ontology(tmp_path, monkeypatch):
     grounding = result["output"]["grounding"]
     agent_id = grounding["agent_id"]
     assert agent_id == "hub:shop-product-writer"
-    assert grounding["policy"] == "selective"
-    assert "only when" in grounding["directive"].lower() or "consult only when relevant" in grounding["directive"].lower()
+    assert grounding["policy"] == "attach_codebase_then_selective_memory"
+    directive = grounding["directive"].lower()
+    # Tier 1 (mandatory): attach to the live project codebase.
+    assert grounding["project_dir"] and "project" in grounding["project_dir"]
+    assert "attach to that live codebase" in directive and "mandatory" in directive
+    # Tier 2 (selective): memory/ontology consulted only when the task needs it.
+    assert "trivial or self-contained, skip" in directive
     # Borrowed agent has its OWN persistent local memory store (from the fetch).
     assert Path(grounding["memory_root"]).joinpath("project-soul-memory.md").is_file()
     assert grounding["ontology_db"] == str(db)

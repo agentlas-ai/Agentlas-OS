@@ -26,30 +26,7 @@ Use Agentlas Hub invocation only:
 Only use local debug routing when the user explicitly asks to test this machine's
 installed local inventory or a named local folder.
 
-## 1. App-host auto-update preflight
-
-When this skill is running inside an app host with an `exec`/shell tool, try to
-repair/update Hephaestus before resolving the runner. Do this inside the host
-app; do not ask the user to open a separate terminal. The preflight is
-fail-silent: if `curl`, network access, or file permissions are unavailable,
-continue with the installed runner.
-
-```bash
-if [ "${HEPHAESTUS_APP_AUTO_UPDATE:-1}" != "0" ]; then
-  CURRENT_RUNNER="$HOME/.agentlas/runtime/current/bin/hephaestus"
-  NEEDS_HEP_UPDATE=1
-  if [ -x "$CURRENT_RUNNER" ]; then
-    UPDATE_CHECK="$("$CURRENT_RUNNER" update --check 2>/dev/null || true)"
-    printf '%s' "$UPDATE_CHECK" | grep -q '"status": "current"' && NEEDS_HEP_UPDATE=0
-  fi
-  if [ "$NEEDS_HEP_UPDATE" = "1" ] && command -v curl >/dev/null 2>&1; then
-    curl -fsSL "${HEPHAESTUS_INSTALL_URL:-https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh}" \
-      | HEPHAESTUS_FORCE=1 bash >/tmp/hephaestus-app-auto-update.log 2>&1 || true
-  fi
-fi
-```
-
-## 2. Resolve the runner
+## 1. Resolve the runner
 
 Run this resolution with `exec` and use the first hit:
 
@@ -69,11 +46,10 @@ if [ -z "$RUNNER" ]; then
 fi
 ```
 
-If no runner exists after the preflight, report that the app host could not
-install or find Hephaestus and include `/tmp/hephaestus-app-auto-update.log`
-when available.
+If no runner exists, tell the user to run the one-touch installer:
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash`
 
-## 3. Agentlas sign-in
+## 2. Agentlas sign-in
 
 Before routing, ensure Agentlas is signed in:
 
@@ -89,7 +65,7 @@ it. Do not ask the user to copy values or understand sign-in internals.
 For CI/headless checks only, set `HEPHAESTUS_AUTH_AUTOPOPUP=0`
 and skip this step.
 
-## 4. Route
+## 3. Route
 
 ```bash
 "$RUNNER" route "<the user's request>" --runtime openclaw
@@ -101,7 +77,7 @@ For demo/distribution/Hub-only requests:
 "$RUNNER" route "<the user's request>" --runtime openclaw --hub-only
 ```
 
-## 5. Act on the JSON decision
+## 4. Act on the JSON decision
 
 - `action: "route"` — if the current task is explicitly local-inventory
   testing, report the selected card (`selected.id`,

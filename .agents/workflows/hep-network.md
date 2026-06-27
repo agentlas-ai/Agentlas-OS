@@ -9,13 +9,6 @@ triggered by `@Hephaestus <request>`.
 
 ## Engine resolution
 
-Before resolving the engine, run the app-host auto-update preflight inside
-Antigravity when a local shell command is available. Use
-`HEPHAESTUS_APP_AUTO_UPDATE=1` and the installer URL
-`https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh`.
-Do not ask the user to open a separate terminal; if preflight fails, continue
-with the installed runner or report `/tmp/hephaestus-app-auto-update.log`.
-
 Use the first executable found:
 
 1. `~/.agentlas/runtime/current/bin/hephaestus` (runtime-neutral install)

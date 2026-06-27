@@ -8,6 +8,7 @@ the final gate.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 import uuid
@@ -17,8 +18,10 @@ from typing import Any, Mapping
 
 from .bootstrap import append_jsonl, atomic_write_json, networking_home, utc_now
 from .execution_fabric import evaluate_final_gate
+from .goal_loop import GoalLoopConfig, run_goal_loop
 from .receipts import record_execution
 from .router import route_request
+from .run_journal import RunJournal
 
 
 RUNNER_VERSION = "stormbreaker.auto_runner.v1"
@@ -351,17 +354,33 @@ def _run_packet(
     packet_for_execution = dict(packet)
     if research_summary is not None:
         packet_for_execution["research_evidence"] = research_summary
-    completed = _execute_packet_command(
-        packet_for_execution,
-        project=project,
-        write_scope=write_scope,
-        packet_file=packet_file,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        executor_command=executor_command,
-        execute_card_commands=execute_card_commands,
-        timeout_seconds=timeout_seconds,
-    )
+    loop_spec = packet.get("loop") if isinstance(packet.get("loop"), dict) else None
+    if loop_spec and str(loop_spec.get("goal_command") or "").strip():
+        # The packet declared a goal loop: re-run it until the goal verifies,
+        # guarded against stalls/runaway/transient failures (goal_loop).
+        completed = _run_packet_goal_loop(
+            packet_for_execution,
+            project=project,
+            write_scope=write_scope,
+            packet_file=packet_file,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            executor_command=executor_command,
+            execute_card_commands=execute_card_commands,
+            timeout_seconds=timeout_seconds,
+        )
+    else:
+        completed = _execute_packet_command(
+            packet_for_execution,
+            project=project,
+            write_scope=write_scope,
+            packet_file=packet_file,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            executor_command=executor_command,
+            execute_card_commands=execute_card_commands,
+            timeout_seconds=timeout_seconds,
+        )
     status = "passing" if completed["ok"] else "blocked"
     detail = str(completed["detail"])
     result = {
@@ -386,6 +405,8 @@ def _run_packet(
         "stderr_file": _relative_to_project(project, stderr_file),
         "returncode": completed.get("returncode"),
     }
+    if completed.get("goal_loop") is not None:
+        result["goal_loop"] = completed["goal_loop"]
     if research_summary is not None:
         result["research_evidence"] = research_summary
     atomic_write_json(result_file, result)
@@ -457,6 +478,106 @@ def _execute_packet_command(
     stdout_file.write_text("packet contract materialized; no external executor configured\n", encoding="utf-8")
     stderr_file.write_text("", encoding="utf-8")
     return {"ok": True, "detail": "packet_contract_materialized", "returncode": 0}
+
+
+def _run_packet_goal_loop(
+    packet: Mapping[str, Any],
+    *,
+    project: Path,
+    write_scope: Path,
+    packet_file: Path,
+    stdout_file: Path,
+    stderr_file: Path,
+    executor_command: str | None,
+    execute_card_commands: bool,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Run a packet as a goal-seeking loop (`goal_loop.run_goal_loop`).
+
+    Activated when the packet declares ``loop: {goal_command, ...}``. Each
+    iteration runs the packet's normal command once, then the goal verifier
+    (``goal_command``, run in the project dir) decides whether the goal is met
+    (exit 0). The verifier's stdout doubles as the progress signal, so a task
+    that keeps advancing is sustained while a flatlined one trips stall
+    detection. A failing iteration is a transient failure (retried with backoff),
+    not fatal — the loop is hardened against breaking, runaway, and false-success.
+    """
+
+    spec = packet.get("loop") if isinstance(packet.get("loop"), dict) else {}
+    goal_command = str(spec.get("goal_command") or "").strip()
+    journal = RunJournal(write_scope / "goal-loop-journal.jsonl")
+    config = GoalLoopConfig(
+        max_iterations=_positive_int(spec.get("max_iterations"), 10),
+        stall_window=_positive_int(spec.get("stall_window"), 3),
+        max_consecutive_failures=_positive_int(spec.get("max_consecutive_failures"), 3),
+        backoff_base=float(spec.get("backoff_base") or 0.0),
+    )
+
+    def iterate(state: Any, iteration: int) -> tuple[Any, str]:
+        completed = _execute_packet_command(
+            packet,
+            project=project,
+            write_scope=write_scope,
+            packet_file=packet_file,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            executor_command=executor_command,
+            execute_card_commands=execute_card_commands,
+            timeout_seconds=timeout_seconds,
+        )
+        if not completed.get("ok"):
+            raise RuntimeError(str(completed.get("detail") or "iteration_failed"))
+        check = _run_goal_check(goal_command, project=project, timeout_seconds=timeout_seconds)
+        progress = f"goal_rc={check.get('returncode')}:{_short_digest(check.get('stdout') or '')}"
+        return {"completed": completed, "check": check}, progress
+
+    def goal(state: Any) -> tuple[bool, str | None]:
+        check = (state or {}).get("check") or {}
+        if check.get("returncode") == 0:
+            return True, f"goal verifier `{goal_command}` passed (exit 0)"
+        return False, None
+
+    outcome = run_goal_loop(iterate=iterate, goal=goal, journal=journal, config=config)
+    detail = f"goal_loop:{outcome.outcome}:{outcome.iterations}it"
+    if outcome.detail:
+        detail = f"{detail}:{outcome.detail}"
+    return {
+        "ok": outcome.reached_goal,
+        "detail": detail,
+        "returncode": 0 if outcome.reached_goal else 1,
+        "goal_loop": outcome.as_dict(),
+    }
+
+
+def _run_goal_check(command: str, *, project: Path, timeout_seconds: int) -> dict[str, Any]:
+    """Run a packet's goal verifier in the project dir; exit 0 means goal met."""
+
+    try:
+        completed = subprocess.run(
+            command,
+            shell=True,
+            cwd=str(project),
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return {"returncode": None, "stdout": ""}
+    return {"returncode": completed.returncode, "stdout": completed.stdout or ""}
+
+
+def _short_digest(text: str) -> str:
+    return hashlib.sha1((text or "").encode("utf-8")).hexdigest()[:12]
+
+
+def _positive_int(value: Any, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= 1 else default
 
 
 def _run_subprocess(

@@ -16,13 +16,6 @@ Expose this as the public build workflow next to `hephaestus-network` and
 
 ## Step 0 — Resolve the engine root
 
-First run the app-host auto-update preflight inside Antigravity when a local
-shell command is available (`HEPHAESTUS_APP_AUTO_UPDATE=1`, installer URL
-`https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh`).
-Do not ask the user to open a separate terminal. If the preflight cannot install
-or update Hephaestus, continue with the installed engine or report
-`/tmp/hephaestus-app-auto-update.log`.
-
 Hephaestus may live in this workspace OR in a global runtime cache. Resolve the
 engine root before routing:
 
@@ -53,7 +46,6 @@ Open the project-local Knowledge/Memory panel:
 ```bash
 RUNNER=""
 for candidate in \
-  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
   "./bin/hephaestus" \
   "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus" \
   "./codex/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
@@ -67,7 +59,7 @@ if [ -z "$RUNNER" ]; then
     if [ -n "$newest" ] && [ -x "$newest" ]; then RUNNER="$newest"; break; fi
   done
 fi
-[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found after app auto-update preflight. See /tmp/hephaestus-app-auto-update.log if it exists." >&2; exit 1; }
+[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
 "$RUNNER" ontology --gui .
 ```
 
@@ -114,17 +106,13 @@ if [ -x "./bin/hephaestus" ]; then
 fi
 ```
 
-Prefer the preflight-resolved `"$RUNNER" cards migrate . --tier local
---overwrite` when available.
-
 7. Return `status`, `evidence`, `output`, `global_commands`,
    `interview_research`, and `blockers`.
 
 ## If no engine root was found
 
-First report that the app-host auto-update preflight could not install or find
-Hephaestus, including `/tmp/hephaestus-app-auto-update.log` if it exists. Only
-then show the manual installer as a last resort:
+Tell the user to run the one-touch installer from an OS terminal, then reopen
+the workspace in Antigravity:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
