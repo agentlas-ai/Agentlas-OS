@@ -2,8 +2,44 @@
 
 ## Unreleased
 
-## v0.7.30 - 2026-06-26
+## v0.7.32 - 2026-06-27
 
+- **Reverted the classifier-blocked curl|bash auto-update preflight.** The inline
+  `curl <install-all-runtimes.sh> | bash` preflight that v0.7.31 embedded in every
+  `/hep-*` command and skill surface is denied by host permission classifiers
+  (e.g. Claude Code auto mode) on every machine — it could never run and surfaced
+  a blocked-command prompt each time. Adapters no longer carry it.
+- **Runtime self-heals stale adapters.** `agentlas_cloud.update.reconcile_adapters`
+  strips the blocked preflight from already-installed command/skill adapters —
+  network-free and version-independent — on every command (via `maybe_auto_update`,
+  `update`, and `doctor`). Machines already on v0.7.31 recover automatically.
+- **Routed Hub agents attach to the live codebase.** Borrowed BYOM agents are
+  grounded in the working project (`project_dir`) before producing output, and
+  `route` emits a `byom_local_grounded` execution directive on `hub_candidates`
+  so routing resolves to a context-attached, locally-executed plan instead of a
+  dead-end candidate list.
+- **Stormbreaker goal loop.** New `goal_loop.run_goal_loop`: iterate a task until
+  a goal verifier passes, with stall detection, transient-failure tolerance, a
+  runaway ceiling, and Run Journal resume. Wired into the packet executor via a
+  packet `loop: {goal_command, ...}` spec.
+
+## v0.7.31 - 2026-06-26
+
+- **No-terminal app-host auto-update preflight.** `/hep-build`,
+  `/hep-network`, `/hep-cloud`, `/hep-search`, `/hep-call`, and `/hep-upload`
+  surfaces for Claude Code, Codex, Gemini, Antigravity, Cursor, OpenCode,
+  OpenClaw, Hermes, and AgentSkills now try to repair/update Hephaestus from
+  inside the host app before resolving the runner. Users no longer need to open
+  a separate terminal when the host provides a Bash/shell/exec tool.
+- **Runtime-current runner wins before stale plugin caches.** Command surfaces
+  resolve `~/.agentlas/runtime/current/bin/hephaestus` before Claude/Codex
+  plugin cache copies, so a refreshed neutral runtime is not shadowed by an
+  older plugin cache.
+- **App-only update boundary documented.** If an already-installed host surface
+  is so old that it has no update/preflight instruction, or the host exposes no
+  shell/MCP/local-file mutation tool at all, Hephaestus cannot rewrite that
+  local install from chat alone; one marketplace/plugin refresh or one-touch
+  install is still required to reach the self-healing surface.
 - **One-touch installs now stamp plugin release markers.** Fresh installs write
   `RELEASE` and Python shims into Claude Code and Codex plugin cache
   directories, and the one-touch verifier now fails if `update --check` does

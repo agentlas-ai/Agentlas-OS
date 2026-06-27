@@ -19,7 +19,9 @@ from .bootstrap import (
 from .card_lint import lint_card
 from .card_migrate import migrate_tree
 from .card_store import load_global_cards, reindex, save_card
+from .goal_loop import GoalLoopConfig, GoalLoopResult, run_goal_loop
 from .router import route_request
+from .run_journal import RunJournal
 from .search_call import call_agents, search_agents
 from .stormbreaker_runner import run_stormbreaker_decision, run_stormbreaker_query
 
@@ -37,6 +39,10 @@ __all__ = [
     "route_request",
     "run_stormbreaker_decision",
     "run_stormbreaker_query",
+    "run_goal_loop",
+    "GoalLoopConfig",
+    "GoalLoopResult",
+    "RunJournal",
     "call_agents",
     "search_agents",
     "save_card",

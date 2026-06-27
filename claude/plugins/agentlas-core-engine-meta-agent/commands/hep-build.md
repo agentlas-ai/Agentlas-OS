@@ -33,6 +33,7 @@ If the first argument is `ontology`, open the project-local ontology GUI:
 RUNNER=""
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
   "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
   "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
   "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
@@ -53,7 +54,7 @@ if [ -z "$RUNNER" ]; then
   done
 fi
 if [ -z "$RUNNER" ]; then
-  echo "Hephaestus runtime not found. Install the plugin or run the standalone installer first." >&2
+  echo "Hephaestus runtime not found. Run the installer first." >&2
   exit 1
 fi
 "$RUNNER" ontology --gui .

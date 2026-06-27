@@ -23,3 +23,7 @@ mcp_servers:
 
 Then `hephaestus_route` and `hephaestus_network_status` appear as tools, and
 the skill instructs the model to use them when shell access is unavailable.
+
+The installed Hermes skills include the app-host auto-update preflight. When
+Hermes can run local commands, Hephaestus refreshes
+`~/.agentlas/runtime/current` from inside Hermes before resolving the runner.

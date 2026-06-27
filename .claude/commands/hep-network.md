@@ -22,10 +22,10 @@ Raw arguments: `$ARGUMENTS`
 RUNNER=""
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
   "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
   "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
   "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
-  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
   "./bin/hephaestus" \
   "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
 do
@@ -70,10 +70,22 @@ fi
      On a stage failure: stop and report progress plus the remaining plan —
      never retry silently.
    - `action: "hub_fallback"` or `"hub_candidates"` — Hub lookup used redacted
-     keywords only; the raw prompt and local memory were not sent. If `$RUNNER local-gui`
-     printed `source: "hub_cloud_package"` for a GUI shortcut such as `startup`,
-     report that the Hub package was restored and the GUI is opening; do not stop
-     at “candidate only.”
+     keywords only; the raw prompt and local memory were not sent. If the decision
+     carries an `execution` block (`mode: "byom_local_grounded"`), FOLLOW IT: for
+     each entry in `execution.recommended_agents` (in stage order), borrow the agent
+     and run it LOCALLY with
+     `"$RUNNER" hep-call "<agent>" "<original request>" --project .` — this fetches
+     the BYOM runtime bundle and returns `grounding` that attaches the current
+     project codebase + memory. Then execute the returned `entry` instructions with
+     your own model, FIRST attaching to this repo's actual codebase per
+     `grounding.directive`, before producing output. Do NOT call these agents
+     context-less in the cloud, and do NOT skip the network to improvise a local
+     answer yourself — running the borrowed specialist attached to this project IS
+     the job. If `execution` is absent (no borrowable candidate), report the
+     candidates and offer `/hep-build`. If `$RUNNER local-gui` printed
+     `source: "hub_cloud_package"` for a GUI shortcut such as `startup`, report that
+     the Hub package was restored and the GUI is opening; do not stop at
+     “candidate only.”
    - `action: "propose_new"` — offer to build a new agent/team via `/hep-build`.
    - `action: "refuse"` — explain `reasons` (for example, loop guard). Do not retry around it.
 

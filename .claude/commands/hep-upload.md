@@ -25,11 +25,23 @@ Upload to Agentlas Hub? Other people can borrow it.
 Do not package, publish, register, add-source, reindex, or call an upload API
 until the user answers Cloud or Agentlas Hub.
 
-Before any upload, use the bundled Hephaestus runtime gate. It must validate
+After the user chooses a destination, run the app-host auto-update preflight
+inside this host app and resolve the runner. Do not ask the user to open a
+separate terminal:
+
+```bash
+RUNNER=""
+for candidate in "$HOME/.agentlas/runtime/current/bin/hephaestus" "./bin/hephaestus"; do
+  [ -x "$candidate" ] && RUNNER="$candidate" && break
+done
+[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
+```
+
+Before any upload, use the resolved Hephaestus runtime gate. It must validate
 the package without assuming any private local checkout:
 
-- Cloud/private-link: `bin/hephaestus package <agent-folder> --visibility private-link`
-- Agentlas Hub/marketplace: `bin/hephaestus package <agent-folder> --visibility marketplace`
+- Cloud/private-link: `"$RUNNER" package <agent-folder> --visibility private-link`
+- Agentlas Hub/marketplace: `"$RUNNER" package <agent-folder> --visibility marketplace`
 
 For Hub upload, the bundled gate blocks missing or generic `publicProfile`, bad
 `routing-card.json`, missing package hashes, static security blockers, and
@@ -38,16 +50,16 @@ packages that exceed the public bundle limits.
 After the user chooses:
 
 - Cloud: upload as the signed-in owner's private Cloud package. Prefer
-  `bin/hephaestus publish <agent-folder> --visibility private-link`.
+  `"$RUNNER" publish <agent-folder> --visibility private-link`.
 - Agentlas Hub: publish to the public marketplace through the same bundled
   Hephaestus gate. Prefer
-  `bin/hephaestus publish <agent-folder> --visibility marketplace`.
+  `"$RUNNER" publish <agent-folder> --visibility marketplace`.
 
 When running through a non-interactive host without a TTY, do not call the
 question-only gate again after the user has answered. Use one explicit command:
 
-- Cloud: `bin/hephaestus hep-upload <agent-folder> --visibility private-link`
-- Agentlas Hub: `bin/hephaestus hep-upload <agent-folder> --visibility marketplace`
+- Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
+- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
 
 If the destination is answered but the target folder is ambiguous, ask for the
 exact agent folder before running any upload.

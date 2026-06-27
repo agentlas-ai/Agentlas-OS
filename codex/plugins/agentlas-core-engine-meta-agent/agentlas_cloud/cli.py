@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .runtime import AgentlasMockStore, compile_runtime_bundle, read_agent_file, run_setup_wizard, scan_agent_folder
-from .update import maybe_auto_update, run_update, write_python_shims
+from .update import maybe_auto_update, reconcile_adapters, run_update, write_python_shims
 
 
 RESEARCH_SEARCH_PROVIDERS = ("ddg-html", "news-rss", "github", "jina")
@@ -1334,6 +1334,15 @@ def run_doctor() -> dict[str, Any]:
             checks["actions"].append(f"python3 shim failed: {exc}")
     if release is None:
         checks["actions"].append("missing RELEASE marker; reinstall with scripts/install-all-runtimes.sh")
+    try:
+        sanitized = reconcile_adapters()
+        if sanitized["count"]:
+            checks["actions"].append(
+                f"stripped blocked curl|bash auto-update preflight from {sanitized['count']} installed adapter(s)"
+            )
+            checks["adapters_sanitized"] = sanitized["sanitized"]
+    except Exception as exc:
+        checks["actions"].append(f"adapter reconcile failed: {exc}")
     checks["status"] = "warn" if checks["actions"] else "ok"
     return checks
 

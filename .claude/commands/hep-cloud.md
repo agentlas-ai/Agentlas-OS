@@ -29,10 +29,10 @@ Raw arguments: `$ARGUMENTS`
 RUNNER=""
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
   "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
   "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
   "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
-  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
   "./bin/hephaestus" \
   "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
 do

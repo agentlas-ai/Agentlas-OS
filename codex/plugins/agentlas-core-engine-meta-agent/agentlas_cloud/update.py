@@ -31,6 +31,171 @@ HEP_COMMANDS = ("hep-build", "hep-network", "hep-cloud", "hep-search", "hep-call
 HEP_SKILLS = ("hephaestus-network", "hephaestus-cloud")
 AUTO_UPDATE_MARKER = "auto-update.json"
 
+# Legacy in-adapter auto-update preflight. Older releases shipped command
+# adapters that began with an ``if [ "${HEPHAESTUS_APP_AUTO_UPDATE ...; then
+# ... curl <install-all-runtimes.sh> | HEPHAESTUS_FORCE=1 bash ... fi`` stanza.
+# Host permission classifiers (e.g. Claude Code auto mode) block piping a remote
+# script into bash on *every* machine, so the preflight is dead weight that can
+# never succeed. The runner's own urllib-based self-update replaces it, so the
+# durable fix is to strip the stanza from installed adapters in place — network
+# free and independent of which release is published.
+LEGACY_PREFLIGHT_START = 'if [ "${HEPHAESTUS_APP_AUTO_UPDATE'
+LEGACY_PREFLIGHT_MARKERS = (
+    "HEPHAESTUS_APP_AUTO_UPDATE",
+    "NEEDS_HEP_UPDATE",
+    "HEPHAESTUS_FORCE=1 bash",
+    "hephaestus-app-auto-update",
+)
+
+
+def _strip_legacy_preflight(text: str) -> tuple[str, bool]:
+    """Remove the legacy ``curl | bash`` auto-update preflight stanza.
+
+    The stanza is a self-contained ``if ...; then ... fi`` block (with nested
+    ``if`` statements) that opens with :data:`LEGACY_PREFLIGHT_START`. We locate
+    that opener and consume lines until the matching ``fi`` returns nesting depth
+    to zero, then swallow a single trailing blank line. Everything before and
+    after — the still-valid runner resolution body — is preserved verbatim.
+    Returns ``(new_text, changed)``.
+    """
+
+    lines = text.splitlines(keepends=True)
+    start = None
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith(LEGACY_PREFLIGHT_START):
+            start = index
+            break
+    if start is None:
+        return text, False
+
+    depth = 0
+    end = None
+    for index in range(start, len(lines)):
+        stripped = lines[index].strip()
+        if stripped.startswith("if ") and stripped.endswith("then"):
+            depth += 1
+        elif stripped == "fi":
+            depth -= 1
+            if depth == 0:
+                end = index
+                break
+    if end is None:
+        return text, False
+
+    cut_end = end + 1
+    if cut_end < len(lines) and lines[cut_end].strip() == "":
+        cut_end += 1
+    new_text = "".join(lines[:start] + lines[cut_end:])
+    return new_text, new_text != text
+
+
+# Stale "runner not found" message that older adapters emitted; it references the
+# now-removed preflight log. Normalize it so a sanitized adapter carries none of
+# the legacy markers and the staleness scan skips it on the next pass.
+LEGACY_NOT_FOUND_MESSAGE = (
+    "Hephaestus runtime not found after app auto-update preflight. "
+    "See /tmp/hephaestus-app-auto-update.log if it exists."
+)
+CLEAN_NOT_FOUND_MESSAGE = "Hephaestus runtime not found. Run the installer first."
+
+
+def _sanitize_adapter_text(text: str) -> tuple[str, bool]:
+    """Apply every legacy-preflight repair to one adapter's text.
+
+    Strips the ``curl | bash`` stanza and normalizes the stale not-found message
+    so the result is free of all :data:`LEGACY_PREFLIGHT_MARKERS`. Returns
+    ``(new_text, changed)``.
+    """
+
+    new_text, _ = _strip_legacy_preflight(text)
+    if LEGACY_NOT_FOUND_MESSAGE in new_text:
+        new_text = new_text.replace(LEGACY_NOT_FOUND_MESSAGE, CLEAN_NOT_FOUND_MESSAGE)
+    return new_text, new_text != text
+
+
+def _adapter_paths(home: Path) -> list[Path]:
+    """Enumerate installed hep-* command and skill adapter files across runtimes.
+
+    Both command adapters (``.md`` / ``.toml``) and skill adapters
+    (``SKILL.md``) shipped the legacy preflight, so both must be scanned.
+    Destinations only — derivable from ``home`` without a release source, so the
+    staleness scan stays network free.
+    """
+
+    codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
+    paths: list[Path] = []
+    for command in HEP_COMMANDS:
+        paths.extend(
+            [
+                home / ".claude" / "commands" / f"{command}.md",
+                codex_home / "prompts" / f"{command}.md",
+                home / ".cursor" / "commands" / f"{command}.md",
+                home / ".config" / "opencode" / "commands" / f"{command}.md",
+                home / ".gemini" / "antigravity" / "global_workflows" / f"{command}.md",
+                home / ".gemini" / "antigravity-ide" / "global_workflows" / f"{command}.md",
+                home / ".gemini" / "commands" / f"{command}.toml",
+                home / ".gemini" / "hephaestus-extension-source" / "commands" / f"{command}.toml",
+            ]
+        )
+    for skill in HEP_SKILLS:
+        paths.extend(
+            [
+                home / ".agents" / "skills" / skill / "SKILL.md",
+                home / ".cursor" / "skills" / skill / "SKILL.md",
+                home / ".openclaw" / "skills" / skill / "SKILL.md",
+                home / ".hermes" / "skills" / skill / "SKILL.md",
+                home / ".gemini" / "hephaestus-extension-source" / "skills" / skill / "SKILL.md",
+            ]
+        )
+    cache_roots = [
+        home / ".claude" / "plugins" / "cache" / "agentlas-core-engine" / "hephaestus",
+        codex_home / "plugins" / "cache" / "agentlas-core-engine" / "hephaestus",
+    ]
+    for cache_root in cache_roots:
+        if not cache_root.is_dir():
+            continue
+        for child in cache_root.iterdir():
+            if not child.is_dir() or child.is_symlink():
+                continue
+            for runtime in ("claude", "codex"):
+                command_dir = child / runtime / "plugins" / "agentlas-core-engine-meta-agent" / "commands"
+                if command_dir.is_dir():
+                    for command in HEP_COMMANDS:
+                        paths.append(command_dir / f"{command}.md")
+            for skill in HEP_SKILLS:
+                paths.append(child / "skills" / skill / "SKILL.md")
+    return paths
+
+
+def reconcile_adapters(home: Path | None = None) -> dict[str, Any]:
+    """Strip the legacy curl|bash auto-update preflight from installed adapters.
+
+    Network free and release independent: repairs adapters in place so the
+    permission-blocked preflight is purged on any machine — even one already on
+    the latest runtime, where version-gated adapter sync never fires. Fail-silent
+    per file; a single unreadable adapter never aborts the sweep.
+    """
+
+    home_dir = home or Path.home()
+    sanitized: list[str] = []
+    for path in _adapter_paths(home_dir):
+        try:
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8")
+            if not any(marker in text for marker in LEGACY_PREFLIGHT_MARKERS):
+                continue
+            new_text, changed = _sanitize_adapter_text(text)
+            if not changed:
+                continue
+            tmp = path.with_name(f".{path.name}.tmp.{os.getpid()}.{time.time_ns()}")
+            tmp.write_text(new_text, encoding="utf-8")
+            tmp.replace(path)
+            sanitized.append(str(path))
+        except Exception:
+            continue
+    return {"sanitized": sanitized, "count": len(sanitized)}
+
 
 def current_release(root: Path | None = None) -> str | None:
     runtime_root = root or Path(__file__).resolve().parent.parent
@@ -53,6 +218,10 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
         "html_url": latest.get("html_url"),
         "install_command": "hephaestus update",
     }
+    if not check_only:
+        reconciled = reconcile_adapters()
+        if reconciled["count"]:
+            result["adapters_sanitized"] = reconciled["sanitized"]
     if check_only or status not in {"update_available", "missing_release_marker"}:
         return result
 
@@ -71,6 +240,15 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
     """
 
     try:
+        # Always self-heal stale command adapters first. This is network free
+        # and must run even when version auto-update is disabled, because the
+        # legacy curl|bash preflight is blocked by host classifiers on every
+        # machine and would otherwise persist forever once the runtime is
+        # already current (version-gated adapter sync never re-fires).
+        try:
+            reconcile_adapters()
+        except Exception:
+            pass
         if _auto_update_disabled():
             return
         runtime_root = root or Path(__file__).resolve().parent.parent

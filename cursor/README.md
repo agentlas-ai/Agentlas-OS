@@ -27,3 +27,10 @@ cp -R skills/hephaestus-cloud ~/.cursor/skills/
 
 The Cursor CLI (`agent`) reads the same rules, skills, AGENTS.md, and
 `~/.cursor/mcp.json` — for MCP tool access see `docs/local-models.md`.
+
+When Cursor can run local commands, `/hep-build`, `/hep-network`,
+`/hep-cloud`, `/hep-search`, `/hep-call`, and `/hep-upload` first follow the
+Hephaestus app-host auto-update preflight. It refreshes
+`~/.agentlas/runtime/current` and installed command/skill surfaces from inside
+Cursor before resolving the runner, so app-only users do not need a separate
+terminal for normal self-repair.
