@@ -73,6 +73,7 @@ def run_stormbreaker_query(
     research_depth: str = STORMBREAKER_DEFAULT_RESEARCH_DEPTH,
     research_follow_results: int = STORMBREAKER_DEFAULT_FOLLOW_RESULTS,
     research_variants: list[str] | None = None,
+    max_replans: int = 2,
 ) -> dict[str, Any]:
     """Route a query, then run the returned Stormbreaker pipeline fabric."""
 
@@ -103,6 +104,7 @@ def run_stormbreaker_query(
         research_depth=research_depth,
         research_follow_results=research_follow_results,
         research_variants=research_variants,
+        max_replans=max_replans,
     )
     result["route_decision"] = _decision_summary(decision)
     return result
@@ -122,6 +124,7 @@ def run_stormbreaker_decision(
     research_depth: str = STORMBREAKER_DEFAULT_RESEARCH_DEPTH,
     research_follow_results: int = STORMBREAKER_DEFAULT_FOLLOW_RESULTS,
     research_variants: list[str] | None = None,
+    max_replans: int = 2,
 ) -> dict[str, Any]:
     """Run a previously routed Stormbreaker pipeline decision."""
 
@@ -179,82 +182,121 @@ def run_stormbreaker_decision(
         },
     )
 
-    for group in fabric.get("parallel_groups") or []:
-        group_id = str(group.get("group_id") or "group")
-        group_packet_ids = [str(packet_id) for packet_id in group.get("packet_ids") or []]
-        blocked_deps = [packet_id for packet_id in group.get("depends_on") or [] if packet_statuses.get(str(packet_id)) != "passing"]
-        if blocked_deps:
-            for packet_id in group_packet_ids:
-                packet = packet_by_id.get(packet_id)
-                if not packet:
-                    continue
-                result = _blocked_packet_result(
-                    packet,
-                    project=project,
-                    journal=journal,
-                    home=base,
-                    parent_receipt_id=str(decision.get("receipt_id") or ""),
-                    detail=f"dependency_not_passing: {', '.join(blocked_deps)}",
-                    pipeline_id=pipeline_id,
-                    group_id=group_id,
-                )
-                packet_statuses[packet_id] = result["status"]
-                packet_results.append(result)
-            continue
-
-        ready_packets = [packet_by_id[packet_id] for packet_id in group_packet_ids if packet_id in packet_by_id]
-        if not ready_packets:
-            continue
-
-        workers = min(max_parallel, len(ready_packets))
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="stormbreaker-packet") as executor:
-            futures = {
-                executor.submit(
-                    _run_packet,
-                    packet,
-                    project=project,
-                    home=base,
-                    journal=journal,
-                    parent_receipt_id=str(decision.get("receipt_id") or ""),
-                    pipeline_id=pipeline_id,
-                    group_id=group_id,
-                    executor_command=executor_command,
-                    execute_card_commands=execute_card_commands,
-                    timeout_seconds=timeout_seconds,
-                    research_evidence=research_evidence,
-                    research_options=research_options,
-                    user_query=user_query,
-                ): packet
-                for packet in ready_packets
-            }
-            for future in as_completed(futures):
-                packet = futures[future]
-                packet_id = str(packet["packet_id"])
-                try:
-                    result = future.result()
-                except Exception as exc:  # pragma: no cover - defensive finalizer
+    def _execute_pending_groups() -> None:
+        """Run every parallel group once, skipping packets already verified as
+        passing. On a re-attempt this redoes only non-passing work — it never
+        re-runs verified packets and never manufactures a success it did not earn."""
+        for group in fabric.get("parallel_groups") or []:
+            group_id = str(group.get("group_id") or "group")
+            group_packet_ids = [str(packet_id) for packet_id in group.get("packet_ids") or []]
+            pending_ids = [packet_id for packet_id in group_packet_ids if packet_statuses.get(packet_id) != "passing"]
+            if not pending_ids:
+                continue
+            blocked_deps = [packet_id for packet_id in group.get("depends_on") or [] if packet_statuses.get(str(packet_id)) != "passing"]
+            if blocked_deps:
+                for packet_id in pending_ids:
+                    packet = packet_by_id.get(packet_id)
+                    if not packet:
+                        continue
                     result = _blocked_packet_result(
                         packet,
                         project=project,
                         journal=journal,
                         home=base,
                         parent_receipt_id=str(decision.get("receipt_id") or ""),
-                        detail=f"runner_exception: {exc}",
+                        detail=f"dependency_not_passing: {', '.join(blocked_deps)}",
                         pipeline_id=pipeline_id,
                         group_id=group_id,
                     )
-                packet_statuses[packet_id] = result["status"]
-                packet_results.append(result)
-                started_sessions.append(
-                    {
-                        "packet_id": packet_id,
-                        "session_id": result.get("session_id"),
-                        "status": result["status"],
-                        "mode": result.get("execution_mode"),
-                    }
-                )
+                    packet_statuses[packet_id] = result["status"]
+                    packet_results.append(result)
+                continue
 
-    final_gate = evaluate_final_gate(dict(fabric), packet_statuses)
+            ready_packets = [packet_by_id[packet_id] for packet_id in pending_ids if packet_id in packet_by_id]
+            if not ready_packets:
+                continue
+
+            workers = min(max_parallel, len(ready_packets))
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="stormbreaker-packet") as executor:
+                futures = {
+                    executor.submit(
+                        _run_packet,
+                        packet,
+                        project=project,
+                        home=base,
+                        journal=journal,
+                        parent_receipt_id=str(decision.get("receipt_id") or ""),
+                        pipeline_id=pipeline_id,
+                        group_id=group_id,
+                        executor_command=executor_command,
+                        execute_card_commands=execute_card_commands,
+                        timeout_seconds=timeout_seconds,
+                        research_evidence=research_evidence,
+                        research_options=research_options,
+                        user_query=user_query,
+                    ): packet
+                    for packet in ready_packets
+                }
+                for future in as_completed(futures):
+                    packet = futures[future]
+                    packet_id = str(packet["packet_id"])
+                    try:
+                        result = future.result()
+                    except Exception as exc:  # pragma: no cover - defensive finalizer
+                        result = _blocked_packet_result(
+                            packet,
+                            project=project,
+                            journal=journal,
+                            home=base,
+                            parent_receipt_id=str(decision.get("receipt_id") or ""),
+                            detail=f"runner_exception: {exc}",
+                            pipeline_id=pipeline_id,
+                            group_id=group_id,
+                        )
+                    packet_statuses[packet_id] = result["status"]
+                    packet_results.append(result)
+                    started_sessions.append(
+                        {
+                            "packet_id": packet_id,
+                            "session_id": result.get("session_id"),
+                            "status": result["status"],
+                            "mode": result.get("execution_mode"),
+                        }
+                    )
+
+    # Fabric-level drive-to-completion loop: a single blocked gate is not the end.
+    # Re-run non-passing packets up to ``max_replans`` extra attempts, but stop the
+    # moment an attempt fails to shrink the non-passing set — re-running identical
+    # failures is the doom loop we refuse, and we never report success unearned.
+    max_attempts = 1 + max(0, int(max_replans))
+    attempt = 0
+    previous_non_passing: set[str] | None = None
+    while True:
+        attempt += 1
+        _execute_pending_groups()
+        final_gate = evaluate_final_gate(dict(fabric), packet_statuses)
+        if final_gate.get("can_report_success"):
+            break
+        non_passing = {str(pid) for pid in (final_gate.get("blocked") or [])} | {
+            str(pid) for pid in (final_gate.get("missing_or_incomplete") or [])
+        }
+        no_progress = previous_non_passing is not None and non_passing == previous_non_passing
+        if attempt >= max_attempts or no_progress or not non_passing:
+            break
+        previous_non_passing = set(non_passing)
+        for packet_id in non_passing:
+            packet_statuses.pop(packet_id, None)
+        _append_journal(
+            journal,
+            {
+                "event": "runner_replan",
+                "pipeline_id": pipeline_id,
+                "attempt": attempt,
+                "retry_packets": sorted(non_passing),
+                "reason": "final_gate_blocked",
+            },
+        )
+
     status = "completed" if final_gate["can_report_success"] else "blocked"
     _append_journal(
         journal,
@@ -262,9 +304,15 @@ def run_stormbreaker_decision(
             "event": "runner_finished",
             "pipeline_id": pipeline_id,
             "status": status,
+            "attempts": attempt,
             "final_gate": final_gate,
         },
     )
+
+    # Last write wins: a re-run packet supersedes its earlier blocked/failed record.
+    deduped_packets: dict[str, dict[str, Any]] = {}
+    for item in packet_results:
+        deduped_packets[str(item.get("packet_id"))] = item
 
     result = {
         "status": status,
@@ -278,7 +326,8 @@ def run_stormbreaker_decision(
         "max_workers": max_parallel,
         "sessions_started": started_sessions,
         "packet_statuses": packet_statuses,
-        "packets": sorted(packet_results, key=lambda item: (item.get("stage_order") or 0, item.get("packet_id") or "")),
+        "attempts": attempt,
+        "packets": sorted(deduped_packets.values(), key=lambda item: (item.get("stage_order") or 0, item.get("packet_id") or "")),
         "final_gate": final_gate,
     }
     if research_evidence:
