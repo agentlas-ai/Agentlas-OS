@@ -27,6 +27,7 @@ from .pipeline import detect_stages, plan_pipeline
 from .playbooks import build_memory_playbook_context
 from .policy import evaluate_local_operator_policy
 from .receipts import write_receipt
+from .router_agent_call import router_escalation
 from .tokenize import has_hangul, snake_tokens, token_set, tokenize, word_token_set, word_tokens
 
 # Optional semantic signal. The ontology ships a deterministic, offline hashed
@@ -754,6 +755,19 @@ def route_request(
             task_force=task_force,
             policy_decision=policy_decision,
         )
+        # Cascade: a low-confidence (clarify/propose_new) decision can be handed
+        # to the Router Agent for an LLM reasoning pass run by the HOST runtime.
+        # The engine only attaches the directive (BYOC); confident routes and
+        # pipelines are left untouched. Receipts store a redacted summary only.
+        router_agent = router_escalation(
+            result,
+            query=query,
+            locale=locale,
+            policy=policy,
+            query_tokens=sorted(query_tokens),
+        )
+        if router_agent:
+            result["router_agent"] = router_agent
         receipt_id = write_receipt(
             action=result["action"],
             query_tokens=sorted(query_tokens),
@@ -772,6 +786,11 @@ def route_request(
             task_force=task_force,
             policy_decision=policy_decision,
             memory_playbook=memory_playbook,
+            router_agent=(
+                {"mode": router_agent["mode"], "agent": router_agent["agent"], "reason": router_agent["reason"]}
+                if router_agent
+                else None
+            ),
             home=base,
         )
         result["receipt_id"] = receipt_id

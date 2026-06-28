@@ -34,6 +34,7 @@ def write_receipt(
     task_force: dict[str, Any] | None = None,
     policy_decision: dict[str, Any] | None = None,
     memory_playbook: dict[str, Any] | None = None,
+    router_agent: dict[str, Any] | None = None,
     home: Path | str | None = None,
 ) -> str:
     base = Path(home) if home else networking_home()
@@ -60,6 +61,7 @@ def write_receipt(
         "task_force": task_force or {},
         "policy_decision": policy_decision or {},
         "memory_playbook": memory_playbook or {},
+        "router_agent": router_agent or {},
     }
     append_jsonl(base / "ledgers" / "routing-decisions.jsonl", record)
     return receipt_id

@@ -176,6 +176,11 @@ def default_routing_policy() -> dict[str, Any]:
         "semantic_weight": 0.5,
         "domain_boost": 1.5,
         "domain_penalty": 6.0,
+        # Router Agent cascade: when the deterministic router lands on
+        # clarify/propose_new, attach an escalation directive so the host runtime
+        # resolves the ambiguous request with an LLM reasoning pass (BYOC — the
+        # engine never calls a model itself). Set False for pure deterministic.
+        "router_llm_escalation": True,
     }
 
 
