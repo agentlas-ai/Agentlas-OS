@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## v1.0.2 - 2026-06-29
+
+- **Antigravity workflow surface fixed.** The Antigravity global workflows
+  (`/hep-network`, `/hep-cloud`, `/hep-search`, `/hep-call`, `/hep-upload`) were
+  the only runtime adapter shipping without YAML frontmatter and with a
+  prose-only recipe instead of a runnable command block, so the host model had
+  no deterministic command to run and would improvise (fabricated PATH/git
+  "fixes"). Each now carries a `description` and the same resolve-runner →
+  `route --runtime antigravity` block the other runtimes use, plus explicit
+  guardrails against inventing PATH/zshrc/git work. Mirrored to
+  `.agents/workflows/`.
+- **v1.0.x published as a real GitHub release.** v1.0.0/v1.0.1 existed only as
+  tags, so `hephaestus update` (which reads `releases/latest`) resolved to the
+  stale v0.7.32. Releasing v1.0.2 makes update land on the current line.
+
 ## v1.0.1 - 2026-06-29
 
 - **100K Agentlas routing release.** Hephaestus now ships as the Agent OS engine

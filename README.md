@@ -107,7 +107,7 @@ Fresh installs and updates prune the old visible `/hephaestus` chat command so
 new users see the clean command surface above: six explicit commands in
 external LLM hosts, and plain-language native routing inside Agentlas.
 
-## New In v1.0.1
+## New In v1.0.2
 
 - **100K Agentlas routing path.** Hephaestus is now wired into the Agentlas
   100K-agent routing upgrade: semantic embeddings open recall beyond lexical
@@ -555,7 +555,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.0.1
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.0.2
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
