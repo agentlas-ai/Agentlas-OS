@@ -185,6 +185,7 @@ def register_package(
             "Accept": "application/json",
             "Authorization": f"Bearer {token}",
             "User-Agent": "hephaestus-upload",
+            "Origin": base,
         },
         method="POST",
     )
@@ -332,12 +333,15 @@ def validate_public_profile_for_upload(base: Path, visibility: str) -> list[dict
     if not isinstance(guide, dict):
         findings.append(_finding("public-profile-guide", "blocker", "market-page", "publicProfile guide is missing.", "agentlas.json", "Add guide sections for what-it-does, best-for, prerequisites, expected-outputs, and careful-with."))
         return findings
+    # Accept the *Ko localized variants too: title/description already read Ko
+    # (line ~324), so guide sections must as well — otherwise a Korean-first
+    # package with full guide copy is wrongly flagged "lacks enough sections".
     section_keys = [
-        ("what-it-does", "whatItDoes"),
-        ("best-for", "bestFor"),
-        ("prerequisites",),
-        ("expected-outputs", "expectedOutputs"),
-        ("careful-with", "carefulWith"),
+        ("what-it-does", "whatItDoes", "whatItDoesKo"),
+        ("best-for", "bestFor", "bestForKo"),
+        ("prerequisites", "prerequisitesKo"),
+        ("expected-outputs", "expectedOutputs", "expectedOutputsKo"),
+        ("careful-with", "carefulWith", "carefulWithKo"),
     ]
     filled = 0
     for keys in section_keys:

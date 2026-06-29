@@ -78,6 +78,39 @@ def _safety_risk(card: dict[str, Any]) -> dict[str, Any]:
     return {"tier": "medium", "capabilities_at_risk": at_risk}
 
 
+# Human/builder-authored content fields on a routing-card. On --overwrite we
+# refresh infra/derived metadata (source hash, agent_card_ref, updated_at,
+# quality) but keep these when the existing card already has a meaningful value,
+# so a re-migrate never clobbers rich triggers/capabilities/domains/ko copy with
+# agent-card-derived stubs (e.g. ["operate_<slug>"]).
+_PRESERVE_CONTENT_KEYS = (
+    "name", "name_ko", "summary", "summary_ko", "description", "aliases",
+    "capabilities", "domains", "trigger_examples", "anti_triggers",
+    "required_inputs", "optional_inputs", "required_plugins",
+    "benchmark_fixtures", "known_failure_cases", "risk_profile", "cost_hints",
+    "locale_coverage", "memory_behavior", "approval_requirements", "entrypoints",
+)
+
+
+def _is_meaningful(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, (str, list, dict)):
+        return len(value) > 0
+    return True
+
+
+def _merge_preserving_existing(new_card: dict[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(new_card)
+    for key in _PRESERVE_CONTENT_KEYS:
+        if _is_meaningful(existing.get(key)):
+            merged[key] = existing[key]
+    rev = existing.get("revision")
+    if isinstance(rev, int):
+        merged["revision"] = rev + 1
+    return merged
+
+
 def migrate_package(
     pkg_dir: Path,
     tier: str,
@@ -205,15 +238,20 @@ def migrate_package(
     }
 
     local_path = pkg_dir / ".agentlas" / "routing-card.json"
-    if local_path.exists() and not overwrite:
+    if local_path.exists():
         existing = read_json(local_path, default=None)
         if isinstance(existing, dict) and existing.get("id"):
-            if home is not None:
-                global_copy = dict(existing)
-                global_copy.setdefault("source", {})
-                global_copy["source"] = {**global_copy["source"], "kind": "local_path", "ref": str(pkg_dir)}
-                save_card(Path(home), global_copy)
-            return {"id": existing.get("id"), "status": "kept_existing", "path": str(local_path)}
+            if not overwrite:
+                if home is not None:
+                    global_copy = dict(existing)
+                    global_copy.setdefault("source", {})
+                    global_copy["source"] = {**global_copy["source"], "kind": "local_path", "ref": str(pkg_dir)}
+                    save_card(Path(home), global_copy)
+                return {"id": existing.get("id"), "status": "kept_existing", "path": str(local_path)}
+            # overwrite=True: refresh infra/derived metadata but preserve the
+            # human-authored content already on the card, so a re-migrate never
+            # downgrades a rich routing-card to agent-card-derived stubs.
+            card = _merge_preserving_existing(card, existing)
 
     from .bootstrap import atomic_write_json
 
