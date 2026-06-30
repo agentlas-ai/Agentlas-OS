@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v1.0.3 - 2026-06-30
+
+- **Release metadata and docs synced.** Runtime manifests, MCP server metadata,
+  plugin package manifests, one-touch install defaults, Codex install docs, and
+  tests now consistently point at v1.0.3 so new installs and update checks no
+  longer straddle the v1.0.2 tag.
+- **README release notes corrected.** The top-level English and Korean READMEs
+  now describe the current release line instead of showing the older 100K
+  routing copy under the latest patch heading.
+- **Plugin mirrors stay aligned.** The mirrored Claude Code and Codex plugin
+  bundles carry the same v1.0.3 metadata as the root runtime.
+
 ## v1.0.2 - 2026-06-29
 
 - **Antigravity workflow surface fixed.** The Antigravity global workflows
@@ -15,7 +27,7 @@
   `.agents/workflows/`.
 - **v1.0.x published as a real GitHub release.** v1.0.0/v1.0.1 existed only as
   tags, so `hephaestus update` (which reads `releases/latest`) resolved to the
-  stale v0.7.32. Releasing v1.0.2 makes update land on the current line.
+  stale v0.7.32. Releasing v1.0.2 made update land on the current line.
 
 ## v1.0.1 - 2026-06-29
 

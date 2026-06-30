@@ -107,25 +107,18 @@ Fresh installs and updates prune the old visible `/hephaestus` chat command so
 new users see the clean command surface above: six explicit commands in
 external LLM hosts, and plain-language native routing inside Agentlas.
 
-## New In v1.0.2
+## New In v1.0.3
 
-- **100K Agentlas routing path.** Hephaestus is now wired into the Agentlas
-  100K-agent routing upgrade: semantic embeddings open recall beyond lexical
-  token matches, Atlas `$vectorSearch` supplies dense ANN candidates, and
-  optional Z.ai/DeepSeek reranking sharpens final ordering.
-- **Router Agent cascade.** When deterministic routing needs clarification or
-  proposes a new agent instead of selecting one confidently, Hephaestus now
-  attaches a structured Router Agent escalation directive for the host runtime.
-- **Model calls stay with the host.** The engine does not call an LLM for that
-  cascade. It hands off a redacted directive so Claude Code, Codex, Agentlas
-  Desktop, or another host can run the reasoning pass under its own model policy.
-- **Agentlas Desktop runtime hook.** Desktop now consumes the Router Agent
-  directive and injects the assembled system-agent prompt before the normal
-  auto-route preamble, so escalation context survives the runtime handoff.
-- **Production gates passed.** This release was verified with R2 marketplace
-  index loading, Atlas vector index READY, 120 routing profiles backfilled with
-  embeddings, routing eval 10/10 plus 5/5 guards, production readiness 8/8,
-  Hephaestus pytest, and Desktop typecheck/smoke gates.
+- **Release metadata is consistent again.** Runtime manifests, MCP server
+  metadata, plugin package manifests, one-touch install defaults, Codex install
+  docs, and tests now all point at v1.0.3.
+- **Latest README matches the actual patch line.** The top release section now
+  describes the current install/update sync instead of showing the older 100K
+  routing notes under the latest heading.
+- **Plugin mirrors stay aligned.** Claude Code and Codex mirrored plugin bundles
+  carry the same v1.0.3 metadata as the root runtime.
+- **v1.0.2 stability remains included.** The Antigravity workflow fix and
+  GitHub Release publishing repair remain part of the current release line.
 
 ## Previous Stability Updates
 
@@ -555,7 +548,7 @@ Claude also supports `claude plugins ...` as an alias, but this README uses
 Open your normal OS terminal, not the Codex chat box, and run:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.0.2
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.0.3
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
