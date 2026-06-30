@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## v1.0.4 - 2026-06-30
+
+- **Plugins no longer route as agents.** The local/network router now removes
+  `type: plugin` cards and `plugin/*` ids from the user-facing route pool before
+  scoring, so a generic lexical match cannot recommend tools such as
+  `plugin/shopify-dev` as if they were runnable agents. Plugins remain available
+  to agents through `required_plugins`.
+- **Plugin exclusion is mirrored into host bundles.** The root runtime and the
+  mirrored Claude Code/Codex plugin bundles carry the same router fix, preventing
+  packaged hosts from drifting back to the stale route behavior.
+- **Release metadata moved to v1.0.4.** Runtime manifests, plugin package
+  manifests, one-touch install defaults, global command install refs, and tests
+  now point at v1.0.4 so desktop bundles and CLI installs can use the same
+  tagged engine.
+
 ## v1.0.3 - 2026-06-30
 
 - **Release metadata and docs synced.** Runtime manifests, MCP server metadata,

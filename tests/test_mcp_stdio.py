@@ -26,7 +26,7 @@ def test_initialize_and_tools_list(monkeypatch, tmp_path):
     init = responses[0]["result"]
     assert init["protocolVersion"] == "2025-06-18"
     assert init["serverInfo"]["name"] == "hephaestus-network"
-    assert init["serverInfo"]["version"] == "1.0.3"
+    assert init["serverInfo"]["version"] == "1.0.4"
     tools = responses[1]["result"]["tools"]
     tool_names = {tool["name"] for tool in tools}
     assert tool_names == {

@@ -106,6 +106,29 @@ def test_draft_cards_never_auto_route(tmp_path):
     assert "local/draft-agent" in suggestion_ids
 
 
+def test_plugins_never_route_as_agents(tmp_path):
+    home = setup_home(tmp_path)
+    shopify = make_ready_card(
+        tmp_path,
+        "shopify-dev",
+        triggers_ko=["AI처럼 보이지 않게 해줘", "카피를 자연스럽게 다듬어줘"],
+        triggers_en=["make this not look AI written", "polish ecommerce copy", "shopify product copy"],
+        antis=[],
+        capabilities=["shopify_content_tooling", "copy_polish_tool"],
+    )
+    shopify["id"] = "plugin/shopify-dev"
+    shopify["canonical_id"] = "plugin/shopify-dev"
+    shopify["type"] = "plugin"
+    shopify["name"] = "Shopify Dev Plugin"
+    save_card(home, shopify)
+
+    result = route_request("이거 AI처럼 보이지 않게 해줘", home=home, use_hub=False)
+    serialized = json.dumps(result, ensure_ascii=False)
+    assert result["action"] != "route" or result["selected"]["id"] != "plugin/shopify-dev"
+    assert "plugin/shopify-dev" not in serialized
+    assert "Shopify Dev Plugin" not in serialized
+
+
 def test_similar_cards_force_clarify(tmp_path):
     home = setup_home(tmp_path)
     twin = make_ready_card(
