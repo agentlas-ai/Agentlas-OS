@@ -937,6 +937,16 @@ def route_request(
     cards_by_id = {str(card.get("id")): card for card in cards}
     statuses = {str(card.get("id")): _cached_status(card) for card in cards}
     usable = [card for card in cards if statuses[str(card.get("id"))] not in ("quarantined", "stale")]
+    # Plugins are tools an agent loads (required_plugins) — never a user-facing
+    # route target. Exclude them from the agent route pool so a generic-vocabulary
+    # lexical match can't recommend a plugin (e.g. plugin/shopify-dev) as an agent.
+    usable = [
+        card
+        for card in usable
+        if str(card.get("type") or "").lower() != "plugin"
+        and not str(card.get("id") or "").startswith("plugin/")
+    ]
+
     ao_filter_report: dict[str, Any] = {}
     usable, ao_filter_report = _filter_candidates_by_ao(usable, project, caller_id=caller_id)
     ao_allowed_by: list[str] = []
