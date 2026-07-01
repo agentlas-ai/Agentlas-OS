@@ -459,9 +459,47 @@ def _is_borrowable(item: dict[str, Any]) -> bool:
     )
 
 
+# 일반적인 빌드/기획 동사는 "이 에이전트를 지목했다"고 볼 만큼 특이하지 않으므로 제외 —
+# 진짜 역할 단어("웹마스터", "카피라이터")로만 매칭한다.
+_GENERIC_ROLE_TOKENS = {
+    "기획", "제작", "개발", "구현", "빌드", "만들", "작업", "불러", "불러서", "해줘", "해",
+    "팀", "웹", "앱", "사이트", "페이지", "랜딩", "랜딩페이지", "에이전트", "등",
+    "agent", "team", "build", "make", "plan", "create", "page", "landing", "web", "app", "site",
+}
+
+
+def _explicitly_named_borrowables(
+    query: str, borrowable: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The operator explicitly named these borrowable candidates in the request.
+
+    The Hub ranks by lexical overlap and routinely mis-ranks (an off-domain agent
+    can outscore a named one). But when a candidate's own name word appears in the
+    request, the operator named it on purpose — borrow it regardless of Hub rank.
+    Distinctive name words only (generic build/plan verbs excluded) so we do not
+    over-borrow. Hub rank order is preserved.
+    """
+    q_tokens = word_token_set(query or "")
+    if not q_tokens:
+        return []
+    named: list[dict[str, Any]] = []
+    for item in borrowable:
+        name_tokens = word_token_set(
+            " ".join([str(item.get("name") or ""), str(item.get("nameEn") or "")])
+        )
+        name_tokens |= snake_tokens(str(item.get("slug") or ""))
+        overlap = {
+            t for t in (name_tokens & q_tokens) if len(t) >= 2 and t not in _GENERIC_ROLE_TOKENS
+        }
+        if overlap:
+            named.append(item)
+    return named
+
+
 def _byom_execution_plan(
     *,
     project: Path,
+    query: str = "",
     results: list[dict[str, Any]] | None = None,
     stages: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
@@ -491,15 +529,54 @@ def _byom_execution_plan(
                 )
     else:
         borrowable = [item for item in (results or []) if _is_borrowable(item)]
-        if borrowable:
+        # 사용자가 에이전트를 명시적으로 지목했으면("웹마스터 카피라이터 불러서") 전부 빌려온다 —
+        # 다중 역할 요청을 최상위 후보 1개로 축소하지 않는다(Hub가 오프도메인 에이전트를 명시된
+        # 에이전트보다 높게 랭크할 수 있으므로 명시 지목을 우선).
+        named = _explicitly_named_borrowables(query, borrowable)
+        if named:
+            for cand in named[:5]:
+                recommended.append({"stage": "direct", "agent": str(cand.get("slug"))})
+            named_slugs = {str(c.get("slug")) for c in named}
+            alternatives = [
+                str(c.get("slug")) for c in borrowable if str(c.get("slug")) not in named_slugs
+            ][:5]
+        elif borrowable:
             recommended.append({"stage": "direct", "agent": str(borrowable[0].get("slug"))})
             alternatives = [str(c.get("slug")) for c in borrowable[1:5]]
     if not recommended:
         return None
 
     primary = recommended[0]["agent"]
+    # 명시 지목이 2개+면 이건 "여러 전문가가 협업하는 하나의 산출물" — 실행 모델이 임시
+    # 오케스트레이터 역할(plan→dispatch→synthesize)을 맡도록 directive를 전환한다. CLI에는
+    # 별도 오케스트레이터 세션이 없으므로(hep-storm --executor-command 없이는) 베이스 모델이
+    # 매니저가 되는 게 현실적 경로다.
+    multi = len(recommended) >= 2
+    directive = (
+        "Resolve this request by BORROWING the best-fit Hub agent(s) and running them "
+        "LOCALLY, grounded in the current project. Start from `primary_agent`/"
+        "`recommended_agents`, but if the top pick is clearly off-domain, choose a better "
+        "one from `alternatives` (the Hub ranks by keyword relevance and can mis-rank a "
+        "sparse query). Use `hep-call` (it fetches the BYOM runtime bundle and attaches "
+        "project_dir). Each borrowed agent must attach to this repo's actual codebase + "
+        "memory before producing output. Do NOT call agents context-less in the cloud, and "
+        "do NOT skip the network to improvise a local answer yourself — run the borrowed "
+        "specialist attached to this project."
+    )
+    if multi:
+        directive += (
+            " The operator NAMED MULTIPLE specialists, so YOU are their temporary "
+            "orchestrator — do not just run each in isolation. (1) PLAN how this ONE "
+            "deliverable splits across them (who owns what). (2) DISPATCH each named agent "
+            "with `hep-call`, grounded in the project, feeding each the relevant slice plus "
+            "any upstream specialist's output it needs. (3) SYNTHESIZE their outputs into ONE "
+            "coherent deliverable — integrate and reconcile, do not just concatenate. Borrow "
+            "EVERY named agent; none skipped."
+        )
     return {
         "mode": "byom_local_grounded",
+        # 다중 명시 지목이면 실행 모델이 매니저 역할을 맡는다는 신호.
+        "formation": "temporary_orchestrator" if multi else "single_specialist",
         "primary_agent": primary,
         "recommended_agents": recommended,
         # The Hub ranks by its own keyword relevance and can mis-rank the #1 for a
@@ -510,18 +587,7 @@ def _byom_execution_plan(
         "project_dir": str(project),
         "attach": ["project_codebase", "agentlas_memory", "super_ontology"],
         "borrow_command": f'hephaestus hep-call "{primary}" "<request>" --project {project}',
-        "directive": (
-            "Resolve this request by BORROWING the best-fit Hub agent and running it "
-            "LOCALLY, grounded in the current project. Pick the agent that actually fits "
-            "THIS task: start from `primary_agent`/`recommended_agents`, but if the top "
-            "pick is clearly off-domain, choose a better one from `alternatives` (the Hub "
-            "ranks by keyword relevance and can mis-rank a sparse query). Use `hep-call` "
-            "(it fetches the BYOM runtime bundle and attaches project_dir); for a staged "
-            "plan, run each stage's agent in order. Each borrowed agent must attach to this "
-            "repo's actual codebase + memory before producing output. Do NOT call agents "
-            "context-less in the cloud, and do NOT skip the network to improvise a local "
-            "answer yourself — run the borrowed specialist attached to this project."
-        ),
+        "directive": directive,
     }
 
 
@@ -891,7 +957,9 @@ def route_request(
                     fallback_scope=None,
                 )
             if hub.get("status") == "ok" and hub.get("results"):
-                execution = _byom_execution_plan(project=project, results=hub.get("results") or [])
+                execution = _byom_execution_plan(
+                    project=project, query=query, results=hub.get("results") or []
+                )
                 return finish(
                     {
                         "action": "hub_candidates",
@@ -1192,7 +1260,9 @@ def route_request(
             fallback_scope="local_hub_low_confidence",
         )
     if hub_ok:
-        execution = _byom_execution_plan(project=project, results=(hub or {}).get("results") or [])
+        execution = _byom_execution_plan(
+            project=project, query=query, results=(hub or {}).get("results") or []
+        )
         return finish(
             {
                 "action": "hub_candidates",

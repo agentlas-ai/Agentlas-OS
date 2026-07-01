@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## v1.0.5 - 2026-07-01
+
+- **Borrow every explicitly named agent.** When the operator names multiple
+  specialists in one request ("웹마스터 카피라이터 불러서 …"), the network router
+  now borrows all of them instead of collapsing to the single top-ranked Hub
+  candidate. Matching is by the operator's own words against each candidate's
+  name, so an off-domain agent the Hub lexically over-ranks no longer wins over
+  an agent the operator actually named (`_explicitly_named_borrowables`).
+- **Temporary orchestrator for multi-specialist borrows.** A request that names
+  two or more specialists now returns `formation: temporary_orchestrator` and a
+  directive that puts the executing model in the manager seat — plan the split,
+  dispatch each named agent grounded in the project, then synthesize their
+  outputs into one deliverable instead of running them in isolation.
+- **Router fix mirrored into host bundles.** Root runtime + Claude Code/Codex
+  plugin bundles all carry the same change so packaged hosts do not drift back.
+
 ## v1.0.4 - 2026-06-30
 
 - **Plugins no longer route as agents.** The local/network router now removes
