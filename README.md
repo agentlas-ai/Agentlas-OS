@@ -7,7 +7,8 @@
 <h1 align="center">Hephaestus — Model-Agnostic Agent OS</h1>
 
 <p align="center">
-  <strong>An independent, local-first operating system for autonomous AI agents. Compile, schedule, route, execute with discipline, and govern memory across any model runtime as portable, inspectable assets you own.</strong>
+  <strong>Not another agent framework — an Agent OS where your agents, memory, and automations survive a model swap.</strong><br>
+  Local-first, and compatible with Claude Code, Codex, Gemini, Cursor, and local models.
 </p>
 
 <p align="center">
@@ -33,9 +34,27 @@
 </p>
 
 <p align="center">
+  <img src="assets/hephaestus-network-mcp-demo.gif" alt="Hephaestus Network 2.0 routing a task live to the right agent over MCP" width="760">
+</p>
+
+<p align="center">
+  <sub>Same agent workforce, routed live — swap the model underneath and nothing else changes.</sub>
+</p>
+
+## Quickstart
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+```
+
+This installs the neutral runner and registers command adapters for Claude Code, Codex, Gemini CLI, Antigravity, and Cursor. Prefer a plugin, a manual copy, or letting your AI install it for you? See [All Install Methods](#all-install-methods).
+
+<p align="center">
   <a href="#the-agent-os-era">The Agent OS Era</a>
   ·
   <a href="#quickstart">Quickstart</a>
+  ·
+  <a href="#all-install-methods">All Install Methods</a>
   ·
   <a href="#the-command-surface">Command Surface</a>
   ·
@@ -100,7 +119,7 @@ Agents generated from vague, single-sentence prompts fail under real-world edge 
 
 ---
 
-## Quickstart
+## All Install Methods
 
 ### Paste to Boot (Let Your AI Do It)
 Paste this into Claude Code, Codex, Gemini CLI, Antigravity, or Cursor:

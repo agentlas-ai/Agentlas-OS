@@ -7,7 +7,8 @@
 <h1 align="center">Hephaestus — 模型无关的 Agent OS</h1>
 
 <p align="center">
-  <strong>一个独立、本地优先的自主 AI 智能体操作系统。在任意模型运行时之上编译、调度、路由、有纪律地执行并治理记忆，将智能体沉淀为你自己拥有的、可移植、可审查的资产。</strong>
+  <strong>不是又一个智能体框架 —— 而是一个即使更换底层模型，你的智能体、记忆与自动化也能完整存活的 Agent OS。</strong><br>
+  本地优先，兼容 Claude Code、Codex、Gemini、Cursor 与本地模型。
 </p>
 
 <p align="center">
@@ -33,9 +34,27 @@
 </p>
 
 <p align="center">
+  <img src="assets/hephaestus-network-mcp-demo.gif" alt="Hephaestus Network 2.0 通过 MCP 实时将任务路由给正确的智能体" width="760">
+</p>
+
+<p align="center">
+  <sub>同一支智能体劳动力被实时路由——更换底层模型，其余一切照常运行。</sub>
+</p>
+
+## 快速上手
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+```
+
+该命令会安装中立运行器，并为 Claude Code、Codex、Gemini CLI、Antigravity 和 Cursor 注册命令适配器。想用插件、手动复制文件，或者让你的 AI 帮你安装？参见[全部安装方式](#全部安装方式)。
+
+<p align="center">
   <a href="#agent-os-时代">Agent OS 时代</a>
   ·
   <a href="#快速上手">快速上手</a>
+  ·
+  <a href="#全部安装方式">全部安装方式</a>
   ·
   <a href="#命令界面">命令界面</a>
   ·
@@ -100,7 +119,7 @@ Hephaestus 与经典操作系统概念一一对应：
 
 ---
 
-## 快速上手
+## 全部安装方式
 
 ### 粘贴即启动（让你的 AI 来做）
 把下面这段粘贴到 Claude Code、Codex、Gemini CLI、Antigravity 或 Cursor：

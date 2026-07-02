@@ -7,7 +7,8 @@
 <h1 align="center">Hephaestus — 모델 애그노스틱 에이전트 OS</h1>
 
 <p align="center">
-  <strong>자율 AI 에이전트를 위한 독립적인 로컬 우선(local-first) 운영체제입니다. 어떤 모델 런타임에서든 에이전트를 컴파일하고, 스케줄링하고, 라우팅하고, 규율 있게 실행하고, 메모리를 관리합니다 — 이 모든 것이 여러분이 소유한 이식 가능하고 검사 가능한 자산으로 남습니다.</strong>
+  <strong>또 하나의 에이전트 프레임워크가 아닙니다 — 모델을 갈아끼워도 당신의 에이전트, 메모리, 자동화가 그대로 살아남는 에이전트 OS입니다.</strong><br>
+  로컬 우선(local-first)이며 Claude Code, Codex, Gemini, Cursor, 로컬 모델과 호환됩니다.
 </p>
 
 <p align="center">
@@ -33,9 +34,27 @@
 </p>
 
 <p align="center">
+  <img src="assets/hephaestus-network-mcp-demo.gif" alt="MCP를 통해 태스크를 실시간으로 올바른 에이전트에 라우팅하는 Hephaestus Network 2.0" width="760">
+</p>
+
+<p align="center">
+  <sub>같은 에이전트 워크포스가 실시간으로 라우팅됩니다 — 밑단 모델을 바꿔도 그 외엔 아무 것도 바뀌지 않습니다.</sub>
+</p>
+
+## 빠른 시작
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+```
+
+이 명령은 중립 러너를 설치하고 Claude Code, Codex, Gemini CLI, Antigravity, Cursor용 명령 어댑터를 등록합니다. 플러그인, 수동 복사, 또는 AI에게 설치를 맡기고 싶다면 [전체 설치 방법](#전체-설치-방법)을 참고하세요.
+
+<p align="center">
   <a href="#에이전트-os-시대">에이전트 OS 시대</a>
   ·
   <a href="#빠른-시작">빠른 시작</a>
+  ·
+  <a href="#전체-설치-방법">전체 설치 방법</a>
   ·
   <a href="#명령-표면">명령 표면</a>
   ·
@@ -100,7 +119,7 @@ Hephaestus는 고전적인 운영체제 개념에 그대로 대응됩니다:
 
 ---
 
-## 빠른 시작
+## 전체 설치 방법
 
 ### 붙여넣어 부팅하기 (AI에게 맡기기)
 아래 내용을 Claude Code, Codex, Gemini CLI, Antigravity 또는 Cursor에 붙여넣으세요:

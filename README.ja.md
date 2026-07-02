@@ -7,7 +7,8 @@
 <h1 align="center">Hephaestus — モデル非依存のエージェント OS</h1>
 
 <p align="center">
-  <strong>自律 AI エージェントのための、独立したローカルファーストのオペレーティングシステム。エージェントを、あなたが所有するポータブルで検査可能な資産として、任意のモデルランタイムをまたいでコンパイル・スケジューリング・ルーティングし、規律をもって実行し、メモリを統制します。</strong>
+  <strong>もう一つのエージェントフレームワークではありません — モデルを差し替えても、あなたのエージェント・メモリ・自動化がそのまま生き残るエージェント OS です。</strong><br>
+  ローカルファーストで、Claude Code、Codex、Gemini、Cursor、ローカルモデルと互換性があります。
 </p>
 
 <p align="center">
@@ -33,9 +34,27 @@
 </p>
 
 <p align="center">
+  <img src="assets/hephaestus-network-mcp-demo.gif" alt="MCP 経由でタスクを正しいエージェントへリアルタイムにルーティングする Hephaestus Network 2.0" width="760">
+</p>
+
+<p align="center">
+  <sub>同じエージェントワークフォースがリアルタイムでルーティングされます — 基盤モデルを差し替えても、それ以外は何も変わりません。</sub>
+</p>
+
+## クイックスタート
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+```
+
+これにより中立ランナーがインストールされ、Claude Code、Codex、Gemini CLI、Antigravity、Cursor 用のコマンドアダプターが登録されます。プラグイン、手動コピー、あるいは AI にインストールを任せたい場合は、[すべてのインストール方法](#すべてのインストール方法) を参照してください。
+
+<p align="center">
   <a href="#エージェント-os-の時代">エージェント OS の時代</a>
   ·
   <a href="#クイックスタート">クイックスタート</a>
+  ·
+  <a href="#すべてのインストール方法">すべてのインストール方法</a>
   ·
   <a href="#コマンドサーフェス">コマンドサーフェス</a>
   ·
@@ -100,7 +119,7 @@ Hephaestus は、古典的なオペレーティングシステムの概念に直
 
 ---
 
-## クイックスタート
+## すべてのインストール方法
 
 ### 貼り付けて起動（AI に任せる）
 以下を Claude Code、Codex、Gemini CLI、Antigravity、Cursor に貼り付けてください:
