@@ -7,8 +7,8 @@
 <h1 align="center">Hephaestus — モデル非依存のエージェント OS</h1>
 
 <p align="center">
-  <strong>タスクのたびにエージェントを作って設定し直すのは、もうやめましょう。Hephaestus は専門エージェントをハブに蓄え、タスクごとに使い捨てのオーケストレーターをその場で生成します — Claude Code や Codex とは真逆の構造です。</strong><br>
-  ローカルファーストかつモデル非依存で、Claude Code、Codex、Gemini、Cursor、ローカルモデルと互換性があります。
+  <strong>タスクのたびにエージェントを作って設定し直すのは、もうやめましょう。Hephaestus は専門エージェントをハブに蓄え、タスクごとに一時的なオーケストレーターをその場で生成します。</strong><br>
+  ローカルファーストで、どのモデルとも組み合わせられます — Claude Code、Codex、Gemini、Cursor、ローカルモデルに対応。
 </p>
 
 <p align="center">

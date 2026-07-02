@@ -4,11 +4,11 @@
   </a>
 </p>
 
-<h1 align="center">Hephaestus — 모델 애그노스틱 에이전트 OS</h1>
+<h1 align="center">Hephaestus — 어떤 모델 위에서든 돌아가는 에이전트 OS</h1>
 
 <p align="center">
-  <strong>에이전트를 매번 새로 만들고 세팅하는 일, 이제 그만하세요. Hephaestus는 전문 에이전트를 허브에 쌓아두고, 태스크마다 일회용 오케스트레이터를 즉석에서 만들어 돌립니다 — Claude Code·Codex와는 정반대 구조입니다.</strong><br>
-  로컬 우선(local-first)·모델 애그노스틱이며 Claude Code, Codex, Gemini, Cursor, 로컬 모델과 호환됩니다.
+  <strong>에이전트를 매번 새로 만들고 세팅하는 일, 이제 그만하세요. Hephaestus는 전문 에이전트를 허브에 쌓아두고, 태스크마다 임시 오케스트레이터를 즉석에서 만들어 돌립니다.</strong><br>
+  모든 데이터는 내 컴퓨터에 먼저 저장되고, Claude Code, Codex, Gemini, Cursor, 로컬 모델 어디서든 그대로 쓸 수 있습니다.
 </p>
 
 <p align="center">
@@ -81,7 +81,7 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts
 
 에이전트가 단일 모델 제공자의 독점 API에 강하게 결합되어 있다면, 조직의 메모리, 커스텀 도구, 태스크별 로직은 사실상 그 벤더의 생태계에 묶이게 됩니다.
 
-**Hephaestus는 독립적인 모델 애그노스틱 커널입니다.** 에이전트 프레임워크도, API 래퍼도 아닙니다. 로컬 우선 에이전트 운영체제로서, 어떤 호스트 런타임에서든 이식 가능한 에이전트 프로세스를 컴파일·스케줄링·관리하는 통합 실행 기반입니다. 밑단의 추론 엔진을 갈아끼워도 워크포스 전체는 그대로 유지됩니다.
+**Hephaestus는 어떤 모델에도 묶이지 않는 독립 커널입니다.** 에이전트 프레임워크도, API 래퍼도 아닙니다. 로컬 우선 에이전트 운영체제로서, 어떤 호스트 런타임에서든 이식 가능한 에이전트 프로세스를 컴파일·스케줄링·관리하는 통합 실행 기반입니다. 밑단의 추론 엔진을 갈아끼워도 워크포스 전체는 그대로 유지됩니다.
 
 Hephaestus는 고전적인 운영체제 개념에 그대로 대응됩니다:
 

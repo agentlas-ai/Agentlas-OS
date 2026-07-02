@@ -4,11 +4,11 @@
   </a>
 </p>
 
-<h1 align="center">Hephaestus — मॉडल-अग्नॉस्टिक Agent OS</h1>
+<h1 align="center">Hephaestus — हर model पर चलने वाला Agent OS</h1>
 
 <p align="center">
-  <strong>हर task के लिए नया agent बनाना और configure करना बंद कीजिए। Hephaestus specialist agents को एक hub में रखता है और हर task के लिए एक disposable orchestrator तुरंत बना देता है — Claude Code और Codex के तरीके के बिल्कुल उलट।</strong><br>
-  Local-first, model-agnostic, और Claude Code, Codex, Gemini, Cursor तथा local models के साथ compatible।
+  <strong>हर task के लिए नया agent बनाना और configure करना बंद कीजिए। Hephaestus specialist agents को एक hub में रखता है और हर task के लिए एक temporary orchestrator तुरंत बना देता है।</strong><br>
+  Local-first, और हर model के साथ चलता है — Claude Code, Codex, Gemini, Cursor तथा local models।
 </p>
 
 <p align="center">
@@ -81,7 +81,7 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts
 
 यदि आपके agents किसी एक model provider के proprietary API से कसकर जुड़े (tightly coupled) हैं, तो आपकी organizational memory, custom tools और task-specific logic प्रभावी रूप से उस vendor के ecosystem में lock हो जाते हैं।
 
-**Hephaestus स्वतंत्र, model-agnostic kernel है।** यह कोई agent framework या API wrapper नहीं है। यह एक local-first Agent Operating System है — एक unified execution substrate, जो portable agent processes को किसी भी host runtime पर compile, schedule और govern करता है। नीचे का reasoning engine बदल दीजिए; पूरा workforce जस-का-तस सुरक्षित रहता है।
+**Hephaestus एक स्वतंत्र kernel है, जो किसी एक model से बंधा नहीं है।** यह कोई agent framework या API wrapper नहीं है। यह एक local-first Agent Operating System है — एक unified execution substrate, जो portable agent processes को किसी भी host runtime पर compile, schedule और govern करता है। नीचे का reasoning engine बदल दीजिए; पूरा workforce जस-का-तस सुरक्षित रहता है।
 
 Hephaestus classical operating system अवधारणाओं से सीधे map होता है:
 
