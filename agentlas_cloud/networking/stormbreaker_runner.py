@@ -161,6 +161,10 @@ def run_stormbreaker_decision(
     started_sessions: list[dict[str, Any]] = []
     max_parallel = _max_workers(max_workers, fabric)
     user_query = str(decision.get("_stormbreaker_user_query") or decision.get("query") or "").strip()
+    # Briefing interview output rides along into every packet: constraints,
+    # acceptance criteria and exit conditions become per-packet execution
+    # context instead of dying with the original chat turn.
+    work_brief = decision.get("work_brief") if isinstance(decision.get("work_brief"), dict) else None
     research_options = _research_options(
         loadout=research_loadout,
         depth=research_depth,
@@ -234,6 +238,7 @@ def run_stormbreaker_decision(
                         research_evidence=research_evidence,
                         research_options=research_options,
                         user_query=user_query,
+                        work_brief=work_brief,
                     ): packet
                     for packet in ready_packets
                 }
@@ -350,6 +355,7 @@ def _run_packet(
     research_evidence: bool,
     research_options: dict[str, Any],
     user_query: str = "",
+    work_brief: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     packet_id = str(packet["packet_id"])
     write_scope = _resolve_project_path(project, str(packet.get("write_scope") or f".agentlas/pipeline/{pipeline_id}/{packet_id}/"))
@@ -382,6 +388,8 @@ def _run_packet(
         "write_scope": str(write_scope),
         "data_policy": packet.get("data_policy") or [],
     }
+    if work_brief is not None:
+        packet_contract["work_brief"] = work_brief
     if research_summary is not None:
         packet_contract["research_evidence"] = research_summary
     atomic_write_json(packet_file, packet_contract)

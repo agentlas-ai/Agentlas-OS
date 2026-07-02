@@ -209,6 +209,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="JSON array of active host sessions for Stormbreaker pipeline scheduling (for example Codex, Claude, GLM, DeepSeek).",
     )
+    route.add_argument(
+        "--brief",
+        default=None,
+        help="Path to a Work Brief JSON (briefing interview output) or a project dir containing .agentlas/work-brief.json. Extends stage detection and rides along into pipeline packets.",
+    )
     route.add_argument("--auto-run", action="store_true", help="When routing returns a pipeline execution_fabric, run it with Stormbreaker.")
     route.add_argument("--plan-only", action="store_true", help="Return the route/plan only, even when --auto-run is present.")
     route.add_argument("--background", action="store_true", help="With --auto-run, detach the Stormbreaker packet runner.")
@@ -845,6 +850,12 @@ def main(argv: list[str] | None = None) -> int:
                 emit({"action": "route", "status": "error", "error": f"invalid --session-inventory: {exc}"})
                 return 2
         hub_only = False if args.no_hub else (True if not args.allow_local_routing else args.hub_only)
+        work_brief = None
+        brief_source = getattr(args, "brief", None) or args.project
+        if brief_source:
+            from .interview import load_work_brief
+
+            work_brief = load_work_brief(brief_source)
         decision = route_request(
             args.query,
             project_dir=args.project,
@@ -855,6 +866,7 @@ def main(argv: list[str] | None = None) -> int:
             scope=args.scope,
             caller_id=getattr(args, "caller", None),
             session_inventory=session_inventory,
+            work_brief=work_brief,
         )
         if args.auto_run and not args.plan_only:
             if decision.get("action") == "pipeline" and isinstance(decision.get("execution_fabric"), dict):

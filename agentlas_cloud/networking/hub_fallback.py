@@ -91,7 +91,12 @@ def search_hub(
     scope = scope if scope in _SCOPE_TOOL else SCOPE_NETWORK
     owner_scoped = scope in {SCOPE_CLOUD, SCOPE_BOOKMARK}
     safe_tokens = _hub_query_tokens(query_tokens)
-    redacted_query = " ".join(dict.fromkeys(safe_tokens))[:200]
+    # 의도 브릿지 토큰(예: 카피/쓰레드/홍보 → copywriter·writer·content)을 실제 Hub 검색어에 주입한다.
+    # 이게 없으면 클라이언트 재랭킹이 "서버가 반환한 적 없는 후보"를 끌어올릴 수 없다 —
+    # "Agentlas 쓰레드 글 써줘"에서 매칭 토큰이 브랜드명뿐이라 카피라이터가 검색조차 안 되는 문제를 고친다.
+    _bridged = _bridged_query_tokens(set(safe_tokens))
+    _query_terms = list(dict.fromkeys([*safe_tokens, *sorted(_bridged)]))
+    redacted_query = " ".join(_query_terms)[:200]
     local_terms = _local_inventory_terms(base)
     recommendation_intent = _recommendation_intent(set(safe_tokens))
     local_fingerprint = _local_inventory_fingerprint(local_terms)
@@ -358,8 +363,16 @@ def _result_score(item: dict[str, Any], query_tokens: set[str]) -> float:
 
 def _bridged_query_tokens(query_tokens: set[str]) -> set[str]:
     bridges: set[str] = set()
-    if query_tokens & {"카피", "카피라이터", "문구"}:
-        bridges.update({"copy", "copywriter", "writer"})
+    # 글쓰기·SNS·홍보 의도어를 copywriter/writer role 토큰으로 확장한다. "쓰레드에 올릴 글 써줘"
+    # 처럼 사용자가 '카피라이터'라는 단어를 안 써도, 실제 의도(콘텐츠 작성)에 맞는 에이전트를
+    # 후보로 끌어오기 위함. (토큰화에서 살아남는 표현 위주로 트리거를 잡는다.)
+    if query_tokens & {
+        "카피", "카피라이터", "문구", "글쓰기", "쓰기", "써줘", "작성", "적어",
+        "쓰레드", "스레드", "포스팅", "포스트", "게시글", "게시물", "홍보", "링크드인",
+        "sns", "thread", "threads", "post", "posting", "linkedin", "tweet", "트윗",
+        "블로그", "blog", "copywriting", "copywriter", "content", "카피라이팅",
+    }:
+        bridges.update({"copy", "copywriter", "writer", "content", "marketing"})
     if query_tokens & {"한국어", "한글"}:
         bridges.add("korean")
     if query_tokens & {"영어", "영문"}:

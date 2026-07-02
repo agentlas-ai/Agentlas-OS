@@ -77,7 +77,7 @@ Meta-Agent team:
    마지막에 합쳐야 하나요?" Do not show non-technical users internal labels
    like ownership boundary, memory/context, synthesis, or produces/consumes.
 4. Run the Builder Interview and Research Gate in
-   `docs/builder-interview-research-gate.md` before writing substantial package
+   `docs/builder-interview-research-gate.md` before writing substantial package Follow the briefing interview engine (`agentlas_cloud/interview/`): lens-table questions (anti_scope/done_signal/stop_criterion required), stop only at ambiguity <= 0.2 with dimension floors met for 2 consecutive rounds, then a coverage check and a one-sentence goal restate; also write `.agentlas/work-brief.json` (work-brief/1.0) so `cards migrate` derives triggers/anti-triggers from the user's confirmed answers.
    files. Ask an 8-12 question first batch when the request is vague; continue
    follow-ups until target user, tasks, inputs, outputs, examples,
    tools/plugins, memory, failure modes, ownership boundaries, execution order,

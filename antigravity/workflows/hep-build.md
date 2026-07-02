@@ -79,7 +79,7 @@ Read `$ENGINE/AGENTS.md` if it exists, otherwise `$ENGINE/SKILL.md`, then:
    not show non-technical users internal labels like ownership boundary,
    memory/context, synthesis, or produces/consumes.
 3. Run the Builder Interview and Research Gate from
-   `docs/builder-interview-research-gate.md` before writing substantial package
+   `docs/builder-interview-research-gate.md` before writing substantial package Follow the briefing interview engine (`agentlas_cloud/interview/`): lens-table questions (anti_scope/done_signal/stop_criterion required), stop only at ambiguity <= 0.2 with dimension floors met for 2 consecutive rounds, then a coverage check and a one-sentence goal restate; also write `.agentlas/work-brief.json` (work-brief/1.0) so `cards migrate` derives triggers/anti-triggers from the user's confirmed answers.
    files. Ask an 8-12 question first batch when the request is vague, continue
    follow-ups until the functional brief, ownership boundaries, role count,
    tool permission separation, synthesis need, and execution order are clear,

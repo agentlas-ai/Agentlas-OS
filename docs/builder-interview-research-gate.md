@@ -60,6 +60,34 @@ If a user cannot answer a question, propose a conservative default, label it as
 `assumption`, and ask whether that default is acceptable. Do not bury unknowns
 inside the generated agent instructions.
 
+### Interview mechanics (briefing interview engine)
+
+Question generation, scoring and the stop decision follow the briefing
+interview engine (`agentlas_cloud/interview/`):
+
+- **Waves + tension rule.** Wave 1 covers basics (goal, constraints, done
+  signal), wave 2 covers edges/conflicts, wave 3 covers contradictions and
+  unverified assumptions. The wave plan is a tool, not the goal: when an answer
+  reveals a contradiction, an avoidance or an untested assumption, abandon the
+  wave order and follow that thread.
+- **Lenses.** Pick questions from the lens table
+  (`interview.render_lens_table("hep-build")`) — scope/system/intent/challenge.
+  The `anti_scope`, `done_signal` and `stop_criterion` lenses are REQUIRED for
+  builds: the user's own words about what the agent must NOT do become the
+  routing card's `anti_triggers` verbatim.
+- **Scoring + stop gates.** After each round, run the engine's scoring prompt
+  (`interview.build_scoring_prompt("hep-build")`) and compose the ambiguity
+  score. The interview may end only when: overall ambiguity <= 0.2, every
+  dimension (goal/constraints/success/context) clears its floor, and both held
+  for 2 consecutive rounds. A low score is permission to AUDIT the close, not
+  permission to close.
+- **Closing.** One coverage question ("anything I missed?"), then restate the
+  goal as one sentence and confirm "would someone reading only this line reach
+  the same result?" before generation starts.
+- **Every risk noted in an interim summary must become a concrete question in
+  the next wave** — or be recorded as deferred with a named reason. Deliberate
+  deferrals ("나중에 정할게") are never treated as ambiguity.
+
 If the prompt is only a domain label plus "team" (for example, "stock research
 team") and the ownership boundaries are unclear, do not start generation until
 the first batch answers the shape questions above.
@@ -75,7 +103,14 @@ Then ask only the practical follow-ups that matter: what roles are needed, what
 files/accounts/tools each role can use, whether one person must combine the
 results, and whether the work is sequential or can happen at the same time.
 
-Write the result into the generated package as `docs/builder-interview.md`.
+Write the result into the generated package as `docs/builder-interview.md`
+(human-readable) AND as `.agentlas/work-brief.json` (machine-readable Work
+Brief, schemaVersion `work-brief/1.0`): one-line goal, constraints, verifiable
+acceptance criteria, anti_scope, the assumption ledger with source tags
+(`user|code|memory|research|default`), deferred topics, weighted
+evaluation_principles, exit_conditions, and the final ambiguity score in
+metadata. `cards migrate` consumes the Work Brief as its first-choice source
+for trigger_examples and anti_triggers.
 
 ## Gate 2 - Research Dossier
 

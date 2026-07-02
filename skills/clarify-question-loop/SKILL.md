@@ -34,6 +34,16 @@ narrow ambiguities.
 7. After answers arrive, re-run mode classification if needed.
 8. Generate or repair the package using the answers and list assumptions.
 
+## Budgets and stop rule (briefing interview engine)
+
+This loop shares the briefing interview engine's contract
+(`agentlas_cloud/interview/`): a question is only worth asking if the answer
+would change execution, not just its phrasing. Respect the surface budget
+(chat 3-5 in one batch, stormbreaker <= 8 across two batches, build 8-12 plus
+follow-ups). 'decide later' is always a valid answer — record it as deferred,
+never re-ask. When answers you auto-confirmed from code/memory reach three in a
+row, the next question must go to the human.
+
 ## Default Questions
 
 - Which runtime targets should be supported?

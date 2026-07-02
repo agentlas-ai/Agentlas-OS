@@ -19,6 +19,7 @@ from typing import Any, Callable
 from pathlib import Path
 
 from .execution_fabric import build_execution_fabric
+from ..interview.schema import brief_packet_context, brief_scope_text
 
 # Canonical stage order. Each stage: (key, intent keywords, artifact kind).
 STAGE_DEFS: list[tuple[str, set[str], str]] = [
@@ -51,16 +52,27 @@ TARGET_ARTIFACT_TERMS: list[tuple[str, set[str]]] = [
 ]
 
 
-def detect_stages(query: str) -> list[tuple[str, str]]:
-    """Return [(stage_key, artifact_kind)] in canonical order for the query."""
-    lowered = (query or "").lower()
+def detect_stages(
+    query: str,
+    extra_text: str | None = None,
+    scoped: bool = False,
+) -> list[tuple[str, str]]:
+    """Return [(stage_key, artifact_kind)] in canonical order for the query.
+
+    `extra_text` extends intent detection beyond the raw first message — a
+    briefing interview's confirmed goal + acceptance criteria carry the user's
+    real intent far better than the original prompt. `scoped=True` (a Work
+    Brief exists) relaxes the plan-anchored guard: the over-decomposition risk
+    that guard defends against has already been retired by the interview.
+    """
+    lowered = " ".join(part for part in [(query or ""), (extra_text or "")] if part).lower()
     hits = [(key, kind) for key, keywords, kind in STAGE_DEFS if any(word in lowered for word in keywords)]
     explicit = any(phrase in lowered for phrase in EXPLICIT_PIPELINE_PHRASES)
     if len(hits) < 2:
         return []
     # Plan-anchored or explicitly end-to-end — otherwise it is a single task
     # that merely mentions testing/building vocabulary.
-    if hits[0][0] != "plan" and not explicit:
+    if not scoped and hits[0][0] != "plan" and not explicit:
         return []
     return hits
 
@@ -167,10 +179,20 @@ def plan_pipeline(
     max_stages: int = 3,
     project_dir: str | Path | None = None,
     session_inventory: list[Any] | None = None,
+    brief: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Build a deterministic stage plan, or None when no valid chain exists."""
+    """Build a deterministic stage plan, or None when no valid chain exists.
+
+    When a Work Brief is provided (briefing interview output), its confirmed
+    goal/acceptance/constraints extend stage detection, and a compact brief
+    view is attached to the plan so runners can inject it into every packet.
+    """
     _graph_enabled = project_dir is not None
-    stages_wanted = detect_stages(query)[:max_stages]
+    stages_wanted = detect_stages(
+        query,
+        extra_text=brief_scope_text(brief) if brief else None,
+        scoped=brief is not None,
+    )[:max_stages]
     if len(stages_wanted) < 2:
         return None
 
@@ -196,6 +218,7 @@ def plan_pipeline(
             "target_artifact": target,
             "execution_fabric": execution_fabric,
             "runner_contract": _runner_contract(),
+            **({"work_brief": brief_packet_context(brief)} if brief else {}),
         }
 
     chosen: list[dict[str, Any]] = []
@@ -268,6 +291,7 @@ def plan_pipeline(
         "blocked_by_axiom": [],
         "execution_fabric": execution_fabric,
         "runner_contract": _runner_contract(),
+        **({"work_brief": brief_packet_context(brief)} if brief else {}),
     }
 
 

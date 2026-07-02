@@ -81,12 +81,19 @@ Meta-Agent team:
    files. Ask an 8-12 question first batch when the request is vague; continue
    follow-ups until target user, tasks, inputs, outputs, examples,
    tools/plugins, memory, failure modes, ownership boundaries, execution order,
-   and evals are clear. Research official
+   and evals are clear. Question selection, ambiguity scoring and the stop
+   decision follow the briefing interview engine (`agentlas_cloud/interview/`):
+   lens-table questions (anti_scope / done_signal / stop_criterion are
+   required), stop only at ambiguity <= 0.2 with all dimension floors met for 2
+   consecutive rounds, then one coverage check plus a one-sentence goal restate. Research official
    or primary docs, similar agent repositories or comparables, GitHub examples,
    academic/professional theory, and tool/plugin docs. Record selected and
    rejected tools/plugins with permission, secret, fallback, and smoke-test
    notes, then synthesize domain-expert behavior before writing prompts.
-5. Generate `docs/builder-interview.md`, `docs/research-sources.md`,
+5. Generate `.agentlas/work-brief.json` (Work Brief `work-brief/1.0` — the
+   machine-readable interview output; `cards migrate` consumes its anti_scope
+   and goal/acceptance as routing-card triggers), plus
+   `docs/builder-interview.md`, `docs/research-sources.md`,
    `docs/tool-selection.md`, `docs/domain-expert-synthesis.md`,
    `docs/prompt-performance-contract.md`, and
    `.agentlas/capability-eval-plan.json` unless the task is explicitly a

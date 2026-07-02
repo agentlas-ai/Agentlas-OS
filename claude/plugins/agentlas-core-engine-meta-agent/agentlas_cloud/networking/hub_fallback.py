@@ -91,7 +91,12 @@ def search_hub(
     scope = scope if scope in _SCOPE_TOOL else SCOPE_NETWORK
     owner_scoped = scope in {SCOPE_CLOUD, SCOPE_BOOKMARK}
     safe_tokens = _hub_query_tokens(query_tokens)
-    redacted_query = " ".join(dict.fromkeys(safe_tokens))[:200]
+    # 의도 브릿지 토큰(예: 카피/쓰레드/홍보 → copywriter·writer·content)을 실제 Hub 검색어에 주입한다.
+    # 이게 없으면 클라이언트 재랭킹이 "서버가 반환한 적 없는 후보"를 끌어올릴 수 없다 —
+    # "Agentlas 쓰레드 글 써줘"에서 매칭 토큰이 브랜드명뿐이라 카피라이터가 검색조차 안 되는 문제를 고친다.
+    _bridged = _bridged_query_tokens(set(safe_tokens))
+    _query_terms = list(dict.fromkeys([*safe_tokens, *sorted(_bridged)]))
+    redacted_query = " ".join(_query_terms)[:200]
     local_terms = _local_inventory_terms(base)
     recommendation_intent = _recommendation_intent(set(safe_tokens))
     local_fingerprint = _local_inventory_fingerprint(local_terms)
@@ -293,9 +298,9 @@ def _prepare_results(
             key=lambda pair: (
                 _combined_score(pair[1], query_tokens, local_terms, recommendation_intent),
                 _result_score(pair[1], query_tokens),
-                _local_context_score(pair[1], local_terms, query_tokens),
                 1 if pair[1].get("routingReady") else 0,
                 1 if pair[1].get("callable") else 0,
+                _local_context_score(pair[1], local_terms, query_tokens),
                 int(pair[1].get("verifiedInvocations") or 0),
                 int(pair[1].get("installCount") or 0),
                 -pair[0],
@@ -338,17 +343,45 @@ def _combined_score(
     local = float(_local_context_score(item, local_terms, query_tokens))
     if recommendation_intent:
         return base + min(local, 5.0)
-    return base + min(local, 1.0) * 0.15
+    return base
 
 
-def _result_score(item: dict[str, Any], query_tokens: set[str]) -> int:
+def _result_score(item: dict[str, Any], query_tokens: set[str]) -> float:
     if not query_tokens:
-        return 0
+        return 0.0
     haystack = " ".join(
         str(item.get(field) or "")
         for field in ("slug", "name", "nameEn", "tagline", "taglineEn")
     )
-    return len(query_tokens & token_set(haystack))
+    haystack_tokens = token_set(haystack)
+    score = float(len(query_tokens & haystack_tokens))
+    bridged = _bridged_query_tokens(query_tokens)
+    if bridged:
+        score += 0.75 * len(bridged & haystack_tokens)
+    return score
+
+
+def _bridged_query_tokens(query_tokens: set[str]) -> set[str]:
+    bridges: set[str] = set()
+    # 글쓰기·SNS·홍보 의도어를 copywriter/writer role 토큰으로 확장한다. "쓰레드에 올릴 글 써줘"
+    # 처럼 사용자가 '카피라이터'라는 단어를 안 써도, 실제 의도(콘텐츠 작성)에 맞는 에이전트를
+    # 후보로 끌어오기 위함. (토큰화에서 살아남는 표현 위주로 트리거를 잡는다.)
+    if query_tokens & {
+        "카피", "카피라이터", "문구", "글쓰기", "쓰기", "써줘", "작성", "적어",
+        "쓰레드", "스레드", "포스팅", "포스트", "게시글", "게시물", "홍보", "링크드인",
+        "sns", "thread", "threads", "post", "posting", "linkedin", "tweet", "트윗",
+        "블로그", "blog", "copywriting", "copywriter", "content", "카피라이팅",
+    }:
+        bridges.update({"copy", "copywriter", "writer", "content", "marketing"})
+    if query_tokens & {"한국어", "한글"}:
+        bridges.add("korean")
+    if query_tokens & {"영어", "영문"}:
+        bridges.add("english")
+    if query_tokens & {"근거", "주장"}:
+        bridges.add("claim")
+    if query_tokens & {"원장"}:
+        bridges.add("ledger")
+    return bridges - query_tokens
 
 
 def _local_context_score(item: dict[str, Any], local_terms: set[str], query_tokens: set[str]) -> int:

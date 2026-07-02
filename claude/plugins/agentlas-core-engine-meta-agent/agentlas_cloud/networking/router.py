@@ -24,6 +24,7 @@ from .domains import classify_domains
 from .hub_fallback import search_hub
 from .memory import load_profile, profile_adjustment, redact_tokens
 from .pipeline import detect_stages, plan_pipeline
+from ..interview.schema import brief_scope_text
 from .playbooks import build_memory_playbook_context
 from .policy import evaluate_local_operator_policy
 from .receipts import write_receipt
@@ -465,6 +466,9 @@ _GENERIC_ROLE_TOKENS = {
     "기획", "제작", "개발", "구현", "빌드", "만들", "작업", "불러", "불러서", "해줘", "해",
     "팀", "웹", "앱", "사이트", "페이지", "랜딩", "랜딩페이지", "에이전트", "등",
     "agent", "team", "build", "make", "plan", "create", "page", "landing", "web", "app", "site",
+    # 제품/브랜드 주제어 — 요청의 '주제'이지 에이전트 '지목'이 아니다. 이게 없으면 "Agentlas에
+    # 대해서 글 써줘"에서 이름에 agentlas가 든 후보(PRD 메이커 등)를 "지목됨"으로 오판해 다 빌려온다.
+    "agentlas", "hephaestus", "oberon", "대해서", "대한", "관련",
 }
 
 
@@ -669,8 +673,13 @@ def _hub_task_force_plan(
     *,
     scope: str,
     search_hub_fn,
+    work_brief: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    stages_wanted = detect_stages(query)
+    stages_wanted = detect_stages(
+        query,
+        extra_text=brief_scope_text(work_brief) if work_brief else None,
+        scoped=work_brief is not None,
+    )
     if len(stages_wanted) < 2:
         return None
 
@@ -735,6 +744,7 @@ def route_request(
     scope: str = "network",
     caller_id: str | None = None,
     session_inventory: list[Any] | None = None,
+    work_brief: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Three-scope command model (docs/hephaestus-network-2.0.md):
     #   scope="cloud"   -> /hep-cloud: search ONLY the signed-in user's
@@ -905,7 +915,7 @@ def route_request(
         # stay one code path with two scopes.
         scope_tag = "cloud_only" if cloud_only else "hub_only"
         if use_hub:
-            stagewise = _hub_task_force_plan(query, scope=scope, search_hub_fn=_search_hub_ordered)
+            stagewise = _hub_task_force_plan(query, scope=scope, search_hub_fn=_search_hub_ordered, work_brief=work_brief)
             if stagewise is not None:
                 execution = _byom_execution_plan(
                     project=project, stages=(stagewise["task_force"].get("stages") or [])
@@ -1169,6 +1179,7 @@ def route_request(
         lambda card: score_by_id.get(str(card.get("id")), 0.0),
         project_dir=project,
         session_inventory=session_inventory,
+        brief=work_brief,
     )
     if plan is not None:
         stage_candidates = []

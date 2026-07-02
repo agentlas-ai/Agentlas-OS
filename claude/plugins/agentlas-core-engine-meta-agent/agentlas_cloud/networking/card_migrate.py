@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .bootstrap import read_json, utc_now
+from ..interview.schema import load_work_brief
 from .card_store import save_card
 from .domains import DOMAIN_IDS, classify_domains
 from ..runtime import collect_package_files, package_hash
@@ -236,6 +237,33 @@ def migrate_package(
         },
         "updated_at": utc_now(),
     }
+
+    # Briefing interview output is the highest-quality card source: the user's
+    # own words about what the agent must NOT do become anti_triggers verbatim
+    # (always better than a generated guess), and the confirmed goal/acceptance
+    # criteria replace the name/description trigger stubs.
+    work_brief = load_work_brief(pkg_dir)
+    if work_brief:
+        anti_scope = [str(item).strip() for item in work_brief.get("anti_scope") or [] if str(item).strip()]
+        if anti_scope:
+            card["anti_triggers"] = [
+                {"text": item, "locale": "ko" if any("가" <= ch <= "힣" for ch in item) else "en"}
+                for item in anti_scope[:6]
+            ]
+        brief_triggers = [str(work_brief.get("goal") or "").strip()] + [
+            str(item).strip() for item in work_brief.get("acceptance_criteria") or []
+        ]
+        brief_triggers = [item for item in brief_triggers if item][:6]
+        if brief_triggers:
+            card["trigger_examples"] = [
+                {"text": item, "locale": "ko" if any("가" <= ch <= "힣" for ch in item) else "en"}
+                for item in brief_triggers
+            ]
+        card["routing_status_reason"] = "derived from briefing interview work-brief; triggers/anti-triggers are user-confirmed"
+        card["work_brief_ref"] = {
+            "path": ".agentlas/work-brief.json",
+            "ambiguity_score": (work_brief.get("metadata") or {}).get("ambiguity_score"),
+        }
 
     local_path = pkg_dir / ".agentlas" / "routing-card.json"
     if local_path.exists():
