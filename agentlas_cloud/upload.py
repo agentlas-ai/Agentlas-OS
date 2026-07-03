@@ -69,7 +69,7 @@ def package_agent(
         run_setup_wizard(base, _read_package_name(base), write=True)
 
     files, file_count, findings = collect_upload_files(base)
-    routing = validate_routing_card_for_upload(base)
+    routing = validate_routing_card_for_upload(base, visibility=visibility)
     findings.extend(routing["findings"])
     findings.extend(validate_public_profile_for_upload(base, visibility))
     if not any(Path(item.path).name in AGENT_DEFINITION_FILES for item in files):
@@ -235,13 +235,26 @@ def refresh_routing_card_metadata(base: Path) -> dict[str, Any]:
     return {"updated": False, "path": str(card_path)}
 
 
-def validate_routing_card_for_upload(base: Path) -> dict[str, Any]:
+def validate_routing_card_for_upload(base: Path, visibility: str = "marketplace") -> dict[str, Any]:
+    # The routing card powers Hub routing, so it gates only public (marketplace)
+    # uploads. Private-link Cloud storage accepts packages without one; when a
+    # card exists but has problems, those findings are downgraded to advice.
+    public = visibility == "marketplace"
+
+    def _result(ok: bool, card: dict[str, Any] | None, findings: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+        if not public and findings:
+            findings = [{**finding, "severity": "advice"} for finding in findings]
+            ok = True
+        return {"ok": ok, "card": card, "findings": findings, **extra}
+
     card_path = base / ".agentlas" / "routing-card.json"
     if not card_path.is_file():
-        return {
-            "ok": False,
-            "card": None,
-            "findings": [
+        if not public:
+            return {"ok": True, "card": None, "findings": []}
+        return _result(
+            False,
+            None,
+            [
                 _finding(
                     "routing-card-required",
                     "blocker",
@@ -251,21 +264,21 @@ def validate_routing_card_for_upload(base: Path) -> dict[str, Any]:
                     "Run `bin/hephaestus cards migrate <agent-folder> --tier local`, then fill triggers, anti-triggers, and benchmark fixtures.",
                 )
             ],
-        }
+        )
     try:
         card = json.loads(card_path.read_text(encoding="utf-8"))
     except (ValueError, OSError):
-        return {
-            "ok": False,
-            "card": None,
-            "findings": [_finding("routing-card-invalid-json", "blocker", "structure", "Routing card is not valid JSON.", ".agentlas/routing-card.json", "Fix the JSON before upload.")],
-        }
+        return _result(
+            False,
+            None,
+            [_finding("routing-card-invalid-json", "blocker", "structure", "Routing card is not valid JSON.", ".agentlas/routing-card.json", "Fix the JSON before upload.")],
+        )
     if not isinstance(card, dict):
-        return {
-            "ok": False,
-            "card": None,
-            "findings": [_finding("routing-card-invalid", "blocker", "structure", "Routing card must be a JSON object.", ".agentlas/routing-card.json", "Replace it with routing-card/2.0 metadata.")],
-        }
+        return _result(
+            False,
+            None,
+            [_finding("routing-card-invalid", "blocker", "structure", "Routing card must be a JSON object.", ".agentlas/routing-card.json", "Replace it with routing-card/2.0 metadata.")],
+        )
 
     findings: list[dict[str, Any]] = []
     server_problem = _server_routing_problem(card)
@@ -301,7 +314,7 @@ def validate_routing_card_for_upload(base: Path) -> dict[str, Any]:
                 "Promote only after the quality gates pass.",
             )
         )
-    return {"ok": not findings, "card": card, "findings": findings, "lint": report}
+    return _result(not findings, card, findings, lint=report)
 
 
 def validate_public_profile_for_upload(base: Path, visibility: str) -> list[dict[str, Any]]:
