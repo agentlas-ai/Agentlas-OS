@@ -167,7 +167,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.2
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.3
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). After install, `/prompts:hep-build` is the in-app entry.*
@@ -203,7 +203,7 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 
 ## The Desktop Shell — Agentlas Desktop
 
-[Agentlas Desktop](https://agentlas.cloud/desktop) is the graphical shell for this Agent OS — the same kernel, scheduler, and governance subsystems, operated visually. Desktop 0.6.0 ships with the Hephaestus v1.1.2 engine bundled and pinned; the app and its kernel version-lock together and auto-update as one unit.
+[Agentlas Desktop](https://agentlas.cloud/desktop) is the graphical shell for this Agent OS — the same kernel, scheduler, and governance subsystems, operated visually. Desktop 0.6.0 ships with the Hephaestus v1.1.3 engine bundled and pinned; the app and its kernel version-lock together and auto-update as one unit.
 
 | Shell Surface | What it operates |
 | :--- | :--- |

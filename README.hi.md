@@ -167,7 +167,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 अपने OS terminal से:
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.2
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.3
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:hep-build` in-app entry है।*
@@ -203,7 +203,7 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 
 ## डेस्कटॉप शेल — Agentlas Desktop
 
-[Agentlas Desktop](https://agentlas.cloud/desktop) इस Agent OS का graphical shell है — वही kernel, scheduler और governance subsystems, बस visually संचालित। Desktop 0.6.0 में Hephaestus v1.1.2 engine bundled और pinned आता है; app और उसका kernel आपस में version-lock रहते हैं और एक ही unit के रूप में auto-update होते हैं।
+[Agentlas Desktop](https://agentlas.cloud/desktop) इस Agent OS का graphical shell है — वही kernel, scheduler और governance subsystems, बस visually संचालित। Desktop 0.6.0 में Hephaestus v1.1.3 engine bundled और pinned आता है; app और उसका kernel आपस में version-lock रहते हैं और एक ही unit के रूप में auto-update होते हैं।
 
 | Shell Surface | यह क्या संचालित करता है |
 | :--- | :--- |

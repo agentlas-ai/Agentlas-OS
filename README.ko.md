@@ -167,7 +167,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.2
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.3
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. 설치 후에는 `/prompts:hep-build`가 앱 내 진입점입니다.*
@@ -203,7 +203,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 ## 데스크톱 셸 — Agentlas Desktop
 
-[Agentlas Desktop](https://agentlas.cloud/desktop)은 이 에이전트 OS의 그래픽 셸입니다 — 동일한 커널, 스케줄러, 거버넌스 서브시스템을 시각적으로 운용합니다. Desktop 0.6.0에는 Hephaestus v1.1.2 엔진이 번들로 고정되어 함께 배포되며, 앱과 커널은 버전이 서로 잠긴 채 하나의 단위로 자동 업데이트됩니다.
+[Agentlas Desktop](https://agentlas.cloud/desktop)은 이 에이전트 OS의 그래픽 셸입니다 — 동일한 커널, 스케줄러, 거버넌스 서브시스템을 시각적으로 운용합니다. Desktop 0.6.0에는 Hephaestus v1.1.3 엔진이 번들로 고정되어 함께 배포되며, 앱과 커널은 버전이 서로 잠긴 채 하나의 단위로 자동 업데이트됩니다.
 
 | 셸 표면 | 운용 대상 |
 | :--- | :--- |

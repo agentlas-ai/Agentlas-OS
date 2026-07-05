@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v1.1.3 - 2026-07-05
+
+- **`hephaestus update` `/hep-storm` install parity.** Fixed the one-touch
+  installer so `/hep-storm` is actually refreshed into every global runtime
+  surface it documents: Claude Code, Codex custom prompts, Gemini fallback
+  commands, Antigravity workflows, Cursor/OpenCode commands, and the
+  `hephaestus-storm` AgentSkill for `.agents`, OpenClaw, Hermes, and Cursor.
+  This closes the gap where the repo and plugin cache had Stormbreaker, but
+  fresh host sessions could still miss the visible command.
+- **Latest-release alignment.** Publishes the Stormbreaker command surface as a
+  new public release so `hephaestus update` and `update --check` can discover it
+  from GitHub latest instead of stopping at v1.1.1.
+
 ## v1.1.2 - 2026-07-05
 
 - **`/hep-storm` Stormbreaker loop surface.** Promoted the Stormbreaker

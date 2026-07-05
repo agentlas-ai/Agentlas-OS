@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo="${HEPHAESTUS_REPO:-https://github.com/agentlas-ai/Hephaestus}"
 codex_repo="${HEPHAESTUS_CODEX_REPO:-agentlas-ai/Hephaestus}"
-version="${HEPHAESTUS_VERSION:-v1.1.2}"
+version="${HEPHAESTUS_VERSION:-v1.1.3}"
 keep="${HEPHAESTUS_KEEP_SMOKE_DIR:-0}"
 
 fail() {
@@ -55,11 +55,11 @@ echo "3/7 Claude plugin installed by one-touch script"
 HOME="$shell_home" claude plugin list | tee "$tmp/claude-plugin-list.txt"
 rg -q 'hephaestus@agentlas-core-engine' "$tmp/claude-plugin-list.txt" || fail "Claude plugin list does not show Hephaestus"
 HOME="$shell_home" claude plugin details hephaestus@agentlas-core-engine | tee "$tmp/claude-plugin-details.txt"
-rg -q 'Skills \(7\)' "$tmp/claude-plugin-details.txt" || fail "Claude details should show seven Hephaestus commands"
-for expected_skill in hep-build hep-cloud hep-network hep-search hep-call hep-upload hep-connect; do
+rg -q 'Skills \(8\)' "$tmp/claude-plugin-details.txt" || fail "Claude details should show eight Hephaestus commands"
+for expected_skill in hep-build hep-cloud hep-network hep-storm hep-search hep-call hep-upload hep-connect; do
   rg -q "$expected_skill" "$tmp/claude-plugin-details.txt" || fail "Claude details missing $expected_skill"
 done
-if rg -n '0-7-4|mode-classification|agentlas-auto-activation|team-builder-packaging|hephaestus-build|hephaestus-network|hephaestus-cloud|hephaestus-search|hephaestus-call|Skills \(5\)|Skills \(6\)' "$tmp/claude-plugin-details.txt"; then
+if rg -n '0-7-4|mode-classification|agentlas-auto-activation|team-builder-packaging|hephaestus-build|hephaestus-network|hephaestus-cloud|hephaestus-storm|hephaestus-search|hephaestus-call|Skills \(5\)|Skills \(6\)|Skills \(7\)' "$tmp/claude-plugin-details.txt"; then
   fail "Claude details still show stale or duplicate Hephaestus skills"
 fi
 if find "$shell_home/.claude/plugins/cache/agentlas-core-engine/hephaestus" -path '*/skills/*/SKILL.md' -print -quit | rg -q .; then
@@ -89,6 +89,7 @@ rg -q 'hephaestus' "$tmp/gemini-extensions-list.txt" || fail "Gemini extension l
 [[ -f "$shell_home/.gemini/commands/hep-search.toml" ]] || fail "Gemini search fallback command was not installed"
 [[ -f "$shell_home/.gemini/commands/hep-call.toml" ]] || fail "Gemini call fallback command was not installed"
 [[ -f "$shell_home/.gemini/commands/hep-upload.toml" ]] || fail "Gemini upload fallback command was not installed"
+[[ -f "$shell_home/.gemini/commands/hep-storm.toml" ]] || fail "Gemini storm fallback command was not installed"
 [[ ! -f "$shell_home/.gemini/commands/hephaestus.toml" ]] || fail "Legacy Gemini /hephaestus command should be pruned"
 echo "PASS Gemini install"
 echo
@@ -112,6 +113,7 @@ if payload.get("status") != "current":
 PY
 rg -q 'auth ensure --timeout' "$shell_home/.agents/skills/hephaestus-network/SKILL.md" || fail "universal skill does not auto-trigger Agentlas sign-in"
 rg -q 'auth ensure --timeout' "$shell_home/.agents/skills/hephaestus-cloud/SKILL.md" || fail "universal cloud skill does not auto-trigger Agentlas sign-in"
+rg -q 'auth ensure --timeout' "$shell_home/.agents/skills/hephaestus-storm/SKILL.md" || fail "universal storm skill does not auto-trigger Agentlas sign-in"
 rg -q 'auth ensure --timeout' "$codex_home/prompts/hep-network.md" || fail "Codex prompt does not auto-trigger Agentlas sign-in"
 [[ -f "$codex_home/prompts/hep-build.md" ]] || fail "Codex build prompt was not installed"
 [[ -f "$codex_home/prompts/hep-cloud.md" ]] || fail "Codex cloud prompt was not installed"
@@ -119,6 +121,7 @@ rg -q 'auth ensure --timeout' "$codex_home/prompts/hep-network.md" || fail "Code
 [[ -f "$codex_home/prompts/hep-call.md" ]] || fail "Codex call prompt was not installed"
 [[ -f "$codex_home/prompts/hep-upload.md" ]] || fail "Codex upload prompt was not installed"
 [[ -f "$codex_home/prompts/hep-connect.md" ]] || fail "Codex connect prompt was not installed"
+[[ -f "$codex_home/prompts/hep-storm.md" ]] || fail "Codex storm prompt was not installed"
 [[ ! -f "$codex_home/prompts/hephaestus.md" ]] || fail "Legacy Codex /prompts:hephaestus prompt should be pruned"
 HOME="$shell_home" "$runtime_runner" auth status | tee "$tmp/auth-status.json"
 python3 - "$tmp/auth-status.json" <<'PY'
@@ -178,10 +181,10 @@ echo "PASS ontology GUI"
 echo
 
 echo "Expected in-app commands after install"
-echo "Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload, /hep-connect"
-echo "Codex: /prompts:hep-build, /prompts:hep-network, /prompts:hep-cloud, /prompts:hep-search, /prompts:hep-call, /prompts:hep-upload, /prompts:hep-connect"
+echo "Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-storm, /hep-cloud, /hep-search, /hep-call, /hep-upload, /hep-connect"
+echo "Codex: /prompts:hep-build, /prompts:hep-network, /prompts:hep-storm, /prompts:hep-cloud, /prompts:hep-search, /prompts:hep-call, /prompts:hep-upload, /prompts:hep-connect"
 echo "Codex plugin browser: /plugins"
-echo "Gemini CLI: /extensions list, /commands list, then /hep-build, /hep-network, /hep-cloud, /hep-search, /hep-call, /hep-upload"
+echo "Gemini CLI: /extensions list, /commands list, then /hep-build, /hep-network, /hep-storm, /hep-cloud, /hep-search, /hep-call, /hep-upload"
 echo
 
 if [[ "$keep" == "1" ]]; then

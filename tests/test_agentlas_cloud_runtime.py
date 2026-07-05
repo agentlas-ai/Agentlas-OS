@@ -114,7 +114,7 @@ def test_private_sync_public_clean_copy_and_call_only():
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.2",
+            "version": "1.1.3",
             "manifest": {"name": "instagram-operator"},
             "files": [{"path": "AGENTS.md", "content": "ok"}, {"path": ".agentlas/memory-map.json", "content": "private"}],
             "memory": {"scope": "private", "summary": "private memory", "deltas": ["x"]},
