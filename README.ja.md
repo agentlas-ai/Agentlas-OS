@@ -167,7 +167,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 OS のターミナルから:
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.3
+codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.4
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注: Codex アプリ内では `/plugin marketplace add` は利用できません。上記の 2 つのコマンドを OS のターミナルで実行してください。OS ターミナルの CLI コマンドは単数形（`codex plugin`）ですが、Codex アプリ内のプラグインブラウザーのスラッシュコマンドは複数形（`/plugins`）です。インストール後は、`/prompts:hep-build` がアプリ内のエントリーポイントになります。*
@@ -203,7 +203,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 ## デスクトップシェル — Agentlas Desktop
 
-[Agentlas Desktop](https://agentlas.cloud/desktop) は、このエージェント OS のグラフィカルシェルです — 同じカーネル、スケジューラー、ガバナンスサブシステムを、ビジュアルに操作できます。Desktop 0.6.0 には Hephaestus v1.1.3 エンジンがバンドルされ、ピン留めされています。アプリとカーネルはバージョンロックされ、1 つのユニットとして自動更新されます。
+[Agentlas Desktop](https://agentlas.cloud/desktop) は、このエージェント OS のグラフィカルシェルです — 同じカーネル、スケジューラー、ガバナンスサブシステムを、ビジュアルに操作できます。Desktop 0.6.0 には Hephaestus v1.1.4 エンジンがバンドルされ、ピン留めされています。アプリとカーネルはバージョンロックされ、1 つのユニットとして自動更新されます。
 
 | シェルサーフェス | 操作対象 |
 | :--- | :--- |

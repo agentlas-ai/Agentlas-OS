@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## v1.1.3 - 2026-07-05
+## v1.1.4 - 2026-07-05
 
 - **`hephaestus update` `/hep-storm` install parity.** Fixed the one-touch
   installer so `/hep-storm` is actually refreshed into every global runtime
@@ -14,6 +14,9 @@
 - **Latest-release alignment.** Publishes the Stormbreaker command surface as a
   new public release so `hephaestus update` and `update --check` can discover it
   from GitHub latest instead of stopping at v1.1.1.
+- **Package verifier parity.** The public package verifier now treats
+  `hephaestus-storm` as an expected shipped skill, so release verification and
+  the installed command surface agree.
 
 ## v1.1.2 - 2026-07-05
 
