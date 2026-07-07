@@ -315,7 +315,15 @@ def _score_card(
         score += adjustment
         reasons.append(f"user profile adjustment {adjustment:+.1f}")
 
-    locale_ready = ((card.get("locale_coverage") or {}).get("ready")) or ["en"]
+    # locale_coverage is a dict ({"primary", "ready", "partial"}) on migrated
+    # cards but a bare list of locales on some hand-authored/legacy cards.
+    coverage = card.get("locale_coverage")
+    if isinstance(coverage, dict):
+        locale_ready = coverage.get("ready") or ["en"]
+    elif isinstance(coverage, list):
+        locale_ready = coverage or ["en"]
+    else:
+        locale_ready = ["en"]
     if query_is_korean and "ko" not in locale_ready:
         capped = min(score, t_high - 0.01)
         if capped < score:

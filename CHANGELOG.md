@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v1.1.9 - 2026-07-07
+
+- **Router no longer crashes on list-form `locale_coverage` cards.** Routing
+  a Korean query against a card whose `locale_coverage` was a bare locale
+  list (e.g. `["ko", "en"]`) instead of the migrated dict shape raised
+  `AttributeError: 'list' object has no attribute 'get'` and killed the
+  whole `/hep-storm` / `route` run. The scorer now accepts both shapes.
+  This was previously hot-patched only into the installed 1.1.5 runtime and
+  regressed on update; the fix is now in the canonical source with a
+  regression test.
 - **`hep-browser` automation contract.** URL requests with an explicit action
   now drive the Agentlas browser hardpoint through `open -> chat -> snapshot`
   instead of stopping at a read-only page snapshot. Use

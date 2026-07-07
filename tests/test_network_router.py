@@ -173,6 +173,30 @@ def test_korean_query_against_english_only_card_clarifies(tmp_path):
     assert result["action"] != "route"
 
 
+def test_list_form_locale_coverage_does_not_crash(tmp_path):
+    # Legacy/hand-authored cards ship locale_coverage as a bare list of
+    # locales instead of the migrated dict shape; routing must tolerate both.
+    home = tmp_path / "networking"
+    init_networking(home)
+    card = make_ready_card(
+        tmp_path,
+        "list-locale",
+        triggers_ko=["논문 요약", "연구 자료 정리"],
+        triggers_en=["summarize research papers", "academic literature scan"],
+        antis=["payment", "deployment", "deletion"],
+        capabilities=["summarize_research_papers"],
+    )
+    card["locale_coverage"] = ["ko", "en"]
+    save_card(home, card)
+    result = route_request("논문 요약 정리해줘", home=home, use_hub=False)
+    assert result["action"] in ("route", "clarify", "propose_new")
+
+    card["locale_coverage"] = ["en"]
+    save_card(home, card)
+    result = route_request("논문 요약 정리해줘", home=home, use_hub=False)
+    assert result["action"] != "route"
+
+
 def test_privacy_keywords_do_not_block_hub_lookup(tmp_path, monkeypatch):
     home = setup_home(tmp_path)
 
