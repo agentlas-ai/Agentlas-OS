@@ -18,7 +18,7 @@
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
   </a>
-  <img alt="Runtimes" src="https://img.shields.io/badge/runtimes-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama%20%7C%20Terminal-black">
+  <img alt="Hosts" src="https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama-black">
 </p>
 
 <p align="center">
@@ -33,13 +33,24 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
-## 빠른 시작
+## 붙여넣어 부팅하기
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+지금 쓰는 AI 호스트, 예를 들어 Claude Code, Codex, Gemini CLI, Antigravity,
+Cursor에 아래 내용을 붙여넣으세요:
+
+```text
+이 AI 호스트에만 Hephaestus를 설정해줘:
+https://github.com/agentlas-ai/Hephaestus
+
+최신 릴리즈와 이 호스트용 어댑터를 사용해. Agentlas Terminal이나
+Agentlas Desktop은 설치하지 마; 둘은 별도 Agentlas 제품이야.
+
+이 호스트가 전역 라우팅을 지원하면 이 호스트에만 활성화해. 마지막에는
+여기서 어떤 Hephaestus command surface가 활성화됐는지 확인해줘.
 ```
 
-이 명령은 중립 러너를 설치하고 Claude Code, Codex, Gemini CLI, Antigravity, Cursor용 명령 어댑터를 등록합니다. Codex, Claude Code, Antigravity/Gemini 전역 프롬프트 라우팅까지 켜려면 설치 뒤 `hep-global install`을 실행하거나 설치 명령에 `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1`을 붙이세요. 플러그인, 수동 복사, 또는 AI에게 설치를 맡기고 싶다면 [전체 설치 방법](#전체-설치-방법)을 참고하세요.
+이 부팅 프롬프트는 외부 AI 호스트용입니다. Agentlas Terminal과 Agentlas
+Desktop은 각 제품 채널에서 따로 설치합니다.
 
 <p align="center">
   <img src="assets/hephaestus-network-mcp-demo.gif" alt="MCP를 통해 태스크를 실시간으로 올바른 에이전트에 라우팅하는 Hephaestus Network 2.0" width="760">
@@ -52,7 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts
 <p align="center">
   <a href="#에이전트-os-시대">에이전트 OS 시대</a>
   ·
-  <a href="#빠른-시작">빠른 시작</a>
+  <a href="#붙여넣어-부팅하기">붙여넣어 부팅하기</a>
   ·
   <a href="#전체-설치-방법">전체 설치 방법</a>
   ·
@@ -121,32 +132,15 @@ Hephaestus는 고전적인 운영체제 개념에 그대로 대응됩니다:
 
 ## 전체 설치 방법
 
-### 붙여넣어 부팅하기 (AI에게 맡기기)
-아래 내용을 Claude Code, Codex, Gemini CLI, Antigravity 또는 Cursor에 붙여넣으세요:
+### 수동 호스트 어댑터 설치
 
-```text
-Install Hephaestus Agentlas for this workspace from this GitHub repo:
-https://github.com/agentlas-ai/Hephaestus
+현재 AI 호스트가 자체 설정을 실행할 수 없을 때만 사용하세요. 공유 Hephaestus
+runner와 외부 호스트 어댑터를 설치하며, Agentlas Terminal이나 Agentlas
+Desktop은 설치하지 않습니다.
 
-Use the latest release/instructions. If anything errors, diagnose and fix it,
-retry, and confirm which command surface is active in this tool:
-- Agentlas Terminal / Desktop route plain language natively.
-- 외부 LLM 호스트는 핵심 작업 명령을 노출합니다: build, network, cloud,
-  search, call, upload. Claude Code와 Codex에는 Telegram 설정 helper인
-  connect도 함께 노출됩니다.
-- 선택형 전역 라우터: 터미널 설치 후 일반 프롬프트에서도 Codex와 Claude
-  Code, Antigravity/Gemini가 Network, Cloud, 로컬 에이전트, 로컬 스킬
-  순서로 라우팅하게 하려면 `hep-global install`을 실행하세요.
-```
-
-### 새 macOS 점검
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
-```
-
-### 모든 런타임을 한 줄 터미널 명령으로
-```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
 ```
 이 명령은 중립 러너를 `~/.agentlas/runtime/current/bin/hephaestus`에 설치하고, Claude Code, Codex, Gemini CLI, Antigravity, Cursor용 명령 어댑터를 등록합니다. 설치기는 등록이 끝난 뒤 각 런타임 표면을 검증합니다.
@@ -181,12 +175,6 @@ fallback이 스킬이면 `사용 스킬: <skill names>. 이유: <short reason>.`
 | `hep-global install --home /tmp/test-home` | 다른 home 디렉터리를 대상으로 테스트합니다. 설치기 QA에 유용합니다. |
 | `hephaestus global install` | 메인 Hephaestus runner를 통한 동일 명령입니다. |
 | `~/.agentlas/runtime/current/bin/hephaestus global status` | shell shim이 `PATH`에 없을 때 설치된 runtime을 직접 호출합니다. |
-
-모든 런타임 설치와 전역 라우터 활성화를 한 줄로 실행하려면:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
-```
 
 ### 런타임별 플러그인 드라이버
 

@@ -18,7 +18,7 @@
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
   </a>
-  <img alt="Runtimes" src="https://img.shields.io/badge/runtimes-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama%20%7C%20Terminal-black">
+  <img alt="Hosts" src="https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama-black">
 </p>
 
 <p align="center">
@@ -33,6 +33,24 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
+## 粘贴即启动
+
+把下面内容粘贴到你正在使用的 AI host，例如 Claude Code、Codex、Gemini CLI、Antigravity 或 Cursor：
+
+```text
+只为这个 AI host 设置 Hephaestus:
+https://github.com/agentlas-ai/Hephaestus
+
+使用最新 release 和当前 host 的 adapter。不要安装 Agentlas Terminal 或
+Agentlas Desktop；它们是独立的 Agentlas 产品。
+
+如果当前 host 支持 global routing，只为这个 host 启用。最后确认这里激活的
+Hephaestus command surface。
+```
+
+这个 boot prompt 只面向外部 AI hosts。Agentlas Terminal 和 Agentlas
+Desktop 从各自产品渠道安装。
+
 <p align="center">
   <img src="assets/hephaestus-network-mcp-demo.gif" alt="Hephaestus Network 2.0 通过 MCP 实时将任务路由给正确的智能体" width="760">
 </p>
@@ -41,18 +59,10 @@
   <sub>从 Hub 调取的专家智能体被组装成临时任务组，通过 MCP 实时路由——无需为每个任务单独配置智能体。</sub>
 </p>
 
-## 快速上手
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
-```
-
-该命令会安装中立运行器，并为 Claude Code、Codex、Gemini CLI、Antigravity 和 Cursor 注册命令适配器。想用插件、手动复制文件，或者让你的 AI 帮你安装？参见[全部安装方式](#全部安装方式)。
-
 <p align="center">
   <a href="#agent-os-时代">Agent OS 时代</a>
   ·
-  <a href="#快速上手">快速上手</a>
+  <a href="#粘贴即启动">粘贴即启动</a>
   ·
   <a href="#全部安装方式">全部安装方式</a>
   ·
@@ -121,29 +131,14 @@ Hephaestus 与经典操作系统概念一一对应：
 
 ## 全部安装方式
 
-### 粘贴即启动（让你的 AI 来做）
-把下面这段粘贴到 Claude Code、Codex、Gemini CLI、Antigravity 或 Cursor：
+### 手动安装 Host Adapter
 
-```text
-Install Hephaestus Agentlas for this workspace from this GitHub repo:
-https://github.com/agentlas-ai/Hephaestus
+仅当当前 AI host 无法自行执行设置时使用。它会安装共享的 Hephaestus runner
+和外部 host adapters；不会安装 Agentlas Terminal 或 Agentlas Desktop。
 
-Use the latest release/instructions. If anything errors, diagnose and fix it,
-retry, and confirm which command surface is active in this tool:
-- Agentlas Terminal / Desktop route plain language natively.
-- External LLM hosts expose the core work commands: build, network, cloud,
-  search, call, upload. Claude Code and Codex also expose the Telegram setup
-  helper: connect.
-```
-
-### 全新 macOS 环境检查
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
-```
-
-### 一条终端命令安装所有运行时
-```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
 ```
 该命令会把中立运行器安装到 `~/.agentlas/runtime/current/bin/hephaestus`，并为 Claude Code、Codex、Gemini CLI、Antigravity 和 Cursor 注册命令适配器。安装器会在注册后逐一验证每个运行时表面。

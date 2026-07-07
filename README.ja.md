@@ -18,7 +18,7 @@
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
   </a>
-  <img alt="Runtimes" src="https://img.shields.io/badge/runtimes-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama%20%7C%20Terminal-black">
+  <img alt="Hosts" src="https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama-black">
 </p>
 
 <p align="center">
@@ -33,6 +33,24 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
+## 貼り付けて起動
+
+今使っている AI host、たとえば Claude Code、Codex、Gemini CLI、Antigravity、Cursor に貼り付けてください:
+
+```text
+この AI host だけに Hephaestus を設定してください:
+https://github.com/agentlas-ai/Hephaestus
+
+最新 release とこの host 用 adapter を使ってください。Agentlas Terminal や
+Agentlas Desktop はインストールしないでください。これらは別の Agentlas 製品です。
+
+この host が global routing をサポートしている場合は、この host だけで有効化してください。
+最後に、ここで有効になっている Hephaestus command surface を確認してください。
+```
+
+この boot prompt は外部 AI hosts 向けです。Agentlas Terminal と Agentlas
+Desktop は、それぞれの製品チャネルからインストールします。
+
 <p align="center">
   <img src="assets/hephaestus-network-mcp-demo.gif" alt="MCP 経由でタスクを正しいエージェントへリアルタイムにルーティングする Hephaestus Network 2.0" width="760">
 </p>
@@ -41,18 +59,10 @@
   <sub>ハブから呼び出された専門エージェントが臨時タスクフォースとして編成され、MCP 経由でリアルタイムにルーティングされます — タスクごとのエージェント設定は不要です。</sub>
 </p>
 
-## クイックスタート
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
-```
-
-これにより中立ランナーがインストールされ、Claude Code、Codex、Gemini CLI、Antigravity、Cursor 用のコマンドアダプターが登録されます。プラグイン、手動コピー、あるいは AI にインストールを任せたい場合は、[すべてのインストール方法](#すべてのインストール方法) を参照してください。
-
 <p align="center">
   <a href="#エージェント-os-の時代">エージェント OS の時代</a>
   ·
-  <a href="#クイックスタート">クイックスタート</a>
+  <a href="#貼り付けて起動">貼り付けて起動</a>
   ·
   <a href="#すべてのインストール方法">すべてのインストール方法</a>
   ·
@@ -121,29 +131,15 @@ Hephaestus は、古典的なオペレーティングシステムの概念に直
 
 ## すべてのインストール方法
 
-### 貼り付けて起動（AI に任せる）
-以下を Claude Code、Codex、Gemini CLI、Antigravity、Cursor に貼り付けてください:
+### 手動 Host Adapter インストール
 
-```text
-Install Hephaestus Agentlas for this workspace from this GitHub repo:
-https://github.com/agentlas-ai/Hephaestus
+現在の AI host が自分で setup を実行できない場合だけ使ってください。共有 Hephaestus
+runner と外部 host adapters をインストールします。Agentlas Terminal や
+Agentlas Desktop はインストールしません。
 
-Use the latest release/instructions. If anything errors, diagnose and fix it,
-retry, and confirm which command surface is active in this tool:
-- Agentlas Terminal / Desktop route plain language natively.
-- External LLM hosts expose the core work commands: build, network, cloud,
-  search, call, upload. Claude Code and Codex also expose the Telegram setup
-  helper: connect.
-```
-
-### macOS クリーン環境の確認
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
-```
-
-### すべてのランタイムを 1 つのターミナルコマンドで
-```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
 ```
 これにより、ニュートラルランナーが `~/.agentlas/runtime/current/bin/hephaestus` にインストールされ、Claude Code、Codex、Gemini CLI、Antigravity、Cursor 用のコマンドアダプターが登録されます。インストーラーは、登録後に各ランタイムサーフェスを検証します。

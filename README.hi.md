@@ -18,7 +18,7 @@
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
   </a>
-  <img alt="Runtimes" src="https://img.shields.io/badge/runtimes-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama%20%7C%20Terminal-black">
+  <img alt="Hosts" src="https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama-black">
 </p>
 
 <p align="center">
@@ -33,6 +33,25 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
+## Paste करके बूट करें
+
+इसे उस AI host में paste करें जिसे आप अभी इस्तेमाल कर रहे हैं, जैसे Claude Code,
+Codex, Gemini CLI, Antigravity या Cursor:
+
+```text
+इस AI host के लिए ही Hephaestus setup करें:
+https://github.com/agentlas-ai/Hephaestus
+
+latest release और इसी host का adapter इस्तेमाल करें। Agentlas Terminal या
+Agentlas Desktop install न करें; ये अलग Agentlas products हैं।
+
+अगर यह host global routing support करता है, तो उसे सिर्फ इसी host के लिए enable करें।
+अंत में confirm करें कि यहाँ कौन सा Hephaestus command surface active है।
+```
+
+यह boot prompt केवल external AI hosts के लिए है। Agentlas Terminal और Agentlas
+Desktop अपने product channels से अलग install होते हैं।
+
 <p align="center">
   <img src="assets/hephaestus-network-mcp-demo.gif" alt="Hephaestus Network 2.0, MCP के जरिए एक task को सही agent पर live route करते हुए" width="760">
 </p>
@@ -41,18 +60,10 @@
   <sub>Hub से लाए गए specialist agents एक temporary task force में जुड़ते हैं और MCP के जरिए live route होते हैं — हर task के लिए अलग agent setup की जरूरत नहीं।</sub>
 </p>
 
-## क्विकस्टार्ट
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
-```
-
-यह neutral runner install करता है और Claude Code, Codex, Gemini CLI, Antigravity तथा Cursor के लिए command adapters register करता है। कोई plugin, manual copy, या अपने AI से install करवाना चाहते हैं? देखें [सभी Install Methods](#सभी-install-methods)।
-
 <p align="center">
   <a href="#agent-os-का-युग">Agent OS का युग</a>
   ·
-  <a href="#क्विकस्टार्ट">क्विकस्टार्ट</a>
+  <a href="#paste-करके-बूट-करें">Paste करके बूट करें</a>
   ·
   <a href="#सभी-install-methods">सभी Install Methods</a>
   ·
@@ -121,29 +132,15 @@ Hephaestus classical operating system अवधारणाओं से सी�
 
 ## सभी Install Methods
 
-### Paste करके बूट करें (अपने AI को करने दें)
-इसे Claude Code, Codex, Gemini CLI, Antigravity या Cursor में paste करें:
+### Manual Host Adapter Install
 
-```text
-Install Hephaestus Agentlas for this workspace from this GitHub repo:
-https://github.com/agentlas-ai/Hephaestus
+इसे केवल तब इस्तेमाल करें जब current AI host खुद setup नहीं चला सकता। यह shared
+Hephaestus runner और external host adapters install करता है; Agentlas Terminal
+या Agentlas Desktop install नहीं करता।
 
-Use the latest release/instructions. If anything errors, diagnose and fix it,
-retry, and confirm which command surface is active in this tool:
-- Agentlas Terminal / Desktop route plain language natively.
-- External LLM hosts expose the core work commands: build, network, cloud,
-  search, call, upload. Claude Code and Codex also expose the Telegram setup
-  helper: connect.
-```
-
-### नए macOS की जाँच
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
-```
-
-### सभी Runtimes के लिए एक Terminal Command
-```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
 ```
 यह neutral runner को `~/.agentlas/runtime/current/bin/hephaestus` पर install करता है और Claude Code, Codex, Gemini CLI, Antigravity तथा Cursor के लिए command adapters register करता है। installer registration के बाद हर runtime surface को verify करता है।

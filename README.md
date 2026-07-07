@@ -18,7 +18,7 @@
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
   </a>
-  <img alt="Runtimes" src="https://img.shields.io/badge/runtimes-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama%20%7C%20Terminal-black">
+  <img alt="Hosts" src="https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama-black">
 </p>
 
 <p align="center">
@@ -33,13 +33,24 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
-## Quickstart
+## Paste to Boot
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+Paste this into the AI host you are using now, such as Claude Code, Codex,
+Gemini CLI, Antigravity, or Cursor:
+
+```text
+Set up Hephaestus for this AI host only:
+https://github.com/agentlas-ai/Hephaestus
+
+Use the latest release and this host's adapter. Do not install Agentlas
+Terminal or Agentlas Desktop; those are separate Agentlas products.
+
+If this host supports global routing, enable it for this host. Then confirm
+which Hephaestus command surface is active here.
 ```
 
-This installs the neutral runner and registers command adapters for Claude Code, Codex, Gemini CLI, Antigravity, and Cursor. To also install global prompt routing for Codex, Claude Code, and Antigravity/Gemini, run `hep-global install` after the installer or set `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` on the install command. Prefer a plugin, a manual copy, or letting your AI install it for you? See [All Install Methods](#all-install-methods).
+This boot prompt is for external AI hosts only. Agentlas Terminal and Agentlas
+Desktop install from their own product channels.
 
 <p align="center">
   <img src="assets/hephaestus-network-mcp-demo.gif" alt="Hephaestus Network 2.0 routing a task live to the right agent over MCP" width="760">
@@ -52,7 +63,7 @@ This installs the neutral runner and registers command adapters for Claude Code,
 <p align="center">
   <a href="#the-agent-os-era">The Agent OS Era</a>
   ·
-  <a href="#quickstart">Quickstart</a>
+  <a href="#paste-to-boot">Paste to Boot</a>
   ·
   <a href="#all-install-methods">All Install Methods</a>
   ·
@@ -121,32 +132,15 @@ Agents generated from vague, single-sentence prompts fail under real-world edge 
 
 ## All Install Methods
 
-### Paste to Boot (Let Your AI Do It)
-Paste this into Claude Code, Codex, Gemini CLI, Antigravity, or Cursor:
+### Manual Host Adapter Install
 
-```text
-Install Hephaestus Agentlas for this workspace from this GitHub repo:
-https://github.com/agentlas-ai/Hephaestus
+Use this only when your current AI host cannot run setup for you. It installs
+the shared Hephaestus runner and external host adapters; it does not install
+Agentlas Terminal or Agentlas Desktop.
 
-Use the latest release/instructions. If anything errors, diagnose and fix it,
-retry, and confirm which command surface is active in this tool:
-- Agentlas Terminal / Desktop route plain language natively.
-- External LLM hosts expose the core work commands: build, network, cloud,
-  search, call, upload. Claude Code and Codex also expose the Telegram setup
-  helper: connect.
-- Optional global router: after the terminal installer, run `hep-global install`
-  if you want Codex, Claude Code, and Antigravity/Gemini to route ordinary
-  prompts through Network, Cloud, local agents, then local skills.
-```
-
-### Fresh macOS Check
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
-```
-
-### One Terminal Command for All Runtimes
-```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
 ```
 This installs the neutral runner at `~/.agentlas/runtime/current/bin/hephaestus` and registers the command adapters for Claude Code, Codex, Gemini CLI, Antigravity, and Cursor. The installer verifies each runtime surface after registration.
@@ -179,12 +173,6 @@ Global router command reference:
 | `hep-global install --home /tmp/test-home` | Test against another home directory. Useful for installer QA. |
 | `hephaestus global install` | Same command through the main Hephaestus runner. |
 | `~/.agentlas/runtime/current/bin/hephaestus global status` | Use the installed runtime directly when shell shims are not on `PATH`. |
-
-Install every runtime and enable the global router in one terminal command:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
-```
 
 ### Per-Runtime Plugin Drivers
 
