@@ -40,6 +40,12 @@ role behavior.
 
 ## Must Include
 
+- Runtime instruction files must be written in English. This includes
+  `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, worker `agent.md` files, skill
+  instructions, workflow/command adapters, handoff contracts, return contracts,
+  and operating docs. Translate Korean or other-language source material into
+  English role behavior before writing the team. Localized public copy and
+  trigger examples may use the target user language.
 - Orchestrator/HQ inside the generated team.
 - PM Soul or project owner.
 - Memory Curator and Memory Ticket handoff.

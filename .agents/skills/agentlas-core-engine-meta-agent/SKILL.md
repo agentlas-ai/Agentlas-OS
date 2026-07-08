@@ -20,11 +20,16 @@ description: "Use when creating a single Agentlas agent, creating a multi-agent 
 7. Emit or repair the Agentlas contracts, including
    `.agentlas/global-commands.json`. Include `.agentlas` auto-activation seed
    files when local continuity is part of the output.
-8. Add the generated command to Codex, Codex, Gemini CLI, generic
+8. Write all generated or repaired runtime agent instructions in English,
+   including adapters, role prompts, skills, handoff contracts, return
+   contracts, and operating docs. Translate Korean or other-language source
+   material into English agent behavior. Localized public copy and routing
+   trigger examples may use the target user language.
+9. Add the generated command to Codex, Codex, Gemini CLI, generic
    AGENTS.md, and terminal adapters. For teams, expose the orchestrator/HQ
    command and route workers through HQ unless direct worker commands were
    requested.
-9. Verify with `scripts/verify-package.sh`.
+10. Verify with `scripts/verify-package.sh`.
 
 ## Output
 

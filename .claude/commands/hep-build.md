@@ -98,10 +98,16 @@ Meta-Agent team:
    `docs/prompt-performance-contract.md`, and
    `.agentlas/capability-eval-plan.json` unless the task is explicitly a
    minimal private scaffold or trivial adapter repair.
-6. Load only the matching public skills.
-7. Generate or repair `.agentlas/global-commands.json` and matching runtime
+6. Write all generated or repaired runtime agent instructions in English:
+   `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `agent.md`, skills,
+   workflow/command adapters, runtime prompts, handoff contracts, return
+   contracts, and operating docs. Translate Korean or other-language source
+   material into English agent behavior. Localized marketplace copy, routing
+   trigger examples, and sample user inputs may use the target user language.
+7. Load only the matching public skills.
+8. Generate or repair `.agentlas/global-commands.json` and matching runtime
    command files or aliases.
-8. Market Page Copy Gate — make the public detail page readable before
+9. Market Page Copy Gate — make the public detail page readable before
    reporting. For any agent/team package created or repaired, write or repair
    `agentlas.json.publicProfile` (`titleKo`, `descriptionKo`, a `guide` with
    `whatItDoesKo` / `bestForKo` / `prerequisitesKo` / `expectedOutputsKo` /
@@ -118,7 +124,7 @@ Meta-Agent team:
    Verify with the bundled runtime gate:
    `bin/hephaestus package <pkg> --visibility marketplace`. Recompute the
    package hash after writing `agentlas.json`.
-9. If a package was created or repaired in the current workspace, register it to
+10. If a package was created or repaired in the current workspace, register it to
    local discovery before reporting:
    ```bash
    RUNNER="./bin/hephaestus"
@@ -131,12 +137,12 @@ Meta-Agent team:
      echo "Hephaestus runner not found for routing-card migration."
    fi
    ```
-10. Run the package shape gate before reporting completion:
+11. Run the package shape gate before reporting completion:
    `scripts/verify-team-package.sh <generated-package-root>`. If it fails, do
    not report `completed`; fix the package by collapsing to a valid
    single-agent shape or adding orchestrator/HQ plus company-blueprint topology,
    then rerun the gate.
-11. Return `status`, `evidence`, `output`, `global_commands`, `market_page_copy`,
+12. Return `status`, `evidence`, `output`, `global_commands`, `market_page_copy`,
    `interview_research`, and `blockers`.
    The `global_commands` section must tell the user the exact Claude Code,
    Codex, Gemini CLI, generic AGENTS.md, and terminal commands for the generated

@@ -32,6 +32,12 @@ Expose `/prompts:hep-build` as the public Codex build prompt next to
   `docs/research-sources.md`, `docs/tool-selection.md`,
   `docs/domain-expert-synthesis.md`, `docs/prompt-performance-contract.md`,
   and `.agentlas/capability-eval-plan.json`.
+- Write all generated or repaired runtime agent instructions in English:
+  `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `agent.md`, skills, workflow/command
+  adapters, runtime prompts, handoff contracts, return contracts, and operating
+  docs. Translate Korean or other-language source material into English agent
+  behavior. Localized marketplace copy, routing trigger examples, and sample
+  user inputs may use the target user language.
 - After creating or repairing a package, run
   `scripts/verify-team-package.sh <package-root>`. If it fails, do not report
   `completed`; correct the shape by collapsing to a valid single-agent package

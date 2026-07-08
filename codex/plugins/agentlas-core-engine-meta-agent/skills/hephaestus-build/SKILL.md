@@ -53,18 +53,24 @@ description: "Use when the user types /prompts:hep-build, mentions @Hephaestus f
    - `20-multi-agent-team-builder`;
    - `30-agentlas-packager`.
 7. Load matching support skills.
-8. Emit or repair Agentlas contracts, including `.agentlas` activation seed
+8. Write all generated or repaired runtime agent instructions in English:
+   `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `agent.md`, skills, workflow/command
+   adapters, runtime prompts, handoff contracts, return contracts, and
+   operating docs. Translate Korean or other-language source material into
+   English agent behavior. Localized public copy, routing trigger examples, and
+   sample user inputs may use the target user language.
+9. Emit or repair Agentlas contracts, including `.agentlas` activation seed
    files and `.agentlas/global-commands.json` when local continuity is part of
    the output.
-9. Add the generated command to Claude Code, Codex, Gemini CLI, generic
+10. Add the generated command to Claude Code, Codex, Gemini CLI, generic
    AGENTS.md, and terminal adapters. For teams, expose the orchestrator/HQ
    command and route workers through HQ unless direct worker commands were
    requested.
-10. Run `scripts/verify-team-package.sh <generated-package-root>` for generated
+11. Run `scripts/verify-team-package.sh <generated-package-root>` for generated
     or repaired packages. If it fails, do not report completion; collapse the
     output to a single-agent package or add the required orchestrator/HQ and
     team contracts.
-11. Verify with `scripts/verify-package.sh`.
+12. Verify with `scripts/verify-package.sh`.
 
 ## Output
 

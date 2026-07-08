@@ -30,6 +30,13 @@ and create `docs/builder-interview.md`, `docs/research-sources.md`,
 `docs/prompt-performance-contract.md`, and `.agentlas/capability-eval-plan.json`.
 Include `interview_research` evidence in the final response.
 
+Write all generated or repaired runtime agent instructions in English:
+`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `agent.md`, skills, workflow/command
+adapters, runtime prompts, handoff contracts, return contracts, and operating
+docs. Translate Korean or other-language source material into English agent
+behavior. Localized marketplace copy, routing trigger examples, and sample user
+inputs may use the target user language.
+
 After creating or repairing a package, run
 `scripts/verify-team-package.sh <package-root>`. If it fails, do not report
 `completed`; correct the shape by collapsing to a valid single-agent package or

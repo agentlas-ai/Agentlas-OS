@@ -32,6 +32,12 @@ plan before public or marketplace-ready output.
 
 ## Must Add Or Repair
 
+- Runtime instruction files must be written in English. This includes
+  `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, worker `agent.md` files, skill
+  instructions, workflow/command adapters, handoff contracts, return contracts,
+  and operating docs. Translate Korean or other-language source material into
+  English behavior while preserving the original intent. Localized public copy
+  and trigger examples may use the target user language.
 - `AGENTS.md` canonical core.
 - Thin runtime adapters: `CLAUDE.md`, `GEMINI.md`, `.claude/`, `.gemini/`,
   `antigravity/workflows/`, Codex plugin or local skill mirrors when requested.

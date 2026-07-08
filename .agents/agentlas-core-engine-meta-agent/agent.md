@@ -24,11 +24,16 @@ an Agentlas-compatible agent or agent-team repository.
    `docs/tool-selection.md`, `docs/domain-expert-synthesis.md`,
    `docs/prompt-performance-contract.md`, and
    `.agentlas/capability-eval-plan.json`.
-7. Read `.agentlas/memory-map.json`.
-8. Select relevant skills from `.agents/skills`.
-9. Use `.agents/skills/agentlas-auto-activation/SKILL.md` when local project
+7. Write all generated or repaired runtime agent instructions in English,
+   including adapters, role prompts, skills, handoff contracts, and operating
+   docs. Translate Korean or other-language source material into English agent
+   behavior. Localized public copy and routing trigger examples may use the
+   target user language.
+8. Read `.agentlas/memory-map.json`.
+9. Select relevant skills from `.agents/skills`.
+10. Use `.agents/skills/agentlas-auto-activation/SKILL.md` when local project
    continuity or `.agentlas` activation is part of the output.
-10. Verify with `scripts/verify-package.sh`.
+11. Verify with `scripts/verify-package.sh`.
 
 ## Output
 

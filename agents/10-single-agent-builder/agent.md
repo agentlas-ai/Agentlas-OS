@@ -31,6 +31,12 @@ choices become concrete specialist behavior.
 
 ## Must Include
 
+- Runtime instruction files must be written in English. This includes
+  `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `agent.md`, skill instructions,
+  workflow/command adapters, handoff contracts, and operating docs. Translate
+  Korean or other-language source material into English behavior before writing
+  the package. Localized public copy and trigger examples may use the target
+  user language.
 - `AGENTS.md` as canonical core.
 - `.agents/<agent-id>/agent.md` or equivalent single worker contract.
 - `.agents/skills/<skill-id>/SKILL.md` for reusable capabilities.

@@ -90,14 +90,20 @@ Read `$ENGINE/AGENTS.md` if it exists, otherwise `$ENGINE/SKILL.md`, then:
    `docs/research-sources.md`, `docs/tool-selection.md`,
    `docs/domain-expert-synthesis.md`, `docs/prompt-performance-contract.md`, and
    `.agentlas/capability-eval-plan.json`.
-4. If missing narrow details would change files, adapters, or the public/private
+4. Write all generated or repaired runtime agent instructions in English:
+   `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `agent.md`, skills,
+   workflow/command adapters, runtime prompts, handoff contracts, return
+   contracts, and operating docs. Translate Korean or other-language source
+   material into English agent behavior. Localized marketplace copy, routing
+   trigger examples, and sample user inputs may use the target user language.
+5. If missing narrow details would change files, adapters, or the public/private
    boundary, run the clarify-question-loop skill first.
-5. Generate or repair the smallest useful Agentlas package in the current
+6. Generate or repair the smallest useful Agentlas package in the current
    workspace, then run `scripts/verify-team-package.sh <package-root>`. If it
    fails, do not report `completed`; correct the shape by collapsing to a valid
    single-agent package or adding orchestrator/HQ plus company-blueprint
    topology, then rerun the gate and verify it.
-6. If the package exists in the current workspace, register its routing-card to
+7. If the package exists in the current workspace, register its routing-card to
    local discovery so it can participate in local routing priority:
 
 ```bash
@@ -106,7 +112,7 @@ if [ -x "./bin/hephaestus" ]; then
 fi
 ```
 
-7. Return `status`, `evidence`, `output`, `global_commands`,
+8. Return `status`, `evidence`, `output`, `global_commands`,
    `interview_research`, and `blockers`.
 
 ## If no engine root was found

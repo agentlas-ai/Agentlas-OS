@@ -54,6 +54,18 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
 Runtime-specific folders are adapters. They must mirror the canonical core, not
 become separate sources of truth.
 
+## Generated Instruction Language
+
+All generated or repaired agent instruction files must be written in English.
+This includes `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `agent.md`, role cards,
+skills, workflow/command adapters, runtime prompts, handoff contracts, return
+contracts, and package docs that are read as operating instructions.
+
+Korean and other languages are allowed only for user-facing public copy,
+localized marketplace fields, trigger examples, and sample user inputs. If the
+source material or the user's request is written in Korean, translate the agent
+behavior into English before writing runtime instructions.
+
 ## Operating Loop
 
 1. Run the public mode classifier (`skills/mode-classification/SKILL.md`) and
@@ -94,30 +106,33 @@ become separate sources of truth.
    `docs/prompt-performance-contract.md`, and
    `.agentlas/capability-eval-plan.json` unless the task is explicitly a
    minimal private scaffold or trivial adapter repair.
-9. Add thin adapters for Codex, Claude Code, Gemini CLI, Antigravity, and
+9. Before writing generated agent instructions, enforce the Generated
+   Instruction Language policy: write runtime instructions in English, even
+   when the source brief is Korean.
+10. Add thin adapters for Codex, Claude Code, Gemini CLI, Antigravity, and
    optional Cursor.
-10. Assign one canonical global command during creation, write
+11. Assign one canonical global command during creation, write
    `.agentlas/global-commands.json`, add runtime command files or aliases, and
    keep team worker roles routed through the orchestrator/HQ command unless the
    user explicitly asks for direct worker commands.
-11. Add `.agentlas` seed files when the generated or packaged output needs local
+12. Add `.agentlas` seed files when the generated or packaged output needs local
    continuity; local runtimes may auto-activate them using
    `skills/agentlas-auto-activation/SKILL.md`.
-12. Add or repair `agentlas.json` so Agentlas Cloud can compile a runtime
+13. Add or repair `agentlas.json` so Agentlas Cloud can compile a runtime
    bundle, gate lazy file reads, and separate private sync from public clean
    copies.
-13. Add skill lifecycle metadata using
+14. Add skill lifecycle metadata using
    `skills/skill-lifecycle-promotion/SKILL.md` when the package contains
    reusable skills.
-14. For generated or repaired packages, run
+15. For generated or repaired packages, run
     `scripts/verify-team-package.sh <generated-package-root>` before the final
     report. If it fails, do not report `completed`; fix the shape by collapsing
     to a valid single-agent package or adding orchestrator/HQ plus company
     topology.
-15. Verify with `scripts/verify-package.sh`.
-16. For ontology runtime changes, also verify with
+16. Verify with `scripts/verify-package.sh`.
+17. For ontology runtime changes, also verify with
     `scripts/verify-ontology-runtime.sh`.
-17. For long-running or multi-file execution work, apply
+18. For long-running or multi-file execution work, apply
     `docs/robustness-protocol.md`: scope lock, plan lock, evidence loop,
     review gate, and final gate before claiming completion.
 
