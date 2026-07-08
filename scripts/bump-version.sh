@@ -60,13 +60,13 @@ targets="$(grep -rl -e "v${old_re}" -e "\"${old_re}\"" \
 # carries to the new tag, so a web file that skipped past releases (and is now
 # several versions behind) still catches up instead of sticking forever.
 web_synced=""
-web_pat='Hephaestus/v[0-9]+\.[0-9]+\.[0-9]+/scripts/install-all-runtimes\.sh'
+web_pat='(Agentlas-OS|Hephaestus)/v[0-9]+\.[0-9]+\.[0-9]+/scripts/install-all-runtimes\.sh'
 if [[ -f "$web_file" ]] && grep -qE "$web_pat" "$web_file"; then
-  cur="$(sed -nE 's#.*Hephaestus/(v[0-9]+\.[0-9]+\.[0-9]+)/scripts/install-all-runtimes\.sh.*#\1#p' "$web_file" | head -1)"
+  cur="$(sed -nE 's#.*(Agentlas-OS|Hephaestus)/(v[0-9]+\.[0-9]+\.[0-9]+)/scripts/install-all-runtimes\.sh.*#\2#p' "$web_file" | head -1)"
   if [[ "$dry" == "--dry-run" ]]; then
     echo "$web_file  (web ONE_TOUCH_CMD ${cur:-?} → ${new})"
   elif [[ "$cur" != "$new" ]]; then
-    sed -i '' -E "s#(Hephaestus/)v[0-9]+\.[0-9]+\.[0-9]+(/scripts/install-all-runtimes\.sh)#\1${new}\2#g" "$web_file"
+    sed -i '' -E "s#((Agentlas-OS|Hephaestus)/)v[0-9]+\.[0-9]+\.[0-9]+(/scripts/install-all-runtimes\.sh)#\1${new}\3#g" "$web_file"
     echo "synced $web_file  (web ONE_TOUCH_CMD ${cur:-?} → ${new})"
     web_synced=1
   else

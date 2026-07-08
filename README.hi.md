@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/agentlas-ai/Hephaestus/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Hephaestus?label=release">
+  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release">
   </a>
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
@@ -40,7 +40,7 @@ Codex, Gemini CLI, Antigravity या Cursor:
 
 ```text
 इस GitHub repo से Hephaestus install करें:
-https://github.com/agentlas-ai/Hephaestus
+https://github.com/agentlas-ai/Agentlas-OS
 
 इसे plugin marketplace में register करें, plugin install करें, और अगली session
 से Hephaestus plugin और commands काम करें। अगर global routing support है, तो
@@ -138,7 +138,7 @@ Hephaestus runner और supported LLM tools के command adapters install क
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 यह neutral runner को `~/.agentlas/runtime/current/bin/hephaestus` पर install करता है और Claude Code, Codex, Gemini CLI, Antigravity तथा Cursor के लिए command adapters register करता है। installer registration के बाद हर runtime surface को verify करता है।
 
@@ -149,7 +149,7 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts
 
 अपने OS terminal से:
 ```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
+claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
 *नोट: Claude Code `claude plugins ...` को alias के रूप में भी सपोर्ट करता है, लेकिन consistency के लिए यह README एकवचन `claude plugin ...` का उपयोग करता है।*
@@ -161,7 +161,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 अपने OS terminal से:
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.10
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.10
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:hep-build` in-app entry है।*

@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/agentlas-ai/Hephaestus/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Hephaestus?label=release">
+  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release">
   </a>
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
@@ -39,7 +39,7 @@
 
 ```text
 从这个 GitHub 仓库安装 Hephaestus:
-https://github.com/agentlas-ai/Hephaestus
+https://github.com/agentlas-ai/Agentlas-OS
 
 把它注册到 plugin marketplace，安装 plugin，并让 Hephaestus plugin 和
 commands 从下一次 session 开始可用。如果支持 global routing，也请开启。
@@ -136,7 +136,7 @@ Hephaestus 与经典操作系统概念一一对应：
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 该命令会把中立运行器安装到 `~/.agentlas/runtime/current/bin/hephaestus`，并为 Claude Code、Codex、Gemini CLI、Antigravity 和 Cursor 注册命令适配器。安装器会在注册后逐一验证每个运行时表面。
 
@@ -147,7 +147,7 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts
 
 在操作系统终端中运行：
 ```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
+claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
 *注：Claude Code 也支持 `claude plugins ...` 作为别名，但本 README 为保持一致，统一使用单数形式的 `claude plugin ...`。*
@@ -159,7 +159,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 在操作系统终端中运行：
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.10
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.10
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注：Codex 应用内不支持 `/plugin marketplace add`，请在操作系统终端中运行上面两条命令。操作系统终端的 CLI 命令为单数形式（`codex plugin`）；在 Codex 应用内，插件浏览器的斜杠命令为复数形式（`/plugins`）。安装完成后，`/prompts:hep-build` 即为应用内入口。*

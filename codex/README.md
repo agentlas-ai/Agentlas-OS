@@ -35,7 +35,7 @@ git --version
 One-command install or update for every supported runtime:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
 Optional global router prompt block:
@@ -67,7 +67,7 @@ Codex global router commands:
 To enable this during one-command install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 ```
 
 Inside the Codex app, `/prompts:hep-build`, `/prompts:hep-network`,
@@ -82,7 +82,7 @@ from the plugin manager.
 Codex-only manual install:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.10
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.10
 codex plugin add hephaestus@agentlas-core-engine
 mkdir -p ~/.codex/prompts
 cp codex/prompts/hep-build.md codex/prompts/hep-network.md codex/prompts/hep-cloud.md codex/prompts/hep-search.md codex/prompts/hep-browser.md codex/prompts/hep-call.md codex/prompts/hep-upload.md codex/prompts/hep-connect.md ~/.codex/prompts/

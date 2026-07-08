@@ -2,7 +2,7 @@
 set -uo pipefail
 
 version="${HEPHAESTUS_REF:-v1.1.10}"
-repo="${HEPHAESTUS_REPO:-agentlas-ai/Hephaestus}"
+repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
 plugin_name="${HEPHAESTUS_PLUGIN:-hephaestus}"
@@ -138,7 +138,7 @@ ensure_downloaded_source() {
   curl -fsSL "$archive_url" -o "$archive" || return 1
   tar -xzf "$archive" -C "$tmp_source_dir" || return 1
   local extracted
-  extracted="$(find "$tmp_source_dir" -maxdepth 1 -type d -name 'Hephaestus-*' | head -n 1)"
+  extracted="$(find "$tmp_source_dir" -maxdepth 1 -type d \( -name 'Agentlas-OS-*' -o -name 'Hephaestus-*' \) | head -n 1)"
   if [[ -z "$extracted" ]]; then
     warn "Downloaded Hephaestus source was not found in archive."
     return 1

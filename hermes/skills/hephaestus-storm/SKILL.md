@@ -47,7 +47,7 @@ fi
 ```
 
 If no runner exists, tell the user to run the one-touch installer:
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash`
 
 Ensure Agentlas is signed in, then route + materialize the pipeline fabric for
 THIS goal. This opens the user's default browser only when there is no valid

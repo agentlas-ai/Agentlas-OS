@@ -46,7 +46,7 @@ fi
 ```
 
 If no runner exists, tell the user to run the one-touch installer:
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash`
 
 If shell execution is unavailable in this harness but MCP is, call the
 `agentlas_authenticate` tool first, then call the `hephaestus_route` tool from

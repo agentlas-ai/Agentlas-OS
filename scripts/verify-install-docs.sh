@@ -59,7 +59,7 @@ expected_tag="v${expected_version}"
 expected_tag_re="${expected_tag//./\\.}"
 
 bad_patterns=(
-  '/plugin marketplace add agentlas-ai/Hephaestus'
+  '/plugin marketplace add agentlas-ai/Agentlas-OS'
   '/plugin install agentlas-meta-agent'
   'codex plugin install'
   'Install Codex plugin by slash command'
@@ -93,7 +93,7 @@ if rg -n 'agentlas-meta-agent' README*.md claude/README.md codex/README.md \
 fi
 
 for path in README.md README.ko.md codex/README.md; do
-  rg -q "codex plugin marketplace add agentlas-ai/Hephaestus --ref ${expected_tag_re}" "$path" || fail "missing Codex marketplace command in $path"
+  rg -q "codex plugin marketplace add agentlas-ai/Agentlas-OS --ref ${expected_tag_re}" "$path" || fail "missing Codex marketplace command in $path"
   rg -q 'codex plugin add hephaestus@agentlas-core-engine' "$path" || fail "missing Codex add command in $path"
 done
 

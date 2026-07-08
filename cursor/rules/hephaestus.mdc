@@ -15,7 +15,7 @@ fallback adapter so plain-text routing triggers work too: when the user writes
    workspace, or the newest
    `~/.claude/plugins/cache/agentlas-core-engine/hephaestus/*/bin/hephaestus`
    (sort -V). If none exists, tell the user to run the one-touch installer:
-   `curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash`
+   `curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash`
 
 2. Run `"$RUNNER" auth ensure --timeout 180` first. It opens the default
    browser only on first use and silently reuses an existing Agentlas saved

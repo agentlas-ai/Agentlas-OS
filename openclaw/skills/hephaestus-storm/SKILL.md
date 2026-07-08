@@ -1,7 +1,7 @@
 ---
 name: hephaestus-storm
 description: "Use when the user types /hep-storm, mentions @Hephaestus storm, or asks to force-robustly drive a loop-worthy goal (apps, sites, agents, automations, debugging, multi-step research, data/report generation) to a verified finish. Stormbreaker routes the goal to real Agentlas specialists, materializes a dependency-ordered pipeline fabric, and runs a verifier-first loop that does not stall, run away, or claim false success. Trivial questions are answered directly, not stormed."
-metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Hephaestus"}}
+metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Agentlas-OS"}}
 ---
 
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
@@ -48,7 +48,7 @@ fi
 ```
 
 If no runner exists, tell the user to run the one-touch installer:
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash`
 
 Ensure Agentlas is signed in, then route + materialize the pipeline fabric for
 THIS goal. No `--executor-command`: the host model (you) executes each packet

@@ -13,8 +13,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/agentlas-ai/Hephaestus/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Hephaestus?label=release">
+  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release">
   </a>
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
@@ -41,7 +41,7 @@ Gemini CLI, Antigravity, or Cursor:
 
 ```text
 Install Agentlas OS / Hephaestus from this GitHub repo:
-https://github.com/agentlas-ai/Hephaestus
+https://github.com/agentlas-ai/Agentlas-OS
 
 Register it with the plugin marketplace, install the plugin, and make the
 Hephaestus plugin and commands available from my next session. If global routing
@@ -183,7 +183,7 @@ shared Hephaestus runner and command adapters for supported LLM tools.
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 This installs the neutral runner at `~/.agentlas/runtime/current/bin/hephaestus` and registers the command adapters for Claude Code, Codex, Gemini CLI, Antigravity, and Cursor. The installer verifies each runtime surface after registration.
 
@@ -223,7 +223,7 @@ Global router command reference:
 
 From your OS terminal:
 ```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
+claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
 *Note: Claude Code also supports `claude plugins ...` as an alias, but this README uses the singular `claude plugin ...` for consistency.*
@@ -235,7 +235,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.10
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.10
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). After install, `/prompts:hep-build` is the in-app entry.*

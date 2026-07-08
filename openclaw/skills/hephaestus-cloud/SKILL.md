@@ -1,7 +1,7 @@
 ---
 name: hephaestus-cloud
 description: "Use when the user types /hep-cloud or asks to find/route to one of THEIR OWN Agentlas cloud packages (보관함, 내 클라우드, 내 보관함, my cloud, my own agents). This is the owner-scoped leg of the three-scope model — it searches ONLY the signed-in user's own cloud packages, not the public marketplace (use hephaestus-network for that) and not local cards. The user's own cloud packages are restorable/owned by them and call-priced at a flat 1 credit."
-metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Hephaestus"}}
+metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Agentlas-OS"}}
 ---
 
 # Hephaestus Cloud Routing (my own cloud / 보관함)
@@ -44,7 +44,7 @@ fi
 ```
 
 If no runner exists, tell the user to run the one-touch installer:
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash`
 
 If shell execution is unavailable in this harness but MCP is, call the
 `agentlas_authenticate` tool first, then call the `hephaestus_cloud_search` tool

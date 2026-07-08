@@ -23,7 +23,7 @@ from typing import Any
 
 LATEST_RELEASE_URL = os.environ.get(
     "HEPHAESTUS_LATEST_RELEASE_URL",
-    "https://api.github.com/repos/agentlas-ai/Hephaestus/releases/latest",
+    "https://api.github.com/repos/agentlas-ai/Agentlas-OS/releases/latest",
 )
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 CORE_DIRS = ("bin", "agentlas_cloud", "ontology")

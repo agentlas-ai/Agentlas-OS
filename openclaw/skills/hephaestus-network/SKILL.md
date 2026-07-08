@@ -1,7 +1,7 @@
 ---
 name: hephaestus-network
 description: "Use when the user types /hep-network, mentions @Hephaestus, or asks to find/invoke the right Agentlas Hub agent, team, or plugin for a task. For public demos, distribution docs, README GIFs, and user-facing MCP tests, Hephaestus Network means Hub-first/Hub-only invocation, not developer-local private scope folders."
-metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Hephaestus"}}
+metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Agentlas-OS"}}
 ---
 
 # Hephaestus Network Routing
@@ -47,7 +47,7 @@ fi
 ```
 
 If no runner exists, tell the user to run the one-touch installer:
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash`
 
 ## 2. Agentlas sign-in
 

@@ -12,7 +12,7 @@ git --version
 One-command install or update for Claude, Codex, and Gemini:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
 Optional global router prompt block:
@@ -45,7 +45,7 @@ Claude Code global router commands:
 To enable this during one-command install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 ```
 
 After this surface is installed, `/hep-build`, `/hep-network`, `/hep-cloud`,
@@ -57,7 +57,7 @@ Claude command file is too old to contain this preflight, refresh the plugin
 once from Claude's plugin manager or run the one-command installer above.
 
 ```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
+claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
 
@@ -71,7 +71,7 @@ Then open or restart Claude Code in the project and type:
 If an older install still points at `agentlas-meta-agent`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
 That command creates and opens:

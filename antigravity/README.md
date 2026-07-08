@@ -34,7 +34,7 @@ same way the Gemini adapter ships both extension commands and
 From an OS terminal (not the Antigravity chat box):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
 The installed `/hep-*` workflows include the app-host auto-update preflight.

@@ -12,7 +12,7 @@
   <text x="94" y="190" font-family="Inter, Arial, sans-serif" font-size="16" fill="#d2c4b8">Type these inside Claude Code, not in macOS Terminal.</text>
   <g font-family="Menlo, Consolas, monospace" font-size="18">
     <rect x="94" y="226" width="1012" height="82" rx="12" fill="#11100f" stroke="#6b5b51"/>
-    <text x="122" y="260" fill="#f6d365">/plugin marketplace add https://github.com/agentlas-ai/Hephaestus</text>
+    <text x="122" y="260" fill="#f6d365">/plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS</text>
     <text x="122" y="286" fill="#f6d365">  --sparse .claude-plugin claude/plugins</text>
     <text x="94" y="336" fill="#9fd3ff">1. Register this GitHub repo as a Claude plugin marketplace.</text>
     <rect x="94" y="366" width="1012" height="58" rx="12" fill="#11100f" stroke="#6b5b51"/>

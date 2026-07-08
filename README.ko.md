@@ -13,8 +13,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/agentlas-ai/Hephaestus/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Hephaestus?label=release">
+  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release">
   </a>
   <a href="LICENSE">
     <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
@@ -41,7 +41,7 @@ Cursor에 아래 내용을 붙여넣으세요:
 
 ```text
 이 GitHub 저장소에서 Agentlas OS / Hephaestus를 설치해줘:
-https://github.com/agentlas-ai/Hephaestus
+https://github.com/agentlas-ai/Agentlas-OS
 
 플러그인 마켓플레이스에 등록하고 플러그인으로 설치해줘.
 다음 세션부터 Hephaestus 플러그인과 명령이 바로 동작하게 설정해줘.
@@ -178,7 +178,7 @@ runner와 지원되는 LLM 도구용 명령 어댑터를 설치합니다.
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Hephaestus/main/scripts/install-all-runtimes.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 이 명령은 중립 러너를 `~/.agentlas/runtime/current/bin/hephaestus`에 설치하고, Claude Code, Codex, Gemini CLI, Antigravity, Cursor용 명령 어댑터를 등록합니다. 설치기는 등록이 끝난 뒤 각 런타임 표면을 검증합니다.
 
@@ -220,7 +220,7 @@ fallback이 스킬이면 `사용 스킬: <skill names>. 이유: <short reason>.`
 
 OS 터미널에서:
 ```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Hephaestus --sparse .claude-plugin claude/plugins
+claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
 *참고: Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README에서는 일관성을 위해 단수형 `claude plugin ...`을 사용합니다.*
@@ -232,7 +232,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Hephaestus --ref v1.1.10
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.10
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. 설치 후에는 `/prompts:hep-build`가 앱 내 진입점입니다.*
