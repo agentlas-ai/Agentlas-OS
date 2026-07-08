@@ -188,8 +188,8 @@ hep-global install
 ```
 이 명령은 `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`에 관리용 marker block을 추가합니다. 이후 Codex, Claude Code, Antigravity/Gemini는 네이티브 Agentlas 세션처럼 일반 프롬프트를 처리합니다. 실질 작업의 라우팅 순서는 Hephaestus Network 먼저, Hephaestus Cloud 두 번째, 로컬 에이전트 세 번째, 로컬 스킬 마지막입니다. Network나 Cloud가 크레딧, 권한, 적합도 문제로 막히면 그 경계를 알리고 다음 fallback으로 내려갑니다. 명령은 여러 번 실행해도 같은 block만 갱신하며, 수정 전 timestamp 백업을 남깁니다.
 
-상태 줄은 라우터 명령이 아니라 최종 작업자를 표시하며, 현재 세션 언어에 맞춰
-표시됩니다:
+설치된 router prompt는 상태 줄에 라우터 명령이 아니라 최종 작업자를 표시하도록
+지시합니다. 영어/한국어 세션용 status-line 계약을 명시적으로 포함합니다:
 
 | 세션 언어 | 에이전트 라우팅 예시 | 스킬 fallback 예시 |
 | --- | --- | --- |

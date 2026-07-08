@@ -1,0 +1,6 @@
+- generic [ref=f2e2]:
+  - heading "Example Domain" [level=1] [ref=f2e3]
+  - paragraph [ref=f2e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations.
+  - paragraph [ref=f2e5]:
+    - link "Learn more" [ref=f2e6] [cursor=pointer]:
+      - /url: https://iana.org/domains/example

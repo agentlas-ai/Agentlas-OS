@@ -193,8 +193,8 @@ hep-global install
 ```
 This appends a managed marker block to `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md`. After that, Codex, Claude Code, and Antigravity/Gemini can treat ordinary prompts more like Agentlas-native sessions. For substantial work the router order is: Hephaestus Network first, Hephaestus Cloud second, local agents third, and local skills last. If Network or Cloud is blocked by credits, entitlement, or a poor match, the runtime reports that boundary and continues down the fallback order. The command is idempotent and keeps a timestamped backup before editing.
 
-The status line names final workers, not router commands, and localizes to the
-current session language:
+The installed router prompt names final workers, not router commands. It carries
+an explicit status-line contract for English and Korean sessions:
 
 | Session language | Agent route example | Skill fallback example |
 | --- | --- | --- |
