@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Ideas
+    url: https://github.com/agentlas-ai/Hephaestus/discussions
+    about: Ask a question, propose an idea, or show what you built. Not for bugs.
+  - name: Security issue
+    url: https://github.com/agentlas-ai/Hephaestus/security/advisories/new
+    about: Report a vulnerability privately. Do not open a public issue for this.
