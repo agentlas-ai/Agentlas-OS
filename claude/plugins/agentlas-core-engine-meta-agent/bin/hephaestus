@@ -167,6 +167,8 @@ run_upload_gate() {
 usage() {
   cat <<'EOF'
 Usage:
+  bin/hephaestus career-graph status|ingest|verify|trace|public-card [--project <dir>]
+  bin/hephaestus career-graph query "<question>" [--project <dir>]
   bin/hephaestus ontology [--gui] [--no-open] [project-dir]
   bin/hephaestus ontology add <path> [--project <dir>] [--kind company|project|personal] [--scope public|internal|private]
   bin/hephaestus wizard <agent-folder> [--name <name>]
@@ -207,6 +209,9 @@ Usage:
   bin/hephaestus mcp serve              # stdio MCP server (hephaestus_route tool)
 
 Examples:
+  bin/hephaestus career-graph ingest --project .
+  bin/hephaestus career-graph query "release failures" --project .
+  bin/hephaestus career-graph public-card --write --project .
   bin/hephaestus ontology
   bin/hephaestus ontology --gui .
   bin/hephaestus ontology add ./company-docs --kind company --scope private
@@ -225,6 +230,9 @@ command="$1"
 shift
 
 case "$command" in
+	  career-graph|career_graph)
+	    run_python_module career_graph "$@"
+	    ;;
 	  ontology)
 	    if [[ "${1:-}" == "add" ]]; then
 	      shift

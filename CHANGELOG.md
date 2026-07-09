@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## v1.1.11 - 2026-07-09
+
+- **24h lease ("call once, hired for a day") passthrough.** `hub_invocation`
+  now normalizes the Hub's server-reported lease block, caches a display copy
+  at `~/.agentlas/networking/leases.json`, records lease state on execution
+  receipts, and injects the lease status plus a presence badge (`🔗 <agent>`)
+  into the executing model's runtime contract. Older servers without a lease
+  block keep the exact previous behavior.
+- **Agentlas Career Graph runtime.** New `career_graph/` package and
+  `bin/career-graph` (`ingest / query / trace / verify / public-card`,
+  `hephaestus career-graph ...` dispatch): a rebuildable SQLite index over the
+  project's canonical Markdown/JSONL ledgers (memory, sitemap, code map, run
+  journals, receipts, evolution proposals) with promoted `FailureSignature`,
+  `PlaybookCandidate`, and `EvolutionProposal` nodes. Project-scoped by
+  default; `--include-networking-home` additionally indexes the global
+  routing/execution ledgers (lease-bearing receipts are preserved on
+  `ExecutionReceipt` payloads — covered by a regression test).
+- **Redacted public career card on upload.** `hep-upload` packaging
+  auto-generates `.agentlas/public-career-card.json` for opted-in projects and
+  validates it (counts-only aggregate, privacy flags forced false, local
+  absolute paths rejected) before attaching it to `manifest.careerGraph` /
+  `bundle.careerGraph`.
+
 ## v1.1.10 - 2026-07-07
 
 - **Router no longer crashes on list-form `locale_coverage` cards.** Routing

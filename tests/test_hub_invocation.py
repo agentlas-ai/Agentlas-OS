@@ -61,6 +61,148 @@ def test_hub_invocation_fetches_bundle_and_updates_memory(tmp_path, monkeypatch)
     ]
 
 
+def test_hub_invocation_passes_lease_through_and_caches_it(tmp_path, monkeypatch):
+    home = tmp_path / "networking"
+    init_networking(home)
+    memory_root = tmp_path / "agentlas-memory"
+
+    def fake_call(name, arguments=None, home=None, timeout=15):
+        if name == "agentlas.get_runtime_bundle":
+            return {
+                "bundle": {
+                    "agent": arguments["slug"],
+                    "packageHash": "sha256:test",
+                    "entry": {"path": "AGENTS.md", "content": "Do the work."},
+                    "toolPermissions": {"network": "ask"},
+                },
+                "lease": {"active": True, "leasedUntil": "2026-07-10T00:00:00Z", "chargedCredits": 3},
+            }
+        if name == "agentlas.resolve_plugins":
+            return {"resolved": [], "hub": {"installable": []}}
+        if name == "agentlas.memory.status":
+            return {}
+        if name == "agentlas.wizard.start":
+            return {"ok": True}
+        if name == "agentlas.soul.update":
+            return {}
+        raise AssertionError(name)
+
+    monkeypatch.setattr("agentlas_cloud.networking.hub_invocation.call_hub_tool", fake_call)
+
+    result = invoke_hub_agent(
+        "Draft the launch checklist.",
+        slug="hub-lease-agent",
+        hub_decision={
+            "action": "hub_candidates",
+            "receipt_id": "route-lease",
+            "hub": {"results": [{"slug": "hub-lease-agent", "kind": "cloud-callable", "callable": True}]},
+        },
+        memory_root=memory_root,
+        home=home,
+    )
+
+    assert result["status"] == "prepared"
+    assert result["lease"] == {"active": True, "leased_until": "2026-07-10T00:00:00Z", "charged_credits": 3}
+    assert result["output"]["lease"]["active"] is True
+    # Presence badge + lease status must reach the executing model's instructions.
+    assert "\U0001f517" in result["output"]["next_step"]
+    assert "hired the agent for 24h" in result["output"]["next_step"]
+    # Display cache written for roster surfaces (server stays authoritative).
+    import json as _json
+
+    cached = _json.loads((home / "leases.json").read_text(encoding="utf-8"))
+    assert cached["hub-lease-agent"]["leased_until"] == "2026-07-10T00:00:00Z"
+    assert cached["hub-lease-agent"]["cached_at"]
+
+
+def test_hub_invocation_free_lease_ride_reports_no_charge(tmp_path, monkeypatch):
+    home = tmp_path / "networking"
+    init_networking(home)
+
+    def fake_call(name, arguments=None, home=None, timeout=15):
+        if name == "agentlas.get_runtime_bundle":
+            return {
+                "bundle": {
+                    "agent": arguments["slug"],
+                    "packageHash": "sha256:test",
+                    "entry": {"path": "AGENTS.md", "content": "Do the work."},
+                    "toolPermissions": {"network": "ask"},
+                },
+                "lease": {"active": True, "leasedUntil": "2026-07-10T00:00:00Z", "chargedCredits": 0},
+            }
+        if name == "agentlas.resolve_plugins":
+            return {"resolved": [], "hub": {"installable": []}}
+        if name == "agentlas.memory.status":
+            return {}
+        if name == "agentlas.wizard.start":
+            return {"ok": True}
+        if name == "agentlas.soul.update":
+            return {}
+        raise AssertionError(name)
+
+    monkeypatch.setattr("agentlas_cloud.networking.hub_invocation.call_hub_tool", fake_call)
+
+    result = invoke_hub_agent(
+        "Second call within the lease window.",
+        slug="hub-lease-agent",
+        hub_decision={
+            "action": "hub_candidates",
+            "hub": {"results": [{"slug": "hub-lease-agent", "kind": "cloud-callable", "callable": True}]},
+        },
+        memory_root=tmp_path / "agentlas-memory",
+        home=home,
+    )
+
+    assert result["status"] == "prepared"
+    assert result["lease"]["charged_credits"] == 0
+    assert "this call was free" in result["output"]["next_step"]
+
+
+def test_hub_invocation_without_lease_block_stays_compatible(tmp_path, monkeypatch):
+    """Older servers omit `lease` — invocation output must not change shape."""
+    home = tmp_path / "networking"
+    init_networking(home)
+
+    def fake_call(name, arguments=None, home=None, timeout=15):
+        if name == "agentlas.get_runtime_bundle":
+            return {
+                "bundle": {
+                    "agent": arguments["slug"],
+                    "packageHash": "sha256:test",
+                    "entry": {"path": "AGENTS.md", "content": "Do the work."},
+                    "toolPermissions": {"network": "ask"},
+                }
+            }
+        if name == "agentlas.resolve_plugins":
+            return {"resolved": [], "hub": {"installable": []}}
+        if name == "agentlas.memory.status":
+            return {}
+        if name == "agentlas.wizard.start":
+            return {"ok": True}
+        if name == "agentlas.soul.update":
+            return {}
+        raise AssertionError(name)
+
+    monkeypatch.setattr("agentlas_cloud.networking.hub_invocation.call_hub_tool", fake_call)
+
+    result = invoke_hub_agent(
+        "No lease server.",
+        slug="hub-old-server",
+        hub_decision={
+            "action": "hub_candidates",
+            "hub": {"results": [{"slug": "hub-old-server", "kind": "cloud-callable", "callable": True}]},
+        },
+        memory_root=tmp_path / "agentlas-memory",
+        home=home,
+    )
+
+    assert result["status"] == "prepared"
+    assert result["lease"] is None
+    assert not (home / "leases.json").exists()
+    # Presence badge still applies even without a lease block.
+    assert "\U0001f517" in result["output"]["next_step"]
+
+
 def test_hub_invocation_does_not_prepare_invalid_bundle(tmp_path, monkeypatch):
     home = tmp_path / "networking"
     init_networking(home)

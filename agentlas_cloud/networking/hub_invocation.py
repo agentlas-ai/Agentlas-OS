@@ -115,6 +115,12 @@ def invoke_hub_agent(
             if needs
             else {"skipped": "no plugin needs detected"}
         )
+        # 24h lease ("call once, hired for a day"): the server is the billing
+        # authority and reports lease state on the bundle response. We only pass
+        # it through and cache it locally for display — never decide charges here.
+        lease = _lease_from_response(bundle_response)
+        if lease is not None:
+            _cache_lease(base, selected_slug, lease)
         # Every borrowed Hub agent gets its OWN persistent local memory store, so
         # it can reference what it learned on prior runs. Default to a per-agent
         # path under the networking home when the caller does not pin one.
@@ -150,18 +156,28 @@ def invoke_hub_agent(
         project_dir=Path(project_dir),
         request=request,
     )
+    agent_display_name = selected.get("nameEn") or selected.get("name")
+    next_step = (
+        "Caller runtime executes the returned entry instructions with its own model; Agentlas Hub itself does not run an LLM completion. "
+        "Follow `grounding.directive`: attach to the live project codebase at `grounding.project_dir` FIRST (mandatory), then consult this agent's "
+        "local memory and the super ontology only when the task needs deeper grounding. "
+        f"While acting as this agent, begin each reply with the presence badge `\U0001f517 {agent_display_name or selected_slug}` so the user can see the hired agent is active."
+    )
+    if lease is not None and lease.get("active"):
+        next_step += f" {_lease_status_line(lease)}"
     output = {
         "mode": "byom_runtime_bundle",
         "status": "bundle_ready",
         "agent": selected_slug,
         "agent_id": agent_id,
-        "agent_name": selected.get("nameEn") or selected.get("name"),
+        "agent_name": agent_display_name,
         "package_hash": package_hash,
         "entry_path": entry.get("path"),
         "entry_excerpt": _compact(entry.get("content") or "", 700),
         "prompt_summary": _compact(request, 260),
         "grounding": grounding,
-        "next_step": "Caller runtime executes the returned entry instructions with its own model; Agentlas Hub itself does not run an LLM completion. Follow `grounding.directive`: attach to the live project codebase at `grounding.project_dir` FIRST (mandatory), then consult this agent's local memory and the super ontology only when the task needs deeper grounding.",
+        "lease": lease,
+        "next_step": next_step,
     }
     record = {
         "action": "hub_invoke",
@@ -181,6 +197,7 @@ def invoke_hub_agent(
         "plugin_needs": needs,
         "plugin_resolution": plugin_resolution,
         "memory": memory,
+        "lease": lease,
         "output": output,
     }
     return _record(base, record)
@@ -311,6 +328,51 @@ def _bundle_failure_detail(response: dict[str, Any]) -> str:
     if missing:
         parts.append(f"missingFields={missing}")
     return "; ".join(parts) or "Hub returned no runtime bundle."
+
+
+def _lease_from_response(response: dict[str, Any]) -> dict[str, Any] | None:
+    """Normalize the server-reported 24h lease block, if any.
+
+    The Hub is the only billing authority: it decides whether this call charged
+    credits and started a lease, or rode an existing one for free. Older servers
+    omit the block entirely — return None and change nothing.
+    """
+    lease = response.get("lease")
+    if not isinstance(lease, dict):
+        return None
+    leased_until = lease.get("leasedUntil") or lease.get("leased_until")
+    charged = lease.get("chargedCredits")
+    if charged is None:
+        charged = lease.get("charged")
+    return {
+        "active": bool(lease.get("active")),
+        "leased_until": leased_until if isinstance(leased_until, str) else None,
+        "charged_credits": charged if isinstance(charged, (int, float)) else None,
+    }
+
+
+def _lease_status_line(lease: dict[str, Any]) -> str:
+    until = lease.get("leased_until") or "the lease expiry"
+    charged = lease.get("charged_credits")
+    if charged:
+        return f"Lease: this call hired the agent for 24h ({charged} credits); repeat calls until {until} are free."
+    return f"Lease: active hire — this call was free; the lease runs until {until}."
+
+
+def _cache_lease(base: Path, slug: str, lease: dict[str, Any]) -> None:
+    """Best-effort local lease card cache (display only, server stays authoritative)."""
+    try:
+        path = base / "leases.json"
+        data: dict[str, Any] = {}
+        if path.is_file():
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        data[slug] = {**lease, "cached_at": utc_now()}
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except Exception:
+        # Never block an invocation over a display cache.
+        pass
 
 
 def _bundle_response_summary(response: dict[str, Any]) -> dict[str, Any]:

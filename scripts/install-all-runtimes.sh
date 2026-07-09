@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-version="${HEPHAESTUS_REF:-v1.1.10}"
+version="${HEPHAESTUS_REF:-v1.1.11}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -158,8 +158,9 @@ install_runtime_home() {
   log "== Hephaestus runtime home =="
   rm -rf "$home_dir"
   mkdir -p "$home_dir"
-  cp -R "$source_dir/bin" "$source_dir/agentlas_cloud" "$source_dir/ontology" "$home_dir/" || return 1
+  cp -R "$source_dir/bin" "$source_dir/agentlas_cloud" "$source_dir/career_graph" "$source_dir/ontology" "$home_dir/" || return 1
   chmod +x "$home_dir/bin/hephaestus" \
+    "$home_dir/bin/career-graph" \
     "$home_dir/bin/hep-build" \
     "$home_dir/bin/hep-network" \
     "$home_dir/bin/hep-cloud" \

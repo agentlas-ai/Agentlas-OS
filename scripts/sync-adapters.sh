@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # C-1: keep runtime code adapters as exact mirrors of the canonical core.
 #
-# Code assets (ontology/, agentlas_cloud/, bin/hephaestus) must be
+# Code assets (career_graph/, ontology/, agentlas_cloud/, bin/hephaestus) must be
 # byte-identical in every runtime adapter directory — adapters mirror the
 # canonical core, they are never a second source. SKILL.md adapters are
 # intentionally condensed per runtime and are NOT byte-checked here.
@@ -22,12 +22,14 @@ plugin_roots=(
 )
 
 code_dirs=(
+  "career_graph"
   "ontology"
   "agentlas_cloud"
 )
 
 code_files=(
   "bin/hephaestus"
+  "bin/career-graph"
   "bin/hep-build"
   "bin/hep-network"
   "bin/hep-cloud"

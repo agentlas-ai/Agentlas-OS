@@ -66,13 +66,20 @@ def package_agent(
         raise UploadError(f"agent folder not found: {folder}")
 
     routing_meta = refresh_routing_card_metadata(base)
+    package_name = _read_package_name(base)
+    package_slug = _read_package_slug(base)
     if write_manifest:
-        run_setup_wizard(base, _read_package_name(base), write=True)
+        run_setup_wizard(base, package_name, write=True)
+        package_slug = _read_package_slug(base) or package_slug
 
+    career_card_findings = prepare_public_career_card_for_upload(base)
     files, file_count, findings = collect_upload_files(base)
+    findings = career_card_findings + findings
     routing = validate_routing_card_for_upload(base, visibility=visibility)
     findings.extend(routing["findings"])
     findings.extend(validate_public_profile_for_upload(base, visibility))
+    public_career_card, public_career_findings = read_public_career_card_for_upload(base, visibility)
+    findings.extend(public_career_findings)
     if not any(Path(item.path).name in AGENT_DEFINITION_FILES for item in files):
         findings.append(
             _finding(
@@ -89,8 +96,8 @@ def package_agent(
     manifest = {
         "version": "0.1",
         "kind": "agentlas-cloud-agent",
-        "slug": _slugify(slug or _read_package_name(base) or base.name),
-        "name": _read_package_name(base) or base.name,
+        "slug": _slugify(slug or package_slug or package_name or base.name),
+        "name": package_name or base.name,
         "tagline": _read_tagline(base),
         "agentKind": _infer_kind(base),
         "runtimeLabels": _runtime_labels(base),
@@ -105,6 +112,8 @@ def package_agent(
     }
     if routing.get("card"):
         manifest["routingCard"] = routing["card"]
+    if public_career_card:
+        manifest["careerGraph"] = public_career_card
     manifest, manifest_findings = sanitize_structured_payload(manifest, "manifest")
     findings.extend(manifest_findings)
     sanitized_line_count = sum(1 for finding in findings if finding["id"].startswith("sanitized-upload-line"))
@@ -118,6 +127,8 @@ def package_agent(
         "source": {"packagedBy": "hephaestus-runtime", "packagedAt": manifest["createdAt"], "costOwner": "none"},
         "sanitization": {"removedLineCount": sanitized_line_count},
     }
+    if public_career_card:
+        bundle["careerGraph"] = public_career_card
     status = "blocked" if review["verdict"] == "fail" else "ready"
     return {
         "status": status,
@@ -375,6 +386,84 @@ def validate_public_profile_for_upload(base: Path, visibility: str) -> list[dict
     return findings
 
 
+def prepare_public_career_card_for_upload(base: Path) -> list[dict[str, Any]]:
+    """Generate a Hub-safe Career Graph card when this package already opted in.
+
+    Upload packaging must not crawl arbitrary folders. The automatic path is
+    enabled only when the package already has Career Graph markers; otherwise
+    the feature remains absent and upload behavior is unchanged.
+    """
+    agentlas_dir = base / ".agentlas"
+    public_card = agentlas_dir / "public-career-card.json"
+    if public_card.is_file():
+        return []
+    markers = (
+        agentlas_dir / "career-graph.json",
+        agentlas_dir / "career-graph-sources.json",
+        agentlas_dir / "career-graph.sqlite",
+    )
+    if not any(path.exists() for path in markers):
+        return []
+    try:
+        from career_graph.runtime import CareerGraphRuntime, RuntimeConfig
+
+        runtime = CareerGraphRuntime(RuntimeConfig(project=base))
+        runtime.ingest(rebuild=True)
+        runtime.public_card(write=True)
+        return []
+    except Exception:
+        return [
+            _finding(
+                "career-card-auto-generate-failed",
+                "advice",
+                "market-page",
+                "Career Graph public card could not be generated during packaging.",
+                ".agentlas/public-career-card.json",
+                "Run `career-graph ingest --project .` and `career-graph public-card --write --project .` before upload.",
+            )
+        ]
+
+
+def read_public_career_card_for_upload(base: Path, visibility: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    path = base / ".agentlas" / "public-career-card.json"
+    if not path.is_file():
+        return None, []
+    card = _read_json(path)
+    if not isinstance(card, dict):
+        return None, [_finding("career-card-invalid", "blocker", "market-page", "public Career Graph card is not valid JSON.", ".agentlas/public-career-card.json", "Regenerate it with `career-graph public-card --write`.")]
+    findings: list[dict[str, Any]] = []
+    if card.get("kind") != "agentlas-public-career-card":
+        findings.append(_finding("career-card-kind", "blocker", "market-page", "public Career Graph card has an invalid kind.", ".agentlas/public-career-card.json", "Regenerate it with `career-graph public-card --write`."))
+    privacy = card.get("privacy") if isinstance(card.get("privacy"), dict) else {}
+    for key in ("rawLocalPathsIncluded", "rawPromptsIncluded", "rawTranscriptsIncluded", "sourceTextIncluded"):
+        if privacy.get(key) is not False:
+            findings.append(_finding("career-card-privacy", "blocker", "market-page", f"public Career Graph card must set privacy.{key}=false.", ".agentlas/public-career-card.json", "Do not publish raw local memory, prompts, transcripts, source text, or paths."))
+    raw = json.dumps(card, ensure_ascii=False, sort_keys=True)
+    sensitive_roots = [str(base), str(Path.home())]
+    if any(root and root in raw for root in sensitive_roots):
+        findings.append(_finding("career-card-local-path", "blocker", "market-page", "public Career Graph card contains a local absolute path.", ".agentlas/public-career-card.json", "Regenerate the redacted public card before upload."))
+    if findings and visibility == "marketplace":
+        return None, findings
+    if findings:
+        findings = [{**finding, "severity": "advice"} for finding in findings]
+    allowed = {
+        "schemaVersion",
+        "kind",
+        "generatedAt",
+        "projectName",
+        "indexStatus",
+        "policy",
+        "privacy",
+        "counts",
+        "canonicalSources",
+        "staleSourceCount",
+        "sourceKinds",
+        "nodeTypes",
+        "edgeTypes",
+    }
+    return {key: card[key] for key in allowed if key in card}, findings
+
+
 def sanitize_structured_payload(payload: Any, file_label: str) -> tuple[Any, list[dict[str, Any]]]:
     findings: list[dict[str, Any]] = []
 
@@ -453,6 +542,17 @@ def sanitize_upload_text(file_path: str, text: str) -> tuple[str, list[dict[str,
     return "".join(kept), findings
 
 
+def sanitize_upload_file_text(file_path: str, text: str) -> tuple[str, list[dict[str, Any]]]:
+    if Path(file_path).suffix.lower() != ".json":
+        return sanitize_upload_text(file_path, text)
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        return sanitize_upload_text(file_path, text)
+    sanitized, findings = sanitize_structured_payload(payload, file_path)
+    return json.dumps(sanitized, ensure_ascii=False, indent=2) + "\n", findings
+
+
 def _secret_line_reason(line: str) -> tuple[str, str] | None:
     for finding_id, pattern, message in SECRET_PATTERNS:
         if pattern.search(line):
@@ -496,7 +596,7 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        text, sanitized_findings = sanitize_upload_text(rel, text)
+        text, sanitized_findings = sanitize_upload_file_text(rel, text)
         findings.extend(sanitized_findings)
         raw = text.encode("utf-8")
         for finding_id, pattern, label in SECRET_PATTERNS:
@@ -572,6 +672,12 @@ def _line_finding(finding_id: str, severity: str, category: str, message: str, f
 
 
 def _read_package_name(base: Path) -> str:
+    manifest = _read_json(base / "agentlas.json")
+    if isinstance(manifest, dict):
+        for key in ("displayName", "name"):
+            value = str(manifest.get(key) or "").strip()
+            if value:
+                return value[:120]
     card = _read_json(base / ".agentlas" / "routing-card.json")
     if isinstance(card, dict):
         for key in ("name", "name_ko"):
@@ -584,6 +690,39 @@ def _read_package_name(base: Path) -> str:
         if match:
             return re.sub(r"\s+", " ", match.group(1)).strip()[:120]
     return base.name
+
+
+def _read_package_slug(base: Path) -> str:
+    manifest = _read_json(base / "agentlas.json")
+    package_manifest = _read_json(base / "manifest.json")
+    agent_card = _read_json(base / ".agentlas" / "agent-card.json")
+    routing_card = _read_json(base / ".agentlas" / "routing-card.json")
+    routing_ref = routing_card.get("agent_card_ref") if isinstance(routing_card, dict) else None
+    candidates = [
+        manifest.get("slug") if isinstance(manifest, dict) else None,
+        manifest.get("id") if isinstance(manifest, dict) else None,
+        package_manifest.get("package") if isinstance(package_manifest, dict) else None,
+        package_manifest.get("slug") if isinstance(package_manifest, dict) else None,
+        agent_card.get("slug") if isinstance(agent_card, dict) else None,
+        agent_card.get("id") if isinstance(agent_card, dict) else None,
+        routing_ref.get("slug") if isinstance(routing_ref, dict) else None,
+    ]
+    for candidate in candidates:
+        slug = _stable_slug_candidate(candidate)
+        if slug:
+            return slug
+    return ""
+
+
+def _stable_slug_candidate(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if not text:
+        return ""
+    # routing ids may include a scope prefix such as paid/Web_master; the
+    # package identity is the final segment, not the tier.
+    return text.rsplit("/", 1)[-1].strip()
 
 
 def _read_tagline(base: Path) -> str:

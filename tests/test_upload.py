@@ -115,6 +115,105 @@ def test_marketplace_upload_blocks_missing_public_profile_but_private_link_allow
     assert private_result["status"] == "ready"
 
 
+def test_package_agent_includes_redacted_public_career_card(tmp_path: Path):
+    agent = make_upload_agent(tmp_path)
+    (agent / ".agentlas" / "public-career-card.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": "1.0",
+                "kind": "agentlas-public-career-card",
+                "generatedAt": "2026-07-09T00:00:00+00:00",
+                "projectName": "Demo Upload Agent",
+                "indexStatus": "indexed",
+                "policy": "redacted_aggregate_projection",
+                "privacy": {
+                    "rawLocalPathsIncluded": False,
+                    "rawPromptsIncluded": False,
+                    "rawTranscriptsIncluded": False,
+                    "sourceTextIncluded": False,
+                },
+                "counts": {"sources": 1, "nodes": 2, "edges": 3},
+                "canonicalSources": 1,
+                "staleSourceCount": 0,
+                "sourceKinds": {"project_memory": 1},
+                "nodeTypes": {"Project": 1},
+                "edgeTypes": {"has_memory": 1},
+                "writtenTo": "/tmp/should-not-leak",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = package_agent(agent, visibility="marketplace")
+    card = result["manifest"]["careerGraph"]
+
+    assert result["status"] == "ready"
+    assert card["kind"] == "agentlas-public-career-card"
+    assert card["counts"] == {"sources": 1, "nodes": 2, "edges": 3}
+    assert "writtenTo" not in card
+    assert result["bundle"]["careerGraph"] == card
+    serialized = json.dumps({"manifest": result["manifest"], "bundle": result["bundle"]}, ensure_ascii=False)
+    assert "/tmp/should-not-leak" not in serialized
+    assert str(agent) not in serialized
+
+
+def test_package_agent_auto_generates_public_career_card_when_graph_is_enabled(tmp_path: Path):
+    agent = make_upload_agent(tmp_path)
+    (agent / ".agentlas" / "career-graph.json").write_text(
+        json.dumps({"schemaVersion": "1.0", "kind": "agentlas-career-graph"}),
+        encoding="utf-8",
+    )
+    (agent / ".agentlas" / "project-soul-memory.md").write_text(
+        "# Demo Upload Agent Memory\n\n- Packages Agentlas agents for Hub upload.\n",
+        encoding="utf-8",
+    )
+
+    result = package_agent(agent, visibility="marketplace")
+    card = result["manifest"]["careerGraph"]
+
+    assert result["status"] == "ready"
+    assert (agent / ".agentlas" / "public-career-card.json").is_file()
+    assert card["kind"] == "agentlas-public-career-card"
+    assert card["indexStatus"] == "indexed"
+    assert card["privacy"]["rawLocalPathsIncluded"] is False
+    assert card["counts"]["sources"] >= 1
+    assert "writtenTo" not in card
+
+
+def test_marketplace_upload_blocks_unsafe_public_career_card(tmp_path: Path):
+    agent = make_upload_agent(tmp_path)
+    (agent / ".agentlas" / "public-career-card.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": "1.0",
+                "kind": "agentlas-public-career-card",
+                "generatedAt": "2026-07-09T00:00:00+00:00",
+                "projectName": "Demo Upload Agent",
+                "indexStatus": "indexed",
+                "policy": "redacted_aggregate_projection",
+                "privacy": {
+                    "rawLocalPathsIncluded": True,
+                    "rawPromptsIncluded": False,
+                    "rawTranscriptsIncluded": False,
+                    "sourceTextIncluded": False,
+                },
+                "counts": {"sources": 1, "nodes": 2, "edges": 3},
+                "sourcePreview": str(agent / ".agentlas" / "project-soul-memory.md"),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = package_agent(agent, visibility="marketplace")
+
+    assert result["status"] == "blocked"
+    finding_ids = {finding["id"] for finding in result["review"]["findings"]}
+    assert any(finding_id.startswith("career-card-privacy") for finding_id in finding_ids)
+    assert any(finding_id.startswith("career-card-local-path") for finding_id in finding_ids)
+    assert "careerGraph" not in result["manifest"]
+    assert "careerGraph" not in result["bundle"]
+
+
 def test_publish_posts_bundle_to_register_api_without_forge(tmp_path: Path, monkeypatch):
     agent = make_upload_agent(tmp_path)
     received: dict[str, object] = {}

@@ -3,7 +3,9 @@ that preserves legitimate agent quality (descriptive/quoted content is kept)."""
 from __future__ import annotations
 
 from agentlas_cloud import content_guard as cg
-from agentlas_cloud.upload import sanitize_upload_text
+import json
+
+from agentlas_cloud.upload import sanitize_upload_file_text, sanitize_upload_text
 
 
 def _kept(text: str) -> str:
@@ -98,3 +100,17 @@ def test_descriptive_match_is_flagged_not_removed():
     kept, findings = sanitize_upload_text("AGENT.md", line)
     assert kept.strip() == line.strip()
     assert any(f["id"].startswith("flagged-upload-line") for f in findings)
+
+
+def test_json_package_metadata_remains_valid_after_sanitization():
+    payload = {
+        "schemaVersion": "1.0",
+        "name": "Package",
+        "denyRead": [".env", "**/secrets/**", "**/*token*", "**/*secret*"],
+        "guidance": "Never print tokens or secrets.",
+    }
+    kept, findings = sanitize_upload_file_text("agentlas.json", json.dumps(payload, indent=2))
+    parsed = json.loads(kept)
+    assert parsed["denyRead"] == payload["denyRead"]
+    assert parsed["guidance"] == payload["guidance"]
+    assert not any(f["id"].startswith("sanitized-upload-line") for f in findings)
