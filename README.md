@@ -7,9 +7,14 @@
 <h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>Agents are easy to create. Agentlas gives them an operating system.</strong><br>
-  Run owned agents, borrow Hub specialists, control a real browser, preserve governed memory,
-  and verify work on the LLMs you already use. Hephaestus is the open-source engine underneath.
+  <strong>Build it or borrow it. The agents you create stay yours.</strong><br>
+  Turn a plain-language request into a runnable agent or team, borrow specialists from the public Agentlas Hub,
+  and keep the agents you create available through your private, owner-scoped Agent Cloud.<br>
+  Run them through supported hosts for the LLMs you already use. Hephaestus is the open-source engine underneath.
+</p>
+
+<p align="center">
+  <sub>An agent you create is not tied to one model workspace or computer. To retrieve it from Cloud elsewhere, install Agentlas OS on a supported host and sign in.</sub>
 </p>
 
 <p align="center">
@@ -62,6 +67,8 @@ surface active there. For direct shell commands, see the install methods below.
 </p>
 
 <p align="center">
+  <a href="#build-borrow-own">Build · Borrow · Own</a>
+  ·
   <a href="#why-agentlas-os">Why Agentlas OS</a>
   ·
   <a href="#paste-to-install">Paste to Install</a>
@@ -87,6 +94,45 @@ surface active there. For direct shell commands, see the install methods below.
 
 ---
 
+## Build, Borrow, Own
+
+An agent you create should remain an asset you can move, rather than a
+setting trapped in one chat, one model-vendor workspace, or one computer.
+Agentlas separates three jobs that ordinary agent builders blur together:
+
+| Value | What Agentlas does | Entry point in an external LLM host |
+| --- | --- | --- |
+| **Build** | Compiles a plain-language request into a runnable single-agent or team package with roles, tools, memory boundaries, permissions, routing, and verification contracts. | `/hep-build` |
+| **Borrow** | Finds public Hub specialists and brings the selected runtime bundle into your current Agentlas host. The publisher's private source work is not copied into your workspace. | `/hep-network` |
+| **Own** | Keeps agents you create in a private, owner-scoped Agent Cloud so you can retrieve and call them again after changing models or computers. | Choose **private Agent Cloud** at `/hep-upload`, then retrieve with `/hep-cloud` |
+
+### Portable package, local execution
+
+```text
+Describe the work
+  -> build a portable agent or team
+  -> save it to my owner-scoped Agent Cloud
+  -> install Agentlas OS and sign in on another supported host
+  -> retrieve it with /hep-cloud
+  -> my chosen model and current host execute the work
+```
+
+Agent Cloud stores and retrieves the owner's package; it is not a hosted LLM
+that completes the work on the server. When you call a package, your selected
+model and current host runtime execute it under that host's permission and
+safety model. Credentials, local files, and machine-specific permissions do not
+travel with the package—you configure those separately on each computer.
+
+### Hub and Agent Cloud are different scopes
+
+| Surface | What it contains | What it is for |
+| --- | --- | --- |
+| **Agentlas Hub** | Public packages from creators and teams | Find and borrow specialists with `/hep-network`; publish only through an explicit public-Hub choice. |
+| **My Agent Cloud** | Only the signed-in owner's Cloud packages | Privately store, restore, and call packages you own with the `/hep-upload` Cloud choice and `/hep-cloud`. |
+| **Current host** | The installed runtime, chosen model, local project, credentials, and granted permissions | Execute the selected local, Cloud, or Hub package. |
+
+---
+
 ## Why Agentlas OS
 
 Most AI products help you create another agent. Agentlas OS is for the harder
@@ -98,6 +144,8 @@ You should be able to imagine this after installing it:
 - Your real browser becomes an execution surface, not a screenshot in a prompt.
 - Your agents keep package contracts, routing cards, memory rules, permissions,
   and verification receipts after the chat ends.
+- Packages you own can remain local or be privately stored in your owner-scoped
+  Agent Cloud, then retrieved from another supported, installed, signed-in host.
 - Your existing Claude Code, Codex, Gemini, Cursor, Antigravity, API keys, and
   local models become part of one operating layer.
 - Hub specialists can be borrowed into your local runtime without copying the
@@ -129,7 +177,8 @@ An LLM can draft an agent. Agentlas turns it into an operating unit:
 | Runtime | One LLM session or one vendor runtime | Adapters across Claude Code, Codex, Gemini, Cursor, Antigravity, and local runtime |
 | Teams | Another prompt layer | Orchestrator, PM Soul, Memory Curator, Policy Gate, eval judge, QA gate |
 | Verification | User checks manually | Package checks, receipts, Stormbreaker final gate |
-| Distribution | Copy the prompt | Hub/Cloud bundle with public/private boundary checks |
+| Ownership and portability | Trapped in the chat or vendor workspace where it was created | Portable package that can remain local or be retrieved from the owner's Agent Cloud on another supported, installed, signed-in host |
+| Distribution | Copy the prompt | Explicit choice between public Hub publishing and private owner-scoped Cloud storage |
 
 That is the product boundary: Agentlas does not compete on "better prompt." It
 gives agents the architecture to keep working outside one chat.
@@ -141,13 +190,13 @@ forcing your work into one model provider:
 
 | OS Abstraction | Implementation in Hephaestus |
 | :--- | :--- |
-| **Kernel / Policy Gate** | Deterministic router + security gates. Every routing action yields an auditable receipt; tool execution permissions are strictly sandboxed and enforced by the active runtime. |
+| **Kernel / Policy Gate** | Deterministic router + security gates. Every routing action yields an auditable receipt; tool execution permissions are enforced by the active host and runtime. |
 | **Processes / Threads** | Independent agents and multi-agent teams compiled as packages with explicit, typed contracts (Routing Cards, anti-scopes, memory boundaries, and verification shims). |
 | **Process Scheduler** | Network 2.0 routing (local-first, quality-gated, and benchmark-gated dispatch) combined with Stormbreaker's parallel execution fabric and append-only run journals. |
 | **Memory Management (MMU)** | Two-boundary governed memory: local project memory remains isolated on the machine, while durable promotions are gated by a local Memory Curator. |
 | **Virtual File System** | Production Ontology Runtime: local-first source ingestion, CJK trigram FTS5 search, hybrid Reciprocal Rank Fusion, and GraphRAG retrieval. |
 | **Inter-Process Call (IPC)** | A2A Agent Card Boundary (cryptographic import/export and caller-gating) + Model Context Protocol (MCP) tool registrations. |
-| **Package Manager** | Agentlas Hub & Cloud: compile, publish, version, and share agents with built-in quality gates. |
+| **Package Manager** | Agentlas Hub for public publishing and borrowing; owner-scoped Agent Cloud for private package storage and retrieval. Neither is a server-side model executor. |
 | **Shell Interface** | A small, unified command set in external client runtimes; plain-language intent routing in native Agentlas shells. |
 | **Process Initialization** | Meta-Agent Factory with an integrated Briefing Interview Gate—specifying agent parameters before compiling code. |
 
@@ -264,11 +313,14 @@ the open-source command surface under Agentlas OS.
 | --- | --- |
 | **Agentlas Desktop** | Visual local OS for running AI-native apps, agent teams, memory, browser work, and Hub specialists. |
 | **Hephaestus plugin** | Open-source engine and command surface for Claude Code, Codex, Gemini CLI, Antigravity, Cursor, and compatible runtimes. |
-| **Agentlas Hub / Cloud** | Borrow, publish, and sync agent packages without turning Hub into a server-side model proxy. |
+| **Agentlas Hub** | Public package surface for publishing and borrowing specialists. |
+| **Agentlas Cloud** | Owner-scoped package store for privately saving and retrieving the signed-in user's own agents. |
 
 The install prompt above is intentionally scoped to this repo and the current
-LLM surface. Desktop and Hub are product surfaces around the same Agentlas OS
-architecture; they are not prerequisites for installing the plugin.
+LLM surface. Desktop, Hub, and Cloud are product surfaces around the same
+Agentlas OS architecture; they are not prerequisites for installing the plugin.
+Cloud retrieval on a new computer does require a supported Agentlas OS host to
+be installed and the package owner to be signed in.
 
 ---
 
@@ -278,13 +330,13 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 
 | System Subsystem | Shell Command | Example |
 | :--- | :--- | :--- |
-| **Process Builder** | `/hep-build` | `/hep-build create a customer support agent for Shopify refunds` |
-| **A2A Scheduler** | `/hep-network` | `/hep-network split this launch plan into research, copy, QA, and release agents` |
-| **Cloud State Sync** | `/hep-cloud` | `/hep-cloud use my saved finance analyst agent to review this report` |
+| **Agent / Team Builder** | `/hep-build` | `/hep-build create a customer support agent for Shopify refunds` |
+| **Public Hub Specialist Routing** | `/hep-network` | `/hep-network split this launch plan into research, copy, QA, and release agents` |
+| **Owned Agent Retrieval** | `/hep-cloud` | `/hep-cloud use my saved finance analyst agent to review this report` |
 | **Directory Search** | `/hep-search` | `/hep-search find agents for a market report workflow` |
 | **Browser Hardpoint** | `/hep-browser` or `/prompts:hep-browser` | `/hep-browser https://example.com` |
 | **Inter-Process Call (IPC)** | `/hep-call` | `/hep-call market-researcher, report-writer {draft a market report}` |
-| **Package Exporter** | `/hep-upload` | `/hep-upload ./agents/customer-support-hq` |
+| **Cloud / Hub Destination Gate** | `/hep-upload` | `/hep-upload ./agents/customer-support-hq` |
 | **Telegram Setup** | `/hep-connect` or `/prompts:hep-connect` | `/hep-connect Telegram for Marketing Agent Team` |
 
 ---
@@ -313,9 +365,9 @@ A unified compilation factory using three builders. Every generated package regi
 <sub>Figure 2. A2A scheduling: LLM runtimes, local-first orchestrator, routing cards, local memory, and the Agentlas Hub A2A/MCP fallback.</sub>
 
 *   **Routing Cards:** Every agent, team, and plugin ships a standardized card containing triggers, anti-triggers, capabilities, risk profiles, and memory parameters. Cards failing verification are excluded from routing.
-*   **Local-First Dispatch:** Dispatch is resolved locally first (project overrides $\rightarrow$ local cards). Outer lookups via the Agentlas Hub are redacted to keywords; your raw prompts never leave your local environment.
+*   **Local-First Dispatch:** Dispatch is resolved locally first (project overrides $\rightarrow$ local cards). Hub discovery receives redacted keywords rather than the raw routing prompt; model execution still follows the data policy of your selected host and provider.
 *   **Temporary Task Forces:** Composite requests decompose into Hub/local Task Force plans, packing Stormbreaker envelopes, session hints, and ontology pathways. Named specialists are scheduled dynamically, and a temporary orchestrator manages task handoffs.
-*   **Receipt-Driven Execution:** Every routing decision writes a receipt. The router determines only which agent or package to invoke; tool execution permissions remain strictly sandboxed and managed by the active runtime.
+*   **Receipt-Driven Execution:** Every routing decision writes a receipt. The router determines only which agent or package to invoke; tool execution permissions remain governed by the active host and runtime.
 *   **Bilingual Benchmarking:** Auto-routing is gated by a bilingual (Korean + English) benchmark requiring top-3 recall $\ge 90\%$ and zero privacy leaks. Low-confidence paths escalate to runtime-level Router Agent re-ranking.
 
 Details: [docs/hephaestus-network-2.0.md](docs/hephaestus-network-2.0.md) · Runtime support matrix: [docs/runtime-fallback-adapters.md](docs/runtime-fallback-adapters.md)
@@ -381,7 +433,8 @@ Users and teams do not need another way to write isolated agents. They need to
 operate an owned workforce of them. Hephaestus is designed for that operational
 model:
 
-*   **Model Neutrality:** Agents, memory repositories, and knowledge domains are stored as local assets under your control. Transitioning to a new model provider (or utilizing local models like Ollama, DeepSeek, GLM, Gemini, or Claude) is a configuration update, not a codebase migration.
+*   **Package Portability:** Packages you own can remain local or be stored in your private, owner-scoped Agent Cloud. On another supported computer, install Agentlas OS, sign in, and retrieve the package; host credentials, local files, and permissions stay machine-specific.
+*   **Model Neutrality:** Agent packages use adapters for supported hosts instead of belonging to one model vendor's workspace. You can run the same package with supported Claude, Codex, Gemini, Antigravity, Cursor, or local-model surfaces without rebuilding its operating architecture.
 *   **Auditability by Construction:** Every routing decision, execution step, memory candidate, and curator decision is logged as a text file. You can diff, audit, and commit them. Work is either verified or flagged as unverified.
 *   **Deterministic Pipeline Gates:** Security filters, anti-scopes, routing card triggers, and prompt sanitizations are hardcoded into the OS pipeline—they do not rely on LLM system instructions or guidelines.
 *   **Specification Before Generation:** The Briefing Interview Engine measures request ambiguity and stamps the score on the Work Brief, ensuring task execution can always be audited back to what was agreed.
