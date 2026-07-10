@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-version="${HEPHAESTUS_REF:-v1.1.11}"
+version="${HEPHAESTUS_REF:-v1.1.12}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -127,15 +127,39 @@ ensure_downloaded_source() {
     return 0
   fi
   if ! have curl || ! have tar; then
-    warn "curl and tar are required for Gemini extension install from a remote ref."
+    warn "curl and tar are required for runtime install from a remote release."
     return 1
   fi
 
   tmp_source_dir="$(mktemp -d)"
-  local archive="$tmp_source_dir/hephaestus.tar.gz"
-  local archive_url="https://github.com/$repo/archive/$version.tar.gz"
-  log "+ curl -fsSL $archive_url -o $archive"
-  curl -fsSL "$archive_url" -o "$archive" || return 1
+  local asset="hephaestus-runtime-$version.tar.gz"
+  local archive="$tmp_source_dir/$asset"
+  local checksum="$archive.sha256"
+  local archive_url="https://github.com/$repo/releases/download/$version/$asset"
+  local checksum_url="$archive_url.sha256"
+  log "+ downloading verified release asset $asset"
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "$archive_url" -o "$archive" || return 1
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "$checksum_url" -o "$checksum" || return 1
+  local expected actual
+  expected="$(awk 'NR == 1 { print tolower($1) }' "$checksum")"
+  if [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+    warn "Release checksum metadata is invalid for $asset."
+    return 1
+  fi
+  if have shasum; then
+    actual="$(shasum -a 256 "$archive" | awk '{print tolower($1)}')"
+  elif have sha256sum; then
+    actual="$(sha256sum "$archive" | awk '{print tolower($1)}')"
+  elif have openssl; then
+    actual="$(openssl dgst -sha256 "$archive" | awk '{print tolower($NF)}')"
+  else
+    warn "shasum, sha256sum, or openssl is required to verify the runtime release."
+    return 1
+  fi
+  if [[ "$actual" != "$expected" ]]; then
+    warn "Runtime release SHA-256 mismatch; refusing to install."
+    return 1
+  fi
   tar -xzf "$archive" -C "$tmp_source_dir" || return 1
   local extracted
   extracted="$(find "$tmp_source_dir" -maxdepth 1 -type d \( -name 'Agentlas-OS-*' -o -name 'Hephaestus-*' \) | head -n 1)"
@@ -393,19 +417,18 @@ stamp_plugin_cache_releases() {
 }
 
 # Codex 플러그인은 MCP 번들을 지원하지 않으므로 config.toml에 직접 등록한다.
-# rmcp 클라이언트 플래그가 없으면 HTTP MCP 자체가 붙지 않는다.
+# Codex 0.144+ has native remote MCP support; the old
+# `experimental_use_rmcp_client` switch is now an unknown config key and can
+# make strict-config startup fail. Remove only that obsolete line while
+# preserving the rest of the user's feature table.
 register_codex_mcp() {
   local cfg="$HOME/.codex/config.toml"
   mkdir -p "$HOME/.codex"
   touch "$cfg" || return 1
 
-  if ! grep -q 'experimental_use_rmcp_client' "$cfg"; then
-    if grep -q '^\[features\]' "$cfg"; then
-      awk '{print} /^\[features\]/ && !done {print "experimental_use_rmcp_client = true"; done=1}' \
-        "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg" || return 1
-    else
-      printf '\n[features]\nexperimental_use_rmcp_client = true\n' >> "$cfg"
-    fi
+  if grep -q '^[[:space:]]*experimental_use_rmcp_client[[:space:]]*=' "$cfg"; then
+    sed '/^[[:space:]]*experimental_use_rmcp_client[[:space:]]*=/d' "$cfg" > "$cfg.tmp" \
+      && mv "$cfg.tmp" "$cfg" || return 1
   fi
 
   if ! grep -q '^\[mcp_servers\.agentlas\]' "$cfg"; then

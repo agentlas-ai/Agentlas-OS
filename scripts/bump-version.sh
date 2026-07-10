@@ -52,7 +52,8 @@ web_file="${AGENTLAS_WEB_INSTALL_GUIDE:-../agentlas/AgentsAtlas/app/src/componen
 # so a web pin that is several releases behind still snaps forward instead of sticking.
 targets="$(grep -rl -e "v${old_re}" -e "\"${old_re}\"" \
   --include='*.sh' --include='*.py' --include='*.md' --include='*.json' --include='*.toml' --include='*.command' --include='*.svg' \
-  . 2>/dev/null | grep -v node_modules | grep -v '^\./vendor/' | grep -v '^\./\.git/' | grep -v 'scripts/bump-version\.sh' || true)"
+  . 2>/dev/null | grep -v node_modules | grep -v '^\./vendor/' | grep -v '^\./\.git/' \
+  | grep -v '^\./CHANGELOG\.md$' | grep -v 'scripts/bump-version\.sh' || true)"
 
 # --- Web ONE_TOUCH_CMD pin (sibling repo) -----------------------------------
 # Pattern replace, NOT literal old→new: the web app's install one-liner pins the
@@ -101,12 +102,13 @@ if [[ "$dry" == "--dry-run" ]]; then
   echo "dry-run: $count file(s) would move $old → $new"
 else
   echo "done: $count file(s) moved $old → $new"
-  # Straggler check: any OTHER version pin that this run did not move is a bug
-  # waiting to bite (e.g. a README edited by hand to a one-off version).
-  stragglers="$(grep -rn "v0\.[0-9]\{1,\}\.[0-9]\{1,\}" \
+  # Straggler check: any occurrence of the release we just replaced is a bug
+  # waiting to bite. Historical changelog entries and unrelated test versions
+  # are intentionally outside this check.
+  stragglers="$(grep -rn -e "v${old_re}" -e "\"${old_re}\"" \
     --include='*.sh' --include='*.py' --include='*.md' --include='*.json' --include='*.toml' --include='*.command' --include='*.svg' \
-    . 2>/dev/null | grep -v node_modules | grep -v '^\./vendor/' | grep -v '^\./\.git/' | grep -v 'scripts/bump-version\.sh' \
-    | grep -v "$new" || true)"
+    . 2>/dev/null | grep -v node_modules | grep -v '^\./vendor/' | grep -v '^\./\.git/' \
+    | grep -v '^\./CHANGELOG\.md:' | grep -v 'scripts/bump-version\.sh' || true)"
   if [[ -n "$stragglers" ]]; then
     echo ""
     echo "WARN: version pins that did NOT move (fix or confirm intentional):"

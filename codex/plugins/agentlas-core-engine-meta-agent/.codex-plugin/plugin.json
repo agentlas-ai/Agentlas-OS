@@ -1,7 +1,7 @@
 {
   "id": "hephaestus",
   "name": "hephaestus",
-  "version": "1.1.11",
+  "version": "1.1.12",
   "description": "Open Agent OS for Claude Code, Codex, and Cursor: meta-agent builder, A2A Hub routing, local ontology, memory/security gates.",
   "author": {
     "name": "Agentlas",
@@ -11,7 +11,7 @@
   "repository": "https://github.com/agentlas-ai/Hephaestus",
   "license": "Apache-2.0",
   "keywords": ["agentlas", "meta-agent", "agents", "codex", "claude", "gemini"],
-  "skills": "skills",
+  "skills": "./skills",
   "interface": {
     "displayName": "Hephaestus",
     "shortDescription": "Create Agentlas-compatible agents and teams, or open the local ontology GUI.",

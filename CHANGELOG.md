@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## v1.1.12 - 2026-07-10
+
+- **Verified, rollback-safe runtime updates.** The updater now installs only the
+  tag-specific GitHub release asset whose SHA-256 digest and size are published
+  in release metadata. Archives are extracted without link traversal, staged and
+  health-checked before activation, and rolled back if the new runtime cannot
+  start. Stale update locks recover safely without deleting another process's
+  live lock.
+- **SemVer-correct release selection.** Stable, prerelease, and build-metadata
+  versions now follow SemVer 2.0 precedence instead of digit scraping, preventing
+  a prerelease from replacing a newer stable runtime.
+- **Current Codex plugin compatibility.** The bundled skills path is explicitly
+  relative, and the installer removes the retired remote-MCP feature flag that
+  strict current Codex builds reject while preserving the user's other settings.
+
 ## v1.1.11 - 2026-07-09
 
 - **24h lease ("call once, hired for a day") passthrough.** `hub_invocation`

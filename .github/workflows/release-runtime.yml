@@ -1,0 +1,52 @@
+name: Release verified runtime asset
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify updater safety
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_runtime_update.py
+
+      - name: Build deterministic runtime archive
+        run: bash scripts/build-runtime-release-asset.sh "$GITHUB_REF_NAME"
+
+      - name: Publish release with verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="dist/runtime-release/hephaestus-runtime-${GITHUB_REF_NAME}.tar.gz"
+          checksum="${archive}.sha256"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Published tag assets are immutable inputs to the updater. Refuse
+            # a same-name replacement instead of silently changing its digest.
+            gh release upload "$GITHUB_REF_NAME" "$archive" "$checksum"
+          else
+            gh release create "$GITHUB_REF_NAME" "$archive" "$checksum" --verify-tag --generate-notes
+          fi
+
+          expected="sha256:$(awk 'NR == 1 { print $1 }' "$checksum")"
+          asset_name="$(basename "$archive")"
+          actual="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" \
+            --jq ".assets[] | select(.name == \"${asset_name}\") | .digest")"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "release asset digest mismatch: expected=$expected actual=${actual:-missing}" >&2
+            exit 1
+          fi

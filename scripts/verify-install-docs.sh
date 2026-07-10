@@ -103,6 +103,13 @@ rg -q '/plugins' README.md README.ko.md codex/README.md assets/install-codex-cha
 rg -q -- '--target antigravity' README.md README.ko.md antigravity/README.md || fail "Antigravity global router target docs missing"
 rg -q 'xcode-select --install' README.md README.ko.md claude/README.md codex/README.md scripts/preflight-macos.sh || fail "macOS xcode-select preflight missing"
 rg -q 'git --version' README.md README.ko.md claude/README.md codex/README.md scripts/preflight-macos.sh || fail "git verification missing"
+if rg -q 'experimental_use_rmcp_client = true' scripts/install-all-runtimes.sh; then
+  fail "obsolete Codex remote-MCP feature flag must not be installed"
+fi
+rg -q 'releases/download/\$version/\$asset' scripts/install-all-runtimes.sh \
+  || fail "one-touch installer must use the digest-bearing release asset"
+rg -q 'SHA-256 mismatch' scripts/install-all-runtimes.sh \
+  || fail "one-touch installer must fail closed on release digest mismatch"
 
 python3 - <<'PY'
 import json
@@ -115,7 +122,10 @@ assert codex["id"] == "hephaestus", codex["id"]
 assert codex["name"] == "hephaestus", codex["name"]
 expected_version = manifest["version"]
 assert codex["version"] == expected_version, codex["version"]
-assert codex["skills"] == "skills", codex["skills"]
+# Codex 0.144+ rejects plugin resource paths that are not explicitly relative
+# to the plugin root. A bare `skills` value installs successfully but the
+# runtime silently ignores every bundled skill.
+assert codex["skills"] == "./skills", codex["skills"]
 assert codex["interface"]["displayName"] == "Hephaestus", codex["interface"]["displayName"]
 assert claude["name"] == "hephaestus", claude["name"]
 assert claude["version"] == expected_version, claude["version"]

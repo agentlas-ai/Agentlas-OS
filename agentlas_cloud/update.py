@@ -8,8 +8,11 @@ TTL window so the user's command does not wait on network or install work.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -18,7 +21,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 LATEST_RELEASE_URL = os.environ.get(
@@ -26,6 +29,9 @@ LATEST_RELEASE_URL = os.environ.get(
     "https://api.github.com/repos/agentlas-ai/Agentlas-OS/releases/latest",
 )
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
+LOCK_STALE_SECONDS = 60 * 60
+HEALTHCHECK_TIMEOUT_SECONDS = 15
+MAX_RUNTIME_ARCHIVE_BYTES = 256 * 1024 * 1024
 CORE_DIRS = ("bin", "agentlas_cloud", "ontology")
 HEP_COMMANDS = ("hep-build", "hep-network", "hep-cloud", "hep-search", "hep-browser", "hep-call", "hep-upload")
 HEP_SKILLS = ("hephaestus-network", "hephaestus-cloud")
@@ -256,11 +262,15 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
         if current is not None and not _is_comparable_release(current):
             return
         base = _runtime_base()
-        if (base / ".update.lock").exists():
-            return
+        lock_path = base / ".update.lock"
+        recovered_stale_lock = False
+        if _path_present(lock_path):
+            if not _remove_stale_lock(lock_path):
+                return
+            recovered_stale_lock = True
         marker_path = base / AUTO_UPDATE_MARKER
         marker = _read_json(marker_path)
-        if _marker_recent(marker.get("last_started_epoch")):
+        if not recovered_stale_lock and _marker_recent(marker.get("last_started_epoch")):
             return
         _write_json(
             marker_path,
@@ -327,51 +337,66 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     tag = str(release.get("tag_name") or "").strip()
     if not tag:
         raise ValueError("release tag_name is required")
-    tarball_url = str(release.get("tarball_url") or "").strip()
-    if not tarball_url:
-        raise ValueError("release tarball_url is required")
+    archive_asset = _verified_runtime_archive_asset(release)
+    tarball_url = archive_asset["url"]
+    expected_sha256 = archive_asset["sha256"]
+    expected_size = archive_asset["size"]
 
     base = _runtime_base()
-    target = base / tag.lstrip("v")
+    target = base / _runtime_version_dir_name(tag)
     lock = base / ".update.lock"
     adapter_sync: dict[str, Any] = {"updated": [], "skipped_missing": [], "failed": []}
-    _acquire_lock(lock)
+    archive_sha256 = ""
+    staged_target: Path | None = None
+    lock_token = _acquire_lock(lock)
     try:
         with tempfile.TemporaryDirectory(prefix="hephaestus-update-") as tmp:
             tmp_path = Path(tmp)
             archive = tmp_path / "source.tar.gz"
             _download(tarball_url, archive)
+            actual_size = archive.stat().st_size
+            if actual_size != expected_size:
+                raise ValueError(
+                    "release archive size mismatch: "
+                    f"expected {expected_size} bytes, got {actual_size} bytes"
+                )
+            archive_sha256 = _sha256_file(archive)
+            if archive_sha256 != expected_sha256:
+                raise ValueError(
+                    "release archive digest mismatch: "
+                    f"expected sha256:{expected_sha256}, got sha256:{archive_sha256}"
+                )
             with tarfile.open(archive, "r:gz") as tf:
                 _safe_extract(tf, tmp_path)
-            source = next((item for item in tmp_path.iterdir() if item.is_dir()), None)
-            if source is None:
-                raise ValueError("downloaded release did not contain a source directory")
+            source_dirs = [item for item in tmp_path.iterdir() if item.is_dir()]
+            if len(source_dirs) != 1:
+                raise ValueError("downloaded release must contain exactly one source directory")
+            source = source_dirs[0]
+            _validate_runtime_layout(source)
 
-            tmp_target = base / f".{target.name}.tmp"
-            if tmp_target.exists():
-                shutil.rmtree(tmp_target)
-            tmp_target.mkdir(parents=True)
+            staged_target = _unique_sibling(target, "staged")
+            staged_target.mkdir(parents=True)
             for name in CORE_DIRS:
                 src = source / name
-                if src.exists():
-                    shutil.copytree(src, tmp_target / name)
-            (tmp_target / "RELEASE").write_text(f"{tag}\n", encoding="utf-8")
-            write_python_shims(tmp_target / "bin", sys.executable)
-            if target.exists():
-                shutil.rmtree(target)
-            tmp_target.rename(target)
-            _point_current_at(target)
+                shutil.copytree(src, staged_target / name)
+            (staged_target / "RELEASE").write_text(f"{tag}\n", encoding="utf-8")
+            write_python_shims(staged_target / "bin", sys.executable)
+            _healthcheck_runtime(staged_target)
+            _activate_runtime(staged_target, target)
+            staged_target = None
             adapter_sync = sync_installed_runtime_adapters(source)
     finally:
-        try:
-            lock.unlink()
-        except OSError:
-            pass
+        if staged_target is not None and _path_present(staged_target):
+            _remove_path(staged_target)
+        _release_lock(lock, lock_token)
 
     return {
         "runtime_root": str(target),
         "current_link": str(base / "current"),
         "updated_to": tag,
+        "archive_digest": f"sha256:{archive_sha256}",
+        "digest_verified": True,
+        "archive_asset": archive_asset["name"],
         "adapter_sync": adapter_sync,
     }
 
@@ -464,32 +489,86 @@ def _write_cmd_runner(path: Path) -> None:
     )
 
 
+_SEMVER_RE = re.compile(
+    r"^[vV]?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+    r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
+    r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
+)
+
+
+def _parse_semver(value: Any) -> tuple[str, str, str, tuple[str, ...]] | None:
+    if not isinstance(value, str):
+        return None
+    match = _SEMVER_RE.fullmatch(value.strip())
+    if not match:
+        return None
+    prerelease = tuple(match.group(4).split(".")) if match.group(4) else ()
+    if any(item.isascii() and item.isdigit() and len(item) > 1 and item.startswith("0") for item in prerelease):
+        return None
+    return match.group(1), match.group(2), match.group(3), prerelease
+
+
+def _compare_numeric_identifier(left: str, right: str) -> int:
+    if len(left) != len(right):
+        return -1 if len(left) < len(right) else 1
+    if left == right:
+        return 0
+    return -1 if left < right else 1
+
+
+def _compare_semver(left: Any, right: Any) -> int | None:
+    """Return SemVer 2.0.0 precedence; build metadata does not affect it."""
+
+    parsed_left = _parse_semver(left)
+    parsed_right = _parse_semver(right)
+    if parsed_left is None or parsed_right is None:
+        return None
+    for left_core, right_core in zip(parsed_left[:3], parsed_right[:3]):
+        compared = _compare_numeric_identifier(left_core, right_core)
+        if compared:
+            return compared
+    left_pre = parsed_left[3]
+    right_pre = parsed_right[3]
+    if not left_pre and not right_pre:
+        return 0
+    if not left_pre:
+        return 1
+    if not right_pre:
+        return -1
+    for index in range(max(len(left_pre), len(right_pre))):
+        if index >= len(left_pre):
+            return -1
+        if index >= len(right_pre):
+            return 1
+        left_item = left_pre[index]
+        right_item = right_pre[index]
+        if left_item == right_item:
+            continue
+        left_numeric = left_item.isascii() and left_item.isdigit()
+        right_numeric = right_item.isascii() and right_item.isdigit()
+        if left_numeric and right_numeric:
+            return _compare_numeric_identifier(left_item, right_item)
+        if left_numeric != right_numeric:
+            return -1 if left_numeric else 1
+        return -1 if left_item < right_item else 1
+    return 0
+
+
 def _release_status(current: str | None, latest: Any) -> str:
     if not latest:
         return "unknown"
     if not current:
         return "missing_release_marker"
-    if not _is_comparable_release(current) or not _is_comparable_release(str(latest)):
+    comparison = _compare_semver(str(latest), current)
+    if comparison is None:
         return "unknown"
-    if _version_tuple(str(latest)) > _version_tuple(str(current)):
+    if comparison > 0:
         return "update_available"
     return "current"
 
 
-def _version_tuple(value: str) -> tuple[int, ...]:
-    cleaned = value.strip().lstrip("vV")
-    parts: list[int] = []
-    for part in cleaned.split("."):
-        digits = "".join(ch for ch in part if ch.isdigit())
-        parts.append(int(digits or "0"))
-    return tuple(parts or [0])
-
-
 def _is_comparable_release(value: str | None) -> bool:
-    if not value:
-        return False
-    cleaned = value.strip().lstrip("vV")
-    return any(ch.isdigit() for ch in cleaned)
+    return _parse_semver(value) is not None
 
 
 def _runtime_base() -> Path:
@@ -662,6 +741,143 @@ def _source_release_tag(source: Path) -> str | None:
     return value if value.startswith("v") else f"v{value}"
 
 
+def _runtime_version_dir_name(tag: str) -> str:
+    version = tag.lstrip("vV")
+    alphanumeric = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    allowed = f"{alphanumeric}._+-"
+    if (
+        not version
+        or version in {".", ".."}
+        or version[0] not in alphanumeric
+        or any(ch not in allowed for ch in version)
+        or Path(version).name != version
+    ):
+        raise ValueError(f"unsafe release tag: {tag}")
+    return version
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _normalize_sha256(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text.startswith("sha256:"):
+        text = text.removeprefix("sha256:")
+    if len(text) != 64 or any(ch not in "0123456789abcdef" for ch in text):
+        raise ValueError("release archive digest must be a SHA-256 value")
+    return text
+
+
+def _verified_runtime_archive_asset(release: dict[str, Any]) -> dict[str, Any]:
+    """Select the tag-specific GitHub release asset and require its API digest.
+
+    GitHub-generated ``tarball_url`` archives are mutable delivery responses and
+    carry no publisher-visible digest in the releases API. Runtime updates must
+    therefore use the explicitly uploaded ``hephaestus-runtime-vX.Y.Z.tar.gz``
+    asset whose exact size and SHA-256 are part of the release metadata. Missing
+    metadata fails closed before any network request.
+    """
+
+    tag = str(release.get("tag_name") or "").strip()
+    if not tag:
+        raise ValueError("release tag_name is required")
+    expected_name = f"hephaestus-runtime-{tag}.tar.gz"
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        raise ValueError(f"release is missing verified runtime asset: {expected_name}")
+    for asset in assets:
+        if not isinstance(asset, dict) or str(asset.get("name") or "") != expected_name:
+            continue
+        url = str(asset.get("browser_download_url") or "").strip()
+        if not url.startswith("https://github.com/"):
+            raise ValueError("release runtime asset must use a GitHub HTTPS download URL")
+        digest = asset.get("digest")
+        if not digest:
+            raise ValueError(f"release runtime asset is missing SHA-256 metadata: {expected_name}")
+        size = asset.get("size")
+        if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+            raise ValueError(f"release runtime asset has invalid size metadata: {expected_name}")
+        if size > MAX_RUNTIME_ARCHIVE_BYTES:
+            raise ValueError(
+                f"release runtime asset exceeds {MAX_RUNTIME_ARCHIVE_BYTES} bytes: {expected_name}"
+            )
+        return {
+            "name": expected_name,
+            "url": url,
+            "sha256": _normalize_sha256(digest),
+            "size": size,
+        }
+    raise ValueError(f"release is missing verified runtime asset: {expected_name}")
+
+
+def _validate_runtime_layout(runtime_root: Path) -> None:
+    missing: list[str] = []
+    for name in CORE_DIRS:
+        if not (runtime_root / name).is_dir():
+            missing.append(f"{name}/")
+    for relative in (
+        Path("bin") / "hephaestus",
+        Path("agentlas_cloud") / "__init__.py",
+        Path("agentlas_cloud") / "__main__.py",
+        Path("agentlas_cloud") / "cli.py",
+        Path("agentlas_cloud") / "update.py",
+        Path("ontology") / "__init__.py",
+    ):
+        if not (runtime_root / relative).is_file():
+            missing.append(str(relative))
+    if missing:
+        raise ValueError(f"release runtime layout is incomplete: {', '.join(missing)}")
+
+
+def _healthcheck_runtime(runtime_root: Path) -> None:
+    """Import the runnable surfaces from exactly the candidate runtime."""
+
+    _validate_runtime_layout(runtime_root)
+    try:
+        resolved_root = runtime_root.resolve(strict=True)
+    except OSError as exc:
+        raise RuntimeError(f"runtime healthcheck could not resolve {runtime_root}") from exc
+
+    env = os.environ.copy()
+    env.pop("PYTHONHOME", None)
+    env["PYTHONPATH"] = str(resolved_root)
+    env["PYTHONNOUSERSITE"] = "1"
+    env["HEPHAESTUS_HEALTHCHECK_ROOT"] = str(resolved_root)
+    check = (
+        "import os\n"
+        "from pathlib import Path\n"
+        "import agentlas_cloud\n"
+        "import agentlas_cloud.cli\n"
+        "import agentlas_cloud.update\n"
+        "import ontology\n"
+        "root = Path(os.environ['HEPHAESTUS_HEALTHCHECK_ROOT']).resolve()\n"
+        "modules = (agentlas_cloud, agentlas_cloud.cli, agentlas_cloud.update, ontology)\n"
+        "bad = [m.__name__ for m in modules if root not in Path(m.__file__).resolve().parents]\n"
+        "raise SystemExit(8 if bad else 0)\n"
+    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", check],
+            cwd=str(resolved_root),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=HEALTHCHECK_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"runtime healthcheck timed out after {HEALTHCHECK_TIMEOUT_SECONDS}s") from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()[-500:]
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(f"runtime healthcheck failed with exit code {completed.returncode}{suffix}")
+
+
 def _download(url: str, path: Path) -> None:
     request = urllib.request.Request(url, headers={"User-Agent": "hephaestus-runtime-updater"})
     with urllib.request.urlopen(request, timeout=30) as response, path.open("wb") as out:
@@ -669,36 +885,319 @@ def _download(url: str, path: Path) -> None:
 
 
 def _safe_extract(tf: tarfile.TarFile, destination: Path) -> None:
+    """Extract regular files/directories without trusting tar link semantics."""
+
     dest = destination.resolve()
+    planned: list[tuple[tarfile.TarInfo, Path]] = []
+    seen: set[Path] = set()
     for member in tf.getmembers():
-        target = (dest / member.name).resolve()
-        if not str(target).startswith(str(dest) + os.sep):
+        if member.issym() or member.islnk():
+            raise ValueError(f"archive links are not allowed: {member.name}")
+        if not member.isdir() and not member.isfile():
+            raise ValueError(f"unsupported archive member type: {member.name}")
+        if not member.name or "\x00" in member.name or "\\" in member.name:
             raise ValueError(f"unsafe path in release archive: {member.name}")
-    tf.extractall(dest)
+        archive_path = PurePosixPath(member.name)
+        if archive_path.is_absolute() or any(part == ".." for part in archive_path.parts):
+            raise ValueError(f"unsafe path in release archive: {member.name}")
+        parts = [part for part in archive_path.parts if part not in {"", "."}]
+        if not parts and not member.isdir():
+            raise ValueError(f"unsafe path in release archive: {member.name}")
+        target = dest.joinpath(*parts).resolve()
+        try:
+            inside_destination = Path(os.path.commonpath((str(dest), str(target)))) == dest
+        except ValueError:
+            inside_destination = False
+        if not inside_destination:
+            raise ValueError(f"unsafe path in release archive: {member.name}")
+        if target in seen:
+            raise ValueError(f"duplicate path in release archive: {member.name}")
+        seen.add(target)
+        planned.append((member, target))
+
+    for member, target in planned:
+        if member.isdir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source = tf.extractfile(member)
+        if source is None:
+            raise ValueError(f"could not read archive member: {member.name}")
+        try:
+            with source, target.open("xb") as output:
+                shutil.copyfileobj(source, output)
+        except FileExistsError as exc:
+            raise ValueError(f"archive member would overwrite an existing path: {member.name}") from exc
+        target.chmod(0o755 if member.mode & 0o111 else 0o644)
 
 
-def _point_current_at(target: Path) -> None:
+def _path_present(path: Path) -> bool:
+    return path.exists() or path.is_symlink()
+
+
+def _remove_path(path: Path) -> None:
+    if not _path_present(path):
+        return
+    if path.is_symlink() or not path.is_dir():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
+
+
+def _unique_sibling(path: Path, label: str) -> Path:
+    return path.with_name(f".{path.name}.{label}.{os.getpid()}.{time.time_ns()}")
+
+
+def _replace_runtime_target(staged: Path, target: Path) -> Path | None:
+    backup: Path | None = None
+    if _path_present(target):
+        backup = _unique_sibling(target, "backup")
+        target.rename(backup)
+    try:
+        staged.rename(target)
+    except Exception:
+        if backup is not None and _path_present(backup) and not _path_present(target):
+            backup.rename(target)
+        raise
+    return backup
+
+
+def _restore_runtime_target(target: Path, backup: Path | None) -> None:
+    if backup is not None and not _path_present(backup):
+        raise RuntimeError(f"runtime rollback backup is missing: {backup}")
+    _remove_path(target)
+    if backup is not None:
+        backup.rename(target)
+
+
+def _activate_runtime(staged: Path, target: Path) -> None:
+    target_backup = _replace_runtime_target(staged, target)
+    current_state: dict[str, str] | None = None
+    try:
+        current_state = _point_current_at(target)
+        _healthcheck_runtime(target.parent / "current")
+    except Exception as exc:
+        rollback_errors: list[str] = []
+        if current_state is not None:
+            try:
+                _restore_current(target.parent, current_state)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"current: {rollback_exc}")
+        try:
+            _restore_runtime_target(target, target_backup)
+        except Exception as rollback_exc:
+            rollback_errors.append(f"target: {rollback_exc}")
+        if rollback_errors:
+            raise RuntimeError(f"runtime activation failed and rollback was incomplete: {'; '.join(rollback_errors)}") from exc
+        raise
+
+    _discard_current_state(current_state)
+    if target_backup is not None and _path_present(target_backup):
+        try:
+            _remove_path(target_backup)
+        except OSError:
+            pass
+
+
+def _point_current_at(target: Path) -> dict[str, str]:
     current = target.parent / "current"
-    if current.exists() or current.is_symlink():
-        if current.is_symlink() or current.is_file():
-            current.unlink()
-        else:
-            backup = target.parent / f".current.backup.{int(time.time())}"
-            current.rename(backup)
+    replacement = _unique_sibling(current, "next")
     try:
-        current.symlink_to(target, target_is_directory=True)
+        replacement.symlink_to(target, target_is_directory=True)
     except OSError:
-        shutil.copytree(target, current, dirs_exist_ok=True)
+        _remove_path(replacement)
+        shutil.copytree(target, replacement)
 
-
-def _acquire_lock(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError as exc:
-        raise RuntimeError(f"update already running: {path}") from exc
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(str(os.getpid()))
+        if current.is_symlink():
+            previous_target = os.readlink(current)
+            try:
+                os.replace(replacement, current)
+                return {"kind": "symlink", "target": previous_target}
+            except OSError:
+                backup = _unique_sibling(current, "backup")
+                current.rename(backup)
+                try:
+                    replacement.rename(current)
+                except Exception:
+                    backup.rename(current)
+                    raise
+                return {"kind": "backup", "path": str(backup)}
+
+        if _path_present(current):
+            backup = _unique_sibling(current, "backup")
+            current.rename(backup)
+            try:
+                replacement.rename(current)
+            except Exception:
+                backup.rename(current)
+                raise
+            return {"kind": "backup", "path": str(backup)}
+
+        replacement.rename(current)
+        return {"kind": "missing"}
+    finally:
+        if _path_present(replacement):
+            _remove_path(replacement)
+
+
+def _restore_current(runtime_base: Path, state: dict[str, str]) -> None:
+    current = runtime_base / "current"
+    kind = state.get("kind")
+    if kind == "missing":
+        _remove_path(current)
+        return
+    if kind == "backup":
+        backup = Path(state["path"])
+        _remove_path(current)
+        backup.rename(current)
+        return
+    if kind == "symlink":
+        replacement = _unique_sibling(current, "rollback")
+        try:
+            replacement.symlink_to(state["target"], target_is_directory=True)
+            try:
+                os.replace(replacement, current)
+            except OSError:
+                _remove_path(current)
+                replacement.rename(current)
+        finally:
+            if _path_present(replacement):
+                _remove_path(replacement)
+        return
+    raise ValueError(f"unknown current state: {kind}")
+
+
+def _discard_current_state(state: dict[str, str]) -> None:
+    if state.get("kind") != "backup":
+        return
+    backup = Path(state["path"])
+    if _path_present(backup):
+        try:
+            _remove_path(backup)
+        except OSError:
+            pass
+
+
+def _read_lock_metadata(path: Path) -> dict[str, Any]:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        try:
+            return {"pid": int(raw)}
+        except (TypeError, ValueError):
+            return {}
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, int):
+        return {"pid": payload}
+    return {}
+
+
+def _pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
+    return True
+
+
+def _lock_is_stale(path: Path, stale_seconds: int = LOCK_STALE_SECONDS) -> bool:
+    if path.is_symlink():
+        return True
+    try:
+        stat_result = os.lstat(path)
+    except FileNotFoundError:
+        return True
+    metadata = _read_lock_metadata(path)
+    created = metadata.get("created_epoch")
+    try:
+        created_epoch = float(created)
+    except (TypeError, ValueError):
+        created_epoch = float(stat_result.st_mtime)
+    if max(0.0, time.time() - created_epoch) >= stale_seconds:
+        return True
+    try:
+        pid = int(metadata.get("pid"))
+    except (TypeError, ValueError):
+        return False
+    return not _pid_is_running(pid)
+
+
+def _stat_fingerprint(value: os.stat_result) -> tuple[int, int, int, int]:
+    return (value.st_dev, value.st_ino, value.st_mtime_ns, value.st_size)
+
+
+def _remove_stale_lock(path: Path) -> bool:
+    """Remove a stale lock if it did not change while being inspected."""
+
+    try:
+        before = os.lstat(path)
+    except FileNotFoundError:
+        return True
+    if not _lock_is_stale(path):
+        return False
+    try:
+        after = os.lstat(path)
+    except FileNotFoundError:
+        return True
+    if _stat_fingerprint(before) != _stat_fingerprint(after):
+        return False
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _acquire_lock(path: Path) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    token = secrets.token_hex(16)
+    for _ in range(3):
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError as exc:
+            if _remove_stale_lock(path):
+                continue
+            raise RuntimeError(f"update already running: {path}") from exc
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"pid": os.getpid(), "created_epoch": int(time.time()), "token": token}, fh, sort_keys=True)
+            fh.write("\n")
+        return token
+    raise RuntimeError(f"could not acquire update lock: {path}")
+
+
+def _release_lock(path: Path, token: str) -> None:
+    if path.is_symlink():
+        return
+    try:
+        before = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if _read_lock_metadata(path).get("token") != token:
+        return
+    try:
+        after = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if _stat_fingerprint(before) != _stat_fingerprint(after):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        return
 
 
 def _read_json(path: Path) -> dict[str, Any]:
