@@ -330,6 +330,22 @@ def _score_card(
             score = capped
             reasons.append("locale cap: card not ko-ready, forcing clarify ceiling")
 
+    # A name is useful for recall, but it is not enough evidence for a confident
+    # route by itself. Keep name-only matches below the direct-route threshold so
+    # the router can re-rank them against Hub candidates. Any trigger,
+    # capability, summary, or domain evidence leaves the score untouched.
+    if (
+        name_hits > 0
+        and not weighted
+        and capability_hits == 0
+        and summary_hits == 0
+        and "domain match" not in reasons
+    ):
+        capped = min(score, t_high - 0.01)
+        if capped < score:
+            score = capped
+            reasons.append("name-only cap: weak signal, forcing rerank ceiling")
+
     return round(score, 3), reasons
 
 

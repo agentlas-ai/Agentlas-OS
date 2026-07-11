@@ -182,6 +182,50 @@ def test_cross_domain_penalty_demotes_but_never_eliminates(tmp_path):
     assert any("cross-domain penalty" in r for r in reasons)
 
 
+def test_name_only_match_cannot_cross_confident_route_threshold(tmp_path):
+    from agentlas_cloud.networking import router
+
+    card = make_ready_card(
+        tmp_path,
+        "alpha-beta",
+        triggers_ko=["무관한 한국어 요청", "또 다른 무관한 요청"],
+        triggers_en=["unrelated request", "separate task", "different work"],
+        antis=["finance", "legal", "deployment"],
+        capabilities=["handle_unrelated_work"],
+        domains=[],
+    )
+    card["summary"] = "unrelated specialist"
+    router._INDEX_CACHE.clear()
+
+    score, reasons = router._score_card(card, {"alpha", "beta"}, {}, False, 4.5)
+
+    assert score == 4.49
+    assert "name match x2" in reasons
+    assert "name-only cap: weak signal, forcing rerank ceiling" in reasons
+
+
+def test_name_match_with_substantive_trigger_is_not_capped(tmp_path):
+    from agentlas_cloud.networking import router
+
+    card = make_ready_card(
+        tmp_path,
+        "alpha-beta",
+        triggers_ko=["무관한 한국어 요청", "또 다른 무관한 요청"],
+        triggers_en=["alpha beta build", "separate task", "different work"],
+        antis=["finance", "legal", "deployment"],
+        capabilities=["handle_unrelated_work"],
+        domains=[],
+    )
+    card["summary"] = "unrelated specialist"
+    router._INDEX_CACHE.clear()
+
+    score, reasons = router._score_card(card, {"alpha", "beta", "build"}, {}, False, 4.5)
+
+    assert score > 4.5
+    assert any(reason.startswith("trigger overlap") for reason in reasons)
+    assert not any(reason.startswith("name-only cap") for reason in reasons)
+
+
 # ── card-derived ontology graph_path ────────────────────────────────────────
 
 

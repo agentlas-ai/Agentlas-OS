@@ -106,6 +106,7 @@ need_pattern "docs/builder-interview-research-gate.md" "Tool and Plugin Selectio
 need_pattern "docs/builder-interview-research-gate.md" "Prompt Performance Contract"
 need_pattern "docs/builder-quality-research-basis.md" "ReAct"
 need_pattern "docs/builder-quality-research-basis.md" "Reflexion"
-need_pattern "docs/builder-quality-research-basis.md" "DSPy"
+need_pattern "docs/builder-quality-research-basis.md" "Structured-prompt-programming framework"
+need_pattern "docs/builder-quality-research-basis.md" "signatures, examples, and evaluation pressure"
 
 echo "Builder quality contract verification passed."

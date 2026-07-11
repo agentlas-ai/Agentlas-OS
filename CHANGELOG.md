@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v1.1.14 - 2026-07-11
+
+- **Name-only matches no longer become confident routes.** Agent and team names
+  remain useful recall signals, but a match supported by no trigger,
+  capability, summary, or domain evidence is now capped just below the direct
+  routing threshold and sent through candidate re-ranking. Substantive matches
+  retain their existing scores, with dedicated regression tests for both paths.
+- **Release gates now reproduce a clean installation.** The ontology graph is
+  materialized before lint/diff tests, one-touch verification accepts optional
+  runtimes while still requiring all five core installs and zero failures, and
+  the pre-tag package, public-safety, adapter-sync, and ontology gates now pass
+  from a clean checkout.
+
 ## v1.1.13 - 2026-07-11
 
 - **Local registrations reach the Agentlas Desktop library automatically.**
