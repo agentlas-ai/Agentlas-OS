@@ -73,8 +73,9 @@ not Reddit OAuth or Threads Graph API. It does not mount `read.insane_fetch`,
 Jina, official social APIs, or browser modules unless the caller selects a
 heavier loadout or explicitly allows that module.
 
-`insane-search` is best treated as a reference for a detachable public-page
-reader, not as the whole Agentlas research brain. Agentlas keeps the planner,
+The upstream design this cartridge was inspired by is best treated as a
+reference for a detachable public-page reader, not as the whole Agentlas
+research brain. Agentlas keeps the planner,
 module policy, ranking, receipts, preflight, and Stormbreaker packet contract
 inside the Research Engine, then mounts `read.insane_fetch` only when
 `public-web`, `social`, `browser`, `full`, or an explicit allow-list asks for
@@ -509,7 +510,7 @@ bounded search follow-up through the built-in registry:
 | `search.github_repos` | `light` | available | No-key GitHub REST repository search for public repo discovery. It is mounted by `public-web`/`full`, but auto fan-out uses it only for GitHub hints or explicit `--provider github`. |
 | `search.jina` | `external_light` | available if configured | Jina web search cartridge for explicit `research search` calls; requires `AGENTLAS_JINA_API_KEY` or `JINA_API_KEY`. |
 | `read.http` | `light` | available | Safe static HTTP/HTML reader. |
-| `read.insane_fetch` | `adaptive_medium` | available if allowed | Bounded public-route fetch-chain inspired by insane-search: direct read, Reddit `.rss`, Jina Reader fallback, metadata/feed parsing, route trace evidence, and hard stop on login/paywall. This stays a detachable public reader, not the core research engine. |
+| `read.insane_fetch` | `adaptive_medium` | available if allowed | Bounded public-route fetch-chain inspired by an external resilient-reader design: direct read, Reddit `.rss`, Jina Reader fallback, metadata/feed parsing, route trace evidence, and hard stop on login/paywall. This stays a detachable public reader, not the core research engine. |
 | `read.jina` | `external_light` | available if allowed | Jina Reader URL-to-markdown cartridge; plain URL reads are not sent to Jina unless this module is explicitly allowed. |
 | `browser.playwright_mcp` | `browser_heavy` | available if configured | Optional Playwright MCP snapshot bridge. The engine calls a configured local snapshot command and records an accessibility-tree snapshot without importing Playwright or MCP packages. |
 | `browser.browser_use` | `browser_heavy` | available if configured | Optional Browser Use snapshot bridge for local or hosted Browser Use harnesses. The engine calls a configured local command and records bounded text output. |

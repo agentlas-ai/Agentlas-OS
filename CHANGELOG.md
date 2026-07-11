@@ -435,12 +435,12 @@
   dependency-free built-in cartridges, SSRF-safe readers, receipt ledgers,
   search/read/gather/plan/status/proofs/verify flows, and credential guidance
   that exposes env names and setup commands without printing secret values.
-- **Detachable public-page reader inspired by insane-search.** The adaptive
-  `read.insane_fetch` cartridge is mounted only through `public-web`, `social`,
-  `browser`, `full`, or explicit allow-lists. It records bounded route evidence
-  for direct reads, Reddit RSS, Jina Reader fallback, metadata/feed parsing, and
-  login/paywall hard stops, while keeping `insane-search` as a reader
-  cartridge reference rather than the whole research engine.
+- **Detachable public-page reader inspired by an external resilient-reader
+  design.** The adaptive `read.insane_fetch` cartridge is mounted only through
+  `public-web`, `social`, `browser`, `full`, or explicit allow-lists. It records
+  bounded route evidence for direct reads, Reddit RSS, Jina Reader fallback,
+  metadata/feed parsing, and login/paywall hard stops, while staying a
+  detachable reader cartridge rather than the whole research engine.
 - **Stormbreaker research evidence integration.** Stormbreaker packets can now
   attach research receipts, preflight files, readiness snapshots, capability
   summaries, recommendation metadata, and compact evidence-quality/coverage

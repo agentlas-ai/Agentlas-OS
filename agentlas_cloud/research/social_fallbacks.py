@@ -41,8 +41,8 @@ def run_research_social_fallbacks(
             "stormbreaker_fit": "mount_public_web_by_default; social_loadout_only_when_official_api_is_explicitly_allowed",
         },
         "upstream_reference": {
-            "name": "fivetaku/insane-search",
-            "url": "https://github.com/fivetaku/insane-search",
+            "name": "external reference design (not disclosed)",
+            "url": "",
             "role": "reference implementation for resilient public-page reading, not a credentialed social API replacement",
         },
         "no_token_coverage": {
