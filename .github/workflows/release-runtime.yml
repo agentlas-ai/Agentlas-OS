@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-runtime-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release-runtime:
     runs-on: ubuntu-latest
@@ -33,7 +37,10 @@ jobs:
 
       - name: Verify updater and credential gates
         run: |
-          python -m pytest -q tests/test_runtime_update.py tests/test_public_safety_check.py
+          python -m pytest -q \
+            tests/test_runtime_update.py \
+            tests/test_public_safety_check.py \
+            tests/test_release_runtime_assets.py
 
       - name: Build deterministic runtime archive
         run: bash scripts/build-runtime-release-asset.sh "$GITHUB_REF_NAME"
@@ -44,19 +51,4 @@ jobs:
         run: |
           archive="dist/runtime-release/hephaestus-runtime-${GITHUB_REF_NAME}.tar.gz"
           checksum="${archive}.sha256"
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            # Published tag assets are immutable inputs to the updater. Refuse
-            # a same-name replacement instead of silently changing its digest.
-            gh release upload "$GITHUB_REF_NAME" "$archive" "$checksum"
-          else
-            gh release create "$GITHUB_REF_NAME" "$archive" "$checksum" --verify-tag --generate-notes
-          fi
-
-          expected="sha256:$(awk 'NR == 1 { print $1 }' "$checksum")"
-          asset_name="$(basename "$archive")"
-          actual="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" \
-            --jq ".assets[] | select(.name == \"${asset_name}\") | .digest")"
-          if [[ "$actual" != "$expected" ]]; then
-            echo "release asset digest mismatch: expected=$expected actual=${actual:-missing}" >&2
-            exit 1
-          fi
+          bash scripts/publish-runtime-release-assets.sh "$GITHUB_REF_NAME" "$archive" "$checksum"
