@@ -132,12 +132,12 @@ Capability           # 통제 어휘(taxonomy) 노드
 
 agentlas_cloud/agent_graph/
   loader.py           # JSONL → 인메모리 그래프
-  validator.py        # grammar.json으로 노드/엣지/공리 검증 (OpenCrab validator 패턴 차용)
+  validator.py        # grammar.json으로 노드/엣지/공리 검증 (외부 문서 온톨로지 검증기 설계 차용)
   query.py            # 그래프 질의: who_produces(X), reachable, is_blocked, plan_path
   migrate.py          # 기존 4개 JSON → AO 생성 (card_migrate.py 패턴)
 ```
 
-> 차용 1줄: OpenCrab에서 *유일하게* 가져올 것 = **"타입 문법 + grammar-validated 엣지 + 증거기반 승격"** 기계장치. 단 대상이 문서→에이전트.
+> 차용 1줄: 외부 문서 온톨로지 도구에서 *유일하게* 가져올 것 = **"타입 문법 + grammar-validated 엣지 + 증거기반 승격"** 기계장치. 단 대상이 문서→에이전트.
 
 **저장 백엔드 결정 (확정): JSONL(진실원) + 인메모리 그래프(런타임) + `registry.sqlite` 재사용(임베딩 인덱스).** 근거:
 - 에이전트는 수십~저백 개 → 인메모리 그래프 질의 sub-ms. Neo4j/무거운 DB 불필요.
@@ -197,7 +197,7 @@ agentlas_cloud/agent_graph/
 | **2. Router** | AO 질의를 router에 통합(공리차단·능력필터·경로탐색), 임베딩 pre-filter | 온톨로지 검증 라우팅 + 진짜 pipeline | 라우팅이 똑똑해짐 |
 | **3. Governance** | Policy Office 규칙을 공리로 이전, 결정시점 검증·영수증 | 기계강제 통신규칙 | 위반 자동차단 |
 | **4. A2A** | Agent Card 수입/수출·정렬계층 | A2A 발화/수용 | 외부 에이전트 합류 |
-| **5. (선택) 진화** | 에이전트가 온톨로지 수정 제안 → curator/policy 리뷰 → 승격(candidate→validated→promoted, receipt) | 자가진화 AO | OpenCrab 승격패턴 적용 |
+| **5. (선택) 진화** | 에이전트가 온톨로지 수정 제안 → curator/policy 리뷰 → 승격(candidate→validated→promoted, receipt) | 자가진화 AO | 외부 문서 온톨로지 승격패턴 적용 |
 
 ## 8. 성공 지표
 

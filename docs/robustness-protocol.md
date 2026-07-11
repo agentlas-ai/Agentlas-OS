@@ -18,16 +18,16 @@ baseline Hephaestus Network arm on process-aware robustness metrics.
 The protocol distills recurring patterns from public agent harnesses and local
 research notes:
 
-- Superpowers: approval before implementation, TDD, subagent execution, review,
-  and verification-before-completion.
-- GSD Core: discuss, plan, execute, verify, ship phase loops with fresh-context
-  executors and durable state files.
-- LazyCodex / oh-my-claudecode / Gajae-Code: interview, consensus planning,
+- Public agent-harness approval patterns: approval before implementation, TDD,
+  subagent execution, review, and verification-before-completion.
+- Phase-loop harness patterns: discuss, plan, execute, verify, ship phase loops
+  with fresh-context executors and durable state files.
+- Interview-driven planning harnesses: interview, consensus planning,
   goal ledgers, replay artifacts, bounded loops, and completion gates.
-- FableCodex / Fable-style operating protocol repos: requirements ledgers,
-  evidence checkpoints, final verification gates, and model-aware delegation.
-- NightWatch-style recorders: logs are claims; independent replay or artifact
-  checks are stronger proof.
+- Ledger-based operating protocols: requirements ledgers, evidence checkpoints,
+  final verification gates, and model-aware delegation.
+- Claim-verification recorder patterns: logs are claims; independent replay or
+  artifact checks are stronger proof.
 - Reflexion (<https://arxiv.org/abs/2303.11366>): failed checks become verbal
   failure memory for later attempts.
 - Self-Refine (<https://arxiv.org/abs/2303.17651>): feedback and refinement

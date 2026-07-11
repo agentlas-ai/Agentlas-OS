@@ -1,8 +1,9 @@
-"""Adaptive public fetch-chain inspired by insane-search.
+"""Adaptive public fetch-chain inspired by external resilient public-page
+reader designs.
 
-This is not the upstream Claude Code plugin. It is Agentlas' own lightweight
-cartridge that tries documented/public routes in a bounded order when the user
-explicitly mounts `read.insane_fetch`.
+This is not the upstream reference implementation it was inspired by. It is
+Agentlas' own lightweight cartridge that tries documented/public routes in a
+bounded order when the user explicitly mounts `read.insane_fetch`.
 """
 
 from __future__ import annotations
