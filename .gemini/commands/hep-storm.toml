@@ -21,6 +21,15 @@ stormed.
 Raw arguments:
 {{args}}
 
+## Core-owned Goal + UltraCode harness
+
+Every result includes `execution_harness`. Apply
+`execution_harness.system_prompt` verbatim before planning or executing packets,
+retain its `prompt_sha256`, and never redefine Goal mode or UltraCode mode in
+this Gemini adapter. Pass live session JSON with
+`AGENTLAS_SESSION_INVENTORY` when available; otherwise use Core's explicit
+`host:primary` fallback.
+
 ## 1. Resolve the runner and materialize the execution fabric
 
 The Stormbreaker engine routes the goal and materializes a pipeline fabric
@@ -29,21 +38,16 @@ resumable journal). In an agentic runtime **you are the executor** — the engin
 gives you the verified plan; you carry it out with your own tools.
 
 Find the Hephaestus runner — first executable wins:
-`~/.agentlas/runtime/current/bin/hephaestus`, `./bin/hephaestus`, or the newest
-`~/.claude/plugins/cache/agentlas-core-engine/hephaestus/*/bin/hephaestus`
-(sort -V; also check the Codex cache under
-`${CODEX_HOME:-$HOME/.codex}/plugins/cache/agentlas-core-engine/hephaestus/*/bin/hephaestus`).
-If no runner is found, report that the Hephaestus runtime is missing and to run
-the installer — do not fake a result.
-
-First ensure the local Agentlas sign-in (this opens the browser only on first
-use):
+`~/.agentlas/runtime/current/bin/hephaestus`, `./bin/hephaestus`, or the
+newest `~/.claude/plugins/cache/agentlas-core-engine/hephaestus/*/bin/hephaestus`
+(sort -V). First ensure the local Agentlas sign-in (this opens the browser
+only on first use):
 `hephaestus auth ensure --timeout 180`
-
 Then route + materialize the pipeline fabric for THIS goal. No
 `--executor-command`: the host model (you) executes each packet natively.
-`--research-evidence` grounds plan/research packets with Research Engine receipts:
-`hephaestus hep-storm "{{args}}" --research-evidence`
+`--research-evidence` grounds plan/research packets with Research Engine
+receipts:
+`hephaestus hep-storm "{{args}}" --research-evidence --runtime gemini`
 
 Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
 auto-materializes a full fabric for a **pipeline**; other actions still start a
@@ -85,10 +89,10 @@ a required user approval.
    as the plan. Open a **visible goal ledger**: packet, owner, verification gate,
    status, resume point.
 4. **act** — Execute the next unblocked group. Run independent packets in the
-   group concurrently where the runtime supports delegation. When a packet's
-   `card` names an Agentlas specialist, **borrow and run it attached to this
-   project** via `hephaestus hep-call "<card>" "<goal>" --project .` rather than
-   role-playing it. Write artifacts to each packet's `write_scope`.
+   group concurrently where the runtime supports it. When a packet's `card` names
+   an Agentlas specialist, **borrow and run it attached to this project** via
+   `hephaestus hep-call "<card>" "<goal>" --project .` rather than role-playing it.
+   Write artifacts to each packet's `write_scope`.
 5. **verify** — A packet passes only when its verifier passes (a packet with a
    `loop.goal_command` is met when that command exits 0; an artifact packet is met
    when its acceptance check passes). "It ran" is never success.
@@ -123,12 +127,14 @@ progress, evidence, decisions, and final status only.
   materialized run is not proof that an external action succeeded.
 - The router only chooses agents and fetches BYOM bundles. Actual tool execution
   follows this runtime's own safety and permission model.
-- Report the `receipt_id`, `pipeline_id`, and `journal` path in your final message
+- Report the `receipt_id`, `pipeline_id`, and `journal` path in your final response
   so the run is auditable and resumable.
 
 ## Examples
 
+```text
 /hep-storm ship a working waitlist landing page with a verified signup flow
 /hep-storm 이 리포 결제 버그를 재현 PoC까지 만들어서 고치고 회귀 테스트로 검증해줘
 @Hephaestus storm turn this research question into a cited report with evidence
+```
 """

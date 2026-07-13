@@ -18,6 +18,14 @@ multi-step research, data/report generation — anything with files, tools, test
 or external verification. Trivial questions should be answered directly, not
 stormed.
 
+## Core-owned Goal + UltraCode harness
+
+Every result includes `execution_harness`. Apply
+`execution_harness.system_prompt` verbatim before planning or executing packets,
+retain its `prompt_sha256`, and never redefine Goal mode or UltraCode mode in
+this adapter. Pass live session JSON with `AGENTLAS_SESSION_INVENTORY` when the
+host provides it; otherwise use Core's explicit `host:primary` fallback.
+
 The goal is the exact text the user typed after `/hep-storm`.
 
 ## How to run
@@ -65,7 +73,7 @@ fi
 # Route + materialize the pipeline fabric for THIS goal. No --executor-command:
 # the host model (you) executes each packet natively. --research-evidence grounds
 # plan/research packets with Research Engine receipts.
-FABRIC="$("$RUNNER" hep-storm "$GOAL" --research-evidence)"
+FABRIC="$("$RUNNER" hep-storm "$GOAL" --research-evidence --runtime antigravity)"
 printf '%s\n' "$FABRIC"
 ```
 

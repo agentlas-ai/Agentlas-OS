@@ -303,6 +303,7 @@ def plan_pipeline(
 
 def _runner_contract() -> list[str]:
     return [
+        "apply execution_fabric.execution_harness.system_prompt verbatim; adapters must not redefine Goal mode or UltraCode mode",
         "execute work packets using the host runtime's safety and permission model",
         "run packets in the same execution_fabric.parallel_group concurrently when host sessions are available",
         "record each stage's artifacts under handoff_dir/<order>-<kind>/ and pass paths to the next stage",

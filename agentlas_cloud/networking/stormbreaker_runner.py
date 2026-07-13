@@ -22,9 +22,10 @@ from .goal_loop import GoalLoopConfig, run_goal_loop
 from .receipts import record_execution
 from .router import route_request
 from .run_journal import RunJournal
+from .stormbreaker_harness import goal_ultracode_harness
 
 
-RUNNER_VERSION = "stormbreaker.auto_runner.v1"
+RUNNER_VERSION = "stormbreaker.auto_runner.v2"
 STORMBREAKER_RESEARCH_LOADOUTS = {"auto", "safe", "public-web", "social", "browser", "full", "recommended"}
 STORMBREAKER_RESEARCH_DEPTHS = {"quick", "deep"}
 STORMBREAKER_DEFAULT_RESEARCH_LOADOUT = "safe"
@@ -106,6 +107,7 @@ def run_stormbreaker_query(
         research_variants=research_variants,
         max_replans=max_replans,
     )
+    result["execution_harness"] = goal_ultracode_harness()
     result["route_decision"] = _decision_summary(decision)
     return result
 
@@ -135,6 +137,7 @@ def run_stormbreaker_decision(
             "reason": "Stormbreaker auto-runner only executes action=pipeline decisions",
             "route_action": decision.get("action"),
             "receipt_id": decision.get("receipt_id"),
+            "execution_harness": goal_ultracode_harness(),
         }
 
     fabric = decision.get("execution_fabric")
@@ -144,6 +147,7 @@ def run_stormbreaker_decision(
             "runner_version": RUNNER_VERSION,
             "reason": "pipeline decision is missing execution_fabric",
             "receipt_id": decision.get("receipt_id"),
+            "execution_harness": goal_ultracode_harness(),
         }
 
     project = Path(project_dir).expanduser().resolve()
@@ -171,6 +175,10 @@ def run_stormbreaker_decision(
         follow_results=research_follow_results,
         variants=research_variants,
     )
+    # A decision file or stale adapter may carry an old/modified harness. Core
+    # never executes that copy: every run is reconciled to this release's
+    # canonical protocol and digest.
+    execution_harness = goal_ultracode_harness()
 
     _append_journal(
         journal,
@@ -183,6 +191,11 @@ def run_stormbreaker_decision(
             "max_workers": max_parallel,
             "research_evidence": "enabled" if research_evidence else "disabled",
             "research_options": research_options if research_evidence else None,
+            "execution_harness": {
+                "harness_id": execution_harness.get("harness_id"),
+                "mode": execution_harness.get("mode"),
+                "prompt_sha256": execution_harness.get("prompt_sha256"),
+            },
         },
     )
 
@@ -196,7 +209,12 @@ def run_stormbreaker_decision(
             pending_ids = [packet_id for packet_id in group_packet_ids if packet_statuses.get(packet_id) != "passing"]
             if not pending_ids:
                 continue
-            blocked_deps = [packet_id for packet_id in group.get("depends_on") or [] if packet_statuses.get(str(packet_id)) != "passing"]
+            dependency_ready_statuses = {"passing", "materialized"} if mode == "materialize" else {"passing"}
+            blocked_deps = [
+                packet_id
+                for packet_id in group.get("depends_on") or []
+                if packet_statuses.get(str(packet_id)) not in dependency_ready_statuses
+            ]
             if blocked_deps:
                 for packet_id in pending_ids:
                     packet = packet_by_id.get(packet_id)
@@ -239,6 +257,7 @@ def run_stormbreaker_decision(
                         research_options=research_options,
                         user_query=user_query,
                         work_brief=work_brief,
+                        execution_harness=execution_harness,
                     ): packet
                     for packet in ready_packets
                 }
@@ -282,6 +301,10 @@ def run_stormbreaker_decision(
         final_gate = evaluate_final_gate(dict(fabric), packet_statuses)
         if final_gate.get("can_report_success"):
             break
+        if mode == "materialize":
+            # Materialization hands the complete packet contract to the host;
+            # it is deliberately not retried and never promoted to success.
+            break
         non_passing = {str(pid) for pid in (final_gate.get("blocked") or [])} | {
             str(pid) for pid in (final_gate.get("missing_or_incomplete") or [])
         }
@@ -302,7 +325,12 @@ def run_stormbreaker_decision(
             },
         )
 
-    status = "completed" if final_gate["can_report_success"] else "blocked"
+    if final_gate["can_report_success"]:
+        status = "completed"
+    elif mode == "materialize" and packet_statuses and all(value == "materialized" for value in packet_statuses.values()):
+        status = "materialized"
+    else:
+        status = "blocked"
     _append_journal(
         journal,
         {
@@ -334,6 +362,7 @@ def run_stormbreaker_decision(
         "attempts": attempt,
         "packets": sorted(deduped_packets.values(), key=lambda item: (item.get("stage_order") or 0, item.get("packet_id") or "")),
         "final_gate": final_gate,
+        "execution_harness": execution_harness,
     }
     if research_evidence:
         result["research_options"] = research_options
@@ -356,6 +385,7 @@ def _run_packet(
     research_options: dict[str, Any],
     user_query: str = "",
     work_brief: dict[str, Any] | None = None,
+    execution_harness: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     packet_id = str(packet["packet_id"])
     write_scope = _resolve_project_path(project, str(packet.get("write_scope") or f".agentlas/pipeline/{pipeline_id}/{packet_id}/"))
@@ -387,6 +417,7 @@ def _run_packet(
         "session_hint": session,
         "write_scope": str(write_scope),
         "data_policy": packet.get("data_policy") or [],
+        "execution_harness": execution_harness or goal_ultracode_harness(),
     }
     if work_brief is not None:
         packet_contract["work_brief"] = work_brief
@@ -425,6 +456,7 @@ def _run_packet(
             executor_command=executor_command,
             execute_card_commands=execute_card_commands,
             timeout_seconds=timeout_seconds,
+            execution_harness=execution_harness,
         )
     else:
         completed = _execute_packet_command(
@@ -437,8 +469,12 @@ def _run_packet(
             executor_command=executor_command,
             execute_card_commands=execute_card_commands,
             timeout_seconds=timeout_seconds,
+            execution_harness=execution_harness,
         )
-    status = "passing" if completed["ok"] else "blocked"
+    if completed.get("materialized"):
+        status = "materialized"
+    else:
+        status = "passing" if completed["ok"] else "blocked"
     detail = str(completed["detail"])
     result = {
         "runner_version": RUNNER_VERSION,
@@ -495,6 +531,7 @@ def _execute_packet_command(
     executor_command: str | None,
     execute_card_commands: bool,
     timeout_seconds: int,
+    execution_harness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if executor_command:
         return _run_subprocess(
@@ -506,6 +543,7 @@ def _execute_packet_command(
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             timeout_seconds=timeout_seconds,
+            execution_harness=execution_harness,
         )
 
     if execute_card_commands:
@@ -530,11 +568,17 @@ def _execute_packet_command(
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             timeout_seconds=timeout_seconds,
+            execution_harness=execution_harness,
         )
 
     stdout_file.write_text("packet contract materialized; no external executor configured\n", encoding="utf-8")
     stderr_file.write_text("", encoding="utf-8")
-    return {"ok": True, "detail": "packet_contract_materialized", "returncode": 0}
+    return {
+        "ok": True,
+        "materialized": True,
+        "detail": "packet_contract_materialized",
+        "returncode": 0,
+    }
 
 
 def _run_packet_goal_loop(
@@ -548,6 +592,7 @@ def _run_packet_goal_loop(
     executor_command: str | None,
     execute_card_commands: bool,
     timeout_seconds: int,
+    execution_harness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run a packet as a goal-seeking loop (`goal_loop.run_goal_loop`).
 
@@ -581,6 +626,7 @@ def _run_packet_goal_loop(
             executor_command=executor_command,
             execute_card_commands=execute_card_commands,
             timeout_seconds=timeout_seconds,
+            execution_harness=execution_harness,
         )
         if not completed.get("ok"):
             raise RuntimeError(str(completed.get("detail") or "iteration_failed"))
@@ -647,8 +693,10 @@ def _run_subprocess(
     stdout_file: Path,
     stderr_file: Path,
     timeout_seconds: int,
+    execution_harness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     env = os.environ.copy()
+    harness = execution_harness or goal_ultracode_harness()
     env.update(
         {
             "STORMBREAKER_PACKET_ID": str(packet.get("packet_id") or ""),
@@ -663,6 +711,10 @@ def _run_subprocess(
             "STORMBREAKER_RESEARCH_PREFLIGHT_FILE": str(((packet.get("research_evidence") or {}).get("preflight", {}).get("file")) or ""),
             "STORMBREAKER_RESEARCH_STATUS_FILE": str(((packet.get("research_evidence") or {}).get("readiness", {}).get("file")) or ""),
             "STORMBREAKER_RESEARCH_RECEIPT_ID": str(((packet.get("research_evidence") or {}).get("receipt_id")) or ""),
+            "STORMBREAKER_HARNESS_ID": str(harness.get("harness_id") or ""),
+            "STORMBREAKER_HARNESS_MODE": str(harness.get("mode") or ""),
+            "STORMBREAKER_HARNESS_PROMPT_SHA256": str(harness.get("prompt_sha256") or ""),
+            "STORMBREAKER_HARNESS_SYSTEM_PROMPT": str(harness.get("system_prompt") or ""),
         }
     )
     try:

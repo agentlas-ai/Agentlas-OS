@@ -15,6 +15,24 @@ the work as a dependency-ordered pipeline fabric, drives each work packet as a
 **refuses to report success without evidence**. Never guess an agent yourself when
 this skill is active — the router or Hub decides the workforce.
 
+## Core-owned Goal + UltraCode harness
+
+Every `hep-storm` result includes `execution_harness`. Before planning or
+executing any packet, apply `execution_harness.system_prompt` **verbatim** and
+retain its `prompt_sha256` in the goal ledger. This adapter must never redefine,
+summarize, or replace Goal mode or UltraCode mode with host-local wording. The
+adapter owns invocation only; Agentlas Core owns the execution protocol.
+
+If the host exposes live Codex, Claude Code, Gemini, local-model, or other
+sessions, provide their JSON array through `AGENTLAS_SESSION_INVENTORY` or
+`--session-inventory`. If it does not, accept Core's explicit `host:primary`
+fallback; never invent a model ID or claim unavailable parallel workers.
+
+With no external executor, the runner intentionally returns `status:
+materialized` and `final_gate.can_report_success: false`. That is the host's
+signal to execute the returned packets with its native tools; it is not a
+failure and must never be rewritten as completion.
+
 ## 1. Resolve the runner
 
 Run this resolution in a shell and use the first hit:
@@ -62,7 +80,7 @@ gives you the verified plan; you carry it out with your own tools. No
 `--research-evidence` grounds plan/research packets with Research Engine receipts.
 
 ```bash
-FABRIC="$("$RUNNER" hep-storm "<the user's goal>" --research-evidence)"
+FABRIC="$("$RUNNER" hep-storm "<the user's goal>" --research-evidence --runtime "${AGENTLAS_HOST_RUNTIME:-agent-skills}")"
 printf '%s\n' "$FABRIC"
 ```
 

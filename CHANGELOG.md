@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## v1.1.20 - 2026-07-13
+
+- **One Core-owned Goal + UltraCode harness on every runtime.** Stormbreaker now
+  emits a canonical, digest-addressed `execution_harness` in every result,
+  execution fabric, packet contract, and external-executor environment. Codex,
+  Claude Code, Gemini, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, and the
+  universal AgentSkills adapter consume the returned prompt verbatim instead of
+  maintaining host-local Goal/UltraCode variants. Live sessions can be supplied
+  with `--session-inventory` or `AGENTLAS_SESSION_INVENTORY`; the explicit
+  `host:primary` fallback never invents workers or model IDs.
+- **Materialization no longer masquerades as completion.** A Stormbreaker run
+  without a real executor returns `status: materialized`, leaves
+  `final_gate.can_report_success` false, and still exits successfully so the
+  host can execute the complete packet set. Only verified executor results can
+  produce `status: completed`.
+
 ## v1.1.14 - 2026-07-11
 
 - **Name-only matches no longer become confident routes.** Agent and team names

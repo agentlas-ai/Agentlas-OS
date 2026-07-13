@@ -67,7 +67,8 @@ def test_plan_pipeline_chains_by_artifacts(tmp_path):
     ids = [stage["card"] for stage in plan["stages"]]
     assert len(set(ids)) == 3
     fabric = plan["execution_fabric"]
-    assert fabric["fabric_version"] == "stormbreaker.execution_fabric.v2"
+    assert fabric["fabric_version"] == "stormbreaker.execution_fabric.v3"
+    assert fabric["execution_harness"]["mode"] == "stormbreaker-goal-ultracode"
     assert fabric["required_packet_ids"] == [packet["packet_id"] for packet in fabric["packets"]]
     assert fabric["packets"][0]["session_hint"]["session_id"] == "host:primary"
     assert fabric["resume_policy"]["final_gate"] == "block_success_until_all_required_packets_pass"
@@ -85,7 +86,7 @@ def test_route_returns_pipeline_plan(tmp_path):
     assert isinstance(result.get("graph_path"), list)
     assert isinstance(result.get("allowed_by"), list) and result["allowed_by"]
     assert result["blocked_by_axiom"] == []
-    assert result["execution_fabric"]["mode"] == "parallel_when_independent"
+    assert result["execution_fabric"]["mode"] == "stormbreaker-goal-ultracode"
     assert len(result["execution_fabric"]["parallel_groups"]) == 3
 
 

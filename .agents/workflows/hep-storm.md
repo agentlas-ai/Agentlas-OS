@@ -6,18 +6,25 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 # /hep-storm
 
 Drive a goal through the **Stormbreaker Loop** — Hephaestus' force-robust,
-verifier-first execution loop. Unlike a one-shot answer or a generic parallel
-fan-out, Stormbreaker **routes the goal to real Agentlas specialists**, structures
-the work as a dependency-ordered pipeline fabric, drives each work packet as a
-**hardened goal loop** (it does not stall, run away, or claim false success), and
-**refuses to report success without evidence**. Also triggered by
-`@Hephaestus storm <goal>`.
+verifier-first execution loop — inside this Antigravity workspace. Unlike a
+one-shot answer or a generic parallel fan-out, Stormbreaker **routes the goal to
+real Agentlas specialists**, structures the work as a dependency-ordered pipeline
+fabric, drives each work packet as a **hardened goal loop** (it does not stall,
+run away, or claim false success), and **refuses to report success without
+evidence**. Also triggered by `@Hephaestus storm <goal>`.
 
 Use it for loop-worthy work: apps, sites, agents, automations, debugging,
 multi-step research, data/report generation — anything with files, tools, tests,
 or external verification. Trivial questions should be answered directly, not
-stormed. In an agentic runtime **you are the executor** — the engine gives you the
-verified plan; you carry it out with your own tools.
+stormed.
+
+## Core-owned Goal + UltraCode harness
+
+Every result includes `execution_harness`. Apply
+`execution_harness.system_prompt` verbatim before planning or executing packets,
+retain its `prompt_sha256`, and never redefine Goal mode or UltraCode mode in
+this adapter. Pass live session JSON with `AGENTLAS_SESSION_INVENTORY` when the
+host provides it; otherwise use Core's explicit `host:primary` fallback.
 
 The goal is the exact text the user typed after `/hep-storm`.
 
@@ -26,16 +33,17 @@ The goal is the exact text the user typed after `/hep-storm`.
 Run the shell block below **verbatim**, replacing only the `GOAL` value with the
 user's exact goal text. The block resolves the Hephaestus runner by **absolute
 path** and runs it — there is nothing to install and nothing to add to `PATH`.
+In an agentic runtime **you are the executor**: the engine gives you the verified
+plan (the execution fabric); you carry it out with your own tools.
 
 > Guardrails — do NOT do any of these. They are not how this workflow works and
 > have caused fabricated reports before:
 > - Do NOT diagnose `command not found` or `PATH`, and do NOT edit `~/.zshrc`.
 >   The runner is resolved by absolute path inside the block.
-> - Do NOT claim a run happened when it did not. If the runner is genuinely
->   missing, say so and stop. Never fabricate a fix, a fabric, or a result.
-> - This workflow legitimately writes artifacts to each packet's `write_scope`;
->   that is expected. But a materialized or scheduled run is never, by itself,
->   proof that an external action succeeded — see Hard rules.
+> - Do NOT claim a packet, gate, or external action succeeded without the
+>   verifier's evidence. A materialized or scheduled run is not proof.
+> - If the runner is genuinely missing, say so and stop. Never fabricate a fix
+>   or a run.
 
 ```bash
 GOAL="<replace with the exact text the user typed after /hep-storm>"
@@ -65,7 +73,7 @@ fi
 # Route + materialize the pipeline fabric for THIS goal. No --executor-command:
 # the host model (you) executes each packet natively. --research-evidence grounds
 # plan/research packets with Research Engine receipts.
-FABRIC="$("$RUNNER" hep-storm "$GOAL" --research-evidence)"
+FABRIC="$("$RUNNER" hep-storm "$GOAL" --research-evidence --runtime antigravity)"
 printf '%s\n' "$FABRIC"
 ```
 
@@ -78,7 +86,7 @@ storm, just with the workforce the router chose:
 - `action: "pipeline"` — the result carries the `execution_fabric` (`packets`,
   `parallel_groups`, `sessions`, `resume_policy`), per-packet `write_scope` and
   `goal`/verifier, a `pipeline_id`, a `journal` path, and `final_gate` criteria.
-  Run the full loop below.
+  Run the full loop in "Run the Stormbreaker Loop" below.
 - `action: "clarify"` — the goal is ambiguous. Ask `clarify_question` with the
   candidate list as ONE batch, then re-run the block with the refined goal. This
   is the scope-lock ambiguity gate; do not guess past it.

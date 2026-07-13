@@ -565,6 +565,7 @@ def test_stormbreaker_cli_runs_pipeline(tmp_path, monkeypatch, capsys):
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "completed"
+    assert payload["final_gate"]["can_report_success"] is True
     assert payload["route_decision"]["action"] == "pipeline"
     assert payload["claim_level"] == "external_executor_completed"
 
@@ -662,7 +663,7 @@ def test_hephaestus_storm_terminal_command_runs_pipeline(tmp_path):
         check=False,
     )
 
-    assert completed.returncode == 0, completed.stderr
+    assert completed.returncode == 0, completed.stderr or completed.stdout
     payload = json.loads(completed.stdout)
     assert payload["status"] == "completed"
     assert payload["route_decision"]["action"] == "pipeline"
@@ -695,9 +696,11 @@ def test_hephaestus_stormbreaker_subcommand_runs_pipeline_with_research_prefligh
         check=False,
     )
 
-    assert completed.returncode == 0, completed.stderr
+    assert completed.returncode == 0, completed.stderr or completed.stdout
     payload = json.loads(completed.stdout)
-    assert payload["status"] == "completed"
+    assert payload["status"] == "materialized"
+    assert payload["final_gate"]["can_report_success"] is False
+    assert payload["claim_level"] == "handoff_artifacts_materialized"
     assert payload["route_decision"]["action"] == "pipeline"
     plan_packet = next(packet for packet in payload["packets"] if packet["stage"] == "plan")
     assert plan_packet["research_evidence"]["preflight"]["status"] == "ok"

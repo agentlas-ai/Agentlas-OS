@@ -915,9 +915,10 @@ def main(argv: list[str] | None = None) -> int:
         home = networking_home()
         init_networking(home)
         session_inventory = None
-        if args.session_inventory:
+        session_inventory_raw = args.session_inventory or os.environ.get("AGENTLAS_SESSION_INVENTORY")
+        if session_inventory_raw:
             try:
-                session_inventory = json.loads(args.session_inventory)
+                session_inventory = json.loads(session_inventory_raw)
                 if not isinstance(session_inventory, list):
                     raise ValueError("session inventory must be a JSON array")
             except (json.JSONDecodeError, ValueError) as exc:
@@ -966,7 +967,7 @@ def main(argv: list[str] | None = None) -> int:
                     "match_reason": decision.get("match_reason"),
                 }
                 emit(result)
-                return 0 if result.get("status") == "completed" else 1
+                return 0 if result.get("status") in {"completed", "materialized"} else 1
             decision["auto_run"] = {
                 "status": "skipped",
                 "reason": "route decision did not include a runnable pipeline execution_fabric",
@@ -1014,9 +1015,10 @@ def main(argv: list[str] | None = None) -> int:
         home = networking_home()
         init_networking(home)
         session_inventory = None
-        if args.session_inventory:
+        session_inventory_raw = args.session_inventory or os.environ.get("AGENTLAS_SESSION_INVENTORY")
+        if session_inventory_raw:
             try:
-                session_inventory = json.loads(args.session_inventory)
+                session_inventory = json.loads(session_inventory_raw)
                 if not isinstance(session_inventory, list):
                     raise ValueError("session inventory must be a JSON array")
             except (json.JSONDecodeError, ValueError) as exc:
@@ -1082,7 +1084,7 @@ def main(argv: list[str] | None = None) -> int:
             from .networking.bootstrap import atomic_write_json
 
             atomic_write_json(Path(args.output_file), result)
-        if result.get("status") == "completed":
+        if result.get("status") in {"completed", "materialized"}:
             return 0
         if result.get("status") in {"blocked", "not_executed"}:
             return 1
@@ -1565,6 +1567,7 @@ def _resolve_recommended_research_request(
 def _start_stormbreaker_background(args: argparse.Namespace, decision: dict[str, Any] | None = None) -> dict[str, Any]:
     import uuid
     from .networking.bootstrap import atomic_write_json
+    from .networking.stormbreaker_harness import goal_ultracode_harness
 
     project = Path(args.project).expanduser().resolve()
     run_id = uuid.uuid4().hex[:12]
@@ -1601,6 +1604,7 @@ def _start_stormbreaker_background(args: argparse.Namespace, decision: dict[str,
         "stderr_file": str(stderr_file),
         "decision_file": str(decision_file) if decision_file else None,
         "route_receipt_id": decision.get("receipt_id") if decision else None,
+        "execution_harness": goal_ultracode_harness(),
     }
 
 
@@ -1747,7 +1751,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.19",
+            "version": "1.1.20",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

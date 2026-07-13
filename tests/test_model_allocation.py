@@ -177,7 +177,8 @@ def test_execution_fabric_exposes_pending_contract_and_accepts_parent_decisions(
         handoff_dir=".agentlas/test/",
         session_inventory=INVENTORY,
     )
-    assert pending["fabric_version"] == "stormbreaker.execution_fabric.v2"
+    assert pending["fabric_version"] == "stormbreaker.execution_fabric.v3"
+    assert pending["execution_harness"]["mode"] == "stormbreaker-goal-ultracode"
     assert all(packet["model_allocation_contract"]["status"] == "awaiting-parent-ai" for packet in pending["packets"])
     assert all(packet["model_allocation"]["privacy"]["rawPromptIncluded"] is False for packet in pending["packets"])
 

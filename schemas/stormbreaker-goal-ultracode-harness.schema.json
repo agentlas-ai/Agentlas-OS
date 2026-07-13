@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/stormbreaker-goal-ultracode-harness.schema.json",
+  "title": "Agentlas Stormbreaker Goal + UltraCode Harness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "harness_id",
+    "owner",
+    "mode",
+    "system_prompt",
+    "prompt_sha256",
+    "host_rule",
+    "inventory_rule",
+    "completion_rule"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentlas.stormbreaker.goal-ultracode-harness.v1"
+    },
+    "harness_id": {
+      "const": "agentlas-core/stormbreaker-goal-ultracode"
+    },
+    "owner": {
+      "const": "Agentlas Core"
+    },
+    "mode": {
+      "const": "stormbreaker-goal-ultracode"
+    },
+    "system_prompt": {
+      "type": "string",
+      "minLength": 256
+    },
+    "prompt_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "host_rule": {
+      "type": "string",
+      "minLength": 32
+    },
+    "inventory_rule": {
+      "type": "string",
+      "minLength": 32
+    },
+    "completion_rule": {
+      "type": "string",
+      "minLength": 32
+    }
+  }
+}

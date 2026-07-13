@@ -24,6 +24,7 @@ from .router import route_request
 from .run_journal import RunJournal
 from .search_call import call_agents, search_agents
 from .stormbreaker_runner import run_stormbreaker_decision, run_stormbreaker_query
+from .stormbreaker_harness import goal_ultracode_harness
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -39,6 +40,7 @@ __all__ = [
     "route_request",
     "run_stormbreaker_decision",
     "run_stormbreaker_query",
+    "goal_ultracode_harness",
     "run_goal_loop",
     "GoalLoopConfig",
     "GoalLoopResult",

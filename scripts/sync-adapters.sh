@@ -65,6 +65,9 @@ skill_mirrors=(
   "skills/hephaestus-cloud/SKILL.md:gemini/extension/skills/hephaestus-cloud/SKILL.md"
   "skills/hephaestus-cloud/SKILL.md:cursor/plugin/skills/hephaestus-cloud/SKILL.md"
   "skills/hephaestus-cloud/SKILL.md:hermes/skills/hephaestus-cloud/SKILL.md"
+  "skills/hephaestus-storm/SKILL.md:.agents/skills/hephaestus-storm/SKILL.md"
+  "skills/hephaestus-storm/SKILL.md:codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-storm/SKILL.md"
+  "skills/hephaestus-storm/SKILL.md:hermes/skills/hephaestus-storm/SKILL.md"
   ".agentlas/routing-card.json:claude/plugins/agentlas-core-engine-meta-agent/.agentlas/routing-card.json"
   ".agentlas/routing-card.json:codex/plugins/agentlas-core-engine-meta-agent/.agentlas/routing-card.json"
   ".agentlas/routing-card.json:gemini/extension/.agentlas/routing-card.json"
@@ -77,6 +80,7 @@ skill_mirrors=(
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-call.md:.claude/commands/hep-call.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-upload.md:.claude/commands/hep-upload.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-connect.md:.claude/commands/hep-connect.md"
+  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-storm.md:.claude/commands/hep-storm.md"
   "gemini/extension/commands/hep-build.toml:.gemini/commands/hep-build.toml"
   "gemini/extension/commands/hep-network.toml:.gemini/commands/hep-network.toml"
   "gemini/extension/commands/hep-cloud.toml:.gemini/commands/hep-cloud.toml"
@@ -84,6 +88,7 @@ skill_mirrors=(
   "gemini/extension/commands/hep-browser.toml:.gemini/commands/hep-browser.toml"
   "gemini/extension/commands/hep-call.toml:.gemini/commands/hep-call.toml"
   "gemini/extension/commands/hep-upload.toml:.gemini/commands/hep-upload.toml"
+  "gemini/extension/commands/hep-storm.toml:.gemini/commands/hep-storm.toml"
   "antigravity/workflows/hep-build.md:.agents/workflows/hep-build.md"
   "antigravity/workflows/hep-network.md:.agents/workflows/hep-network.md"
   "antigravity/workflows/hep-cloud.md:.agents/workflows/hep-cloud.md"
@@ -91,6 +96,7 @@ skill_mirrors=(
   "antigravity/workflows/hep-browser.md:.agents/workflows/hep-browser.md"
   "antigravity/workflows/hep-call.md:.agents/workflows/hep-call.md"
   "antigravity/workflows/hep-upload.md:.agents/workflows/hep-upload.md"
+  "antigravity/workflows/hep-storm.md:.agents/workflows/hep-storm.md"
 )
 
 drift=0

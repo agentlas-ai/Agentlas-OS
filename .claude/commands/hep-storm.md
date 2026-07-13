@@ -23,12 +23,27 @@ stormed.
 
 Raw arguments: `$ARGUMENTS`
 
+## Core-owned Goal + UltraCode harness
+
+Every result includes `execution_harness`. Apply
+`execution_harness.system_prompt` **verbatim** before planning or executing any
+packet, and retain its `prompt_sha256` in the goal ledger. Do not redefine,
+summarize, or replace Goal mode or UltraCode mode in this Claude Code adapter. If
+live session JSON is available, expose it as `AGENTLAS_SESSION_INVENTORY`;
+otherwise use Core's explicit `host:primary` fallback and do not invent workers
+or models.
+With no external executor, `status: materialized` plus
+`final_gate.can_report_success: false` is the expected handoff to Claude Code's
+native tools, never a completed run.
+
 ## 1. Resolve the runner and materialize the execution fabric
 
 The Stormbreaker engine routes the goal and materializes a pipeline fabric
 (packets, parallel groups, dependency gates, goal loops, a final gate, and a
 resumable journal). In an agentic runtime **you are the executor** — the engine
 gives you the verified plan; you carry it out with your own tools.
+
+1. Find the first executable Hephaestus runner:
 
 ```bash
 RUNNER=""
@@ -38,7 +53,8 @@ for candidate in \
   "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
   "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
   "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
-  "./bin/hephaestus"
+  "./bin/hephaestus" \
+  "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
 do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
@@ -56,11 +72,11 @@ fi
 # Route + materialize the pipeline fabric for THIS goal. No --executor-command:
 # the host model (you) executes each packet natively. --research-evidence grounds
 # plan/research packets with Research Engine receipts.
-FABRIC="$("$RUNNER" hep-storm "$ARGUMENTS" --research-evidence)"
+FABRIC="$("$RUNNER" hep-storm "$ARGUMENTS" --research-evidence --runtime claude-code)"
 printf '%s\n' "$FABRIC"
 ```
 
-Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
+2. Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
 auto-materializes a full fabric for a **pipeline**; other actions still start a
 storm, just with the workforce the router chose:
 

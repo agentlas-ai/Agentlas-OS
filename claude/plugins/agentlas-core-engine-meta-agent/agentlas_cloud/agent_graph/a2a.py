@@ -221,7 +221,7 @@ def export_agent_card(project_root: str | Path = ".", agent_id: str | None = Non
         "protocolVersion": "1.0",
         "name": str(target.get("name") or target_id),
         "description": f"Agentlas agent ({target_id})",
-        "version": "1.1.19",
+        "version": "1.1.20",
         "capabilities": {"streaming": False, "pushNotifications": False},
         "defaultInputModes": ["text"],
         "defaultOutputModes": ["text"],

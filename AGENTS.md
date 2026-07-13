@@ -25,6 +25,10 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
 - Stormbreaker robust execution contract: `docs/robustness-protocol.md`,
   `docs/robustness-eval.md`, `schemas/robustness-eval-result.schema.json`,
   `benchmarks/robustness/`, and `scripts/score-robustness-eval.py`.
+- Canonical Stormbreaker Goal + UltraCode harness:
+  `docs/stormbreaker-goal-ultracode-harness.md`,
+  `agentlas_cloud/networking/stormbreaker_harness.py`, and
+  `schemas/stormbreaker-goal-ultracode-harness.schema.json`.
 - Builder quality gate: `docs/builder-interview-research-gate.md`,
   `docs/builder-quality-research-basis.md`,
   `templates/builder-interview.md.tpl`, `templates/research-sources.md.tpl`,

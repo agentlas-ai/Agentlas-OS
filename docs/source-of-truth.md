@@ -27,6 +27,8 @@ This repository owns:
   resolution, and MCP requirement/policy contracts;
 - public parent-AI model allocation decision and prompt-free allocation receipt
   contracts; hosts own exact provider execution but must enforce these bounds;
+- the canonical Stormbreaker Goal + UltraCode execution harness, prompt digest,
+  packet delivery, bounded verification loop, and no-fake-pass final gate;
 - public skill lifecycle registry contract for export-only candidate metadata;
 - public runtime adapters;
 - public-safe schemas, templates, and verification scripts.
@@ -66,6 +68,7 @@ These files are the public contract surface:
 - `docs/agent-experience-assets.md`
 - `docs/mcp-build-resolution.md`
 - `docs/model-allocation.md`
+- `docs/stormbreaker-goal-ultracode-harness.md`
 - `docs/skill-lifecycle-promotion.md`
 - `docs/super-ontology-candidate-contract.md`
 - `.agentlas/mode-map.json`
@@ -130,6 +133,7 @@ These files are the public contract surface:
 - `schemas/run-receipt.schema.json`
 - `schemas/model-allocation-decision.schema.json`
 - `schemas/model-allocation-receipt.schema.json`
+- `schemas/stormbreaker-goal-ultracode-harness.schema.json`
 - `schemas/mcp-requirement.schema.json`
 - `schemas/mcp-policy.schema.json`
 - `schemas/rental-resolution-receipt.schema.json`
@@ -193,6 +197,8 @@ The following behaviors are public contracts in this repo:
   Curator decision ledgers.
 - exact-release AgentDefinition/ExperiencePack/AgentVariant identities, verified
   replay-safe receipts, and system-global-first MCP resolution policy.
+- the Core-owned Stormbreaker Goal + UltraCode prompt and digest consumed
+  verbatim by every host adapter.
 
 The following remain implementation-specific and must not be copied here as
 product code:

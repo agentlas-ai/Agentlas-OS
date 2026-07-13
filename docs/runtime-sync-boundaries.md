@@ -187,6 +187,12 @@ The following formerly runtime-owned behaviors are now public contracts:
    task difficulty from hardcoded request keywords. Missing or invalid parent
    decisions preserve the current host model with an explicit fallback receipt;
    they never silently fan every child out to a flagship model.
+10. Stormbreaker Goal + UltraCode harness: see
+    `docs/stormbreaker-goal-ultracode-harness.md`. Core returns one canonical
+    prompt and SHA-256 in every `hep-storm` result and packet contract. Hosts
+    apply it verbatim and supply only host-specific session inventory, tools,
+    and permission enforcement. Materialization is a handoff state, never a
+    successful final gate.
 
 These are contract-level syncs. They do not move hosted billing, account state,
 private storage, or local Electron implementation into public core.

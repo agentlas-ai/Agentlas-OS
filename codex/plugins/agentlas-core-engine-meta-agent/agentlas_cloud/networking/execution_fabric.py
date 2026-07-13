@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from ..model_allocation import infer_inventory_tier, resolve_model_allocation
+from .stormbreaker_harness import goal_ultracode_harness, harness_reference
 
 
 DEFAULT_SUPPORTED_FAMILIES = ("codex", "claude", "glm", "deepseek", "gemini", "qwen", "ollama", "host")
@@ -205,6 +206,7 @@ def build_execution_fabric(
     """Return a Stormbreaker work-packet contract for a routed pipeline."""
 
     sessions = normalize_session_inventory(session_inventory)
+    execution_harness = goal_ultracode_harness()
     session_loads: dict[str, int] = {}
     packets: list[dict[str, Any]] = []
     produced_by_kind: dict[str, str] = {}
@@ -263,6 +265,7 @@ def build_execution_fabric(
                     "do not pass raw local memory or private prompts to external sessions",
                     "host runtime gates real publish/delete/payment/submit actions at execution time",
                 ],
+                "execution_harness": harness_reference(),
                 "required_for_final_gate": True,
             }
         )
@@ -271,8 +274,9 @@ def build_execution_fabric(
 
     groups = _group_packets(packets)
     return {
-        "fabric_version": "stormbreaker.execution_fabric.v2",
-        "mode": "parallel_when_independent",
+        "fabric_version": "stormbreaker.execution_fabric.v3",
+        "mode": "stormbreaker-goal-ultracode",
+        "execution_harness": execution_harness,
         "pipeline_id": pipeline_id,
         "sessions": sessions,
         "packets": packets,

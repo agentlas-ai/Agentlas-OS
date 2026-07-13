@@ -22,6 +22,14 @@ multi-step research, data/report generation — anything with files, tools, test
 or external verification. Trivial questions should be answered directly, not
 stormed. Also triggered by `@Hephaestus storm <goal>`.
 
+## Core-owned Goal + UltraCode harness
+
+Every result includes `execution_harness`. Apply
+`execution_harness.system_prompt` verbatim before planning or executing packets,
+retain its `prompt_sha256`, and never redefine Goal mode or UltraCode mode in
+this adapter. Pass live session JSON with `AGENTLAS_SESSION_INVENTORY` when the
+host provides it; otherwise use Core's explicit `host:primary` fallback.
+
 ## 1. Resolve the runner and materialize the execution fabric
 
 The Stormbreaker engine routes the goal and materializes a pipeline fabric

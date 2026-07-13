@@ -23,6 +23,19 @@ stormed.
 
 Raw arguments: `$ARGUMENTS`
 
+## Core-owned Goal + UltraCode harness
+
+Every result includes `execution_harness`. Apply
+`execution_harness.system_prompt` **verbatim** before planning or executing any
+packet, and retain its `prompt_sha256` in the goal ledger. Do not redefine,
+summarize, or replace Goal mode or UltraCode mode in this Claude Code adapter. If
+live session JSON is available, expose it as `AGENTLAS_SESSION_INVENTORY`;
+otherwise use Core's explicit `host:primary` fallback and do not invent workers
+or models.
+With no external executor, `status: materialized` plus
+`final_gate.can_report_success: false` is the expected handoff to Claude Code's
+native tools, never a completed run.
+
 ## 1. Resolve the runner and materialize the execution fabric
 
 The Stormbreaker engine routes the goal and materializes a pipeline fabric
@@ -59,7 +72,7 @@ fi
 # Route + materialize the pipeline fabric for THIS goal. No --executor-command:
 # the host model (you) executes each packet natively. --research-evidence grounds
 # plan/research packets with Research Engine receipts.
-FABRIC="$("$RUNNER" hep-storm "$ARGUMENTS" --research-evidence)"
+FABRIC="$("$RUNNER" hep-storm "$ARGUMENTS" --research-evidence --runtime claude-code)"
 printf '%s\n' "$FABRIC"
 ```
 

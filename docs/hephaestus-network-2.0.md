@@ -158,18 +158,23 @@ Use `docs/robustness-protocol.md` for the execution contract after routing and
 
 For `pipeline` decisions, the returned JSON includes `execution_fabric`:
 required work packets, dependency groups, session hints, and a resume/final-gate
-policy. `hep-storm` consumes that fabric, launches local packet workers
+policy. The fabric and every `hep-storm` result also include the canonical
+`execution_harness`; hosts must apply its `system_prompt` verbatim and retain
+its `prompt_sha256` instead of redefining Goal mode or UltraCode mode.
+`hep-storm` consumes that fabric, launches local packet workers
 by parallel group, records per-packet receipts, and blocks a
 success claim until the required packet list is complete. External Codex,
 Claude, GLM, DeepSeek, Gemini, or local-model sessions are attached through an
 explicit executor adapter (`--executor-command`) or host runtime integration;
-without an executor the runner only materializes auditable handoff artifacts.
+without an executor the runner only materializes auditable handoff artifacts,
+returns `status: materialized`, and keeps `final_gate.can_report_success` false.
 Use `--background` when the product surface should return immediately while the
 runner completes packets and writes `.agentlas/stormbreaker/background/<run_id>/result.json`.
 Terminal `hep-network` uses this runner automatically for decisions that
 already contain a runnable `execution_fabric`; non-runnable Hub candidates,
 clarify results, and single-agent routes are returned as routing decisions.
-The runner is elastic but bounded: pass `--session-inventory` to advertise
+The runner is elastic but bounded: pass `--session-inventory` or set
+`AGENTLAS_SESSION_INVENTORY` to advertise
 available Codex/Claude/GLM/DeepSeek/Gemini/local sessions and `--max-workers`
 to cap concurrent packet workers. Hephaestus never starts an unbounded swarm.
 

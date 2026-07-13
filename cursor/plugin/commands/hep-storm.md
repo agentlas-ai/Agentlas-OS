@@ -14,6 +14,15 @@ automations, debugging, multi-step research, data/report generation — anything
 with files, tools, tests, or external verification. Trivial questions should be
 answered directly, not stormed.
 
+## Core-owned Goal + UltraCode harness
+
+Every result includes `execution_harness`. Apply
+`execution_harness.system_prompt` verbatim before planning or executing packets,
+retain its `prompt_sha256`, and never redefine Goal mode or UltraCode mode in
+this Cursor adapter. Pass live session JSON with
+`AGENTLAS_SESSION_INVENTORY` when available; otherwise use Core's explicit
+`host:primary` fallback.
+
 Follow the `hephaestus-network` skill exactly to resolve the runner: first run
 its app-host auto-update preflight inside Cursor (no separate terminal prompt to
 the user), then use `~/.agentlas/runtime/current/bin/hephaestus`,

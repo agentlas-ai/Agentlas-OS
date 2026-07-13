@@ -21,6 +21,15 @@ stormed.
 Raw arguments:
 {{args}}
 
+## Core-owned Goal + UltraCode harness
+
+Every result includes `execution_harness`. Apply
+`execution_harness.system_prompt` verbatim before planning or executing packets,
+retain its `prompt_sha256`, and never redefine Goal mode or UltraCode mode in
+this Gemini adapter. Pass live session JSON with
+`AGENTLAS_SESSION_INVENTORY` when available; otherwise use Core's explicit
+`host:primary` fallback.
+
 ## 1. Resolve the runner and materialize the execution fabric
 
 The Stormbreaker engine routes the goal and materializes a pipeline fabric
@@ -38,7 +47,7 @@ Then route + materialize the pipeline fabric for THIS goal. No
 `--executor-command`: the host model (you) executes each packet natively.
 `--research-evidence` grounds plan/research packets with Research Engine
 receipts:
-`hephaestus hep-storm "{{args}}" --research-evidence`
+`hephaestus hep-storm "{{args}}" --research-evidence --runtime gemini`
 
 Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
 auto-materializes a full fabric for a **pipeline**; other actions still start a
