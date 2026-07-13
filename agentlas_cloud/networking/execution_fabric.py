@@ -7,13 +7,12 @@ across active model sessions while keeping Stormbreaker's final gate honest.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping
 
-from ..model_allocation import infer_inventory_tier, resolve_model_allocation
+from ..model_allocation import resolve_model_allocation
 from .stormbreaker_harness import goal_ultracode_harness, harness_reference
 
-
-DEFAULT_SUPPORTED_FAMILIES = ("codex", "claude", "glm", "deepseek", "gemini", "qwen", "ollama", "host")
 
 STAGE_CAPABILITY_HINTS: dict[str, tuple[str, ...]] = {
     "plan": ("planning", "requirements", "research", "architecture"),
@@ -22,12 +21,15 @@ STAGE_CAPABILITY_HINTS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _family_from_text(text: str) -> str:
-    lowered = text.lower()
-    for family in DEFAULT_SUPPORTED_FAMILIES:
-        if family in lowered:
-            return family
-    return "host"
+def _family_from_session(raw: Any, session_id: str) -> str:
+    """Preserve host-advertised provider identity without a model allowlist."""
+
+    if isinstance(raw, Mapping):
+        advertised = str(raw.get("family") or raw.get("provider") or "").strip().lower()
+        if advertised:
+            return advertised
+    prefix = re.split(r"[:/@-]", session_id.strip().lower(), maxsplit=1)[0]
+    return prefix if re.fullmatch(r"[a-z0-9][a-z0-9._]{1,63}", prefix) else "host"
 
 
 def _as_capabilities(value: Any) -> list[str]:
@@ -91,7 +93,7 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
             max_parallel = int(raw.get("max_parallel", 1)) if isinstance(raw, Mapping) else 1
         except (TypeError, ValueError):
             max_parallel = 1
-        family = _family_from_text(f"{session_id} {model}")
+        family = _family_from_session(raw, session_id)
         sessions.append(
             {
                 "session_id": session_id,
@@ -100,11 +102,7 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
                 "trust": trust if trust in {"host", "local", "approved_external", "untrusted"} else "approved_external",
                 "capabilities": capabilities,
                 "max_parallel": max(1, max_parallel),
-                "tier": (
-                    str(raw.get("tier")).lower()
-                    if isinstance(raw, Mapping) and raw.get("tier")
-                    else infer_inventory_tier(model)
-                ),
+                "tier": str(raw.get("tier")).lower() if isinstance(raw, Mapping) and raw.get("tier") else None,
                 "supported_efforts": (
                     list(raw.get("supported_efforts") or [])
                     if isinstance(raw, Mapping)
@@ -124,16 +122,12 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
 
 
 def _session_score(session: dict[str, Any], stage: str) -> int:
+    """Score declared capabilities and trust only, never provider/model names."""
+
     capabilities = set(session.get("capabilities") or [])
     hints = set(STAGE_CAPABILITY_HINTS.get(stage, ()))
     score = len(capabilities & hints) * 4
-    if session.get("family") in {"codex", "claude", "glm", "deepseek"}:
-        score += 2
     if session.get("trust") in {"host", "local"}:
-        score += 1
-    if stage == "verify" and session.get("family") in {"deepseek", "glm", "claude"}:
-        score += 1
-    if stage == "build" and session.get("family") in {"codex", "qwen", "claude"}:
         score += 1
     return score
 
@@ -151,7 +145,7 @@ def _choose_session(
     eligible.sort(
         key=lambda session: (
             -_session_score(session, stage),
-            session_loads.get(str(session["session_id"]), 0),
+            session_loads.get(str(session["session_id"]), 0) / max(1, int(session.get("max_parallel") or 1)),
             str(session["session_id"]),
         )
     )

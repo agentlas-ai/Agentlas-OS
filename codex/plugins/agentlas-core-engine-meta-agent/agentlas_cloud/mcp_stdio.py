@@ -18,7 +18,7 @@ import sys
 from typing import Any, Mapping
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.23"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.24"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -274,6 +274,31 @@ TOOLS: list[dict[str, Any]] = [
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
+    from .project_bootstrap import ensure_project
+
+    bootstrap: dict[str, Any] | None = None
+    if name in {
+        "hephaestus_route",
+        "hephaestus_cloud_search",
+        "hephaestus_search",
+        "hephaestus_call",
+        "hephaestus_hub_invoke",
+    }:
+        project_dir = arguments.get("project_dir", ".")
+        try:
+            bootstrap = ensure_project(project_dir, reason=f"mcp:{name}")
+        except (OSError, TimeoutError, ValueError) as exc:
+            bootstrap = {
+                "action": "project_bootstrap",
+                "status": "skipped",
+                "reason": f"mcp:{name}",
+                "detail": str(exc),
+            }
+
+    def with_bootstrap(result: dict[str, Any]) -> dict[str, Any]:
+        if bootstrap is not None:
+            result["project_bootstrap"] = bootstrap
+        return result
 
     host_model_policy: dict[str, Any] = {}
     if name == "hephaestus_route":
@@ -297,8 +322,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 no_open=os.environ.get("HEPHAESTUS_NETWORK_GUI_NO_OPEN") == "1",
             )
             if shortcut.get("action") != "no_local_gui_shortcut":
-                return shortcut
-        return route_request(
+                return with_bootstrap(shortcut)
+        return with_bootstrap(route_request(
             arguments["request"],
             project_dir=arguments.get("project_dir", "."),
             runtime="mcp",
@@ -311,38 +336,38 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             # Cost ceilings and pins are host policy, never caller-controlled
             # MCP arguments. Unknown legacy arguments are intentionally ignored.
             model_allocation_policy=host_model_policy or None,
-        )
+        ))
     if name == "hephaestus_cloud_search":
         # Owner-scoped: scope="cloud" implies hub_only inside route_request and
         # queries only the signed-in user's OWN cloud packages (보관함).
-        return route_request(
+        return with_bootstrap(route_request(
             arguments["request"],
             project_dir=arguments.get("project_dir", "."),
             runtime="mcp",
             use_hub=True,
             hub_approved=False,
             scope="cloud",
-        )
+        ))
     if name == "hephaestus_search":
         from .networking import search_agents
 
-        return search_agents(
+        return with_bootstrap(search_agents(
             arguments["request"],
             project_dir=arguments.get("project_dir", "."),
             runtime="mcp",
             limit=int(arguments.get("limit") or 10),
-        )
+        ))
     if name == "hephaestus_call":
         from .networking import call_agents
 
-        return call_agents(
+        return with_bootstrap(call_agents(
             arguments.get("agents") or [],
             str(arguments.get("context") or ""),
             project_dir=arguments.get("project_dir", "."),
             runtime="mcp",
             version=str(arguments.get("version") or "latest"),
             local_inventory=arguments.get("local_inventory") or [],
-        )
+        ))
     if name == "hephaestus_hub_invoke":
         from .networking.hub_invocation import invoke_hub_agent
 
@@ -355,13 +380,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             hub_only=True,
         )
         if decision.get("action") != "hub_candidates" and not arguments.get("slug"):
-            return {
+            return with_bootstrap({
                 "action": "hub_invoke",
                 "status": "routing_not_ready",
                 "routing_decision": decision,
                 "detail": "Hub invocation requires a Hub-approved hub_only route that returns hub_candidates.",
-            }
-        return invoke_hub_agent(
+            })
+        return with_bootstrap(invoke_hub_agent(
             arguments["request"],
             slug=arguments.get("slug"),
             hub_decision=decision,
@@ -369,7 +394,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             memory_root=arguments.get("memory_root"),
             version=str(arguments.get("version") or "latest"),
             local_inventory=arguments.get("local_inventory") or [],
-        )
+        ))
     if name == "hephaestus_network_status":
         return network_status()
     if name == "agentlas_auth_status":

@@ -32,6 +32,22 @@ RESEARCH_SEARCH_PROVIDER_HINTS = {
 AGENTLAS_BROWSER_MODULE = "browser.agent_cli"
 
 
+def _auto_ensure_project(project: str | Path, reason: str) -> dict[str, Any]:
+    """Best-effort host hook; an unsafe/non-project cwd never breaks routing."""
+
+    from .project_bootstrap import ensure_project
+
+    try:
+        return ensure_project(project, reason=reason)
+    except (OSError, TimeoutError, ValueError) as exc:
+        return {
+            "action": "project_bootstrap",
+            "status": "skipped",
+            "reason": reason,
+            "detail": str(exc),
+        }
+
+
 def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("query", nargs="?", help="Natural-language pipeline request")
     parser.add_argument("--decision-file", default=None, help="Run an existing route decision JSON instead of routing a query")
@@ -145,6 +161,15 @@ def main(argv: list[str] | None = None) -> int:
     plugins_resolve.add_argument("query")
     plugins_resolve.add_argument("--project", default=".")
     plugins_resolve.add_argument("--no-hub", action="store_true", help="Skip the Agentlas Hub query (local scan only)")
+
+    project_cmd = sub.add_parser("project", help="Canonical local project bootstrap shared by every Agentlas host")
+    project_sub = project_cmd.add_subparsers(dest="project_command", required=True)
+    project_ensure = project_sub.add_parser("ensure", help="Create or repair missing local Agentlas project state")
+    project_ensure.add_argument("--project", default=".")
+    project_ensure.add_argument("--reason", default="explicit-project-ensure")
+    project_ensure.add_argument("--refresh-code-map", action="store_true")
+    project_status = project_sub.add_parser("status", help="Inspect bootstrap and privacy state without writing")
+    project_status.add_argument("--project", default=".")
 
     network = sub.add_parser("network", help="Hephaestus Network 2.0 (~/.agentlas/networking)")
     network_sub = network.add_subparsers(dest="network_command", required=True)
@@ -600,6 +625,21 @@ def main(argv: list[str] | None = None) -> int:
             return emit(scan_local_plugins(args.project))
         if args.plugins_command == "resolve":
             return emit(resolve_plugins(args.query, args.project, use_hub=not args.no_hub))
+    if args.command == "project":
+        from .project_bootstrap import ensure_project, project_status
+
+        try:
+            if args.project_command == "ensure":
+                return emit(
+                    ensure_project(
+                        args.project,
+                        reason=args.reason,
+                        force_code_map=args.refresh_code_map,
+                    )
+                )
+            return emit(project_status(args.project))
+        except (OSError, TimeoutError, ValueError) as exc:
+            return emit({"action": "project_bootstrap", "status": "error", "detail": str(exc)}) or 2
     if args.command == "network":
         from . import networking
 
@@ -889,14 +929,15 @@ def main(argv: list[str] | None = None) -> int:
 
         maybe_auto_update()
         init_networking(networking_home())
-        return emit(
-            search_agents(
-                args.query,
-                project_dir=args.project,
-                runtime=args.runtime,
-                limit=args.limit,
-            )
+        bootstrap = _auto_ensure_project(args.project, "hephaestus-search")
+        result = search_agents(
+            args.query,
+            project_dir=args.project,
+            runtime=args.runtime,
+            limit=args.limit,
         )
+        result["project_bootstrap"] = bootstrap
+        return emit(result)
     if args.command == "call":
         from .networking import call_agents, init_networking
         from .networking.bootstrap import networking_home
@@ -907,16 +948,17 @@ def main(argv: list[str] | None = None) -> int:
         context = args.context_text or " ".join(args.context).strip()
         if not context:
             return emit({"action": "agent_call", "status": "error", "error": "context is required"}) or 2
-        return emit(
-            call_agents(
-                args.agents,
-                context,
-                project_dir=args.project,
-                runtime=args.runtime,
-                version=args.version,
-                local_inventory=parse_local_inventory(args.local_inventory),
-            )
+        bootstrap = _auto_ensure_project(args.project, "hephaestus-call")
+        result = call_agents(
+            args.agents,
+            context,
+            project_dir=args.project,
+            runtime=args.runtime,
+            version=args.version,
+            local_inventory=parse_local_inventory(args.local_inventory),
         )
+        result["project_bootstrap"] = bootstrap
+        return emit(result)
     if args.command == "hep-browser":
         return _run_hep_browser(args)
     if args.command == "route":
@@ -925,6 +967,7 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.stormbreaker_runner import run_stormbreaker_decision
 
         maybe_auto_update()
+        bootstrap = _auto_ensure_project(args.project, "hephaestus-route")
         home = networking_home()
         init_networking(home)
         session_inventory = None
@@ -956,10 +999,13 @@ def main(argv: list[str] | None = None) -> int:
             session_inventory=session_inventory,
             work_brief=work_brief,
         )
+        decision["project_bootstrap"] = bootstrap
         if args.auto_run and not args.plan_only:
             if decision.get("action") == "pipeline" and isinstance(decision.get("execution_fabric"), dict):
                 if args.background:
-                    return emit(_start_stormbreaker_background(args, decision=decision))
+                    background_result = _start_stormbreaker_background(args, decision=decision)
+                    background_result["project_bootstrap"] = bootstrap
+                    return emit(background_result)
                 result = run_stormbreaker_decision(
                     decision,
                     home=home,
@@ -1031,6 +1077,7 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.stormbreaker_runner import run_stormbreaker_decision, run_stormbreaker_query
 
         maybe_auto_update()
+        bootstrap = _auto_ensure_project(args.project, "hephaestus-storm")
         home = networking_home()
         init_networking(home)
         session_inventory = None
@@ -1048,7 +1095,9 @@ def main(argv: list[str] | None = None) -> int:
             if not args.query and not args.decision_file:
                 emit({"action": "stormbreaker_run", "status": "error", "error": "query or --decision-file is required"})
                 return 2
-            return emit(_start_stormbreaker_background(args))
+            background_result = _start_stormbreaker_background(args)
+            background_result["project_bootstrap"] = bootstrap
+            return emit(background_result)
 
         if args.decision_file:
             try:
@@ -1098,6 +1147,7 @@ def main(argv: list[str] | None = None) -> int:
                 research_follow_results=args.research_follow_results,
                 research_variants=args.research_variant,
             )
+        result["project_bootstrap"] = bootstrap
         emit(result)
         if args.output_file:
             from .networking.bootstrap import atomic_write_json
@@ -1791,7 +1841,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.23",
+            "version": "1.1.24",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

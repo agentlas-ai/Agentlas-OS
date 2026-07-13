@@ -184,6 +184,7 @@ Usage:
   bin/hephaestus global install|status|remove [--target codex] [--target claude] [--target antigravity]
   bin/hephaestus plugins list [--project <dir>]
   bin/hephaestus plugins resolve "<need>" [--project <dir>] [--no-hub]
+  bin/hephaestus project ensure|status [--project <dir>]
   bin/hephaestus meta-agent "<request>"
   bin/hephaestus hep-build "<request>"             # build/create/package surface
   bin/hephaestus build "<request>"                 # shorthand for hep-build
@@ -306,7 +307,7 @@ Open Claude Code or Codex with the installed plugin, then run:
 /hep-build $request
 EOF
     ;;
-	  network|cards|ao|route|mcp|local-gui|package|publish)
+	  network|cards|ao|route|mcp|local-gui|package|publish|project)
 	    run_python_module agentlas_cloud "$command" "$@"
 	    ;;
 	  hep-network|hephaestus-network|hephaests-network)

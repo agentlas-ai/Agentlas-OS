@@ -1,4 +1,4 @@
-"""Host-neutral model allocation contract and deterministic safety resolver.
+"""Host-neutral model allocation contract and policy safety resolver.
 
 Agentlas Core does not call an LLM.  A parent/leader model authors the workload
 decision, while this module validates that decision against the host's actual
@@ -24,17 +24,6 @@ EFFORT_RANK = {effort: index for index, effort in enumerate(EFFORTS)}
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$")
 HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
-MODEL_CLASS_ALIASES = {
-    "haiku": "economy",
-    "luna": "economy",
-    "sonnet": "balanced",
-    "tera": "balanced",
-    "terra": "balanced",
-    "opus": "frontier",
-    "sol": "frontier",
-}
-
-
 def _text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -50,19 +39,7 @@ def _bounded_int(value: Any, *, default: int, minimum: int, maximum: int | None 
 
 def normalize_tier(value: Any) -> str | None:
     normalized = _text(value).lower()
-    if normalized in TIERS:
-        return normalized
-    return MODEL_CLASS_ALIASES.get(normalized)
-
-
-def infer_inventory_tier(model_id: str) -> str | None:
-    """Infer only provider model class, never workload difficulty."""
-
-    lowered = model_id.lower()
-    for alias, tier in MODEL_CLASS_ALIASES.items():
-        if alias in lowered:
-            return tier
-    return None
+    return normalized if normalized in TIERS else None
 
 
 def normalize_effort(value: Any) -> str | None:
@@ -128,7 +105,7 @@ def validate_allocation_decision(raw: Mapping[str, Any] | None) -> tuple[dict[st
     if not isinstance(selection_raw, Mapping):
         selection_raw = {}
         issues.append("selection_not_object")
-    tier = normalize_tier(selection_raw.get("tier") or selection_raw.get("modelClass"))
+    tier = normalize_tier(selection_raw.get("tier"))
     effort = normalize_effort(selection_raw.get("effort"))
     if tier is None:
         issues.append("invalid_tier")
@@ -198,7 +175,7 @@ def _normalize_inventory(raw_inventory: list[Any] | None) -> list[dict[str, Any]
         model_id = _text(raw.get("model") or raw.get("model_id") or raw.get("id"))
         if not model_id:
             continue
-        tier = normalize_tier(raw.get("tier")) or infer_inventory_tier(model_id)
+        tier = normalize_tier(raw.get("tier") or raw.get("cost_tier") or raw.get("costTier"))
         raw_efforts = raw.get("supported_efforts")
         if not isinstance(raw_efforts, list):
             raw_efforts = list(EFFORTS)
@@ -257,7 +234,8 @@ def resolve_model_allocation(
     policy = dict(policy or {})
     current_model_id = _text(policy.get("currentModelId"))
     pinned_model_id = _text(policy.get("pinnedModelId"))
-    max_tier = normalize_tier(policy.get("maxTier")) or "frontier"
+    configured_max_tier = normalize_tier(policy.get("maxTier"))
+    max_tier = configured_max_tier or "frontier"
     max_effort = normalize_effort(policy.get("maxEffort")) or "max"
     required_capabilities = {str(item).lower() for item in (policy.get("requiredCapabilities") or [])}
 
@@ -302,32 +280,36 @@ def resolve_model_allocation(
         )
         exact = decision["selection"]["exactModelId"]
         if exact:
-            selected = next(
-                (item for item in compatible_inventory if item["model_id"] == exact and item["tier"] in tiers),
+            exact_candidate = next((item for item in compatible_inventory if item["model_id"] == exact), None)
+            if exact_candidate is None:
+                reasons.append("requested_exact_model_unavailable")
+            elif exact_candidate["tier"] is None and configured_max_tier is not None:
+                reasons.append("requested_exact_model_cost_tier_unknown")
+            elif exact_candidate["tier"] is not None and TIER_RANK[exact_candidate["tier"]] > TIER_RANK[max_tier]:
+                reasons.append("requested_exact_model_exceeds_cost_policy")
+            elif exact_candidate["tier"] is not None and exact_candidate["tier"] not in tiers:
+                reasons.append("requested_exact_model_tier_mismatch")
+            else:
+                selected = exact_candidate
+        else:
+            tier_candidates = [item for item in compatible_inventory if item["tier"] in tiers]
+            current_candidate = next(
+                (item for item in tier_candidates if item["model_id"] == current_model_id),
                 None,
             )
-            if selected is None:
-                reasons.append("requested_exact_model_unavailable")
-        for tier in tiers:
-            if selected is not None:
-                break
-            tier_candidates = [item for item in compatible_inventory if item["tier"] == tier]
-            tier_candidates.sort(
-                key=lambda item: (
-                    item["model_id"] != current_model_id,
-                    item["provider"],
-                    item["model_id"],
-                    item["session_id"],
-                )
-            )
-            if tier_candidates:
-                selected = tier_candidates[0]
-                if tier != requested_tier:
+            if current_candidate is not None:
+                selected = current_candidate
+                if current_candidate["tier"] != requested_tier:
                     reasons.append("same_policy_fallback_tier_used")
+            elif len(tier_candidates) == 1:
+                selected = tier_candidates[0]
+                reasons.append("unique_live_candidate_used")
+            elif len(tier_candidates) > 1:
+                reasons.append("parent_exact_model_required_for_ambiguous_inventory")
 
     if selected is None:
-        selected = next((item for item in compatible_inventory if item["model_id"] == current_model_id), None)
-        selected = selected or (compatible_inventory[0] if compatible_inventory else None)
+        if decision is None or issues:
+            selected = next((item for item in compatible_inventory if item["model_id"] == current_model_id), None)
         status = "fallback-current" if selected else "unresolved"
         reasons.append("parent_decision_missing_or_invalid" if decision is None or issues else "no_compatible_requested_model")
 

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v1.1.24 - 2026-07-14
+
+- **Every host now receives the same Core-owned project bootstrap on first
+  contact.** Desktop, Terminal, Claude Code, Codex, MCP, Network, Cloud, and
+  Storm initialize the project soul, memory map, code map, ontology, career
+  graph, and privacy-first `.gitignore` contract through one idempotent Core
+  command. Existing project files are merge-only and never overwritten.
+- **Local Agentlas state is private before it is written.** The bootstrap
+  installs managed ignore rules before creating `.agentlas` memory, code-map,
+  ontology, career, Stormbreaker, and pipeline state, and reports already
+  tracked sensitive paths without rewriting the Git index.
+- **Model allocation no longer carries provider- or model-name fallbacks.**
+  The parent AI chooses an exact ID from live host-advertised inventory and the host
+  enforces capability, trust, capacity, explicit pins, and cost constraints;
+  Core does not encode vendor aliases, provider-family preference bonuses, or
+  lexical tie-breaking between ambiguous live candidates.
+
 ## v1.1.23 - 2026-07-13
 
 - **Runtime updates now refresh every installed Storm adapter.** Existing

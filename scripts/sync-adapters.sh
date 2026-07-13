@@ -25,6 +25,7 @@ code_dirs=(
   "career_graph"
   "ontology"
   "agentlas_cloud"
+  "templates"
 )
 
 code_files=(

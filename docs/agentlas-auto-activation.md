@@ -3,25 +3,27 @@
 Agentlas auto-activation is a public contract for local runtimes that want a
 project folder to become an Agentlas-aware workspace.
 
-It is not tied to one desktop app. Any local runtime may implement it with its
-own storage, as long as it preserves the public behavior below.
+It is not tied to one desktop app. Agentlas Core owns the canonical bootstrap;
+Desktop, Terminal, Codex, Claude Code, and MCP hosts call that same Core command
+instead of implementing divergent seeders.
 
 ## Purpose
 
-When a user repeatedly works in the same folder, the runtime should make project
-memory, sitemap/task-bias, PM Soul, and Memory Tickets available automatically.
-One-off folders should stay untouched unless the user explicitly activates them.
+On the first meaningful Agentlas contact with a project folder, the runtime
+makes project memory, sitemap/task-bias, PM Soul, Memory Tickets, the local
+ontology indexes, and a bounded code map available automatically. Unsafe roots
+such as the user's home directory and filesystem root remain untouched.
 
 ## Activation Triggers
 
-A runtime may activate when either condition is true:
+A runtime activates when either condition is true:
 
 - explicit activation: the user asks to activate Agentlas for this folder;
-- repeated use: the same folder is used for meaningful work more than once.
+- first contact: an Agentlas host starts meaningful work in the folder.
 
-The repeated-use threshold should be low enough to preserve continuity but not
-so low that every temporary folder is modified. A common default is the second
-visit.
+The canonical threshold is one meaningful contact. Core installs the managed
+privacy `.gitignore` block before writing local memory or indexes, creates only
+missing files, and never overwrites project content without approval.
 
 ## Files To Create
 

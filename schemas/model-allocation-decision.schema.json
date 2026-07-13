@@ -31,14 +31,14 @@
       "type": "object", "additionalProperties": false,
       "required": ["tier", "effort", "fallbackTiers", "maxEscalations"],
       "properties": {
-        "tier": { "enum": ["economy", "balanced", "frontier", "haiku", "luna", "sonnet", "tera", "terra", "opus", "sol"] },
+        "tier": { "enum": ["economy", "balanced", "frontier"] },
         "modelClass": { "type": ["string", "null"], "maxLength": 32 },
         "effort": { "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
         "exactModelId": { "type": ["string", "null"], "maxLength": 255 },
         "provider": { "type": ["string", "null"], "maxLength": 80 },
         "fallbackTiers": {
           "type": "array", "maxItems": 3, "uniqueItems": true,
-          "items": { "enum": ["economy", "balanced", "frontier", "haiku", "luna", "sonnet", "tera", "terra", "opus", "sol"] }
+          "items": { "enum": ["economy", "balanced", "frontier"] }
         },
         "maxEscalations": { "type": "integer", "minimum": 0, "maximum": 2 }
       }

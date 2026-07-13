@@ -10,14 +10,16 @@ for a folder.
 
 ## Procedure
 
-1. Activate only on explicit user request or repeated meaningful work in the
-   same folder.
-2. Create `.agentlas/` only inside the selected project folder.
-3. Add missing seed files without overwriting existing user content.
-4. Inject relevant project memory into future agent prompts.
-5. Ask workers to emit `## Memory Events` only for durable facts.
-6. Route Memory Events through Memory Tickets and Memory Curator.
-7. Use sitemap/task-bias state to avoid stale or unvalidated surfaces.
+1. On the first meaningful host contact, call
+   `hephaestus project ensure --project <folder>` from Agentlas Core.
+2. Never create project state in the user's home directory or filesystem root.
+3. Install the managed privacy `.gitignore` block before local memory/indexes.
+4. Add missing seed files, ontology/career indexes, and the bounded code map
+   without overwriting existing user content.
+5. Inject relevant project memory into future agent prompts.
+6. Ask workers to emit `## Memory Events` only for durable facts.
+7. Route Memory Events through Memory Tickets and Memory Curator.
+8. Use sitemap/task-bias state to avoid stale or unvalidated surfaces.
 
 ## Minimum Files
 
@@ -30,11 +32,19 @@ for a folder.
 - `.agentlas/skill-trials.jsonl`
 - `.agentlas/curator-decisions.jsonl`
 - `.agentlas/activation.json`
+- `.agentlas/code-map/project-map.json`
+- `.agentlas/ontology-runtime.json`
+- `.agentlas/ontology-runtime.sqlite`
+- `.agentlas/career-graph.json`
+- `.agentlas/career-graph.sqlite`
 
 ## Safety
 
 Never store secrets, raw logs, full transcripts, cookies, private keys, service
 accounts, or payment material in `.agentlas`.
+
+If private files were already tracked before activation, report them as
+`trackedSensitivePaths`; never mutate the user's Git index automatically.
 
 ## Reference
 
