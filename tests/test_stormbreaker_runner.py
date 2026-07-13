@@ -7,7 +7,12 @@ import time
 from argparse import Namespace
 from pathlib import Path
 
-from agentlas_cloud.cli import _stormbreaker_background_process_options, _stormbreaker_child_argv, main
+from agentlas_cloud.cli import (
+    _stormbreaker_background_environment,
+    _stormbreaker_background_process_options,
+    _stormbreaker_child_argv,
+    main,
+)
 from agentlas_cloud.networking import route_request, run_stormbreaker_decision, run_stormbreaker_query
 from agentlas_cloud.research.contracts import ResearchRequest
 from agentlas_cloud.research.loadouts import apply_loadout
@@ -649,6 +654,20 @@ def test_stormbreaker_background_detaches_from_windows_console_signals():
         assert options["startupinfo"].dwFlags & 0x00000001
         assert options["startupinfo"].wShowWindow == 0
     assert _stormbreaker_background_process_options("posix") == {"start_new_session": True}
+
+
+def test_stormbreaker_background_is_not_claimed_by_ci_process_cleanup():
+    env = _stormbreaker_background_environment(
+        {
+            "RUNNER_TRACKING_ID": "github-actions-child",
+            "PATH": "test-path",
+        }
+    )
+
+    assert "RUNNER_TRACKING_ID" not in env
+    assert env["PATH"] == "test-path"
+    assert env["PYTHONUTF8"] == "1"
+    assert env["PYTHONIOENCODING"] == "utf-8"
 
 
 def test_stormbreaker_background_child_keeps_research_options(tmp_path):

@@ -9,7 +9,7 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 from .runtime import AgentlasMockStore, compile_runtime_bundle, read_agent_file, run_setup_wizard, scan_agent_folder
@@ -1600,9 +1600,7 @@ def _start_stormbreaker_background(args: argparse.Namespace, decision: dict[str,
         decision_file = run_dir / "decision.json"
         atomic_write_json(decision_file, decision)
     child_argv = _stormbreaker_child_argv(args, result_file, decision_file=decision_file)
-    env = os.environ.copy()
-    env.setdefault("PYTHONUTF8", "1")
-    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env = _stormbreaker_background_environment()
     process_options = _stormbreaker_background_process_options()
     with stdout_file.open("w", encoding="utf-8") as out, stderr_file.open("w", encoding="utf-8") as err:
         process = subprocess.Popen(
@@ -1647,6 +1645,17 @@ def _stormbreaker_background_process_options(platform_name: str | None = None) -
             options["startupinfo"] = startupinfo
         return options
     return {"start_new_session": True}
+
+
+def _stormbreaker_background_environment(base: Mapping[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ if base is None else base)
+    # GitHub Actions tracks descendants through this marker and can deliver a
+    # cleanup interrupt to a process intentionally launched in the background.
+    # A detached Stormbreaker run must outlive the invoking shell/process.
+    env.pop("RUNNER_TRACKING_ID", None)
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
 
 
 def _stormbreaker_child_argv(args: argparse.Namespace, result_file: Path, decision_file: Path | None = None) -> list[str]:
