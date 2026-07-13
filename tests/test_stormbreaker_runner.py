@@ -7,7 +7,7 @@ import time
 from argparse import Namespace
 from pathlib import Path
 
-from agentlas_cloud.cli import _stormbreaker_child_argv, main
+from agentlas_cloud.cli import _stormbreaker_background_process_options, _stormbreaker_child_argv, main
 from agentlas_cloud.networking import route_request, run_stormbreaker_decision, run_stormbreaker_query
 from agentlas_cloud.research.contracts import ResearchRequest
 from agentlas_cloud.research.loadouts import apply_loadout
@@ -608,6 +608,15 @@ def test_stormbreaker_cli_background_run_writes_result(tmp_path, monkeypatch, ca
     assert result["final_gate"]["can_report_success"] is True
 
 
+def test_stormbreaker_background_detaches_from_windows_console_signals():
+    options = _stormbreaker_background_process_options("nt")
+
+    assert "start_new_session" not in options
+    assert options["creationflags"] & 0x00000008
+    assert options["creationflags"] & 0x00000200
+    assert _stormbreaker_background_process_options("posix") == {"start_new_session": True}
+
+
 def test_stormbreaker_background_child_keeps_research_options(tmp_path):
     args = Namespace(
         query="조사하고 계획해줘",
@@ -695,6 +704,7 @@ def test_hephaestus_stormbreaker_subcommand_runs_pipeline_with_research_prefligh
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
         check=False,
     )

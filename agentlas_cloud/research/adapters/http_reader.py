@@ -59,7 +59,7 @@ class HttpReaderAdapter:
                 ResearchResult.blocked(source_hint, reason=reason),
                 ResearchAttempt(self.module_id, "blocked", f"{reason}:{exc.code}", source_hint, weight=self.weight),
             )
-        except (URLError, TimeoutError, OSError) as exc:
+        except (URLError, TimeoutError, OSError, ValueError) as exc:
             return (
                 None,
                 ResearchAttempt(self.module_id, "error", redacted_exception_reason(exc, max_length=160), source_hint, weight=self.weight),

@@ -87,6 +87,18 @@ def test_research_request_hash_is_stable():
     assert first.request_hash == second.request_hash
 
 
+def test_http_reader_contains_non_ascii_request_target_failure(monkeypatch):
+    def fail_non_ascii_url(self, url):
+        raise UnicodeEncodeError("ascii", url, 8, 9, "ordinal not in range(128)")
+
+    monkeypatch.setattr(HttpReaderAdapter, "_fetch", fail_non_ascii_url)
+    result, attempt = HttpReaderAdapter().read("https://example.com/한글", ResearchRequest(query="read"))
+
+    assert result is None
+    assert attempt.status == "error"
+    assert "UnicodeEncodeError" in attempt.reason
+
+
 def test_research_request_hash_includes_cost_boundary():
     first = ResearchRequest(query="Read", source_hints=["https://example.com"], max_cost={"requests": 1})
     second = ResearchRequest(query="Read", source_hints=["https://example.com"], max_cost={"requests": 2})

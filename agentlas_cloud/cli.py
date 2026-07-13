@@ -1592,6 +1592,7 @@ def _start_stormbreaker_background(args: argparse.Namespace, decision: dict[str,
     env = os.environ.copy()
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
+    process_options = _stormbreaker_background_process_options()
     with stdout_file.open("w", encoding="utf-8") as out, stderr_file.open("w", encoding="utf-8") as err:
         process = subprocess.Popen(
             child_argv,
@@ -1600,7 +1601,7 @@ def _start_stormbreaker_background(args: argparse.Namespace, decision: dict[str,
             stdout=out,
             stderr=err,
             text=True,
-            start_new_session=True,
+            **process_options,
         )
     return {
         "action": "stormbreaker_run",
@@ -1614,6 +1615,17 @@ def _start_stormbreaker_background(args: argparse.Namespace, decision: dict[str,
         "route_receipt_id": decision.get("receipt_id") if decision else None,
         "execution_harness": goal_ultracode_harness(),
     }
+
+
+def _stormbreaker_background_process_options(platform_name: str | None = None) -> dict[str, Any]:
+    """Detach background runs without sharing the Windows console signal group."""
+
+    target = os.name if platform_name is None else platform_name
+    if target == "nt":
+        detached_process = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+        new_process_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        return {"creationflags": detached_process | new_process_group}
+    return {"start_new_session": True}
 
 
 def _stormbreaker_child_argv(args: argparse.Namespace, result_file: Path, decision_file: Path | None = None) -> list[str]:
