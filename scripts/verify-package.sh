@@ -225,6 +225,7 @@ required_files=(
   "agentlas_cloud/runtime.py"
   "agentlas_cloud/experience_contracts.py"
   "agentlas_cloud/model_allocation.py"
+  "agentlas_cloud/project_bootstrap.py"
   "CLAUDE.md"
   "GEMINI.md"
   "gemini/extension/commands/hep-build.toml"

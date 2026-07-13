@@ -310,6 +310,28 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "status": "invalid_host_model_allocation_policy",
                 "detail": f"Fix {MODEL_ALLOCATION_POLICY_ENV} in the MCP server launch environment.",
             }
+
+    bootstrap: dict[str, Any] | None = None
+    if name in {
+        "hephaestus_route",
+        "hephaestus_cloud_search",
+        "hephaestus_search",
+        "hephaestus_call",
+        "hephaestus_hub_invoke",
+    }:
+        from .project_bootstrap import auto_bootstrap_enabled, maybe_ensure_project
+
+        bootstrap = maybe_ensure_project(
+            arguments.get("project_dir", "."),
+            reason=f"mcp:{name}",
+            enabled=auto_bootstrap_enabled(mcp=True),
+        )
+
+    def with_bootstrap(result: dict[str, Any]) -> dict[str, Any]:
+        if bootstrap is not None:
+            result["project_bootstrap"] = bootstrap
+        return result
+
     init_networking(networking_home())
     if name == "hephaestus_route":
         allow_local_routing = bool(arguments.get("allow_local_routing", False))

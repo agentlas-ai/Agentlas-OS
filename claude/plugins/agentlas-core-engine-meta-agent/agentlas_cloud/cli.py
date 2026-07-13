@@ -32,26 +32,26 @@ RESEARCH_SEARCH_PROVIDER_HINTS = {
 AGENTLAS_BROWSER_MODULE = "browser.agent_cli"
 
 
-def _auto_ensure_project(project: str | Path, reason: str) -> dict[str, Any]:
-    """Best-effort host hook; an unsafe/non-project cwd never breaks routing."""
+def _project_bootstrap_receipt(project: str | Path, reason: str, *, requested: bool = False) -> dict[str, Any]:
+    from .project_bootstrap import auto_bootstrap_enabled, maybe_ensure_project
 
-    from .project_bootstrap import ensure_project
-
-    try:
-        return ensure_project(project, reason=reason)
-    except (OSError, TimeoutError, ValueError) as exc:
-        return {
-            "action": "project_bootstrap",
-            "status": "skipped",
-            "reason": reason,
-            "detail": str(exc),
-        }
+    return maybe_ensure_project(
+        project,
+        reason=reason,
+        enabled=requested or auto_bootstrap_enabled(),
+        trusted_target=requested,
+    )
 
 
 def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("query", nargs="?", help="Natural-language pipeline request")
     parser.add_argument("--decision-file", default=None, help="Run an existing route decision JSON instead of routing a query")
     parser.add_argument("--project", default=".")
+    parser.add_argument(
+        "--ensure-project",
+        action="store_true",
+        help="Explicitly install/refresh private .agentlas project state before this run.",
+    )
     parser.add_argument("--runtime", default="terminal")
     parser.add_argument("--no-hub", action="store_true")
     parser.add_argument("--approve-hub", action="store_true", help="Legacy no-op; Hub lookup already uses redacted keywords only")
@@ -268,6 +268,11 @@ def main(argv: list[str] | None = None) -> int:
     route = sub.add_parser("route", help="Route a natural-language request through Agentlas Hub by default")
     route.add_argument("query")
     route.add_argument("--project", default=".")
+    route.add_argument(
+        "--ensure-project",
+        action="store_true",
+        help="Explicitly install/refresh private .agentlas project state before routing.",
+    )
     route.add_argument("--runtime", default="terminal")
     route.add_argument("--no-hub", action="store_true")
     route.add_argument("--approve-hub", action="store_true", help="Legacy no-op; Hub lookup already uses redacted keywords only")
@@ -356,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
     search = sub.add_parser("search", help="Show top owner-cloud and public Hub agent candidates without invoking")
     search.add_argument("query")
     search.add_argument("--project", default=".")
+    search.add_argument("--ensure-project", action="store_true", help="Explicitly bootstrap private project state before search.")
     search.add_argument("--runtime", default="terminal")
     search.add_argument("--limit", type=int, default=10, help="Candidates per section (default 10, max 25)")
 
@@ -364,6 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     call.add_argument("context", nargs="*", help="Task context passed to the named agents")
     call.add_argument("--context", dest="context_text", default=None, help="Context string (alternative to positional context)")
     call.add_argument("--project", default=".")
+    call.add_argument("--ensure-project", action="store_true", help="Explicitly bootstrap private project state before the call.")
     call.add_argument("--runtime", default="terminal")
     call.add_argument("--version", default="latest")
     call.add_argument("--local-inventory", default=None, help="JSON array or comma list of installed plugin names for Hub plugin resolution")
@@ -638,8 +645,14 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
             return emit(project_status(args.project))
-        except (OSError, TimeoutError, ValueError) as exc:
-            return emit({"action": "project_bootstrap", "status": "error", "detail": str(exc)}) or 2
+        except (OSError, TimeoutError, ValueError):
+            return emit(
+                {
+                    "action": "project_bootstrap",
+                    "status": "error",
+                    "detail": "project_bootstrap_failed",
+                }
+            ) or 2
     if args.command == "network":
         from . import networking
 
@@ -929,7 +942,11 @@ def main(argv: list[str] | None = None) -> int:
 
         maybe_auto_update()
         init_networking(networking_home())
-        bootstrap = _auto_ensure_project(args.project, "hephaestus-search")
+        bootstrap = _project_bootstrap_receipt(
+            args.project,
+            "hephaestus-search",
+            requested=args.ensure_project,
+        )
         result = search_agents(
             args.query,
             project_dir=args.project,
@@ -948,7 +965,11 @@ def main(argv: list[str] | None = None) -> int:
         context = args.context_text or " ".join(args.context).strip()
         if not context:
             return emit({"action": "agent_call", "status": "error", "error": "context is required"}) or 2
-        bootstrap = _auto_ensure_project(args.project, "hephaestus-call")
+        bootstrap = _project_bootstrap_receipt(
+            args.project,
+            "hephaestus-call",
+            requested=args.ensure_project,
+        )
         result = call_agents(
             args.agents,
             context,
@@ -967,7 +988,11 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.stormbreaker_runner import run_stormbreaker_decision
 
         maybe_auto_update()
-        bootstrap = _auto_ensure_project(args.project, "hephaestus-route")
+        bootstrap = _project_bootstrap_receipt(
+            args.project,
+            "hephaestus-route",
+            requested=args.ensure_project,
+        )
         home = networking_home()
         init_networking(home)
         session_inventory = None
@@ -1025,6 +1050,7 @@ def main(argv: list[str] | None = None) -> int:
                     "receipt_id": decision.get("receipt_id"),
                     "match_reason": decision.get("match_reason"),
                 }
+                result["project_bootstrap"] = bootstrap
                 emit(result)
                 return 0 if result.get("status") in {"completed", "materialized"} else 1
             decision["auto_run"] = {
@@ -1077,7 +1103,11 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.stormbreaker_runner import run_stormbreaker_decision, run_stormbreaker_query
 
         maybe_auto_update()
-        bootstrap = _auto_ensure_project(args.project, "hephaestus-storm")
+        bootstrap = _project_bootstrap_receipt(
+            args.project,
+            "hephaestus-storm",
+            requested=args.ensure_project,
+        )
         home = networking_home()
         init_networking(home)
         session_inventory = None
@@ -1841,7 +1871,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.25",
+            "version": "1.1.23",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

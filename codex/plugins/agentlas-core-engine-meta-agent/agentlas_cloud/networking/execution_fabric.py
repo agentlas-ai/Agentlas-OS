@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
-from ..model_allocation import resolve_model_allocation
+from ..model_allocation import infer_inventory_tier, resolve_model_allocation
 from .stormbreaker_harness import goal_ultracode_harness, harness_reference
 
 
@@ -26,10 +26,10 @@ def _family_from_session(raw: Any, session_id: str) -> str:
 
     if isinstance(raw, Mapping):
         advertised = str(raw.get("family") or raw.get("provider") or "").strip().lower()
-        if advertised:
+        if re.fullmatch(r"[a-z0-9][a-z0-9._]{0,63}", advertised):
             return advertised
     prefix = re.split(r"[:/@-]", session_id.strip().lower(), maxsplit=1)[0]
-    return prefix if re.fullmatch(r"[a-z0-9][a-z0-9._]{1,63}", prefix) else "host"
+    return prefix if re.fullmatch(r"[a-z0-9][a-z0-9._]{0,63}", prefix) else "host"
 
 
 def _as_capabilities(value: Any) -> list[str]:
@@ -102,7 +102,11 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
                 "trust": trust if trust in {"host", "local", "approved_external", "untrusted"} else "approved_external",
                 "capabilities": capabilities,
                 "max_parallel": max(1, max_parallel),
-                "tier": str(raw.get("tier")).lower() if isinstance(raw, Mapping) and raw.get("tier") else None,
+                "tier": (
+                    str(raw.get("tier")).lower()
+                    if isinstance(raw, Mapping) and raw.get("tier")
+                    else infer_inventory_tier(model)
+                ),
                 "supported_efforts": (
                     list(raw.get("supported_efforts") or [])
                     if isinstance(raw, Mapping)
