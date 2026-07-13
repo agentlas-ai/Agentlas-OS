@@ -20,8 +20,18 @@ ROOT = Path(__file__).resolve().parents[1]
 def native_hephaestus_command(*args: str, shortcut: bool = False) -> list[str]:
     if os.name == "nt":
         wrapper = ROOT / "bin" / "hephaestus.cmd"
-        command_line = subprocess.list2cmdline([str(wrapper), *args])
-        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command_line]
+        wrapper_args = ["hep-storm", *args] if shortcut else list(args)
+        # Keep each token separate so Python applies Windows quoting once. Passing
+        # a pre-joined command as the /c argument makes cmd.exe preserve literal
+        # quotes around Korean goals and paths containing spaces.
+        return [
+            os.environ.get("COMSPEC", "cmd.exe"),
+            "/d",
+            "/c",
+            "call",
+            str(wrapper),
+            *wrapper_args,
+        ]
     wrapper = ROOT / "bin" / ("hep-storm" if shortcut else "hephaestus")
     return [str(wrapper), *args]
 

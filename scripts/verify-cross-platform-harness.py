@@ -66,8 +66,15 @@ def _validate_harness(value: dict[str, Any]) -> None:
 def _wrapper_command() -> list[str]:
     if os.name == "nt":
         wrapper = ROOT / "bin" / "hephaestus.cmd"
-        command_line = subprocess.list2cmdline([str(wrapper), "stormbreaker", "harness"])
-        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command_line]
+        return [
+            os.environ.get("COMSPEC", "cmd.exe"),
+            "/d",
+            "/c",
+            "call",
+            str(wrapper),
+            "stormbreaker",
+            "harness",
+        ]
     return [str(ROOT / "bin" / "hephaestus"), "stormbreaker", "harness"]
 
 

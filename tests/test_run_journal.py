@@ -94,7 +94,10 @@ class RunJournalTests(unittest.TestCase):
     def test_default_journal_path_is_sanitized(self) -> None:
         path = default_journal_path(self.tmp.name, "../danger/run id")
         self.assertTrue(str(path).endswith("dangerrunid.jsonl"))
-        self.assertIn(".agentlas/stormbreaker/journal", str(path))
+        self.assertEqual(
+            path.parent,
+            (Path(self.tmp.name) / ".agentlas" / "stormbreaker" / "journal").resolve(),
+        )
 
 
 class VerifierFirstAndClarificationTests(unittest.TestCase):

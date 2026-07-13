@@ -477,14 +477,30 @@ def write_python_shims(bin_dir: Path, executable: str) -> None:
 def _write_cmd_runner(path: Path) -> None:
     path.write_text(
         '@echo off\r\n'
+        'setlocal\r\n'
         'set "PYTHONUTF8=1"\r\n'
         'set "PYTHONIOENCODING=utf-8"\r\n'
         'set "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n'
+        'if defined HEPHAESTUS_PYTHON (\r\n'
+        '  "%HEPHAESTUS_PYTHON%" -m agentlas_cloud %*\r\n'
+        '  exit /b %ERRORLEVEL%\r\n'
+        ')\r\n'
         'if exist "%~dp0python3.cmd" (\r\n'
         '  call "%~dp0python3.cmd" -m agentlas_cloud %*\r\n'
-        ') else (\r\n'
-        '  py -3 -m agentlas_cloud %* || python -m agentlas_cloud %*\r\n'
-        ')\r\n',
+        '  exit /b %ERRORLEVEL%\r\n'
+        ')\r\n'
+        'where py >nul 2>nul\r\n'
+        'if not errorlevel 1 (\r\n'
+        '  py -3 -m agentlas_cloud %*\r\n'
+        '  exit /b %ERRORLEVEL%\r\n'
+        ')\r\n'
+        'where python >nul 2>nul\r\n'
+        'if not errorlevel 1 (\r\n'
+        '  python -m agentlas_cloud %*\r\n'
+        '  exit /b %ERRORLEVEL%\r\n'
+        ')\r\n'
+        'echo hephaestus: Python 3.9+ not found. Install Python from python.org and rerun hephaestus doctor. 1>&2\r\n'
+        'exit /b 127\r\n',
         encoding="utf-8",
     )
 
