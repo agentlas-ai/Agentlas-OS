@@ -69,6 +69,11 @@ class FailingReader(HttpReaderAdapter):
         raise HTTPError(url, 403, "Forbidden", hdrs=None, fp=None)
 
 
+class ExplodingReader(HttpReaderAdapter):
+    def read(self, source_hint, request):
+        raise UnicodeEncodeError("ascii", source_hint, 8, 9, "ordinal not in range(128)")
+
+
 def clear_reddit_oauth_env(monkeypatch):
     for name in (
         "AGENTLAS_REDDIT_BEARER_TOKEN",
@@ -97,6 +102,25 @@ def test_http_reader_contains_non_ascii_request_target_failure(monkeypatch):
     assert result is None
     assert attempt.status == "error"
     assert "UnicodeEncodeError" in attempt.reason
+
+
+def test_research_engine_contains_unexpected_adapter_failure(tmp_path):
+    engine = ResearchEngine(registry=AdapterRegistry([ExplodingReader()]), home=tmp_path)
+
+    result = engine.run(
+        ResearchRequest(
+            query="read",
+            source_hints=["https://example.com/한글"],
+            allowed_modules=["read.http"],
+        )
+    )
+
+    assert result["status"] == "partial"
+    assert result["results"] == []
+    attempt = result["receipt"]["attempts"][0]
+    assert attempt["module"] == "read.http"
+    assert attempt["status"] == "error"
+    assert "UnicodeEncodeError" in attempt["reason"]
 
 
 def test_research_request_hash_includes_cost_boundary():

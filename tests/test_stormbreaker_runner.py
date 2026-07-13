@@ -14,6 +14,18 @@ from agentlas_cloud.research.loadouts import apply_loadout
 from test_network_pipeline import pipeline_home
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def native_hephaestus_command(*args: str, shortcut: bool = False) -> list[str]:
+    if os.name == "nt":
+        wrapper = ROOT / "bin" / "hephaestus.cmd"
+        command_line = subprocess.list2cmdline([str(wrapper), *args])
+        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command_line]
+    wrapper = ROOT / "bin" / ("hep-storm" if shortcut else "hephaestus")
+    return [str(wrapper), *args]
+
+
 def executor_script(tmp_path, body: str) -> str:
     script = tmp_path / "executor.py"
     script.write_text(body, encoding="utf-8")
@@ -612,7 +624,7 @@ def test_stormbreaker_background_detaches_from_windows_console_signals():
     options = _stormbreaker_background_process_options("nt")
 
     assert "start_new_session" not in options
-    assert options["creationflags"] & 0x00000008
+    assert options["creationflags"] & 0x08000000
     assert options["creationflags"] & 0x00000200
     assert _stormbreaker_background_process_options("posix") == {"start_new_session": True}
 
@@ -659,16 +671,16 @@ def test_hephaestus_storm_terminal_command_runs_pipeline(tmp_path):
     env = dict(**os.environ, AGENTLAS_NETWORKING_HOME=str(home))
 
     completed = subprocess.run(
-        [
-            "bin/hep-storm",
+        native_hephaestus_command(
             "웹앱 기획부터 구현, 테스트 검증까지 끝까지 해줘",
             "--project",
             str(project),
             "--no-hub",
             "--executor-command",
             executor,
-        ],
-        cwd=Path(__file__).resolve().parents[1],
+            shortcut=True,
+        ),
+        cwd=ROOT,
         env=env,
         capture_output=True,
         text=True,
@@ -688,8 +700,7 @@ def test_hephaestus_stormbreaker_subcommand_runs_pipeline_with_research_prefligh
     env = dict(**os.environ, AGENTLAS_NETWORKING_HOME=str(home))
 
     completed = subprocess.run(
-        [
-            "bin/hephaestus",
+        native_hephaestus_command(
             "stormbreaker",
             "run",
             "웹앱 기획부터 구현, 테스트 검증까지 끝까지 해줘",
@@ -699,8 +710,8 @@ def test_hephaestus_stormbreaker_subcommand_runs_pipeline_with_research_prefligh
             "--research-evidence",
             "--research-loadout",
             "recommended",
-        ],
-        cwd=Path(__file__).resolve().parents[1],
+        ),
+        cwd=ROOT,
         env=env,
         capture_output=True,
         text=True,

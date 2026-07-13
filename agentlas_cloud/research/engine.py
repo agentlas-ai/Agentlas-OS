@@ -33,6 +33,7 @@ from .policy import module_allowed, weight_allowed
 from .platforms import RedditOAuthAdapter, RedditPublicAdapter, ThreadsPublicWebAdapter, ThreadsSearchAdapter
 from .query_variants import expand_query_variants
 from .receipts import write_research_receipt
+from .redaction import redacted_exception_reason
 from .registry import AdapterRegistry
 from .search_ranker import analyze_search_candidates
 
@@ -212,7 +213,17 @@ class ResearchEngine:
                 continue
             handled = True
             module_chain.append(adapter.module_id)
-            result, attempt = adapter.read(source_hint, request)
+            try:
+                result, attempt = adapter.read(source_hint, request)
+            except Exception as exc:
+                result = None
+                attempt = ResearchAttempt(
+                    adapter.module_id,
+                    "error",
+                    redacted_exception_reason(exc, max_length=160),
+                    source_hint,
+                    weight=adapter.weight,
+                )
             if reason_prefix:
                 attempt.reason = f"{reason_prefix}:{attempt.reason}" if attempt.reason else reason_prefix
             attempts.append(attempt)
