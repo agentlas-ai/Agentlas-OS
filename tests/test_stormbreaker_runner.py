@@ -643,7 +643,8 @@ def test_stormbreaker_cli_background_run_writes_result(tmp_path, monkeypatch, ca
     assert result["final_gate"]["can_report_success"] is True
 
 
-def test_stormbreaker_background_detaches_from_windows_console_signals():
+def test_stormbreaker_background_detaches_from_windows_console_signals(monkeypatch):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     options = _stormbreaker_background_process_options("nt")
 
     assert "start_new_session" not in options
@@ -654,6 +655,10 @@ def test_stormbreaker_background_detaches_from_windows_console_signals():
         assert options["startupinfo"].dwFlags & 0x00000001
         assert options["startupinfo"].wShowWindow == 0
     assert _stormbreaker_background_process_options("posix") == {"start_new_session": True}
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    ci_options = _stormbreaker_background_process_options("nt")
+    assert ci_options["creationflags"] & 0x01000000
 
 
 def test_stormbreaker_background_is_not_claimed_by_ci_process_cleanup():
