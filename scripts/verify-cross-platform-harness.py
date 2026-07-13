@@ -39,7 +39,12 @@ ADAPTERS = (
 )
 
 
-def _run_json(command: list[str], *, env: dict[str, str] | None = None) -> dict[str, Any]:
+def _run_json(
+    command: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    process_options: dict[str, int] | None = None,
+) -> dict[str, Any]:
     completed = subprocess.run(
         command,
         cwd=ROOT,
@@ -48,6 +53,7 @@ def _run_json(command: list[str], *, env: dict[str, str] | None = None) -> dict[
         capture_output=True,
         text=True,
         encoding="utf-8",
+        **(process_options or {}),
     )
     return json.loads(completed.stdout)
 
@@ -78,6 +84,14 @@ def _wrapper_command() -> list[str]:
     return [str(ROOT / "bin" / "hephaestus"), "stormbreaker", "harness"]
 
 
+def _wrapper_process_options() -> dict[str, int]:
+    if os.name != "nt":
+        return {}
+    detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    new_process_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    return {"creationflags": detached | new_process_group}
+
+
 def build_proof() -> dict[str, Any]:
     from agentlas_cloud.networking.stormbreaker_harness import goal_ultracode_harness
 
@@ -85,7 +99,11 @@ def build_proof() -> dict[str, Any]:
     direct = _run_json([sys.executable, "-m", "agentlas_cloud", "stormbreaker", "harness"])
     wrapper_env = os.environ.copy()
     wrapper_env["HEPHAESTUS_PYTHON"] = sys.executable
-    wrapper = _run_json(_wrapper_command(), env=wrapper_env)
+    wrapper = _run_json(
+        _wrapper_command(),
+        env=wrapper_env,
+        process_options=_wrapper_process_options(),
+    )
     for candidate in (canonical, direct, wrapper):
         _validate_harness(candidate)
         assert candidate == canonical

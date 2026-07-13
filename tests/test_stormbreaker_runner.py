@@ -36,6 +36,14 @@ def native_hephaestus_command(*args: str, shortcut: bool = False) -> list[str]:
     return [str(wrapper), *args]
 
 
+def native_hephaestus_process_options() -> dict[str, int]:
+    if os.name != "nt":
+        return {}
+    detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    new_process_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    return {"creationflags": detached | new_process_group}
+
+
 def executor_script(tmp_path, body: str) -> str:
     script = tmp_path / "executor.py"
     script.write_text(body, encoding="utf-8")
@@ -700,6 +708,7 @@ def test_hephaestus_storm_terminal_command_runs_pipeline(tmp_path):
         capture_output=True,
         text=True,
         check=False,
+        **native_hephaestus_process_options(),
     )
 
     assert completed.returncode == 0, completed.stderr or completed.stdout
@@ -762,6 +771,7 @@ def test_hephaestus_stormbreaker_subcommand_runs_pipeline_with_research_prefligh
         encoding="utf-8",
         timeout=60,
         check=False,
+        **native_hephaestus_process_options(),
     )
 
     assert completed.returncode == 0, completed.stderr or completed.stdout
