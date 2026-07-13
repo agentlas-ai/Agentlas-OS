@@ -67,6 +67,11 @@ jobs:
         run: python -m pip install pytest jsonschema
 
       - name: Run Stormbreaker contract suite
+        # Stormbreaker intentionally launches and reaps a real background child.
+        # Disable Actions' descendant cleanup marker for this step so its Windows
+        # cleanup signal cannot interrupt the parent pytest process mid-contract.
+        env:
+          RUNNER_TRACKING_ID: ""
         run: >-
           python -m pytest -q --full-trace
           tests/test_stormbreaker_goal_ultracode_harness.py
