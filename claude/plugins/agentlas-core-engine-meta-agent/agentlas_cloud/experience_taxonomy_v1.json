@@ -1,0 +1,49 @@
+{
+  "schema": "agentlas.experience-taxonomy.v1",
+  "kind": "agentlas-experience-taxonomy",
+  "taskSignaturePrefix": "agentlas.task.v1/",
+  "taskSlugs": [
+    "research",
+    "writing",
+    "coding",
+    "debugging",
+    "design",
+    "image-generation",
+    "video-production",
+    "presentation",
+    "document",
+    "data-analysis",
+    "browser-automation",
+    "social-publishing",
+    "marketing",
+    "sales",
+    "customer-support",
+    "ecommerce",
+    "legal-review",
+    "finance",
+    "project-planning",
+    "agent-building",
+    "workflow-automation",
+    "file-operations",
+    "translation"
+  ],
+  "environment": {
+    "osPrefix": "agentlas.env.v1/os/",
+    "archPrefix": "agentlas.env.v1/arch/",
+    "runtimePrefix": "agentlas.env.v1/runtime/",
+    "osValues": ["macos", "windows", "linux", "ios", "android", "unknown"],
+    "archValues": ["arm64", "x64", "unknown"],
+    "runtimePattern": "^[a-z0-9][a-z0-9._-]{1,63}$",
+    "matching": "all-canonical-constraints-must-match",
+    "unknownConstraint": "item-ineligible-base-unaffected"
+  },
+  "normalization": {
+    "unicode": "NFKC",
+    "trim": true,
+    "case": "lower",
+    "portableSource": "canonical-id-only",
+    "runtimeProfile": "canonical-id-or-exact-bare-slug",
+    "fuzzySimilarity": false,
+    "generalAutoMatch": false
+  }
+}

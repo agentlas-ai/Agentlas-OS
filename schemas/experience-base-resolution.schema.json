@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/experience-base-resolution.schema.json",
+  "title": "Agentlas Experience Base Resolution v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema", "cloudId", "slug", "agentDefinitionId", "agentReleaseId",
+    "packageHash", "packageHashVersion"
+  ],
+  "properties": {
+    "schema": { "const": "agentlas.experience-base-resolution.v1" },
+    "cloudId": { "$ref": "#/$defs/id" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,95}$" },
+    "agentDefinitionId": { "$ref": "#/$defs/id" },
+    "agentReleaseId": { "$ref": "#/$defs/id" },
+    "packageHash": { "$ref": "#/$defs/hash" },
+    "packageHashVersion": { "enum": ["path-sha256-v1", "path-sha256-executable-v2"] }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

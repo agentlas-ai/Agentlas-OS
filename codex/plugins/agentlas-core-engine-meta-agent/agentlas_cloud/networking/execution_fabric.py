@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from ..model_allocation import infer_inventory_tier, resolve_model_allocation
+
 
 DEFAULT_SUPPORTED_FAMILIES = ("codex", "claude", "glm", "deepseek", "gemini", "qwen", "ollama", "host")
 
@@ -97,6 +99,23 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
                 "trust": trust if trust in {"host", "local", "approved_external", "untrusted"} else "approved_external",
                 "capabilities": capabilities,
                 "max_parallel": max(1, max_parallel),
+                "tier": (
+                    str(raw.get("tier")).lower()
+                    if isinstance(raw, Mapping) and raw.get("tier")
+                    else infer_inventory_tier(model)
+                ),
+                "supported_efforts": (
+                    list(raw.get("supported_efforts") or [])
+                    if isinstance(raw, Mapping)
+                    else []
+                ),
+                "context_window": (
+                    int(raw.get("context_window") or 0)
+                    if isinstance(raw, Mapping) and str(raw.get("context_window") or "0").isdigit()
+                    else 0
+                ),
+                "supports_tools": bool(raw.get("supports_tools", True)) if isinstance(raw, Mapping) else True,
+                "supports_multimodal": bool(raw.get("supports_multimodal", False)) if isinstance(raw, Mapping) else False,
             }
         )
 
@@ -180,6 +199,8 @@ def build_execution_fabric(
     pipeline_id: str,
     handoff_dir: str,
     session_inventory: list[Any] | None = None,
+    model_allocation_decisions: Mapping[str, Mapping[str, Any]] | None = None,
+    model_allocation_policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a Stormbreaker work-packet contract for a routed pipeline."""
 
@@ -195,6 +216,21 @@ def build_execution_fabric(
         primary_output = produced[0] if produced else "artifact"
         packet_id = f"{pipeline_id}:{order}:{stage_name}"
         chosen_session = _choose_session(sessions, stage_name, session_loads)
+        decisions = model_allocation_decisions or {}
+        raw_decision = (
+            decisions.get(packet_id)
+            or decisions.get(stage_name)
+            or decisions.get(str(order))
+        )
+        allocation_policy = dict(model_allocation_policy or {})
+        allocation_policy.setdefault("currentModelId", chosen_session["model"])
+        allocation_receipt = resolve_model_allocation(raw_decision, sessions, policy=allocation_policy)
+        resolved_session_id = allocation_receipt["resolved"].get("sessionId")
+        if resolved_session_id:
+            chosen_session = next(
+                (session for session in sessions if session["session_id"] == resolved_session_id),
+                chosen_session,
+            )
         depends_on = _packet_dependencies(stage, produced_by_kind)
         packets.append(
             {
@@ -211,6 +247,15 @@ def build_execution_fabric(
                     "family": chosen_session["family"],
                     "model": chosen_session["model"],
                     "trust": chosen_session["trust"],
+                    "effort": allocation_receipt["resolved"].get("effort"),
+                },
+                "model_allocation": allocation_receipt,
+                "model_allocation_contract": {
+                    "decision_schema": "agentlas.model-allocation-decision.v1",
+                    "decision_owner": "parent_or_leader_ai",
+                    "status": "resolved" if raw_decision else "awaiting-parent-ai",
+                    "rule": "AI judges workload; host validates inventory, pins, capability, context and cost policy",
+                    "raw_prompt_allowed_in_receipt": False,
                 },
                 "data_policy": [
                     "local operator mode: execute locally by default and label boundaries instead of asking on every step",
@@ -226,7 +271,7 @@ def build_execution_fabric(
 
     groups = _group_packets(packets)
     return {
-        "fabric_version": "stormbreaker.execution_fabric.v1",
+        "fabric_version": "stormbreaker.execution_fabric.v2",
         "mode": "parallel_when_independent",
         "pipeline_id": pipeline_id,
         "sessions": sessions,

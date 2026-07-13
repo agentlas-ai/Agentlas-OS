@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/model-allocation-receipt.schema.json",
+  "title": "Agentlas ModelAllocationReceipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "decisionId", "packetId", "status", "requested", "resolved", "reasonCodes", "inputFeatureHash", "selectorVersion", "independentVerificationRequired", "validationIssues", "privacy"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.model-allocation-receipt.v1" },
+    "decisionId": { "type": ["string", "null"], "maxLength": 255 },
+    "packetId": { "type": ["string", "null"], "maxLength": 255 },
+    "status": { "enum": ["resolved", "user-pin", "fallback-current", "unresolved"] },
+    "requested": {
+      "type": "object", "additionalProperties": false, "required": ["tier", "modelClass", "modelId", "effort"],
+      "properties": {
+        "tier": { "type": ["string", "null"], "maxLength": 32 },
+        "modelClass": { "type": ["string", "null"], "maxLength": 32 },
+        "modelId": { "type": ["string", "null"], "maxLength": 255 },
+        "effort": { "type": "string", "maxLength": 16 }
+      }
+    },
+    "resolved": {
+      "type": "object", "additionalProperties": false, "required": ["tier", "provider", "modelId", "sessionId", "effort"],
+      "properties": {
+        "tier": { "type": ["string", "null"], "maxLength": 32 },
+        "provider": { "type": ["string", "null"], "maxLength": 80 },
+        "modelId": { "type": ["string", "null"], "maxLength": 255 },
+        "sessionId": { "type": ["string", "null"], "maxLength": 255 },
+        "effort": { "type": "string", "maxLength": 16 }
+      }
+    },
+    "reasonCodes": { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 120 } },
+    "inputFeatureHash": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+    "selectorVersion": { "type": "string", "maxLength": 255 },
+    "independentVerificationRequired": { "type": "boolean" },
+    "validationIssues": { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 255 } },
+    "privacy": {
+      "type": "object", "additionalProperties": false, "required": ["rawPromptIncluded", "rawTranscriptIncluded"],
+      "properties": { "rawPromptIncluded": { "const": false }, "rawTranscriptIncluded": { "const": false } }
+    }
+  }
+}

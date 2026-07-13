@@ -51,7 +51,30 @@
     "publicExportPolicy": { "const": "clean-copy" },
     "requiredRuntime": { "type": "array", "minItems": 1, "items": { "type": "string" } },
     "license": { "enum": ["call-only-default", "source-download-allowed"] },
-    "createdBy": { "type": "string", "minLength": 1 }
+    "createdBy": { "type": "string", "minLength": 1 },
+    "packageHashVersion": { "const": "agentlas-package-hash/v2" },
+    "assetContract": {
+      "type": "object",
+      "required": ["kind", "schemaVersion", "materialization", "releaseAuthority"],
+      "properties": {
+        "kind": { "const": "agent-definition" },
+        "schemaVersion": { "const": "agentlas.agent-definition.v1" },
+        "materialization": { "const": "hub-or-cloud-registration" },
+        "releaseAuthority": { "const": "registry" },
+        "agentDefinitionId": { "type": "string", "minLength": 1 },
+        "releaseId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "mcpPolicy": {
+      "type": "object",
+      "required": ["ref", "resolution"],
+      "properties": {
+        "ref": { "const": ".agentlas/mcp-policy.json" },
+        "resolution": { "const": "system-global-first" }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": true
 }

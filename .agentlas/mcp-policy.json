@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "agentlas.mcp-policy.v1",
+  "kind": "agentlas-mcp-policy",
+  "registryResolutionOrder": [
+    "system-global",
+    "project-local",
+    "catalog-recommendation"
+  ],
+  "consentMode": "one-pass",
+  "serverDefinitionsFromPackage": false,
+  "credentialValuesAllowed": false,
+  "failureIsolation": "per-requirement",
+  "permissionWidening": "ask",
+  "toolSchemaLoading": "selected-tools-only",
+  "skillLoading": "triggered-only",
+  "contextBudget": {
+    "coreMemoryMaxTokens": 150,
+    "experienceRetrievalMaxTokens": 800,
+    "experienceRetrievalMaxItems": 8
+  },
+  "requirements": []
+}

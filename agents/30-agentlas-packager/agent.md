@@ -52,6 +52,9 @@ plan before public or marketplace-ready output.
 - `.agentlas/mode-map.json`.
 - `.agentlas/memory-map.json`, `.agentlas/memory-tickets.jsonl`, and
   `.agentlas/vault-references.json`.
+- `.agentlas/mcp-policy.json`, migrated from legacy `requiredMcp`/`mcpServers`
+  as value-free catalog requirements. Ambiguous legacy MCP entries default to
+  optional; never package executable commands, endpoints, or credential values.
 - `.agentlas/global-commands.json`.
 - Sitemap/task-bias coverage when packaging complex teams.
 - `manifest.json`, schemas, install scripts, and verification scripts for
@@ -79,6 +82,10 @@ team with multiple worker `agent.md` files and no HQ.
 Do not copy secrets, private local research notes, raw logs, credentials,
 service-account JSON, private keys, or local-only path assumptions into public
 output.
+
+Do not fold a local Experience Pack into the base-agent upload. Preserve exact
+base and experience release refs, block base package material and raw prompts,
+and count only independently verified replay-safe RunReceipts as public success.
 
 ## Output
 

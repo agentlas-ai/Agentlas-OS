@@ -15,7 +15,13 @@ from typing import Any
 from . import content_guard
 from .auth import ensure_access_token, normalize_base_url
 from .networking.card_lint import lint_card
-from .runtime import collect_package_files, package_hash, run_setup_wizard
+from .runtime import (
+    collect_package_files,
+    is_local_experience_lineage_path,
+    package_hash,
+    run_setup_wizard,
+    standalone_experience_asset_identity,
+)
 
 MAX_TOTAL_BYTES = 3 * 1024 * 1024
 MAX_FILE_BYTES = 512 * 1024
@@ -23,6 +29,21 @@ MAX_FILES = 400
 TEXT_EXTENSIONS = {".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".py", ".js", ".ts", ".tsx", ".cjs", ".mjs", ".sh"}
 AGENT_DEFINITION_FILES = {"AGENT.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md", "agent.md", "manifest.md", "system-prompt.md"}
 SKIP_DIRS = {".git", ".next", "node_modules", "dist", "out", "release", "__pycache__"}
+CLOUD_PACKAGE_HASH_VERSION = "path-sha256-executable-v2"
+# These files are local, mutable verification evidence. Agent Cloud performs
+# its own server-side review and stores submitted review metadata separately;
+# shipping these files would make an otherwise identical artifact change on
+# every scan and would leak host-local timestamps/status into the package.
+UPLOAD_DERIVED_EVIDENCE_PATHS = frozenset(
+    {
+        ".agentlas/security-scan.json",
+        ".agentlas/security-llm-judgment.json",
+        ".agentlas/field-test-report.json",
+        # Separate local/user-owned Experience lineage must never be folded
+        # into an AgentDefinition artifact or its delivered package hash.
+        ".agentlas/experience-relations.jsonl",
+    }
+)
 BLOCKED_FILE_PATTERNS = [
     re.compile(r"^\.env(?:\..*)?$", re.I),
     re.compile(r"^id_rsa(?:\.pub)?$", re.I),
@@ -52,6 +73,7 @@ class UploadFile:
     bytes: int
     sha256: str
     contentBase64: str
+    executable: bool
 
 
 def package_agent(
@@ -68,13 +90,24 @@ def package_agent(
     routing_meta = refresh_routing_card_metadata(base)
     package_name = _read_package_name(base)
     package_slug = _read_package_slug(base)
+    setup_wizard = run_setup_wizard(base, package_name, write=write_manifest)
     if write_manifest:
-        run_setup_wizard(base, package_name, write=True)
         package_slug = _read_package_slug(base) or package_slug
 
     career_card_findings = prepare_public_career_card_for_upload(base)
     files, file_count, findings = collect_upload_files(base)
     findings = career_card_findings + findings
+    if setup_wizard.get("mcpPolicyValidation", {}).get("status") != "valid":
+        findings.append(
+            _finding(
+                "mcp-policy-invalid",
+                "blocker",
+                "policy",
+                "The package MCP policy is invalid or contains forbidden server execution fields.",
+                ".agentlas/mcp-policy.json",
+                "Keep only value-free catalog requirements; remove command, args, endpoint, executable, headers, and credential values.",
+            )
+        )
     routing = validate_routing_card_for_upload(base, visibility=visibility)
     findings.extend(routing["findings"])
     findings.extend(validate_public_profile_for_upload(base, visibility))
@@ -103,6 +136,9 @@ def package_agent(
         "runtimeLabels": _runtime_labels(base),
         "visibility": "private-link" if visibility == "private-link" else "marketplace",
         "packageHash": package_hash_hex,
+        # This is the delivered Agent Cloud artifact identity. It is distinct
+        # from agentlas.json's local sourcePackage hash contract.
+        "packageHashVersion": CLOUD_PACKAGE_HASH_VERSION,
         "fileCount": file_count,
         "includedFileCount": len(files),
         "totalBytes": sum(item.bytes for item in files),
@@ -569,6 +605,8 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
         rel = path.relative_to(base).as_posix()
         if any(part in SKIP_DIRS for part in path.relative_to(base).parts):
             continue
+        if rel in UPLOAD_DERIVED_EVIDENCE_PATHS or is_local_experience_lineage_path(rel):
+            continue
         if path.is_symlink():
             findings.append(_finding("symlink", "blocker", "policy", "Symbolic links are not allowed in cloud agent packages.", rel, "Replace the symlink with an ordinary file or remove it."))
             continue
@@ -586,15 +624,32 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
         if any(pattern.search(path.name) for pattern in BLOCKED_FILE_PATTERNS):
             findings.append(_finding("blocked-file", "blocker", "secret", "Secret-bearing file names are not allowed in cloud packages.", rel, "Remove credentials and publish only setup instructions or env key names."))
             continue
-        if stat.st_size > MAX_FILE_BYTES:
-            findings.append(_finding("large-file", "high", "size", f"File exceeds {MAX_FILE_BYTES} bytes.", rel, "Move large assets out of the package."))
-            continue
         if not _is_text_package_file(path):
             continue
         raw = path.read_bytes()
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
+            continue
+        asset_identity = standalone_experience_asset_identity(text)
+        if asset_identity:
+            findings.append(
+                _finding(
+                    "standalone-experience-asset",
+                    "blocker",
+                    "asset-boundary",
+                    "A separately owned Experience/Taste asset JSON cannot be embedded in an AgentDefinition "
+                    f"package ({asset_identity}).",
+                    rel,
+                    "Remove the standalone asset and publish it through the separate Experience/Taste flow; "
+                    "the base package may keep only exact release IDs or value-free loadout references.",
+                )
+            )
+            # Never place cross-kind bytes in the returned base-agent bundle,
+            # even though the blocker already prevents registration/dry-run.
+            continue
+        if stat.st_size > MAX_FILE_BYTES:
+            findings.append(_finding("large-file", "high", "size", f"File exceeds {MAX_FILE_BYTES} bytes.", rel, "Move large assets out of the package."))
             continue
         text, sanitized_findings = sanitize_upload_file_text(rel, text)
         findings.extend(sanitized_findings)
@@ -605,16 +660,33 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
         if re.search(r"(?:curl|wget)[^\n|&;]+[|]\s*(?:sh|bash)", text, re.I):
             findings.append(_finding("curl-pipe-shell", "high", "network", "Remote shell install pattern detected.", rel, "Use explicit, reviewable install steps."))
         digest = _sha256_bytes(raw)
-        files.append(UploadFile(path=rel, bytes=len(raw), sha256=digest, contentBase64=base64.b64encode(raw).decode("ascii")))
+        files.append(
+            UploadFile(
+                path=rel,
+                bytes=len(raw),
+                sha256=digest,
+                contentBase64=base64.b64encode(raw).decode("ascii"),
+                executable=bool(stat.st_mode & 0o111),
+            )
+        )
     return files, file_count, findings
 
 
 def hash_upload_files(files: list[UploadFile]) -> str:
+    """Match Agent Cloud's path-sha256-executable-v2 artifact contract.
+
+    JavaScript compares strings by UTF-16 code units. Encoding the path as
+    big-endian UTF-16 gives Python the same deterministic ordering even for
+    astral Unicode filenames.
+    """
+
     digest = hashlib.sha256()
-    for item in sorted(files, key=lambda file: file.path):
+    for item in sorted(files, key=lambda file: file.path.encode("utf-16-be")):
         digest.update(item.path.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(item.sha256.encode("utf-8"))
+        digest.update(item.sha256.encode("ascii"))
+        digest.update(b"\0")
+        digest.update(b"x" if item.executable else b"-")
         digest.update(b"\0")
     return digest.hexdigest()
 

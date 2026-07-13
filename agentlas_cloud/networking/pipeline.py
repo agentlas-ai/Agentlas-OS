@@ -179,6 +179,8 @@ def plan_pipeline(
     max_stages: int = 3,
     project_dir: str | Path | None = None,
     session_inventory: list[Any] | None = None,
+    model_allocation_decisions: dict[str, dict[str, Any]] | None = None,
+    model_allocation_policy: dict[str, Any] | None = None,
     brief: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Build a deterministic stage plan, or None when no valid chain exists.
@@ -206,6 +208,8 @@ def plan_pipeline(
             pipeline_id=pipeline_id,
             handoff_dir=handoff_dir,
             session_inventory=session_inventory,
+            model_allocation_decisions=model_allocation_decisions,
+            model_allocation_policy=model_allocation_policy,
         )
         return {
             "pipeline_id": pipeline_id,
@@ -279,6 +283,8 @@ def plan_pipeline(
         pipeline_id=pipeline_id,
         handoff_dir=handoff_dir,
         session_inventory=session_inventory,
+        model_allocation_decisions=model_allocation_decisions,
+        model_allocation_policy=model_allocation_policy,
     )
 
     return {

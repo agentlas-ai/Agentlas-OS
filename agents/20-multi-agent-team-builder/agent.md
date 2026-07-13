@@ -62,6 +62,9 @@ role behavior.
 - `.agentlas/capability-eval-plan.json`.
 - `.agentlas/memory-map.json`, `.agentlas/memory-tickets.jsonl`, and
   `.agentlas/vault-references.json`.
+- `.agentlas/mcp-policy.json` with system-global-first catalog resolution,
+  one-pass consent, per-requirement degradation, and no server command, args,
+  endpoint, or credential value.
 - Runtime adapters for requested targets.
 - `.agentlas/global-commands.json`.
 - One orchestrator/HQ global command that acts as the public entry point for
@@ -106,6 +109,9 @@ include `global_commands`.
 - Do not report `completed` until the team shape gate passes. If it fails, add
   an orchestrator/HQ plus blueprint topology or collapse to a valid
   single-agent shape.
+- Do not merge a user's experience into the public base team. Experience Packs
+  remain separately owned exact-release overlays; runtime retrieval is bounded
+  to eight items and 800 tokens, with 150 tokens maximum always-on memory.
 
 ## Output
 

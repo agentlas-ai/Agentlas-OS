@@ -67,7 +67,7 @@ def test_plan_pipeline_chains_by_artifacts(tmp_path):
     ids = [stage["card"] for stage in plan["stages"]]
     assert len(set(ids)) == 3
     fabric = plan["execution_fabric"]
-    assert fabric["fabric_version"] == "stormbreaker.execution_fabric.v1"
+    assert fabric["fabric_version"] == "stormbreaker.execution_fabric.v2"
     assert fabric["required_packet_ids"] == [packet["packet_id"] for packet in fabric["packets"]]
     assert fabric["packets"][0]["session_hint"]["session_id"] == "host:primary"
     assert fabric["resume_policy"]["final_gate"] == "block_success_until_all_required_packets_pass"

@@ -51,6 +51,9 @@ choices become concrete specialist behavior.
   user explicitly asks for a team.
 - `.agentlas/memory-map.json`, `.agentlas/memory-tickets.jsonl`, and
   `.agentlas/vault-references.json`.
+- `.agentlas/mcp-policy.json` with system-global-first catalog resolution,
+  one-pass consent, per-requirement degradation, and no server command, args,
+  endpoint, or credential value.
 - Runtime adapters for requested targets.
 - `.agentlas/global-commands.json`.
 - One canonical global command for the worker, with matching Claude Code,
@@ -90,6 +93,11 @@ Self-evolution is proposal-first. The agent may collect sources, keep a
 watchlist, generate repair kits, and propose patches. Human approval is required
 before widening tools, adding connectors, changing secrets, or editing the
 agent's own core instructions.
+
+Experience is a separate user-owned asset. Do not copy base prompts, skills, or
+package files into experience. Retrieve no more than eight task-relevant items
+within 800 tokens; keep always-on memory instructions within 150 tokens and load
+only selected MCP tool schemas and triggered skills.
 
 ## Output
 

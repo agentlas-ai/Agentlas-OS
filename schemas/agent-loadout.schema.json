@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/agent-loadout.schema.json",
+  "title": "Agentlas AgentLoadout",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "loadoutId", "ownerRef", "baseAgentReleaseId",
+    "experiencePackReleaseId", "tasteStyleReleaseId", "compositionMode",
+    "updatePolicy", "consentMode", "consentReceiptId", "activationMode",
+    "permissionWidening", "bindingHash", "status", "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.agent-loadout.v1" },
+    "kind": { "const": "agentlas-agent-loadout" },
+    "loadoutId": { "$ref": "#/$defs/id" },
+    "ownerRef": { "$ref": "#/$defs/id" },
+    "baseAgentReleaseId": { "$ref": "#/$defs/id" },
+    "experiencePackReleaseId": {
+      "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }]
+    },
+    "tasteStyleReleaseId": {
+      "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }]
+    },
+    "compositionMode": { "const": "references-only" },
+    "updatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["experience", "tasteStyle"],
+      "properties": {
+        "experience": { "enum": ["pinned", "verified-compatible", "manual"] },
+        "tasteStyle": { "enum": ["pinned", "verified-compatible", "manual"] }
+      }
+    },
+    "consentMode": { "const": "explicit-user" },
+    "consentReceiptId": { "$ref": "#/$defs/id" },
+    "activationMode": { "const": "next-session-only" },
+    "permissionWidening": { "const": "ask" },
+    "bindingHash": { "$ref": "#/$defs/hash" },
+    "status": { "enum": ["pending", "active", "dormant", "rollback-required", "revoked"] },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "anyOf": [
+    { "properties": { "experiencePackReleaseId": { "$ref": "#/$defs/id" } } },
+    { "properties": { "tasteStyleReleaseId": { "$ref": "#/$defs/id" } } }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

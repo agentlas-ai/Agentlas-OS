@@ -15,10 +15,56 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Any
+from typing import Any, Mapping
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.18"}
+MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
+_HOST_MODEL_POLICY_FIELDS = frozenset({
+    "pinnedModelId",
+    "maxTier",
+    "maxEffort",
+    "requiredCapabilities",
+})
+
+
+def _host_model_allocation_policy() -> dict[str, Any]:
+    """Read operator cost guardrails from the MCP process boundary.
+
+    Tool arguments are untrusted workload input. They may carry a parent-AI
+    allocation decision, but they must never raise the host's model/effort
+    ceiling or forge a user pin. Operators configure this JSON in the MCP
+    server launch environment instead.
+    """
+
+    raw = os.environ.get(MODEL_ALLOCATION_POLICY_ENV, "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        raise ValueError("invalid host model allocation policy JSON") from None
+    if not isinstance(parsed, Mapping):
+        raise ValueError("host model allocation policy must be an object")
+    policy = {key: parsed[key] for key in _HOST_MODEL_POLICY_FIELDS if key in parsed}
+    if "pinnedModelId" in policy and (
+        not isinstance(policy["pinnedModelId"], str)
+        or not policy["pinnedModelId"].strip()
+        or len(policy["pinnedModelId"]) > 255
+    ):
+        raise ValueError("host pinnedModelId is invalid")
+    if policy.get("maxTier") not in {None, "economy", "balanced", "frontier"}:
+        raise ValueError("host maxTier is invalid")
+    if policy.get("maxEffort") not in {None, "none", "minimal", "low", "medium", "high", "xhigh", "max"}:
+        raise ValueError("host maxEffort is invalid")
+    capabilities = policy.get("requiredCapabilities")
+    if capabilities is not None and (
+        not isinstance(capabilities, list)
+        or len(capabilities) > 32
+        or any(not isinstance(item, str) or not item.strip() or len(item) > 80 for item in capabilities)
+    ):
+        raise ValueError("host requiredCapabilities is invalid")
+    return policy
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -68,12 +114,22 @@ TOOLS: list[dict[str, Any]] = [
                                     "trust": {"type": "string"},
                                     "capabilities": {"type": "array", "items": {"type": "string"}},
                                     "max_parallel": {"type": "integer"},
+                                    "tier": {"type": "string"},
+                                    "supported_efforts": {"type": "array", "items": {"type": "string"}},
+                                    "context_window": {"type": "integer"},
+                                    "supports_tools": {"type": "boolean"},
+                                    "supports_multimodal": {"type": "boolean"},
                                 },
                                 "additionalProperties": True,
                             },
                         ]
                     },
                     "description": "Optional host-advertised active sessions (Codex, Claude, GLM, DeepSeek, local models) for Stormbreaker pipeline scheduling.",
+                },
+                "model_allocation_decisions": {
+                    "type": "object",
+                    "additionalProperties": {"type": "object"},
+                    "description": "Parent/leader AI decisions keyed by packet id, phase, or stage order. Raw task text must not be included.",
                 },
             },
             "required": ["request"],
@@ -219,6 +275,16 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
 
+    host_model_policy: dict[str, Any] = {}
+    if name == "hephaestus_route":
+        try:
+            host_model_policy = _host_model_allocation_policy()
+        except ValueError:
+            return {
+                "action": "refuse",
+                "status": "invalid_host_model_allocation_policy",
+                "detail": f"Fix {MODEL_ALLOCATION_POLICY_ENV} in the MCP server launch environment.",
+            }
     init_networking(networking_home())
     if name == "hephaestus_route":
         allow_local_routing = bool(arguments.get("allow_local_routing", False))
@@ -241,6 +307,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             hub_only=hub_only,
             caller_id=arguments.get("caller_id") or arguments.get("caller"),
             session_inventory=arguments.get("session_inventory") or None,
+            model_allocation_decisions=arguments.get("model_allocation_decisions") or None,
+            # Cost ceilings and pins are host policy, never caller-controlled
+            # MCP arguments. Unknown legacy arguments are intentionally ignored.
+            model_allocation_policy=host_model_policy or None,
         )
     if name == "hephaestus_cloud_search":
         # Owner-scoped: scope="cloud" implies hub_only inside route_request and

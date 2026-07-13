@@ -642,6 +642,7 @@ def _task_force_from_result(result: dict[str, Any]) -> dict[str, Any]:
                     "produces": stage.get("produces") or [],
                     "consumes": stage.get("consumes") or [],
                     "session_hint": packet.get("session_hint") or {},
+                    "model_allocation": packet.get("model_allocation") or {},
                     "memory_scope": "stage_artifacts_only",
                 }
             )
@@ -768,6 +769,8 @@ def route_request(
     scope: str = "network",
     caller_id: str | None = None,
     session_inventory: list[Any] | None = None,
+    model_allocation_decisions: dict[str, dict[str, Any]] | None = None,
+    model_allocation_policy: dict[str, Any] | None = None,
     work_brief: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Three-scope command model (docs/hephaestus-network-2.0.md):
@@ -1203,6 +1206,8 @@ def route_request(
         lambda card: score_by_id.get(str(card.get("id")), 0.0),
         project_dir=project,
         session_inventory=session_inventory,
+        model_allocation_decisions=model_allocation_decisions,
+        model_allocation_policy=model_allocation_policy,
         brief=work_brief,
     )
     if plan is not None:

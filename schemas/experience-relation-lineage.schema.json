@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/experience-relation-lineage.schema.json",
+  "title": "Agentlas Experience Relation Lineage Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "eventId", "eventType", "packId", "releaseId",
+    "baseReleaseHash", "projectScopeKey", "environmentKey", "itemIds",
+    "taskBindings", "mcpRequirements", "evidenceBindings", "supersedesReleaseId",
+    "sourceFingerprint", "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.experience-relation-lineage.v1" },
+    "kind": { "const": "agentlas-experience-relation-lineage" },
+    "eventId": { "$ref": "#/$defs/id" },
+    "eventType": { "enum": ["promotion", "export-intent"] },
+    "packId": { "$ref": "#/$defs/id" },
+    "releaseId": { "$ref": "#/$defs/id" },
+    "baseReleaseHash": { "$ref": "#/$defs/hash" },
+    "projectScopeKey": { "$ref": "#/$defs/hash" },
+    "environmentKey": { "$ref": "#/$defs/hash" },
+    "itemIds": {
+      "type": "array", "maxItems": 256, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
+    "taskBindings": {
+      "type": "array", "maxItems": 256,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["itemId", "tags"],
+        "properties": {
+          "itemId": { "$ref": "#/$defs/id" },
+          "tags": {
+            "type": "array", "maxItems": 32, "uniqueItems": true,
+            "items": { "$ref": "#/$defs/tag" }
+          }
+        }
+      }
+    },
+    "mcpRequirements": {
+      "type": "array", "maxItems": 32,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["catalogId", "required", "alternatives"],
+        "properties": {
+          "catalogId": { "$ref": "#/$defs/id" },
+          "required": { "type": "boolean" },
+          "alternatives": {
+            "type": "array", "maxItems": 8, "uniqueItems": true,
+            "items": { "$ref": "#/$defs/id" }
+          }
+        }
+      }
+    },
+    "evidenceBindings": {
+      "type": "array", "maxItems": 256,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["itemId", "receiptIds"],
+        "properties": {
+          "itemId": { "$ref": "#/$defs/id" },
+          "receiptIds": {
+            "type": "array", "maxItems": 16, "uniqueItems": true,
+            "items": { "$ref": "#/$defs/id" }
+          }
+        }
+      }
+    },
+    "supersedesReleaseId": {
+      "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }]
+    },
+    "sourceFingerprint": { "$ref": "#/$defs/hash" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string", "minLength": 3, "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{2,255}$",
+      "not": {
+        "pattern": "(?:[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Oo][Oo][Kk][Ii][Ee])"
+      }
+    },
+    "tag": {
+      "type": "string", "minLength": 2, "maxLength": 64,
+      "pattern": "^[a-z0-9가-힣][a-z0-9가-힣._-]{1,63}$",
+      "not": {
+        "anyOf": [
+          { "pattern": "^\\d{8,}$" },
+          { "pattern": "^[0-9a-f]{24,}$" },
+          { "pattern": "(?:api[_-]?key|token|secret|password|authorization|cookie)" }
+        ]
+      }
+    },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

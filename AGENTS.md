@@ -34,6 +34,10 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
 - Portable support contracts: `docs/mode-classifier.md`,
   `docs/clarify-question-loop.md`, `docs/agentlas-auto-activation.md`,
   `docs/local-credential-store.md`, and `docs/skill-lifecycle-promotion.md`.
+- Agent experience and MCP contracts: `docs/agent-experience-assets.md`,
+  `docs/mcp-build-resolution.md`, the matching `schemas/*.schema.json`
+  files, `.agentlas/mcp-policy.json`, and
+  `scripts/verify-experience-assets-contract.sh`.
 - Team members: `agents/10-single-agent-builder/agent.md`,
   `agents/20-multi-agent-team-builder/agent.md`, and
   `agents/30-agentlas-packager/agent.md`.
@@ -46,8 +50,8 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
   `.agentlas/sitemap.json`, `.agentlas/global-commands.json`,
   `.agentlas/memory-map.json`,
   `.agentlas/memory-tickets.jsonl`, `.agentlas/vault-references.json`,
-  `.agentlas/local-credentials.map.json`, and skill lifecycle files emitted in
-  generated packages.
+  `.agentlas/local-credentials.map.json`, `.agentlas/mcp-policy.json`, and skill
+  lifecycle files emitted in generated packages.
 - Public install surfaces: `codex/`, `.claude/`, `.gemini/`, `antigravity/`, and
   `scripts/`.
 
@@ -119,8 +123,10 @@ behavior into English before writing runtime instructions.
    continuity; local runtimes may auto-activate them using
    `skills/agentlas-auto-activation/SKILL.md`.
 13. Add or repair `agentlas.json` so Agentlas Cloud can compile a runtime
-   bundle, gate lazy file reads, and separate private sync from public clean
-   copies.
+    bundle, gate lazy file reads, and separate private sync from public clean
+    copies. Seed `.agentlas/mcp-policy.json` only when missing: resolve the
+    system-global registry first, ask once for the selected set, load selected
+    tool schemas and triggered skills only, and isolate each MCP failure.
 14. Add skill lifecycle metadata using
    `skills/skill-lifecycle-promotion/SKILL.md` when the package contains
    reusable skills.
@@ -247,6 +253,8 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/vault-references.json`;
 - `.agentlas/local-credentials.map.json` plus `.env.example`, `signing/README.md`,
   and `credentials/README.md` when local credentials are required;
+- `.agentlas/mcp-policy.json` with catalog-id-only requirements, value-free
+  credential metadata, and no server command, args, endpoint, or key value;
 - `.agentlas/skill-registry.json`;
 - `.agentlas/skill-trials.jsonl`;
 - `.agentlas/curator-decisions.jsonl`;
@@ -338,6 +346,10 @@ local Curator approves promotion.
 
 - Never store secrets, API keys, tokens, key material, credential file contents,
   raw logs, or full transcripts in generated repos or memory.
+- Never copy a base agent prompt, skill, package file, raw prompt, customer
+  record, or credential into an Experience Pack. Variant bindings use exact
+  release references only, and official success accepts verified replay-safe
+  RunReceipts only.
 - Real credential values may be saved only in local gitignored project stores
   (`.env`, `.env.local`, `signing/`, `credentials/`) or a local keychain/vault.
   Generated public packages may include only placeholders, guide files, and a

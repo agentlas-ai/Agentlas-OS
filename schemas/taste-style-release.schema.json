@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/taste-style-release.schema.json",
+  "title": "Agentlas TasteStyleRelease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "tasteStyleId", "releaseId", "ownerRef", "version",
+    "title", "summary", "baseCompatibility", "taskSignatures", "preferenceAxes",
+    "rules", "pairwiseEvidenceReceiptIds", "previewAssetRefs", "audienceTags",
+    "aggregate", "privacy", "contentHash", "visibility", "status"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.taste-style-release.v1" },
+    "kind": { "const": "agentlas-taste-style-release" },
+    "tasteStyleId": { "$ref": "#/$defs/id" },
+    "releaseId": { "$ref": "#/$defs/id" },
+    "ownerRef": { "$ref": "#/$defs/id" },
+    "version": {
+      "type": "string",
+      "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$",
+      "maxLength": 64
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 600 },
+    "baseCompatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentDefinitionId", "compatibleBaseReleaseIds"],
+      "properties": {
+        "agentDefinitionId": { "$ref": "#/$defs/id" },
+        "compatibleBaseReleaseIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      }
+    },
+    "taskSignatures": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
+    "preferenceAxes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 9,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "composition", "color", "typography", "motion", "pacing", "density",
+          "imagery", "editing", "spatial-rhythm"
+        ]
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ruleId", "axis", "polarity", "statement", "contexts", "confidence"],
+        "properties": {
+          "ruleId": { "$ref": "#/$defs/id" },
+          "axis": {
+            "enum": [
+              "composition", "color", "typography", "motion", "pacing", "density",
+              "imagery", "editing", "spatial-rhythm"
+            ]
+          },
+          "polarity": { "enum": ["prefer", "avoid"] },
+          "statement": { "type": "string", "minLength": 1, "maxLength": 320 },
+          "contexts": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/id" }
+          },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "pairwiseEvidenceReceiptIds": {
+      "type": "array",
+      "maxItems": 6144,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
+    "previewAssetRefs": {
+      "type": "array",
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["assetId", "contentHash", "rightsStatus", "safetyStatus", "mimeType"],
+        "properties": {
+          "assetId": { "$ref": "#/$defs/id" },
+          "contentHash": { "$ref": "#/$defs/hash" },
+          "rightsStatus": {
+            "enum": ["owner-authorized", "licensed-for-public-preview", "public-domain"]
+          },
+          "safetyStatus": { "const": "passed" },
+          "mimeType": { "enum": ["image/jpeg", "image/png", "image/webp", "video/mp4"] },
+          "treatment": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "role", "canonicalTaskInputHash", "baseAgentDefinitionId", "baseAgentReleaseId",
+              "generationCohortHash", "evidenceLevel", "generationReceiptId",
+              "tasteStyleReleaseId", "tasteMaterialHash", "noTasteOverlay", "ownerAttested"
+            ],
+            "properties": {
+              "role": { "enum": ["chip-on", "control"] },
+              "canonicalTaskInputHash": { "$ref": "#/$defs/hash" },
+              "baseAgentDefinitionId": { "$ref": "#/$defs/id" },
+              "baseAgentReleaseId": { "$ref": "#/$defs/id" },
+              "generationCohortHash": { "$ref": "#/$defs/hash" },
+              "evidenceLevel": { "enum": ["owner-attested-external", "trusted-evaluator"] },
+              "generationReceiptId": {
+                "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }]
+              },
+              "tasteStyleReleaseId": { "$ref": "#/$defs/id" },
+              "tasteMaterialHash": {
+                "anyOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }]
+              },
+              "noTasteOverlay": { "type": "boolean" },
+              "ownerAttested": { "const": true }
+            }
+          }
+        }
+      }
+    },
+    "audienceTags": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
+    "aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleCount", "distinctRaterCount", "ruleAlignedCount", "alternativeCount",
+        "tieCount", "skipCount", "disagreement"
+      ],
+      "properties": {
+        "sampleCount": { "type": "integer", "minimum": 0 },
+        "distinctRaterCount": { "type": "integer", "minimum": 0 },
+        "ruleAlignedCount": { "type": "integer", "minimum": 0 },
+        "alternativeCount": { "type": "integer", "minimum": 0 },
+        "tieCount": { "type": "integer", "minimum": 0 },
+        "skipCount": { "type": "integer", "minimum": 0 },
+        "disagreement": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rawRaterIdentityIncluded", "rawLocalPathsIncluded", "rawOutputsIncluded",
+        "credentialValuesIncluded", "privateAssetBytesIncluded"
+      ],
+      "properties": {
+        "rawRaterIdentityIncluded": { "const": false },
+        "rawLocalPathsIncluded": { "const": false },
+        "rawOutputsIncluded": { "const": false },
+        "credentialValuesIncluded": { "const": false },
+        "privateAssetBytesIncluded": { "const": false }
+      }
+    },
+    "contentHash": { "$ref": "#/$defs/hash" },
+    "visibility": { "enum": ["private", "unlisted", "public"] },
+    "status": { "enum": ["draft", "active", "suspended", "withdrawn", "deleted"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "releasedAt": { "type": ["string", "null"], "format": "date-time" },
+    "withdrawnAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "visibility": { "const": "public" },
+          "status": { "const": "active" }
+        },
+        "required": ["visibility", "status"]
+      },
+      "then": {
+        "properties": {
+          "pairwiseEvidenceReceiptIds": { "minItems": 1 },
+          "previewAssetRefs": { "minItems": 2 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

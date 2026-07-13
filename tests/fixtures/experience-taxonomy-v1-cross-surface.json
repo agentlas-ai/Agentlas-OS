@@ -1,0 +1,87 @@
+{
+  "schema": "agentlas.experience-taxonomy-fixture.v1",
+  "taxonomyChecksum": "sha256:413833472e423352518f9591cd0e051c5bc0a7971e53ab3dc7b5aaf7d50c37ab",
+  "items": [
+    {
+      "experienceItemId": "item-research",
+      "taskSignatures": ["agentlas.task.v1/research"],
+      "environmentConstraints": [
+        "agentlas.env.v1/os/macos",
+        "agentlas.env.v1/arch/arm64",
+        "agentlas.env.v1/runtime/codex"
+      ],
+      "status": "promoted",
+      "supersedesItemIds": []
+    },
+    {
+      "experienceItemId": "item-legacy-opaque",
+      "taskSignatures": ["sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      "environmentConstraints": ["envhash:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "status": "promoted",
+      "supersedesItemIds": []
+    },
+    {
+      "experienceItemId": "item-writing-old",
+      "taskSignatures": ["agentlas.task.v1/writing"],
+      "environmentConstraints": ["agentlas.env.v1/os/macos"],
+      "status": "promoted",
+      "supersedesItemIds": []
+    },
+    {
+      "experienceItemId": "item-writing-new",
+      "taskSignatures": ["agentlas.task.v1/writing"],
+      "environmentConstraints": ["agentlas.env.v1/os/macos"],
+      "status": "promoted",
+      "supersedesItemIds": ["item-writing-old"]
+    },
+    {
+      "experienceItemId": "item-writing-rejected",
+      "taskSignatures": ["agentlas.task.v1/writing"],
+      "environmentConstraints": ["agentlas.env.v1/os/macos"],
+      "status": "rejected",
+      "supersedesItemIds": []
+    }
+  ],
+  "cases": [
+    {
+      "id": "matching-task-and-environment",
+      "itemIds": ["item-research"],
+      "taskClass": "research",
+      "capabilityTags": [],
+      "environment": {"os": "macos", "arch": "arm64", "runtime": "codex"},
+      "expectedSelectedItemIds": ["item-research"]
+    },
+    {
+      "id": "different-task-selects-zero",
+      "itemIds": ["item-research"],
+      "taskClass": "writing",
+      "capabilityTags": [],
+      "environment": {"os": "macos", "arch": "arm64", "runtime": "codex"},
+      "expectedSelectedItemIds": []
+    },
+    {
+      "id": "different-environment-selects-zero",
+      "itemIds": ["item-research"],
+      "taskClass": "research",
+      "capabilityTags": [],
+      "environment": {"os": "windows", "arch": "x64", "runtime": "codex"},
+      "expectedSelectedItemIds": []
+    },
+    {
+      "id": "legacy-opaque-stores-but-does-not-activate",
+      "itemIds": ["item-legacy-opaque"],
+      "taskClass": "research",
+      "capabilityTags": [],
+      "environment": {"os": "macos", "arch": "arm64", "runtime": "codex"},
+      "expectedSelectedItemIds": []
+    },
+    {
+      "id": "lifecycle-and-supersedes",
+      "itemIds": ["item-writing-old", "item-writing-new", "item-writing-rejected"],
+      "taskClass": "writing",
+      "capabilityTags": [],
+      "environment": {"os": "macos", "arch": "arm64", "runtime": "codex"},
+      "expectedSelectedItemIds": ["item-writing-new"]
+    }
+  ]
+}

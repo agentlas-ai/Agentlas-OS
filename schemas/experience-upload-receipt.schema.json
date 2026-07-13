@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/experience-upload-receipt.schema.json",
+  "title": "Agentlas Experience Upload Receipt v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema", "uploadId", "bundleId", "bundleHash",
+    "experiencePackId", "experienceReleaseId", "ownerWorkspaceRef", "status",
+    "requestedVisibility", "revision", "createdAt", "updatedAt"
+  ],
+  "properties": {
+    "schema": { "const": "agentlas.experience-upload-receipt.v1" },
+    "uploadId": { "type": "string", "pattern": "^exu_[0-9a-f]{48}$" },
+    "bundleId": { "type": "string", "pattern": "^exb_[0-9a-f]{48}$" },
+    "bundleHash": { "$ref": "#/$defs/hash" },
+    "experiencePackId": { "$ref": "#/$defs/id" },
+    "experienceReleaseId": { "$ref": "#/$defs/id" },
+    "ownerWorkspaceRef": { "$ref": "#/$defs/id" },
+    "status": {
+      "enum": [
+        "draft-saved", "verification-requested", "verification-pending", "verified-private",
+        "public-active", "conflict", "withdrawn", "rejected"
+      ]
+    },
+    "requestedVisibility": { "enum": ["private", "unlisted", "public"] },
+    "revision": { "type": "string", "pattern": "^rev_[0-9a-f]{32}$" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "errorCode": { "type": "string", "minLength": 1, "maxLength": 96, "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

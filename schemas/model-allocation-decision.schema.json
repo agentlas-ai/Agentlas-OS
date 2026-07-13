@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/model-allocation-decision.schema.json",
+  "title": "Agentlas ModelAllocationDecision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "decisionId", "phase", "authoredBy", "selectorVersion", "features", "selection", "reasonCodes"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.model-allocation-decision.v1" },
+    "decisionId": { "$ref": "#/$defs/id" },
+    "packetId": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+    "agentId": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+    "phase": { "enum": ["plan", "execute", "verify", "synthesize", "route", "clarify"] },
+    "authoredBy": { "enum": ["parent-ai", "leader-ai", "user-pin"] },
+    "selectorVersion": { "$ref": "#/$defs/id" },
+    "inputFeatureHash": { "anyOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }] },
+    "features": {
+      "type": "object", "additionalProperties": false,
+      "required": ["complexity", "risk", "inputTokens", "expectedOutputTokens", "toolRequired", "multimodalRequired", "parallelFanout"],
+      "properties": {
+        "complexity": { "enum": ["simple", "moderate", "complex"] },
+        "risk": { "enum": ["low", "moderate", "high", "critical"] },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "expectedOutputTokens": { "type": "integer", "minimum": 0 },
+        "toolRequired": { "type": "boolean" },
+        "multimodalRequired": { "type": "boolean" },
+        "parallelFanout": { "type": "integer", "minimum": 1, "maximum": 128 }
+      }
+    },
+    "selection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["tier", "effort", "fallbackTiers", "maxEscalations"],
+      "properties": {
+        "tier": { "enum": ["economy", "balanced", "frontier", "haiku", "luna", "sonnet", "tera", "terra", "opus", "sol"] },
+        "modelClass": { "type": ["string", "null"], "maxLength": 32 },
+        "effort": { "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+        "exactModelId": { "type": ["string", "null"], "maxLength": 255 },
+        "provider": { "type": ["string", "null"], "maxLength": 80 },
+        "fallbackTiers": {
+          "type": "array", "maxItems": 3, "uniqueItems": true,
+          "items": { "enum": ["economy", "balanced", "frontier", "haiku", "luna", "sonnet", "tera", "terra", "opus", "sol"] }
+        },
+        "maxEscalations": { "type": "integer", "minimum": 0, "maximum": 2 }
+      }
+    },
+    "reasonCodes": { "type": "array", "minItems": 1, "maxItems": 12, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

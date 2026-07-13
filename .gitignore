@@ -23,6 +23,9 @@ credentials/*
 
 .memory.local/
 .agentlas/ontology-runtime.sqlite*
+.agentlas/career-graph.sqlite*
+.agentlas/experience-relations.jsonl*
+.agentlas/.experience-relations.jsonl.*
 .agentlas/field-test/
 .agentlas/field-test-report.*
 .agentlas/agent-ontology/

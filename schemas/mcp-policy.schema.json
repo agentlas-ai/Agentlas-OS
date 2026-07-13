@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/mcp-policy.schema.json",
+  "title": "Agentlas MCP Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "registryResolutionOrder", "consentMode",
+    "serverDefinitionsFromPackage", "credentialValuesAllowed", "failureIsolation",
+    "permissionWidening", "toolSchemaLoading", "skillLoading", "contextBudget", "requirements"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.mcp-policy.v1" },
+    "kind": { "const": "agentlas-mcp-policy" },
+    "registryResolutionOrder": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "prefixItems": [{ "const": "system-global" }],
+      "items": { "enum": ["system-global", "project-local", "catalog-recommendation"] }
+    },
+    "consentMode": { "const": "one-pass" },
+    "serverDefinitionsFromPackage": { "const": false },
+    "credentialValuesAllowed": { "const": false },
+    "failureIsolation": { "const": "per-requirement" },
+    "permissionWidening": { "const": "ask" },
+    "toolSchemaLoading": { "const": "selected-tools-only" },
+    "skillLoading": { "const": "triggered-only" },
+    "contextBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coreMemoryMaxTokens", "experienceRetrievalMaxTokens", "experienceRetrievalMaxItems"],
+      "properties": {
+        "coreMemoryMaxTokens": { "type": "integer", "minimum": 0, "maximum": 150 },
+        "experienceRetrievalMaxTokens": { "type": "integer", "minimum": 0, "maximum": 800 },
+        "experienceRetrievalMaxItems": { "type": "integer", "minimum": 0, "maximum": 8 }
+      }
+    },
+    "requirements": { "type": "array", "maxItems": 64, "items": { "$ref": "mcp-requirement.schema.json" } }
+  }
+}

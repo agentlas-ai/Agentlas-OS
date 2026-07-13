@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/mcp-requirement.schema.json",
+  "title": "Agentlas MCPRequirement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "requirementId", "catalogId", "reason", "capabilities",
+    "required", "requiresKey", "priority", "permissions", "alternatives", "unavailablePolicy"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.mcp-requirement.v1" },
+    "kind": { "const": "agentlas-mcp-requirement" },
+    "requirementId": { "$ref": "#/$defs/id" },
+    "catalogId": { "$ref": "#/$defs/id" },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "capabilities": { "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "required": { "type": "boolean" },
+    "requiresKey": { "type": "boolean" },
+    "priority": { "type": "integer", "minimum": 1, "maximum": 1000 },
+    "permissions": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "alternatives": { "type": "array", "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "credentialMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "env"],
+      "properties": {
+        "provider": { "$ref": "#/$defs/id" },
+        "env": { "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" } },
+        "allowedHosts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 255,
+            "pattern": "^(?:\\*\\.)?[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"
+          }
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,127}$"
+          }
+        },
+        "setupUrl": {
+          "type": "string",
+          "maxLength": 2048,
+          "format": "uri",
+          "pattern": "^https://[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(?:/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*)?$"
+        },
+        "brokerMode": { "enum": ["host-bound-broker", "runtime-env-injection", "provider-managed-oauth", "manual-provider-page"] }
+      }
+    },
+    "unavailablePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["build", "rental", "execution"],
+      "properties": {
+        "build": { "const": "degrade" },
+        "rental": { "enum": ["exclude-variant", "continue-degraded"] },
+        "execution": { "enum": ["use-alternative", "disable-capability", "continue-degraded"] }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "requiresKey": { "const": true } }, "required": ["requiresKey"] },
+      "then": { "required": ["credentialMetadata"] }
+    },
+    {
+      "if": { "properties": { "required": { "const": true } }, "required": ["required"] },
+      "then": { "properties": { "unavailablePolicy": { "properties": { "rental": { "const": "exclude-variant" } } } } },
+      "else": { "properties": { "unavailablePolicy": { "properties": { "rental": { "const": "continue-degraded" } } } } }
+    }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$" }
+  }
+}

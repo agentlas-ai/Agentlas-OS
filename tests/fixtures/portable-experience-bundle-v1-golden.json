@@ -1,0 +1,124 @@
+{
+  "bundle": {
+    "schemaVersion": "agentlas.experience-bundle.v1",
+    "kind": "agentlas-experience-bundle",
+    "bundleId": "exb_d5693d046e5228270e8eb108f975b096ed9e4050f0bba3bb",
+    "bundleHash": "sha256:d5693d046e5228270e8eb108f975b096ed9e4050f0bba3bb34d7109e830d9a00",
+    "requestedVisibility": "unlisted",
+    "pack": {
+      "schemaVersion": "agentlas.experience-pack.v1",
+      "kind": "agentlas-experience-pack",
+      "experiencePackId": "exp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "releaseId": "exr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ownerRef": "user:submitted-owner-is-not-authority",
+      "version": "1.2.3-ko.1",
+      "baseCompatibility": {
+        "agentDefinitionId": "agd_cccccccccccccccccccccccccccccccccccccccccccccccc",
+        "compatibleBaseReleaseIds": ["agr_dddddddddddddddddddddddddddddddddddddddddddddddd"]
+      },
+      "itemIds": [
+        "exi_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "exi_ffffffffffffffffffffffffffffffffffffffffffffffff"
+      ],
+      "evidenceReceiptIds": ["evidence:local:alpha", "evidence:local:beta"],
+      "mcpRequirements": [
+        {
+          "schemaVersion": "agentlas.mcp-requirement.v1",
+          "kind": "agentlas-mcp-requirement",
+          "requirementId": "mcp:req:browser-read",
+          "catalogId": "browser",
+          "reason": "승인된 웹 페이지를 확인합니다.",
+          "capabilities": ["page-read"],
+          "required": false,
+          "requiresKey": false,
+          "priority": 20,
+          "permissions": ["read-page"],
+          "alternatives": ["manual-review"],
+          "unavailablePolicy": {
+            "build": "degrade",
+            "rental": "continue-degraded",
+            "execution": "disable-capability"
+          }
+        }
+      ],
+      "containsBasePackageMaterial": false,
+      "contentHash": "sha256:af48067b1bb8b16ff146d2f1ef1ba3029f936dfcc2657d2edfd80238b3613aea",
+      "visibility": "unlisted",
+      "status": "active",
+      "createdAt": "2026-07-12T00:00:00Z",
+      "releasedAt": "2026-07-12T00:00:00Z",
+      "withdrawnAt": null
+    },
+    "items": [
+      {
+        "schemaVersion": "agentlas.experience-item.v1",
+        "kind": "agentlas-experience-item",
+        "experienceItemId": "exi_ffffffffffffffffffffffffffffffffffffffffffffffff",
+        "experiencePackId": "exp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "experiencePackReleaseId": "exr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "type": "environment-gotcha",
+        "summary": "Windows 호스트에서는 셸 종류를 먼저 확인합니다.",
+        "instructions": ["호스트가 Windows인지 확인합니다.", "shell\\PowerShell 표기는 실행 경로가 아니라 환경 태그로만 다룹니다. 🧭"],
+        "taskSignatures": ["task:windows-shell"],
+        "environmentConstraints": ["windows-x64"],
+        "evidenceReceiptIds": ["evidence:local:beta"],
+        "supersedesItemIds": [],
+        "confidence": 1.0,
+        "status": "promoted",
+        "privacyScope": "public-safe",
+        "createdAt": "2026-07-12T00:00:00Z"
+      },
+      {
+        "schemaVersion": "agentlas.experience-item.v1",
+        "kind": "agentlas-experience-item",
+        "experienceItemId": "exi_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "experiencePackId": "exp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "experiencePackReleaseId": "exr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "type": "procedure",
+        "summary": "카페 게시물은 검토 후 발행합니다.",
+        "instructions": ["초안을 작성합니다.", "사용자 승인을 확인합니다.", "승인된 내용만 발행합니다."],
+        "taskSignatures": ["task:cafe-post", "task:social-publish"],
+        "environmentConstraints": ["ko-KR", "macos-arm64"],
+        "evidenceReceiptIds": ["evidence:local:alpha"],
+        "supersedesItemIds": [],
+        "confidence": 0.5,
+        "status": "promoted",
+        "privacyScope": "public-safe",
+        "createdAt": "2026-07-12T00:00:00Z"
+      }
+    ],
+    "sourceAttestations": [
+      {
+        "kind": "user-attested",
+        "experienceItemId": "exi_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "evidenceHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      {
+        "kind": "user-attested",
+        "experienceItemId": "exi_ffffffffffffffffffffffffffffffffffffffffffffffff",
+        "evidenceHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ],
+    "privacy": {
+      "basePackageMaterialIncluded": false,
+      "rawPromptIncluded": false,
+      "rawTranscriptIncluded": false,
+      "rawLocalPathsIncluded": false,
+      "credentialValuesIncluded": false
+    }
+  },
+  "expectedPackContentHash": "sha256:af48067b1bb8b16ff146d2f1ef1ba3029f936dfcc2657d2edfd80238b3613aea",
+  "expectedBundleHash": "sha256:d5693d046e5228270e8eb108f975b096ed9e4050f0bba3bb34d7109e830d9a00",
+  "expectedBundleId": "exb_d5693d046e5228270e8eb108f975b096ed9e4050f0bba3bb",
+  "canonicalCases": {
+    "input": {
+      "whole": 1.0,
+      "half": 0.5,
+      "negativeZero": -0.0,
+      "decomposedKorean": "카페",
+      "emoji": "🧭",
+      "windowsSlash": "shell\\PowerShell"
+    },
+    "expectedJson": "{\"decomposedKorean\":\"카페\",\"emoji\":\"🧭\",\"half\":0.5,\"negativeZero\":0,\"whole\":1,\"windowsSlash\":\"shell\\\\PowerShell\"}"
+  }
+}

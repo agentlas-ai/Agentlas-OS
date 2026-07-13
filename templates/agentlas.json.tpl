@@ -20,5 +20,16 @@
   "publicExportPolicy": "clean-copy",
   "requiredRuntime": ["mcp-client"],
   "license": "call-only-default",
-  "createdBy": "hephaestus-setup-wizard"
+  "createdBy": "hephaestus-setup-wizard",
+  "packageHashVersion": "agentlas-package-hash/v2",
+  "assetContract": {
+    "kind": "agent-definition",
+    "schemaVersion": "agentlas.agent-definition.v1",
+    "materialization": "hub-or-cloud-registration",
+    "releaseAuthority": "registry"
+  },
+  "mcpPolicy": {
+    "ref": ".agentlas/mcp-policy.json",
+    "resolution": "system-global-first"
+  }
 }

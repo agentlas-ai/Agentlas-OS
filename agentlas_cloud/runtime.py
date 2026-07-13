@@ -8,7 +8,14 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Mapping
+
+from .experience_contracts import (
+    ContractValidationError,
+    SCHEMA_VERSIONS,
+    default_mcp_policy,
+    validate_mcp_policy,
+)
 
 
 SECRET_PATTERNS = [
@@ -39,6 +46,43 @@ LLM_JUDGMENT_FINDING_TYPES = {
 }
 LLM_JUDGMENT_MESSAGE_MAX_CHARS = 500
 VERDICT_RANK = {"PASS": 0, "WARN": 1, "BLOCK": 2}
+MCP_POLICY_RELATIVE_PATH = ".agentlas/mcp-policy.json"
+PACKAGE_HASH_VERSION = "agentlas-package-hash/v2"
+LOCAL_EXPERIENCE_LINEAGE_PATH = ".agentlas/experience-relations.jsonl"
+PACKAGE_HASH_EXCLUDED_PATHS = frozenset(
+    {
+        "agentlas.json",
+        ".agentlas/security-scan.json",
+        ".agentlas/security-llm-judgment.json",
+        ".agentlas/field-test-report.json",
+        # Experience lineage is a separate user-owned/local Experience source,
+        # never immutable AgentDefinition package material.
+        LOCAL_EXPERIENCE_LINEAGE_PATH,
+    }
+)
+
+# These are separately owned Experience/Taste assets, not AgentDefinition
+# source files.  Match only parsed top-level contract identities: prose,
+# nested value-free release references, MCP requirements, and wrapped contract
+# fixtures remain legitimate base-agent material.
+STANDALONE_EXPERIENCE_ASSET_KINDS = frozenset(
+    {
+        "agentlas-experience-bundle",
+        "agentlas-experience-pack",
+        "agentlas-experience-item",
+        "agentlas-taste-style-release",
+        "agentlas-pairwise-preference-receipt",
+    }
+)
+STANDALONE_EXPERIENCE_ASSET_SCHEMA_VERSIONS = frozenset(
+    {
+        "agentlas.experience-bundle.v1",
+        SCHEMA_VERSIONS["experience-pack"],
+        SCHEMA_VERSIONS["experience-item"],
+        SCHEMA_VERSIONS["taste-style-release"],
+        SCHEMA_VERSIONS["pairwise-preference-receipt"],
+    }
+)
 
 
 @dataclass
@@ -58,9 +102,12 @@ class AgentlasManifest:
     requiredRuntime: list[str]
     license: str
     createdBy: str
+    packageHashVersion: str | None = None
+    assetContract: dict[str, Any] | None = None
+    mcpPolicy: dict[str, str] | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return asdict(self)
+        return {key: value for key, value in asdict(self).items() if value is not None}
 
 
 @dataclass
@@ -110,6 +157,8 @@ def collect_package_files(root: str | Path) -> list[PackageFile]:
         if not path.is_file():
             continue
         rel = path.relative_to(base).as_posix()
+        if is_local_experience_lineage_path(rel):
+            continue
         if rel.startswith(".git/") or "/node_modules/" in f"/{rel}/" or rel.startswith("node_modules/"):
             continue
         if path.suffix and path.suffix not in TEXT_FILE_ALLOW:
@@ -122,15 +171,84 @@ def collect_package_files(root: str | Path) -> list[PackageFile]:
 
 
 def package_hash(files: list[PackageFile]) -> str:
+    entries = (
+        (item.path, item.content.encode("utf-8", errors="replace"))
+        for item in files
+    )
+    return f"sha256:{canonical_package_hash_hex(entries)}"
+
+
+def canonical_package_hash_hex(entries: Iterable[tuple[str, bytes]]) -> str:
+    """V2 package identity over canonical path + exact materialized bytes."""
+
     digest = hashlib.sha256()
-    for item in sorted(files, key=lambda file: file.path):
-        if item.path == "agentlas.json":
+    digest.update(PACKAGE_HASH_VERSION.encode("utf-8"))
+    digest.update(b"\0")
+    for path, content in sorted(entries, key=lambda item: item[0]):
+        normalized_path = path.replace("\\", "/")
+        if not package_hash_includes(normalized_path):
             continue
-        digest.update(item.path.encode("utf-8"))
+        digest.update(normalized_path.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(item.content.encode("utf-8", errors="replace"))
+        digest.update(content)
         digest.update(b"\0")
-    return f"sha256:{digest.hexdigest()}"
+    return digest.hexdigest()
+
+
+def package_hash_includes(path: str) -> bool:
+    """Return whether a package path is immutable base-release material.
+
+    V2 excludes wizard-generated mutable evidence and the separately owned
+    local Experience lineage. MCP policy remains in the hash because it changes
+    executable package intent.
+    """
+
+    normalized = path.replace("\\", "/")
+    return (
+        normalized not in PACKAGE_HASH_EXCLUDED_PATHS
+        and not is_local_experience_lineage_path(normalized)
+    )
+
+
+def is_local_experience_lineage_path(path: str) -> bool:
+    """Cover the canonical ledger and crash-safe temp/backup siblings."""
+
+    normalized = path.replace("\\", "/")
+    return (
+        normalized == LOCAL_EXPERIENCE_LINEAGE_PATH
+        or normalized.startswith(f"{LOCAL_EXPERIENCE_LINEAGE_PATH}.")
+        or normalized.startswith(".agentlas/.experience-relations.jsonl.")
+    )
+
+
+def standalone_experience_asset_identity(content: str) -> str | None:
+    """Return an exact standalone Experience/Taste identity, if present.
+
+    This intentionally does not search strings recursively.  AgentDefinition
+    manifests may carry exact release IDs/loadout references, documentation may
+    discuss these contracts, and repository golden fixtures may wrap examples.
+    Only a parsed JSON object whose own top-level ``kind`` or ``schemaVersion``
+    identifies a separately owned asset crosses the package-kind boundary.
+    """
+
+    try:
+        payload = json.loads(content)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    matches: list[str] = []
+    kind = payload.get("kind")
+    schema_version = payload.get("schemaVersion")
+    if isinstance(kind, str) and kind in STANDALONE_EXPERIENCE_ASSET_KINDS:
+        matches.append(f"kind={kind}")
+    if (
+        isinstance(schema_version, str)
+        and schema_version in STANDALONE_EXPERIENCE_ASSET_SCHEMA_VERSIONS
+    ):
+        matches.append(f"schemaVersion={schema_version}")
+    return ", ".join(matches) or None
 
 
 def infer_entry(files: list[PackageFile]) -> str:
@@ -168,12 +286,34 @@ def build_manifest(files: list[PackageFile], name: str) -> AgentlasManifest:
         requiredRuntime=["mcp-client"],
         license="call-only-default",
         createdBy="hephaestus-setup-wizard",
+        packageHashVersion=PACKAGE_HASH_VERSION,
+        assetContract={
+            "kind": "agent-definition",
+            "schemaVersion": SCHEMA_VERSIONS["agent-definition"],
+            "materialization": "hub-or-cloud-registration",
+            "releaseAuthority": "registry",
+        },
+        mcpPolicy={
+            "ref": MCP_POLICY_RELATIVE_PATH,
+            "resolution": "system-global-first",
+        },
     )
 
 
 def scan_files(files: list[PackageFile]) -> SecurityReport:
     findings: list[SecurityFinding] = []
     for file in files:
+        asset_identity = standalone_experience_asset_identity(file.content)
+        if asset_identity:
+            findings.append(
+                SecurityFinding(
+                    "BLOCK",
+                    "standalone-experience-asset",
+                    file.path,
+                    "A separately owned Experience/Taste asset cannot be embedded in AgentDefinition source "
+                    f"({asset_identity}). Keep only exact release IDs or value-free loadout references.",
+                )
+            )
         if any(matches(file.path, pattern) for pattern in [".env", ".env.*", "**/secrets/**", "**/credentials/**", "**/cookies/**", "**/*token*", "**/*secret*"]):
             findings.append(SecurityFinding("BLOCK", "credential-path", file.path, "Credential-like file path is excluded from Cloud package and public publish."))
         for number, line in enumerate(file.content.splitlines(), start=1):
@@ -265,28 +405,86 @@ def scan_agent_folder(root: str | Path, llm_judgment_path: str | Path | None = N
 
 def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = True) -> dict[str, Any]:
     base = Path(root).expanduser().resolve()
+    mcp_policy_seeded = False
+    if write:
+        mcp_policy_seeded = _ensure_default_mcp_policy(base)
     files = collect_package_files(base)
     manifest = build_manifest(files, name or base.name)
     scan = scan_files(files)
-    state = "Ready for MCP call" if scan.verdict != "BLOCK" else "Blocked"
+    mcp_policy_validation = _validate_mcp_policy_path(base)
+    state = (
+        "Ready for MCP call"
+        if scan.verdict != "BLOCK" and mcp_policy_validation["status"] == "valid"
+        else "Blocked"
+    )
     manifest_payload = manifest.to_json()
     existing_manifest = _read_existing_manifest(base)
     if existing_manifest:
         # Preserve uploader-authored display metadata such as publicProfile while
         # refreshing the runtime contract fields that Hephaestus owns.
         manifest_payload = {**existing_manifest, **manifest_payload}
+        # Asset identity is assigned by the local owner or registration service.
+        # The setup wizard advertises the contract but must never replace an
+        # existing definition/release reference with a generic projection.
+        for key in ("assetContract", "mcpPolicy"):
+            if isinstance(existing_manifest.get(key), dict):
+                manifest_payload[key] = existing_manifest[key]
     if write:
         (base / "agentlas.json").write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         agentlas_dir = base / ".agentlas"
-        agentlas_dir.mkdir(exist_ok=True)
+        agentlas_dir.mkdir(parents=True, exist_ok=True)
         (agentlas_dir / "security-scan.json").write_text(json.dumps(scan.to_json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {
         "status": state,
         "manifest": manifest_payload,
         "scanReport": scan.to_json(),
-        "stateTransitionLog": ["Started setup wizard", "Generated agentlas.json", f"Security scan: {scan.verdict}", state],
-        "blockers": [] if state == "Ready for MCP call" else ["Security scan blocked package upload."],
+        "stateTransitionLog": [
+            "Started setup wizard",
+            *(["Seeded missing .agentlas/mcp-policy.json"] if mcp_policy_seeded else []),
+            "Generated agentlas.json",
+            f"Security scan: {scan.verdict}",
+            f"MCP policy: {mcp_policy_validation['status']}",
+            state,
+        ],
+        "blockers": [
+            *(["Security scan blocked package upload."] if scan.verdict == "BLOCK" else []),
+            *(
+                ["Invalid .agentlas/mcp-policy.json; fix the value-free catalog policy or remove it to regenerate the safe default."]
+                if mcp_policy_validation["status"] != "valid"
+                else []
+            ),
+        ],
+        "mcpPolicyValidation": mcp_policy_validation,
     }
+
+
+def _ensure_default_mcp_policy(base: Path) -> bool:
+    """Seed the public-safe policy once; never replace an existing decision."""
+
+    path = base / MCP_POLICY_RELATIVE_PATH
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(default_mcp_policy(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return True
+
+
+def _validate_mcp_policy_path(base: Path) -> dict[str, str]:
+    """Validate without returning file contents or exception text."""
+
+    path = base / MCP_POLICY_RELATIVE_PATH
+    if not path.is_file():
+        try:
+            validate_mcp_policy(default_mcp_policy())
+        except ContractValidationError:
+            return {"status": "invalid", "reason": "internal-default-invalid"}
+        return {"status": "valid", "reason": "portable-default"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        validate_mcp_policy(payload)
+    except (OSError, UnicodeError, json.JSONDecodeError, ContractValidationError):
+        return {"status": "invalid", "reason": "schema-or-policy-violation"}
+    return {"status": "valid", "reason": "package-policy"}
 
 
 def _read_existing_manifest(base: Path) -> dict[str, Any] | None:
@@ -313,6 +511,7 @@ def compile_runtime_bundle(root: str | Path) -> dict[str, Any]:
     if not entry:
         raise FileNotFoundError(f"Entry file not found: {manifest.entry}")
     scan = scan_files(files)
+    mcp_policy = _load_validated_mcp_policy(base)
     return {
         "schemaVersion": "1.0",
         "agent": manifest.name,
@@ -321,10 +520,47 @@ def compile_runtime_bundle(root: str | Path) -> dict[str, Any]:
         "skills": manifest.skills,
         "toolPermissions": manifest.toolPermissions,
         "memoryPolicy": manifest.memoryPolicy,
+        "mcpPolicy": _compact_mcp_policy(mcp_policy),
         "memorySummary": [summarize_memory(by_path[path]) for path in manifest.memory if path in by_path],
         "securityWarnings": [f"{item.verdict}:{item.type}:{item.path}" for item in scan.findings],
         "lazyRead": {"tool": "agentlas.read_agent_file", "allowedPatterns": manifest.allowRead, "deniedPatterns": manifest.denyRead},
     }
+
+
+def _load_validated_mcp_policy(base: Path) -> dict[str, Any]:
+    path = base / MCP_POLICY_RELATIVE_PATH
+    if not path.is_file():
+        policy = default_mcp_policy()
+    else:
+        try:
+            policy = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Invalid value-free MCP policy") from exc
+    try:
+        validate_mcp_policy(policy)
+    except ContractValidationError as exc:
+        raise ValueError("Invalid value-free MCP policy") from exc
+    return policy
+
+
+def _compact_mcp_policy(policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Return only portable declared intent; no discovered state or key data."""
+
+    keys = (
+        "schemaVersion",
+        "kind",
+        "registryResolutionOrder",
+        "consentMode",
+        "serverDefinitionsFromPackage",
+        "credentialValuesAllowed",
+        "failureIsolation",
+        "permissionWidening",
+        "toolSchemaLoading",
+        "skillLoading",
+        "contextBudget",
+        "requirements",
+    )
+    return json.loads(json.dumps({key: policy[key] for key in keys}, ensure_ascii=False))
 
 
 def read_agent_file(root: str | Path, requested_path: str) -> dict[str, Any]:

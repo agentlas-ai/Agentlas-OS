@@ -21,6 +21,8 @@ Public core owns the portable contract:
   `credentials/` materialization, plus value-free borrowed-agent credential
   request metadata such as provider, env name, allowed host, scope, and broker
   mode;
+- AgentDefinition, ExperiencePack, ExperienceItem, AgentVariant, RunReceipt,
+  RentalResolutionReceipt, MCPRequirement, and value-free MCP policy schemas;
 - global command registry and post-creation command handoff;
 - Memory Tickets, PM Soul, Memory Curator, sitemap/task-bias, policy, eval, QA,
   and runtime adapter rules;
@@ -52,6 +54,9 @@ public core contract is the public version they should all mirror:
 | `.agentlas` memory files | canonical | emits in exports | creates/maintains locally |
 | Local credential store | value-free public contract | may emit placeholders only | may store real values in gitignored local files or local keychain/vault |
 | Borrowed-agent credential request | provider/env/host/scope/broker metadata only | may render setup guidance without values | owns secure GUI, OS vault/keychain, and any host-bound broker implementation |
+| Agent/experience assets | canonical identities, exact release bindings, lifecycle, privacy, and receipt schemas | owns account storage, publication, moderation, ranking, leases, and revenue | owns local capture, curation, private packs, and execution receipts |
+| MCP resolution | system-global-first, catalog-id-only, one-pass consent, failure isolation, and token-budget contract | may own catalog metadata and compatibility projections | owns registry discovery, key presence, process connection, smoke tests, and UI state |
+| Model allocation | owns provider-neutral parent-AI decision and prompt-free receipt schemas | may enforce account cost ceilings and exact hosted inventory | owns actual model inventory, explicit pins, effort support, context/tool compatibility, and per-child execution |
 | `.agentlas` skill lifecycle files | canonical export contract | emits candidate registry and empty ledgers | may merge locally as candidate metadata |
 | `.agentlas` Super Ontology files | canonical candidate contract | emits candidate contract and empty replay/evidence ledgers | may seed locally as candidate metadata |
 | PM Soul / Memory Curator | generated role contract | may package into exports | may ship built-in agents |
@@ -165,6 +170,23 @@ The following formerly runtime-owned behaviors are now public contracts:
    constraints, appeal, audit, and rollback.
    The bridge keeps direct durable memory writes blocked until Curator, Policy,
    PM Soul, or sync review approves a later phase.
+8. Agent experience asset and MCP build contracts: see
+   `docs/agent-experience-assets.md` and `docs/mcp-build-resolution.md`. Base
+   agents and user-owned experience are separate releases; a Variant binds one
+   exact release of each without copying content. RunReceipt replay protection
+   and independent verification gate official success. MCP packages may name
+   catalog capabilities and value-free credential metadata, never server
+   commands, endpoints, or credential values.
+   `.agentlas/experience-relations.jsonl` is a separate local Experience
+   lineage source for a rebuildable relation index. Public Core and Desktop
+   base-agent packagers exclude it from AgentDefinition source/delivery hashes
+   and bundles; only the redacted aggregate public Career Graph card may cross
+   that base-package boundary.
+9. Parent-AI model allocation: see `docs/model-allocation.md`. Deterministic
+   host code may validate, clamp, and translate a decision, but must not infer
+   task difficulty from hardcoded request keywords. Missing or invalid parent
+   decisions preserve the current host model with an explicit fallback receipt;
+   they never silently fan every child out to a flagship model.
 
 These are contract-level syncs. They do not move hosted billing, account state,
 private storage, or local Electron implementation into public core.

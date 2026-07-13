@@ -23,6 +23,10 @@ This repository owns:
 - `.agentlas` contracts;
 - public `.agentlas` auto-activation contract for local runtimes;
 - public global command contract for generated and packaged agents;
+- public AgentDefinition, ExperiencePack, AgentVariant, RunReceipt, rental
+  resolution, and MCP requirement/policy contracts;
+- public parent-AI model allocation decision and prompt-free allocation receipt
+  contracts; hosts own exact provider execution but must enforce these bounds;
 - public skill lifecycle registry contract for export-only candidate metadata;
 - public runtime adapters;
 - public-safe schemas, templates, and verification scripts.
@@ -59,6 +63,9 @@ These files are the public contract surface:
 - `docs/global-command-contract.md`
 - `docs/agentlas-auto-activation.md`
 - `docs/local-credential-store.md`
+- `docs/agent-experience-assets.md`
+- `docs/mcp-build-resolution.md`
+- `docs/model-allocation.md`
 - `docs/skill-lifecycle-promotion.md`
 - `docs/super-ontology-candidate-contract.md`
 - `.agentlas/mode-map.json`
@@ -70,6 +77,7 @@ These files are the public contract surface:
 - `.agentlas/memory-tickets.jsonl`
 - `.agentlas/vault-references.json`
 - `.agentlas/local-credentials.map.json`
+- `.agentlas/mcp-policy.json`
 - `.agentlas/activation.json`
 - `.agentlas/skill-registry.json` in generated packages
 - `.agentlas/skill-trials.jsonl` in generated packages
@@ -114,10 +122,23 @@ These files are the public contract surface:
 - `schemas/`
 - `schemas/gateway-channel.schema.json`
 - `schemas/local-credentials-map.schema.json`
+- `schemas/agent-definition.schema.json`
+- `schemas/experience-pack.schema.json`
+- `schemas/experience-item.schema.json`
+- `schemas/experience-relation-lineage.schema.json`
+- `schemas/agent-variant.schema.json`
+- `schemas/run-receipt.schema.json`
+- `schemas/model-allocation-decision.schema.json`
+- `schemas/model-allocation-receipt.schema.json`
+- `schemas/mcp-requirement.schema.json`
+- `schemas/mcp-policy.schema.json`
+- `schemas/rental-resolution-receipt.schema.json`
 - `docs/hephaestus-agentlas-gateway-architecture.md`
 - `templates/`
 - `templates/gateway-channel.json.tpl`
 - `templates/local-credentials.map.json.tpl`
+- `templates/mcp-policy.json.tpl`
+- experience asset and receipt templates under `templates/`
 - runtime adapters under `codex/`, `.claude/`, `.gemini/`, and `claude/`
 - global command adapters under `.claude/commands/`,
   `codex/plugins/*/commands/`, and `gemini/extension/commands/`, with optional
@@ -141,6 +162,8 @@ change:
 - gateway channel contracts, templates, or verification rules;
 - `.agentlas` global command registry or generated command surfaces;
 - `.agentlas` auto-activation contract;
+- agent experience asset identity, ownership, exact-release binding, receipt,
+  ranking, MCP resolution, and value-free derived relation-lineage contracts;
 - `.agentlas` skill lifecycle registry contract;
 - `.agentlas` Super Ontology open-world coverage, consensus coordination, task coverage, contextual flow, causal impact,
   assurance case, knowledge homeostasis, adversarial provenance, epistemic
@@ -168,6 +191,8 @@ The following behaviors are public contracts in this repo:
 - `.agentlas/global-commands.json` with final `global_commands` handoff.
 - export-only skill lifecycle metadata with candidate tier, trial ledgers, and
   Curator decision ledgers.
+- exact-release AgentDefinition/ExperiencePack/AgentVariant identities, verified
+  replay-safe receipts, and system-global-first MCP resolution policy.
 
 The following remain implementation-specific and must not be copied here as
 product code:

@@ -10,11 +10,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from .experience_relations import validate_lineage_event
+
 AGENTLAS_DIR = ".agentlas"
 CONFIG_FILE = "career-graph.json"
 SOURCE_MANIFEST_FILE = "career-graph-sources.json"
 INBOX_DIR = "career-graph-inbox"
 DB_FILE = "career-graph.sqlite"
+EXPERIENCE_RELATION_LEDGER_FILE = "experience-relations.jsonl"
 
 
 def utc_now() -> str:
@@ -296,6 +299,7 @@ class CareerGraphRuntime:
         add("curator_decisions", agentlas / "curator-decisions.jsonl")
         add("sitemap", agentlas / "sitemap.json")
         add("code_map", agentlas / "code-map" / "project-map.json")
+        add("experience_relations", agentlas / EXPERIENCE_RELATION_LEDGER_FILE)
 
         journal_dir = agentlas / "stormbreaker" / "journal"
         if journal_dir.is_dir():
@@ -345,7 +349,250 @@ class CareerGraphRuntime:
             return self._ingest_sitemap(path, project_node)
         if kind == "code_map":
             return self._ingest_code_map(path, project_node)
+        if kind == "experience_relations":
+            return self._ingest_experience_relations(path, project_node)
         return self._ingest_registered(path, kind, project_node)
+
+    def _ingest_experience_relations(
+        self,
+        path: Path,
+        project_node: str,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Build a pack-scoped relation index from value-free lineage events.
+
+        Invalid lines are represented only by a safe rejection marker. Their
+        raw payload is never copied into the graph. The lineage JSONL remains
+        canonical and this projection is safe to delete and rebuild.
+        """
+
+        nodes: dict[str, dict[str, Any]] = {}
+        edges: dict[str, dict[str, Any]] = {}
+        latest_similarity: dict[
+            str,
+            tuple[str, dict[str, str], dict[str, list[str]], dict[str, Any]],
+        ] = {}
+
+        def keep_node(node: dict[str, Any]) -> str:
+            nodes[node["node_id"]] = node
+            return node["node_id"]
+
+        def keep_edge(edge: dict[str, Any]) -> None:
+            edges[edge["edge_id"]] = edge
+
+        for line_no, raw in iter_jsonl(path):
+            result = validate_lineage_event(raw)
+            if result.event is None:
+                rejection = self._node(
+                    "ExperienceLineageRejection",
+                    stable_id("experience-lineage-rejection", path, line_no),
+                    f"rejected-line-{line_no}",
+                    "Experience lineage event rejected before relation ingestion.",
+                    path,
+                    line_no,
+                    {"issues": list(result.issues), "rawPayloadStored": False},
+                )
+                keep_node(rejection)
+                keep_edge(
+                    self._edge(
+                        project_node,
+                        rejection["node_id"],
+                        "has_rejected_experience_lineage",
+                        path,
+                        {"line": line_no, "issues": list(result.issues)},
+                    )
+                )
+                continue
+
+            event = result.event
+            pack_id = event["packId"]
+            release_id = event["releaseId"]
+            scope_payload = {
+                "packId": pack_id,
+                "projectScopeKey": event["projectScopeKey"],
+                "environmentKey": event["environmentKey"],
+                "baseReleaseHash": event["baseReleaseHash"],
+            }
+
+            pack_node = keep_node(
+                self._node(
+                    "Pack",
+                    stable_id("experience-pack", pack_id),
+                    pack_id,
+                    "Experience Pack relation root",
+                    path,
+                    line_no,
+                    scope_payload,
+                )
+            )
+            keep_edge(self._edge(project_node, pack_node, "has_experience_pack", path, scope_payload))
+
+            release_node = keep_node(
+                self._node(
+                    "Release",
+                    stable_id("experience-release", pack_id, release_id),
+                    release_id,
+                    "Experience Pack release",
+                    path,
+                    line_no,
+                    {**scope_payload, "releaseKind": "experience", "eventType": event["eventType"]},
+                )
+            )
+            base_release_node = keep_node(
+                self._node(
+                    "Release",
+                    stable_id("base-release", pack_id, event["baseReleaseHash"]),
+                    event["baseReleaseHash"],
+                    "Exact base-agent release reference; package bytes are not stored.",
+                    path,
+                    line_no,
+                    {**scope_payload, "releaseKind": "base", "containsBasePackageMaterial": False},
+                )
+            )
+            environment_node = keep_node(
+                self._node(
+                    "Environment",
+                    stable_id("experience-environment", pack_id, event["environmentKey"]),
+                    event["environmentKey"],
+                    "Pack-scoped environment fingerprint",
+                    path,
+                    line_no,
+                    scope_payload,
+                )
+            )
+            keep_edge(self._edge(pack_node, release_node, "has_release", path, scope_payload))
+            keep_edge(self._edge(release_node, base_release_node, "exact_base_binding", path, scope_payload))
+            keep_edge(self._edge(release_node, environment_node, "applies_in_environment", path, scope_payload))
+
+            supersedes = event.get("supersedesReleaseId")
+            if supersedes:
+                previous_node = keep_node(
+                    self._node(
+                        "Release",
+                        stable_id("experience-release", pack_id, supersedes),
+                        supersedes,
+                        "Superseded Experience Pack release",
+                        path,
+                        line_no,
+                        {**scope_payload, "releaseKind": "experience"},
+                    )
+                )
+                keep_edge(self._edge(release_node, previous_node, "supersedes", path, scope_payload))
+
+            task_bindings = {
+                binding["itemId"]: list(binding["tags"])
+                for binding in event["taskBindings"]
+            }
+            evidence_bindings = {
+                binding["itemId"]: list(binding["receiptIds"])
+                for binding in event["evidenceBindings"]
+            }
+            item_nodes: dict[str, str] = {}
+            for item_id in event["itemIds"]:
+                item_node = keep_node(
+                    self._node(
+                        "Item",
+                        stable_id("experience-item", pack_id, item_id),
+                        item_id,
+                        "Experience item reference; instructions and summaries remain in the owned asset.",
+                        path,
+                        line_no,
+                        {**scope_payload, "itemId": item_id, "rawContentStored": False},
+                    )
+                )
+                item_nodes[item_id] = item_node
+                keep_edge(self._edge(release_node, item_node, "contains", path, scope_payload))
+                keep_edge(self._edge(item_node, environment_node, "applies_in_environment", path, scope_payload))
+                for tag in task_bindings.get(item_id, []):
+                    tag_node = keep_node(
+                        self._node(
+                            "TaskTag",
+                            stable_id("experience-task-tag", pack_id, tag),
+                            tag,
+                            tag,
+                            path,
+                            line_no,
+                            {**scope_payload, "tag": tag},
+                        )
+                    )
+                    keep_edge(self._edge(item_node, tag_node, "applies_to_task", path, scope_payload))
+                for receipt_id in evidence_bindings.get(item_id, []):
+                    receipt_node = keep_node(
+                        self._node(
+                            "EvidenceReceipt",
+                            stable_id("experience-evidence", pack_id, receipt_id),
+                            receipt_id,
+                            "Value-free evidence receipt reference",
+                            path,
+                            line_no,
+                            {**scope_payload, "receiptId": receipt_id},
+                        )
+                    )
+                    keep_edge(self._edge(item_node, receipt_node, "supported_by", path, scope_payload))
+
+            for requirement in event["mcpRequirements"]:
+                catalog_id = requirement["catalogId"]
+                mcp_node = keep_node(
+                    self._node(
+                        "MCPRequirement",
+                        stable_id("experience-mcp", pack_id, catalog_id),
+                        catalog_id,
+                        "Value-free MCP catalog requirement",
+                        path,
+                        line_no,
+                        {**scope_payload, "catalogId": catalog_id, "required": requirement["required"]},
+                    )
+                )
+                edge_type = "requires_mcp" if requirement["required"] else "supports_mcp"
+                keep_edge(self._edge(release_node, mcp_node, edge_type, path, scope_payload))
+                for alternative in requirement["alternatives"]:
+                    alternative_node = keep_node(
+                        self._node(
+                            "MCPRequirement",
+                            stable_id("experience-mcp", pack_id, alternative),
+                            alternative,
+                            "Value-free alternative MCP catalog requirement",
+                            path,
+                            line_no,
+                            {**scope_payload, "catalogId": alternative, "alternative": True},
+                        )
+                    )
+                    keep_edge(self._edge(mcp_node, alternative_node, "alternative_mcp", path, scope_payload))
+
+            candidate = (
+                str(event["createdAt"]),
+                item_nodes,
+                task_bindings,
+                scope_payload,
+            )
+            previous_candidate = latest_similarity.get(pack_id)
+            if previous_candidate is None or candidate[0] >= previous_candidate[0]:
+                latest_similarity[pack_id] = candidate
+
+        # Similarity is optional and derived only for the newest relation
+        # snapshot in each Pack. This keeps a long append-only release history
+        # from turning rebuild work into the sum of every historical O(n^2)
+        # pair set while preserving deterministic, pack-local retrieval hints.
+        for _pack_id, (_created_at, item_nodes, task_bindings, scope_payload) in latest_similarity.items():
+            ordered_items = sorted(item_nodes)
+            for index, left_id in enumerate(ordered_items):
+                left_tags = set(task_bindings.get(left_id, []))
+                if not left_tags:
+                    continue
+                for right_id in ordered_items[index + 1 :]:
+                    shared = sorted(left_tags.intersection(task_bindings.get(right_id, [])))
+                    if len(shared) < 2:
+                        continue
+                    keep_edge(
+                        self._edge(
+                            item_nodes[left_id],
+                            item_nodes[right_id],
+                            "similar_by_tag",
+                            path,
+                            {**scope_payload, "sharedTagCount": len(shared)},
+                        )
+                    )
+
+        return list(nodes.values()), list(edges.values())
 
     def _ingest_jsonl(self, path: Path, kind: str, project_node: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         node_type = {
@@ -619,6 +866,15 @@ class CareerGraphRuntime:
         card only exposes aggregate counts and source/node/edge types.
         """
         status = self.status()
+        experience_ledger = str(self.config.agentlas_dir / EXPERIENCE_RELATION_LEDGER_FILE)
+        public_sources = [
+            source for source in self._canonical_sources()
+            if str(source["path"]) != experience_ledger
+        ]
+        public_stale = [
+            item for item in status["stale"]
+            if item.get("path") != experience_ledger
+        ]
         card: dict[str, Any] = {
             "schemaVersion": "1.0",
             "kind": "agentlas-public-career-card",
@@ -632,26 +888,52 @@ class CareerGraphRuntime:
                 "rawTranscriptsIncluded": False,
                 "sourceTextIncluded": False,
             },
-            "counts": status["counts"],
-            "canonicalSources": status["canonical_sources"],
-            "staleSourceCount": len(status["stale"]),
+            "counts": {"sources": 0, "nodes": 0, "edges": 0},
+            "canonicalSources": len(public_sources),
+            "staleSourceCount": len(public_stale),
             "sourceKinds": {},
             "nodeTypes": {},
             "edgeTypes": {},
         }
         if self.config.sqlite_path.exists():
             with closing(self.connect()) as conn:
+                card["counts"] = {
+                    "sources": conn.execute(
+                        "SELECT count(*) FROM sources WHERE kind != 'experience_relations'"
+                    ).fetchone()[0],
+                    "nodes": conn.execute(
+                        "SELECT count(*) FROM nodes WHERE source_path IS NULL OR source_path != ?",
+                        (experience_ledger,),
+                    ).fetchone()[0],
+                    "edges": conn.execute(
+                        "SELECT count(*) FROM edges WHERE source_path IS NULL OR source_path != ?",
+                        (experience_ledger,),
+                    ).fetchone()[0],
+                }
                 card["sourceKinds"] = {
                     row["kind"]: row["count"]
-                    for row in conn.execute("SELECT kind, count(*) AS count FROM sources GROUP BY kind ORDER BY kind")
+                    for row in conn.execute(
+                        "SELECT kind, count(*) AS count FROM sources "
+                        "WHERE kind != 'experience_relations' GROUP BY kind ORDER BY kind"
+                    )
                 }
                 card["nodeTypes"] = {
                     row["node_type"]: row["count"]
-                    for row in conn.execute("SELECT node_type, count(*) AS count FROM nodes GROUP BY node_type ORDER BY node_type")
+                    for row in conn.execute(
+                        "SELECT node_type, count(*) AS count FROM nodes "
+                        "WHERE source_path IS NULL OR source_path != ? "
+                        "GROUP BY node_type ORDER BY node_type",
+                        (experience_ledger,),
+                    )
                 }
                 card["edgeTypes"] = {
                     row["edge_type"]: row["count"]
-                    for row in conn.execute("SELECT edge_type, count(*) AS count FROM edges GROUP BY edge_type ORDER BY edge_type")
+                    for row in conn.execute(
+                        "SELECT edge_type, count(*) AS count FROM edges "
+                        "WHERE source_path IS NULL OR source_path != ? "
+                        "GROUP BY edge_type ORDER BY edge_type",
+                        (experience_ledger,),
+                    )
                 }
         if write:
             target = self.config.agentlas_dir / "public-career-card.json"

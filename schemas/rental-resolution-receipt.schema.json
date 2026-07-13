@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/rental-resolution-receipt.schema.json",
+  "title": "Agentlas RentalResolutionReceipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "resolutionReceiptId", "requestId", "taskSignature",
+    "environment", "scoringPolicyVersion", "confidenceMethod", "candidates", "result",
+    "selectedVariantId", "fallbackOrder", "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.rental-resolution-receipt.v1" },
+    "kind": { "const": "agentlas-rental-resolution-receipt" },
+    "resolutionReceiptId": { "$ref": "#/$defs/id" },
+    "requestId": { "$ref": "#/$defs/id" },
+    "taskSignature": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "hash"],
+      "properties": { "kind": { "$ref": "#/$defs/id" }, "hash": { "$ref": "#/$defs/hash" } }
+    },
+    "environment": {
+      "type": "object", "additionalProperties": false, "required": ["fingerprintHash"],
+      "properties": { "fingerprintHash": { "$ref": "#/$defs/hash" }, "runtime": { "type": "string" } }
+    },
+    "scoringPolicyVersion": { "$ref": "#/$defs/id" },
+    "confidenceMethod": { "enum": ["wilson-lower-bound", "beta-posterior-lower-bound"] },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": [
+          "variantId", "baseAgentReleaseId", "experiencePackReleaseId", "decision",
+          "verifiedSampleSize", "conservativeConfidence", "scoreComponents", "mcpResolution", "reasonCodes"
+        ],
+        "properties": {
+          "variantId": { "$ref": "#/$defs/id" },
+          "baseAgentReleaseId": { "$ref": "#/$defs/id" },
+          "experiencePackReleaseId": { "$ref": "#/$defs/id" },
+          "decision": { "enum": ["selected", "fallback", "excluded"] },
+          "verifiedSampleSize": { "type": "integer", "minimum": 0 },
+          "conservativeConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "scoreComponents": {
+            "type": "object", "additionalProperties": false,
+            "required": [
+              "verifiedTaskSuccess", "environmentCompatibility", "mcpCompatibility", "recency", "reputation",
+              "tokenEfficiency", "latencyEfficiency", "costEfficiency", "adverseEffectPenalty", "stalenessPenalty"
+            ],
+            "properties": {
+              "verifiedTaskSuccess": { "$ref": "#/$defs/score" }, "environmentCompatibility": { "$ref": "#/$defs/score" },
+              "mcpCompatibility": { "$ref": "#/$defs/score" }, "recency": { "$ref": "#/$defs/score" },
+              "reputation": { "$ref": "#/$defs/score" }, "tokenEfficiency": { "$ref": "#/$defs/score" },
+              "latencyEfficiency": { "$ref": "#/$defs/score" }, "costEfficiency": { "$ref": "#/$defs/score" },
+              "adverseEffectPenalty": { "$ref": "#/$defs/score" }, "stalenessPenalty": { "$ref": "#/$defs/score" }
+            }
+          },
+          "mcpResolution": {
+            "type": "object", "additionalProperties": false, "required": ["status", "missingCatalogIds"],
+            "properties": {
+              "status": { "enum": ["compatible", "degraded", "missing-required"] },
+              "missingCatalogIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+            }
+          },
+          "reasonCodes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+        }
+      }
+    },
+    "result": { "enum": ["selected", "base-only", "no-compatible-variant"] },
+    "selectedVariantId": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+    "fallbackOrder": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "result": { "const": "selected" } }, "required": ["result"] },
+      "then": {
+        "properties": {
+          "selectedVariantId": { "$ref": "#/$defs/id" },
+          "candidates": {
+            "contains": {
+              "type": "object",
+              "properties": { "decision": { "const": "selected" } },
+              "required": ["decision"]
+            },
+            "minContains": 1,
+            "maxContains": 1
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "selectedVariantId": { "type": "null" },
+          "candidates": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "properties": { "decision": { "const": "selected" } },
+                "required": ["decision"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "score": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}

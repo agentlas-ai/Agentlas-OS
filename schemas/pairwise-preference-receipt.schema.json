@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/pairwise-preference-receipt.schema.json",
+  "title": "Agentlas PairwisePreferenceReceipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "receiptId", "idempotencyKey", "receiptHash",
+    "tasteStyleReleaseId", "baseAgentReleaseId", "taskSignature", "pair",
+    "rater", "choice", "contextTags", "privacy", "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.pairwise-preference-receipt.v1" },
+    "kind": { "const": "agentlas-pairwise-preference-receipt" },
+    "receiptId": { "$ref": "#/$defs/id" },
+    "idempotencyKey": { "$ref": "#/$defs/id" },
+    "receiptHash": { "$ref": "#/$defs/hash" },
+    "tasteStyleReleaseId": { "$ref": "#/$defs/id" },
+    "baseAgentReleaseId": { "$ref": "#/$defs/id" },
+    "taskSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "hash"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/id" },
+        "hash": { "$ref": "#/$defs/hash" },
+        "locale": { "type": "string", "maxLength": 20 }
+      }
+    },
+    "pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["leftPreviewAssetRef", "rightPreviewAssetRef", "orderRandomized"],
+      "properties": {
+        "leftPreviewAssetRef": { "$ref": "#/$defs/id" },
+        "rightPreviewAssetRef": { "$ref": "#/$defs/id" },
+        "orderRandomized": { "const": true }
+      }
+    },
+    "rater": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["antiSybilPrincipalHash", "source", "consent"],
+      "properties": {
+        "antiSybilPrincipalHash": { "$ref": "#/$defs/hash" },
+        "source": { "const": "human" },
+        "consent": { "const": "explicit" }
+      }
+    },
+    "choice": { "enum": ["left", "right", "tie", "skip"] },
+    "treatmentChoice": { "enum": ["chip-on", "control", "tie", "skip"] },
+    "contextTags": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rawRaterIdentityIncluded", "rawLocalPathsIncluded", "rawOutputsIncluded",
+        "credentialValuesIncluded", "privateAssetBytesIncluded"
+      ],
+      "properties": {
+        "rawRaterIdentityIncluded": { "const": false },
+        "rawLocalPathsIncluded": { "const": false },
+        "rawOutputsIncluded": { "const": false },
+        "credentialValuesIncluded": { "const": false },
+        "privateAssetBytesIncluded": { "const": false }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "signature": { "type": "null" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

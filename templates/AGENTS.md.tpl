@@ -8,6 +8,12 @@ Use this repo as a portable agent team.
 - Runtime adapters are thin.
 - `.agentlas/global-commands.json` is the global command registry.
 - Durable memory goes through `.agentlas/memory-tickets.jsonl`.
+- MCP requirements resolve from `.agentlas/mcp-policy.json`: system-global
+  registry first, one-pass consent, catalog ids only, and per-requirement
+  degradation. Never accept a package-supplied server command or credential.
+- Experience remains candidate-first. A published Experience Pack contains
+  public-safe deltas and verified receipt refs, never base package material or
+  raw prompts.
 - Agent behavior quality is governed by `docs/builder-interview.md`,
   `docs/research-sources.md`, `docs/tool-selection.md`,
   `docs/domain-expert-synthesis.md`, `docs/prompt-performance-contract.md`, and
@@ -31,6 +37,9 @@ before editing role prompts or skills.
 
 Return status, evidence, output, global_commands, interview_research, and
 blockers.
+
+Load at most 150 tokens of always-on memory instruction, 800 tokens or eight
+retrieved experience items, selected MCP tool schemas, and triggered skills.
 
 ## Global Command
 

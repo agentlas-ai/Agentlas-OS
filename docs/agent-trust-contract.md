@@ -37,6 +37,17 @@ the relevant surface supports them:
 8. **Inspectable history** — build, borrow, save, publish, restore, invoke,
    retry, and rollback paths return enough identity and status to distinguish
    what happened without exposing secret values.
+9. **Separate earned experience** — a base agent release and a user's
+   Experience Pack are separately owned, versioned, published, withdrawn, and
+   restored. A references-only Variant never copies or transfers the base
+   package.
+10. **Host-resolved tools** — packages declare value-free MCP requirements by
+    trusted catalog id. The local host resolves, consents, attaches, degrades,
+    and falls back per requirement; borrowed content cannot provide an
+    executable command, endpoint, or credential value.
+11. **Verified, replay-safe reputation** — official success metrics accept only
+    independently verified RunReceipts protected by receipt id, idempotency key,
+    and content hash. Self-report remains private evidence, not ranking truth.
 
 ## Build, Borrow, Own
 
@@ -93,6 +104,12 @@ must prove, for every supported path:
   host rather than a hidden Agentlas server model;
 - stale registries, indexes, caches, policy copy, or fallbacks fail visibly
   instead of fabricating `Live`, `owned`, or `restored` state;
+- an Experience Pack owner can differ from the base author without receiving
+  base-source ownership, and base/experience/Variant upload states remain
+  distinct;
+- missing or failed MCPs degrade only affected capabilities or exclude only the
+  incompatible Variant, while selection proceeds to an explicit fallback;
+- repeated or self-reported RunReceipts cannot inflate verified success;
 - fixes leave a replayable regression test, audit rule, or installation
   evidence.
 
@@ -102,3 +119,5 @@ must prove, for every supported path:
 - [Runtime sync boundaries](runtime-sync-boundaries.md)
 - [Agentlas Cloud runtime](agentlas-cloud-runtime.md)
 - [Local credential store](local-credential-store.md)
+- [Agent experience assets](agent-experience-assets.md)
+- [MCP build and resolution](mcp-build-resolution.md)
