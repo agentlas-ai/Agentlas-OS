@@ -11,7 +11,7 @@ import textwrap
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISH = ROOT / "scripts" / "publish-runtime-release-assets.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "release-runtime.yml"
-TAG = "v1.1.24"
+TAG = "v1.1.25"
 
 
 FAKE_GH = r'''#!/usr/bin/env python3
@@ -155,6 +155,7 @@ def test_new_release_uploads_both_assets_and_rerun_skips_identical_assets(tmp_pa
     assert second.returncode == 0, second.stderr
     assert _calls(log_path) == before_rerun
     assert second.stdout.count("already verified; skipping") == 2
+    assert f"release {TAG} runtime assets are complete and digest-verified" in second.stdout
 
 
 def test_partial_release_uploads_only_the_missing_asset(tmp_path):

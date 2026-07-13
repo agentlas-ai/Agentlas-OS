@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v1.1.25 - 2026-07-14
+
+- **Runtime release reconciliation is idempotent on macOS Bash 3.2.** A release
+  whose two digest-verified assets already exist now completes the final
+  verification pass instead of tripping over an empty missing-assets array.
+
 ## v1.1.24 - 2026-07-14
 
 - **Every host now receives the same Core-owned project bootstrap on first

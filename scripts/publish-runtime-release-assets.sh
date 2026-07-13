@@ -130,28 +130,30 @@ for index in "${!asset_paths[@]}"; do
   echo "release asset already verified; skipping ${asset_names[$index]} (${asset_digests[$index]})"
 done
 
-for path in "${missing_paths[@]}"; do
-  name="$(basename "$path")"
-  echo "uploading missing release asset $name"
-  if ! gh release upload "$tag" "$path" --repo "$repo" > "$tmp_dir/upload.out" 2> "$tmp_dir/upload.err"; then
-    # A concurrent rerun may have uploaded the same immutable bytes after our
-    # preflight. Accept that race only if the newly visible digest is identical.
-    if fetch_release; then
-      IFS=$'\t' read -r count actual < <(asset_state "$name")
-      expected=""
-      for index in "${!asset_names[@]}"; do
-        [[ "${asset_names[$index]}" == "$name" ]] && expected="${asset_digests[$index]}"
-      done
-      if [[ "$count" == "1" && -n "$expected" && "$actual" == "$expected" ]]; then
-        echo "release asset was uploaded concurrently; verified $name ($actual)"
-        continue
+if (( ${#missing_paths[@]} > 0 )); then
+  for path in "${missing_paths[@]}"; do
+    name="$(basename "$path")"
+    echo "uploading missing release asset $name"
+    if ! gh release upload "$tag" "$path" --repo "$repo" > "$tmp_dir/upload.out" 2> "$tmp_dir/upload.err"; then
+      # A concurrent rerun may have uploaded the same immutable bytes after our
+      # preflight. Accept that race only if the newly visible digest is identical.
+      if fetch_release; then
+        IFS=$'\t' read -r count actual < <(asset_state "$name")
+        expected=""
+        for index in "${!asset_names[@]}"; do
+          [[ "${asset_names[$index]}" == "$name" ]] && expected="${asset_digests[$index]}"
+        done
+        if [[ "$count" == "1" && -n "$expected" && "$actual" == "$expected" ]]; then
+          echo "release asset was uploaded concurrently; verified $name ($actual)"
+          continue
+        fi
       fi
+      cat "$tmp_dir/upload.err" >&2
+      echo "failed to upload missing release asset $name" >&2
+      exit 1
     fi
-    cat "$tmp_dir/upload.err" >&2
-    echo "failed to upload missing release asset $name" >&2
-    exit 1
-  fi
-done
+  done
+fi
 
 if ! fetch_release; then
   cat "$release_err" >&2
