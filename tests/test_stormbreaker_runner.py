@@ -613,23 +613,44 @@ def test_stormbreaker_cli_background_run_writes_result(tmp_path, monkeypatch, ca
     project.mkdir()
     monkeypatch.setenv("AGENTLAS_NETWORKING_HOME", str(home))
     executor = executor_script(tmp_path, "import os\nprint(os.environ['STORMBREAKER_PACKET_ID'])\n")
+    args = [
+        "stormbreaker",
+        "run",
+        "웹앱 기획부터 구현, 테스트 검증까지 끝까지 해줘",
+        "--project",
+        str(project),
+        "--no-hub",
+        "--executor-command",
+        executor,
+        "--background",
+    ]
 
-    code = main(
-        [
-            "stormbreaker",
-            "run",
-            "웹앱 기획부터 구현, 테스트 검증까지 끝까지 해줘",
-            "--project",
-            str(project),
-            "--no-hub",
-            "--executor-command",
-            executor,
-            "--background",
-        ]
-    )
-
-    assert code == 0
-    payload = json.loads(capsys.readouterr().out)
+    if os.name == "nt":
+        # Exercise the real Windows host boundary. Running a background child
+        # from inside pytest's own console can deliver a delayed control event
+        # to pytest instead of the CLI process that owns the child.
+        env = dict(
+            **os.environ,
+            AGENTLAS_NETWORKING_HOME=str(home),
+            HEPHAESTUS_PYTHON=sys.executable,
+        )
+        completed = subprocess.run(
+            native_hephaestus_command(*args),
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+            check=False,
+            **native_hephaestus_process_options(),
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        payload = json.loads(completed.stdout)
+    else:
+        code = main(args)
+        assert code == 0
+        payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "background_started"
     result_file = Path(payload["result_file"])
     for _ in range(50):
