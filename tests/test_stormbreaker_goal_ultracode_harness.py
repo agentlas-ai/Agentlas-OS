@@ -41,6 +41,17 @@ def test_canonical_harness_is_stable_and_schema_valid() -> None:
     jsonschema.Draft202012Validator(schema).validate(harness)
 
 
+def test_cli_exports_the_canonical_harness_for_native_hosts(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code = main(["stormbreaker", "harness"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload == goal_ultracode_harness()
+    assert hashlib.sha256(payload["system_prompt"].encode("utf-8")).hexdigest() == payload["prompt_sha256"]
+
+
 def test_execution_fabric_carries_one_harness_and_packet_references() -> None:
     fabric = build_execution_fabric(
         [

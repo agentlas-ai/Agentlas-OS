@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v1.1.21 - 2026-07-13
+
+- **Native hosts now load the canonical harness directly from Core.** The new
+  `hephaestus stormbreaker harness` JSON command exports the complete,
+  digest-addressed Goal + UltraCode contract without routing or execution.
+  Agentlas Desktop and Agentlas Terminal verify the returned SHA-256 digest,
+  apply `system_prompt` verbatim to planning, workers, and synthesis, and fail
+  closed instead of falling back to host-local Goal/UltraCode prompt variants.
+
 ## v1.1.20 - 2026-07-13
 
 - **One Core-owned Goal + UltraCode harness on every runtime.** Stormbreaker now

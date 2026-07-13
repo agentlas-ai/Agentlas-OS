@@ -22,6 +22,17 @@ that prompt verbatim before planning or executing packets. Runtime adapters may
 describe how to invoke tools or advertise sessions, but must not rewrite the
 Goal mode or UltraCode mode instructions.
 
+Native hosts load that exact contract from the installed core instead of
+copying its prompt text:
+
+```bash
+hephaestus stormbreaker harness
+```
+
+The command returns the full JSON contract, including `system_prompt` and
+`prompt_sha256`. A host verifies the digest, applies `system_prompt` verbatim,
+and fails closed if the contract cannot be loaded.
+
 ## Host-neutral behavior
 
 The harness always enforces the same scope lock, acceptance checks, visible goal

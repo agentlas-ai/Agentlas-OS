@@ -256,6 +256,10 @@ def main(argv: list[str] | None = None) -> int:
 
     stormbreaker = sub.add_parser("stormbreaker", help="Stormbreaker packet runner")
     stormbreaker_sub = stormbreaker.add_subparsers(dest="stormbreaker_command", required=True)
+    stormbreaker_sub.add_parser(
+        "harness",
+        help="Print the canonical Goal + UltraCode harness contract for host runtimes",
+    )
     stormbreaker_run = stormbreaker_sub.add_parser("run", help="Route and execute a pipeline execution_fabric")
     stormbreaker_run.add_argument("query", nargs="?", help="Natural-language pipeline request")
     stormbreaker_run.add_argument("--decision-file", default=None, help="Run an existing route decision JSON instead of routing a query")
@@ -974,6 +978,10 @@ def main(argv: list[str] | None = None) -> int:
                 "runner": "hep-storm",
             }
         return emit(decision)
+    if args.command == "stormbreaker" and args.stormbreaker_command == "harness":
+        from .networking.stormbreaker_harness import goal_ultracode_harness
+
+        return emit(goal_ultracode_harness())
     if args.command == "stormbreaker" and args.stormbreaker_command == "journal":
         from .networking.run_journal import RunJournal, default_journal_path
 
@@ -1751,7 +1759,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.20",
+            "version": "1.1.21",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},
