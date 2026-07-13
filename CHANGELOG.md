@@ -54,6 +54,23 @@
   host can execute the complete packet set. Only verified executor results can
   produce `status: completed`.
 
+## v1.1.19 - 2026-07-13
+
+- **Experience and Taste are portable assets, separate from the base agent.**
+  Exact-release schemas now cover Experience Packs, references-only Variants,
+  Taste/Style releases, evidence receipts, privacy filtering, taxonomy, and a
+  rebuildable relation index. Raw prompts, transcripts, credentials, local
+  paths, and base-package bytes are excluded from publishable assets.
+- **MCP resolution is system-global-first and consent-gated.** Packages declare
+  value-free capability requirements, while the trusted host owns executable
+  definitions and key presence. Missing or failed MCPs are isolated per
+  capability, ordered alternatives are tried, and a tool-free degraded path
+  remains valid instead of causing an agent-wide shortage.
+- **Model allocation separates AI judgment from host enforcement.** A parent AI
+  may request a provider-neutral tier and effort, but the host applies actual
+  inventory, explicit pins, context support, cost ceilings, and independent
+  verification requirements before recording a privacy-safe receipt.
+
 ## v1.1.14 - 2026-07-11
 
 - **Name-only matches no longer become confident routes.** Agent and team names

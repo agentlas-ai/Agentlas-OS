@@ -516,8 +516,12 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 | 브리핑 인터뷰 & 리서치 게이트 | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
 | Network 2.0 라우팅 | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
 | Stormbreaker 프로토콜 | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |
+| 정본 Goal + UltraCode 하네스 | [`docs/stormbreaker-goal-ultracode-harness.md`](docs/stormbreaker-goal-ultracode-harness.md) |
 | 온톨로지 런타임 | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
 | 메모리 아키텍처 | [`docs/memory-architecture.md`](docs/memory-architecture.md) |
+| Experience 및 Taste 자산 | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
+| MCP 빌드 해석 | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
+| 모델 할당 | [`docs/model-allocation.md`](docs/model-allocation.md) |
 | 스킬 수명주기 승격 | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
 | 클라우드 런타임 번들 | [`docs/agentlas-cloud-runtime.md`](docs/agentlas-cloud-runtime.md) |
 | 패키지 검증하기 | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
@@ -540,6 +544,7 @@ Hephaestus가 컴파일하는 공개 산출 패키지에는 로컬 절대 경로
 ```bash
 scripts/verify-package.sh
 scripts/verify-ontology-runtime.sh
+scripts/verify-experience-assets-contract.sh
 scripts/public_safety_check.sh
 ```
 

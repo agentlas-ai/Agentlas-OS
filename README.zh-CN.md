@@ -328,8 +328,12 @@ Hephaestus 将智能体打包为标准目录布局，任何工作区运行时都
 | 简报访谈与研究门 | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
 | Network 2.0 路由 | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
 | Stormbreaker 协议 | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |
+| 规范 Goal + UltraCode 执行框架 | [`docs/stormbreaker-goal-ultracode-harness.md`](docs/stormbreaker-goal-ultracode-harness.md) |
 | Ontology 运行时 | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
 | 记忆架构 | [`docs/memory-architecture.md`](docs/memory-architecture.md) |
+| Experience 与 Taste 资产 | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
+| MCP 构建解析 | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
+| 模型分配 | [`docs/model-allocation.md`](docs/model-allocation.md) |
 | 技能生命周期晋升 | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
 | Cloud 运行时捆绑包 | [`docs/agentlas-cloud-runtime.md`](docs/agentlas-cloud-runtime.md) |
 | 验证一个包 | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
@@ -352,6 +356,7 @@ Hephaestus 将智能体打包为标准目录布局，任何工作区运行时都
 ```bash
 scripts/verify-package.sh
 scripts/verify-ontology-runtime.sh
+scripts/verify-experience-assets-contract.sh
 scripts/public_safety_check.sh
 ```
 

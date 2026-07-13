@@ -581,8 +581,12 @@ runtime adapters, verification ledgers, and release gates together.
 | Briefing interview & research gate | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
 | Network 2.0 routing | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
 | Stormbreaker protocol | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |
+| Canonical Goal + UltraCode harness | [`docs/stormbreaker-goal-ultracode-harness.md`](docs/stormbreaker-goal-ultracode-harness.md) |
 | Ontology runtime | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
 | Memory architecture | [`docs/memory-architecture.md`](docs/memory-architecture.md) |
+| Experience and Taste assets | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
+| MCP build resolution | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
+| Model allocation | [`docs/model-allocation.md`](docs/model-allocation.md) |
 | Skill lifecycle promotion | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
 | Cloud runtime bundles | [`docs/agentlas-cloud-runtime.md`](docs/agentlas-cloud-runtime.md) |
 | Verify a package | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
@@ -605,6 +609,7 @@ Before opening a pull request or publishing updates, run the verification test s
 ```bash
 scripts/verify-package.sh
 scripts/verify-ontology-runtime.sh
+scripts/verify-experience-assets-contract.sh
 scripts/public_safety_check.sh
 ```
 

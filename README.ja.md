@@ -329,8 +329,12 @@ Hephaestus は、任意のワークスペースランタイムがパース・イ
 | ブリーフィングインタビューとリサーチゲート | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
 | Network 2.0 ルーティング | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
 | Stormbreaker プロトコル | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |
+| 正準 Goal + UltraCode ハーネス | [`docs/stormbreaker-goal-ultracode-harness.md`](docs/stormbreaker-goal-ultracode-harness.md) |
 | Ontology ランタイム | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
 | メモリアーキテクチャ | [`docs/memory-architecture.md`](docs/memory-architecture.md) |
+| Experience と Taste アセット | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
+| MCP ビルド解決 | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
+| モデル割り当て | [`docs/model-allocation.md`](docs/model-allocation.md) |
 | スキルライフサイクルの昇格 | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
 | Cloud ランタイムバンドル | [`docs/agentlas-cloud-runtime.md`](docs/agentlas-cloud-runtime.md) |
 | パッケージの検証 | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
@@ -353,6 +357,7 @@ Hephaestus がコンパイルする公開向けの出力パッケージは、ロ
 ```bash
 scripts/verify-package.sh
 scripts/verify-ontology-runtime.sh
+scripts/verify-experience-assets-contract.sh
 scripts/public_safety_check.sh
 ```
 
