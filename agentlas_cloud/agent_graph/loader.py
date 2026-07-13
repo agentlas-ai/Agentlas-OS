@@ -183,7 +183,13 @@ def _artifact_id(kind: str) -> str:
 
 
 def load_graph(project_root: str | Path = ".") -> dict[str, Any]:
-    """Load AO JSONL materialized view from `.agentlas/agent-ontology`."""
+    """Load the AO graph without requiring a generated view on disk.
+
+    A materialized ``.agentlas/agent-ontology`` remains authoritative when it
+    exists. Clean checkouts derive the same graph in memory from the tracked
+    project contracts, so read-only inspection never has to create ignored
+    runtime state first.
+    """
 
     root = Path(project_root).resolve()
     path = root / ".agentlas" / AGENT_ONTOLOGY_DIR
@@ -204,42 +210,62 @@ def load_graph(project_root: str | Path = ".") -> dict[str, Any]:
         "status": "ok",
     }
 
-    if not path.exists():
-        report["warnings"].append(f"missing AO directory: {path}")
-        return report
-
     report["grammar"] = load_grammar(root)
+    if not path.exists():
+        report["warnings"].append("materialized AO view is absent; using read-only derived graph")
+        try:
+            from .migrate import migrate_ontology
 
-    agents, errors = _read_jsonl(path / "agents.jsonl")
-    report["errors"].extend(errors)
-    graph["agents"] = [_normalize_agent_node(agent) for agent in agents]
-
-    artifacts, errors = _read_jsonl(path / "artifacts.jsonl")
-    report["errors"].extend(errors)
-    graph["artifacts"] = [_normalize_artifact_node(artifact) for artifact in artifacts]
-
-    caps_payload = _read_json(path / "capabilities.json", default=None)
-    if isinstance(caps_payload, dict):
-        capabilities = caps_payload.get("capabilities")
-        if isinstance(capabilities, list):
-            graph["capabilities"] = [str(item) for item in capabilities if str(item).strip()]
+            derived = migrate_ontology(root, write=False, overwrite=True)
+        except (OSError, TypeError, ValueError) as exc:
+            report["status"] = "degraded"
+            report["errors"].append(f"derived-graph-failed:{type(exc).__name__}")
         else:
-            report["warnings"].append("capabilities.json is malformed; expected {'capabilities': [...]} JSON object")
-    elif caps_payload is not None:
-        report["warnings"].append("capabilities.json is malformed; expected {'capabilities': [...]} JSON object")
-
-    # scopes.jsonl is optional (Phase 0 memory ownership); a missing file is benign.
-    if (path / "scopes.jsonl").exists():
-        scopes, errors = _read_jsonl(path / "scopes.jsonl")
+            source_graph = derived.get("graph") if isinstance(derived, dict) else None
+            if isinstance(source_graph, dict) and derived.get("status") == "ok":
+                graph["agents"] = [_normalize_agent_node(item) for item in source_graph.get("agents", [])]
+                graph["artifacts"] = [_normalize_artifact_node(item) for item in source_graph.get("artifacts", [])]
+                graph["capabilities"] = [
+                    str(item) for item in source_graph.get("capabilities", []) if str(item).strip()
+                ]
+                graph["scopes"] = [_normalize_scope_node(item) for item in source_graph.get("scopes", [])]
+                graph["edges"] = [_normalize_edge(item) for item in source_graph.get("edges", [])]
+                report["unmapped"] = derived.get("unmapped", {})
+                report["derived"] = True
+            else:
+                report["status"] = "degraded"
+                report["errors"].append("derived-graph-unavailable")
+    else:
+        agents, errors = _read_jsonl(path / "agents.jsonl")
         report["errors"].extend(errors)
-        graph["scopes"] = [_normalize_scope_node(s) for s in scopes]
+        graph["agents"] = [_normalize_agent_node(agent) for agent in agents]
 
-    edges, errors = _read_jsonl(path / "edges.jsonl")
-    report["errors"].extend(errors)
-    graph["edges"] = [_normalize_edge(edge) for edge in edges]
+        artifacts, errors = _read_jsonl(path / "artifacts.jsonl")
+        report["errors"].extend(errors)
+        graph["artifacts"] = [_normalize_artifact_node(artifact) for artifact in artifacts]
 
-    if (path / "migrate-report.json").exists():
-        report["migrate_report"] = _read_json(path / "migrate-report.json", default=None)
+        caps_payload = _read_json(path / "capabilities.json", default=None)
+        if isinstance(caps_payload, dict):
+            capabilities = caps_payload.get("capabilities")
+            if isinstance(capabilities, list):
+                graph["capabilities"] = [str(item) for item in capabilities if str(item).strip()]
+            else:
+                report["warnings"].append("capabilities.json is malformed; expected {'capabilities': [...]} JSON object")
+        elif caps_payload is not None:
+            report["warnings"].append("capabilities.json is malformed; expected {'capabilities': [...]} JSON object")
+
+        # scopes.jsonl is optional (Phase 0 memory ownership); a missing file is benign.
+        if (path / "scopes.jsonl").exists():
+            scopes, errors = _read_jsonl(path / "scopes.jsonl")
+            report["errors"].extend(errors)
+            graph["scopes"] = [_normalize_scope_node(s) for s in scopes]
+
+        edges, errors = _read_jsonl(path / "edges.jsonl")
+        report["errors"].extend(errors)
+        graph["edges"] = [_normalize_edge(edge) for edge in edges]
+
+        if (path / "migrate-report.json").exists():
+            report["migrate_report"] = _read_json(path / "migrate-report.json", default=None)
 
     node_index = {_as_node_id(node): node for node in graph["agents"] + graph["artifacts"] + graph["scopes"] if _as_node_id(node)}
     for cap in graph.get("capabilities", []):

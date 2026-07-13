@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## v1.1.26 - 2026-07-14
+
+- **Project Foundation no longer treats read access as write consent.** Passive
+  search, call, route, Storm, and MCP requests leave the working folder
+  untouched by default. Explicit activation remains available, while automatic
+  activation requires a trusted host opt-in, an allowed root, and a recognized
+  workspace marker; MCP uses a separate default-off gate.
+- **Bootstrap scans and receipts are bounded and private.** Core enforces
+  no-follow project boundaries, file/count/time/read/output budgets, private
+  permissions, advisory locking, atomic writes, and refresh fingerprints. MCP
+  and automatic receipts report counts and stable reason codes instead of
+  absolute local paths or raw filesystem errors.
+- **Existing project state stays merge-only under failure.** Oversized or
+  incomplete Git listings defer map refresh instead of replacing a known-good
+  map, managed ignore rules are read through a bounded regular-file path, and
+  tracked-sensitive scans fail closed when their own budgets are exceeded.
+- **Clean checkouts keep Agent OS inspection live without generating files.**
+  If the ignored AO materialized view is absent, Core derives the graph in
+  memory from tracked project contracts; pack, scheduler, and filesystem checks
+  therefore work read-only. Explicit OKF export now creates its requested
+  output directory even when the graph is empty.
+
 ## v1.1.25 - 2026-07-14
 
 - **Runtime release reconciliation is idempotent on macOS Bash 3.2.** A release

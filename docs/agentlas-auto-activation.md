@@ -4,26 +4,39 @@ Agentlas auto-activation is a public contract for local runtimes that want a
 project folder to become an Agentlas-aware workspace.
 
 It is not tied to one desktop app. Agentlas Core owns the canonical bootstrap;
-Desktop, Terminal, Codex, Claude Code, and MCP hosts call that same Core command
-instead of implementing divergent seeders.
+trusted writable Desktop and Terminal sessions, plus explicit activation from
+other hosts, call that same Core command instead of implementing divergent
+seeders. Passive search, read-only work, and MCP discovery do not write project
+state by default.
 
 ## Purpose
 
-On the first meaningful Agentlas contact with a project folder, the runtime
-makes project memory, sitemap/task-bias, PM Soul, Memory Tickets, the local
-ontology indexes, and a bounded code map available automatically. Unsafe roots
-such as the user's home directory and filesystem root remain untouched.
+When a trusted Agentlas host begins writable work in a real project, or the
+user explicitly activates the folder, the runtime makes project memory,
+sitemap/task-bias, PM Soul, Memory Tickets, local ontology indexes, and a
+bounded code map available. Unsafe roots such as the user's home directory and
+filesystem root remain untouched.
 
 ## Activation Triggers
 
 A runtime activates when either condition is true:
 
-- explicit activation: the user asks to activate Agentlas for this folder;
-- first contact: an Agentlas host starts meaningful work in the folder.
+- explicit activation: the user runs `hephaestus project ensure --project
+  <folder>` or a native host invokes the equivalent Core operation;
+- trusted writable first contact: a native host opts in to automatic bootstrap,
+  supplies an allowed project root, and the folder contains a recognized
+  workspace marker.
 
-The canonical threshold is one meaningful contact. Core installs the managed
-privacy `.gitignore` block before writing local memory or indexes, creates only
-missing files, and never overwrites project content without approval.
+Search, call, route, and Storm commands remain passive unless the caller passes
+`--ensure-project` or the host explicitly enables
+`AGENTLAS_PROJECT_BOOTSTRAP_AUTO=1`. MCP has a separate, default-off
+`AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO=1` gate. Automatic activation also requires
+`AGENTLAS_PROJECT_BOOTSTRAP_ALLOWED_ROOTS` and a workspace marker, so an
+untrusted prompt argument cannot opt itself in.
+
+Core installs the managed privacy `.gitignore` block before writing local
+memory or indexes, creates only missing files, and never overwrites project
+content without approval.
 
 ## Files To Create
 
@@ -492,7 +505,9 @@ After activation, local runtimes should:
 
 ## Safety Rules
 
-- Never activate outside the selected project folder.
+- Never activate outside an explicitly selected or host-allowed project root.
+- Never treat passive search, read-only execution, or an MCP request as write
+  consent.
 - Never overwrite existing `.agentlas` files without explicit approval.
 - Never store credentials, API keys, raw logs, full transcripts, cookies,
   private keys, service-account files, or payment material.
@@ -502,5 +517,5 @@ After activation, local runtimes should:
 ## Public Package Interaction
 
 Generated or packaged Agentlas repos may include `.agentlas` seed files. A local
-runtime that auto-activates the folder should treat those files as starting
+runtime that activates the folder should treat those files as starting
 contracts, not as private runtime state.

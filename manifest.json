@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "package": "hephaestus",
-  "version": "1.1.25",
+  "version": "1.1.26",
   "description": "Portable three-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
   "entrypoints": {
     "canonical": "AGENTS.md",

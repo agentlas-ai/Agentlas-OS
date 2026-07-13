@@ -4,6 +4,11 @@
   "state": "seed",
   "activationPolicy": {
     "explicitActivation": true,
+    "automaticActivationDefault": false,
+    "requiresTrustedWritableHost": true,
+    "requiresAllowedRoot": true,
+    "requiresWorkspaceMarker": true,
+    "mcpSeparateOptIn": true,
     "repeatedUseThreshold": 1,
     "mergeOnly": true,
     "neverOverwriteWithoutApproval": true

@@ -99,6 +99,7 @@ def to_okf_bundle(project_root: str | Path = ".", out_dir: str | Path | None = N
 
     graph = load_graph(project_root).get("graph", {})
     out = Path(out_dir) if out_dir else (Path(project_root) / ".agentlas" / "okf-export")
+    out.mkdir(parents=True, exist_ok=True)
     nodes = _collect_nodes(graph)
 
     id_to_path: dict[str, str] = {}

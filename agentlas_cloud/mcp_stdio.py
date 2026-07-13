@@ -18,7 +18,7 @@ import sys
 from typing import Any, Mapping
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.25"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.26"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -274,31 +274,6 @@ TOOLS: list[dict[str, Any]] = [
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
-    from .project_bootstrap import ensure_project
-
-    bootstrap: dict[str, Any] | None = None
-    if name in {
-        "hephaestus_route",
-        "hephaestus_cloud_search",
-        "hephaestus_search",
-        "hephaestus_call",
-        "hephaestus_hub_invoke",
-    }:
-        project_dir = arguments.get("project_dir", ".")
-        try:
-            bootstrap = ensure_project(project_dir, reason=f"mcp:{name}")
-        except (OSError, TimeoutError, ValueError) as exc:
-            bootstrap = {
-                "action": "project_bootstrap",
-                "status": "skipped",
-                "reason": f"mcp:{name}",
-                "detail": str(exc),
-            }
-
-    def with_bootstrap(result: dict[str, Any]) -> dict[str, Any]:
-        if bootstrap is not None:
-            result["project_bootstrap"] = bootstrap
-        return result
 
     host_model_policy: dict[str, Any] = {}
     if name == "hephaestus_route":
