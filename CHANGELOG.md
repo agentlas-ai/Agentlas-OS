@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v1.1.22 - 2026-07-13
+
+- **One byte-identical Goal + UltraCode harness across every supported host.**
+  Core remains the only prompt owner; the universal AgentSkills package plus
+  Codex, Claude Code, Gemini, Antigravity, Cursor, OpenCode, OpenClaw, Hermes,
+  Agentlas Desktop, and Agentlas Terminal now load the same digest-addressed
+  `system_prompt` and fail closed on any SHA-256 mismatch instead of keeping a
+  host-local copy.
+- **Cross-platform execution is now a release gate.** Native macOS/Linux shell
+  wrappers and the Windows `.cmd` entry point are exercised across Python 3.9,
+  3.12, and 3.13. Every matrix job uploads its harness bytes and a final gate
+  rejects the release unless all nine proofs match exactly.
+- **Windows background and packet execution no longer share the host console.**
+  Stormbreaker isolates its detached launcher, packet executors, goal checks,
+  and real CLI integration boundaries while preserving durable result files,
+  preventing delayed console control events from interrupting Codex, Claude
+  Code, Desktop, Terminal, or their CI host.
+
 ## v1.1.21 - 2026-07-13
 
 - **Native hosts now load the canonical harness directly from Core.** The new
