@@ -14,6 +14,7 @@ from agentlas_cloud.cli import (
     main,
 )
 from agentlas_cloud.networking import route_request, run_stormbreaker_decision, run_stormbreaker_query
+from agentlas_cloud.networking.stormbreaker_runner import _stormbreaker_worker_process_options
 from agentlas_cloud.research.contracts import ResearchRequest
 from agentlas_cloud.research.loadouts import apply_loadout
 from test_network_pipeline import pipeline_home
@@ -629,8 +630,8 @@ def test_stormbreaker_cli_background_run_writes_result(tmp_path, monkeypatch, ca
         # Exercise the real Windows host boundary. Running a background child
         # from inside pytest's own console can deliver a delayed control event
         # to pytest instead of the CLI process that owns the child.
-        env = dict(
-            **os.environ,
+        env = os.environ.copy()
+        env.update(
             AGENTLAS_NETWORKING_HOME=str(home),
             HEPHAESTUS_PYTHON=sys.executable,
         )
@@ -672,6 +673,14 @@ def test_stormbreaker_background_detaches_from_windows_console_signals():
     assert not options["creationflags"] & 0x00000010
     assert not options["creationflags"] & 0x00000200
     assert _stormbreaker_background_process_options("posix") == {"start_new_session": True}
+
+
+def test_stormbreaker_packet_workers_do_not_share_windows_console_signals():
+    options = _stormbreaker_worker_process_options("nt")
+
+    assert options["creationflags"] & 0x08000000
+    assert not options["creationflags"] & 0x00000200
+    assert _stormbreaker_worker_process_options("posix") == {}
 
 
 def test_stormbreaker_background_is_not_claimed_by_ci_process_cleanup():

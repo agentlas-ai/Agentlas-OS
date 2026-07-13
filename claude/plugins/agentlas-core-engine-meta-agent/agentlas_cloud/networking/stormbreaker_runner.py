@@ -665,6 +665,7 @@ def _run_goal_check(command: str, *, project: Path, timeout_seconds: int) -> dic
             text=True,
             timeout=timeout_seconds,
             check=False,
+            **_stormbreaker_worker_process_options(),
         )
     except (subprocess.TimeoutExpired, OSError):
         return {"returncode": None, "stdout": ""}
@@ -673,6 +674,15 @@ def _run_goal_check(command: str, *, project: Path, timeout_seconds: int) -> dic
 
 def _short_digest(text: str) -> str:
     return hashlib.sha1((text or "").encode("utf-8")).hexdigest()[:12]
+
+
+def _stormbreaker_worker_process_options(platform_name: str | None = None) -> dict[str, int]:
+    """Keep packet executors out of the host's Windows console signal group."""
+
+    target = os.name if platform_name is None else platform_name
+    if target == "nt":
+        return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+    return {}
 
 
 def _positive_int(value: Any, default: int) -> int:
@@ -727,6 +737,7 @@ def _run_subprocess(
             text=True,
             timeout=timeout_seconds,
             check=False,
+            **_stormbreaker_worker_process_options(),
         )
     except subprocess.TimeoutExpired as exc:
         stdout_file.write_text(exc.stdout or "", encoding="utf-8")
