@@ -33,8 +33,17 @@ LOCK_STALE_SECONDS = 60 * 60
 HEALTHCHECK_TIMEOUT_SECONDS = 15
 MAX_RUNTIME_ARCHIVE_BYTES = 256 * 1024 * 1024
 CORE_DIRS = ("bin", "agentlas_cloud", "ontology")
-HEP_COMMANDS = ("hep-build", "hep-network", "hep-cloud", "hep-search", "hep-browser", "hep-call", "hep-upload")
-HEP_SKILLS = ("hephaestus-network", "hephaestus-cloud")
+HEP_COMMANDS = (
+    "hep-build",
+    "hep-network",
+    "hep-cloud",
+    "hep-search",
+    "hep-browser",
+    "hep-call",
+    "hep-upload",
+    "hep-storm",
+)
+HEP_SKILLS = ("hephaestus-network", "hephaestus-cloud", "hephaestus-storm")
 AUTO_UPDATE_MARKER = "auto-update.json"
 
 # Legacy in-adapter auto-update preflight. Older releases shipped command
@@ -659,12 +668,13 @@ def _spawn_auto_update_worker(runtime_root: Path) -> None:
 
 
 def _installed_adapter_file_targets(source: Path, home: Path) -> list[tuple[Path, Path]]:
+    codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
     targets: list[tuple[Path, Path]] = []
     for command in HEP_COMMANDS:
         targets.extend(
             [
                 (Path(".claude") / "commands" / f"{command}.md", home / ".claude" / "commands" / f"{command}.md"),
-                (Path("codex") / "prompts" / f"{command}.md", home / ".codex" / "prompts" / f"{command}.md"),
+                (Path("codex") / "prompts" / f"{command}.md", codex_home / "prompts" / f"{command}.md"),
                 (Path("cursor") / "plugin" / "commands" / f"{command}.md", home / ".cursor" / "commands" / f"{command}.md"),
                 (Path("opencode") / "commands" / f"{command}.md", home / ".config" / "opencode" / "commands" / f"{command}.md"),
                 (Path("antigravity") / "workflows" / f"{command}.md", home / ".gemini" / "antigravity" / "global_workflows" / f"{command}.md"),

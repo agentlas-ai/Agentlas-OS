@@ -384,33 +384,48 @@ def test_maybe_auto_update_is_fail_silent_when_fetch_fails(tmp_path, monkeypatch
     assert maybe_auto_update(root=root, background=False) is None
 
 
-def test_sync_installed_runtime_adapters_overwrites_existing_paths_only(tmp_path):
+def test_sync_installed_runtime_adapters_overwrites_existing_paths_only(tmp_path, monkeypatch):
     source = tmp_path / "source"
     home = tmp_path / "home"
+    codex_home = home / "custom-codex-home"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
     (source / ".claude" / "commands").mkdir(parents=True)
     (source / ".claude" / "commands" / "hep-build.md").write_text("new claude\n", encoding="utf-8")
     (source / ".claude" / "commands" / "hep-network.md").write_text("new missing claude\n", encoding="utf-8")
+    (source / ".claude" / "commands" / "hep-storm.md").write_text("new storm command\n", encoding="utf-8")
     (source / "codex" / "prompts").mkdir(parents=True)
     (source / "codex" / "prompts" / "hep-build.md").write_text("new codex\n", encoding="utf-8")
+    (source / "codex" / "prompts" / "hep-storm.md").write_text("new codex storm\n", encoding="utf-8")
     (source / "skills" / "hephaestus-network").mkdir(parents=True)
     (source / "skills" / "hephaestus-network" / "SKILL.md").write_text("new skill\n", encoding="utf-8")
     (source / "skills" / "hephaestus-cloud").mkdir(parents=True)
     (source / "skills" / "hephaestus-cloud" / "SKILL.md").write_text("new cloud skill\n", encoding="utf-8")
+    (source / "skills" / "hephaestus-storm").mkdir(parents=True)
+    (source / "skills" / "hephaestus-storm" / "SKILL.md").write_text("new storm skill\n", encoding="utf-8")
 
     (home / ".claude" / "commands").mkdir(parents=True)
     (home / ".claude" / "commands" / "hep-build.md").write_text("old claude\n", encoding="utf-8")
-    (home / ".codex" / "prompts").mkdir(parents=True)
+    (home / ".claude" / "commands" / "hep-storm.md").write_text("old storm command\n", encoding="utf-8")
+    (codex_home / "prompts").mkdir(parents=True)
+    (codex_home / "prompts" / "hep-storm.md").write_text("old codex storm\n", encoding="utf-8")
     (home / ".agents" / "skills" / "hephaestus-network").mkdir(parents=True)
     (home / ".agents" / "skills" / "hephaestus-network" / "SKILL.md").write_text("old skill\n", encoding="utf-8")
+    (home / ".agents" / "skills" / "hephaestus-storm").mkdir(parents=True)
+    (home / ".agents" / "skills" / "hephaestus-storm" / "SKILL.md").write_text("old storm skill\n", encoding="utf-8")
 
     result = sync_installed_runtime_adapters(source, home=home)
 
     assert (home / ".claude" / "commands" / "hep-build.md").read_text(encoding="utf-8") == "new claude\n"
+    assert (home / ".claude" / "commands" / "hep-storm.md").read_text(encoding="utf-8") == "new storm command\n"
     assert not (home / ".claude" / "commands" / "hep-network.md").exists()
-    assert not (home / ".codex" / "prompts" / "hep-build.md").exists()
+    assert not (codex_home / "prompts" / "hep-build.md").exists()
+    assert (codex_home / "prompts" / "hep-storm.md").read_text(encoding="utf-8") == "new codex storm\n"
     assert (home / ".agents" / "skills" / "hephaestus-network" / "SKILL.md").read_text(encoding="utf-8") == "new skill\n"
+    assert (home / ".agents" / "skills" / "hephaestus-storm" / "SKILL.md").read_text(encoding="utf-8") == "new storm skill\n"
     assert not (home / ".agents" / "skills" / "hephaestus-cloud").exists()
     assert str(home / ".claude" / "commands" / "hep-build.md") in result["updated"]
+    assert str(codex_home / "prompts" / "hep-storm.md") in result["updated"]
+    assert str(home / ".agents" / "skills" / "hephaestus-storm") in result["updated"]
 
 
 def test_sync_installed_runtime_adapters_replaces_existing_plugin_cache_dirs(tmp_path, monkeypatch):

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v1.1.23 - 2026-07-13
+
+- **Runtime updates now refresh every installed Storm adapter.** Existing
+  `hep-storm` command files and `hephaestus-storm` skill directories for
+  Claude Code, Codex, Cursor, OpenCode, Gemini, Antigravity, OpenClaw, and
+  Hermes are synchronized from the newly verified Core release alongside the
+  older Hephaestus adapters. Custom `CODEX_HOME` locations are honored too, so
+  Core remains the only harness owner after an in-place runtime update.
+
 ## v1.1.22 - 2026-07-13
 
 - **One byte-identical Goal + UltraCode harness across every supported host.**
