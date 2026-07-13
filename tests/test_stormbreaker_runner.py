@@ -868,22 +868,44 @@ def test_route_auto_run_background_starts_for_pipeline(tmp_path, monkeypatch, ca
     monkeypatch.setenv("AGENTLAS_NETWORKING_HOME", str(home))
     executor = executor_script(tmp_path, "import os\nprint(os.environ['STORMBREAKER_PACKET_ID'])\n")
 
-    code = main(
-        [
-            "route",
-            "웹앱 기획부터 구현, 테스트 검증까지 끝까지 해줘",
-            "--project",
-            str(project),
-            "--no-hub",
-            "--auto-run",
-            "--background",
-            "--executor-command",
-            executor,
-        ]
-    )
+    args = [
+        "route",
+        "웹앱 기획부터 구현, 테스트 검증까지 끝까지 해줘",
+        "--project",
+        str(project),
+        "--no-hub",
+        "--auto-run",
+        "--background",
+        "--executor-command",
+        executor,
+    ]
 
-    assert code == 0
-    payload = json.loads(capsys.readouterr().out)
+    if os.name == "nt":
+        # Background routing is a process-boundary contract on Windows. Keep
+        # its launcher and detached grandchild outside pytest's console while
+        # still waiting for and validating the durable result below.
+        env = os.environ.copy()
+        env.update(
+            AGENTLAS_NETWORKING_HOME=str(home),
+            HEPHAESTUS_PYTHON=sys.executable,
+        )
+        completed = subprocess.run(
+            [sys.executable, "-m", "agentlas_cloud.cli", *args],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+            check=False,
+            **native_hephaestus_process_options(),
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        payload = json.loads(completed.stdout)
+    else:
+        code = main(args)
+        assert code == 0
+        payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "background_started"
     assert payload["route_receipt_id"]
     assert payload["decision_file"]
