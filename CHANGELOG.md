@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Every `/hep-build` host now ends with an explicit private-Cloud choice.**
+  Claude Code, Codex, Gemini, and Antigravity ask whether to save the verified
+  package owner-private in Agent Cloud or keep it only on this computer.
+  Missing/non-interactive input stays local, public Hub publication is never
+  inferred, and a failed Cloud save leaves the local package intact. Copy also
+  states the real Mobile boundary: another Desktop must restore/install the
+  package before its paired Mobile can use that Desktop to run it.
+- **Fresh host interviews now default consistently to English.** Korean remains
+  an explicit locale, and the canonical interview directive, lens table, and
+  scoring prompt are synchronized into both Claude and Codex plugin mirrors so
+  host adapters cannot silently disagree.
+
 ## v1.1.28 - 2026-07-14
 
 - **Plugin first contact now installs the real project architecture before

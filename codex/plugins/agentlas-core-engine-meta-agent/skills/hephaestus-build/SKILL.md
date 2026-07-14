@@ -71,6 +71,18 @@ description: "Use when the user types /prompts:hep-build, mentions @Hephaestus f
     output to a single-agent package or add the required orchestrator/HQ and
     team contracts.
 12. Verify with `scripts/verify-package.sh`.
+13. Once verification and local registration have succeeded, ask one final
+    two-choice storage question using structured controls when available:
+    **Cloud에 올리기** or **로컬에만 저장**. Cloud means owner-private Agent
+    Cloud storage, restorable on another signed-in Desktop. Mobile can use the
+    package only after a paired Desktop restores/installs it; Cloud is not a
+    hosted LLM runtime. Local-only performs no network mutation.
+14. Never upload by default. Missing input and non-interactive execution are
+    local-only. Only after explicit Cloud consent, run the trusted Hephaestus
+    runner with `upload <exact-verified-package-root> --visibility
+    private-link`. Keep the local package on every auth/offline/CAS/quota/scan
+    failure and report an exact retry command. Public Hub publication remains
+    a separate explicit action.
 
 ## Output
 

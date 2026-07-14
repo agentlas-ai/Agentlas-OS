@@ -65,4 +65,20 @@ discovery before final reporting:
 `./bin/hephaestus cards migrate . --tier local --overwrite`
 
 Include the migration result in `interview_research`.
+
+After the package is verified and saved locally, ask exactly one final
+two-choice question, using structured choices when available:
+
+1. **Cloud에 올리기** — save owner-private in Agent Cloud so the same account
+   can restore it on other Desktops. Mobile can use it only after a paired
+   Desktop restores/installs it; Agent Cloud is not a hosted LLM executor.
+2. **로컬에만 저장** — keep the completed package on this computer and perform
+   no network mutation.
+
+Never upload by default. Missing input or a non-interactive host means
+local-only. Only after explicit Cloud consent, resolve the trusted Hephaestus
+runner and run `"$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link`
+against the exact verified package root. Authentication, offline, CAS, quota,
+or security failure must leave the local package intact and be reported with
+an exact retry command. Public Hub publication is a separate explicit action.
 """

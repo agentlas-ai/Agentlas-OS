@@ -136,7 +136,31 @@ Meta-Agent team:
    not report `completed`; fix the package by collapsing to a valid
    single-agent shape or adding orchestrator/HQ plus company-blueprint topology,
    then rerun the gate.
-11. Return `status`, `evidence`, `output`, `global_commands`, `market_page_copy`,
+11. After the verified package has been written and registered locally, ask one
+    final storage question. Prefer the host's structured two-choice UI when it
+    exists, and use these choices without adding a public-Hub option:
+    - **Cloud에 올리기** — save the package owner-private in Agent Cloud so it
+      can be restored on the same account's other Desktops. Mobile can use it
+      only after a paired Desktop restores/installs it; Agent Cloud is not a
+      hosted LLM executor.
+    - **로컬에만 저장** — keep the already completed package on this computer
+      and perform no network mutation.
+
+    Never upload by default. If the host is non-interactive or the user does
+    not answer, choose local-only. Only after explicit Cloud consent, run the
+    resolved Hephaestus runner against the exact verified package root:
+
+    ```bash
+    "$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link
+    ```
+
+    Resolve `RUNNER` with the same trusted runtime search used above and set
+    `PACKAGE_ROOT` to the exact gate-verified package, never the workspace or a
+    guessed parent folder. Authentication, offline, CAS-conflict, quota, or
+    security-scan failure must leave the local package intact; report the
+    failure and the exact retry command. Public Hub publication remains a
+    separate explicit `/hep-upload ... --visibility marketplace` action.
+12. Return `status`, `evidence`, `output`, `global_commands`, `market_page_copy`,
    `interview_research`, and `blockers`.
    The `global_commands` section must tell the user the exact Claude Code,
    Codex, Gemini CLI, generic AGENTS.md, and terminal commands for the generated

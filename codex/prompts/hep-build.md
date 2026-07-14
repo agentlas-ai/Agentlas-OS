@@ -52,3 +52,21 @@ Expose `/prompts:hep-build` as the public Codex build prompt next to
 If runtime discovery migration isn't needed, still validate that the package has
 `./.agentlas/routing-card.json` and include that local-card artifact in `evidence`
 when skipping migration.
+
+After the package is verified and saved locally, use the host's structured
+choice UI when available and ask exactly one final question:
+
+- **Cloud에 올리기** — owner-private Agent Cloud storage, restorable on the
+  same account's other Desktops. Mobile can use it only through a paired
+  Desktop after that Desktop restores/installs it; this is not hosted model
+  execution.
+- **로컬에만 저장** — keep the completed package on this computer with no
+  network mutation.
+
+Do not upload automatically. A missing answer or non-interactive host defaults
+to local-only. On explicit Cloud consent, run the resolved Hephaestus runner as
+`"$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link`, where
+`PACKAGE_ROOT` is the exact verified package root, never a guessed parent.
+Cloud auth/offline/CAS/security failure must not delete or roll back the local
+package; report the failure and exact retry command. Public Hub publication is
+a separate explicit action and must not appear as a third choice here.

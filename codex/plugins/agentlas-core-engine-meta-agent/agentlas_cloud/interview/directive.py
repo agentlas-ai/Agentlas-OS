@@ -18,7 +18,7 @@ def interview_directive(
     surface: str,
     query: str,
     *,
-    locale: str = "ko",
+    locale: str = "en",
     context_hint: str | None = None,
 ) -> dict[str, Any]:
     """Build the host-executed briefing interview directive for one request."""

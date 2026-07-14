@@ -558,6 +558,7 @@ fi
 scripts/verify-install-docs.sh
 scripts/verify-global-command-contract.sh
 scripts/verify-builder-quality-contract.sh
+python3 scripts/test-build-cloud-choice-contract.py
 scripts/verify-experience-assets-contract.sh
 scripts/verify-gateway-channel-contract.sh
 scripts/verify-team-package.sh tests/fixtures/team-valid >/dev/null

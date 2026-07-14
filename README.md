@@ -80,7 +80,7 @@ surface active there. For direct shell commands, see the install methods below.
 
 ### Build an owned agent
 
-Describe the work in plain language. Agentlas classifies the request, runs the interview and research gate, generates the package, verifies it, and keeps the result inspectable.
+Describe the work in plain language. Agentlas classifies the request, runs the interview and research gate, generates the package, verifies it, then asks whether to keep it only on this computer or save it privately in Agent Cloud for restore on another signed-in Desktop.
 
 [Agentlas Desktop →](https://agentlas.cloud/desktop)
 

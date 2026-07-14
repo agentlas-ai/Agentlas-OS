@@ -127,7 +127,7 @@ def completion_check(
     return {"ready": True, "streak": streak, "reason": "gates_met"}
 
 
-def build_scoring_prompt(surface: str, locale: str = "ko") -> str:
+def build_scoring_prompt(surface: str, locale: str = "en") -> str:
     """Judging instructions the host model runs after each interview round."""
     dims = dimensions_for(surface)
     dim_lines = "\n".join(

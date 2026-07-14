@@ -97,7 +97,7 @@ def question_budget(surface: str) -> dict[str, int]:
     }
 
 
-def render_lens_table(surface: str, locale: str = "ko") -> str:
+def render_lens_table(surface: str, locale: str = "en") -> str:
     """Render the surface's lens groups as a prompt-ready table."""
     profile = surface_profile(surface)
     key = "ko" if locale == "ko" else "en"

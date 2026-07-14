@@ -86,6 +86,15 @@ mean a hosted Cloud Agent VM. User-facing copy must not promise always-on cloud
 execution when the work actually runs on the selected local or self-managed
 host.
 
+Every create, repair, package, or team-build surface must finish the local
+artifact first and then keep private Cloud storage as a separate consent step.
+The portable choice is binary: owner-private **Cloud에 올리기** or
+**로컬에만 저장**. No answer and non-interactive execution mean local-only;
+public Hub publication is never inferred from either choice. A failed Cloud
+save leaves the verified local artifact untouched. A package stored in Agent
+Cloud becomes usable on Mobile only through a paired Desktop after that
+Desktop restores or installs the package; storage alone is not execution.
+
 `Agent Trust` means trustworthy ownership and portability by contract. It must
 not be translated into claims of regulated custody, insured assets, fiduciary
 duty, investment trust, or legal title transfer.

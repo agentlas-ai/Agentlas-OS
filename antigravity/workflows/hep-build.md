@@ -112,7 +112,22 @@ if [ -x "./bin/hephaestus" ]; then
 fi
 ```
 
-8. Return `status`, `evidence`, `output`, `global_commands`,
+8. After verification and local discovery registration, ask exactly one final
+   two-choice storage question, using structured choice controls when the host
+   provides them:
+   - **Cloud에 올리기** — owner-private Agent Cloud storage that the same
+     account can restore on other Desktops. Mobile uses it only after a paired
+     Desktop restores/installs it; Agent Cloud does not run the LLM.
+   - **로컬에만 저장** — keep the completed package on this computer and make
+     no network change.
+
+   Never auto-upload. Missing input or non-interactive execution defaults to
+   local-only. Only after explicit Cloud consent, resolve the trusted runner
+   and execute `"$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link`
+   against the exact verified package root. Auth, offline, CAS, quota, or scan
+   failure leaves the local package intact and must be reported with an exact
+   retry command. Public Hub publishing remains a separate explicit action.
+9. Return `status`, `evidence`, `output`, `global_commands`,
    `interview_research`, and `blockers`.
 
 ## If no engine root was found
