@@ -44,6 +44,7 @@ MAX_SYMBOLS_PER_FILE = 200
 MAX_TOTAL_SYMBOLS = 20_000
 MAX_UNIQUE_TOKENS = 50_000
 MAX_TOKEN_OCCURRENCES = 2_000_000
+POSIX_PRIVATE_MODE_ENFORCEMENT = os.name != "nt"
 AUTO_BOOTSTRAP_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_AUTO"
 MCP_AUTO_BOOTSTRAP_ENV = "AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO"
 AUTO_ALLOWED_ROOTS_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_ALLOWED_ROOTS"
@@ -1055,7 +1056,7 @@ def project_status(project: str | Path) -> dict[str, Any]:
             try:
                 if path.is_symlink():
                     permission_issues.append(path.relative_to(root).as_posix() + ":symlink")
-                elif path.is_file() or path.is_dir():
+                elif POSIX_PRIVATE_MODE_ENFORCEMENT and (path.is_file() or path.is_dir()):
                     if stat.S_IMODE(path.stat().st_mode) & 0o077:
                         permission_issues.append(path.relative_to(root).as_posix() + ":group_or_world_access")
             except OSError:

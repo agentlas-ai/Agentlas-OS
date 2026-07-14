@@ -166,6 +166,24 @@ def test_status_refuses_unsafe_gitignore_without_following_it(tmp_path: Path) ->
     assert outside.read_text(encoding="utf-8") == "PRIVATE OUTSIDE CONTENT\n"
 
 
+def test_private_mode_uses_posix_bits_only_on_posix_hosts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = make_project(tmp_path)
+    ensure_project(project)
+    state = project / ".agentlas"
+    state.chmod(0o755)
+
+    posix_status = project_status(project)
+    assert ".agentlas:group_or_world_access" in posix_status["permissionIssues"]
+
+    # Windows reports synthetic Unix mode bits even though access is governed
+    # by account ACLs. Those bits must not turn a complete bootstrap into a
+    # false privacy warning for Desktop and Terminal hosts.
+    monkeypatch.setattr(project_bootstrap, "POSIX_PRIVATE_MODE_ENFORCEMENT", False)
+    windows_semantics = project_status(project)
+    assert windows_semantics["privateModeCompliant"] is True
+    assert windows_semantics["permissionIssues"] == []
+
+
 def test_tracked_sensitive_scan_is_byte_and_count_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = make_project(tmp_path)
     private = project / ".agentlas"

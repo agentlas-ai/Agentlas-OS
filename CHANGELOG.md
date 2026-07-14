@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v1.1.27 - 2026-07-14
+
+- **Windows first-contact setup now completes through the canonical Core.**
+  Windows ACLs, not synthetic POSIX group/world mode bits, govern local file
+  access. Core no longer turns those meaningless mode bits into a false
+  `privacy_warning`, so Desktop and Terminal retain the same Core-owned
+  project soul, code map, memory, ontology, Career Graph, and `.gitignore`
+  bootstrap on Windows. POSIX hosts still enforce owner-only `0700`/`0600`
+  modes, and all hosts retain symlink, bounded-scan, tracked-sensitive, and
+  merge-only guards.
+
 ## v1.1.26 - 2026-07-14
 
 - **Project Foundation no longer treats read access as write consent.** Passive
