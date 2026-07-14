@@ -1139,12 +1139,14 @@ def maybe_ensure_project(
     reason: str,
     enabled: bool = False,
     trusted_target: bool = False,
+    allow_unmarked_current_root: bool = False,
 ) -> dict[str, Any]:
     """Gate host first-contact writes behind explicit host consent.
 
     Workload/tool arguments never enable this function on their own. Trusted
-    hosts opt in with a CLI flag or process environment, and automatic mode
-    still requires a workspace marker so a random cwd is not polluted.
+    hosts opt in with a CLI flag or process environment. Automatic mode
+    requires a workspace marker, except for the exact MCP process cwd when the
+    host starts the plugin server with its dedicated bootstrap gate enabled.
     """
 
     if not enabled:
@@ -1164,7 +1166,13 @@ def maybe_ensure_project(
             "detail": _redacted_error(exc),
             "writeAttempted": False,
         }
-    if not _project_marker_present(root):
+    current_root_is_host_workspace = False
+    if allow_unmarked_current_root:
+        try:
+            current_root_is_host_workspace = root == Path.cwd().resolve()
+        except OSError:
+            current_root_is_host_workspace = False
+    if not _project_marker_present(root) and not current_root_is_host_workspace:
         return {
             "action": "project_bootstrap",
             "status": "skipped",

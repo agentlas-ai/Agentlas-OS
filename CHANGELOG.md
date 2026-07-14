@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## v1.1.28 - 2026-07-14
+
+- **Plugin first contact now installs the real project architecture before
+  routing.** `hep-network`, owner Cloud, and Storm calls from Codex, Claude
+  Code, Gemini, Cursor, OpenCode, Antigravity, and other named host runtimes
+  synchronously use Core's one `ensure_project` implementation. The local MCP
+  server enables its separate host gate when it starts and may initialize only
+  its exact current workspace when that folder has not been put under Git yet.
+- **Private Agentlas state is protected before agent work.** Core installs the
+  full merge-only `.agentlas/` ignore block before memory, code map, ontology,
+  and CareerGraph files; a plugin call is blocked if that privacy or permission
+  contract is incomplete. Intentionally public, already tracked `.agentlas`
+  contracts remain merge-only and are reported as an explicit privacy warning;
+  Core never rewrites the user's Git index. Ordinary terminal read-only
+  commands remain non-mutating.
+
 ## v1.1.27 - 2026-07-14
 
 - **Windows first-contact setup now completes through the canonical Core.**

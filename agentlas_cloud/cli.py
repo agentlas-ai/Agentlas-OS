@@ -32,15 +32,63 @@ RESEARCH_SEARCH_PROVIDER_HINTS = {
 AGENTLAS_BROWSER_MODULE = "browser.agent_cli"
 
 
-def _project_bootstrap_receipt(project: str | Path, reason: str, *, requested: bool = False) -> dict[str, Any]:
-    from .project_bootstrap import auto_bootstrap_enabled, maybe_ensure_project
+def _project_bootstrap_receipt(
+    project: str | Path,
+    reason: str,
+    *,
+    requested: bool = False,
+    trusted_contact: bool = False,
+) -> dict[str, Any]:
+    from .project_bootstrap import auto_bootstrap_enabled, ensure_project, maybe_ensure_project
+
+    if requested or trusted_contact:
+        try:
+            return ensure_project(project, reason=reason)
+        except (OSError, TimeoutError, ValueError):
+            return {
+                "action": "project_bootstrap",
+                "status": "error",
+                "reason": reason,
+                "detail": "project_bootstrap_failed",
+                "writeAttempted": True,
+            }
 
     return maybe_ensure_project(
         project,
         reason=reason,
-        enabled=requested or auto_bootstrap_enabled(),
-        trusted_target=requested,
+        enabled=auto_bootstrap_enabled(),
     )
+
+
+def _plugin_contact_runtime(runtime: str | None) -> bool:
+    normalized = str(runtime or "").strip().lower()
+    return normalized not in {"", "terminal", "cli", "shell"}
+
+
+def _project_bootstrap_blocks_execution(receipt: Mapping[str, Any]) -> bool:
+    if receipt.get("status") == "active":
+        return False
+    if receipt.get("status") != "privacy_warning":
+        return True
+    return not (
+        receipt.get("privacyBlockInstalled") is True
+        and receipt.get("privateModeCompliant") is True
+        and not (receipt.get("missing") or [])
+        and not (receipt.get("permissionIssues") or [])
+    )
+
+
+def _emit_blocked_project_bootstrap(receipt: Mapping[str, Any]) -> int:
+    detail = receipt.get("detail") or "project_bootstrap_incomplete"
+    emit(
+        {
+            "action": "project_bootstrap",
+            "status": "blocked",
+            "detail": detail,
+            "project_bootstrap": dict(receipt),
+        }
+    )
+    return 2
 
 
 def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
@@ -947,6 +995,8 @@ def main(argv: list[str] | None = None) -> int:
             "hephaestus-search",
             requested=args.ensure_project,
         )
+        if args.ensure_project and _project_bootstrap_blocks_execution(bootstrap):
+            return _emit_blocked_project_bootstrap(bootstrap)
         result = search_agents(
             args.query,
             project_dir=args.project,
@@ -970,6 +1020,8 @@ def main(argv: list[str] | None = None) -> int:
             "hephaestus-call",
             requested=args.ensure_project,
         )
+        if args.ensure_project and _project_bootstrap_blocks_execution(bootstrap):
+            return _emit_blocked_project_bootstrap(bootstrap)
         result = call_agents(
             args.agents,
             context,
@@ -988,11 +1040,19 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.stormbreaker_runner import run_stormbreaker_decision
 
         maybe_auto_update()
+        trusted_project_contact = (
+            _plugin_contact_runtime(args.runtime)
+            or args.scope == "cloud"
+            or args.auto_run
+        )
         bootstrap = _project_bootstrap_receipt(
             args.project,
             "hephaestus-route",
             requested=args.ensure_project,
+            trusted_contact=trusted_project_contact,
         )
+        if (trusted_project_contact or args.ensure_project) and _project_bootstrap_blocks_execution(bootstrap):
+            return _emit_blocked_project_bootstrap(bootstrap)
         home = networking_home()
         init_networking(home)
         session_inventory = None
@@ -1107,7 +1167,10 @@ def main(argv: list[str] | None = None) -> int:
             args.project,
             "hephaestus-storm",
             requested=args.ensure_project,
+            trusted_contact=True,
         )
+        if _project_bootstrap_blocks_execution(bootstrap):
+            return _emit_blocked_project_bootstrap(bootstrap)
         home = networking_home()
         init_networking(home)
         session_inventory = None
@@ -1871,7 +1934,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.27",
+            "version": "1.1.28",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

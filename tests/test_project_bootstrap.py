@@ -141,6 +141,7 @@ def test_existing_tracked_private_paths_are_reported_not_removed(tmp_path: Path)
     assert ".agentlas/project-soul-memory.md" in staged
     assert private.read_text(encoding="utf-8") == "tracked before Agentlas privacy install\n"
     assert result["status"] == "privacy_warning"
+    assert cli._project_bootstrap_blocks_execution(result) is False
 
 
 def test_status_is_read_only_and_redacts_absolute_root(tmp_path: Path) -> None:
@@ -232,6 +233,75 @@ def test_cli_implicit_bootstrap_is_disabled_by_default(tmp_path: Path, monkeypat
     assert not (project / ".agentlas").exists()
 
 
+def test_trusted_plugin_contact_bootstraps_an_unmarked_current_project(tmp_path: Path) -> None:
+    project = tmp_path / "unmarked-plugin-project"
+    project.mkdir()
+    (project / "main.py").write_text("def plugin_contact(): return True\n", encoding="utf-8")
+
+    receipt = cli._project_bootstrap_receipt(
+        project,
+        "test-plugin-first-contact",
+        trusted_contact=True,
+    )
+
+    assert receipt["status"] == "privacy_warning"
+    assert receipt["trackedSensitivePaths"] == []
+    assert receipt["privacyBlockInstalled"] is True
+    assert cli._project_bootstrap_blocks_execution(receipt) is False
+    assert (project / ".agentlas" / "project-soul-memory.md").is_file()
+    assert (project / ".agentlas" / "code-map" / "project-map.json").is_file()
+    assert (project / ".agentlas" / "ontology-runtime.sqlite").is_file()
+    assert (project / ".agentlas" / "career-graph.sqlite").is_file()
+    assert ".agentlas/" in (project / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_plugin_runtime_detection_is_dynamic_but_terminal_reads_stay_passive() -> None:
+    for runtime in ("codex", "claude-code", "gemini", "cursor", "opencode", "mcp"):
+        assert cli._plugin_contact_runtime(runtime) is True
+    for runtime in (None, "", "terminal", "cli", "shell"):
+        assert cli._plugin_contact_runtime(runtime) is False
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "reason"),
+    [
+        (["--runtime", "codex"], "codex-network-contact"),
+        (["--scope", "cloud"], "owner-cloud-contact"),
+    ],
+)
+def test_network_and_cloud_cli_contacts_bootstrap_before_routing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    extra_args: list[str],
+    reason: str,
+) -> None:
+    project = tmp_path / reason
+    project.mkdir()
+    (project / "main.py").write_text("def routed(): return True\n", encoding="utf-8")
+    import agentlas_cloud.networking as networking
+    import agentlas_cloud.networking.bootstrap as networking_bootstrap
+
+    monkeypatch.setattr(cli, "maybe_auto_update", lambda: None)
+    monkeypatch.setattr(networking, "init_networking", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(networking_bootstrap, "networking_home", lambda: tmp_path / "network")
+    monkeypatch.setattr(
+        networking,
+        "route_request",
+        lambda *_args, **_kwargs: {"action": "propose_new", "receipt_id": reason},
+    )
+
+    code = cli.main(["route", "test request", "--project", str(project), "--no-hub", *extra_args])
+    result = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert result["receipt_id"] == reason
+    assert result["project_bootstrap"]["status"] == "privacy_warning"
+    assert result["project_bootstrap"]["trackedSensitivePaths"] == []
+    assert (project / ".agentlas" / "project-soul-memory.md").is_file()
+    assert ".agentlas/" in (project / ".gitignore").read_text(encoding="utf-8")
+
+
 def test_mcp_bootstrap_uses_separate_host_gate_not_tool_arguments(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = make_project(tmp_path)
     import agentlas_cloud.networking as networking
@@ -276,6 +346,35 @@ def test_mcp_opt_in_still_cannot_write_outside_host_approved_roots(tmp_path: Pat
     assert result["project_bootstrap"]["status"] == "skipped"
     assert result["project_bootstrap"]["detail"] == "outside_host_approved_roots"
     assert not (other / ".agentlas").exists()
+
+
+def test_mcp_host_gate_can_bootstrap_only_its_exact_unmarked_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = tmp_path / "mcp-current-project"
+    project.mkdir()
+    (project / "main.py").write_text("def mcp_contact(): return True\n", encoding="utf-8")
+    sibling = tmp_path / "unmarked-sibling"
+    sibling.mkdir()
+    monkeypatch.chdir(project)
+
+    current = maybe_ensure_project(
+        project,
+        reason="mcp-current-root",
+        enabled=True,
+        allow_unmarked_current_root=True,
+    )
+    outside = maybe_ensure_project(
+        sibling,
+        reason="mcp-outside-root",
+        enabled=True,
+        allow_unmarked_current_root=True,
+    )
+
+    assert current["status"] == "privacy_warning"
+    assert current["trackedSensitivePathCount"] == 0
+    assert (project / ".agentlas").is_dir()
+    assert outside["status"] == "skipped"
+    assert outside["detail"] == "workspace_marker_missing"
+    assert not (sibling / ".agentlas").exists()
 
 
 def test_code_map_obeys_total_read_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -52,6 +52,16 @@ If shell execution is unavailable in this harness but MCP is, call the
 `agentlas_authenticate` tool first, then call the `hephaestus_route` tool from
 the `hephaestus-network` MCP server instead.
 
+## 1.5 Core project first-contact contract
+
+The `route --runtime ...` call below is a trusted plugin contact. Agentlas Core
+must synchronously create or repair the canonical private project architecture
+before routing: project soul memory, code map, ontology runtime, CareerGraph,
+and the merge-only `.gitignore` privacy block for the entire `.agentlas/`
+namespace. The adapter must never recreate those files itself. If Core returns
+a blocked bootstrap receipt, stop and report it instead of routing without the
+architecture.
+
 ## 2. Agentlas sign-in
 
 Before routing, ensure Agentlas is signed in:

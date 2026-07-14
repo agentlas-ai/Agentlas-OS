@@ -56,6 +56,15 @@ fi
 If no runner exists, tell the user to run the one-touch installer:
 `curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash`
 
+## 1.5 Core project first-contact contract
+
+Every `hep-storm` call is a trusted plugin contact. Before routing or
+materializing packets, Agentlas Core synchronously creates or repairs the
+canonical private project soul memory, code map, ontology runtime, CareerGraph,
+and merge-only `.gitignore` block for all of `.agentlas/`. A blocked bootstrap
+receipt blocks the storm. The adapter must not substitute host-local files or a
+second bootstrap implementation.
+
 ## 2. Agentlas sign-in
 
 Before routing, ensure Agentlas is signed in:

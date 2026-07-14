@@ -6,6 +6,7 @@ from agentlas_cloud.mcp_stdio import serve
 
 def run_session(lines, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTLAS_NETWORKING_HOME", str(tmp_path / "networking"))
+    monkeypatch.chdir(tmp_path)
     stdin = io.StringIO("".join(json.dumps(line) + "\n" for line in lines))
     stdout = io.StringIO()
     assert serve(stdin=stdin, stdout=stdout) == 0
@@ -26,7 +27,7 @@ def test_initialize_and_tools_list(monkeypatch, tmp_path):
     init = responses[0]["result"]
     assert init["protocolVersion"] == "2025-06-18"
     assert init["serverInfo"]["name"] == "hephaestus-network"
-    assert init["serverInfo"]["version"] == "1.1.27"
+    assert init["serverInfo"]["version"] == "1.1.28"
     tools = responses[1]["result"]["tools"]
     tool_names = {tool["name"] for tool in tools}
     assert tool_names == {
@@ -53,6 +54,56 @@ def test_initialize_and_tools_list(monkeypatch, tmp_path):
     assert "agents" in call_tool["inputSchema"]["properties"]
     auth_tool = next(tool for tool in tools if tool["name"] == "agentlas_authenticate")
     assert "open_browser" in auth_tool["inputSchema"]["properties"]
+
+
+def test_serve_defaults_plugin_bootstrap_on_for_exact_unmarked_workspace(monkeypatch, tmp_path):
+    monkeypatch.delenv("AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO", raising=False)
+
+    def fake_route_request(*_args, **_kwargs):
+        return {"action": "propose_new", "receipt_id": "mcp-bootstrap-receipt"}
+
+    monkeypatch.setattr("agentlas_cloud.networking.route_request", fake_route_request)
+    responses = run_session(
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "hephaestus_route", "arguments": {"request": "bootstrap this project"}},
+            }
+        ],
+        monkeypatch,
+        tmp_path,
+    )
+
+    decision = json.loads(responses[0]["result"]["content"][0]["text"])
+    assert decision["receipt_id"] == "mcp-bootstrap-receipt"
+    assert decision["project_bootstrap"]["status"] == "privacy_warning"
+    assert decision["project_bootstrap"]["trackedSensitivePathCount"] == 0
+    assert (tmp_path / ".agentlas" / "project-soul-memory.md").is_file()
+    assert ".agentlas/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_serve_respects_explicit_plugin_bootstrap_disable(monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO", "0")
+    responses = run_session(
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "hephaestus_route", "arguments": {"request": "stay passive"}},
+            }
+        ],
+        monkeypatch,
+        tmp_path,
+    )
+
+    decision = json.loads(responses[0]["result"]["content"][0]["text"])
+    assert decision["action"] == "project_bootstrap"
+    assert decision["status"] == "blocked"
+    assert decision["project_bootstrap"]["status"] == "disabled"
+    assert not (tmp_path / ".agentlas").exists()
 
 
 def test_tools_call_status_and_route(monkeypatch, tmp_path):
@@ -108,7 +159,7 @@ def test_route_tool_threads_caller_id_to_ao_gate(monkeypatch, tmp_path):
                     "name": "hephaestus_route",
                     "arguments": {
                         "request": "run regression tests",
-                        "project_dir": "/tmp/project",
+                        "project_dir": str(tmp_path),
                         "caller_id": "local/caller-agent",
                         "session_inventory": ["codex", "claude"],
                     },
@@ -123,7 +174,7 @@ def test_route_tool_threads_caller_id_to_ao_gate(monkeypatch, tmp_path):
     assert decision["receipt_id"] == "route123"
     assert calls["request"] == "run regression tests"
     assert calls["kwargs"]["caller_id"] == "local/caller-agent"
-    assert calls["kwargs"]["project_dir"] == "/tmp/project"
+    assert calls["kwargs"]["project_dir"] == str(tmp_path)
     assert calls["kwargs"]["runtime"] == "mcp"
     assert calls["kwargs"]["hub_only"] is True
     assert calls["kwargs"]["session_inventory"] == ["codex", "claude"]

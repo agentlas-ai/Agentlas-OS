@@ -49,6 +49,14 @@ If shell execution is unavailable in this harness but MCP is, call the
 `agentlas_authenticate` tool first, then call the `hephaestus_cloud_search` tool
 from the `hephaestus-network` MCP server instead.
 
+## 1.5 Core project first-contact contract
+
+The `cloud ... --project .` call below is a trusted plugin contact. Agentlas
+Core must synchronously create or repair the same private project soul memory,
+code map, ontology runtime, CareerGraph, and full `.agentlas/` ignore block used
+by every other host. If bootstrap is blocked, stop rather than querying Cloud
+without the project architecture. The adapter never owns a second seed format.
+
 ## 2. Agentlas sign-in (required)
 
 The owner cloud is sign-in-gated. Before routing, ensure Agentlas is signed in:

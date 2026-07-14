@@ -764,6 +764,9 @@ def test_hephaestus_storm_terminal_command_runs_pipeline(tmp_path):
     payload = json.loads(completed.stdout)
     assert payload["status"] == "completed"
     assert payload["route_decision"]["action"] == "pipeline"
+    assert payload["project_bootstrap"]["status"] == "privacy_warning"
+    assert (project / ".agentlas" / "project-soul-memory.md").is_file()
+    assert ".agentlas/" in (project / ".gitignore").read_text(encoding="utf-8")
 
 
 def test_python_cli_hep_storm_alias_runs_pipeline(tmp_path, monkeypatch, capsys):

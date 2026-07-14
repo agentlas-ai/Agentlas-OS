@@ -287,7 +287,7 @@ def test_public_decision_and_receipt_schemas_validate_runtime_payloads():
     jsonschema.Draft202012Validator(receipt_schema).validate(receipt)
 
 
-def test_mcp_caller_cannot_override_host_cost_policy(monkeypatch):
+def test_mcp_caller_cannot_override_host_cost_policy(monkeypatch, tmp_path):
     route_tool = next(tool for tool in mcp_stdio.TOOLS if tool["name"] == "hephaestus_route")
     assert "model_allocation_policy" not in route_tool["inputSchema"]["properties"]
 
@@ -302,6 +302,9 @@ def test_mcp_caller_cannot_override_host_cost_policy(monkeypatch):
             "unknown": "dropped",
         }),
     )
+    monkeypatch.setenv("AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO", "1")
+    monkeypatch.setenv("AGENTLAS_PROJECT_BOOTSTRAP_ALLOWED_ROOTS", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     captured = {}
 
     import agentlas_cloud.networking as networking

@@ -18,7 +18,7 @@ import sys
 from typing import Any, Mapping
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.27"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.28"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -300,7 +300,26 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             arguments.get("project_dir", "."),
             reason=f"mcp:{name}",
             enabled=auto_bootstrap_enabled(mcp=True),
+            allow_unmarked_current_root=True,
         )
+
+    if bootstrap is not None:
+        status = bootstrap.get("status")
+        safe_warning = (
+            status == "privacy_warning"
+            and bootstrap.get("privacyBlockInstalled") is True
+            and bootstrap.get("privateModeCompliant") is True
+            and int(bootstrap.get("missingCount") or 0) == 0
+            and int(bootstrap.get("permissionIssueCount") or 0) == 0
+        )
+        if status != "active" and not safe_warning:
+            detail = bootstrap.get("detail") or "project_bootstrap_incomplete"
+            return {
+                "action": "project_bootstrap",
+                "status": "blocked",
+                "detail": detail,
+                "project_bootstrap": bootstrap,
+            }
 
     def with_bootstrap(result: dict[str, Any]) -> dict[str, Any]:
         if bootstrap is not None:
@@ -473,6 +492,13 @@ def _error(msg_id: Any, code: int, message: str) -> dict[str, Any]:
 
 
 def serve(stdin=None, stdout=None) -> int:
+    # Starting the local Agentlas MCP server is the host's explicit plugin
+    # boundary. Default its project bootstrap gate on while preserving an
+    # operator's explicit 0/false override. maybe_ensure_project still confines
+    # writes to the MCP process workspace and refuses unsafe home/root targets.
+    from .project_bootstrap import MCP_AUTO_BOOTSTRAP_ENV
+
+    os.environ.setdefault(MCP_AUTO_BOOTSTRAP_ENV, "1")
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
     for line in stdin:
