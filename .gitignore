@@ -70,3 +70,4 @@ signing/*
 credentials/*
 !credentials/README.md
 # <<< agentlas local project state <<<
+/docs
