@@ -1,21 +1,16 @@
+---
+description: Staff and run a task from the Agentlas Hub Workforce Ontology.
+---
+
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
-# Hephaestus Network routing
-
-
-Route everything typed after this command through the Hephaestus Network
-local-first router. Follow the `hephaestus-network` skill exactly: resolve the
-runner by first running its app-host auto-update preflight inside Cursor
-(no separate terminal prompt to the user), then use
-`~/.agentlas/runtime/current/bin/hephaestus`, `./bin/hephaestus`,
-then the newest Claude/Codex plugin cache copy), run
-`"$RUNNER" auth ensure --timeout 180` first so the browser sign-in opens on
-first use and existing Agentlas saved sign-ins are reused silently, then run
-`"$RUNNER" route "<request>" --runtime cursor` in the terminal, then act on the
-JSON decision (route / clarify / pipeline / hub_fallback / propose_new /
-refuse). Before reporting a GUI shortcut such as `startup`, run
-`"$RUNNER" local-gui "<request>" --detach --quiet-not-found`: this opens a
-local GUI when the source folder exists, and on another machine restores the Hub
-cloud package before launching its packaged GUI. The router only chooses an
-agent or fetches a BYOM Hub bundle; actual tool execution follows Cursor's
-runtime safety and permission model. Report the routing `receipt_id`.
+For the user's request, act as the temporary top-level LLM orchestrator. Create
+a redacted `agentlas.workforce-work-order.v1`, then call Hub MCP
+`workforce.search_candidates`, make the final content/evidence-based selection
+yourself, call `workforce.validate_selection`, and finally
+`workforce.prepare_execution`. Do not use the legacy lexical router,
+popularity/history ranking, or silent substitution. Pin exact release version,
+package hash, and content digest. Run planner, distinct selected workers,
+synthesis, and verifier with artifact handoffs. Claim execution only with
+joined child invocation receipts, planner parse success without fallback, and
+a passing verifier.

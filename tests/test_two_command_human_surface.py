@@ -144,6 +144,11 @@ def test_three_command_surface_keeps_network_120_human_style_invocations(tmp_pat
             {
                 "AGENTLAS_NETWORKING_HOME": str(home),
                 "HEPHAESTUS_UPDATE_CHECK": "0",
+                # This regression suite exercises the retired lexical router on
+                # purpose.  The default hep-network surface now stops at the
+                # host-LLM workforce protocol instead of choosing a worker in
+                # shell code.
+                "HEPHAESTUS_LEGACY_ROUTER": "1",
                 "PATH": f"{aliases}:{env.get('PATH', '')}",
             }
         )

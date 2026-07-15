@@ -1,36 +1,31 @@
-description = "Route a request through the Hephaestus Network local-first router (cards, Hub fallback)."
+description = "Staff and run a task from the Agentlas Hub Workforce Ontology."
 prompt = """
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
 # /hep-network
 
+Request: {{args}}
 
-Raw arguments:
-{{args}}
+The active Gemini model is the temporary top-level orchestrator. Do not call
+the legacy lexical router. Build a redacted
+`agentlas.workforce-work-order.v1` with distinct role slots and explicit
+skills, MCP tools, artifacts, runtimes, languages, authorities, cardinality,
+and collaboration edges; private project context stays local.
 
-Use the Hephaestus Network local-first router.
+Call Agentlas Hub MCP in this exact sequence:
+`workforce.search_candidates` -> `workforce.validate_selection` ->
+`workforce.prepare_execution`.
 
-1. Find the Hephaestus runner — first executable wins:
-   `~/.agentlas/runtime/current/bin/hephaestus`, `./bin/hephaestus`, or the
-   newest `~/.claude/plugins/cache/agentlas-core-engine/hephaestus/*/bin/hephaestus`
-   (sort -V). First ensure the local Agentlas sign-in (this opens the browser
-   only on first use):
-   `hephaestus auth ensure --timeout 180`
-   Then run:
-   `hephaestus route "{{args}}" --runtime gemini-cli`
+After search, you must author `agentlas.workforce-selection.v1` as
+`decisionAuthor.kind=host_llm` using exact release ids and content evidence.
+Popularity, history, ratings, and local availability are not semantic fit.
+Revise on validation failure; never use a deterministic or unrelated fallback.
+Require the prepared roster to pin release version, package hash, and content
+digest with a directive bundle for every selected worker.
 
-2. Act on the JSON decision:
-   - action "route": report the selected card and its canonical command, then
-     invoke it with the original request.
-   - action "clarify": ask the `clarify_question` with the candidates.
-   - action "pipeline": execute `stages` in order, saving artifacts under
-     `handoff_dir`; stop and report on stage failure.
-   - action "hub_fallback"/"hub_candidates": Hub lookup used redacted keywords
-     only; the raw prompt and local memory were not sent.
-   - action "propose_new": offer to build a new agent via /hep-build.
-   - action "refuse": explain the reasons (for example, loop guard).
-
-3. Hard rules: the router only chooses an agent or fetches a BYOM Hub bundle.
-   Actual tool execution follows the current host runtime's safety and
-   permission model. Include the routing `receipt_id` in the final response.
+Run manager/planner, every worker, synthesis, and verifier as distinct model
+invocations with explicit artifact handoffs. Report `executed` only when the
+joined receipt proves planner parse success with no fallback, all child
+invocations, synthesis, and a passing verifier. Otherwise report the last
+truthful state such as selected, prepared, blocked, or failed.
 """

@@ -180,39 +180,43 @@ operator is using a debug/automation shell directly.
 `/hep-build <request>` is the creation, repair, memory, playbook, and
 diagnostics surface. `/hep-network <request>` (alias
 `@Hephaestus <request>`, terminal `hep-network "<request>"`) is the
-work-routing surface. `/hep-cloud <request>` uses the signed-in user's own
+Agent Workforce Ontology staffing surface: the active host LLM creates a
+redacted work order, calls `workforce.search_candidates`, chooses the exact
+roster, calls `workforce.validate_selection`, then calls
+`workforce.prepare_execution` and runs distinct worker/synthesis/verifier
+invocations. Hub supplies content and qualification evidence; deterministic
+code enforces hard constraints but never picks the final team. The standalone
+shell alias can only report `host_llm_required`; the old card router is an
+explicit `HEPHAESTUS_LEGACY_ROUTER=1` compatibility/debug surface.
+`/hep-cloud <request>` uses the signed-in user's own
 Agentlas Cloud packages. `/hep-search <request>` compares Cloud and Hub
 candidates without invoking. `/hep-call <slugs> <context>` prepares explicitly
 named agents. `/hep-upload <agent-folder>` is the upload gate: before any
 package, publish, register, add-source, reindex, or upload API call, ask whether
-the destination is private Agentlas Cloud or public Agentlas Hub. Route natural
-language through the local-first Agent OS router: explicit commands → project
-`.agentlas/routing-overrides.json` → local routing cards (`routing_ready`+
-only) → redacted Agentlas Hub lookup → propose building a new agent.
-Plan-anchored composite requests ("기획부터 구현, QA까지") return `action:
-"pipeline"` or Hub stage candidates with a `task_force`: a temporary TF plan
-chained by Agent Ontology or card `produces`/`consumes` artifact contracts.
-Execute stages through the returned `execution_fabric`, handing artifacts
-through `handoff_dir`. Independent packets in the same `parallel_group` may run
-concurrently when the host runtime advertises active sessions such as Codex,
-Claude, GLM, DeepSeek, Gemini, or local models.
-Honor the decision JSON exactly:
-ask the `clarify_question` on `clarify`, follow `policy_decision` labels in
-Local Operator Mode, never send raw prompts or local memory to the Hub, and
-report the routing `receipt_id`. Most policy signals are labels,
-`auto_redact`, or `candidate_only`; human approval should be rare and reserved
-for real external export, global memory/playbook promotion, or irreversible
-host-runtime actions. Generated and packaged repos must include
+the destination is private Agentlas Cloud or public Agentlas Hub.
+
+Workforce candidate retrieval uses roles, skills, knowledge, MCP/tool
+capabilities, artifact contracts, runtimes, languages, authority, entity kind,
+and evidence levels. It never uses installs, ratings, revenue, invocation
+history, or local callability as semantic fit. Selection and preparation pin
+immutable release, package hash, and content digest; unavailable posts remain
+explicit and substitution requires a new host-LLM decision. Never send raw
+prompts or local memory to Hub. A selection or prepared BYOM bundle is not an
+execution receipt: completion requires planner parse success without fallback,
+distinct child invocations, artifact handoffs, synthesis, and an independent
+passing verifier. Generated and packaged repos must include
 `.agentlas/routing-card.json` (see `schemas/routing-card.schema.json`); cards
-below `routing_ready` are excluded from auto routing.
+compile into immutable workforce profiles and lifecycle events.
 
 `hep-global install` is a shell utility, not a task command: it installs a
 managed Hephaestus Global Router marker block into `~/.codex/AGENTS.md` and
 `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md` for Antigravity/Gemini. That
 block makes ordinary host prompts follow the intended fallback order: Network,
-then Cloud, then local agents, then local skills. If Network or Cloud is
-blocked by credits, entitlement, or fit, the host should report that boundary
-and continue down the fallback order. Status lines must name final workers, not
+then Cloud, then explicitly requested local agents, then local skills. Network
+does not silently fall back when a workforce MCP call is rejected or no
+qualified slot coverage exists. If Network or Cloud is blocked by credits,
+entitlement, or fit, the host reports that exact boundary. Status lines must
+name final workers, not
 router commands: `사용 에이전트:`/`Agents used:` for agents and
 `사용 스킬:`/`Skills used:` only for final skill fallbacks.
 `hep-global status` reports the managed block state; `hep-global remove`

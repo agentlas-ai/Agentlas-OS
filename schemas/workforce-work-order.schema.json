@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-work-order.schema.json",
+  "title": "Agentlas Workforce Work Order",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "workOrderId", "taskBrief", "redacted", "roleSlots"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-work-order.v1" },
+    "workOrderId": { "$ref": "#/$defs/id" },
+    "taskBrief": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "redacted": { "const": true },
+    "ontologyVersion": { "type": ["string", "null"] },
+    "roleSlots": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/slot" }
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "relation"],
+        "properties": {
+          "from": { "$ref": "#/$defs/id" },
+          "to": { "$ref": "#/$defs/id" },
+          "relation": { "enum": ["reportsTo", "handsOffTo", "reviews", "coordinatesWith"] },
+          "artifactKinds": { "$ref": "#/$defs/ids" }
+        }
+      }
+    },
+    "forbiddenCommunities": { "$ref": "#/$defs/ids" },
+    "selectionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minimumCandidatesPerSlot": { "type": "integer", "minimum": 2, "maximum": 30, "default": 5 },
+        "maximumCandidatesPerSlot": { "type": "integer", "minimum": 2, "maximum": 100, "default": 20 },
+        "allowHistoryEvidence": { "const": false }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
+    "ids": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slotId", "title", "task", "cardinality", "requiredCommunities",
+        "requiredRoles", "requiredSkills", "requiredKnowledge",
+        "requiredToolCapabilities", "consumes", "produces",
+        "requiredAuthorities", "forbiddenAuthorities", "runtimes", "languages",
+        "modalities", "allowedEntityKinds"
+      ],
+      "properties": {
+        "slotId": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "task": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "cardinality": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "criticality": { "enum": ["required", "optional"], "default": "required" },
+        "requiredCommunities": { "$ref": "#/$defs/ids" },
+        "optionalCommunities": { "$ref": "#/$defs/ids" },
+        "excludedCommunities": { "$ref": "#/$defs/ids" },
+        "requiredRoles": { "$ref": "#/$defs/ids" },
+        "requiredSkills": { "$ref": "#/$defs/ids" },
+        "optionalSkills": { "$ref": "#/$defs/ids" },
+        "requiredKnowledge": { "$ref": "#/$defs/ids" },
+        "requiredToolCapabilities": { "$ref": "#/$defs/ids" },
+        "consumes": { "$ref": "#/$defs/ids" },
+        "produces": { "$ref": "#/$defs/ids" },
+        "requiredAuthorities": { "$ref": "#/$defs/ids" },
+        "forbiddenAuthorities": { "$ref": "#/$defs/ids" },
+        "runtimes": { "$ref": "#/$defs/ids" },
+        "languages": { "$ref": "#/$defs/ids" },
+        "modalities": { "$ref": "#/$defs/ids" },
+        "allowedEntityKinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["agent", "team", "group"] }
+        },
+        "minimumEvidenceLevel": {
+          "enum": ["declared", "checked", "demonstrated", "attested"],
+          "default": "declared"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-selection.schema.json",
+  "title": "Agentlas Host LLM Workforce Selection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "selectionSessionId", "candidateSetDigest",
+    "decisionAuthor", "assignments", "edges", "alternativesConsidered"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-selection.v1" },
+    "selectionSessionId": { "$ref": "#/$defs/id" },
+    "candidateSetDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "decisionAuthor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "modelId"],
+      "properties": {
+        "kind": { "const": "host_llm" },
+        "modelId": { "$ref": "#/$defs/id" },
+        "runtimeId": { "type": ["string", "null"], "maxLength": 255 }
+      }
+    },
+    "assignments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slotId", "agentReleaseId", "reasonCodes"],
+        "properties": {
+          "slotId": { "$ref": "#/$defs/id" },
+          "agentReleaseId": { "$ref": "#/$defs/id" },
+          "reasonCodes": { "$ref": "#/$defs/ids" }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fromSlot", "toSlot", "relation"],
+        "properties": {
+          "fromSlot": { "$ref": "#/$defs/id" },
+          "toSlot": { "$ref": "#/$defs/id" },
+          "relation": { "enum": ["reportsTo", "handsOffTo", "reviews", "coordinatesWith"] },
+          "artifactKinds": { "$ref": "#/$defs/ids" }
+        }
+      }
+    },
+    "alternativesConsidered": { "$ref": "#/$defs/ids" },
+    "requestExpansionForSlots": { "$ref": "#/$defs/ids" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
+    "ids": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+  }
+}

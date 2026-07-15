@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-lifecycle-event.schema.json",
+  "title": "Agentlas Workforce Lifecycle Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "eventId", "eventType", "occurredAt", "definitionId",
+    "releaseId", "sequence", "sourceDigest", "payload"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-lifecycle-event.v1" },
+    "eventId": { "$ref": "#/$defs/id" },
+    "eventType": {
+      "enum": [
+        "definition.created", "release.published", "release.superseded",
+        "release.withdrawn", "release.restored", "release.deleted",
+        "ontology.version.published", "projection.rebuilt"
+      ]
+    },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "definitionId": { "$ref": "#/$defs/id" },
+    "releaseId": { "type": ["string", "null"], "maxLength": 256 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "sourceDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "payload": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" }
+  }
+}

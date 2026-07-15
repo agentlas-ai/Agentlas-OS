@@ -9,7 +9,7 @@ from typing import Any
 
 BEGIN = "<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->"
 END = "<!-- HEPHAESTUS:GLOBAL-ROUTER:END -->"
-VERSION = "global-router.v2"
+VERSION = "global-router.v3"
 
 
 @dataclass(frozen=True)
@@ -144,8 +144,8 @@ These instructions were installed by `hephaestus global install` for {host}.
   1. Agentlas Browser first for browser-required work. Use `{browser_command}
      <url-or-query>` when the task needs rendered pages, JS-heavy sites,
      click/form flows, login-visible state, or browser evidence.
-  2. Hephaestus Network next. Use `{command} <request>` to find, borrow,
-     invoke, or coordinate agents, teams, plugins, and specialists.
+  2. Hephaestus Network next. Use `{command} <request>` to let the active host
+     LLM staff a temporary task force from the Hub Agent Workforce Ontology.
   3. Hephaestus Cloud next. Use `{cloud_command} <request>` when Network has
      no suitable match, the user asks for their saved/private packages, or Hub
      entitlement/credits are unavailable.
@@ -156,17 +156,25 @@ These instructions were installed by `hephaestus global install` for {host}.
 - Local routing cards and local source folders are for explicit local/operator
   requests. Public demos, distribution docs, and end-user workflows must use
   Hub-only routing so private local inventory is not treated as public proof.
-- Agentlas Hub agents are BYOM bundles. Fetch them through Hephaestus/Hub
-  invocation, then execute the returned instructions in this host runtime while
-  grounded in the current project. The Hub does not run a server-side LLM
-  completion for you.
+- For Network staffing, the active host LLM creates a redacted structured work
+  order, calls `workforce.search_candidates`, makes the final exact-release
+  selection, calls `workforce.validate_selection`, then calls
+  `workforce.prepare_execution`. Deterministic code enforces hard constraints;
+  it does not choose the final team. Do not run the legacy lexical router first.
+- Agentlas Hub agents are BYOM bundles. Execute each prepared exact release in
+  this host runtime while grounded in the current project. The Hub does not run
+  a server-side LLM completion for you. A selection or prepared bundle is not
+  proof that manager, workers, synthesis, or verifier ran.
 - Hub calls are allowed only when the signed-in Agentlas account has entitlement
   and credits. If the server returns `insufficient_credits`, `owner_only`,
   `no_cloud_package`, or `agent_not_found`, report that exact refusal. For a
-  general task, continue down the fallback order; for an exact named remote
-  agent, do not claim a local fallback ran that agent.
+  general task, report the boundary before considering a different explicitly
+  labelled surface; for an exact named remote agent, do not claim a local
+  fallback ran that agent. Never replace a missing role with an unrelated agent.
 - Never send raw local memory, private files, or secrets to Hub search. Hub
-  discovery uses redacted query terms; local project grounding stays local.
+  discovery uses redacted work-order requirements; local project grounding
+  stays local. Installs, ratings, invocation history, revenue, and local
+  callability must not determine semantic fit.
 - Announce final workers, not the router command. Never announce `hep-network`
   as a skill or agent.
 - When Network, Cloud, or a local agent selects concrete agents, list those

@@ -307,10 +307,14 @@ Open Claude Code or Codex with the installed plugin, then run:
 /hep-build $request
 EOF
     ;;
-	  network|cards|ao|route|mcp|local-gui|package|publish|project)
+	  network|cards|ao|route|mcp|workforce|local-gui|package|publish|project)
 	    run_python_module agentlas_cloud "$command" "$@"
 	    ;;
 	  hep-network|hephaestus-network|hephaests-network)
+	    if [[ "${HEPHAESTUS_LEGACY_ROUTER:-0}" != "1" ]]; then
+	      printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","decision_owner":"host_llm","legacy_router":"disabled","mcp_sequence":["workforce.search_candidates","workforce.validate_selection","workforce.prepare_execution"],"detail":"Run /hep-network or @Hephaestus inside an MCP-capable host LLM. A shell process cannot make the final workforce staffing decision."}'
+	      exit 3
+	    fi
 	    if [[ "${HEPHAESTUS_NETWORK_GUI_SHORTCUTS:-1}" != "0" ]]; then
 	      set +e
 	      gui_args=("$@" "--detach")

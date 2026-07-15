@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.1.38 - 2026-07-16
+
+- **Agent Workforce Ontology replaces default lexical agent selection.** The
+  host LLM creates a redacted occupational work order, receives hard-eligible
+  immutable AgentRelease candidates through Hub MCP, and remains the only
+  semantic team-selection authority.
+- **Selection and execution are independently auditable.** Frozen candidate,
+  host-selection, BYOM preparation, planner, child-worker, synthesis, and
+  verifier receipts reject history/popularity influence, stale ontology
+  versions, silent substitutions, digest drift, planner fallback, and fake
+  single-model benchmark passes.
+- **Agent and ontology lifecycle is versioned and rebuildable.** Stable
+  definitions, immutable releases, append-only lifecycle events, evidence
+  levels, community governance proposals, and cross-platform contract schemas
+  cover publish, update, withdraw, restore, delete, and ontology evolution.
+
 ## v1.1.37 - 2026-07-15
 
 - **Background Stormbreaker execution keeps its bounded replan contract on

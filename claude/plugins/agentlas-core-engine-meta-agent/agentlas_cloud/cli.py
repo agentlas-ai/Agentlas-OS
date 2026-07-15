@@ -580,6 +580,21 @@ def main(argv: list[str] | None = None) -> int:
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
     mcp_sub.add_parser("serve", help="Serve the network router as a local stdio MCP server")
 
+    workforce = sub.add_parser("workforce", help="Use the Hub Agent Workforce Ontology contracts")
+    workforce_sub = workforce.add_subparsers(dest="workforce_command", required=True)
+    workforce_search = workforce_sub.add_parser("search", help="Return content-fit candidates; never select a team")
+    workforce_search.add_argument("work_order", help="Path to an agentlas.workforce-work-order.v1 JSON file")
+    workforce_search.add_argument("--expand-slot", action="append", default=[])
+    workforce_validate = workforce_sub.add_parser("validate", help="Validate a host-LLM staffing decision")
+    workforce_validate.add_argument("work_order")
+    workforce_validate.add_argument("candidate_set")
+    workforce_validate.add_argument("selection")
+    workforce_prepare = workforce_sub.add_parser("prepare", help="Pin exact selected releases and fetch BYOM bundles")
+    workforce_prepare.add_argument("work_order")
+    workforce_prepare.add_argument("candidate_set")
+    workforce_prepare.add_argument("selection")
+    workforce_prepare.add_argument("validation_receipt")
+
     args = parser.parse_args(argv)
     if args.command == "wizard":
         return emit(run_setup_wizard(args.folder, args.name, write=not args.no_write))
@@ -786,6 +801,31 @@ def main(argv: list[str] | None = None) -> int:
         from .mcp_stdio import serve
 
         return serve()
+    if args.command == "workforce":
+        from .networking.hub_client import call_hub_tool
+
+        def load_object(path: str) -> dict[str, Any]:
+            value = json.loads(Path(path).read_text(encoding="utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError(f"workforce input must be a JSON object: {path}")
+            return value
+
+        try:
+            work_order = load_object(args.work_order)
+            if args.workforce_command == "search":
+                payload = {"workOrder": work_order}
+                if args.expand_slot:
+                    payload["expandSlotIds"] = list(args.expand_slot)
+                return emit(call_hub_tool("workforce.search_candidates", payload))
+            candidate_set = load_object(args.candidate_set)
+            selection = load_object(args.selection)
+            payload = {"workOrder": work_order, "candidateSet": candidate_set, "selection": selection}
+            if args.workforce_command == "validate":
+                return emit(call_hub_tool("workforce.validate_selection", payload))
+            payload["validationReceipt"] = load_object(args.validation_receipt)
+            return emit(call_hub_tool("workforce.prepare_execution", payload))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            return emit({"action": "workforce", "status": "error", "error": str(exc)}) or 2
     if args.command == "research" and args.research_command == "read":
         from .research import run_research
 
@@ -1954,7 +1994,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.37",
+            "version": "1.1.38",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

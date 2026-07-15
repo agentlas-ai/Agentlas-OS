@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "agentlas.workforce-benchmark.v1",
+  "benchmarkId": "awo:difficult-payment-platform:v1",
+  "title": "Replay-safe subscription payment platform incident repair",
+  "goal": "A subscription checkout is double-charging some customers when payment webhooks are retried while a database failover is in progress. Design the fix and produce an implementation-ready change set: an idempotent webhook API, an atomic subscription and ledger data model, a safe online migration with rollback, an outbox or equivalent delivery boundary, concurrency and property tests, and a focused security review covering signature verification, replay resistance, secret handling, authorization, and audit evidence. Preserve existing API compatibility and state explicit handoffs between specialists. Do not use private paths, credentials, customer data, or invocation history in Hub discovery.",
+  "expectedRoleFamilies": [
+    {
+      "familyId": "backend",
+      "anyCommunities": ["community:backend-engineering"],
+      "anyRoles": ["role:backend-engineer"],
+      "anySkills": ["skill:api-design", "skill:server-implementation"]
+    },
+    {
+      "familyId": "database",
+      "anyCommunities": ["community:database-engineering"],
+      "anyRoles": ["role:database-engineer"],
+      "anySkills": ["skill:data-modeling", "skill:database-querying", "skill:transaction-integrity"]
+    },
+    {
+      "familyId": "payments",
+      "anyCommunities": ["community:payments-engineering"],
+      "anyRoles": ["role:payments-engineer"],
+      "anySkills": ["skill:billing-integration", "skill:transaction-integrity"]
+    },
+    {
+      "familyId": "security",
+      "anyCommunities": ["community:security-engineering"],
+      "anyRoles": ["role:security-engineer"],
+      "anySkills": ["skill:security-review"]
+    },
+    {
+      "familyId": "quality",
+      "anyCommunities": ["community:quality-engineering"],
+      "anyRoles": ["role:quality-engineer"],
+      "anySkills": ["skill:test-design", "skill:verification"]
+    }
+  ],
+  "forbiddenCommunities": [
+    "community:travel",
+    "community:marketing",
+    "community:insurance-actuarial"
+  ],
+  "requiredMcpSequence": [
+    "workforce.search_candidates",
+    "workforce.validate_selection",
+    "workforce.prepare_execution"
+  ],
+  "minimumDistinctWorkerInvocations": 3,
+  "requirePlannerStructuredOutput": true,
+  "allowPlannerFallback": false,
+  "allowSubstitutions": false,
+  "allowHistoryInfluence": false
+}

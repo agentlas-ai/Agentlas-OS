@@ -18,7 +18,7 @@ import sys
 from typing import Any, Mapping
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.37"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.38"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -268,6 +268,56 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["request"],
         },
     },
+    {
+        "name": "workforce.search_candidates",
+        "description": (
+            "Search the Hub Agent Workforce Ontology with a redacted structured work order. "
+            "Returns a broad content-only eligible candidate set; it never selects a team. "
+            "The calling top-level LLM must author the work order and make the staffing decision."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workOrder": {"type": "object", "description": "agentlas.workforce-work-order.v1"},
+                "expandSlotIds": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["workOrder"],
+        },
+    },
+    {
+        "name": "workforce.validate_selection",
+        "description": (
+            "Validate a team selected by the calling host LLM against the exact Hub candidate set. "
+            "This tool cannot select, rerank, or silently substitute agents."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workOrder": {"type": "object"},
+                "candidateSet": {"type": "object"},
+                "selection": {"type": "object", "description": "agentlas.workforce-selection.v1 authored by the host LLM"},
+            },
+            "required": ["workOrder", "candidateSet", "selection"],
+        },
+    },
+    {
+        "name": "workforce.prepare_execution",
+        "description": (
+            "Fetch BYOM runtime bundles only for an already accepted exact roster. "
+            "Pins agentReleaseId, packageHash, and contentDigest and fails closed on drift; "
+            "it never chooses replacements."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workOrder": {"type": "object"},
+                "candidateSet": {"type": "object"},
+                "selection": {"type": "object"},
+                "validationReceipt": {"type": "object"},
+            },
+            "required": ["workOrder", "candidateSet", "selection", "validationReceipt"],
+        },
+    },
 ]
 
 
@@ -327,6 +377,17 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return result
 
     init_networking(networking_home())
+    if name in {
+        "workforce.search_candidates",
+        "workforce.validate_selection",
+        "workforce.prepare_execution",
+    }:
+        from .networking.hub_client import call_hub_tool
+
+        # The local MCP surface is a transparent authenticated bridge.  The
+        # Hub owns catalog state; Core must not reconstruct a different team or
+        # fall back to lexical cards if the workforce service refuses a call.
+        return call_hub_tool(name, arguments)
     if name == "hephaestus_route":
         allow_local_routing = bool(arguments.get("allow_local_routing", False))
         hub_only = True if not allow_local_routing else bool(arguments.get("hub_only", False))

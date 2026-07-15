@@ -68,6 +68,7 @@ def test_global_router_cli_wrapper(tmp_path: Path) -> None:
     prompt = tmp_path / ".codex" / "AGENTS.md"
     text = prompt.read_text(encoding="utf-8")
     assert BEGIN in text
-    assert "global-router.v2" in text
+    assert "global-router.v3" in text
+    assert "workforce.search_candidates" in text
     assert "Hephaestus Network" in text
     assert "Never announce `hep-network`" in text

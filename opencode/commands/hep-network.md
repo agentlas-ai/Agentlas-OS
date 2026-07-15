@@ -1,62 +1,15 @@
 ---
-description: Route a request through the public Agentlas Hub via Hephaestus Network.
+description: Staff and run a task from the Agentlas Hub Workforce Ontology.
 ---
+
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
-# Hephaestus Network routing
-
-
-Raw arguments: `$ARGUMENTS`
-
-1. Resolve the runner — first executable wins:
-
-```bash
-RUNNER=""
-for c in \
-  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
-  ./bin/hephaestus
-do [ -x "$c" ] && RUNNER="$c" && break; done
-if [ -z "$RUNNER" ]; then
-  for cache in \
-    "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus" \
-    "$HOME/.codex/plugins/cache/agentlas-core-engine/hephaestus"; do
-    newest="$(ls -d "$cache"/*/bin/hephaestus 2>/dev/null | sort -V | tail -1)"
-    [ -n "$newest" ] && [ -x "$newest" ] && RUNNER="$newest" && break
-  done
-fi
-[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
-if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
-  "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
-fi
-DECISION="$("$RUNNER" route "$ARGUMENTS" --runtime opencode)"
-printf '%s\n' "$DECISION"
-
-# Deterministic GUI auto-launch (Network surface). Exact GUI shortcuts such as
-# `startup` restore the Hub cloud package and launch its packaged GUI. Local
-# private/restricted shortcut cards are ignored unless an operator explicitly enables
-# local debug routing. Disable with HEPHAESTUS_GUI_AUTOLAUNCH=0.
-if [ "${HEPHAESTUS_GUI_AUTOLAUNCH:-1}" != "0" ]; then
-  GUI_SHORTCUT="$($RUNNER local-gui "$ARGUMENTS" --detach --quiet-not-found 2>/dev/null || true)"
-  [ -n "$GUI_SHORTCUT" ] && printf '%s
-' "$GUI_SHORTCUT"
-fi
-```
-
-2. Act on the returned JSON decision:
-   - `route` — report the selected card, then invoke the selected agent's
-     canonical command with the original request.
-   - `clarify` — ask `clarify_question` with the candidates and re-route.
-   - `pipeline` — execute `stages` in order, save artifacts under
-     `handoff_dir/<order>-<kind>/`, pass paths forward; on a stage failure stop
-     and report — never retry silently.
-   - `hub_fallback` / `hub_candidates` — Hub lookup used redacted keywords only;
-     the raw prompt and local memory were not sent. If `$RUNNER local-gui` printed
-     `source: "hub_cloud_package"` for a GUI shortcut such as `startup`, report
-     that the Hub package was restored and the GUI is opening; do not stop at
-     “candidate only.”
-   - `propose_new` — offer to build a new agent/team via `/hep-build`.
-   - `refuse` — explain `reasons`; do not retry around the guard.
-
-3. Hard rules: the router only chooses an agent or fetches a BYOM Hub bundle.
-   Actual tool execution follows the current host runtime's safety and
-   permission model. Report the routing `receipt_id` in the final message.
+Act as the temporary top-level LLM orchestrator. Build a redacted
+`agentlas.workforce-work-order.v1`, call `workforce.search_candidates`, choose
+the final exact roster from content/eval evidence, validate it with
+`workforce.validate_selection`, and pin it with
+`workforce.prepare_execution`. Never use legacy lexical/popularity/history
+routing or silent substitution. Execute planner, each selected worker,
+synthesis, and verifier as distinct invocations with artifact handoffs. A
+prepared bundle is not proof of execution; require child receipts, successful
+structured planning with no fallback, and a passing verifier.

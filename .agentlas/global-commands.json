@@ -25,7 +25,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-build",
       "adapterPath": "gemini/extension/commands/hep-build.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v1.1.37",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v1.1.38",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-build.toml."
@@ -95,7 +95,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-network",
       "adapterPath": "gemini/extension/commands/hep-network.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v1.1.37",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v1.1.38",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-network.toml."
@@ -161,7 +161,7 @@
       "globalInstallPath": "hep-network \"<request>\"",
       "scope": "terminal",
       "status": "shell-command-alias",
-      "notes": "Typo-tolerant standalone Network alias; maps to hephaestus hep-network \"<request>\", uses Hub-only Network routing, and auto-runs runnable Stormbreaker execution_fabric decisions unless --plan-only is present."
+      "notes": "Standalone compatibility entry. Without an active MCP-capable host LLM it reports host_llm_required; the host performs workforce.search_candidates -> workforce.validate_selection -> workforce.prepare_execution and executes the pinned roster. Set HEPHAESTUS_LEGACY_ROUTER=1 only for explicit old-router debugging."
     },
     {
       "runtime": "claude-code",
@@ -185,7 +185,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-storm",
       "adapterPath": "gemini/extension/commands/hep-storm.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v1.1.37",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v1.1.38",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-storm.toml."
@@ -266,7 +266,7 @@
       "runtime": "gemini-cli",
       "command": "/hep-cloud",
       "adapterPath": "gemini/extension/commands/hep-cloud.toml",
-      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v1.1.37",
+      "globalInstallPath": "gemini extensions install https://github.com/agentlas-ai/Hephaestus --ref v1.1.38",
       "scope": "global",
       "status": "extension-custom-command",
       "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-cloud.toml."

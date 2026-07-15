@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-profile.schema.json",
+  "title": "Agentlas Workforce Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "profileId", "agentDefinitionId", "agentReleaseId",
+    "releaseVersion", "packageHash", "entityKind", "status", "semantic", "qualification",
+    "operational", "provenance"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-profile.v1" },
+    "profileId": { "$ref": "#/$defs/id" },
+    "agentDefinitionId": { "$ref": "#/$defs/id" },
+    "agentReleaseId": { "$ref": "#/$defs/id" },
+    "releaseVersion": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "packageHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "entityKind": { "enum": ["agent", "team", "group"] },
+    "status": { "enum": ["active", "superseded", "withdrawn", "deleted"] },
+    "semantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "names", "summaries", "communities", "roles", "capabilities", "skills", "knowledge",
+        "toolCapabilities", "consumes", "produces", "authorities",
+        "runtimes", "languages", "modalities"
+      ],
+      "properties": {
+        "names": { "$ref": "#/$defs/strings" },
+        "summaries": { "$ref": "#/$defs/strings" },
+        "communities": { "$ref": "#/$defs/conceptRefs" },
+        "roles": { "$ref": "#/$defs/conceptRefs" },
+        "capabilities": { "$ref": "#/$defs/assertions" },
+        "skills": { "$ref": "#/$defs/assertions" },
+        "knowledge": { "$ref": "#/$defs/assertions" },
+        "toolCapabilities": { "$ref": "#/$defs/toolAssertions" },
+        "consumes": { "$ref": "#/$defs/conceptRefs" },
+        "produces": { "$ref": "#/$defs/conceptRefs" },
+        "authorities": { "$ref": "#/$defs/conceptRefs" },
+        "forbiddenAuthorities": { "$ref": "#/$defs/conceptRefs" },
+        "runtimes": { "$ref": "#/$defs/strings" },
+        "languages": { "$ref": "#/$defs/strings" },
+        "modalities": { "$ref": "#/$defs/strings" },
+        "teamPattern": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["authoritative", "manager", "workers", "edges"],
+          "properties": {
+            "authoritative": { "type": "boolean" },
+            "manager": { "type": ["string", "null"] },
+            "workers": { "$ref": "#/$defs/strings" },
+            "edges": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["from", "to", "relation"],
+                "properties": {
+                  "from": { "$ref": "#/$defs/id" },
+                  "to": { "$ref": "#/$defs/id" },
+                  "relation": { "enum": ["reportsTo", "handsOffTo", "reviews", "coordinatesWith"] }
+                }
+              }
+            }
+          }
+        },
+        "unmappedConcepts": { "$ref": "#/$defs/strings" }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["structuralStatus", "assertions"],
+      "properties": {
+        "structuralStatus": { "enum": ["complete", "partial", "invalid"] },
+        "assertions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["assertionId", "kind", "subject", "level", "evidenceRefs"],
+            "properties": {
+              "assertionId": { "$ref": "#/$defs/id" },
+              "kind": { "enum": ["schema", "static", "fixture", "work_sample", "external_attestation"] },
+              "subject": { "$ref": "#/$defs/id" },
+              "level": { "enum": ["declared", "checked", "demonstrated", "attested"] },
+              "evidenceRefs": { "$ref": "#/$defs/strings" },
+              "evaluator": { "type": ["string", "null"], "maxLength": 200 },
+              "evaluatedAt": { "type": ["string", "null"], "format": "date-time" }
+            }
+          }
+        }
+      }
+    },
+    "operational": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["callable", "installable", "routingEligible"],
+      "properties": {
+        "callable": { "type": "boolean" },
+        "installable": { "type": "boolean" },
+        "routingEligible": { "type": "boolean" },
+        "unavailableReasons": { "$ref": "#/$defs/strings" }
+      }
+    },
+    "performanceHistory": {
+      "type": "object",
+      "description": "Observation-only. Forbidden from semantic/community scoring.",
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compilerVersion", "ontologyVersion", "sourceRefs", "compiledAt"],
+      "properties": {
+        "compilerVersion": { "$ref": "#/$defs/id" },
+        "ontologyVersion": { "$ref": "#/$defs/id" },
+        "sourceRefs": { "$ref": "#/$defs/strings" },
+        "compiledAt": { "type": "string", "format": "date-time" },
+        "contentDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
+    "strings": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } },
+    "conceptRefs": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "assertions": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["concept", "level", "source"],
+        "properties": {
+          "concept": { "$ref": "#/$defs/id" },
+          "level": { "enum": ["declared", "checked", "demonstrated", "attested"] },
+          "source": { "enum": ["agent", "routing_card", "manifest", "mcp", "team_graph", "eval", "ontology_inference"] },
+          "evidenceRefs": { "$ref": "#/$defs/strings" }
+        }
+      }
+    },
+    "toolAssertions": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["capability", "required", "permissions", "source", "level", "evidenceRefs"],
+        "properties": {
+          "capability": { "$ref": "#/$defs/id" },
+          "catalogId": { "type": ["string", "null"], "maxLength": 256 },
+          "required": { "type": "boolean" },
+          "permissions": { "$ref": "#/$defs/strings" },
+          "alternatives": { "$ref": "#/$defs/conceptRefs" },
+          "source": { "enum": ["mcp", "manifest", "routing_card", "eval"] },
+          "level": { "enum": ["declared", "checked", "demonstrated", "attested"] },
+          "evidenceRefs": { "$ref": "#/$defs/strings" }
+        }
+      }
+    }
+  }
+}

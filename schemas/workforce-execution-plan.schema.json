@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-execution-plan.schema.json",
+  "title": "Agentlas Pinned Workforce Execution Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "status", "issues", "preparationReceiptId", "selectionReceiptId",
+    "candidateSetDigest", "decisionOwner", "substitutions", "executionRoster"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-execution-plan.v1" },
+    "status": { "enum": ["prepared", "rejected"] },
+    "issues": { "$ref": "#/$defs/strings" },
+    "preparationReceiptId": { "$ref": "#/$defs/id" },
+    "selectionReceiptId": { "$ref": "#/$defs/id" },
+    "candidateSetDigest": { "$ref": "#/$defs/hash" },
+    "decisionOwner": { "const": "host_llm" },
+    "substitutions": { "type": "array", "maxItems": 0 },
+    "executionRoster": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slotId", "agentDefinitionId", "agentReleaseId", "releaseVersion", "packageHash",
+          "contentDigest", "entityKind", "directiveBundle", "bundleDigest"
+        ],
+        "properties": {
+          "slotId": { "$ref": "#/$defs/id" },
+          "agentDefinitionId": { "$ref": "#/$defs/id" },
+          "agentReleaseId": { "$ref": "#/$defs/id" },
+          "releaseVersion": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "packageHash": { "$ref": "#/$defs/hash" },
+          "contentDigest": { "$ref": "#/$defs/hash" },
+          "entityKind": { "enum": ["agent", "team", "group"] },
+          "directiveBundle": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": true,
+            "properties": {
+              "systemPrompt": { "type": "string", "minLength": 1 },
+              "instructions": { "type": "string", "minLength": 1 },
+              "agentMd": { "type": "string", "minLength": 1 }
+            },
+            "anyOf": [
+              { "required": ["systemPrompt"] },
+              { "required": ["instructions"] },
+              { "required": ["agentMd"] }
+            ]
+          },
+          "bundleDigest": { "$ref": "#/$defs/hash" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "strings": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } }
+  }
+}

@@ -1,102 +1,57 @@
 ---
-description: Borrow public Agentlas Hub agents through Hephaestus Network.
+description: Staff and run a task from the Agentlas Hub Workforce Ontology.
 argument-hint: '<request>'
-allowed-tools: Bash, Read, Glob, Grep
 ---
+
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
 # /hep-network
 
+Raw request: `$ARGUMENTS`
 
-Route a natural-language request through the public Agentlas Hub via
-Hephaestus Network. Local private/restricted cards are ignored by default. Also triggered
-by `@Hephaestus <request>` in chat.
+You are the temporary top-level workforce orchestrator. Hub provides the menu;
+you make the final staffing decision. Do not run the legacy lexical route.
 
-Raw arguments: `$ARGUMENTS`
-
-## Route
-
-1. Find the first executable Hephaestus runner:
+Before the first Hub MCP call, reuse the installed Agentlas sign-in. Resolve
+the first existing runner in this order and call `auth ensure`; do not call its
+legacy route command:
 
 ```bash
 RUNNER=""
-CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 for candidate in \
   "$HOME/.agentlas/runtime/current/bin/hephaestus" \
   "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
-  "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
   "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
-  "./bin/hephaestus" \
-  "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
+  "./bin/hephaestus"
 do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
-if [ -z "$RUNNER" ]; then
-  for cache in "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus" \
-               "${CODEX_HOME:-$HOME/.codex}/plugins/cache/agentlas-core-engine/hephaestus"; do
-    newest="$(ls -d "$cache"/*/bin/hephaestus 2>/dev/null | sort -V | tail -1)"
-    if [ -n "$newest" ] && [ -x "$newest" ]; then RUNNER="$newest"; break; fi
-  done
-fi
-[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
-if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
-  "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
-fi
-DECISION="$("$RUNNER" route "$ARGUMENTS" --runtime claude-code)"
-printf '%s\n' "$DECISION"
-
-# Deterministic GUI auto-launch (Network surface). Exact GUI shortcuts such as
-# `startup` restore the Hub cloud package and launch its packaged GUI. Local
-# private/restricted shortcut cards are ignored unless an operator explicitly enables
-# local debug routing. Disable with HEPHAESTUS_GUI_AUTOLAUNCH=0.
-if [ "${HEPHAESTUS_GUI_AUTOLAUNCH:-1}" != "0" ]; then
-  GUI_SHORTCUT="$($RUNNER local-gui "$ARGUMENTS" --detach --quiet-not-found 2>/dev/null || true)"
-  [ -n "$GUI_SHORTCUT" ] && printf '%s
-' "$GUI_SHORTCUT"
-fi
+[ -n "$RUNNER" ] && "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
 ```
 
-2. Act on the returned JSON decision:
-   - `action: "route"` — the block above ALREADY auto-launched the GUI if the
-     selected card is a local GUI agent (look for `{"gui_autolaunch": "opened"}`
-     in the output). Report the selected card (`selected.id`,
-     `entrypoints.canonical_command`), tell the user the GUI is opening in the
-     browser, then act on the canonical command with the original request. If the
-     GUI is the whole interaction (no concrete task given), just confirm it opened.
-   - `action: "clarify"` — ask `clarify_question` with the candidate list and re-route with the answer.
-   - `action: "pipeline"` — a multi-team plan (e.g. PRD → build → QA). Execute
-     `stages` in order: run that stage card's canonical command, save its artifacts under
-     `handoff_dir/<order>-<kind>/`, and pass those paths to the next stage.
-     On a stage failure: stop and report progress plus the remaining plan —
-     never retry silently.
-   - `action: "hub_fallback"` or `"hub_candidates"` — Hub lookup used redacted
-     keywords only; the raw prompt and local memory were not sent. If the decision
-     carries an `execution` block (`mode: "byom_local_grounded"`), FOLLOW IT: for
-     each entry in `execution.recommended_agents` (in stage order), borrow the agent
-     and run it LOCALLY with
-     `"$RUNNER" hep-call "<agent>" "<original request>" --project .` — this fetches
-     the BYOM runtime bundle and returns `grounding` that attaches the current
-     project codebase + memory. Then execute the returned `entry` instructions with
-     your own model, FIRST attaching to this repo's actual codebase per
-     `grounding.directive`, before producing output. Do NOT call these agents
-     context-less in the cloud, and do NOT skip the network to improvise a local
-     answer yourself — running the borrowed specialist attached to this project IS
-     the job. If `execution` is absent (no borrowable candidate), report the
-     candidates and offer `/hep-build`. If `$RUNNER local-gui` printed
-     `source: "hub_cloud_package"` for a GUI shortcut such as `startup`, report that
-     the Hub package was restored and the GUI is opening; do not stop at
-     “candidate only.”
-   - `action: "propose_new"` — offer to build a new agent/team via `/hep-build`.
-   - `action: "refuse"` — explain `reasons` (for example, loop guard). Do not retry around it.
+1. Convert the task into a redacted `agentlas.workforce-work-order.v1` with
+   distinct role slots, required roles/skills/knowledge/MCP tools,
+   input-output artifacts, runtimes, languages, authorities, cardinality, and
+   collaboration edges. Keep private files, memory, secrets, and raw local
+   context on this host.
+2. Call Hub MCP `workforce.search_candidates` with `{workOrder}`. Inspect exact
+   semantic/eval evidence and release/package/content hashes. Never use
+   popularity, ratings, invocations, or local availability as semantic fit.
+3. As the active host LLM, author `agentlas.workforce-selection.v1` with
+   `decisionAuthor.kind="host_llm"`, the real model id, exact assignments,
+   handoff graph, alternatives, and reasons. Call
+   `workforce.validate_selection` with `{workOrder,candidateSet,selection}`.
+   Re-plan if rejected; do not accept a deterministic substitute.
+4. Call `workforce.prepare_execution` with the accepted validation receipt.
+   Require `agentlas.workforce-execution-plan.v1`, status `prepared`, and an
+   exact pinned `executionRoster`; fail closed on release/hash drift or missing
+   directives. Never silently substitute.
+5. Run manager/planner, each selected worker, synthesis, and verifier as
+   distinct model invocations using the prepared directive bundles and
+   explicit artifact handoffs. Honor nested Team execution graphs.
 
-3. Hard rules: the router only chooses an agent or fetches a BYOM Hub bundle.
-   Actual tool execution follows the current host runtime's safety and
-   permission model. Report the routing `receipt_id` in your final message.
-
-## Examples
-
-```text
-/hep-network turn these meeting notes into a weekly report
-/hep-network 이 작업에 맞는 에이전트 찾아줘
-@Hephaestus draft a launch plan for my product
-```
+Do not call the run complete unless the joined execution receipt includes
+planner parse success with no fallback, each worker's invocation and handoff,
+synthesis, and a passing verifier. If this host cannot create distinct child
+invocations, report `prepared, not executed`. Name the actual workers and keep
+`selected`, `prepared`, and `executed` states separate.

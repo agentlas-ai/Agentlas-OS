@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-ontology-proposal.schema.json",
+  "title": "Agentlas Community Workforce Ontology Proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "proposalId", "baseOntologyVersion", "operation", "entityType",
+    "entityId", "patch", "proposerId", "evidenceRefs", "reviews"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-ontology-proposal.v1" },
+    "proposalId": { "$ref": "#/$defs/id" },
+    "baseOntologyVersion": { "$ref": "#/$defs/id" },
+    "operation": { "enum": ["add", "update", "deprecate", "merge", "crosswalk"] },
+    "entityType": { "enum": ["community", "role", "skill_alias", "tool_alias", "capability_role_hint"] },
+    "entityId": { "$ref": "#/$defs/id" },
+    "patch": { "type": "object", "minProperties": 1 },
+    "proposerId": { "$ref": "#/$defs/id" },
+    "evidenceRefs": { "$ref": "#/$defs/strings" },
+    "reviews": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reviewerId", "decision", "reason", "reviewedAt"],
+        "properties": {
+          "reviewerId": { "$ref": "#/$defs/id" },
+          "decision": { "enum": ["accept", "reject"] },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "reviewedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
+    "strings": { "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } }
+  }
+}

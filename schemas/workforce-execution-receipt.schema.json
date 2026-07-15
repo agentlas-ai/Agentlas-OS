@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-execution-receipt.schema.json",
+  "title": "Agentlas Workforce Nested Execution Receipt",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion", "executionId", "workOrderId", "selectionReceiptId", "preparationReceiptId",
+    "orchestrator", "planner", "workers", "synthesis", "verifier", "status"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-execution-receipt.v1" },
+    "executionId": { "$ref": "#/$defs/id" },
+    "workOrderId": { "$ref": "#/$defs/id" },
+    "selectionReceiptId": { "$ref": "#/$defs/id" },
+    "preparationReceiptId": { "$ref": "#/$defs/id" },
+    "orchestrator": { "$ref": "#/$defs/invocation" },
+    "planner": {
+      "allOf": [
+        { "$ref": "#/$defs/invocation" },
+        {
+          "type": "object",
+          "required": ["parseSuccess", "fallbackUsed"],
+          "properties": {
+            "parseSuccess": { "type": "boolean" },
+            "fallbackUsed": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "workers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "allOf": [
+          { "$ref": "#/$defs/invocation" },
+          {
+            "type": "object",
+            "required": ["slotId", "agentReleaseId", "packageHash", "contentDigest", "handoffArtifactRefs"],
+            "properties": {
+              "slotId": { "$ref": "#/$defs/id" },
+              "agentReleaseId": { "$ref": "#/$defs/id" },
+              "packageHash": { "$ref": "#/$defs/hash" },
+              "contentDigest": { "$ref": "#/$defs/hash" },
+              "handoffArtifactRefs": { "$ref": "#/$defs/strings" }
+            }
+          }
+        ]
+      }
+    },
+    "synthesis": { "$ref": "#/$defs/invocation" },
+    "verifier": {
+      "allOf": [
+        { "$ref": "#/$defs/invocation" },
+        { "type": "object", "required": ["verdict"], "properties": { "verdict": { "enum": ["pass", "fail"] } } }
+      ]
+    },
+    "status": { "enum": ["passed", "failed", "blocked"] }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "strings": { "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } },
+    "invocation": {
+      "type": "object",
+      "required": ["invocationId", "modelId", "status"],
+      "properties": {
+        "invocationId": { "$ref": "#/$defs/id" },
+        "modelId": { "$ref": "#/$defs/id" },
+        "provider": { "type": "string" },
+        "status": { "enum": ["completed", "failed", "blocked"] }
+      }
+    }
+  }
+}

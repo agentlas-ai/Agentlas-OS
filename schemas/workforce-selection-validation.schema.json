@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-selection-validation.schema.json",
+  "title": "Agentlas Workforce Selection Validation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "status", "issues", "selectionReceiptId", "decisionOwner",
+    "historyInfluence", "ontologyVersion", "candidateSetDigest", "idealTeam",
+    "executableTeam", "unfilledPosts", "substitutions", "edges", "receipt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-selection-validation.v1" },
+    "status": { "enum": ["accepted", "rejected"] },
+    "issues": { "$ref": "#/$defs/strings" },
+    "selectionReceiptId": { "$ref": "#/$defs/id" },
+    "decisionOwner": { "const": "host_llm" },
+    "historyInfluence": { "const": "none" },
+    "ontologyVersion": { "$ref": "#/$defs/id" },
+    "candidateSetDigest": { "$ref": "#/$defs/hash" },
+    "idealTeam": { "$ref": "#/$defs/team" },
+    "executableTeam": { "$ref": "#/$defs/team" },
+    "unfilledPosts": { "type": "array", "maxItems": 64, "items": { "type": "object" } },
+    "substitutions": { "type": "array", "maxItems": 0 },
+    "edges": { "type": "array", "maxItems": 128, "items": { "type": "object" } },
+    "receipt": { "type": "object" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "strings": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } },
+    "team": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slotId", "agentDefinitionId", "agentReleaseId", "releaseVersion", "packageHash", "contentDigest", "entityKind", "reasonCodes"],
+        "properties": {
+          "slotId": { "$ref": "#/$defs/id" },
+          "agentDefinitionId": { "$ref": "#/$defs/id" },
+          "agentReleaseId": { "$ref": "#/$defs/id" },
+          "releaseVersion": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "packageHash": { "$ref": "#/$defs/hash" },
+          "contentDigest": { "$ref": "#/$defs/hash" },
+          "entityKind": { "enum": ["agent", "team", "group"] },
+          "reasonCodes": { "$ref": "#/$defs/strings" }
+        }
+      }
+    }
+  }
+}

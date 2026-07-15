@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-candidate-set.schema.json",
+  "title": "Agentlas Workforce Candidate Set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "selectionSessionId", "workOrderId", "ontologyVersion",
+    "candidateSetDigest", "decisionOwner", "historyInfluence", "slots", "issuedAt", "expiresAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-candidate-set.v1" },
+    "selectionSessionId": { "$ref": "#/$defs/id" },
+    "workOrderId": { "$ref": "#/$defs/id" },
+    "ontologyVersion": { "$ref": "#/$defs/id" },
+    "candidateSetDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "decisionOwner": { "const": "host_llm" },
+    "historyInfluence": { "const": "none" },
+    "slots": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slotId", "candidates", "coverageGaps"],
+        "properties": {
+          "slotId": { "$ref": "#/$defs/id" },
+          "candidates": {
+            "type": "array",
+            "maxItems": 100,
+            "items": { "$ref": "#/$defs/candidate" }
+          },
+          "coverageGaps": { "$ref": "#/$defs/ids" }
+        }
+      }
+    },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
+    "ids": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "strings": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agentDefinitionId", "agentReleaseId", "releaseVersion", "packageHash", "contentDigest", "entityKind", "name",
+        "communities", "fitEvidence", "qualificationEvidence",
+        "optionalGaps", "semanticSnapshot", "operational"
+      ],
+      "properties": {
+        "agentDefinitionId": { "$ref": "#/$defs/id" },
+        "agentReleaseId": { "$ref": "#/$defs/id" },
+        "releaseVersion": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "packageHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "contentDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "entityKind": { "enum": ["agent", "team", "group"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "communities": { "$ref": "#/$defs/ids" },
+        "fitEvidence": { "$ref": "#/$defs/ids" },
+        "qualificationEvidence": { "$ref": "#/$defs/ids" },
+        "optionalGaps": { "$ref": "#/$defs/ids" },
+        "semanticSnapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["summaries", "roles", "skills", "toolCapabilities", "consumes", "produces", "authorities", "runtimes", "languages"],
+          "properties": {
+            "summaries": { "$ref": "#/$defs/strings" },
+            "roles": { "$ref": "#/$defs/ids" },
+            "skills": { "$ref": "#/$defs/leveledConcepts" },
+            "toolCapabilities": { "$ref": "#/$defs/leveledConcepts" },
+            "consumes": { "$ref": "#/$defs/ids" },
+            "produces": { "$ref": "#/$defs/ids" },
+            "authorities": { "$ref": "#/$defs/ids" },
+            "runtimes": { "$ref": "#/$defs/strings" },
+            "languages": { "$ref": "#/$defs/strings" }
+          }
+        },
+        "operational": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["callable", "installable"],
+          "properties": {
+            "callable": { "type": "boolean" },
+            "installable": { "type": "boolean" },
+            "unavailableReasons": { "$ref": "#/$defs/ids" }
+          }
+        }
+      }
+    },
+    "leveledConcepts": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["concept", "level"],
+        "properties": {
+          "concept": { "$ref": "#/$defs/id" },
+          "level": { "enum": ["declared", "checked", "demonstrated", "attested"] }
+        }
+      }
+    }
+  }
+}
