@@ -10,6 +10,7 @@ fail() {
 }
 
 required_files=(
+  ".gitattributes"
   "AGENTS.md"
   "README.md"
   "README.ko.md"

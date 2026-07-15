@@ -1,0 +1,18 @@
+# The bundled Model2Vec payload is verified byte-for-byte at runtime. Keep its
+# text files on LF even when Windows Git uses core.autocrlf=true, and never let
+# Git treat the quantized tensors as text. These rules cover the canonical
+# asset and both byte-mirrored plugin copies.
+/assets/model2vec/**/*.json text eol=lf
+/assets/model2vec/**/*.txt text eol=lf
+/assets/model2vec/**/*.i8 binary
+/assets/model2vec/**/*.f32le binary
+
+/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.json text eol=lf
+/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.txt text eol=lf
+/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.i8 binary
+/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.f32le binary
+
+/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.json text eol=lf
+/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.txt text eol=lf
+/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.i8 binary
+/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.f32le binary

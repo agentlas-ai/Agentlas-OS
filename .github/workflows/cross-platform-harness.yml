@@ -5,6 +5,9 @@ on:
   pull_request:
     paths:
       - "agentlas_cloud/**"
+      - ".gitattributes"
+      - "assets/model2vec/**"
+      - "ontology/model_assets.py"
       - "bin/hephaestus"
       - "bin/hephaestus.cmd"
       - "skills/hephaestus-storm/**"
@@ -20,11 +23,15 @@ on:
       - "scripts/verify-cross-platform-harness.py"
       - "tests/test_stormbreaker_goal_ultracode_harness.py"
       - "tests/test_stormbreaker_runner.py"
+      - "tests/test_model2vec_asset.py"
       - ".github/workflows/cross-platform-harness.yml"
   push:
     branches: [main]
     paths:
       - "agentlas_cloud/**"
+      - ".gitattributes"
+      - "assets/model2vec/**"
+      - "ontology/model_assets.py"
       - "bin/hephaestus"
       - "bin/hephaestus.cmd"
       - "skills/hephaestus-storm/**"
@@ -40,6 +47,7 @@ on:
       - "scripts/verify-cross-platform-harness.py"
       - "tests/test_stormbreaker_goal_ultracode_harness.py"
       - "tests/test_stormbreaker_runner.py"
+      - "tests/test_model2vec_asset.py"
       - ".github/workflows/cross-platform-harness.yml"
 
 permissions:
@@ -81,6 +89,7 @@ jobs:
           tests/test_network_pipeline.py
           tests/test_model_allocation.py
           tests/test_run_journal.py
+          tests/test_model2vec_asset.py
 
       - name: Prove native wrapper and adapter byte identity
         run: >-

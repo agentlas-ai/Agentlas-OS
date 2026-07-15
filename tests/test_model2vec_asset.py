@@ -18,6 +18,23 @@ class Model2VecReleaseAssetTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.repo = Path(__file__).resolve().parents[1]
         cls.asset_path = cls.repo / "assets" / "model2vec" / "potion-base-8M-int8"
+        cls.asset_paths = (
+            cls.asset_path,
+            cls.repo
+            / "claude"
+            / "plugins"
+            / "agentlas-core-engine-meta-agent"
+            / "assets"
+            / "model2vec"
+            / "potion-base-8M-int8",
+            cls.repo
+            / "codex"
+            / "plugins"
+            / "agentlas-core-engine-meta-agent"
+            / "assets"
+            / "model2vec"
+            / "potion-base-8M-int8",
+        )
 
     def test_tracked_asset_manifest_and_payload_are_verified(self):
         asset = verify_model_asset(self.asset_path)
@@ -33,6 +50,44 @@ class Model2VecReleaseAssetTests(unittest.TestCase):
         self.assertEqual(manifest["quantization"]["scheme"], "symmetric_per_row_int8")
         self.assertEqual(manifest["runtime"]["networkRequired"], False)
         self.assertEqual(manifest["runtime"]["externalPackages"], [])
+
+    def test_canonical_and_plugin_assets_are_byte_verified_after_checkout(self):
+        for asset_path in self.asset_paths:
+            with self.subTest(asset_path=asset_path):
+                asset = verify_model_asset(asset_path)
+                self.assertEqual(asset.content_sha256, "fe492f69607b750142aa48d47d579b53252b3288547c27d4d0e473d6af485e1e")
+
+    def test_checkout_attributes_pin_text_to_lf_and_tensors_to_binary(self):
+        if not (self.repo / ".git").exists():
+            self.skipTest("Git metadata is unavailable in the exported source archive")
+
+        text_names = ("manifest.json", "tokenizer.json", "LICENSE.model.txt")
+        binary_names = ("embeddings.i8", "scales.f32le")
+        relative_paths = [
+            str((asset_path / name).relative_to(self.repo))
+            for asset_path in self.asset_paths
+            for name in (*text_names, *binary_names)
+        ]
+        checked = subprocess.run(
+            ["git", "check-attr", "text", "eol", "--", *relative_paths],
+            cwd=self.repo,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        attributes: dict[str, dict[str, str]] = {}
+        for line in checked.stdout.splitlines():
+            path, attribute, value = line.split(": ", 2)
+            attributes.setdefault(path, {})[attribute] = value
+
+        for asset_path in self.asset_paths:
+            for name in text_names:
+                relative = str((asset_path / name).relative_to(self.repo))
+                self.assertEqual(attributes[relative]["text"], "set")
+                self.assertEqual(attributes[relative]["eol"], "lf")
+            for name in binary_names:
+                relative = str((asset_path / name).relative_to(self.repo))
+                self.assertEqual(attributes[relative]["text"], "unset")
 
     def test_same_path_payload_tamper_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
