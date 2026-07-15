@@ -208,6 +208,26 @@ def test_content_retrieval_excludes_travel_agent_from_coding_work():
     assert "selected" not in result
 
 
+@pytest.mark.parametrize("boundary", ["work-order", "role-slot"])
+def test_community_exclusions_are_hard_boundaries_not_unused_family_complements(
+    boundary: str,
+):
+    backend = backend_profile()
+    assert "community:software-engineering" in backend["semantic"]["communities"]
+    requested = work_order()
+    if boundary == "work-order":
+        requested["forbiddenCommunities"].append("community:software-engineering")
+    else:
+        requested["roleSlots"][0]["excludedCommunities"].append(
+            "community:software-engineering"
+        )
+
+    result = WorkforceIndex([backend]).search_candidates(requested, now=NOW)
+
+    assert result["slots"][0]["candidates"] == []
+    assert "gap:no-hard-eligible-candidate" in result["slots"][0]["coverageGaps"]
+
+
 def test_shared_word_engineering_does_not_assign_every_engineering_community():
     frontend = profile(
         "release:frontend",

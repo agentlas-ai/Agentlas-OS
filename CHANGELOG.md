@@ -16,6 +16,12 @@
   must copy. The ontology menu remains `awo:2026-07-15.2` with unchanged raw
   snapshot SHA-256
   `d6d30d45fe8d35fb785e165d1e80c6471a72436f0160c3933c21d4a31bf2fb32`.
+- **Community exclusions are explicit boundaries, not an inverted staffing
+  menu.** Hosts must not forbid every unused, broader, adjacent, or legitimately
+  co-occurring community because workforce profiles are multi-community. A
+  bounded same-host refinement may remove a model-inferred conflicting
+  exclusion exposed by coverage-gap codes, but explicit user prohibitions are
+  preserved unchanged.
 
 ## v1.1.39 - 2026-07-16
 

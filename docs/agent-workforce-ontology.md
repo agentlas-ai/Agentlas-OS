@@ -111,6 +111,15 @@ Each role slot can declare:
 The raw user prompt and private project context remain in the host. The Hub
 receives a redacted task brief and structured requirements only.
 
+Top-level `forbiddenCommunities` and per-slot `excludedCommunities` are explicit
+incompatibility or prohibition boundaries. They are not the closed-world
+complement of the desired role families. Workforce profiles are deliberately
+multi-community, so a valid backend/payment release may also belong to broader
+software engineering, database, security, or other legitimately co-occurring
+communities. The host LLM must not exhaustively forbid every unused, broader,
+adjacent, or co-occurring community, and the typed adapter must never generate
+such a complement on its behalf.
+
 ## Supply model: the worker available for staffing
 
 An `AgentDefinition` is a stable identity. An `AgentRelease` is immutable. A
@@ -210,6 +219,13 @@ A candidate is excluded only for an explicit reason code such as:
 Community mismatch alone is not a hard exclusion when direct skill/tool
 evidence satisfies the role. This preserves open-world recall.
 
+An explicit match against `forbiddenCommunities` or `excludedCommunities` is a
+hard exclusion. Because membership is multi-valued, forbidding a broad parent
+or legitimate adjacent community can exclude the exact specialist requested by
+another field. These boundaries therefore express known incompatibility or a
+real prohibition only; absence from the desired-family list never implies
+exclusion.
+
 ### 2. Content retrieval
 
 The bounded set is the union of:
@@ -242,7 +258,10 @@ transport; it is not a second planner or staffing authority.
    host LLM may emit a refined, complete, direct WorkOrder whose only new input
    is those codes, then the adapter repeats `workforce.search_candidates`. The
    refined WorkOrder and repeat search remain auditable and must retain the
-   ontology version and redaction boundary.
+   ontology version and redaction boundary. The host LLM may correct an
+   exclusion it previously inferred when a gap code exposes that conflict, but
+   it must preserve every prohibition explicitly stated by the user. The typed
+   adapter may validate this distinction but must not rewrite either class.
 5. The host LLM emits one direct `agentlas.workforce-selection.v1` object with
    assignments, collaboration/handoff edges, alternatives considered, and
    short reason codes.
