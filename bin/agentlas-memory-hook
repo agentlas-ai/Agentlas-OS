@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
+
+for candidate in "${HEPHAESTUS_PYTHON:-}" "$root/bin/python3" python3 python; do
+  [[ -n "$candidate" ]] || continue
+  if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
+    PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec "$candidate" -m agentlas_cloud.memory_hook "$@"
+  fi
+done
+
+# Hooks must never block the host when Python is unavailable.
+case " ${*:-} " in
+  *" --host opencode "*|*" --host raw "*) ;;
+  *) printf '{}\n' ;;
+esac
+exit 0

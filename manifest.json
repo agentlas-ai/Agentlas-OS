@@ -53,6 +53,11 @@
     "gemini": "GEMINI.md",
     "installer": "scripts/install.sh",
     "ontologyCli": "bin/ontology",
+    "memoryHook": "bin/agentlas-memory-hook",
+    "claudeCodexMemoryHooks": "hooks/hooks.json",
+    "antigravityMemoryHook": "antigravity/hooks/agentlas-memory.json",
+    "grokMemoryHook": "grok/hooks/agentlas-memory.json",
+    "openCodeMemoryPlugin": "opencode/plugins/agentlas-memory.js",
     "ontologyRuntime": "ontology/__init__.py",
     "ontologyVerification": "scripts/verify-ontology-runtime.sh"
   },

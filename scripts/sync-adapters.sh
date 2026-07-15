@@ -25,6 +25,7 @@ code_dirs=(
   "career_graph"
   "ontology"
   "agentlas_cloud"
+  "hooks"
   "templates"
 )
 
@@ -41,6 +42,7 @@ code_files=(
   "bin/hep-storm"
   "bin/hep-global"
   "bin/hephaestus.cmd"
+  "bin/agentlas-memory-hook"
 )
 
 # Byte-mirrored skill copies at the repo root (.agents/skills); plugin skill

@@ -1,0 +1,12 @@
+{
+  "agentlas-memory": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "\"${HOME}/.agentlas/runtime/current/bin/agentlas-memory-hook\" --host antigravity --event PreInvocation",
+        "timeout": 15
+      }
+    ]
+  }
+}

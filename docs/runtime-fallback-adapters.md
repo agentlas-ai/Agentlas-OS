@@ -17,12 +17,13 @@ installer):
 
 | Runtime | Registration | Mechanism |
 |---------|--------------|-----------|
-| Claude Code | automatic | plugin install (commands + `hephaestus-network` skill) + `~/.claude/commands/*.md` |
-| Codex | automatic | `codex plugin add hephaestus@agentlas-core-engine` (skills — plugins cannot register slash commands) + custom prompts `~/.codex/prompts/` → `/prompts:hep-network` + local MCP in `~/.codex/config.toml` |
+| Claude Code | automatic | plugin install (commands + `hephaestus-network` skill) + `~/.claude/commands/*.md`; plugin `SessionStart` and `UserPromptSubmit` hooks inject bounded local ontology recall |
+| Codex | automatic | `codex plugin add hephaestus@agentlas-core-engine` (skills — plugins cannot register slash commands) + custom prompts `~/.codex/prompts/` → `/prompts:hep-network` + local MCP in `~/.codex/config.toml`; the mirrored plugin hooks use the same point-of-need recall contract |
 | Gemini CLI | automatic (partial) | `gemini extensions install …` (commands TOML + skill) + fallback TOML copied to `~/.gemini/commands/` |
-| Antigravity | automatic | global workflow copied to `~/.gemini/antigravity*/global_workflows/` |
+| Antigravity | automatic | global workflow copied to `~/.gemini/antigravity*/global_workflows/`; the installer merges a named `agentlas-memory` `PreInvocation` hook into `~/.gemini/config/hooks.json`, returning `injectSteps[].ephemeralMessage` |
+| Grok CLI | automatic with passive-hook limit | global `SessionStart`/`UserPromptSubmit` hooks write a bounded workspace-scoped capsule under `~/.agentlas/runtime-memory-context/grok/`. Grok ignores passive-hook stdout, so a managed block in `~/.grok/AGENTS.md` points the model at the exact-workspace capsule; this is not direct dynamic hook injection. |
 | Cursor | automatic | commands → `~/.cursor/commands/` (IDE + `agent` CLI), skill → `~/.cursor/skills/` and `~/.agents/skills/`; `cursor/plugin/` is the marketplace-ready plugin bundle; `cursor/rules/hephaestus.mdc` remains the per-project rule fallback |
-| OpenCode | automatic | commands → `~/.config/opencode/commands/` → `/hep-network`; skill via `~/.agents/skills`; MCP via `opencode.json` (see `opencode/README.md`) |
+| OpenCode | automatic | commands → `~/.config/opencode/commands/` → `/hep-network`; skill via `~/.agents/skills`; MCP via `opencode.json` (see `opencode/README.md`). A dependency-free global plugin uses `chat.message` plus `experimental.chat.system.transform`, and preserves the capsule through `experimental.session.compacting`. |
 | OpenClaw | automatic | AgentSkills skill → `~/.openclaw/skills` (or `openclaw skills install --global`); invoke `/skill hephaestus-network <request>`; exec-tool gated on `python3` |
 | Hermes Agent | automatic | AgentSkills skill → `~/.hermes/skills/`; MCP server in `~/.hermes/config.yaml` (see `hermes/README.md`) |
 | Agentlas native | automatic | Agentlas Terminal and the Agentlas app route plain language through native Agentlas/Hephaestus tools. Build, network, cloud, call, upload, search, research, and Stormbreaker behavior are inferred from context. |
@@ -36,6 +37,20 @@ Realistic limits, stated plainly:
   `hooks/`, `.mcp.json`, `.app.json` only) — the explicit slash surface is the
   deprecated-but-functional custom prompts dir, namespaced as
   `/prompts:hep-network`.
+- Claude Code and Codex receive real hook-provided `additionalContext` on each
+  prompt. Antigravity receives an ephemeral pre-invocation step. OpenCode
+  receives a system-prompt transform. Grok lifecycle hooks are passive, so its
+  adapter can refresh a local capsule but cannot inject hook stdout directly.
+- Memory hooks run only when an ancestor project contains a project ontology
+  database or a cryptographically verified routing card whose exact agent
+  projection exists. They never read a host transcript, call a server embedding
+  API, or create Memory Curator tickets. Project recall is `public`/`internal`;
+  private experience is eligible only for that verified exact slug and its
+  `hub-agents/<slug>/memory/experience.sqlite` projection.
+- The capsule has a deterministic digest and is re-injected at point of need;
+  equal digests are one context item, and the newest capsule is re-applied
+  after compaction. This supplements `AGENTS.md`/`CLAUDE.md` instead of copying
+  their policy text.
 - Cursor command files are plain Markdown with no templating; arguments typed
   after the command are appended to the prompt automatically.
 - AGENTS.md-only runtimes still cannot register slash commands — the fallback
@@ -49,6 +64,9 @@ Realistic limits, stated plainly:
   `hep-cloud "<request>"`.
 
 First-use memory behavior: whichever runtime calls the router first triggers
-`network init` (also run by the installer). All later calls from any runtime
-reuse the same `~/.agentlas/networking/` — one local memory map, no per-runtime
-copies.
+`network init` (also run by the installer). All runtimes reuse the project
+ontology plus the same agent-scoped, rebuildable SQLite projections under
+`~/.agentlas/networking/hub-agents/`; no runtime owns a divergent memory copy.
+The runtime chooses only a verified bundled local embedding model. If that
+asset or its offline dependency is unavailable, the capsule reports
+`retrieval=degraded_hash`; it never downloads a model or sends text to a server.

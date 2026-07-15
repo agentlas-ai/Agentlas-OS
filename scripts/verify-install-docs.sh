@@ -192,6 +192,7 @@ for path in \
   bin/hep-storm \
   bin/hep-global \
   bin/ontology \
+  bin/agentlas-memory-hook \
   claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus \
   claude/plugins/agentlas-core-engine-meta-agent/bin/hep-build \
   claude/plugins/agentlas-core-engine-meta-agent/bin/hep-network \
@@ -202,6 +203,7 @@ for path in \
   claude/plugins/agentlas-core-engine-meta-agent/bin/hep-upload \
   claude/plugins/agentlas-core-engine-meta-agent/bin/hep-storm \
   claude/plugins/agentlas-core-engine-meta-agent/bin/hep-global \
+  claude/plugins/agentlas-core-engine-meta-agent/bin/agentlas-memory-hook \
   codex/plugins/agentlas-core-engine-meta-agent/bin/hephaestus \
   codex/plugins/agentlas-core-engine-meta-agent/bin/hep-build \
   codex/plugins/agentlas-core-engine-meta-agent/bin/hep-network \
@@ -212,8 +214,10 @@ for path in \
   codex/plugins/agentlas-core-engine-meta-agent/bin/hep-upload \
   codex/plugins/agentlas-core-engine-meta-agent/bin/hep-storm \
   codex/plugins/agentlas-core-engine-meta-agent/bin/hep-global \
+  codex/plugins/agentlas-core-engine-meta-agent/bin/agentlas-memory-hook \
   scripts/install.sh \
   scripts/install-all-runtimes.sh \
+  scripts/install-memory-hooks.py \
   scripts/preflight-macos.sh \
   scripts/verify-install-docs.sh \
   scripts/verify-global-command-contract.sh \

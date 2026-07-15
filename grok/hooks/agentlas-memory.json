@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${HOME}/.agentlas/runtime/current/bin/agentlas-memory-hook\" --host grok --event SessionStart",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${HOME}/.agentlas/runtime/current/bin/agentlas-memory-hook\" --host grok --event UserPromptSubmit",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
