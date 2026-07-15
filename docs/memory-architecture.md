@@ -94,8 +94,8 @@ never silent overwrite" rule is enforced by structure instead of convention.
 
 Edge types:
 
-- `similar_to`: machine-detected near-duplication between two tickets, scored by
-  token overlap (Jaccard over token + adjacent-bigram shingles).
+- `similar_to`: machine-detected semantic similarity between two rows, scored
+  by local vector cosine after exact agent/privacy governance filtering.
 - `supersedes`: a newer ticket replaces an older one. Recorded as an edge from
   the newer ticket to the one it retires, so the retired entry stays visible with
   a pointer to what replaced it.
@@ -104,7 +104,7 @@ Edge types:
 Commands (all local, no model calls):
 
 ```text
-ontology memory dedup [--threshold 0.6]      # link near-duplicate tickets
+ontology memory dedup [--threshold 0.72]     # link locally vector-similar rows
 ontology memory decide <ticket> supersede --target <newer> --reason "..."
 ontology memory graph <ticket>               # ticket + incoming/outgoing edges
 ontology memory link <from> <to> <type> --reason "..."
@@ -112,4 +112,6 @@ ontology memory link <from> <to> <type> --reason "..."
 
 `ontology memory graph` fails loud on an unknown ticket id rather than returning
 an empty graph that would read as "no relations". `verify` reports a
-`memory_links` count alongside the other table counts.
+`memory_links` count alongside the other table counts. Automatic inference is
+limited to `similar_to`; only an explicit curator action may create
+`supersedes` or `contradicts`.

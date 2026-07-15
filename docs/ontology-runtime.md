@@ -80,7 +80,8 @@ Core tables:
 | `chunk_fts` | SQLite FTS5 full-text index |
 | `entities` / `entity_aliases` | Canonical graph entities and aliases |
 | `relations` | Graph edges with relation type, confidence, evidence chunk, valid/observed time, status |
-| `memory_candidates` | Memory Curator candidate tickets only |
+| `memory_candidates` | Memory Curator tickets plus rebuildable, agent-scoped experience projections with local embeddings |
+| `memory_links` | Typed `similar_to`, `supersedes`, and `contradicts` edges between memory rows |
 | `memory_candidate_events` | approve/reject/quarantine/supersede/deprecate review events |
 | `working_memory` | Agent-scoped hot cache with TTL, confidence, importance, source refs, invalidation reason |
 | `runtime_adapters` | Parser/vector adapter registry and availability status |
@@ -138,9 +139,21 @@ bin/ontology ingest examples/ontology-corpus --scope internal
 
 ## Search And GraphRAG
 
-Full-text search uses SQLite FTS5. Vector search uses the `local_hashing`
-adapter: a deterministic hashed bag-of-words vector that works without provider
-keys and without sending source text to a remote service.
+Full-text search uses SQLite FTS5. Vector search defaults to the
+`local_hashing` 96-dimensional adapter: a deterministic hashed bag-of-words
+vector that works without provider keys and without sending source text to a
+remote service.
+
+An optional Model2Vec adapter can improve semantic quality in-process. It is
+strictly local-path-only: the model directory and the optional `model2vec`
+Python package must already be installed, and the runtime never downloads a
+model or falls back to a server embedding API.
+
+```bash
+bin/ontology --embedding-adapter model2vec \
+  --local-model-path /path/to/potion-base-8M \
+  --db .agentlas/ontology-runtime.sqlite query "release policy"
+```
 
 `ontology query` returns more than text chunks:
 
@@ -150,13 +163,46 @@ keys and without sending source text to a remote service.
 - relation edges;
 - evidence chunk refs;
 - confidence scores;
-- Memory Curator candidate ticket suggestions;
-- optional Agent Working Memory cache writes when `--agent` is provided.
+- agent-scoped experience recall when `--agent` is provided;
+- optional Memory Curator suggestions and Agent Working Memory cache writes
+  only when `--record-memory` is explicitly provided on the CLI.
 
 ```bash
-bin/ontology query "Project Helios Memory Curator" --agent verifier
+bin/ontology --db .agentlas/ontology-runtime.sqlite query "Project Helios Memory Curator" --agent verifier
+bin/ontology --db .agentlas/ontology-runtime.sqlite query "Project Helios Memory Curator" --agent verifier --record-memory
 bin/ontology graph entity "Project Helios"
 ```
+
+Global options such as `--db`, `--embedding-adapter`, and
+`--local-model-path` must precede the subcommand.
+
+## Agent Experience Projection
+
+Each Hub agent can use an isolated
+`hub-agents/<normalized-slug>/memory/experience.sqlite`. The v3
+`memory_candidates` extension stores the exact agent id, memory kind, tags,
+salience prior, privacy scope, source-memory provenance, embedding adapter and
+dimensions, vector, and embedding content hash. The owner runtime remains the
+source of truth; this SQLite file is a rebuildable local projection and never
+sets `durable_write_enabled`.
+
+```bash
+bin/ontology --db /path/to/experience.sqlite experience ingest \
+  "Use a rollback checklist for every schema migration" \
+  --agent hub:release-writer --tag migration --salience 0.8 \
+  --source-memory-id desktop-memory-123
+
+bin/ontology --db /path/to/experience.sqlite query \
+  "How should I prepare this migration?" --agent hub:release-writer
+```
+
+Recall is read-only. Governance filters exact `agent_id`, privacy scope,
+active status, expiry, and structural supersession before scoring. Retrieval
+then fuses lexical and local cosine ranks with reciprocal-rank fusion and a
+bounded salience prior. If all relevant memories fit the token budget, all are
+returned; otherwise the runtime returns a budgeted top-k. Automatic graph
+inference writes only `similar_to` from local vector cosine.
+`supersedes` and `contradicts` remain explicit curator decisions.
 
 ## Memory Curator Bridge
 
@@ -180,9 +226,10 @@ write durable memory. A Memory Curator runtime owns the later durable promotion.
 
 ## Agent Working Memory
 
-Agent Working Memory is a cache, not the source of truth. Querying with
-`--agent` stores a scoped hot-memory item with source refs, confidence,
-importance, TTL, `last_used_at`, and invalidation fields.
+Agent Working Memory is a cache, not the source of truth. A CLI query stores a
+scoped hot-memory item only when `--record-memory` is supplied. The item carries
+source refs, confidence, importance, TTL, `last_used_at`, and invalidation
+fields. Programmatic callers can make the same choice with `record_memory`.
 
 ```bash
 bin/ontology working-memory read --agent verifier
@@ -220,6 +267,8 @@ The runtime verification covers:
 - PDF text parsing depends on `pdftotext`.
 - Image OCR uses macOS Vision first and Tesseract when available.
 - Vector search is local-only in this package. No API key is required.
+- Model2Vec selection accepts an existing filesystem path only; no model id,
+  network download, hosted embedding, or paid per-user embedding path exists.
 - Entity and relation extraction is deterministic and source-grounded. It does
   not use an LLM to infer hidden facts.
 - The local runtime stores user-selected source metadata and chunks in the

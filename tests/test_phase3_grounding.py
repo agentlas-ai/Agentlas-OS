@@ -80,7 +80,16 @@ def test_borrowed_agent_grounding_and_selective_ontology(tmp_path, monkeypatch):
     assert "trivial or self-contained, skip" in directive
     # Borrowed agent has its OWN persistent local memory store (from the fetch).
     assert Path(grounding["memory_root"]).joinpath("project-soul-memory.md").is_file()
+    assert Path(grounding["experience_db"]).is_file()
     assert grounding["ontology_db"] == str(db)
+    assert grounding["commands"]["experience_query"].startswith(
+        f"python3 -m ontology --db {grounding['experience_db']} query "
+    )
+    assert f"--agent {agent_id}" in grounding["commands"]["experience_query"]
+    assert "cat " not in grounding["commands"]["memory_read"]
+    assert grounding["commands"]["ontology_query"].startswith(
+        f"python3 -m ontology --db {grounding['ontology_db']} query "
+    )
 
     # 3. Relevant task → references ontology fact + caches working memory.
     relevant = rt.query("이 상품 설명 쓸 때 우리 브랜드 톤이랑 금지어가 뭐지?", agent_id=agent_id, allowed_scopes=["internal"], limit=5)

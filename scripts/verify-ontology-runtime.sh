@@ -172,7 +172,7 @@ except Exception:
 PY
 "$root/bin/ontology" --db "$db" ingest "$root/examples/ontology-corpus" --scope internal >"$tmp/ingest.json"
 "$root/bin/ontology" --db "$db" ingest "$adapter_corpus" --scope internal >"$tmp/adapter-ingest.json"
-"$root/bin/ontology" --db "$db" query "Project Helios Memory Curator" --agent verifier >"$tmp/query.json"
+"$root/bin/ontology" --db "$db" query "Project Helios Memory Curator" --agent verifier --record-memory >"$tmp/query.json"
 "$root/bin/ontology" --db "$db" graph entity "Project Helios" >"$tmp/entity.json"
 "$root/bin/ontology" --db "$db" memory candidates >"$tmp/candidates.json"
 "$root/bin/ontology" --db "$db" working-memory read --agent verifier >"$tmp/working-memory.json"

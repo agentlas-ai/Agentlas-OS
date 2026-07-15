@@ -459,7 +459,8 @@ Features first-party Korean document parsing (HWPX and legacy HWP5) with zero GP
 
 ```bash
 bin/ontology ingest ./corpus --scope internal
-bin/ontology query "Project Helios Memory Curator" --agent verifier
+bin/ontology --db .agentlas/ontology-runtime.sqlite query "Project Helios Memory Curator" --agent verifier
+bin/ontology --db ~/.agentlas/networking/hub-agents/<slug>/memory/experience.sqlite experience query "What did we learn?" --agent hub:<slug>
 bin/ontology memory candidates
 ```
 

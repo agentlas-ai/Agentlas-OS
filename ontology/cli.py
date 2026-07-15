@@ -17,6 +17,16 @@ INBOX_DIR = "ontology-inbox"
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ontology", description="Hephaestus local-first ontology runtime")
     parser.add_argument("--db", default=None, help="SQLite runtime database path")
+    parser.add_argument(
+        "--embedding-adapter",
+        default="hash",
+        choices=["hash", "model2vec"],
+        help="Local-only embedding adapter (default: hash)",
+    )
+    parser.add_argument(
+        "--local-model-path",
+        help="Existing local Model2Vec directory; required with --embedding-adapter model2vec",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     auto = sub.add_parser("auto", help="Safely activate and sync a project ontology")
@@ -45,6 +55,35 @@ def main(argv: list[str] | None = None) -> int:
     query.add_argument("--agent")
     query.add_argument("--scope", action="append", choices=["public", "internal", "private"], help="Allowed scope; repeatable")
     query.add_argument("--limit", type=int, default=5)
+    query.add_argument("--experience-token-budget", type=int, default=800)
+    query.add_argument("--experience-top-k", type=int, default=8)
+    query.add_argument(
+        "--record-memory",
+        action="store_true",
+        help="Opt in to Memory Curator suggestions and working-memory cache writes; recall is read-only by default",
+    )
+
+    experience = sub.add_parser("experience", help="Agent-scoped experience projection commands")
+    experience_sub = experience.add_subparsers(dest="experience_command", required=True)
+    experience_ingest = experience_sub.add_parser("ingest", help="Upsert one rebuildable local experience projection")
+    experience_ingest.add_argument("summary")
+    experience_ingest.add_argument("--agent", required=True)
+    experience_ingest.add_argument("--tag", action="append", default=[])
+    experience_ingest.add_argument("--salience", type=float, default=0.5)
+    experience_ingest.add_argument("--scope", default="private", choices=["public", "internal", "private"])
+    experience_ingest.add_argument("--status", default="active")
+    experience_ingest.add_argument("--kind", default="experience")
+    experience_ingest.add_argument("--source-memory-id")
+    experience_ingest.add_argument("--source-updated-at")
+    experience_ingest.add_argument("--source-refs-json", default="[]", help="JSON array of provenance refs")
+    experience_ingest.add_argument("--suggested-scope", default="agent_repo")
+    experience_ingest.add_argument("--similar-threshold", type=float, default=0.72)
+    experience_query = experience_sub.add_parser("query", help="Read-only lexical+cosine RRF recall")
+    experience_query.add_argument("question")
+    experience_query.add_argument("--agent", required=True)
+    experience_query.add_argument("--scope", action="append", choices=["public", "internal", "private"])
+    experience_query.add_argument("--token-budget", type=int, default=800)
+    experience_query.add_argument("--top-k", type=int, default=8)
 
     graph = sub.add_parser("graph", help="Graph commands")
     graph_sub = graph.add_subparsers(dest="graph_command", required=True)
@@ -61,8 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     decide.add_argument("--reason", required=True)
     decide.add_argument("--target", help="With supersede/deprecate: the ticket that replaces this one (records a structural supersedes edge)")
 
-    dedup = memory_sub.add_parser("dedup", help="Detect near-duplicate candidate tickets and link them (similar_to)")
-    dedup.add_argument("--threshold", type=float, default=0.6, help="Token Jaccard threshold in (0,1], default 0.6")
+    dedup = memory_sub.add_parser("dedup", help="Detect semantically similar candidate tickets using local vector cosine")
+    dedup.add_argument("--threshold", type=float, default=0.72, help="Local vector cosine threshold in (0,1], default 0.72")
 
     mem_graph = memory_sub.add_parser("graph", help="Show a candidate ticket with its relation edges")
     mem_graph.add_argument("ticket_id")
@@ -103,20 +142,96 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "auto":
-        return emit(auto_activate_project(args.project, args.scope, no_ingest=args.no_ingest, db_override=args.db))
+        return emit(
+            auto_activate_project(
+                args.project,
+                args.scope,
+                no_ingest=args.no_ingest,
+                db_override=args.db,
+                vector_adapter_name=args.embedding_adapter,
+                local_model_path=args.local_model_path,
+            )
+        )
     if args.command == "sources" and args.sources_command == "add":
-        return emit(register_source(args.project, args.path, args.scope, args.kind, no_ingest=args.no_ingest, db_override=args.db))
+        return emit(
+            register_source(
+                args.project,
+                args.path,
+                args.scope,
+                args.kind,
+                no_ingest=args.no_ingest,
+                db_override=args.db,
+                vector_adapter_name=args.embedding_adapter,
+                local_model_path=args.local_model_path,
+            )
+        )
     if args.command == "sources" and args.sources_command == "list":
         return emit({"sources": read_source_manifest(project_agentlas_dir(args.project)).get("sources", [])})
     if args.command == "gui":
-        return emit(render_gui(args.project, args.scope, no_ingest=args.no_ingest, db_override=args.db, open_browser=not args.no_open))
+        return emit(
+            render_gui(
+                args.project,
+                args.scope,
+                no_ingest=args.no_ingest,
+                db_override=args.db,
+                open_browser=not args.no_open,
+                vector_adapter_name=args.embedding_adapter,
+                local_model_path=args.local_model_path,
+            )
+        )
 
-    runtime = OntologyRuntime(RuntimeConfig(db_path=Path(args.db or DEFAULT_DB_PATH)))
+    runtime = OntologyRuntime(
+        RuntimeConfig(
+            db_path=Path(args.db or DEFAULT_DB_PATH),
+            vector_adapter_name=args.embedding_adapter,
+            local_model_path=args.local_model_path,
+        )
+    )
 
     if args.command == "ingest":
         return emit(runtime.ingest_path(args.path, access_scope=args.scope, parent_source_id=args.parent_source_id))
     if args.command == "query":
-        return emit(runtime.query(args.question, agent_id=args.agent, allowed_scopes=args.scope, limit=args.limit))
+        return emit(
+            runtime.query(
+                args.question,
+                agent_id=args.agent,
+                allowed_scopes=args.scope,
+                limit=args.limit,
+                record_memory=args.record_memory,
+                experience_token_budget=args.experience_token_budget,
+                experience_top_k=args.experience_top_k,
+            )
+        )
+    if args.command == "experience" and args.experience_command == "ingest":
+        source_refs = json.loads(args.source_refs_json)
+        if not isinstance(source_refs, list):
+            raise SystemExit("--source-refs-json must decode to a JSON array")
+        return emit(
+            runtime.ingest_experience(
+                agent_id=args.agent,
+                summary=args.summary,
+                tags=args.tag,
+                salience=args.salience,
+                privacy_scope=args.scope,
+                status=args.status,
+                memory_kind=args.kind,
+                source_memory_id=args.source_memory_id,
+                source_updated_at=args.source_updated_at,
+                source_refs=source_refs,
+                suggested_scope=args.suggested_scope,
+                similar_threshold=args.similar_threshold,
+            )
+        )
+    if args.command == "experience" and args.experience_command == "query":
+        return emit(
+            runtime.query_experience(
+                args.question,
+                agent_id=args.agent,
+                allowed_scopes=args.scope,
+                token_budget=args.token_budget,
+                top_k=args.top_k,
+            )
+        )
     if args.command == "graph" and args.graph_command == "entity":
         return emit(runtime.graph_entity(args.name))
     if args.command == "memory" and args.memory_command == "candidates":
@@ -264,9 +379,22 @@ def registered_ingest_paths(project: str | Path) -> list[dict[str, str]]:
     return paths
 
 
-def auto_activate_project(project: str | Path, scope: str = "internal", no_ingest: bool = False, db_override: str | None = None) -> dict[str, Any]:
+def auto_activate_project(
+    project: str | Path,
+    scope: str = "internal",
+    no_ingest: bool = False,
+    db_override: str | None = None,
+    vector_adapter_name: str = "hash",
+    local_model_path: str | None = None,
+) -> dict[str, Any]:
     files = ensure_runtime_files(project, scope, db_override)
-    runtime = OntologyRuntime(RuntimeConfig(db_path=Path(files["db_path"])))
+    runtime = OntologyRuntime(
+        RuntimeConfig(
+            db_path=Path(files["db_path"]),
+            vector_adapter_name=vector_adapter_name,
+            local_model_path=local_model_path,
+        )
+    )
     sync_results: list[dict[str, Any]] = []
     if not no_ingest:
         for source in registered_ingest_paths(project):
@@ -305,6 +433,8 @@ def register_source(
     kind: str,
     no_ingest: bool = False,
     db_override: str | None = None,
+    vector_adapter_name: str = "hash",
+    local_model_path: str | None = None,
 ) -> dict[str, Any]:
     files = ensure_runtime_files(project, scope, db_override)
     agentlas_dir = Path(files["agentlas_dir"])
@@ -323,7 +453,13 @@ def register_source(
         "source_manifest_path": files["source_manifest_path"],
     }
     if not no_ingest:
-        runtime = OntologyRuntime(RuntimeConfig(db_path=Path(files["db_path"])))
+        runtime = OntologyRuntime(
+            RuntimeConfig(
+                db_path=Path(files["db_path"]),
+                vector_adapter_name=vector_adapter_name,
+                local_model_path=local_model_path,
+            )
+        )
         result["ingest"] = runtime.ingest_path(resolved, access_scope=scope)
     return result
 
@@ -334,8 +470,17 @@ def render_gui(
     no_ingest: bool = False,
     db_override: str | None = None,
     open_browser: bool = True,
+    vector_adapter_name: str = "hash",
+    local_model_path: str | None = None,
 ) -> dict[str, Any]:
-    activation = auto_activate_project(project, scope, no_ingest=no_ingest, db_override=db_override)
+    activation = auto_activate_project(
+        project,
+        scope,
+        no_ingest=no_ingest,
+        db_override=db_override,
+        vector_adapter_name=vector_adapter_name,
+        local_model_path=local_model_path,
+    )
     agentlas_dir = Path(activation["config_path"]).parent
     gui_dir = agentlas_dir / "ontology-gui"
     gui_dir.mkdir(parents=True, exist_ok=True)

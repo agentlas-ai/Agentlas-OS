@@ -480,6 +480,16 @@ def _ensure_agentlas_memory_files(root: Path) -> list[str]:
         if not path.exists():
             path.write_text(body, encoding="utf-8")
             created.append(str(path))
+    experience_db = root / "experience.sqlite"
+    experience_db_exists = experience_db.exists()
+    # Imported lazily so ordinary networking discovery does not pay ontology
+    # startup cost. This creates/migrates the same public-core schema Desktop
+    # writes as a rebuildable per-agent experience projection.
+    from ontology.runtime import OntologyRuntime, RuntimeConfig
+
+    OntologyRuntime(RuntimeConfig(db_path=experience_db))
+    if not experience_db_exists:
+        created.append(str(experience_db))
     return created
 
 
@@ -547,11 +557,13 @@ def _grounding_directive(
 
     project = Path(project_dir).resolve()
     ontology_db = _ontology_db_path(project)
+    experience_db = memory_root / "experience.sqlite"
     return {
         "agent_id": agent_id,
         "project_dir": str(project),
         "memory_root": str(memory_root),
         "ontology_db": str(ontology_db),
+        "experience_db": str(experience_db),
         "policy": "attach_codebase_then_selective_memory",
         "directive": (
             "You are running INSIDE the user's working project at `project_dir`. "
@@ -560,20 +572,33 @@ def _grounding_directive(
             "anything. This step is mandatory — never answer as a context-less generic "
             "agent and never improvise outside the actual repo. "
             "THEN decide if the task needs deeper grounding (brand facts, prior "
-            "decisions, domain context). If yes: (1) read this borrowed agent's local "
-            "memory under memory_root (project-soul-memory.md, invocation-ledger.jsonl); "
-            "(2) query the super ontology with `ontology_query` below. If the task is "
+            "decisions, domain context). If yes: (1) run the read-only local vector "
+            "recall command `experience_query` for this borrowed agent's isolated "
+            "experience.sqlite; (2) query project documents separately with "
+            "`ontology_query`. Do not inject the legacy markdown file wholesale. If the task is "
             "trivial or self-contained, skip the memory/ontology lookups — but the "
             "codebase attachment above is not optional."
         ),
         "commands": {
             "project_overview": f"ls -la {_shell_quote(str(project))}",
             "ontology_query": (
-                f"python3 -m ontology query {_shell_quote(_compact(request, 160))} "
-                f"--agent {agent_id} --db {_shell_quote(str(ontology_db))}"
+                f"python3 -m ontology --db {_shell_quote(str(ontology_db))} "
+                f"query {_shell_quote(_compact(request, 160))}"
             ),
-            "memory_read": f"cat {_shell_quote(str(memory_root / 'project-soul-memory.md'))}",
-            "working_memory_read": f"python3 -m ontology working-memory read --agent {agent_id} --db {_shell_quote(str(ontology_db))}",
+            "experience_query": (
+                f"python3 -m ontology --db {_shell_quote(str(experience_db))} "
+                f"query {_shell_quote(_compact(request, 160))} --agent {agent_id}"
+            ),
+            # Compatibility key for older callers; the operation is now the
+            # same read-only vector query, never a whole-file cat.
+            "memory_read": (
+                f"python3 -m ontology --db {_shell_quote(str(experience_db))} "
+                f"query {_shell_quote(_compact(request, 160))} --agent {agent_id}"
+            ),
+            "working_memory_read": (
+                f"python3 -m ontology --db {_shell_quote(str(ontology_db))} "
+                f"working-memory read --agent {agent_id}"
+            ),
         },
     }
 

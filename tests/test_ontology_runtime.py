@@ -320,6 +320,7 @@ class OntologyRuntimeTests(unittest.TestCase):
                 "Project Helios Memory Curator",
                 "--agent",
                 "agent-cli",
+                "--record-memory",
             ],
             cwd=Path(__file__).resolve().parents[1],
             env=env,
@@ -654,6 +655,265 @@ class OntologySearchUpgradeTests(unittest.TestCase):
         self.assertGreater(len(spans), 1)
         for left, right in zip(spans, spans[1:]):
             self.assertLess(right["token_start"], left["token_end"], "windows must overlap")
+
+
+class AgentExperienceProjectionTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.db_path = self.root / "experience.sqlite"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def runtime(self):
+        from ontology import OntologyRuntime, RuntimeConfig
+
+        return OntologyRuntime(RuntimeConfig(db_path=self.db_path))
+
+    def test_v3_projection_schema_and_write_time_embedding(self):
+        rt = self.runtime()
+        result = rt.ingest_experience(
+            agent_id="hub:release-writer",
+            summary="Release notes must mention migration risk and stay concise.",
+            tags=["release", "migration"],
+            salience=0.8,
+            source_memory_id="desktop-memory-1",
+            source_updated_at="2026-07-15T00:00:00Z",
+            source_refs=[{"kind": "desktop_memory", "id": "desktop-memory-1"}],
+        )
+
+        experience = result["experience"]
+        self.assertEqual(experience["agent_id"], "hub:release-writer")
+        self.assertEqual(experience["source_memory_id"], "desktop-memory-1")
+        self.assertEqual(experience["embedding"]["adapter"], "local_hashing")
+        self.assertEqual(experience["embedding"]["dimensions"], 96)
+        self.assertTrue(experience["embedding"]["content_hash"])
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(memory_candidates)")}
+            required = {
+                "agent_id",
+                "memory_kind",
+                "tags_json",
+                "salience",
+                "privacy_scope",
+                "source_memory_id",
+                "source_updated_at",
+                "embedding_adapter",
+                "embedding_dimensions",
+                "embedding_json",
+                "embedding_content_hash",
+            }
+            self.assertTrue(required <= columns)
+            vector = json.loads(conn.execute("SELECT embedding_json FROM memory_candidates").fetchone()[0])
+            self.assertEqual(len(vector), 96)
+
+    def test_real_v2_candidate_table_migrates_additively_and_reembeds(self):
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.executescript(
+                """
+                CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+                INSERT INTO schema_migrations(version, applied_at) VALUES (2, '2026-07-01T00:00:00Z');
+                CREATE TABLE memory_candidates (
+                  ticket_id TEXT PRIMARY KEY,
+                  idempotency_key TEXT NOT NULL UNIQUE,
+                  query TEXT NOT NULL,
+                  candidate_text TEXT NOT NULL,
+                  source_refs_json TEXT NOT NULL,
+                  reason TEXT NOT NULL,
+                  confidence REAL NOT NULL,
+                  risk TEXT NOT NULL,
+                  expiry TEXT,
+                  suggested_scope TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  durable_write_enabled INTEGER NOT NULL DEFAULT 0 CHECK (durable_write_enabled = 0),
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                );
+                INSERT INTO memory_candidates VALUES (
+                  'legacy-ticket', 'legacy-key', 'release', 'Keep rollback instructions concise.',
+                  '[]', 'legacy v2 ticket', 0.7, 'low', NULL, 'session', 'pending_review', 0,
+                  '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z'
+                );
+                """
+            )
+        rt = self.runtime()
+        self.assertEqual(rt.verify()["schema_version"], 3)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute(
+                "SELECT embedding_adapter, embedding_dimensions, embedding_json FROM memory_candidates WHERE ticket_id = 'legacy-ticket'"
+            ).fetchone()
+        self.assertEqual(row[0], "local_hashing")
+        self.assertEqual(row[1], 96)
+        self.assertEqual(len(json.loads(row[2])), 96)
+
+    def test_read_only_hybrid_recall_is_agent_isolated_and_adaptive(self):
+        rt = self.runtime()
+        for index in range(3):
+            rt.ingest_experience(
+                agent_id="hub:release-writer",
+                summary=f"Release migration checklist {index}: verify schema rollback and concise notes.",
+                tags=["release", "migration"],
+                salience=0.5 + (index * 0.1),
+                source_memory_id=f"memory-{index}",
+            )
+        rt.ingest_experience(
+            agent_id="hub:other-agent",
+            summary="Release migration checklist belongs to another agent.",
+            tags=["release", "migration"],
+            source_memory_id="other-memory",
+        )
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            before = tuple(
+                conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                for table in ("memory_candidates", "memory_links", "working_memory", "memory_candidate_events")
+            )
+
+        all_fit = rt.query(
+            "release migration checklist",
+            agent_id="hub:release-writer",
+            record_memory=False,
+            experience_token_budget=500,
+        )["experience_memory"]
+        self.assertEqual(all_fit["mode"], "all_relevant")
+        self.assertEqual(all_fit["selected_count"], 3)
+        self.assertTrue(all(item["agent_id"] == "hub:release-writer" for item in all_fit["items"]))
+
+        budgeted = rt.query_experience(
+            "release migration checklist",
+            agent_id="hub:release-writer",
+            token_budget=14,
+            top_k=1,
+        )
+        self.assertEqual(budgeted["mode"], "hybrid_top_k")
+        self.assertEqual(budgeted["selected_count"], 1)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            after = tuple(
+                conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                for table in ("memory_candidates", "memory_links", "working_memory", "memory_candidate_events")
+            )
+        self.assertEqual(before, after, "recall must not create tickets, links, or hot-cache writes")
+
+    def test_cli_query_agent_reads_experience_without_mutation(self):
+        rt = self.runtime()
+        rt.ingest_experience(
+            agent_id="hub:cli-agent",
+            summary="Use a rollback checklist for every database migration.",
+            tags=["rollback", "migration"],
+            source_memory_id="cli-1",
+        )
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            before = conn.total_changes, conn.execute("SELECT count(*) FROM memory_candidates").fetchone()[0]
+        repo = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "ontology",
+                "--db",
+                str(self.db_path),
+                "query",
+                "database migration rollback",
+                "--agent",
+                "hub:cli-agent",
+            ],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["search"]["record_memory"], False)
+        self.assertEqual(payload["experience_memory"]["selected_count"], 1)
+        self.assertEqual(payload["memory_candidate_suggestions"], [])
+        self.assertEqual(payload["working_memory"], [])
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            after_count = conn.execute("SELECT count(*) FROM memory_candidates").fetchone()[0]
+            working_count = conn.execute("SELECT count(*) FROM working_memory").fetchone()[0]
+            event_count = conn.execute("SELECT count(*) FROM memory_candidate_events").fetchone()[0]
+        self.assertEqual(before[1], after_count)
+        self.assertEqual((working_count, event_count), (0, 0))
+
+    def test_supersedes_hides_old_memory_but_contradiction_remains_explicit(self):
+        rt = self.runtime()
+        old = rt.ingest_experience(
+            agent_id="hub:deploy",
+            summary="Deploy releases on Friday after lunch.",
+            tags=["deploy"],
+            source_memory_id="old",
+        )["experience"]
+        new = rt.ingest_experience(
+            agent_id="hub:deploy",
+            summary="Deploy releases on Tuesday morning after approval.",
+            tags=["deploy"],
+            source_memory_id="new",
+        )["experience"]
+        conflict = rt.ingest_experience(
+            agent_id="hub:deploy",
+            summary="Never deploy releases before Wednesday.",
+            tags=["deploy"],
+            source_memory_id="conflict",
+        )["experience"]
+        rt.link_memory(new["ticket_id"], old["ticket_id"], "supersedes", "Schedule was explicitly revised")
+        rt.link_memory(conflict["ticket_id"], new["ticket_id"], "contradicts", "Human curator marked conflict")
+
+        result = rt.query_experience("when should releases deploy", agent_id="hub:deploy")
+        ids = {item["ticket_id"] for item in result["items"]}
+        self.assertNotIn(old["ticket_id"], ids)
+        self.assertIn(new["ticket_id"], ids)
+        relation_types = {
+            link["link_type"] for item in result["items"] for link in item.get("relations", [])
+        }
+        self.assertIn("contradicts", relation_types)
+
+    def test_automatic_relations_are_semantic_similar_to_only(self):
+        rt = self.runtime()
+        rt.ingest_experience(
+            agent_id="hub:copy",
+            summary="Concise release notes include migration risks.",
+            source_memory_id="a",
+        )
+        second = rt.ingest_experience(
+            agent_id="hub:copy",
+            summary="Migration risks belong in concise release notes.",
+            source_memory_id="b",
+            similar_threshold=0.5,
+        )
+        self.assertTrue(second["similar_links"])
+        self.assertTrue(all(link["link_type"] == "similar_to" for link in second["similar_links"]))
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            types = {row[0] for row in conn.execute("SELECT DISTINCT link_type FROM memory_links")}
+        self.assertEqual(types, {"similar_to"})
+
+    def test_optional_model2vec_requires_local_path_and_loads_lazily(self):
+        from types import SimpleNamespace
+        from ontology.embeddings import Model2VecLocalAdapter, select_vector_adapter
+
+        missing = self.root / "missing-model"
+        with self.assertRaises(ValueError):
+            select_vector_adapter("model2vec", model_path=missing)
+
+        model_dir = self.root / "potion-base-8M"
+        model_dir.mkdir()
+        calls = []
+
+        class FakeStaticModel:
+            @classmethod
+            def from_pretrained(cls, path):
+                calls.append(path)
+                return cls()
+
+            def encode(self, texts):
+                self.assert_payload = texts
+                return [[3.0, 4.0]]
+
+        with mock.patch.dict(sys.modules, {"model2vec": SimpleNamespace(StaticModel=FakeStaticModel)}):
+            adapter = Model2VecLocalAdapter(model_dir)
+            self.assertEqual(calls, [], "construction must not load or download a model")
+            self.assertEqual(adapter.embed("local only"), [0.6, 0.8])
+            self.assertEqual(calls, [str(model_dir.resolve())])
+            self.assertEqual(adapter.dimensions, 2)
+            self.assertTrue(adapter.identity.startswith("model2vec:local:potion-base-8M:"))
 
 
 def write_text_pdf(path: Path, text: str) -> None:
