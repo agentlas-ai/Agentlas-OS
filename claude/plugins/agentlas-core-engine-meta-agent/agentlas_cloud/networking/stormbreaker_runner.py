@@ -171,6 +171,13 @@ def prepare_hub_task_force_decision(
     task_force = current.get("task_force") if isinstance(current.get("task_force"), Mapping) else {}
     task_stages = [item for item in (task_force.get("stages") or []) if isinstance(item, Mapping)]
     stage_metadata = {str(item.get("stage") or ""): item for item in task_stages}
+    hub = current.get("hub") if isinstance(current.get("hub"), Mapping) else {}
+    hub_results = [item for item in (hub.get("results") or []) if isinstance(item, Mapping)]
+    entity_kind_by_slug = {
+        str(item.get("slug") or "").strip(): str(item.get("entityKind") or item.get("entity_kind") or "").strip().lower()
+        for item in hub_results
+        if str(item.get("slug") or "").strip()
+    }
     invocation_cache: dict[str, dict[str, Any]] = {}
     invocations: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
@@ -223,6 +230,11 @@ def prepare_hub_task_force_decision(
                 hub_decision=current,
                 project_dir=project,
                 home=base,
+                expected_entity_kind=(
+                    str(recommendation.get("entityKind") or recommendation.get("entity_kind") or "").strip().lower()
+                    or entity_kind_by_slug.get(slug)
+                    or None
+                ),
             )
             invocation_cache[slug] = invocation
             invocations.append(invocation)

@@ -224,6 +224,16 @@ def prior_packet_artifacts(write_scope: Path) -> str:
     return "\n\n".join(sections)[:12_000]
 
 
+def project_task_contract(project: Path) -> str:
+    sections: list[str] = []
+    for name in ("README.md", "task.json"):
+        path = project / name
+        if path.is_file():
+            content = path.read_text(encoding="utf-8", errors="replace")
+            sections.append(f"### {name}\n{content}")
+    return "\n\n".join(sections)[:12_000]
+
+
 def system_prompt(contract: dict[str, Any], project: Path, write_scope: Path) -> str:
     packet = contract["packet"]
     stage = str(packet.get("stage") or "")
@@ -233,6 +243,7 @@ def system_prompt(contract: dict[str, Any], project: Path, write_scope: Path) ->
     brief = contract.get("work_brief") or {}
     harness = contract.get("execution_harness") or {}
     prior_artifacts = prior_packet_artifacts(write_scope)
+    task_contract = project_task_contract(project)
     stage_rule = {
         "plan": f"Inspect the project read-only, then write a concrete implementation and verification plan to {write_scope / 'plan.md'}.",
         "build": "Implement the requested project change, use the upstream plan, run relevant checks, and repair failures.",
@@ -250,6 +261,7 @@ def system_prompt(contract: dict[str, Any], project: Path, write_scope: Path) ->
             f"Depends on: {packet.get('depends_on') or []}",
             f"Goal: {goal.get('request') or brief.get('goal') or 'missing'}",
             f"Work brief: {compact_json(brief, 6000)}",
+            f"Project task contract:\n{task_contract or '(no README.md or task.json found)'}",
             f"Prior packet artifacts:\n{prior_artifacts or '(none)'}",
             f"Stage rule: {stage_rule}",
             "The shell starts in the project directory. Do not use network commands, sudo, external publishing, or paths outside the project. Avoid interactive programs and pagers. Use GIT_PAGER=cat when needed.",

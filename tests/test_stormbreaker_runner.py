@@ -669,7 +669,7 @@ def test_stormbreaker_promotes_hub_temporary_orchestrator_to_pipeline(tmp_path, 
     calls = []
 
     def fake_invoke(request, **kwargs):
-        calls.append(kwargs["slug"])
+        calls.append((kwargs["slug"], kwargs.get("expected_entity_kind")))
         return {
             "status": "prepared",
             "slug": kwargs["slug"],
@@ -690,6 +690,13 @@ def test_stormbreaker_promotes_hub_temporary_orchestrator_to_pipeline(tmp_path, 
         "action": "hub_candidates",
         "receipt_id": "route-hub-tf",
         "_stormbreaker_user_query": "Plan, implement, and verify this benchmark task.",
+        "hub": {
+            "results": [
+                {"slug": "hub-planner", "entityKind": "team"},
+                {"slug": "hub-builder", "entityKind": "agent"},
+                {"slug": "hub-verifier", "entityKind": "agent"},
+            ]
+        },
         "execution": {
             "formation": "temporary_orchestrator",
             "recommended_agents": [
@@ -718,7 +725,11 @@ def test_stormbreaker_promotes_hub_temporary_orchestrator_to_pipeline(tmp_path, 
     promoted = prepared["decision"]
     assert promoted["action"] == "pipeline"
     assert promoted["source_action"] == "hub_candidates"
-    assert calls == ["hub-planner", "hub-builder", "hub-verifier"]
+    assert calls == [
+        ("hub-planner", "team"),
+        ("hub-builder", "agent"),
+        ("hub-verifier", "agent"),
+    ]
     packets = promoted["execution_fabric"]["packets"]
     assert [packet["card"] for packet in packets] == [
         "hub:hub-planner",

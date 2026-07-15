@@ -31,7 +31,7 @@ worker observation
 
 ## Network Memory / Playbook Control Plane
 
-The Agentlas OS v1.1.36 Network contract keeps the per-agent `.agentlas` memory
+The Agentlas OS v1.1.37 Network contract keeps the per-agent `.agentlas` memory
 architecture, but treats those files as scoped memory roots rather than
 isolated notebooks.
 The router does not write durable memory directly. It emits:
@@ -123,7 +123,7 @@ Experience retrieval follows a fixed order:
    When it does not fit, return the highest-ranked items that fit the budget
    and top-k limit.
 
-The v1.1.36 primary embedding path is the manifest-verified, bundled
+The v1.1.37 primary embedding path is the manifest-verified, bundled
 `potion-base-8M` int8 Model2Vec asset: normalized semantic-256 plus normalized
 hash-96, for a fixed 352-dimensional local vector. It runs in process and
 offline. A missing or rejected asset does not trigger a download or hosted API;

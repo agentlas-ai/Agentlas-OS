@@ -112,7 +112,8 @@ memory items, and ontology-chip release were selected for that node.
 | Agentlas Field treatment | Fetches route/bundle data, concatenates one overlay, and calls one Terminus-2 chat. | Not a multi-agent runtime benchmark. |
 | Desktop packaged firm | CEO plans, divisions can plan again, specialists run in parallel, and managers synthesize. Firm nodes receive scoped memory and ontology context. | Real nested local execution exists. |
 | Desktop user-created group | Generates a group planner, executes one turn per member, and synthesizes one group result. A top-level TF invokes the Group as a nested middle manager rather than flattening its members. | Real nested group orchestration exists with depth/cycle guards. |
-| Packaged team inside a Desktop group | Hub returns a signed explicit manager/worker graph; Desktop runs manager planning, separate worker turns, and manager synthesis before returning one Team result to the Group or top-level TF. Missing graphs fail closed before model execution. | Team hierarchy is executable and no longer represented by a single delegation prompt. |
+| Packaged team inside a Desktop group | The current unreleased Desktop working tree can run an explicit manager/worker graph as manager planning, separate worker turns, and manager synthesis. `npm run test:borrowed-task-force` passed 79 fixture checks. | Host-side nesting is executable when an authoritative graph exists; fixture success does not prove the live Hub package supplies one. |
+| Live Hub team bundle | On 2026-07-15, Hub search labeled `product-development-hq` as a team, but its runtime bundle returned an empty entity kind and no execution graph. Explicit `hub/team/product-development-hq` failed with `entity_kind_mismatch`, `actual_entity_kind=unproven`. | The current live package cannot be proved or run as a nested team. Treating its root `AGENTS.md` as a single agent would flatten it. |
 | Desktop task-force memory | Firm nodes call `buildMemoryContext`, which can inject Project Soul, Sitemap, Code Map, and curated memory. Borrowed/group workers do not call it. | RAG grounding is not uniform across execution-unit kinds. |
 | Desktop ontology chips | Installed firm/group workers can receive run-scoped Operational/Taste context; Hub-only borrowed workers have no installed-agent binding. | Chip activation is partial and cannot yet be proved for all TF nodes. |
 | Memory Curator | Deterministic post-turn curation records count-only run receipts and persists allowed memory events. | Always-on substrate exists; end-to-end TF attribution still needs benchmark proof. |
@@ -150,6 +151,25 @@ safety filters would confound architecture and model capability.
 9. **Final gate:** the official task verifier and the hierarchy/grounding audit
    must both pass.  A high task score with missing worker, memory, or chip
    receipts is an architecture failure.
+
+## Current measured result
+
+The safe `terminal-bench/fix-git` 2x2 control produced:
+
+| Model | Baseline Terminus-2 | Current Field Hub overlay |
+| --- | ---: | ---: |
+| `gpt-5.6-terra` | 1.0 | 1.0 |
+| `qwen3:30b-a3b` Q4_K_M | 0.0 | 0.0 |
+
+Both Field-overlay runs selected the same `web-master` bundle for plan, build,
+and verify. The task was Git recovery, so this is a directly observed routing
+quality defect. Field still made one model call; the table is a model/control
+result, not proof of the three-level architecture.
+
+The Core vertical slice separately proved distinct plan/build execution,
+artifact dependency gating, verifier-triggered repair, a bounded runner retry,
+and a blocked final gate for the failing Qwen build. It cannot prove the
+packaged-team middle layer while the live Hub bundle omits its execution graph.
 
 ## Source anchors
 

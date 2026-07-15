@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.37 - 2026-07-15
+
+- **Background Stormbreaker execution keeps its bounded replan contract on
+  every supported Python and OS matrix.** Child-argument construction now uses
+  the parser default when tests or host adapters provide a reduced Namespace,
+  removing the Windows/Linux `max_replans` crash without weakening retries.
+- **Promoted Hub task-force stages preserve the discovered entity kind.** Team
+  stages are invoked as Teams and must return a matching executable graph;
+  unproven or mismatched bundles continue to fail closed.
+
 ## v1.1.36 - 2026-07-15
 
 - **Exact Cloud/Hub Team references retain their entity boundary.**

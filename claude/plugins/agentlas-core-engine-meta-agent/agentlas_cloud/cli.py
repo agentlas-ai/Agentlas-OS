@@ -1839,7 +1839,7 @@ def _stormbreaker_child_argv(args: argparse.Namespace, result_file: Path, decisi
         child.append("--execute-card-commands")
     if args.max_workers is not None:
         child.extend(["--max-workers", str(args.max_workers)])
-    child.extend(["--max-replans", str(max(0, args.max_replans))])
+    child.extend(["--max-replans", str(max(0, getattr(args, "max_replans", 2)))])
     if getattr(args, "research_evidence", False):
         child.append("--research-evidence")
     if getattr(args, "research_loadout", None):
@@ -1954,7 +1954,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.36",
+            "version": "1.1.37",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},
