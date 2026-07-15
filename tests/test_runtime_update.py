@@ -93,6 +93,16 @@ def _write_runtime_source(source: Path) -> None:
         MODEL2VEC_ASSET,
         source / "assets" / "model2vec" / "potion-base-8M-int8",
     )
+    for relative in (
+        Path("scripts") / "install-memory-hooks.py",
+        Path("antigravity") / "hooks" / "agentlas-memory.json",
+        Path("grok") / "hooks" / "agentlas-memory.json",
+        Path("grok") / "agentlas-memory-rule.md",
+        Path("opencode") / "plugins" / "agentlas-memory.js",
+    ):
+        target = source / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, target)
 
 
 def _convert_to_installed_runtime_layout(runtime_root: Path) -> Path:
@@ -179,6 +189,8 @@ def test_update_recovers_runtime_without_release_marker(tmp_path, monkeypatch):
 
 def test_install_latest_runtime_flips_current_and_writes_shims(tmp_path, monkeypatch):
     monkeypatch.setenv("HEPHAESTUS_RUNTIME_BASE", str(tmp_path / "runtime"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
     archive = _write_runtime_archive(tmp_path)
     expected_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
 
@@ -205,6 +217,32 @@ def test_install_latest_runtime_flips_current_and_writes_shims(tmp_path, monkeyp
     assert result["archive_asset"] == "hephaestus-runtime-v0.7.5.tar.gz"
     assert Path(result["model_root"]) == model_root
     assert result["model_verified"] is True
+    assert result["memory_hook_sync"] == {"status": "pass", "installed": {}, "errors": {}}
+
+
+def test_install_latest_runtime_repairs_detected_host_hook_without_touching_others(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    hooks_path = home / ".gemini" / "config" / "hooks.json"
+    hooks_path.parent.mkdir(parents=True)
+    hooks_path.write_text(json.dumps({"user-owned": {"enabled": False}}), encoding="utf-8")
+    (home / ".gemini" / "antigravity-cli").mkdir(parents=True)
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", str(empty_bin))
+    monkeypatch.setenv("HEPHAESTUS_RUNTIME_BASE", str(tmp_path / "runtime"))
+    archive = _write_runtime_archive(tmp_path)
+    monkeypatch.setattr("agentlas_cloud.update._download", lambda url, path: shutil.copyfile(archive, path))
+
+    result = install_latest_runtime(_release_with_runtime_asset("v0.7.5", archive))
+
+    hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
+    assert hooks["user-owned"] == {"enabled": False}
+    assert "agentlas-memory" in hooks
+    assert result["memory_hook_sync"]["status"] == "pass"
+    assert set(result["memory_hook_sync"]["installed"]) == {"antigravity"}
+    assert not (home / ".grok" / "hooks" / "agentlas-memory.json").exists()
+    assert not (home / ".config" / "opencode" / "plugins" / "agentlas-memory.js").exists()
 
 
 @pytest.mark.parametrize("damage", ["missing", "tampered"])

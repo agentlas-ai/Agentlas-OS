@@ -31,6 +31,7 @@ LATEST_RELEASE_URL = os.environ.get(
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 LOCK_STALE_SECONDS = 60 * 60
 HEALTHCHECK_TIMEOUT_SECONDS = 15
+MEMORY_HOOK_SYNC_TIMEOUT_SECONDS = 30
 MAX_RUNTIME_ARCHIVE_BYTES = 256 * 1024 * 1024
 RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "ontology", "templates")
 MODEL2VEC_ASSET_NAME = "potion-base-8M-int8"
@@ -358,6 +359,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     target = base / _runtime_version_dir_name(tag)
     lock = base / ".update.lock"
     adapter_sync: dict[str, Any] = {"updated": [], "skipped_missing": [], "failed": []}
+    memory_hook_sync: dict[str, Any] = {"status": "not_run", "installed": {}, "errors": {}}
     archive_sha256 = ""
     staged_target: Path | None = None
     lock_token = _acquire_lock(lock)
@@ -400,6 +402,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             _activate_runtime(staged_target, target)
             staged_target = None
             adapter_sync = sync_installed_runtime_adapters(source)
+            memory_hook_sync = sync_installed_memory_hooks(source)
     finally:
         if staged_target is not None and _path_present(staged_target):
             _remove_path(staged_target)
@@ -415,6 +418,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
         "model_root": str(target / RUNTIME_MODEL2VEC_PATH),
         "model_verified": True,
         "adapter_sync": adapter_sync,
+        "memory_hook_sync": memory_hook_sync,
     }
 
 
@@ -473,6 +477,72 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
         "skipped_missing": skipped_missing,
         "failed": failed,
     }
+
+
+def sync_installed_memory_hooks(source: Path, home: Path | None = None) -> dict[str, Any]:
+    """Install merge-safe memory hooks for hosts detected on this machine.
+
+    Claude and Codex hook manifests live inside their plugin bundles and are
+    refreshed by :func:`sync_installed_runtime_adapters`. Antigravity, Grok,
+    and OpenCode use global host files, so a runtime self-update must invoke the
+    same owned-key/managed-block installer as the one-touch install. Hook repair
+    is reported independently: an invalid user config is preserved and does not
+    roll back an otherwise healthy, digest-verified runtime update.
+    """
+
+    installer = source / "scripts" / "install-memory-hooks.py"
+    home_dir = (home or Path.home()).expanduser().resolve()
+    if not installer.is_file():
+        return {
+            "status": "fail",
+            "installed": {},
+            "errors": {"installer": f"missing hook installer: {installer}"},
+        }
+
+    env = os.environ.copy()
+    env.pop("PYTHONHOME", None)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(installer),
+                "--source-dir",
+                str(source),
+                "--home",
+                str(home_dir),
+                "--hosts",
+                "auto",
+            ],
+            cwd=str(source),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=MEMORY_HOOK_SYNC_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"status": "fail", "installed": {}, "errors": {"installer": str(exc)}}
+
+    try:
+        payload = json.loads(completed.stdout)
+    except (json.JSONDecodeError, TypeError):
+        detail = (completed.stderr or completed.stdout or "invalid installer output").strip()[-500:]
+        return {"status": "fail", "installed": {}, "errors": {"installer": detail}}
+    if not isinstance(payload, dict):
+        return {
+            "status": "fail",
+            "installed": {},
+            "errors": {"installer": "hook installer returned a non-object response"},
+        }
+    installed = payload.get("installed") if isinstance(payload.get("installed"), dict) else {}
+    errors = payload.get("errors") if isinstance(payload.get("errors"), dict) else {}
+    status = "pass" if completed.returncode == 0 and payload.get("status") == "pass" else "fail"
+    if status == "fail" and not errors:
+        detail = (completed.stderr or "hook installer failed without an error record").strip()[-500:]
+        errors = {"installer": detail}
+    return {"status": status, "installed": installed, "errors": errors}
 
 
 def write_python_shims(bin_dir: Path, executable: str) -> None:
@@ -872,6 +942,16 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
     ):
         if not (runtime_root / relative).is_file():
             missing.append(str(relative))
+    if release_source:
+        for relative in (
+            Path("scripts") / "install-memory-hooks.py",
+            Path("antigravity") / "hooks" / "agentlas-memory.json",
+            Path("grok") / "hooks" / "agentlas-memory.json",
+            Path("grok") / "agentlas-memory-rule.md",
+            Path("opencode") / "plugins" / "agentlas-memory.js",
+        ):
+            if not (runtime_root / relative).is_file():
+                missing.append(str(relative))
     model_path = runtime_root / (RELEASE_MODEL2VEC_PATH if release_source else RUNTIME_MODEL2VEC_PATH)
     if not model_path.is_dir():
         missing.append(f"{model_path.relative_to(runtime_root)}/")
