@@ -16,3 +16,9 @@
 /codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.txt text eol=lf
 /codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.i8 binary
 /codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.f32le binary
+
+# The Workforce Ontology snapshot is pinned by its raw SHA-256 digest. Keep the
+# canonical file and both packaged adapter mirrors byte-identical on Windows.
+/agentlas_cloud/workforce/ontology_v1.json text eol=lf
+/claude/plugins/agentlas-core-engine-meta-agent/agentlas_cloud/workforce/ontology_v1.json text eol=lf
+/codex/plugins/agentlas-core-engine-meta-agent/agentlas_cloud/workforce/ontology_v1.json text eol=lf
