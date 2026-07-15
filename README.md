@@ -457,6 +457,11 @@ Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization]
 
 Features first-party Korean document parsing (HWPX and legacy HWP5) with zero GPL dependencies. Fully local and SQLite-backed; confidential and private chunks are isolated, preventing them from reaching external cloud hooks.
 
+The default vector adapter is a verified, bundled, dependency-free
+`potion-base-8M` int8 + hash-96 hybrid (fixed 352 dimensions). Runtime queries
+never download a model or call a hosted embedding API; hash-only mode is
+reported as a degraded fallback when the local asset is unavailable.
+
 ```bash
 bin/ontology ingest ./corpus --scope internal
 bin/ontology --db .agentlas/ontology-runtime.sqlite query "Project Helios Memory Curator" --agent verifier

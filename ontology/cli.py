@@ -19,13 +19,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", default=None, help="SQLite runtime database path")
     parser.add_argument(
         "--embedding-adapter",
-        default="hash",
-        choices=["hash", "model2vec"],
-        help="Local-only embedding adapter (default: hash)",
+        default="auto",
+        choices=["auto", "hash", "model2vec"],
+        help="Local-only embedding adapter (default: auto; verified Model2Vec then degraded hash fallback)",
     )
     parser.add_argument(
         "--local-model-path",
-        help="Existing local Model2Vec directory; required with --embedding-adapter model2vec",
+        help="Optional verified local Model2Vec asset override; runtime never downloads a model",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -384,7 +384,7 @@ def auto_activate_project(
     scope: str = "internal",
     no_ingest: bool = False,
     db_override: str | None = None,
-    vector_adapter_name: str = "hash",
+    vector_adapter_name: str = "auto",
     local_model_path: str | None = None,
 ) -> dict[str, Any]:
     files = ensure_runtime_files(project, scope, db_override)
@@ -433,7 +433,7 @@ def register_source(
     kind: str,
     no_ingest: bool = False,
     db_override: str | None = None,
-    vector_adapter_name: str = "hash",
+    vector_adapter_name: str = "auto",
     local_model_path: str | None = None,
 ) -> dict[str, Any]:
     files = ensure_runtime_files(project, scope, db_override)
@@ -470,7 +470,7 @@ def render_gui(
     no_ingest: bool = False,
     db_override: str | None = None,
     open_browser: bool = True,
-    vector_adapter_name: str = "hash",
+    vector_adapter_name: str = "auto",
     local_model_path: str | None = None,
 ) -> dict[str, Any]:
     activation = auto_activate_project(

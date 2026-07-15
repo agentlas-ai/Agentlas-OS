@@ -1,4 +1,5 @@
 import gc
+import hashlib
 import json
 import os
 import shutil
@@ -686,8 +687,8 @@ class AgentExperienceProjectionTests(unittest.TestCase):
         experience = result["experience"]
         self.assertEqual(experience["agent_id"], "hub:release-writer")
         self.assertEqual(experience["source_memory_id"], "desktop-memory-1")
-        self.assertEqual(experience["embedding"]["adapter"], "local_hashing")
-        self.assertEqual(experience["embedding"]["dimensions"], 96)
+        self.assertEqual(experience["embedding"]["adapter"], "model2vec_potion_base_8m_int8_hybrid")
+        self.assertEqual(experience["embedding"]["dimensions"], 352)
         self.assertTrue(experience["embedding"]["content_hash"])
         with closing(sqlite3.connect(self.db_path)) as conn:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(memory_candidates)")}
@@ -706,7 +707,7 @@ class AgentExperienceProjectionTests(unittest.TestCase):
             }
             self.assertTrue(required <= columns)
             vector = json.loads(conn.execute("SELECT embedding_json FROM memory_candidates").fetchone()[0])
-            self.assertEqual(len(vector), 96)
+            self.assertEqual(len(vector), 352)
 
     def test_real_v2_candidate_table_migrates_additively_and_reembeds(self):
         with closing(sqlite3.connect(self.db_path)) as conn, conn:
@@ -743,9 +744,9 @@ class AgentExperienceProjectionTests(unittest.TestCase):
             row = conn.execute(
                 "SELECT embedding_adapter, embedding_dimensions, embedding_json FROM memory_candidates WHERE ticket_id = 'legacy-ticket'"
             ).fetchone()
-        self.assertEqual(row[0], "local_hashing")
-        self.assertEqual(row[1], 96)
-        self.assertEqual(len(json.loads(row[2])), 96)
+        self.assertEqual(row[0], "model2vec_potion_base_8m_int8_hybrid")
+        self.assertEqual(row[1], 352)
+        self.assertEqual(len(json.loads(row[2])), 352)
 
     def test_read_only_hybrid_recall_is_agent_isolated_and_adaptive(self):
         rt = self.runtime()
@@ -885,35 +886,223 @@ class AgentExperienceProjectionTests(unittest.TestCase):
             types = {row[0] for row in conn.execute("SELECT DISTINCT link_type FROM memory_links")}
         self.assertEqual(types, {"similar_to"})
 
-    def test_optional_model2vec_requires_local_path_and_loads_lazily(self):
-        from types import SimpleNamespace
-        from ontology.embeddings import Model2VecLocalAdapter, select_vector_adapter
+    def test_experience_upsert_reconciles_stale_automatic_similarity(self):
+        rt = self.runtime()
+        rt.ingest_experience(
+            agent_id="hub:copy",
+            summary="Concise migration release notes include rollback risks.",
+            source_memory_id="stable-a",
+        )
+        second = rt.ingest_experience(
+            agent_id="hub:copy",
+            summary="Migration release notes stay concise and include rollback risks.",
+            source_memory_id="stable-b",
+            similar_threshold=0.7,
+        )["experience"]
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM memory_links").fetchone()[0], 1)
 
-        missing = self.root / "missing-model"
-        with self.assertRaises(ValueError):
-            select_vector_adapter("model2vec", model_path=missing)
+        rt.ingest_experience(
+            agent_id="hub:copy",
+            summary="Sunny picnic weather and garden flowers.",
+            source_memory_id="stable-b",
+            similar_threshold=0.7,
+        )
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            touching = conn.execute(
+                "SELECT count(*) FROM memory_links WHERE from_ticket = ? OR to_ticket = ?",
+                (second["ticket_id"], second["ticket_id"]),
+            ).fetchone()[0]
+        self.assertEqual(touching, 0, "content changes must remove stale machine-inferred edges")
 
-        model_dir = self.root / "potion-base-8M"
-        model_dir.mkdir()
-        calls = []
+    def test_expired_or_cross_scope_successor_does_not_hide_memory(self):
+        rt = self.runtime()
+        old = rt.ingest_experience(
+            agent_id="hub:deploy",
+            summary="Deploy releases after the approval checklist.",
+            source_memory_id="visible-old",
+        )["experience"]
+        newer = rt.ingest_experience(
+            agent_id="hub:deploy",
+            summary="Deploy releases after the revised approval checklist.",
+            source_memory_id="expired-new",
+        )["experience"]
+        rt.link_memory(newer["ticket_id"], old["ticket_id"], "supersedes", "Explicit schedule revision")
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute(
+                "UPDATE memory_candidates SET expiry = '2020-01-01T00:00:00+00:00' WHERE ticket_id = ?",
+                (newer["ticket_id"],),
+            )
+        result = rt.query_experience("deploy approval checklist", agent_id="hub:deploy")
+        self.assertIn(old["ticket_id"], {item["ticket_id"] for item in result["items"]})
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute(
+                "UPDATE memory_candidates SET expiry = NULL, privacy_scope = 'public' WHERE ticket_id = ?",
+                (newer["ticket_id"],),
+            )
+        malformed = rt.query_experience("deploy approval checklist", agent_id="hub:deploy")
+        self.assertIn(old["ticket_id"], {item["ticket_id"] for item in malformed["items"]})
 
-        class FakeStaticModel:
-            @classmethod
-            def from_pretrained(cls, path):
-                calls.append(path)
-                return cls()
+    def test_bundled_model2vec_runs_real_inference_with_english_and_korean_regression(self):
+        from ontology.embeddings import cosine_similarity, select_vector_adapter, vector_adapter_metadata
 
-            def encode(self, texts):
-                self.assert_payload = texts
-                return [[3.0, 4.0]]
+        adapter = select_vector_adapter("auto")
+        metadata = vector_adapter_metadata(adapter)
+        self.assertEqual(metadata["name"], "model2vec_potion_base_8m_int8_hybrid")
+        self.assertEqual(metadata["dimensions"], 352)
+        self.assertEqual(
+            metadata["asset"]["content_sha256"],
+            "fe492f69607b750142aa48d47d579b53252b3288547c27d4d0e473d6af485e1e",
+        )
+        english = adapter.embed("database migration rollback checklist")
+        digest = hashlib.sha256(
+            b"".join(struct.pack("<i", round(value * 1_000_000)) for value in english)
+        ).hexdigest()
+        self.assertEqual(digest, "78fb16e49ce5164015ea9f7a57be5149c24d7870593daf1382df0eef7f46d8b3")
+        self.assertGreater(
+            cosine_similarity(english, adapter.embed("schema migration rollback plan")),
+            cosine_similarity(english, adapter.embed("sunny picnic weather")),
+        )
 
-        with mock.patch.dict(sys.modules, {"model2vec": SimpleNamespace(StaticModel=FakeStaticModel)}):
-            adapter = Model2VecLocalAdapter(model_dir)
-            self.assertEqual(calls, [], "construction must not load or download a model")
-            self.assertEqual(adapter.embed("local only"), [0.6, 0.8])
-            self.assertEqual(calls, [str(model_dir.resolve())])
-            self.assertEqual(adapter.dimensions, 2)
-            self.assertTrue(adapter.identity.startswith("model2vec:local:potion-base-8M:"))
+        korean = adapter.embed("한국어 계약서 자동 생성")
+        self.assertEqual(len(korean), 352)
+        self.assertGreater(
+            cosine_similarity(korean, adapter.embed("계약서 생성 자동화")),
+            cosine_similarity(korean, adapter.embed("오늘 점심 김치찌개")),
+        )
+
+    def test_auto_degrades_to_hash_only_when_verified_asset_is_absent(self):
+        from ontology.embeddings import select_vector_adapter, vector_adapter_metadata
+
+        with mock.patch("ontology.embeddings.find_verified_model_asset", return_value=None):
+            adapter = select_vector_adapter("auto")
+        metadata = vector_adapter_metadata(adapter)
+        self.assertEqual(metadata["name"], "local_hashing")
+        self.assertEqual(metadata["status"], "degraded_fallback")
+        self.assertEqual(metadata["fallback_reason"], "verified_local_model2vec_asset_not_found")
+        self.assertEqual(len(adapter.embed("계약서 자동화")), 96)
+
+    def test_desktop_projection_contract_accepts_status_and_short_or_full_adapter_identity(self):
+        rt = self.runtime()
+        adapter = rt.vector_adapter
+        records = [
+            (
+                "desktop-full-identity",
+                "Always prepare a rollback checklist before a database migration.",
+                adapter.identity,
+            ),
+            (
+                "desktop-short-name",
+                "Schema migrations require a tested rollback plan.",
+                adapter.name,
+            ),
+        ]
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            for ticket, summary, adapter_value in records:
+                vector = adapter.embed(summary)
+                conn.execute(
+                    """
+                    INSERT INTO memory_candidates(
+                      ticket_id, idempotency_key, query, candidate_text, source_refs_json,
+                      reason, confidence, risk, expiry, suggested_scope, status,
+                      durable_write_enabled, agent_id, memory_kind, tags_json, salience,
+                      privacy_scope, source_memory_id, source_updated_at,
+                      embedding_adapter, embedding_dimensions, embedding_json,
+                      embedding_content_hash, created_at, updated_at
+                    ) VALUES (?, ?, '', ?, '[]', 'desktop projection fixture', 0.8, 'projection', NULL,
+                              'agent_repo', 'accepted', 0, 'hub:desktop-contract', 'experience',
+                              '["migration","rollback"]', 0.8, 'private', ?,
+                              '2026-07-15T00:00:00+00:00', ?, ?, ?, ?,
+                              '2026-07-15T00:00:00+00:00', '2026-07-15T00:00:00+00:00')
+                    """,
+                    (
+                        ticket,
+                        f"key-{ticket}",
+                        summary,
+                        ticket,
+                        adapter_value,
+                        len(vector),
+                        json.dumps(vector),
+                        hashlib.sha256(summary.encode("utf-8")).hexdigest(),
+                    ),
+                )
+        result = rt.query_experience(
+            "database migration rollback strategy",
+            agent_id="hub:desktop-contract",
+        )
+        selected = {item["ticket_id"] for item in result["items"]}
+        self.assertEqual(selected, {"desktop-full-identity", "desktop-short-name"})
+
+        projected = rt.ingest_experience(
+            agent_id="hub:desktop-contract",
+            summary="Prepare and test the rollback checklist before every database migration.",
+            source_memory_id="core-projection",
+            similar_threshold=0.7,
+        )["experience"]
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            linked = conn.execute(
+                """
+                SELECT count(*) FROM memory_links
+                WHERE link_type = 'similar_to'
+                  AND ((from_ticket = ? AND to_ticket = ?) OR (from_ticket = ? AND to_ticket = ?))
+                """,
+                (
+                    projected["ticket_id"],
+                    "desktop-full-identity",
+                    "desktop-full-identity",
+                    projected["ticket_id"],
+                ),
+            ).fetchone()[0]
+        self.assertEqual(linked, 1, "write-time relation linking must accept a legacy full identity")
+
+        reconciled = rt.relate_memory_candidates(threshold=0.35)
+        self.assertGreaterEqual(reconciled["similar_links_created"], 1)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            linked = conn.execute(
+                """
+                SELECT count(*) FROM memory_links
+                WHERE link_type = 'similar_to'
+                  AND from_ticket = 'desktop-full-identity'
+                  AND to_ticket = 'desktop-short-name'
+                """
+            ).fetchone()[0]
+        self.assertEqual(linked, 1, "batch relation linking must canonicalize short and full identities")
+
+    def test_runtime_adapter_identity_drift_reembeds_desktop_projection(self):
+        rt = self.runtime()
+        created = rt.ingest_experience(
+            agent_id="hub:drift",
+            summary="Keep a rollback plan for schema migrations.",
+            source_memory_id="drift-row",
+        )["experience"]
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            config = json.loads(
+                conn.execute(
+                    "SELECT config_json FROM runtime_adapters WHERE kind = 'vector'"
+                ).fetchone()[0]
+            )
+            config["identity"] = "stale-model-revision-and-content-sha"
+            conn.execute(
+                "UPDATE runtime_adapters SET config_json = ? WHERE kind = 'vector'",
+                (json.dumps(config),),
+            )
+            conn.execute(
+                "UPDATE memory_candidates SET embedding_dimensions = 1, embedding_json = '[0.0]' WHERE ticket_id = ?",
+                (created["ticket_id"],),
+            )
+        migrated = self.runtime()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute(
+                "SELECT embedding_adapter, embedding_dimensions, embedding_json FROM memory_candidates WHERE ticket_id = ?",
+                (created["ticket_id"],),
+            ).fetchone()
+            runtime_config = json.loads(
+                conn.execute("SELECT config_json FROM runtime_adapters WHERE kind = 'vector'").fetchone()[0]
+            )
+        self.assertEqual(row[0], migrated.vector_adapter.name)
+        self.assertEqual(row[1], 352)
+        self.assertEqual(len(json.loads(row[2])), 352)
+        self.assertEqual(runtime_config["identity"], migrated.vector_adapter.identity)
 
 
 def write_text_pdf(path: Path, text: str) -> None:

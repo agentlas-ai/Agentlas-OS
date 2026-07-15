@@ -139,21 +139,36 @@ bin/ontology ingest examples/ontology-corpus --scope internal
 
 ## Search And GraphRAG
 
-Full-text search uses SQLite FTS5. Vector search defaults to the
-`local_hashing` 96-dimensional adapter: a deterministic hashed bag-of-words
-vector that works without provider keys and without sending source text to a
-remote service.
+Full-text search uses SQLite FTS5. Vector search defaults to `auto`, which
+selects the verified bundled or installed `potion-base-8M` int8 asset. The
+dependency-free runtime reconstructs a normalized 256-dimensional Model2Vec
+WordPiece mean, concatenates an equally weighted normalized hash-96 vector for
+Korean/CJK and lexical recall, and returns one fixed 352-dimensional vector.
 
-An optional Model2Vec adapter can improve semantic quality in-process. It is
-strictly local-path-only: the model directory and the optional `model2vec`
-Python package must already be installed, and the runtime never downloads a
-model or falls back to a server embedding API.
+The tracked `agentlas-model2vec-int8-v1` payload is pinned to upstream revision
+`bf8b056651a2c21b8d2565580b8569da283cab23`, declares the MIT license, and
+verifies every payload SHA-256 plus the combined content identity before use.
+Runtime inference uses only Python's standard library. It never imports a model
+package, downloads a model, or falls back to a server embedding API. If no
+verified local asset exists, `auto` reports a `degraded_fallback` and uses the
+deterministic hash-96 adapter. Operators can explicitly select that degraded
+path with `--embedding-adapter hash`.
 
 ```bash
 bin/ontology --embedding-adapter model2vec \
-  --local-model-path /path/to/potion-base-8M \
+  --local-model-path /path/to/potion-base-8M-int8 \
   --db .agentlas/ontology-runtime.sqlite query "release policy"
+
+python3 -m ontology.model_assets verify /path/to/potion-base-8M-int8
+python3 scripts/build-model2vec-asset.py --check
 ```
+
+`AGENTLAS_MODEL2VEC_PATH` provides a verified asset override.
+`AGENTLAS_RUNTIME_HOME/models/model2vec/potion-base-8M-int8` is the installed
+runtime location. The reproducible build command downloads only the pinned
+upstream build inputs, checks their hashes, emits per-row symmetric int8 data
+and float32 little-endian scales, then verifies the release payload. Query-time
+code is always offline.
 
 `ontology query` returns more than text chunks:
 
@@ -267,8 +282,10 @@ The runtime verification covers:
 - PDF text parsing depends on `pdftotext`.
 - Image OCR uses macOS Vision first and Tesseract when available.
 - Vector search is local-only in this package. No API key is required.
-- Model2Vec selection accepts an existing filesystem path only; no model id,
-  network download, hosted embedding, or paid per-user embedding path exists.
+- Auto Model2Vec selection accepts only a manifest-verified filesystem asset.
+  No query-time model id, network download, hosted embedding, or paid per-user
+  embedding path exists. Hash-96 is a visible degraded fallback, not a silent
+  replacement for the verified bundled model.
 - Entity and relation extraction is deterministic and source-grounded. It does
   not use an LLM to infer hidden facts.
 - The local runtime stores user-selected source metadata and chunks in the

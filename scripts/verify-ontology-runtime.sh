@@ -7,6 +7,8 @@ trap 'rm -rf "$tmp"' EXIT
 
 export PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}"
 
+python3 "$root/scripts/build-model2vec-asset.py" --check
+python3 -m ontology.model_assets verify
 python3 -m unittest discover -s "$root/tests" -v
 
 db="$tmp/ontology.sqlite"

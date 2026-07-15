@@ -33,10 +33,13 @@ VECTOR_FALLBACK_SCAN_CAP = 5_000
 MIN_VECTOR_SCORE = 0.05
 EXPERIENCE_SCAN_CAP = 5_000
 MIN_EXPERIENCE_VECTOR_SCORE = 0.08
+MODEL2VEC_MIN_VECTOR_SCORE = 0.45
+VECTOR_RELATIVE_FLOOR = 0.72
 DEFAULT_EXPERIENCE_TOKEN_BUDGET = 800
 DEFAULT_EXPERIENCE_TOP_K = 8
 ACTIVE_EXPERIENCE_STATUSES = (
     "active",
+    "accepted",
     "approved",
     "approved_pending_curator",
     "promoted",
@@ -63,10 +66,11 @@ class RuntimeConfig:
     hooks_run_locally: bool = False
     cloud_safe_scopes: tuple[str, ...] = ("public", "internal")
     rerank_candidate_limit: int = 20
-    # Hash-96 is the zero-install baseline. Model2Vec is opt-in and must point
-    # at an existing local model directory; the selector never downloads.
+    # Auto uses the verified bundled/installed Model2Vec int8 hybrid. Hash-96
+    # is only a visible degraded fallback when no verified asset exists. Neither
+    # path downloads a model or calls a server embedding API at runtime.
     vector_adapter: VectorAdapter | None = None
-    vector_adapter_name: str = "hash"
+    vector_adapter_name: str = "auto"
     local_model_path: Path | str | None = None
 
 
@@ -656,7 +660,9 @@ class OntologyRuntime:
                 WHERE ml.to_ticket = m.ticket_id
                   AND ml.link_type = 'supersedes'
                   AND newer.agent_id = m.agent_id
+                  AND newer.privacy_scope = m.privacy_scope
                   AND newer.status IN ({status_marks})
+                  AND (newer.expiry IS NULL OR newer.expiry > ?)
               )
             ORDER BY m.updated_at DESC, m.ticket_id
             LIMIT ?
@@ -667,6 +673,7 @@ class OntologyRuntime:
                 *ACTIVE_EXPERIENCE_STATUSES,
                 utc_now(),
                 *ACTIVE_EXPERIENCE_STATUSES,
+                utc_now(),
                 EXPERIENCE_SCAN_CAP,
             ),
         ).fetchall()
@@ -687,14 +694,23 @@ class OntologyRuntime:
                 # Legacy rows remain readable without mutating during recall.
                 stored_vector = self.vector_adapter.embed(row["candidate_text"])
                 stored_adapter = self.vector_adapter.name
-            compatible = stored_adapter == self.vector_adapter.name and len(stored_vector) == len(query_vector)
+            compatible = self._vector_adapter_matches(stored_adapter) and len(stored_vector) == len(query_vector)
             semantic = max(0.0, cosine_similarity(query_vector, stored_vector)) if compatible else 0.0
-            if lexical <= 0.0 and semantic < MIN_EXPERIENCE_VECTOR_SCORE:
-                continue
             item["lexical_score"] = round(lexical, 6)
             item["vector_score"] = round(semantic, 6)
             item["token_estimate"] = estimate_tokens(item["candidate_text"])
             scored.append(item)
+        best_semantic = max((item["vector_score"] for item in scored), default=0.0)
+        semantic_floor = self._minimum_vector_score(MIN_EXPERIENCE_VECTOR_SCORE)
+        scored = [
+            item
+            for item in scored
+            if item["lexical_score"] > 0.0
+            or (
+                item["vector_score"] >= semantic_floor
+                and item["vector_score"] >= best_semantic * VECTOR_RELATIVE_FLOOR
+            )
+        ]
         if not scored:
             result = self._empty_experience_result(question, agent_id, token_budget)
             result["eligible_count"] = len(rows)
@@ -708,7 +724,7 @@ class OntologyRuntime:
         vector_order = [
             item["ticket_id"]
             for item in sorted(scored, key=lambda value: (value["vector_score"], value["updated_at"]), reverse=True)
-            if item["vector_score"] >= MIN_EXPERIENCE_VECTOR_SCORE
+            if item["vector_score"] >= semantic_floor
         ]
         lexical_rank = {ticket: index for index, ticket in enumerate(lexical_order)}
         vector_rank = {ticket: index for index, ticket in enumerate(vector_order)}
@@ -824,21 +840,33 @@ class OntologyRuntime:
         vector: list[float],
         threshold: float,
     ) -> list[dict[str, Any]]:
-        rows = conn.execute(
+        # Reconcile this row's machine-inferred neighborhood on every upsert.
+        # Explicit curator edges have arbitrary reasons and are preserved.
+        conn.execute(
             """
+            DELETE FROM memory_links
+            WHERE link_type = 'similar_to'
+              AND (from_ticket = ? OR to_ticket = ?)
+              AND (reason LIKE 'local vector cosine %' OR reason LIKE 'token Jaccard %')
+            """,
+            (ticket_id, ticket_id),
+        )
+        status_marks = ", ".join(["?"] * len(ACTIVE_EXPERIENCE_STATUSES))
+        rows = conn.execute(
+            f"""
             SELECT ticket_id, embedding_adapter, embedding_json
             FROM memory_candidates
             WHERE ticket_id != ? AND agent_id = ? AND privacy_scope = ?
               AND memory_kind != 'candidate'
-              AND status IN ('active', 'approved', 'approved_pending_curator', 'promoted')
+              AND status IN ({status_marks})
             ORDER BY updated_at DESC
             LIMIT ?
             """,
-            (ticket_id, agent_id, privacy_scope, EXPERIENCE_SCAN_CAP),
+            (ticket_id, agent_id, privacy_scope, *ACTIVE_EXPERIENCE_STATUSES, EXPERIENCE_SCAN_CAP),
         ).fetchall()
         links: list[dict[str, Any]] = []
         for row in rows:
-            if row["embedding_adapter"] != self.vector_adapter.name:
+            if not self._vector_adapter_matches(row["embedding_adapter"]):
                 continue
             other = json_loads(row["embedding_json"], [])
             if len(other) != len(vector):
@@ -959,6 +987,8 @@ class OntologyRuntime:
             ).fetchall()
             pairs_examined = 0
             links_created = 0
+            links_removed = 0
+            valid_pairs: set[tuple[str, str]] = set()
             for i in range(len(rows)):
                 left = rows[i]
                 left_vector = json_loads(left["embedding_json"], [])
@@ -976,24 +1006,55 @@ class OntologyRuntime:
                         right_vector = self.vector_adapter.embed(right["candidate_text"])
                     left_adapter = left["embedding_adapter"] or self.vector_adapter.name
                     right_adapter = right["embedding_adapter"] or self.vector_adapter.name
-                    if left_adapter != right_adapter or len(left_vector) != len(right_vector):
+                    adapters_match = left_adapter == right_adapter or (
+                        self._vector_adapter_matches(left_adapter)
+                        and self._vector_adapter_matches(right_adapter)
+                    )
+                    if not adapters_match or len(left_vector) != len(right_vector):
                         continue
                     score = max(0.0, cosine_similarity(left_vector, right_vector))
                     if score < threshold:
                         continue
                     a, b = sorted((left["ticket_id"], right["ticket_id"]))
+                    valid_pairs.add((a, b))
+                    reason = f"local vector cosine {round(score, 6)} >= threshold {threshold}"
                     written = self._write_memory_link(
                         conn,
                         from_ticket=a,
                         to_ticket=b,
                         link_type="similar_to",
                         score=round(score, 4),
-                        reason=f"local vector cosine {round(score, 6)} >= threshold {threshold}",
+                        reason=reason,
                         require_exists=False,
                         _now=now,
                     )
                     if written.get("created"):
                         links_created += 1
+                    else:
+                        conn.execute(
+                            "UPDATE memory_links SET score = ?, reason = ? WHERE link_id = ?",
+                            (round(score, 4), reason, written["link_id"]),
+                        )
+            scanned_ids = [row["ticket_id"] for row in rows]
+            if scanned_ids:
+                marks = ", ".join(["?"] * len(scanned_ids))
+                automatic = conn.execute(
+                    f"""
+                    SELECT link_id, from_ticket, to_ticket
+                    FROM memory_links
+                    WHERE link_type = 'similar_to'
+                      AND from_ticket IN ({marks}) AND to_ticket IN ({marks})
+                      AND (reason LIKE 'local vector cosine %' OR reason LIKE 'token Jaccard %')
+                    """,
+                    (*scanned_ids, *scanned_ids),
+                ).fetchall()
+                for link in automatic:
+                    pair = tuple(sorted((link["from_ticket"], link["to_ticket"])))
+                    if pair not in valid_pairs:
+                        links_removed += conn.execute(
+                            "DELETE FROM memory_links WHERE link_id = ?",
+                            (link["link_id"],),
+                        ).rowcount
         return {
             "status": "ok",
             "threshold": threshold,
@@ -1001,6 +1062,7 @@ class OntologyRuntime:
             "candidates_scanned": len(rows),
             "pairs_examined": pairs_examined,
             "similar_links_created": links_created,
+            "similar_links_removed": links_removed,
         }
 
     def link_memory(self, from_ticket: str, to_ticket: str, link_type: str, reason: str, score: float = 1.0) -> dict[str, Any]:
@@ -1579,6 +1641,8 @@ class OntologyRuntime:
         query_vector = self.vector_adapter.embed(question)
         for chunk_id, item in pool.items():
             item["vector_score"] = max(0.0, cosine_similarity(query_vector, vectors.get(chunk_id, [])))
+        best_vector_score = max((item["vector_score"] for item in pool.values()), default=0.0)
+        vector_floor = self._minimum_vector_score(MIN_VECTOR_SCORE)
         vector_order = sorted(pool, key=lambda chunk_id: pool[chunk_id]["vector_score"], reverse=True)
         fts_rank = {chunk_id: index for index, chunk_id in enumerate(fts_order)}
         vector_rank = {chunk_id: index for index, chunk_id in enumerate(vector_order)}
@@ -1586,8 +1650,11 @@ class OntologyRuntime:
         for chunk_id, item in pool.items():
             if (
                 chunk_id not in fts_rank
-                and item["vector_score"] < MIN_VECTOR_SCORE
                 and item.get("full_text_score", 0.0) <= 0.0
+                and (
+                    item["vector_score"] < vector_floor
+                    or item["vector_score"] < best_vector_score * VECTOR_RELATIVE_FLOOR
+                )
             ):
                 continue
             item["score"] = round(
@@ -1673,6 +1740,14 @@ class OntologyRuntime:
         if not query_tokens:
             return 0.0
         return len(query_tokens & text_tokens) / len(query_tokens)
+
+    def _minimum_vector_score(self, default: float) -> float:
+        if self.vector_adapter.name == "model2vec_potion_base_8m_int8_hybrid":
+            return max(default, MODEL2VEC_MIN_VECTOR_SCORE)
+        return default
+
+    def _vector_adapter_matches(self, stored_adapter: str | None) -> bool:
+        return stored_adapter in {self.vector_adapter.name, self.vector_adapter.identity}
 
     def _related_entities(self, conn: sqlite3.Connection, question: str, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         chunk_ids = [chunk["chunk_id"] for chunk in chunks]
