@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.33 - 2026-07-15
+
+- **Hub task forces no longer dead-end when discovery has no callable,
+  intent-fit bundle.** Composite routes preserve the Hub-produced stage plan
+  and materialize a local Stormbreaker temporary orchestrator with explicit
+  core plan, build, and verify workers. Off-domain callable and install-only
+  marketplace hits remain visible as discovery evidence but are never borrowed
+  merely to avoid the deterministic core fallback.
+- **Core-only orchestration has an honest execution contract.** It exposes no
+  fake `hep-call` command or borrowed-agent directive, carries artifacts through
+  the same execution fabric, and remains blocked until the final Storm verifier
+  passes.
+
 ## v1.1.32 - 2026-07-15
 
 - **Hub-only Storm routes now execute instead of stopping at candidate cards.**

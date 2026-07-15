@@ -473,6 +473,49 @@ def test_hub_task_force_rejects_off_domain_callable_slugs(tmp_path, monkeypatch)
     assert "travel-concierge-hq" not in [item["agent"] for item in result["execution"]["recommended_agents"]]
 
 
+def test_hub_task_force_uses_core_workers_when_no_intent_fit_bundle_exists(tmp_path, monkeypatch):
+    home = setup_home(tmp_path)
+
+    def fake_search_hub(query_tokens, home=None, approved=False, scope="network"):
+        return {
+            "status": "ok",
+            "scope": scope,
+            "query": " ".join(query_tokens),
+            "results": [
+                {
+                    "slug": "travel-concierge-hq",
+                    "nameEn": "Travel Concierge HQ",
+                    "kind": "cloud-callable",
+                    "callable": True,
+                },
+                {
+                    "slug": "business-plan-hq",
+                    "nameEn": "Business Plan HQ",
+                    "kind": "install-only",
+                    "callable": False,
+                },
+            ],
+        }
+
+    monkeypatch.setattr("agentlas_cloud.networking.router.search_hub", fake_search_hub)
+    result = route_request(
+        "plan, implement, and verify an IPv4-aware regex terminal benchmark end-to-end",
+        home=home,
+        use_hub=True,
+        hub_only=True,
+    )
+
+    assert result["action"] == "hub_candidates"
+    assert result["task_force"]["temporary_tf"] is True
+    assert result["execution"]["formation"] == "temporary_orchestrator"
+    assert result["execution"]["recommended_agents"] == []
+    assert result["execution"]["core_stages"] == ["plan", "build", "verify"]
+    assert result["execution"]["primary_agent"] == "agentlas:stormbreaker-plan"
+    assert result["execution"]["borrow_command"] is None
+    assert "hep-call" not in result["execution"]["directive"]
+    assert "travel-concierge-hq" not in result["execution"]["directive"]
+
+
 def test_hub_only_uses_whole_word_query_tokens(tmp_path, monkeypatch):
     home = setup_home(tmp_path)
     seen = {}

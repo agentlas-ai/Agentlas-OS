@@ -633,10 +633,13 @@ def _byom_execution_plan(
         elif borrowable:
             recommended.append({"stage": "direct", "agent": str(borrowable[0].get("slug"))})
             alternatives = [str(c.get("slug")) for c in borrowable[1:5]]
-    if not recommended:
+    # A composite Hub route must still be executable when discovery found
+    # results but none are both callable and intent-fit.  Stormbreaker owns a
+    # deterministic core worker for every stage, so preserve the stage plan and
+    # let those core workers form the temporary orchestrator instead of
+    # returning a task_force with execution=null.
+    if not recommended and not stages:
         return None
-
-    primary = recommended[0]["agent"]
     # 명시 지목이 2개+면 이건 "여러 전문가가 협업하는 하나의 산출물" — 실행 모델이 임시
     # 오케스트레이터 역할(plan→dispatch→synthesize)을 맡도록 directive를 전환한다. CLI에는
     # 별도 오케스트레이터 세션이 없으므로(hep-storm --executor-command 없이는) 베이스 모델이
@@ -647,19 +650,34 @@ def _byom_execution_plan(
         if isinstance(stage, dict)
         and not any(item.get("stage") == stage.get("stage") for item in recommended)
     ]
-    multi = len(recommended) + len(core_stages) >= 2
-    directive = (
-        "Resolve this request by BORROWING the best-fit Hub agent(s) and running them "
-        "LOCALLY, grounded in the current project. Start from `primary_agent`/"
-        "`recommended_agents`, but if the top pick is clearly off-domain, choose a better "
-        "one from `alternatives` (the Hub ranks by keyword relevance and can mis-rank a "
-        "sparse query). Use `hep-call` (it fetches the BYOM runtime bundle and attaches "
-        "project_dir). Each borrowed agent must attach to this repo's actual codebase + "
-        "memory before producing output. Do NOT call agents context-less in the cloud, and "
-        "do NOT skip the network to improvise a local answer yourself — run the borrowed "
-        "specialist attached to this project."
+    primary = (
+        recommended[0]["agent"]
+        if recommended
+        else f"agentlas:stormbreaker-{core_stages[0]}"
     )
-    if multi:
+    multi = len(recommended) + len(core_stages) >= 2
+    if recommended:
+        directive = (
+            "Resolve this request by BORROWING the best-fit Hub agent(s) and running them "
+            "LOCALLY, grounded in the current project. Start from `primary_agent`/"
+            "`recommended_agents`, but if the top pick is clearly off-domain, choose a better "
+            "one from `alternatives` (the Hub ranks by keyword relevance and can mis-rank a "
+            "sparse query). Use `hep-call` (it fetches the BYOM runtime bundle and attaches "
+            "project_dir). Each borrowed agent must attach to this repo's actual codebase + "
+            "memory before producing output. Do NOT call agents context-less in the cloud, and "
+            "do NOT skip the network to improvise a local answer yourself — run the borrowed "
+            "specialist attached to this project."
+        )
+    else:
+        directive = (
+            "Hub routing found no callable intent-fit BYOM bundle for these stages. Preserve "
+            "the Hub-produced task-force plan and execute every entry in `core_stages` with "
+            "the local Agentlas Stormbreaker workers. The local host model is the temporary "
+            "orchestrator: plan, execute, hand artifacts forward, independently verify, and "
+            "report success only after the final gate passes. Do not borrow off-domain or "
+            "install-only Hub results merely to avoid the explicit core fallback."
+        )
+    if multi and recommended:
         directive += (
             " The operator NAMED MULTIPLE specialists, so YOU are their temporary "
             "orchestrator — do not just run each in isolation. (1) PLAN how this ONE "
@@ -683,7 +701,11 @@ def _byom_execution_plan(
         "alternatives": alternatives,
         "project_dir": str(project),
         "attach": ["project_codebase", "agentlas_memory", "super_ontology"],
-        "borrow_command": f'hephaestus hep-call "{primary}" "<request>" --project {project}',
+        "borrow_command": (
+            f'hephaestus hep-call "{primary}" "<request>" --project {project}'
+            if recommended
+            else None
+        ),
         "directive": directive,
     }
 

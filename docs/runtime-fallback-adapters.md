@@ -67,7 +67,7 @@ First-use memory behavior: whichever runtime calls the router first triggers
 `network init` (also run by the installer). All runtimes reuse the project
 ontology plus the same agent-scoped, rebuildable SQLite projections under
 `~/.agentlas/networking/hub-agents/`; no runtime owns a divergent memory copy.
-The v1.1.32 install verifies the bundled local Model2Vec asset as the primary
+The v1.1.33 install verifies the bundled local Model2Vec asset as the primary
 352-dimensional hybrid embedding path. If that asset is absent or rejected,
 the capsule reports `retrieval=degraded_hash` and uses local hash-96; it never
 downloads a model or sends text to a server.
