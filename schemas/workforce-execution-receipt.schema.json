@@ -1,74 +1,391 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agentlas.ai/schemas/workforce-execution-receipt.schema.json",
-  "title": "Agentlas Workforce Nested Execution Receipt",
+  "title": "Agentlas Workforce Direct and Nested Execution Receipt",
   "type": "object",
-  "additionalProperties": true,
+  "additionalProperties": false,
   "required": [
-    "schemaVersion", "executionId", "workOrderId", "selectionReceiptId", "preparationReceiptId",
-    "orchestrator", "planner", "workers", "synthesis", "verifier", "status"
+    "schemaVersion", "executionId", "workOrderId", "selectionReceiptId",
+    "preparationReceiptId", "executionContextDigest", "orchestrator", "planner",
+    "capabilityBindingPlan",
+    "workers", "nestedExecutions", "synthesis", "verifier", "status"
   ],
   "properties": {
-    "schemaVersion": { "const": "agentlas.workforce-execution-receipt.v1" },
+    "schemaVersion": { "const": "agentlas.workforce-execution-receipt.v2" },
     "executionId": { "$ref": "#/$defs/id" },
     "workOrderId": { "$ref": "#/$defs/id" },
     "selectionReceiptId": { "$ref": "#/$defs/id" },
     "preparationReceiptId": { "$ref": "#/$defs/id" },
+    "executionContextDigest": { "$ref": "#/$defs/hash" },
     "orchestrator": { "$ref": "#/$defs/invocation" },
-    "planner": {
+    "planner": { "$ref": "#/$defs/plannerInvocation" },
+    "capabilityBindingPlan": { "$ref": "#/$defs/capabilityBindingPlan" },
+    "workers": {
+      "type": "array", "minItems": 1, "maxItems": 64,
+      "items": { "$ref": "#/$defs/rosterExecution" }
+    },
+    "nestedExecutions": {
+      "type": "array", "maxItems": 64,
+      "items": { "$ref": "#/$defs/nestedExecution" }
+    },
+    "synthesis": { "$ref": "#/$defs/invocation" },
+    "verifier": { "$ref": "#/$defs/verifierInvocation" },
+    "status": { "enum": ["passed", "failed", "blocked"] }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$"
+    },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "toolId": {
+      "type": "string", "minLength": 1, "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.$:/@+~-]{0,127}$"
+    },
+    "ids": {
+      "type": "array", "maxItems": 256, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
+    "effort": {
+      "type": ["string", "null"],
+      "enum": [null, "none", "low", "medium", "high", "xhigh", "max"]
+    },
+    "invocationProperties": {
+      "type": "object",
+      "required": [
+        "invocationId", "modelId", "runtimeId", "provider", "requestedEffort",
+        "appliedEffort", "effortEvidence", "status"
+      ],
+      "properties": {
+        "invocationId": { "$ref": "#/$defs/id" },
+        "modelId": { "$ref": "#/$defs/id" },
+        "runtimeId": { "$ref": "#/$defs/id" },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "requestedEffort": { "$ref": "#/$defs/effort" },
+        "appliedEffort": { "$ref": "#/$defs/effort" },
+        "effortEvidence": { "enum": ["runner-reported", "runtime-fixed", "not-observable"] },
+        "status": { "enum": ["completed", "failed", "blocked"] }
+      }
+    },
+    "effortRules": {
       "allOf": [
-        { "$ref": "#/$defs/invocation" },
+        {
+          "if": { "properties": { "effortEvidence": { "const": "not-observable" } } },
+          "then": { "properties": { "appliedEffort": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "effortEvidence": { "const": "runtime-fixed" } } },
+          "then": {
+            "properties": {
+              "requestedEffort": { "type": "null" },
+              "appliedEffort": { "type": "string" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "effortEvidence": { "const": "runner-reported" } } },
+          "then": { "properties": { "appliedEffort": { "type": "string" } } }
+        }
+      ]
+    },
+    "invocation": {
+      "allOf": [{ "$ref": "#/$defs/invocationProperties" }, { "$ref": "#/$defs/effortRules" }],
+      "unevaluatedProperties": false
+    },
+    "plannerInvocation": {
+      "allOf": [
+        { "$ref": "#/$defs/invocationProperties" },
+        { "$ref": "#/$defs/effortRules" },
         {
           "type": "object",
-          "required": ["parseSuccess", "fallbackUsed"],
+          "required": [
+            "parseSuccess", "fallbackUsed", "toolInventoryDigest",
+            "capabilityBindingPlanDigest"
+          ],
           "properties": {
             "parseSuccess": { "type": "boolean" },
-            "fallbackUsed": { "type": "boolean" }
+            "fallbackUsed": { "type": "boolean" },
+            "toolInventoryDigest": { "$ref": "#/$defs/hash" },
+            "capabilityBindingPlanDigest": { "$ref": "#/$defs/hash" }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "verifierInvocation": {
+      "allOf": [
+        { "$ref": "#/$defs/invocationProperties" },
+        { "$ref": "#/$defs/effortRules" },
+        {
+          "type": "object", "required": ["verdict"],
+          "properties": { "verdict": { "enum": ["pass", "fail"] } }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "capabilityBindingPlan": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "schemaVersion", "decisionOwner", "plannerInvocationId",
+        "executionContextDigest", "toolInventoryDigest", "inventory",
+        "bindingPlanDigest"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "agentlas.workforce-capability-binding-plan.v1" },
+        "decisionOwner": { "const": "host_llm" },
+        "plannerInvocationId": { "$ref": "#/$defs/id" },
+        "executionContextDigest": { "$ref": "#/$defs/hash" },
+        "toolInventoryDigest": { "$ref": "#/$defs/hash" },
+        "inventory": {
+          "type": "array", "maxItems": 256,
+          "items": { "$ref": "#/$defs/boundCapabilityRow" }
+        },
+        "bindingPlanDigest": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "boundCapabilityRow": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "slotId", "agentReleaseId", "permissionPolicyDigest", "toolId",
+        "provider", "capabilityIds", "status"
+      ],
+      "properties": {
+        "slotId": { "$ref": "#/$defs/id" },
+        "agentReleaseId": { "$ref": "#/$defs/id" },
+        "permissionPolicyDigest": { "$ref": "#/$defs/hash" },
+        "toolId": { "$ref": "#/$defs/toolId" },
+        "provider": { "enum": ["builtin", "mcp"] },
+        "capabilityIds": {
+          "type": "array", "minItems": 1, "maxItems": 256,
+          "uniqueItems": true, "items": { "$ref": "#/$defs/id" }
+        },
+        "status": { "const": "bound" }
+      }
+    },
+    "permissionEnforcement": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "permissionPolicyDigest", "enforcementMode", "status", "approvalReceiptIds",
+        "enforcementEvidence"
+      ],
+      "properties": {
+        "permissionPolicyDigest": { "$ref": "#/$defs/hash" },
+        "enforcementMode": { "enum": ["native-sandbox", "no-authority-sandbox", "zero-tools"] },
+        "status": { "const": "enforced" },
+        "enforcementEvidence": {
+          "type": "object", "additionalProperties": false,
+          "required": [
+            "runtimeKind", "runtimeVersion", "sandboxMode", "toolInventory",
+            "disabledCapabilities", "ephemeral", "ignoredUserConfig", "ignoredRules",
+            "toolInventoryDigest", "grantedToolIds"
+          ],
+          "properties": {
+            "runtimeKind": { "$ref": "#/$defs/id" },
+            "runtimeVersion": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
+            "sandboxMode": { "enum": ["read-only", "no-filesystem", "host-native", "not-applicable"] },
+            "toolInventory": { "enum": ["empty", "non-authoritative", "policy-filtered"] },
+            "disabledCapabilities": {
+              "type": "array", "maxItems": 128, "uniqueItems": true,
+              "items": { "$ref": "#/$defs/id" }
+            },
+            "ephemeral": { "type": "boolean" },
+            "ignoredUserConfig": { "type": "boolean" },
+            "ignoredRules": { "type": "boolean" },
+            "toolInventoryDigest": { "$ref": "#/$defs/hash" },
+            "grantedToolIds": {
+              "type": "array", "maxItems": 128, "uniqueItems": true,
+              "items": { "$ref": "#/$defs/toolId" }
+            }
+          }
+        },
+        "approvalReceiptIds": {
+          "type": "array", "maxItems": 64, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enforcementMode": { "enum": ["no-authority-sandbox", "zero-tools"] }
+            }
+          },
+          "then": { "properties": { "approvalReceiptIds": { "maxItems": 0 } } }
+        },
+        {
+          "if": { "properties": { "enforcementMode": { "const": "zero-tools" } } },
+          "then": {
+            "properties": {
+              "enforcementEvidence": {
+                "properties": {
+                  "toolInventory": { "const": "empty" },
+                  "grantedToolIds": { "maxItems": 0 },
+                  "ephemeral": { "const": true },
+                  "ignoredUserConfig": { "const": true },
+                  "ignoredRules": { "const": true }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "enforcementMode": { "const": "no-authority-sandbox" } } },
+          "then": {
+            "properties": {
+              "enforcementEvidence": {
+                "properties": {
+                  "sandboxMode": { "enum": ["read-only", "no-filesystem"] },
+                  "toolInventory": { "enum": ["empty", "non-authoritative"] },
+                  "disabledCapabilities": { "minItems": 1 },
+                  "grantedToolIds": { "maxItems": 0 },
+                  "ephemeral": { "const": true },
+                  "ignoredUserConfig": { "const": true },
+                  "ignoredRules": { "const": true }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "enforcementMode": { "const": "native-sandbox" } } },
+          "then": {
+            "properties": {
+              "enforcementEvidence": {
+                "properties": { "toolInventory": { "const": "policy-filtered" } }
+              }
+            }
           }
         }
       ]
     },
-    "workers": {
-      "type": "array",
-      "minItems": 1,
-      "maxItems": 64,
-      "items": {
-        "allOf": [
-          { "$ref": "#/$defs/invocation" },
-          {
-            "type": "object",
-            "required": ["slotId", "agentReleaseId", "packageHash", "contentDigest", "handoffArtifactRefs"],
+    "permissionInvocationProperties": {
+      "type": "object", "required": ["permissionEnforcement"],
+      "properties": { "permissionEnforcement": { "$ref": "#/$defs/permissionEnforcement" } }
+    },
+    "permissionInvocation": {
+      "allOf": [
+        { "$ref": "#/$defs/invocationProperties" },
+        { "$ref": "#/$defs/effortRules" },
+        { "$ref": "#/$defs/permissionInvocationProperties" }
+      ],
+      "unevaluatedProperties": false
+    },
+    "managerPlanInvocation": {
+      "allOf": [
+        { "$ref": "#/$defs/invocationProperties" },
+        { "$ref": "#/$defs/effortRules" },
+        { "$ref": "#/$defs/permissionInvocationProperties" },
+        {
+          "type": "object",
+          "required": ["parseSuccess", "fallbackUsed", "plannedWorkerIds"],
+          "properties": {
+            "parseSuccess": { "type": "boolean" },
+            "fallbackUsed": { "type": "boolean" },
+            "plannedWorkerIds": { "$ref": "#/$defs/ids" }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "nestedWorkerInvocation": {
+      "allOf": [
+        { "$ref": "#/$defs/invocationProperties" },
+        { "$ref": "#/$defs/effortRules" },
+        { "$ref": "#/$defs/permissionInvocationProperties" },
+        {
+          "type": "object", "required": ["id"],
+          "properties": { "id": { "$ref": "#/$defs/id" } }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "rosterExecution": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "slotId", "agentReleaseId", "entityKind", "packageHash", "contentDigest",
+        "bundleDigest", "permissionPolicyDigest", "executionGraphDigest", "status",
+        "handoffArtifactRefs", "capabilityBindingPlanDigest", "capabilityBindings",
+        "executionMode", "directInvocation",
+        "nestedExecutionId"
+      ],
+      "properties": {
+        "slotId": { "$ref": "#/$defs/id" },
+        "agentReleaseId": { "$ref": "#/$defs/id" },
+        "entityKind": { "enum": ["agent", "team"] },
+        "packageHash": { "$ref": "#/$defs/hash" },
+        "contentDigest": { "$ref": "#/$defs/hash" },
+        "bundleDigest": { "$ref": "#/$defs/hash" },
+        "permissionPolicyDigest": { "$ref": "#/$defs/hash" },
+        "executionGraphDigest": { "oneOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }] },
+        "status": { "enum": ["completed", "failed", "blocked"] },
+        "handoffArtifactRefs": {
+          "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "capabilityBindingPlanDigest": { "$ref": "#/$defs/hash" },
+        "capabilityBindings": {
+          "type": "array", "maxItems": 256,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["capabilityId", "provider", "toolId", "source", "status"],
             "properties": {
-              "slotId": { "$ref": "#/$defs/id" },
-              "agentReleaseId": { "$ref": "#/$defs/id" },
-              "packageHash": { "$ref": "#/$defs/hash" },
-              "contentDigest": { "$ref": "#/$defs/hash" },
-              "handoffArtifactRefs": { "$ref": "#/$defs/strings" }
+              "capabilityId": { "$ref": "#/$defs/id" },
+              "provider": { "enum": ["builtin", "mcp"] },
+              "toolId": { "$ref": "#/$defs/toolId" },
+              "source": { "const": "host_inventory" },
+              "status": { "const": "bound" }
             }
           }
-        ]
-      }
-    },
-    "synthesis": { "$ref": "#/$defs/invocation" },
-    "verifier": {
-      "allOf": [
-        { "$ref": "#/$defs/invocation" },
-        { "type": "object", "required": ["verdict"], "properties": { "verdict": { "enum": ["pass", "fail"] } } }
+        },
+        "executionMode": { "enum": ["direct", "nested"] },
+        "directInvocation": {
+          "oneOf": [{ "$ref": "#/$defs/permissionInvocation" }, { "type": "null" }]
+        },
+        "nestedExecutionId": {
+          "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "entityKind": { "const": "agent" },
+            "executionMode": { "const": "direct" },
+            "executionGraphDigest": { "type": "null" },
+            "directInvocation": { "$ref": "#/$defs/permissionInvocation" },
+            "nestedExecutionId": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "entityKind": { "const": "team" },
+            "executionMode": { "const": "nested" },
+            "executionGraphDigest": { "$ref": "#/$defs/hash" },
+            "directInvocation": { "type": "null" },
+            "nestedExecutionId": { "$ref": "#/$defs/id" }
+          }
+        }
       ]
     },
-    "status": { "enum": ["passed", "failed", "blocked"] }
-  },
-  "$defs": {
-    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
-    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "strings": { "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } },
-    "invocation": {
-      "type": "object",
-      "required": ["invocationId", "modelId", "status"],
+    "nestedExecution": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "nestedExecutionId", "slotId", "agentReleaseId", "bundleDigest",
+        "permissionPolicyDigest", "executionGraphDigest", "managerPlan", "workers",
+        "managerSynthesis", "status"
+      ],
       "properties": {
-        "invocationId": { "$ref": "#/$defs/id" },
-        "modelId": { "$ref": "#/$defs/id" },
-        "provider": { "type": "string" },
+        "nestedExecutionId": { "$ref": "#/$defs/id" },
+        "slotId": { "$ref": "#/$defs/id" },
+        "agentReleaseId": { "$ref": "#/$defs/id" },
+        "bundleDigest": { "$ref": "#/$defs/hash" },
+        "permissionPolicyDigest": { "$ref": "#/$defs/hash" },
+        "executionGraphDigest": { "$ref": "#/$defs/hash" },
+        "managerPlan": { "$ref": "#/$defs/managerPlanInvocation" },
+        "workers": {
+          "type": "array", "minItems": 1, "maxItems": 32,
+          "items": { "$ref": "#/$defs/nestedWorkerInvocation" }
+        },
+        "managerSynthesis": { "$ref": "#/$defs/permissionInvocation" },
         "status": { "enum": ["completed", "failed", "blocked"] }
       }
     }

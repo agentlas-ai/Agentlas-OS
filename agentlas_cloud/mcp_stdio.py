@@ -18,7 +18,7 @@ import sys
 from typing import Any, Mapping
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.43"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.44"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -382,11 +382,41 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         "workforce.validate_selection",
         "workforce.prepare_execution",
     }:
+        from .workforce import validate_hub_work_order_boundary
         from .networking.hub_client import call_hub_tool
 
         # The local MCP surface is a transparent authenticated bridge.  The
         # Hub owns catalog state; Core must not reconstruct a different team or
         # fall back to lexical cards if the workforce service refuses a call.
+        # Privacy validation is the sole exception: it is local, deterministic,
+        # non-mutating, and must complete before the first outbound byte.
+        work_order = arguments.get("workOrder")
+        if not isinstance(work_order, Mapping):
+            return {
+                "action": name,
+                "status": "rejected",
+                "error": "work_order_hub_boundary_rejected",
+                "repairable": True,
+                "hubCalls": 0,
+                "boundary": {
+                    "schemaVersion": "agentlas.workforce-hub-boundary.v1",
+                    "status": "rejected",
+                    "repairable": True,
+                    "mutation": "none",
+                    "workOrderDigest": None,
+                    "issues": [{"path": "workOrder", "code": "hub_work_order_invalid"}],
+                },
+            }
+        boundary = validate_hub_work_order_boundary(work_order)
+        if boundary["status"] != "accepted":
+            return {
+                "action": name,
+                "status": "rejected",
+                "error": "work_order_hub_boundary_rejected",
+                "repairable": True,
+                "hubCalls": 0,
+                "boundary": boundary,
+            }
         return call_hub_tool(name, arguments)
     if name == "hephaestus_route":
         allow_local_routing = bool(arguments.get("allow_local_routing", False))

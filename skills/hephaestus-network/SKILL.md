@@ -40,10 +40,17 @@ entry per materially distinct responsibility. Each slot identifies:
 
 Do not create decorative roles. A single specialist is valid for a genuinely
 single-role task; a composite task should become a real temporary task force.
+Executable slots allow only `agent` or `team`; `group` is discovery-only until
+an authoritative group execution contract exists.
 
 ## 2. Retrieve the menu, then make the LLM decision
 
-Call `workforce.search_candidates` with `{ "workOrder": ... }`. The response is
+Before calling Hub, run the installed deterministic WorkOrder boundary over
+only `taskBrief` and slot `title`/`task`. A path, personal/account identifier,
+credential URL, or secret-like value returns path/class-only repair evidence
+and `hubCalls=0`; never trust the model's `redacted=true` assertion, mutate the
+object, or echo the rejected value. Call `workforce.search_candidates` with
+`{ "workOrder": ... }` only after that boundary accepts. The response is
 a broad, content-only eligible set grouped by slot. Read the exact roles,
 skills, MCP tools, inputs/outputs, authority, eval evidence, communities,
 release version, package hash, and content digest.
@@ -68,16 +75,21 @@ selection. Re-plan on rejection. The validator may reject constraints,
 cardinality, cycles, drift, or out-of-menu releases; it must never pick for you.
 
 Call `workforce.prepare_execution` only after acceptance. Preparation must
-return `agentlas.workforce-execution-plan.v4`, status `prepared`, an exact
+return `agentlas.workforce-execution-plan.v5`, status `prepared`, an exact
 `preparationReceiptId`, and an `executionRoster` whose release version,
 package hash, and content digest match the candidate set. It returns BYOM
 `directiveBundle` records. Every row must declare
-`bundleDigestSchema=agentlas.workforce-runtime-bundle-digest.v3`; recompute its
+`bundleDigestSchema=agentlas.workforce-runtime-bundle-digest.v4`; recompute its
 canonical digest before execution and fail closed on mismatch. Digest values
 allow only Unicode-scalar strings, booleans, null, arrays, and ASCII-keyed
 objects; numbers, invalid keys, and `__proto__`/`prototype`/`constructor` fail
 closed. A row must also carry a nonblank top-level `systemPrompt`,
-`instructions`, or `agentMd`. Missing or
+`instructions`, or `agentMd`, a first-class digest-bound `permissionPolicy`,
+and an agent-null/team-authoritative `executionGraph`. Missing permission
+declarations become an explicit deny-all policy, never inherited host access;
+incomplete claimed allowlists fail. The plan's digest-bound `executionContext`
+must preserve every validated slot demand, WorkOrder/Selection edge and
+artifact kind, assignment and reason code. Missing or
 changed releases create unfilled posts; there is no silent substitution.
 
 ## 4. Execute the real task force
@@ -93,7 +105,19 @@ Run the prepared roster through the current host runtime:
 
 When a prepared release is itself a Team, honor its authoritative
 manager/worker/synthesis graph; do not flatten it into one prompt. Follow the
-host's normal safety and tool permission model for all side effects.
+row policy intersected with the host policy for all side effects. Unsupported
+enforcement blocks execution. `zero-tools` requires an actually empty tool
+inventory; a residual primitive isolated by forced read-only/no-filesystem is
+`no-authority-sandbox`, not zero-tools.
+
+Snapshot the just-in-time policy-filtered local tool menu as a private
+`agentlas.workforce-tool-inventory.v1` artifact and give only that menu to the
+executor planner. Never send the snapshot to Hub. The host LLM, not Hub or a
+lexical rule, records the pair-scoped `capabilityBindingPlan`; its context,
+tool-inventory, and planner-bound digests must validate before execution. Every
+required tool capability maps to an exact snapshot entry and permitted tool.
+A package policy mentioning a tool is not inventory proof, and a required
+binding cannot run under no-authority enforcement.
 
 If the host cannot create distinct child invocations, stop at `prepared` and
 say so. A route id, bundle id, process exit code, or prose that imitates several
@@ -102,13 +126,20 @@ roles is not execution proof.
 ## 5. Truthful receipts
 
 For an executed task force, retain one joined
-`agentlas.workforce-execution-receipt.v1` containing:
+`agentlas.workforce-execution-receipt.v2` joined to the exact v5 plan containing:
 
 - selection and preparation receipt ids;
 - orchestrator and planner model/invocation ids;
-- `planner.parseSuccess` and `planner.fallbackUsed`;
-- every worker's exact release/package/content hashes, model invocation, and
-  handoff artifact refs;
+- `planner.parseSuccess`, `planner.fallbackUsed`, `toolInventoryDigest`, and
+  `capabilityBindingPlanDigest`;
+- every roster row's exact release/package/content/bundle/policy/graph digests,
+  capability bindings, and handoff artifact refs;
+- either one real direct invocation or a nested receipt proving manager-plan
+  parse/no-fallback, exact declared workers in graph order, and
+  manager-synthesis; never fabricate one aggregate team invocation;
+- every actual model/provider/runtime, requested/applied effort with evidence,
+  globally unique invocation id, and permission-enforcement evidence whose
+  exact granted tool ids and inventory digest match the binding plan;
 - synthesis and verifier invocation ids and verifier verdict.
 
 Never report success when planner JSON fell back, child receipts are missing,

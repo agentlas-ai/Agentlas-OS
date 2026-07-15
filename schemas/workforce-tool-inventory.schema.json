@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/workforce-tool-inventory.schema.json",
+  "title": "Agentlas Local Private Workforce Tool Inventory Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "executionContextDigest", "observedAt", "entries"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.workforce-tool-inventory.v1" },
+    "executionContextDigest": { "$ref": "#/$defs/hash" },
+    "observedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "entries": {
+      "type": "array",
+      "maxItems": 1024,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$"
+    },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "toolId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.$:/@+~-]{0,127}$"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slotId", "agentReleaseId", "permissionPolicyDigest", "provider", "toolId",
+        "serverId", "description", "inputSchemaDigest", "runtimeIds",
+        "selectiveEnforcement", "capabilityIds", "status"
+      ],
+      "properties": {
+        "slotId": { "$ref": "#/$defs/id" },
+        "agentReleaseId": { "$ref": "#/$defs/id" },
+        "permissionPolicyDigest": { "$ref": "#/$defs/hash" },
+        "provider": { "enum": ["builtin", "mcp"] },
+        "toolId": { "$ref": "#/$defs/toolId" },
+        "serverId": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "description": { "type": "string", "maxLength": 500 },
+        "inputSchemaDigest": {
+          "oneOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }]
+        },
+        "runtimeIds": {
+          "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "selectiveEnforcement": { "const": "exact-tool-allowlist" },
+        "capabilityIds": {
+          "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "status": { "const": "ready" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "provider": { "const": "mcp" } } },
+          "then": {
+            "properties": {
+              "serverId": { "$ref": "#/$defs/id" },
+              "inputSchemaDigest": { "$ref": "#/$defs/hash" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "provider": { "const": "builtin" } } },
+          "then": { "properties": { "serverId": { "type": "null" } } }
+        }
+      ]
+    }
+  }
+}

@@ -27,7 +27,7 @@ def test_initialize_and_tools_list(monkeypatch, tmp_path):
     init = responses[0]["result"]
     assert init["protocolVersion"] == "2025-06-18"
     assert init["serverInfo"]["name"] == "hephaestus-network"
-    assert init["serverInfo"]["version"] == "1.1.43"
+    assert init["serverInfo"]["version"] == "1.1.44"
     tools = responses[1]["result"]["tools"]
     tool_names = {tool["name"] for tool in tools}
     assert tool_names == {
@@ -70,19 +70,58 @@ def test_workforce_mcp_is_transparent_hub_bridge_without_local_fallback(monkeypa
         return {"schemaVersion": "agentlas.workforce-candidate-set.v1", "decisionOwner": "host_llm"}
 
     monkeypatch.setattr("agentlas_cloud.networking.hub_client.call_hub_tool", fake_call_hub_tool)
+    work_order = {
+        "redacted": True,
+        "taskBrief": "Build a public payment API.",
+        "roleSlots": [{"title": "Backend engineer", "task": "Implement the API."}],
+    }
     result = run_session(
         [{
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "workforce.search_candidates", "arguments": {"workOrder": {"redacted": True}}},
+            "params": {"name": "workforce.search_candidates", "arguments": {"workOrder": work_order}},
         }],
         monkeypatch,
         tmp_path,
     )
     payload = json.loads(result[0]["result"]["content"][0]["text"])
     assert payload["decisionOwner"] == "host_llm"
-    assert calls == [("workforce.search_candidates", {"workOrder": {"redacted": True}})]
+    assert calls == [("workforce.search_candidates", {"workOrder": work_order})]
+
+
+def test_workforce_mcp_rejects_private_text_before_zero_hub_calls(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_call_hub_tool(name, arguments):
+        calls.append((name, arguments))
+        raise AssertionError("Hub transport must not run")
+
+    monkeypatch.setattr("agentlas_cloud.networking.hub_client.call_hub_tool", fake_call_hub_tool)
+    work_order = {
+        "redacted": True,
+        "taskBrief": "Read /home/mason/private.txt with token=abcdefghijklmnop",
+        "roleSlots": [{"title": "Backend engineer", "task": "Implement the API."}],
+    }
+    result = run_session(
+        [{
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "workforce.search_candidates", "arguments": {"workOrder": work_order}},
+        }],
+        monkeypatch,
+        tmp_path,
+    )
+    payload = json.loads(result[0]["result"]["content"][0]["text"])
+    assert payload["status"] == "rejected"
+    assert payload["repairable"] is True
+    assert payload["hubCalls"] == 0
+    assert calls == []
+    assert payload["boundary"]["issues"] == [
+        {"path": "taskBrief", "code": "hub_private_local_path"},
+        {"path": "taskBrief", "code": "hub_secret_credential_assignment"},
+    ]
 
 
 def test_serve_defaults_plugin_bootstrap_on_for_exact_unmarked_workspace(monkeypatch, tmp_path):

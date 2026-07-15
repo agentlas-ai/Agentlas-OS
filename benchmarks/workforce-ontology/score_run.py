@@ -18,7 +18,11 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from agentlas_cloud.workforce.execution import validate_execution_receipt
+from agentlas_cloud.workforce.execution import (
+    project_execution_context,
+    validate_execution_receipt,
+    workforce_execution_context_digest,
+)
 from agentlas_cloud.workforce.contracts import (
     WORKFORCE_ONTOLOGY_SNAPSHOT_SHA256,
     WORKFORCE_ONTOLOGY_VERSION,
@@ -84,6 +88,8 @@ def score_run(spec: Mapping[str, Any], run: Mapping[str, Any]) -> dict[str, Any]
     selection = _mapping(run.get("selection"))
     recorded_validation = _mapping(run.get("selectionValidation"))
     selection_receipt = _mapping(run.get("selectionReceipt"))
+    prepared_execution = _mapping(run.get("preparedExecution"))
+    tool_inventory_snapshot = _mapping(run.get("toolInventorySnapshot"))
     execution_receipt = _mapping(run.get("executionReceipt"))
 
     expected_ontology_version = str(spec.get("ontologyVersion") or "")
@@ -160,12 +166,44 @@ def score_run(spec: Mapping[str, Any], run: Mapping[str, Any]) -> dict[str, Any]
     if leader_phases != ["work-order", "selection"]:
         issues.append("host_llm_leader_invocations_missing")
 
-    execution_validation = validate_execution_receipt(execution_receipt, benchmark_mode=True)
+    if not prepared_execution:
+        issues.append("prepared_execution_missing")
+    else:
+        try:
+            expected_context = project_execution_context(
+                work_order=work_order,
+                selection=selection,
+                validation_receipt=validation,
+                candidate_set=candidate_set,
+            )
+            expected_context_digest = workforce_execution_context_digest(expected_context)
+            if prepared_execution.get("executionContext") != expected_context:
+                issues.append("prepared_execution_context_drift")
+            if prepared_execution.get("executionContextDigest") != expected_context_digest:
+                issues.append("prepared_execution_context_digest_drift")
+        except Exception as exc:
+            issues.append(f"prepared_execution_context_invalid:{type(exc).__name__}")
+    execution_validation = validate_execution_receipt(
+        execution_receipt,
+        execution_plan=prepared_execution,
+        tool_inventory=tool_inventory_snapshot,
+        benchmark_mode=True,
+    )
     if execution_validation.get("status") != "accepted":
         issues.extend(str(item) for item in execution_validation.get("issues") or [])
     workers = [row for row in execution_receipt.get("workers") or [] if isinstance(row, Mapping)]
     minimum_workers = int(spec.get("minimumDistinctWorkerInvocations") or 2)
-    worker_invocations = {str(row.get("invocationId")) for row in workers if row.get("invocationId")}
+    worker_invocations: set[str] = set()
+    for row in workers:
+        direct = _mapping(row.get("directInvocation"))
+        if direct.get("invocationId"):
+            worker_invocations.add(str(direct["invocationId"]))
+    for nested_execution in execution_receipt.get("nestedExecutions") or []:
+        if not isinstance(nested_execution, Mapping):
+            continue
+        for nested_worker in nested_execution.get("workers") or []:
+            if isinstance(nested_worker, Mapping) and nested_worker.get("invocationId"):
+                worker_invocations.add(str(nested_worker["invocationId"]))
     if len(worker_invocations) < minimum_workers:
         issues.append(f"insufficient_distinct_worker_invocations:{len(worker_invocations)}:{minimum_workers}")
 

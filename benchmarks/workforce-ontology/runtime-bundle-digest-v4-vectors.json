@@ -1,0 +1,204 @@
+{
+  "schemaVersion": "agentlas.workforce-runtime-bundle-digest-vectors.v3",
+  "digestSchemaVersion": "agentlas.workforce-runtime-bundle-digest.v4",
+  "executionPlanSchemaVersion": "agentlas.workforce-execution-plan.v5",
+  "permissionPolicySchemaVersion": "agentlas.workforce-permission-policy.v1",
+  "executionGraphSchemaVersion": "1.0",
+  "baseRosterRow": {
+    "slotId": "slot:payments",
+    "agentDefinitionId": "definition:payments",
+    "agentReleaseId": "release:payments@1.2.3",
+    "releaseVersion": "1.2.3",
+    "packageHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "contentDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "entityKind": "agent",
+    "permissionPolicy": {
+      "schemaVersion": "agentlas.workforce-permission-policy.v1",
+      "network": "deny",
+      "shell": "deny",
+      "fileRead": { "mode": "deny", "allowPatterns": [], "denyPatterns": [] },
+      "mcp": { "mode": "deny", "allowedTools": [] },
+      "unknownTools": "deny"
+    },
+    "executionGraph": null
+  },
+  "accepted": [
+    {
+      "vectorId": "golden-multilingual-policy-allowlists",
+      "rosterRow": {
+        "directiveBundle": {
+          "instructions": "Execute exactly.",
+          "agentMd": "결제 무결성을 검증한다."
+        },
+        "permissionPolicy": {
+          "schemaVersion": "agentlas.workforce-permission-policy.v1",
+          "network": "ask",
+          "shell": "deny",
+          "fileRead": {
+            "mode": "manifest-allowlist",
+            "allowPatterns": ["README.md", "skills/**"],
+            "denyPatterns": [".env", "**/secrets/**"]
+          },
+          "mcp": {
+            "mode": "allowlist",
+            "allowedTools": ["mcp__mongodb__find", "mcp__payments__verify"]
+          },
+          "unknownTools": "deny"
+        }
+      },
+      "canonicalJson": "{\"agentDefinitionId\":\"definition:payments\",\"agentReleaseId\":\"release:payments@1.2.3\",\"contentDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"directiveBundle\":{\"agentMd\":\"결제 무결성을 검증한다.\",\"instructions\":\"Execute exactly.\"},\"entityKind\":\"agent\",\"executionGraph\":null,\"packageHash\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"permissionPolicy\":{\"fileRead\":{\"allowPatterns\":[\"README.md\",\"skills/**\"],\"denyPatterns\":[\".env\",\"**/secrets/**\"],\"mode\":\"manifest-allowlist\"},\"mcp\":{\"allowedTools\":[\"mcp__mongodb__find\",\"mcp__payments__verify\"],\"mode\":\"allowlist\"},\"network\":\"ask\",\"schemaVersion\":\"agentlas.workforce-permission-policy.v1\",\"shell\":\"deny\",\"unknownTools\":\"deny\"},\"releaseVersion\":\"1.2.3\",\"schemaVersion\":\"agentlas.workforce-runtime-bundle-digest.v4\",\"slotId\":\"slot:payments\"}",
+      "bundleDigest": "sha256:3df795098cbd7699873cabdc1aab0aa96d975250c5e3af31895a448e29cefd1a"
+    },
+    {
+      "vectorId": "unicode-scalars-controls-and-key-order",
+      "rosterRow": {
+        "directiveBundle": {
+          "instructions": "한글😀   é é",
+          "runtimeBundle": {
+            "$schema": "awo:v2",
+            "_flag": true,
+            "nested": [null, false, {"z": "last", "a": "first"}]
+          }
+        }
+      },
+      "bundleDigest": "sha256:125a9aa810cff60daaeb9d6a9535f5d295938b7989ed9dfaafdd5c26c3b2cf91"
+    },
+    {
+      "vectorId": "nfc-preserved-without-normalization",
+      "rosterRow": { "directiveBundle": { "instructions": "é" } },
+      "bundleDigest": "sha256:0d307c85515decfee68c5701c8c44d47de5a77dfaffceebfe0f18345975918dd"
+    },
+    {
+      "vectorId": "nfd-preserved-without-normalization",
+      "rosterRow": { "directiveBundle": { "instructions": "é" } },
+      "bundleDigest": "sha256:11f37fd817145f36042162d93a7c28ce96e426da156a4697a19000dcaf52f3dd"
+    },
+    {
+      "vectorId": "nested-team-graph-bound",
+      "rosterRow": {
+        "entityKind": "team",
+        "directiveBundle": { "instructions": "Run the declared team graph." },
+        "executionGraph": {
+          "schemaVersion": "1.0",
+          "manager": { "path": "team/manager.md", "content": "Plan and synthesize." },
+          "workers": [
+            { "id": "worker:builder", "path": "team/builder.md", "content": "Build." },
+            { "id": "worker:verifier", "path": "team/verifier.md", "content": "Verify." }
+          ]
+        }
+      },
+      "bundleDigest": "sha256:0493036cbfbaa3045be784d977478fef122082739713c260465ca766d32a0d3c"
+    }
+  ],
+  "rejected": [
+    {
+      "vectorId": "numeric-directive-value",
+      "rosterRow": { "directiveBundle": { "instructions": "x", "threshold": 1 } }
+    },
+    {
+      "vectorId": "prototype-mutation-key",
+      "rosterRow": { "directiveBundle": { "instructions": "x", "__proto__": { "polluted": true } } }
+    },
+    {
+      "vectorId": "lone-surrogate",
+      "rosterRow": { "directiveBundle": { "instructions": "\ud800" } }
+    },
+    {
+      "vectorId": "permission-unknown-tools-not-denied",
+      "rosterRow": {
+        "directiveBundle": { "instructions": "x" },
+        "permissionPolicy": {
+          "schemaVersion": "agentlas.workforce-permission-policy.v1",
+          "network": "deny", "shell": "deny",
+          "fileRead": { "mode": "deny", "allowPatterns": [], "denyPatterns": [] },
+          "mcp": { "mode": "deny", "allowedTools": [] },
+          "unknownTools": "allow"
+        }
+      }
+    },
+    {
+      "vectorId": "permission-absolute-read-path",
+      "rosterRow": {
+        "directiveBundle": { "instructions": "x" },
+        "permissionPolicy": {
+          "schemaVersion": "agentlas.workforce-permission-policy.v1",
+          "network": "deny", "shell": "deny",
+          "fileRead": {
+            "mode": "manifest-allowlist",
+            "allowPatterns": ["/private/file"],
+            "denyPatterns": [".env"]
+          },
+          "mcp": { "mode": "deny", "allowedTools": [] },
+          "unknownTools": "deny"
+        }
+      }
+    },
+    {
+      "vectorId": "permission-incomplete-file-allowlist",
+      "rosterRow": {
+        "directiveBundle": { "instructions": "x" },
+        "permissionPolicy": {
+          "schemaVersion": "agentlas.workforce-permission-policy.v1",
+          "network": "deny", "shell": "deny",
+          "fileRead": { "mode": "manifest-allowlist", "allowPatterns": ["README.md"], "denyPatterns": [] },
+          "mcp": { "mode": "deny", "allowedTools": [] },
+          "unknownTools": "deny"
+        }
+      }
+    },
+    {
+      "vectorId": "permission-mcp-wildcard",
+      "rosterRow": {
+        "directiveBundle": { "instructions": "x" },
+        "permissionPolicy": {
+          "schemaVersion": "agentlas.workforce-permission-policy.v1",
+          "network": "deny", "shell": "deny",
+          "fileRead": { "mode": "deny", "allowPatterns": [], "denyPatterns": [] },
+          "mcp": { "mode": "allowlist", "allowedTools": ["mcp__server__*"] },
+          "unknownTools": "deny"
+        }
+      }
+    },
+    {
+      "vectorId": "agent-carries-hidden-graph",
+      "rosterRow": {
+        "directiveBundle": { "instructions": "x" },
+        "executionGraph": {
+          "schemaVersion": "1.0",
+          "manager": { "path": "manager.md", "content": "Plan." },
+          "workers": [{ "id": "worker:a", "path": "worker.md", "content": "Work." }]
+        }
+      }
+    },
+    {
+      "vectorId": "team-missing-graph",
+      "rosterRow": {
+        "entityKind": "team",
+        "directiveBundle": { "instructions": "x" },
+        "executionGraph": null
+      }
+    },
+    {
+      "vectorId": "team-duplicate-worker-path",
+      "rosterRow": {
+        "entityKind": "team",
+        "directiveBundle": { "instructions": "x" },
+        "executionGraph": {
+          "schemaVersion": "1.0",
+          "manager": { "path": "manager.md", "content": "Plan." },
+          "workers": [
+            { "id": "worker:a", "path": "worker.md", "content": "A." },
+            { "id": "worker:b", "path": "worker.md", "content": "B." }
+          ]
+        }
+      }
+    },
+    {
+      "vectorId": "group-is-not-executable",
+      "rosterRow": {
+        "entityKind": "group",
+        "directiveBundle": { "instructions": "x" }
+      }
+    }
+  ]
+}

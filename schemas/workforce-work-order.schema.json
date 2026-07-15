@@ -86,7 +86,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "enum": ["agent", "team", "group"] }
+          "items": { "enum": ["agent", "team"] }
         },
         "minimumEvidenceLevel": {
           "enum": ["declared", "checked", "demonstrated", "attested"]

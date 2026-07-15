@@ -249,9 +249,15 @@ transport; it is not a second planner or staffing authority.
 1. The host LLM emits one complete, direct
    `agentlas.workforce-work-order.v1` object.
 2. The typed host adapter type-checks that object and invokes the fixed
-   `workforce.search_candidates` tool with the WorkOrder unchanged. It may
-   reject an incomplete object, but it must not normalize fields, insert
-   defaults, or add, remove, or relax requirements.
+   `workforce.search_candidates` tool with the WorkOrder unchanged. Before any
+   Hub transport, the shared deterministic boundary scans only `taskBrief` and
+   each slot's `title`/`task` for local paths, personal/account identifiers,
+   credential URLs, bearer/JWT/provider tokens, private keys, and labelled
+   secrets. Rejection returns field path plus stable class only, does not mutate
+   or echo the value, is repairable by the same host model, and proves
+   `hubCalls=0`. `redacted=true` is not accepted as evidence by itself. The
+   adapter may reject an incomplete object, but it must not normalize fields,
+   insert defaults, or add, remove, or relax requirements.
 3. `workforce.search_candidates` returns a selection session, ontology version,
    candidate-set digest, role-slot cards, and coverage gaps.
 4. When bounded coverage-gap codes show an unfilled role slot, the same active
@@ -288,20 +294,24 @@ transport; it is not a second planner or staffing authority.
 9. The execution fabric emits manager, worker, handoff, synthesis, verifier,
    and completion receipts.
 
-`agentlas.workforce-execution-plan.v4` makes the binding contract explicit.
+`agentlas.workforce-execution-plan.v5` makes the binding contract explicit.
 Every prepared roster row carries
-`bundleDigestSchema=agentlas.workforce-runtime-bundle-digest.v3` and
+`bundleDigestSchema=agentlas.workforce-runtime-bundle-digest.v4` and
 `bundleDigest`, computed as SHA-256 over a
 canonical JSON object whose `schemaVersion` is
-`agentlas.workforce-runtime-bundle-digest.v3` and whose remaining exact keys are
+`agentlas.workforce-runtime-bundle-digest.v4` and whose remaining exact keys are
 `slotId`, `agentDefinitionId`, `agentReleaseId`, `releaseVersion`, `packageHash`,
-`contentDigest`, `entityKind`, and `directiveBundle`. The preparation authority
+`contentDigest`, `entityKind`, `directiveBundle`, `permissionPolicy`, and
+`executionGraph`. The preparation authority
 always recomputes this digest and ignores any digest supplied by the fetched
 bundle. Every host recomputes it before executing directives and fails closed
 on mismatch, cryptographically binding executable content to the selected
-release and post.
+release and post. An `agent` must have a null graph; a `team` must carry the
+authoritative `1.0` manager/worker graph. `group` remains a discovery/category
+kind and is not executable until a separate authoritative group contract is
+published.
 
-Digest v3 intentionally uses a smaller, portable JSON domain: strings must be
+Digest v4 retains the smaller portable JSON domain: strings must be
 Unicode scalar sequences, object keys must match
 `^[A-Za-z_$][A-Za-z0-9_.$:/@+~-]*$`, and other values may only be booleans,
 null, arrays, or objects recursively. Numbers, lone surrogates, excessive
@@ -311,9 +321,82 @@ be decimal strings. Arrays retain order, keys sort lexicographically, compact
 JSON separators are used, and string values are UTF-8 encoded without Unicode
 normalization. Each row also requires a nonblank top-level `systemPrompt`,
 `instructions`, or `agentMd`. The shared adversarial vectors live at
-`benchmarks/workforce-ontology/runtime-bundle-digest-v3-vectors.json`. A
-v1/v2/v3 execution plan or missing/unknown digest marker is not executable by a
-v4 host.
+`benchmarks/workforce-ontology/runtime-bundle-digest-v4-vectors.json`. A
+v1/v2/v3/v4 execution plan or missing/unknown digest marker is not executable
+by a v5 host.
+
+Each v5 row also carries a first-class
+`agentlas.workforce-permission-policy.v1` plus its domain-separated digest.
+The exact policy covers network, shell, root-relative file-read globs, an exact
+MCP tool-name allowlist, and `unknownTools=deny`. Glob matching is
+case-sensitive: `/` is the separator, `*` stays within a segment, `**` may span
+segments, `?` matches one non-separator, and absolute paths, backslashes, and
+`..` segments are forbidden. MCP wildcards are forbidden. A bundle with no
+permission declaration is projected by the preparation authority to an
+explicit deny-all policy; a host never interprets absence as its own policy.
+An incomplete claimed allowlist is rejected. Package policy is only an upper
+bound and is intersected with the host's policy. A deny applies through every
+mechanism, including shell, built-ins, and MCP; a runtime that cannot enforce
+that intersection must run with no authority or block.
+
+The plan's closed `agentlas.workforce-execution-context.v1` preserves the
+public-safe task brief, WorkOrder-wide forbidden communities, every validated
+slot demand field, WorkOrder edges, selected release/reason-code assignments,
+and Selection edges/artifact kinds. Cardinality is intentionally projected
+from the schema-validated integer `1..16` to its decimal string for the portable
+digest domain. The context contains no candidate menu, popularity, history, or
+private host context. Its digest is part of the preparation receipt and every
+execution receipt.
+
+`agentlas.workforce-execution-receipt.v2` is joined to that exact v5 plan.
+It contains one closed `agentlas.workforce-capability-binding-plan.v1` owned by
+the host LLM. The plan binds the planner invocation, execution-context digest,
+local tool-inventory digest, pair-scoped selected tool rows, and its own
+domain-separated digest. The planner and every roster execution repeat that
+binding-plan digest; a receipt cannot substitute a later tool decision.
+Every roster row is either `direct` with one actual invocation or `nested` with
+no fabricated aggregate invocation. A nested receipt must prove the packaged
+manager-plan invocation, its successful structured parse with no fallback, the
+exact declared worker IDs in graph order, every actual graph-worker invocation,
+and the manager-synthesis invocation. Model, provider, runtime, requested and
+applied effort, effort observability, status, and invocation IDs are required;
+invocation IDs are globally unique. `appliedEffort` is null when the runtime
+cannot observe it and must never be copied from the request.
+
+Every selected invocation binds the row's permission-policy digest and records
+`native-sandbox`, `no-authority-sandbox`, or `zero-tools` enforcement plus a
+closed runtime/version/sandbox/tool-inventory evidence object. `zero-tools`
+means the actual inventory is empty. `no-authority-sandbox` permits a residual
+non-authoritative primitive only behind enforced read-only/no-filesystem
+isolation; for Codex 0.144.4 the verified profile disables `shell_tool` and
+`unified_exec`, rejects MCP/config grants, uses ephemeral/ignored user config
+and rules, and forces read-only. It must not be called zero-tools. Both
+no-authority modes require empty approval receipts.
+The enforcement evidence also repeats the exact local `toolInventoryDigest`
+and the lexicographically sorted unique `grantedToolIds`. For a direct worker
+that grant list must equal its bindings. For a selected Team the manager-plan,
+every graph worker, and manager-synthesis invocation must each report the same
+exact list and digest. No-authority and zero-tools executions report an empty
+grant list.
+
+Required slot tool capabilities are not auto-bound by Hub or lexical code.
+The executor snapshots the just-in-time, policy-filtered local menu as a private
+`agentlas.workforce-tool-inventory.v1` sibling artifact, then gives that menu to
+the host LLM planner. The snapshot includes exact slot/release/policy scope,
+provider and tool identity, MCP server and input-schema evidence, eligible
+runtime IDs, exact-tool selective-enforcement support, and capability
+annotations. Its portable digest covers the whole snapshot, including
+`observedAt`. It is retained with local execution evidence for replay but is
+never transmitted to Hub.
+
+The host LLM records pair-scoped bound rows in the public receipt, and each
+worker's `capabilityBindings` is the context-order projection of those rows.
+Deterministic validation recomputes both digests, requires every bound tool to
+exist in the supplied snapshot for the exact pair, policy, capability, and
+executed runtime, rejects duplicates/extras, accepts MCP tools only from the
+row allowlist, and rejects a required capability executed under a no-authority
+mode. A package policy mentioning a tool is not proof that the host has it.
+Optional capabilities do not create mandatory bindings.
 
 `requiredRoles`, `requiredSkills`, `requiredToolCapabilities`, `consumes`, and
 `produces` are candidate-profile hard declarations, not a prose checklist of

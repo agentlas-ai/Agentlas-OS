@@ -11,7 +11,7 @@ import textwrap
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISH = ROOT / "scripts" / "publish-runtime-release-assets.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "release-runtime.yml"
-TAG = "v1.1.43"
+TAG = "v1.1.44"
 
 
 FAKE_GH = r'''#!/usr/bin/env python3

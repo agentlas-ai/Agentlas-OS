@@ -803,6 +803,7 @@ def main(argv: list[str] | None = None) -> int:
         return serve()
     if args.command == "workforce":
         from .networking.hub_client import call_hub_tool
+        from .workforce import validate_hub_work_order_boundary
 
         def load_object(path: str) -> dict[str, Any]:
             value = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -812,6 +813,16 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             work_order = load_object(args.work_order)
+            boundary = validate_hub_work_order_boundary(work_order)
+            if boundary["status"] != "accepted":
+                return emit({
+                    "action": f"workforce.{args.workforce_command}",
+                    "status": "rejected",
+                    "error": "work_order_hub_boundary_rejected",
+                    "repairable": True,
+                    "hubCalls": 0,
+                    "boundary": boundary,
+                }) or 2
             if args.workforce_command == "search":
                 payload = {"workOrder": work_order}
                 if args.expand_slot:
@@ -1994,7 +2005,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.43",
+            "version": "1.1.44",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

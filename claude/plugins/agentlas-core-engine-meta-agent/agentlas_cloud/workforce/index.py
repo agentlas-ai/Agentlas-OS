@@ -16,6 +16,7 @@ from .contracts import (
     tool_concepts,
     verify_profile_integrity,
 )
+from .privacy import assert_hub_work_order_boundary
 
 
 def _now() -> datetime:
@@ -279,8 +280,10 @@ class WorkforceIndex:
     ) -> dict[str, Any]:
         if work_order.get("schemaVersion") != "agentlas.workforce-work-order.v1":
             raise ValueError("unsupported work order")
-        if work_order.get("redacted") is not True:
-            raise ValueError("Hub workforce search requires a redacted work order")
+        # This is the first operation at the public search boundary.  It reads
+        # the exact WorkOrder and raises before profile lookup/session creation;
+        # the caller must perform the same helper before remote transport.
+        assert_hub_work_order_boundary(work_order)
         requested_ontology = work_order.get("ontologyVersion")
         active_ontology = self.ontology.get("ontologyVersion")
         if requested_ontology is not None and str(requested_ontology) != str(active_ontology):
@@ -290,6 +293,11 @@ class WorkforceIndex:
         slots = work_order.get("roleSlots")
         if not isinstance(slots, list) or not slots:
             raise ValueError("work order requires roleSlots")
+        if any(
+            isinstance(slot, Mapping) and "group" in (slot.get("allowedEntityKinds") or [])
+            for slot in slots
+        ):
+            raise ValueError("group entity kind is discovery-only and not executable")
         policy = work_order.get("selectionPolicy") if isinstance(work_order.get("selectionPolicy"), Mapping) else {}
         minimum = max(2, min(30, int(policy.get("minimumCandidatesPerSlot") or 5)))
         maximum = max(minimum, min(100, int(policy.get("maximumCandidatesPerSlot") or 20)))

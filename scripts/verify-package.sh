@@ -70,7 +70,8 @@ required_files=(
   "scripts/verify-mcp-surface.sh"
   "scripts/verify-builder-quality-contract.sh"
   "scripts/verify-experience-assets-contract.sh"
-  "scripts/verify-workforce-bundle-digest-v3.mjs"
+  "scripts/verify-workforce-bundle-digest-v4.mjs"
+  "scripts/verify-workforce-capability-binding-v1.mjs"
   ".agents/agentlas-core-engine-meta-agent/agent.md"
   ".agents/plugins/marketplace.json"
   ".agentlas/mode-map.json"
@@ -140,6 +141,7 @@ required_files=(
   "schemas/workforce-selection-validation.schema.json"
   "schemas/workforce-execution-plan.schema.json"
   "schemas/workforce-execution-receipt.schema.json"
+  "schemas/workforce-tool-inventory.schema.json"
   "schemas/workforce-lifecycle-event.schema.json"
   "schemas/workforce-ontology-proposal.schema.json"
   "schemas/rental-resolution-receipt.schema.json"
@@ -174,7 +176,8 @@ required_files=(
   "schemas/robustness-eval-result.schema.json"
   "benchmarks/robustness/public-agent-repair.tasks.jsonl"
   "benchmarks/robustness/example-results.jsonl"
-  "benchmarks/workforce-ontology/runtime-bundle-digest-v3-vectors.json"
+  "benchmarks/workforce-ontology/runtime-bundle-digest-v4-vectors.json"
+  "benchmarks/workforce-ontology/capability-binding-v1-vectors.json"
   "scripts/score-robustness-eval.py"
   "templates/activation.json.tpl"
   "templates/agentlas.json.tpl"
@@ -626,7 +629,8 @@ scripts/verify-builder-quality-contract.sh
 python3 scripts/test-build-cloud-choice-contract.py
 scripts/verify-experience-assets-contract.sh
 scripts/verify-gateway-channel-contract.sh
-node scripts/verify-workforce-bundle-digest-v3.mjs
+node scripts/verify-workforce-bundle-digest-v4.mjs
+node scripts/verify-workforce-capability-binding-v1.mjs
 scripts/verify-team-package.sh tests/fixtures/team-valid >/dev/null
 if scripts/verify-team-package.sh tests/fixtures/team-degenerate >/tmp/agentlas-team-gate-negative.txt 2>&1; then
   cat /tmp/agentlas-team-gate-negative.txt >&2

@@ -26,6 +26,8 @@ The host runtime must save one JSON object with these exact keys:
 - `selection`
 - `selectionValidation`
 - `selectionReceipt`
+- `preparedExecution`
+- `toolInventorySnapshot`
 - `executionReceipt`
 
 Run the scorer from the Core repository root:
@@ -37,5 +39,15 @@ python3 benchmarks/workforce-ontology/score_run.py /path/to/real-run.json
 The scorer cannot create a selection or repair model output.  It requires the
 three Hub MCP calls in order, two completed host-LLM leader turns, an accepted
 frozen selection with no substitutions or history influence, structured
-planner output without fallback, distinct nested worker invocations, completed
-synthesis, and a passing verifier.
+planner output without fallback, a v5 prepared execution context and digest-bound
+permission/graph rows, distinct direct or nested worker invocations, completed
+synthesis, and a passing verifier. A flat selected-team row without its declared
+manager-plan, graph-worker, and manager-synthesis receipts fails.
+
+`toolInventorySnapshot` is the exact local, private
+`agentlas.workforce-tool-inventory.v1` artifact observed immediately before the
+host-LLM binding decision. The scorer passes it separately as
+`tool_inventory=run["toolInventorySnapshot"]`, recomputes its portable digest,
+and rejects missing tools, wrong pair/policy/runtime scope, digest drift, or
+grants not equal to the selected bindings. It must be retained beside the
+benchmark receipt for historical replay and must never be sent to Hub.

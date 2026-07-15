@@ -47,6 +47,44 @@ _POSIX_ABSOLUTE_RE = re.compile(
     r"(?<![A-Za-z0-9$])/(?!/|\s)(?:[^/\s\"'`<>]+/)*[^/\s\"'`<>]+"
 )
 
+# Public, model-free credential detectors shared by every outbound public/Hub
+# boundary.  Keep the result classes stable: callers persist only the class and
+# field path, never the matched value.
+_SECRET_VALUE_PATTERNS = (
+    (
+        "provider_token",
+        re.compile(
+            r"\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|"
+            r"github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|"
+            r"xox[baprs]-[A-Za-z0-9-]{10,})\b"
+        ),
+    ),
+    (
+        "private_key",
+        re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----", re.I),
+    ),
+    (
+        "bearer_token",
+        re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{12,}", re.I),
+    ),
+    (
+        "jwt",
+        re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+    ),
+    (
+        "credential_assignment",
+        re.compile(
+            r"\b(?:api[_-]?key|access[_-]?key|client[_-]?secret|secret|token|"
+            r"password|passwd|cookie)\s*[:=]\s*['\"]?[^\s'\";,]{8,}",
+            re.I,
+        ),
+    ),
+    (
+        "credential_url",
+        re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s/:@]+:[^\s/@]+@[^\s/]+", re.I),
+    ),
+)
+
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CANONICAL_ASSET_ID_RE = re.compile(
     r"^(?:ex[biu]_[0-9a-f]{48}|[a-z]{3}_[0-9a-f]{32,64}|rev_[0-9a-f]{32})$"
@@ -162,6 +200,13 @@ def scan_public_text(value: str) -> tuple[str, ...]:
     if contains_private_path(value):
         findings.append("local_path")
     return tuple(findings)
+
+
+def secret_like_kinds(value: str) -> tuple[str, ...]:
+    """Return stable secret classes without returning or rewriting a value."""
+
+    decoded = _decoded(value)
+    return tuple(kind for kind, pattern in _SECRET_VALUE_PATTERNS if pattern.search(decoded))
 
 
 def scan_public_field(path: str, value: str) -> tuple[str, ...]:

@@ -5,11 +5,13 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaVersion", "status", "issues", "preparationReceiptId", "selectionReceiptId",
-    "candidateSetDigest", "decisionOwner", "substitutions", "executionRoster"
+    "schemaVersion", "status", "issues", "preparationReceiptId",
+    "selectionReceiptId", "candidateSetDigest", "decisionOwner",
+    "substitutions", "executionContext", "executionContextDigest",
+    "executionRoster"
   ],
   "properties": {
-    "schemaVersion": { "const": "agentlas.workforce-execution-plan.v4" },
+    "schemaVersion": { "const": "agentlas.workforce-execution-plan.v5" },
     "status": { "enum": ["prepared", "rejected"] },
     "issues": { "$ref": "#/$defs/strings" },
     "preparationReceiptId": { "$ref": "#/$defs/id" },
@@ -17,73 +19,314 @@
     "candidateSetDigest": { "$ref": "#/$defs/hash" },
     "decisionOwner": { "const": "host_llm" },
     "substitutions": { "type": "array", "maxItems": 0 },
+    "executionContext": {
+      "oneOf": [{ "$ref": "#/$defs/executionContext" }, { "type": "null" }]
+    },
+    "executionContextDigest": {
+      "oneOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }]
+    },
     "executionRoster": {
       "type": "array",
       "maxItems": 64,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "slotId", "agentDefinitionId", "agentReleaseId", "releaseVersion", "packageHash",
-          "contentDigest", "entityKind", "directiveBundle", "bundleDigestSchema", "bundleDigest"
-        ],
-        "properties": {
-          "slotId": { "$ref": "#/$defs/id" },
-          "agentDefinitionId": { "$ref": "#/$defs/id" },
-          "agentReleaseId": { "$ref": "#/$defs/id" },
-          "releaseVersion": { "type": "string", "minLength": 1, "maxLength": 100 },
-          "packageHash": { "$ref": "#/$defs/hash" },
-          "contentDigest": { "$ref": "#/$defs/hash" },
-          "entityKind": { "enum": ["agent", "team", "group"] },
-          "directiveBundle": {
-            "type": "object",
-            "minProperties": 1,
-            "maxProperties": 10000,
-            "propertyNames": { "$ref": "#/$defs/digestObjectKey" },
-            "additionalProperties": { "$ref": "#/$defs/digestValue" },
-            "properties": {
-              "systemPrompt": { "$ref": "#/$defs/nonEmptyDigestString" },
-              "instructions": { "$ref": "#/$defs/nonEmptyDigestString" },
-              "agentMd": { "$ref": "#/$defs/nonEmptyDigestString" }
-            },
-            "anyOf": [
-              { "required": ["systemPrompt"] },
-              { "required": ["instructions"] },
-              { "required": ["agentMd"] }
-            ]
-          },
-          "bundleDigestSchema": { "const": "agentlas.workforce-runtime-bundle-digest.v3" },
-          "bundleDigest": { "$ref": "#/$defs/hash" }
-        }
-      }
+      "items": { "$ref": "#/$defs/rosterRow" }
     }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "prepared" } } },
+      "then": {
+        "properties": {
+          "issues": { "maxItems": 0 },
+          "executionContext": { "$ref": "#/$defs/executionContext" },
+          "executionContextDigest": { "$ref": "#/$defs/hash" },
+          "executionRoster": { "minItems": 1 }
+        }
+      },
+      "else": { "properties": { "executionRoster": { "maxItems": 0 } } }
+    }
+  ],
   "$defs": {
-    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$"
+    },
     "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "strings": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } },
+    "strings": {
+      "type": "array", "maxItems": 256, "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+    },
+    "ids": {
+      "type": "array", "maxItems": 256, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
     "digestObjectKey": {
       "type": "string",
       "pattern": "^[A-Za-z_$][A-Za-z0-9_.$:/@+~-]*$",
       "not": { "enum": ["__proto__", "prototype", "constructor"] }
     },
     "digestString": { "type": "string", "pattern": "^[^\\uD800-\\uDFFF]*$" },
-    "nonEmptyDigestString": { "allOf": [{ "$ref": "#/$defs/digestString" }, { "minLength": 1 }] },
+    "nonEmptyDigestString": {
+      "allOf": [{ "$ref": "#/$defs/digestString" }, { "minLength": 1 }]
+    },
     "digestValue": {
       "oneOf": [
         { "$ref": "#/$defs/digestString" },
         { "type": "boolean" },
         { "type": "null" },
+        { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/digestValue" } },
         {
-          "type": "array",
-          "maxItems": 10000,
-          "items": { "$ref": "#/$defs/digestValue" }
-        },
-        {
-          "type": "object",
-          "maxProperties": 10000,
+          "type": "object", "maxProperties": 10000,
           "propertyNames": { "$ref": "#/$defs/digestObjectKey" },
           "additionalProperties": { "$ref": "#/$defs/digestValue" }
+        }
+      ]
+    },
+    "directiveBundle": {
+      "type": "object", "minProperties": 1, "maxProperties": 10000,
+      "propertyNames": { "$ref": "#/$defs/digestObjectKey" },
+      "additionalProperties": { "$ref": "#/$defs/digestValue" },
+      "properties": {
+        "systemPrompt": { "$ref": "#/$defs/nonEmptyDigestString" },
+        "instructions": { "$ref": "#/$defs/nonEmptyDigestString" },
+        "agentMd": { "$ref": "#/$defs/nonEmptyDigestString" }
+      },
+      "anyOf": [
+        { "required": ["systemPrompt"] },
+        { "required": ["instructions"] },
+        { "required": ["agentMd"] }
+      ]
+    },
+    "packagePattern": {
+      "type": "string", "minLength": 1, "maxLength": 240,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._@+~*?/-]+$"
+    },
+    "packagePath": {
+      "allOf": [
+        { "$ref": "#/$defs/packagePattern" },
+        { "not": { "pattern": "[*?]" } }
+      ]
+    },
+    "permissionPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "network", "shell", "fileRead", "mcp", "unknownTools"],
+      "properties": {
+        "schemaVersion": { "const": "agentlas.workforce-permission-policy.v1" },
+        "network": { "enum": ["allow", "ask", "deny"] },
+        "shell": { "enum": ["allow", "ask", "deny"] },
+        "fileRead": {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "allowPatterns", "denyPatterns"],
+          "properties": {
+            "mode": { "enum": ["deny", "manifest-allowlist"] },
+            "allowPatterns": {
+              "type": "array", "maxItems": 128, "uniqueItems": true,
+              "items": { "$ref": "#/$defs/packagePattern" }
+            },
+            "denyPatterns": {
+              "type": "array", "maxItems": 128, "uniqueItems": true,
+              "items": { "$ref": "#/$defs/packagePattern" }
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "mode": { "const": "deny" } } },
+              "then": {
+                "properties": {
+                  "allowPatterns": { "maxItems": 0 },
+                  "denyPatterns": { "maxItems": 0 }
+                }
+              },
+              "else": {
+                "properties": {
+                  "allowPatterns": { "minItems": 1 },
+                  "denyPatterns": { "minItems": 1 }
+                }
+              }
+            }
+          ]
+        },
+        "mcp": {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "allowedTools"],
+          "properties": {
+            "mode": { "enum": ["deny", "allowlist"] },
+            "allowedTools": {
+              "type": "array", "maxItems": 128, "uniqueItems": true,
+              "items": {
+                "type": "string", "minLength": 1, "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.$:/@+~-]{0,127}$"
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "mode": { "const": "deny" } } },
+              "then": { "properties": { "allowedTools": { "maxItems": 0 } } },
+              "else": { "properties": { "allowedTools": { "minItems": 1 } } }
+            }
+          ]
+        },
+        "unknownTools": { "const": "deny" }
+      }
+    },
+    "executionGraph": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "manager", "workers"],
+      "properties": {
+        "schemaVersion": { "const": "1.0" },
+        "manager": {
+          "type": "object", "additionalProperties": false,
+          "required": ["path", "content"],
+          "properties": {
+            "path": { "$ref": "#/$defs/packagePath" },
+            "content": { "type": "string", "minLength": 1, "maxLength": 200000 }
+          }
+        },
+        "workers": {
+          "type": "array", "minItems": 1, "maxItems": 32,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "path", "content"],
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "path": { "$ref": "#/$defs/packagePath" },
+              "content": { "type": "string", "minLength": 1, "maxLength": 200000 }
+            }
+          }
+        }
+      }
+    },
+    "contextSlot": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "slotId", "title", "task", "cardinality", "criticality",
+        "requiredCommunities", "optionalCommunities", "excludedCommunities",
+        "requiredRoles", "requiredSkills", "optionalSkills", "requiredKnowledge",
+        "requiredToolCapabilities", "consumes", "produces", "requiredAuthorities",
+        "forbiddenAuthorities", "runtimes", "languages", "modalities",
+        "allowedEntityKinds", "minimumEvidenceLevel"
+      ],
+      "properties": {
+        "slotId": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "task": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "cardinality": { "type": "string", "pattern": "^(?:[1-9]|1[0-6])$" },
+        "criticality": { "enum": ["required", "optional"] },
+        "requiredCommunities": { "$ref": "#/$defs/ids" },
+        "optionalCommunities": { "$ref": "#/$defs/ids" },
+        "excludedCommunities": { "$ref": "#/$defs/ids" },
+        "requiredRoles": { "$ref": "#/$defs/ids" },
+        "requiredSkills": { "$ref": "#/$defs/ids" },
+        "optionalSkills": { "$ref": "#/$defs/ids" },
+        "requiredKnowledge": { "$ref": "#/$defs/ids" },
+        "requiredToolCapabilities": { "$ref": "#/$defs/ids" },
+        "consumes": { "$ref": "#/$defs/ids" },
+        "produces": { "$ref": "#/$defs/ids" },
+        "requiredAuthorities": { "$ref": "#/$defs/ids" },
+        "forbiddenAuthorities": { "$ref": "#/$defs/ids" },
+        "runtimes": { "$ref": "#/$defs/ids" },
+        "languages": { "$ref": "#/$defs/ids" },
+        "modalities": { "$ref": "#/$defs/ids" },
+        "allowedEntityKinds": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "enum": ["agent", "team"] }
+        },
+        "minimumEvidenceLevel": {
+          "type": ["string", "null"],
+          "enum": [null, "declared", "checked", "demonstrated", "attested"]
+        }
+      }
+    },
+    "workOrderEdge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["from", "to", "relation", "artifactKinds"],
+      "properties": {
+        "from": { "$ref": "#/$defs/id" }, "to": { "$ref": "#/$defs/id" },
+        "relation": { "enum": ["reportsTo", "handsOffTo", "reviews", "coordinatesWith"] },
+        "artifactKinds": { "$ref": "#/$defs/ids" }
+      }
+    },
+    "selectionEdge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fromSlot", "toSlot", "relation", "artifactKinds"],
+      "properties": {
+        "fromSlot": { "$ref": "#/$defs/id" }, "toSlot": { "$ref": "#/$defs/id" },
+        "relation": { "enum": ["reportsTo", "handsOffTo", "reviews", "coordinatesWith"] },
+        "artifactKinds": { "$ref": "#/$defs/ids" }
+      }
+    },
+    "executionContext": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "schemaVersion", "workOrderId", "taskBrief", "forbiddenCommunities", "slots",
+        "workOrderEdges", "assignments", "selectionEdges"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "agentlas.workforce-execution-context.v1" },
+        "workOrderId": { "$ref": "#/$defs/id" },
+        "taskBrief": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "forbiddenCommunities": { "$ref": "#/$defs/ids" },
+        "slots": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/contextSlot" } },
+        "workOrderEdges": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/workOrderEdge" } },
+        "assignments": {
+          "type": "array", "minItems": 1, "maxItems": 64,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["slotId", "agentReleaseId", "reasonCodes"],
+            "properties": {
+              "slotId": { "$ref": "#/$defs/id" },
+              "agentReleaseId": { "$ref": "#/$defs/id" },
+              "reasonCodes": { "$ref": "#/$defs/ids" }
+            }
+          }
+        },
+        "selectionEdges": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/selectionEdge" } }
+      }
+    },
+    "rosterRow": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "slotId", "agentDefinitionId", "agentReleaseId", "releaseVersion",
+        "packageHash", "contentDigest", "entityKind", "directiveBundle",
+        "permissionPolicy", "permissionPolicyDigest", "executionGraph",
+        "executionGraphDigest", "bundleDigestSchema", "bundleDigest"
+      ],
+      "properties": {
+        "slotId": { "$ref": "#/$defs/id" },
+        "agentDefinitionId": { "$ref": "#/$defs/id" },
+        "agentReleaseId": { "$ref": "#/$defs/id" },
+        "releaseVersion": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "packageHash": { "$ref": "#/$defs/hash" },
+        "contentDigest": { "$ref": "#/$defs/hash" },
+        "entityKind": { "enum": ["agent", "team"] },
+        "directiveBundle": { "$ref": "#/$defs/directiveBundle" },
+        "permissionPolicy": { "$ref": "#/$defs/permissionPolicy" },
+        "permissionPolicyDigest": { "$ref": "#/$defs/hash" },
+        "executionGraph": { "oneOf": [{ "$ref": "#/$defs/executionGraph" }, { "type": "null" }] },
+        "executionGraphDigest": { "oneOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }] },
+        "bundleDigestSchema": { "const": "agentlas.workforce-runtime-bundle-digest.v4" },
+        "bundleDigest": { "$ref": "#/$defs/hash" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "entityKind": { "const": "team" } } },
+          "then": {
+            "properties": {
+              "executionGraph": { "$ref": "#/$defs/executionGraph" },
+              "executionGraphDigest": { "$ref": "#/$defs/hash" }
+            }
+          },
+          "else": {
+            "properties": {
+              "executionGraph": { "type": "null" },
+              "executionGraphDigest": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "executionGraph": { "type": "null" } } },
+          "then": { "properties": { "executionGraphDigest": { "type": "null" } } },
+          "else": { "properties": { "executionGraphDigest": { "$ref": "#/$defs/hash" } } }
         }
       ]
     }

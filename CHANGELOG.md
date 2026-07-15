@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.1.44 - 2026-07-16
+
+- **Prepared staffing is now an executable organization contract.**
+  `agentlas.workforce-execution-plan.v5` preserves the complete validated
+  WorkOrder and Selection, binds an explicit deny-by-default permission policy,
+  and distinguishes direct `agent` execution from a mandatory nested `team`
+  manager/worker graph. `group` remains discovery metadata and cannot enter an
+  executable roster.
+- **Execution receipts prove actual workers instead of flattening teams.**
+  `agentlas.workforce-execution-receipt.v2` records unique leader, planner,
+  direct worker or packaged manager/worker/synthesis, top synthesis, and
+  verifier invocations with truthful effort observability and runtime
+  permission evidence. Missing structured plans, fallback, reordered or
+  skipped nested workers, release drift, and fabricated success fail closed.
+- **Tool choice belongs to the host LLM and authority remains deterministic.**
+  A private `agentlas.workforce-tool-inventory.v1` snapshot is scoped to each
+  slot/release/policy and never sent to Hub. The host planner selects exact
+  capability bindings; Core recomputes the inventory and binding digests and
+  rejects tools outside the snapshot, package policy, eligible runtime, or
+  required capability coverage. Missing package permissions project to
+  deny-all, MCP wildcards are forbidden, and zero-tools/no-authority execution
+  cannot claim tool grants.
+- **`redacted=true` is no longer treated as proof.** A deterministic local/Hub
+  boundary rejects secrets, local paths, and direct or labelled identifiers in
+  the public task brief and role text before candidate retrieval. Shared
+  adversarial Python/JavaScript vectors pin runtime digest v4 and capability
+  binding v1 across hosts.
+
 ## v1.1.43 - 2026-07-16
 
 - **Prepared plans now require a real executable directive.** Core accepts a

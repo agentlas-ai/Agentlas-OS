@@ -32,8 +32,9 @@ done
 1. Convert the task into a redacted `agentlas.workforce-work-order.v1` with
    distinct role slots, required roles/skills/knowledge/MCP tools,
    input-output artifacts, runtimes, languages, authorities, cardinality, and
-   collaboration edges. Keep private files, memory, secrets, and raw local
-   context on this host.
+   collaboration edges. Keep private files, memory, secrets, direct identifiers,
+   and raw local context on this host. Run the deterministic Hub-boundary
+   validator before transport; `redacted=true` is not proof by itself.
 2. Call Hub MCP `workforce.search_candidates` with `{workOrder}`. Inspect exact
    semantic/eval evidence and release/package/content hashes. Never use
    popularity, ratings, invocations, or local availability as semantic fit.
@@ -43,17 +44,27 @@ done
    `workforce.validate_selection` with `{workOrder,candidateSet,selection}`.
    Re-plan if rejected; do not accept a deterministic substitute.
 4. Call `workforce.prepare_execution` with the accepted validation receipt.
-   Require `agentlas.workforce-execution-plan.v4`, status `prepared`, and an
+   Require `agentlas.workforce-execution-plan.v5`, status `prepared`, and an
    exact pinned `executionRoster`; every row must declare
-   `agentlas.workforce-runtime-bundle-digest.v3`, which the host recomputes
-   before execution. Fail closed on release/hash/directive drift or missing
-   directives. Never silently substitute.
-5. Run manager/planner, each selected worker, synthesis, and verifier as
-   distinct model invocations using the prepared directive bundles and
-   explicit artifact handoffs. Honor nested Team execution graphs.
+   `agentlas.workforce-runtime-bundle-digest.v4`, an explicit permission
+   policy, the complete execution-context digest, and either a null graph for
+   an `agent` or an authoritative manager/worker graph for a `team`. Recompute
+   every digest before execution. `group` is not executable. Fail closed on
+   release/hash/directive/policy/graph drift or silent substitution.
+5. Snapshot the policy-filtered local `tools/list` menu as private
+   `agentlas.workforce-tool-inventory.v1` evidence. Give that bounded menu to
+   this same host LLM planner and author exact pair-scoped capability bindings;
+   deterministic code validates inventory, runtime, permission, and required
+   capability coverage. Never send the raw inventory to Hub.
+6. Run each direct agent once. For each selected team, run its manager plan,
+   every declared graph worker in exact order, and manager synthesis. Then run
+   top-level synthesis and verifier as distinct invocations with explicit
+   artifact handoffs. Never flatten a packaged team or use fallback workers.
 
-Do not call the run complete unless the joined execution receipt includes
+Do not call the run complete unless an independently validated
+`agentlas.workforce-execution-receipt.v2` includes
 planner parse success with no fallback, each worker's invocation and handoff,
-synthesis, and a passing verifier. If this host cannot create distinct child
+synthesis, a passing verifier, the capability-binding digest, and truthful
+permission/tool-grant evidence. If this host cannot create distinct child
 invocations, report `prepared, not executed`. Name the actual workers and keep
 `selected`, `prepared`, and `executed` states separate.

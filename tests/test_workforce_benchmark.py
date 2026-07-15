@@ -5,8 +5,13 @@ import json
 from pathlib import Path
 
 from agentlas_cloud.workforce import (
+    WORKFORCE_CAPABILITY_BINDING_PLAN_SCHEMA,
     WORKFORCE_ONTOLOGY_SNAPSHOT_SHA256,
     WORKFORCE_ONTOLOGY_VERSION,
+    WORKFORCE_TOOL_INVENTORY_SCHEMA,
+    prepare_execution_plan,
+    workforce_capability_binding_plan_digest,
+    workforce_tool_inventory_digest,
 )
 
 
@@ -29,8 +34,11 @@ def _slot(slot_id: str, community: str, role: str, skill: str) -> dict:
         "cardinality": 1,
         "criticality": "required",
         "requiredCommunities": [community],
+        "optionalCommunities": [],
+        "excludedCommunities": [],
         "requiredRoles": [role],
         "requiredSkills": [skill],
+        "optionalSkills": [],
         "requiredKnowledge": [],
         "requiredToolCapabilities": [],
         "consumes": [],
@@ -44,6 +52,46 @@ def _slot(slot_id: str, community: str, role: str, skill: str) -> dict:
     }
 
 
+def _invocation(
+    invocation_id: str,
+    *,
+    policy_digest: str | None = None,
+    tool_inventory_digest: str | None = None,
+    **extra: object,
+) -> dict:
+    value = {
+        "invocationId": invocation_id,
+        "modelId": "model:test",
+        "runtimeId": "runtime:test",
+        "provider": "fixture",
+        "requestedEffort": None,
+        "appliedEffort": None,
+        "effortEvidence": "not-observable",
+        "status": "completed",
+        **extra,
+    }
+    if policy_digest:
+        value["permissionEnforcement"] = {
+            "permissionPolicyDigest": policy_digest,
+            "enforcementMode": "zero-tools",
+            "status": "enforced",
+            "approvalReceiptIds": [],
+            "enforcementEvidence": {
+                "runtimeKind": "runtime:fixture",
+                "runtimeVersion": None,
+                "sandboxMode": "not-applicable",
+                "toolInventory": "empty",
+                "disabledCapabilities": ["capability:all-tools"],
+                "ephemeral": True,
+                "ignoredUserConfig": True,
+                "ignoredRules": True,
+                "toolInventoryDigest": tool_inventory_digest,
+                "grantedToolIds": [],
+            },
+        }
+    return value
+
+
 def _passing_run() -> dict:
     slots = [
         _slot("backend", "community:backend-engineering", "role:backend-engineer", "skill:api-design"),
@@ -55,7 +103,6 @@ def _passing_run() -> dict:
     digest = "sha256:" + "a" * 64
     candidates = []
     assignments = []
-    workers = []
     for index, slot in enumerate(slots):
         release_id = f"agent:{slot['slotId']}:v1"
         candidate = {
@@ -85,16 +132,6 @@ def _passing_run() -> dict:
         }
         candidates.append({"slotId": slot["slotId"], "candidates": [candidate], "coverageGaps": []})
         assignments.append({"slotId": slot["slotId"], "agentReleaseId": release_id, "reasonCodes": [f"fit:{slot['slotId']}"]})
-        workers.append({
-            "slotId": slot["slotId"],
-            "agentReleaseId": release_id,
-            "packageHash": candidate["packageHash"],
-            "contentDigest": candidate["contentDigest"],
-            "modelId": "test-model",
-            "invocationId": f"worker:{index}",
-            "status": "completed",
-            "handoffArtifactRefs": [f"artifact:{index}"],
-        })
     work_order = {
         "schemaVersion": "agentlas.workforce-work-order.v1",
         "workOrderId": "work-order:test",
@@ -102,7 +139,13 @@ def _passing_run() -> dict:
         "taskBrief": "test",
         "redacted": True,
         "roleSlots": slots,
+        "edges": [],
         "forbiddenCommunities": SPEC["forbiddenCommunities"],
+        "selectionPolicy": {
+            "minimumCandidatesPerSlot": 2,
+            "maximumCandidatesPerSlot": 20,
+            "allowHistoryEvidence": False,
+        },
     }
     candidate_set = {
         "schemaVersion": "agentlas.workforce-candidate-set.v1",
@@ -124,8 +167,68 @@ def _passing_run() -> dict:
         "assignments": assignments,
         "edges": [],
         "alternativesConsidered": [],
+        "requestExpansionForSlots": [],
     }
     validation = score_module.validate_host_selection(selection, candidate_set=candidate_set, work_order=work_order)
+    runtime_bundles = [
+        {
+            "agentReleaseId": candidate_slot["candidates"][0]["agentReleaseId"],
+            "packageHash": candidate_slot["candidates"][0]["packageHash"],
+            "contentDigest": candidate_slot["candidates"][0]["contentDigest"],
+            "directiveBundle": {"instructions": f"Own {candidate_slot['slotId']}."},
+            "status": "prepared",
+        }
+        for candidate_slot in candidates
+    ]
+    prepared = prepare_execution_plan(
+        work_order=work_order,
+        selection=selection,
+        validation_receipt=validation,
+        candidate_set=candidate_set,
+        runtime_bundles=runtime_bundles,
+    )
+    tool_inventory_snapshot = {
+        "schemaVersion": WORKFORCE_TOOL_INVENTORY_SCHEMA,
+        "executionContextDigest": prepared["executionContextDigest"],
+        "observedAt": "2026-07-16T00:00:00Z",
+        "entries": [],
+    }
+    tool_inventory_digest = workforce_tool_inventory_digest(tool_inventory_snapshot)
+    capability_binding_plan = {
+        "schemaVersion": WORKFORCE_CAPABILITY_BINDING_PLAN_SCHEMA,
+        "decisionOwner": "host_llm",
+        "plannerInvocationId": "invoke:planner",
+        "executionContextDigest": prepared["executionContextDigest"],
+        "toolInventoryDigest": tool_inventory_digest,
+        "inventory": [],
+    }
+    capability_binding_plan["bindingPlanDigest"] = workforce_capability_binding_plan_digest(
+        capability_binding_plan
+    )
+    binding_plan_digest = capability_binding_plan["bindingPlanDigest"]
+    workers = [
+        {
+            "slotId": row["slotId"],
+            "agentReleaseId": row["agentReleaseId"],
+            "entityKind": row["entityKind"],
+            "packageHash": row["packageHash"],
+            "contentDigest": row["contentDigest"],
+            "bundleDigest": row["bundleDigest"],
+            "permissionPolicyDigest": row["permissionPolicyDigest"],
+            "executionGraphDigest": None,
+            "status": "completed",
+            "handoffArtifactRefs": [f"artifact:{index}"],
+            "capabilityBindingPlanDigest": binding_plan_digest,
+            "capabilityBindings": [],
+            "executionMode": "direct",
+            "directInvocation": _invocation(
+                f"invoke:worker-{index}", policy_digest=row["permissionPolicyDigest"],
+                tool_inventory_digest=tool_inventory_digest,
+            ),
+            "nestedExecutionId": None,
+        }
+        for index, row in enumerate(prepared["executionRoster"])
+    ]
     return {
         "workOrder": work_order,
         "candidateSet": candidate_set,
@@ -143,17 +246,27 @@ def _passing_run() -> dict:
                 {"phase": "selection", "status": "completed"},
             ],
         },
+        "preparedExecution": prepared,
+        "toolInventorySnapshot": tool_inventory_snapshot,
         "executionReceipt": {
-            "schemaVersion": "agentlas.workforce-execution-receipt.v1",
+            "schemaVersion": "agentlas.workforce-execution-receipt.v2",
             "status": "passed",
             "executionId": "execution:test",
+            "workOrderId": work_order["workOrderId"],
             "selectionReceiptId": validation["selectionReceiptId"],
-            "preparationReceiptId": "preparation:test",
-            "orchestrator": {"modelId": "test-model", "invocationId": "orchestrator:test"},
-            "planner": {"modelId": "test-model", "invocationId": "planner:test", "parseSuccess": True, "fallbackUsed": False},
+            "preparationReceiptId": prepared["preparationReceiptId"],
+            "executionContextDigest": prepared["executionContextDigest"],
+            "orchestrator": _invocation("invoke:orchestrator"),
+            "planner": _invocation(
+                "invoke:planner", parseSuccess=True, fallbackUsed=False,
+                toolInventoryDigest=tool_inventory_digest,
+                capabilityBindingPlanDigest=binding_plan_digest,
+            ),
+            "capabilityBindingPlan": capability_binding_plan,
             "workers": workers,
-            "synthesis": {"modelId": "test-model", "invocationId": "synthesis:test", "status": "completed"},
-            "verifier": {"modelId": "test-model", "invocationId": "verifier:test", "status": "completed", "verdict": "pass"},
+            "nestedExecutions": [],
+            "synthesis": _invocation("invoke:synthesis"),
+            "verifier": _invocation("invoke:verifier", verdict="pass"),
         },
     }
 
@@ -168,6 +281,64 @@ def _declare_optional_payment_expertise(run: dict) -> None:
     payment_slot["requiredRoles"] = []
     payment_slot["requiredSkills"] = []
     payment_slot["optionalSkills"] = ["skill:transaction-integrity"]
+
+
+def _refresh_prepared_execution(run: dict) -> None:
+    validation = score_module.validate_host_selection(
+        run["selection"], candidate_set=run["candidateSet"], work_order=run["workOrder"]
+    )
+    old_rows = run["preparedExecution"]["executionRoster"]
+    prepared = prepare_execution_plan(
+        work_order=run["workOrder"],
+        selection=run["selection"],
+        validation_receipt=validation,
+        candidate_set=run["candidateSet"],
+        runtime_bundles=[
+            {
+                "agentReleaseId": row["agentReleaseId"],
+                "packageHash": row["packageHash"],
+                "contentDigest": row["contentDigest"],
+                "directiveBundle": row["directiveBundle"],
+                "permissionPolicy": row["permissionPolicy"],
+                "executionGraph": row["executionGraph"],
+                "status": "prepared",
+            }
+            for row in old_rows
+        ],
+    )
+    run["selectionValidation"] = validation
+    run["preparedExecution"] = prepared
+    receipt = run["executionReceipt"]
+    receipt["selectionReceiptId"] = validation["selectionReceiptId"]
+    receipt["preparationReceiptId"] = prepared["preparationReceiptId"]
+    receipt["executionContextDigest"] = prepared["executionContextDigest"]
+    by_pair = {
+        (row["slotId"], row["agentReleaseId"]): row for row in prepared["executionRoster"]
+    }
+    for worker in receipt["workers"]:
+        row = by_pair[(worker["slotId"], worker["agentReleaseId"])]
+        for field in (
+            "entityKind", "packageHash", "contentDigest", "bundleDigest",
+            "permissionPolicyDigest", "executionGraphDigest",
+        ):
+            worker[field] = row[field]
+        worker["directInvocation"]["permissionEnforcement"]["permissionPolicyDigest"] = row[
+            "permissionPolicyDigest"
+        ]
+    tool_inventory = run["toolInventorySnapshot"]
+    tool_inventory["executionContextDigest"] = prepared["executionContextDigest"]
+    tool_inventory_digest = workforce_tool_inventory_digest(tool_inventory)
+    binding_plan = receipt["capabilityBindingPlan"]
+    binding_plan["executionContextDigest"] = prepared["executionContextDigest"]
+    binding_plan["toolInventoryDigest"] = tool_inventory_digest
+    binding_plan["bindingPlanDigest"] = workforce_capability_binding_plan_digest(binding_plan)
+    receipt["planner"]["toolInventoryDigest"] = tool_inventory_digest
+    receipt["planner"]["capabilityBindingPlanDigest"] = binding_plan["bindingPlanDigest"]
+    for worker in receipt["workers"]:
+        worker["capabilityBindingPlanDigest"] = binding_plan["bindingPlanDigest"]
+        worker["directInvocation"]["permissionEnforcement"]["enforcementEvidence"][
+            "toolInventoryDigest"
+        ] = tool_inventory_digest
 
 
 def test_difficult_workforce_benchmark_passes_only_with_real_architecture_evidence() -> None:
@@ -203,6 +374,7 @@ def test_optional_payment_expertise_counts_without_copying_hidden_forbidden_prob
     run = _passing_run()
     _declare_optional_payment_expertise(run)
     run["workOrder"]["forbiddenCommunities"] = ["community:travel"]
+    _refresh_prepared_execution(run)
 
     result = score_module.score_run(SPEC, run)
 

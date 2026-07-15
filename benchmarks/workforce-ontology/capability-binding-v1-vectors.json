@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "agentlas.workforce-capability-binding-vectors.v1",
+  "accepted": [
+    {
+      "name": "empty",
+      "toolInventory": {
+        "schemaVersion": "agentlas.workforce-tool-inventory.v1",
+        "executionContextDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "observedAt": "2026-07-16T00:00:00Z",
+        "entries": []
+      },
+      "expectedToolInventoryDigest": "sha256:eb5f17b8841354e031e03ae162a07b71ea8e274a6162ea01d9e6b53c898cba57",
+      "capabilityBindingPlan": {
+        "schemaVersion": "agentlas.workforce-capability-binding-plan.v1",
+        "decisionOwner": "host_llm",
+        "plannerInvocationId": "invoke:planner",
+        "executionContextDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "toolInventoryDigest": "sha256:eb5f17b8841354e031e03ae162a07b71ea8e274a6162ea01d9e6b53c898cba57",
+        "inventory": [],
+        "bindingPlanDigest": "sha256:fc160a6799a7bfdacfc0085d27fdb1634c4af314e9408452f1f1009e9f7bb0b8"
+      },
+      "expectedBindingPlanDigest": "sha256:fc160a6799a7bfdacfc0085d27fdb1634c4af314e9408452f1f1009e9f7bb0b8"
+    },
+    {
+      "name": "mongodb",
+      "toolInventory": {
+        "schemaVersion": "agentlas.workforce-tool-inventory.v1",
+        "executionContextDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "observedAt": "2026-07-16T00:00:00Z",
+        "entries": [
+          {
+            "slotId": "slot:backend",
+            "agentReleaseId": "release:mongodb-backend",
+            "permissionPolicyDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "provider": "mcp",
+            "toolId": "mcp__mongodb__find",
+            "serverId": "85aad99f-d205-4c4f-95db-e422f6474a30",
+            "description": "Read matching MongoDB documents.",
+            "inputSchemaDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "runtimeIds": ["runtime:ollama"],
+            "selectiveEnforcement": "exact-tool-allowlist",
+            "capabilityIds": ["tool:mongodb"],
+            "status": "ready"
+          }
+        ]
+      },
+      "expectedToolInventoryDigest": "sha256:592d7eaf8a91fdb194d859049fdd548a7745d59f9248832f4586b00fb5f2e108",
+      "capabilityBindingPlan": {
+        "schemaVersion": "agentlas.workforce-capability-binding-plan.v1",
+        "decisionOwner": "host_llm",
+        "plannerInvocationId": "invoke:planner",
+        "executionContextDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "toolInventoryDigest": "sha256:592d7eaf8a91fdb194d859049fdd548a7745d59f9248832f4586b00fb5f2e108",
+        "inventory": [
+          {
+            "slotId": "slot:backend",
+            "agentReleaseId": "release:mongodb-backend",
+            "permissionPolicyDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "toolId": "mcp__mongodb__find",
+            "provider": "mcp",
+            "capabilityIds": ["tool:mongodb"],
+            "status": "bound"
+          }
+        ],
+        "bindingPlanDigest": "sha256:76c6667a7ca2fad57861dca2073564a7b6a329819559149084ea8b52d1b28e83"
+      },
+      "expectedBindingPlanDigest": "sha256:76c6667a7ca2fad57861dca2073564a7b6a329819559149084ea8b52d1b28e83"
+    }
+  ]
+}

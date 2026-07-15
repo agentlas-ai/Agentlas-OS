@@ -122,6 +122,8 @@ def validate_host_selection(
             issues.append(f"missing_assignment_reason:{slot_id}:{release_id}")
         counts[slot_id] += 1
         candidate = candidates_by_slot[slot_id][release_id]
+        if candidate.get("entityKind") not in {"agent", "team"}:
+            issues.append(f"entity_kind_not_executable:{slot_id}:{release_id}")
         row = {
             "slotId": slot_id,
             "agentDefinitionId": candidate.get("agentDefinitionId"),
