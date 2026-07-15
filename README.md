@@ -457,10 +457,31 @@ Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization]
 
 Features first-party Korean document parsing (HWPX and legacy HWP5) with zero GPL dependencies. Fully local and SQLite-backed; confidential and private chunks are isolated, preventing them from reaching external cloud hooks.
 
-The default vector adapter is a verified, bundled, dependency-free
-`potion-base-8M` int8 + hash-96 hybrid (fixed 352 dimensions). Runtime queries
-never download a model or call a hosted embedding API; hash-only mode is
-reported as a degraded fallback when the local asset is unavailable.
+The v1.1.30 release contract ships and verifies a dependency-free
+`potion-base-8M` int8 Model2Vec asset as the primary semantic adapter. Its
+normalized 256-dimensional semantic vector is combined with a normalized
+hash-96 vector into one fixed 352-dimensional local vector. Runtime queries
+never download a model or call a hosted embedding API. Hash-only mode is an
+explicitly reported degraded fallback when the verified local asset is missing
+or rejected, not an alternative silent default.
+
+Agent experience recall is a governed path, not an unrestricted nearest-vector
+search:
+
+```text
+exact agent + allowed scope + active status + unexpired + not superseded
+  -> lexical rank + local cosine rank
+  -> reciprocal-rank fusion + bounded salience prior
+  -> all relevant memories when they fit, otherwise budgeted top-k
+```
+
+Every governance-eligible experience row is considered before token-budget
+selection, so an arbitrary recency window cannot hide older evidence. Each Hub
+agent has a rebuildable private projection at
+`~/.agentlas/networking/hub-agents/<normalized-slug>/memory/experience.sqlite`.
+The runtime may infer only same-agent, same-scope `similar_to` edges from local
+cosine similarity; `supersedes` and `contradicts` require an explicit curator
+decision.
 
 ```bash
 bin/ontology ingest ./corpus --scope internal
@@ -469,14 +490,22 @@ bin/ontology --db ~/.agentlas/networking/hub-agents/<slug>/memory/experience.sql
 bin/ontology memory candidates
 ```
 
-Details: [docs/ontology-runtime.md](docs/ontology-runtime.md)
+Plain Claude Code and Codex sessions receive bounded recall through
+`SessionStart` and `UserPromptSubmit` additional context. Antigravity uses a
+`PreInvocation` ephemeral message, OpenCode uses an experimental local plugin,
+and Grok refreshes a workspace-scoped cache because its passive hooks do not
+inject stdout. These hooks supplement live `AGENTS.md`/`CLAUDE.md` policy rather
+than copying it. Details: [docs/ontology-runtime.md](docs/ontology-runtime.md) ·
+[docs/runtime-memory-hooks.md](docs/runtime-memory-hooks.md)
 
 ---
 
 ### Governed Memory — Curated Promotion
-*   **Local Project Memory:** Stored under `~/.agentlas/networking/` and isolated to the local machine. It cannot be exported without explicit authorization.
-*   **Workspace Personalization:** Manages personalization logs (summaries, playbooks, plugin locks, and receipts) for borrowed Cloud/Hub agents without storing raw prompts, credential values, or private files.
-*   **Curator Gating:** Skills and memory modifications are kept as candidates. They are promoted to durable status only after a local curator confirms holdout/replay proofs, rollback coverages, and security policy approvals.
+
+*   **Local Project Memory:** Project documents remain in the local `.agentlas/ontology-runtime.sqlite`; borrowed-agent experience remains in its exact per-agent projection. The two stores share one query engine without collapsing their scope or ownership boundaries.
+*   **Governance Before Ranking:** Exact agent, allowed privacy scope, active status, expiry, and structural supersession are enforced before lexical/cosine ranking. Secret redaction and capsule bounds are applied again before host delivery.
+*   **Workspace Personalization:** Manages summaries, playbooks, plugin locks, and receipts for borrowed Cloud/Hub agents without storing raw prompts, credential values, or private files.
+*   **Curator Gating:** Skills and durable memory modifications remain candidates until a local curator confirms evidence, rollback coverage, and security policy approval. Automatic experience relations are limited to `similar_to`.
 
 ---
 
@@ -590,6 +619,7 @@ runtime adapters, verification ledgers, and release gates together.
 | Canonical Goal + UltraCode harness | [`docs/stormbreaker-goal-ultracode-harness.md`](docs/stormbreaker-goal-ultracode-harness.md) |
 | Ontology runtime | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
 | Memory architecture | [`docs/memory-architecture.md`](docs/memory-architecture.md) |
+| Runtime memory hooks | [`docs/runtime-memory-hooks.md`](docs/runtime-memory-hooks.md) |
 | Experience and Taste assets | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
 | MCP build resolution | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
 | Model allocation | [`docs/model-allocation.md`](docs/model-allocation.md) |

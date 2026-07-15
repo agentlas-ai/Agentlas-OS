@@ -1,10 +1,12 @@
 # Runtime memory hooks
 
-`bin/agentlas-memory-hook` is the portable, fail-open bridge from raw host
-conversation events to the local Ontology Runtime. It does not add another
-memory authority. It recalls from the current project's
+`bin/agentlas-memory-hook` is the portable, fail-open bridge from documented
+host lifecycle or current-prompt events to the local Ontology Runtime. It does
+not add another memory authority or read a host transcript. It recalls from the
+current project's
 `.agentlas/ontology-runtime.sqlite` and, only for an exact validated agent
-slug, its rebuildable `hub-agents/<slug>/memory/experience.sqlite` projection.
+slug, its rebuildable
+`~/.agentlas/networking/hub-agents/<slug>/memory/experience.sqlite` projection.
 
 ## Host contract matrix
 
@@ -36,6 +38,14 @@ The hook:
    renders recalled text as evidence that cannot override host or project
    policy.
 
+The two recall sources remain separate. Project chunks use their project scope;
+experience rows first pass exact agent, caller-allowed privacy scope, active
+status, expiry, and same-scope supersession governance. Every eligible
+experience row receives lexical and cosine scores; relevance survivors enter
+RRF plus a bounded salience prior. The runtime returns all relevant rows if
+they fit its token budget and a budgeted top-k otherwise. The hook formats
+those already-governed results; it does not re-rank or broaden them.
+
 Host-native instruction sources (`AGENT.md`, `AGENTS.md`, `CLAUDE.md`,
 `CLAUDE.local.md`, and `GEMINI.md`) are excluded by source basename even if the
 ontology indexed them. The host loads the live files through its native policy
@@ -43,8 +53,10 @@ path; the memory capsule does not create a stale duplicate.
 
 There are no network imports, server embedding calls, runtime model downloads,
 or Memory Curator writes in this path. Vector selection stays with the
-canonical local runtime. A verified bundled Model2Vec asset is used when
-available; the hashing fallback is explicit as `retrieval=degraded_hash`.
+canonical local runtime. The v1.1.30 installer verifies and installs the bundled
+Model2Vec asset as the primary path. If the asset is absent or rejected, the
+runtime fails open to local hash-96 and the capsule states
+`retrieval=degraded_hash`; it never silently substitutes a hosted model.
 OpenCode also kills a recall child after 12 seconds and fails open so a locked
 SQLite file cannot hold the chat loop indefinitely; deleted sessions and plugin
 disposal clear their in-memory capsule entries.

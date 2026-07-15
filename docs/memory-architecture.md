@@ -31,8 +31,9 @@ worker observation
 
 ## Network Memory / Playbook Control Plane
 
-Hephaestus Network 0.7.2 keeps the per-agent `.agentlas` memory architecture,
-but treats those files as scoped memory roots rather than isolated notebooks.
+The Agentlas OS v1.1.30 Network contract keeps the per-agent `.agentlas` memory
+architecture, but treats those files as scoped memory roots rather than
+isolated notebooks.
 The router does not write durable memory directly. It emits:
 
 - `memory_playbook.applied`: playbooks that informed this route;
@@ -86,6 +87,57 @@ For deploy, release, store, billing, auth, API, or cloud work, memory users must
 read the top project credential index and `.agentlas/local-credentials.map.json`
 before concluding that credentials are absent.
 
+## Governed Agent Experience Projection
+
+Project-document knowledge and agent experience use the same local
+`OntologyRuntime`, embedding contract, and relation schema, but they do not
+share an authority boundary or a database:
+
+```text
+current project documents
+  -> <project>/.agentlas/ontology-runtime.sqlite
+
+owner-runtime agent learning
+  -> ~/.agentlas/networking/hub-agents/<normalized-slug>/memory/experience.sqlite
+```
+
+The owner runtime remains authoritative for agent learning. The per-agent
+SQLite file is a rebuildable, read-only-at-recall projection; it is not a new
+durable-memory writer. Borrowed-agent invocation resolves the normalized slug
+to that exact projection and calls the ontology query path instead of
+concatenating an untyped nest file. Project documents are queried separately,
+so untrusted agent identity cannot widen project or experience scope.
+
+Experience retrieval follows a fixed order:
+
+1. Enforce exact `agent_id`, caller-allowed privacy scope, active status,
+   expiry, and valid same-agent/same-scope `supersedes` edges.
+2. Score every remaining row lexically and by cosine, then apply the lexical or
+   semantic relevance gates. There is no pre-ranking recency cap that can hide
+   older eligible evidence.
+3. Rank the relevant candidate text plus tags lexically and rank its local
+   embedding by cosine similarity. Fuse the two rankings with reciprocal-rank
+   fusion, then apply a bounded salience prior (`85%` fused relevance, `15%`
+   salience).
+4. Return every relevant memory when the total fits the context token budget.
+   When it does not fit, return the highest-ranked items that fit the budget
+   and top-k limit.
+
+The v1.1.30 primary embedding path is the manifest-verified, bundled
+`potion-base-8M` int8 Model2Vec asset: normalized semantic-256 plus normalized
+hash-96, for a fixed 352-dimensional local vector. It runs in process and
+offline. A missing or rejected asset does not trigger a download or hosted API;
+the runtime fails open to hash-96 and reports the degraded state explicitly.
+
+Host recall remains a delivery adapter, not a memory authority. The local hook
+queries project documents and an exact verified agent projection separately,
+never reads the host transcript, performs no Memory Curator write, redacts
+common credential patterns, bounds the resulting capsule, and excludes native
+policy files already loaded by the host. Claude Code/Codex, Antigravity,
+OpenCode, and Grok have different delivery guarantees; see
+[`runtime-memory-hooks.md`](runtime-memory-hooks.md) rather than assuming one
+generic injection mechanism.
+
 ## Memory Relation Graph
 
 Durable memory is a graph, not a flat list. The local ontology runtime links
@@ -95,7 +147,8 @@ never silent overwrite" rule is enforced by structure instead of convention.
 Edge types:
 
 - `similar_to`: machine-detected semantic similarity between two rows, scored
-  by local vector cosine after exact agent/privacy governance filtering.
+  by local vector cosine only after exact agent/privacy governance filtering.
+  Automatic experience links never cross an agent or privacy scope.
 - `supersedes`: a newer ticket replaces an older one. Recorded as an edge from
   the newer ticket to the one it retires, so the retired entry stays visible with
   a pointer to what replaced it.

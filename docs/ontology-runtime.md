@@ -139,8 +139,9 @@ bin/ontology ingest examples/ontology-corpus --scope internal
 
 ## Search And GraphRAG
 
-Full-text search uses SQLite FTS5. Vector search defaults to `auto`, which
-selects the verified bundled or installed `potion-base-8M` int8 asset. The
+Full-text search uses SQLite FTS5. In v1.1.30, vector search defaults to `auto`
+and the verified bundled or installed `potion-base-8M` int8 asset is the
+required primary release path, not an optional online enhancement. The
 dependency-free runtime reconstructs a normalized 256-dimensional Model2Vec
 WordPiece mean, concatenates an equally weighted normalized hash-96 vector for
 Korean/CJK and lexical recall, and returns one fixed 352-dimensional vector.
@@ -153,6 +154,12 @@ package, downloads a model, or falls back to a server embedding API. If no
 verified local asset exists, `auto` reports a `degraded_fallback` and uses the
 deterministic hash-96 adapter. Operators can explicitly select that degraded
 path with `--embedding-adapter hash`.
+
+Lexical matches remain eligible independently of cosine. Vector-only matches
+must pass both an absolute cosine floor and a floor relative to the best vector
+match; CJK queries use the stricter absolute floor. This keeps the bundled
+semantic path useful without allowing unrelated high-baseline vectors into the
+recall set.
 
 ```bash
 bin/ontology --embedding-adapter model2vec \
@@ -194,12 +201,12 @@ Global options such as `--db`, `--embedding-adapter`, and
 ## Agent Experience Projection
 
 Each Hub agent can use an isolated
-`hub-agents/<normalized-slug>/memory/experience.sqlite`. The v3
-`memory_candidates` extension stores the exact agent id, memory kind, tags,
-salience prior, privacy scope, source-memory provenance, embedding adapter and
-dimensions, vector, and embedding content hash. The owner runtime remains the
-source of truth; this SQLite file is a rebuildable local projection and never
-sets `durable_write_enabled`.
+`~/.agentlas/networking/hub-agents/<normalized-slug>/memory/experience.sqlite`.
+The v3 `memory_candidates` extension stores the exact agent id, memory kind,
+tags, salience prior, privacy scope, source-memory provenance, embedding adapter
+and dimensions, vector, and embedding content hash. The owner runtime remains
+the source of truth; this SQLite file is a rebuildable local projection and
+never sets `durable_write_enabled`.
 
 ```bash
 bin/ontology --db /path/to/experience.sqlite experience ingest \
@@ -211,13 +218,25 @@ bin/ontology --db /path/to/experience.sqlite query \
   "How should I prepare this migration?" --agent hub:release-writer
 ```
 
-Recall is read-only. Governance filters exact `agent_id`, privacy scope,
-active status, expiry, and structural supersession before scoring. Retrieval
-then fuses lexical and local cosine ranks with reciprocal-rank fusion and a
-bounded salience prior. If all relevant memories fit the token budget, all are
-returned; otherwise the runtime returns a budgeted top-k. Automatic graph
-inference writes only `similar_to` from local vector cosine.
-`supersedes` and `contradicts` remain explicit curator decisions.
+Recall is read-only. Governance filters exact `agent_id`, caller-allowed privacy
+scope, active status, expiry, and valid same-agent/same-scope structural
+supersession before scoring. Every governance-eligible row receives lexical and
+cosine scores; rows that pass either relevance path enter ranking. Retrieval
+does not apply a recency scan cap before that scoring pass. Candidate text plus
+tags form the lexical rank, the stored local embedding forms the cosine rank,
+and reciprocal-rank fusion combines them before a bounded salience prior is
+applied (`85%` fused relevance, `15%` salience). If all relevant memories fit
+the token budget, all are returned; otherwise the runtime returns a budgeted
+top-k.
+Automatic graph inference writes only same-agent/same-scope `similar_to` edges
+from local vector cosine. `supersedes` and `contradicts` remain explicit curator
+decisions.
+
+Project-document retrieval and agent-experience retrieval share this runtime
+but remain separate queries and separate SQLite authority boundaries. The
+runtime memory hook can combine their bounded results for a host without
+copying one store into the other. See
+[`runtime-memory-hooks.md`](runtime-memory-hooks.md).
 
 ## Memory Curator Bridge
 
@@ -272,6 +291,11 @@ The runtime verification covers:
 - source lineage;
 - TTL eviction;
 - privacy scope filtering;
+- exact-agent experience isolation and governance-before-ranking;
+- adaptive all-relevant versus budgeted top-k experience selection;
+- full eligible-set ranking without a pre-ranking recency cap;
+- semantic-only automatic `similar_to` relation maintenance;
+- verified Model2Vec hybrid selection and visible degraded-hash fallback;
 - direct durable-memory write prevention;
 - PDF, HWP, HWPX, DOCX, XLSX, PPTX, and image OCR adapter ingest;
 - unsupported adapter status reporting when a required local parser is missing.

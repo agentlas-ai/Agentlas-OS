@@ -2,23 +2,33 @@
 
 ## v1.1.30 - 2026-07-15
 
-- **Agent experience memory now uses one governed local retrieval path.** Agent
-  learning is stored in per-agent SQLite projections, fused through semantic
-  and lexical RRF with salience as a prior, and loaded adaptively: all relevant
-  memories when they fit the context budget, otherwise bounded top-k. Scope,
-  expiry, redaction, and explicit supersession remain filtering authority.
-- **The default semantic adapter is a bundled, verified Model2Vec hybrid.** The
-  offline `potion-base-8M` int8 asset is pinned by model revision and content
-  digest, combined with the deterministic hash adapter into a 352-dimensional
-  local vector, and rejected on asset drift. CJK retrieval applies an absolute
-  and relative semantic gate so unrelated high-baseline vectors cannot enter
-  context. No server embedding call or per-user embedding charge is introduced.
-- **Plain host sessions receive the same local recall without invoking an agent
-  first.** Merge-safe Claude Code, Codex, Antigravity, Grok, and OpenCode
-  adapters inject bounded capsules while excluding native policy files and
-  failing open when local memory is unavailable. The one-touch installer also
-  recognizes the live `~/.gemini/antigravity-cli` marker without writing
-  workflows into that private state directory.
+- **Agent experience memory now uses one governed local retrieval path.** Each
+  normalized Hub slug has a rebuildable
+  `hub-agents/<slug>/memory/experience.sqlite` projection. Exact agent, allowed
+  privacy scope, active status, expiry, and same-scope structural supersession
+  are enforced before scoring. Every eligible row is scored, then rows that
+  pass lexical or semantic relevance gates enter lexical/cosine reciprocal-rank
+  fusion with a bounded salience prior before adaptive selection: all relevant
+  memories when they fit, otherwise budgeted top-k.
+  Automatic relation inference is limited to semantic `similar_to`;
+  `supersedes` and `contradicts` remain curator-authored edges.
+- **The v1.1.30 primary semantic adapter is a bundled, verified Model2Vec
+  hybrid.** The offline `potion-base-8M` int8 asset is pinned by model revision
+  and content digest. A normalized 256-dimensional Model2Vec vector and
+  normalized hash-96 vector form the fixed 352-dimensional local embedding;
+  asset drift is rejected. CJK retrieval applies absolute and relative semantic
+  gates. Missing or rejected assets enter an explicit `degraded_hash` fallback
+  rather than a silent replacement. No server embedding call or per-user
+  embedding charge is introduced.
+- **Plain supported host sessions can recall local context without invoking an
+  agent first.** Claude Code and Codex use `SessionStart` and
+  `UserPromptSubmit` additional context; Antigravity uses a `PreInvocation`
+  ephemeral message; OpenCode uses an experimental system transform; Grok
+  refreshes a workspace cache because its passive hooks cannot inject stdout.
+  All adapters fail open, exclude native policy files, and redact and bound the
+  evidence capsule before delivery. The one-touch installer also recognizes
+  the live `~/.gemini/antigravity-cli` marker without writing workflows into
+  that private state directory.
 - **Borrowed agents no longer consume a concatenated nest file.** Cross-project
   grounding resolves the normalized agent slug to its private experience
   database and queries the ontology runtime, preserving structured provenance,
