@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "scripts" / "install-memory-hooks.py"
+ONE_TOUCH_INSTALLER = ROOT / "scripts" / "install-all-runtimes.sh"
 
 
 def tree_digest(root: Path) -> str:
@@ -47,7 +48,7 @@ class MemoryHookInstallerTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def run_installer(self) -> dict:
+    def run_installer(self, hosts: str = "all") -> dict:
         env = dict(os.environ)
         env["HOME"] = str(self.home)
         result = subprocess.run(
@@ -58,7 +59,7 @@ class MemoryHookInstallerTests(unittest.TestCase):
                 "--home",
                 str(self.home),
                 "--hosts",
-                "all",
+                hosts,
             ],
             cwd=ROOT,
             env=env,
@@ -67,6 +68,57 @@ class MemoryHookInstallerTests(unittest.TestCase):
             check=True,
         )
         return json.loads(result.stdout)
+
+    def test_antigravity_cli_marker_is_auto_detected_in_isolated_home(self) -> None:
+        marker = self.home / ".gemini" / "antigravity-cli"
+        marker.mkdir(parents=True)
+
+        payload = self.run_installer(hosts="auto")
+
+        self.assertEqual(payload["status"], "pass")
+        self.assertIn("antigravity", payload["installed"])
+        hooks_path = self.home / ".gemini" / "config" / "hooks.json"
+        hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
+        self.assertIn("agentlas-memory", hooks)
+
+    def test_one_touch_antigravity_detection_uses_cli_marker_without_mutating_it(self) -> None:
+        marker = self.home / ".gemini" / "antigravity-cli"
+        marker.mkdir(parents=True)
+        sourcable = self.home / "install-all-runtimes-sourcable.sh"
+        source = ONE_TOUCH_INSTALLER.read_text(encoding="utf-8")
+        self.assertTrue(source.rstrip().endswith('main "$@"'))
+        sourcable.write_text(source.rsplit('\nmain "$@"', 1)[0] + "\n", encoding="utf-8")
+        env = dict(os.environ)
+        env.update(
+            {
+                "HOME": str(self.home),
+                "HEPHAESTUS_SOURCE_DIR": str(ROOT),
+            }
+        )
+
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                'set -e; source "$1"; antigravity_present; install_antigravity',
+                "agentlas-antigravity-marker-test",
+                str(sourcable),
+            ],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        workflows = self.home / ".gemini" / "antigravity" / "global_workflows"
+        self.assertTrue((workflows / "hep-build.md").is_file())
+        self.assertTrue((workflows / "hep-network.md").is_file())
+        self.assertTrue((self.home / ".gemini" / "config" / "mcp_config.json").is_file())
+        self.assertFalse(
+            (marker / "global_workflows").exists(),
+            "the Antigravity CLI state marker must not be repurposed as a workflow root",
+        )
 
     def test_merge_no_clobber_and_idempotency(self) -> None:
         first = self.run_installer()

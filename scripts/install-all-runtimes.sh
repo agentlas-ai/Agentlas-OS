@@ -529,6 +529,10 @@ antigravity_present() {
   [[ -d "$HOME/.gemini/antigravity" ]] && return 0
   # "Antigravity IDE" 변형은 별도 데이터 디렉토리(~/.gemini/antigravity-ide)를 쓴다.
   [[ -d "$HOME/.gemini/antigravity-ide" ]] && return 0
+  # Current Antigravity installs leave this CLI state directory even before a
+  # global_workflows directory exists. Treat it as a presence marker, but keep
+  # workflow installation in the documented antigravity/antigravity-ide roots.
+  [[ -d "$HOME/.gemini/antigravity-cli" ]] && return 0
   [[ -n "${HEPHAESTUS_FORCE_ANTIGRAVITY:-}" ]] && return 0
   ls -d /Applications/Antigravity*.app >/dev/null 2>&1 && return 0
   return 1

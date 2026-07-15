@@ -111,6 +111,7 @@ def _detected_hosts(home: Path) -> list[str]:
         os.environ.get("HEPHAESTUS_FORCE_ANTIGRAVITY")
         or (home / ".gemini" / "antigravity").is_dir()
         or (home / ".gemini" / "antigravity-ide").is_dir()
+        or (home / ".gemini" / "antigravity-cli").is_dir()
     ):
         hosts.append("antigravity")
     if shutil.which("grok") or (home / ".grok").is_dir():
