@@ -32,7 +32,10 @@ DEFAULT_TTL_SECONDS = 24 * 60 * 60
 LOCK_STALE_SECONDS = 60 * 60
 HEALTHCHECK_TIMEOUT_SECONDS = 15
 MAX_RUNTIME_ARCHIVE_BYTES = 256 * 1024 * 1024
-CORE_DIRS = ("bin", "agentlas_cloud", "ontology")
+RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "ontology", "templates")
+MODEL2VEC_ASSET_NAME = "potion-base-8M-int8"
+RELEASE_MODEL2VEC_PATH = Path("assets") / "model2vec" / MODEL2VEC_ASSET_NAME
+RUNTIME_MODEL2VEC_PATH = Path("models") / "model2vec" / MODEL2VEC_ASSET_NAME
 HEP_COMMANDS = (
     "hep-build",
     "hep-network",
@@ -381,13 +384,16 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             if len(source_dirs) != 1:
                 raise ValueError("downloaded release must contain exactly one source directory")
             source = source_dirs[0]
-            _validate_runtime_layout(source)
+            _validate_runtime_layout(source, release_source=True)
 
             staged_target = _unique_sibling(target, "staged")
             staged_target.mkdir(parents=True)
-            for name in CORE_DIRS:
+            for name in RUNTIME_DIRS:
                 src = source / name
                 shutil.copytree(src, staged_target / name)
+            runtime_model = staged_target / RUNTIME_MODEL2VEC_PATH
+            runtime_model.parent.mkdir(parents=True)
+            shutil.copytree(source / RELEASE_MODEL2VEC_PATH, runtime_model)
             (staged_target / "RELEASE").write_text(f"{tag}\n", encoding="utf-8")
             write_python_shims(staged_target / "bin", sys.executable)
             _healthcheck_runtime(staged_target)
@@ -406,6 +412,8 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
         "archive_digest": f"sha256:{archive_sha256}",
         "digest_verified": True,
         "archive_asset": archive_asset["name"],
+        "model_root": str(target / RUNTIME_MODEL2VEC_PATH),
+        "model_verified": True,
         "adapter_sync": adapter_sync,
     }
 
@@ -845,9 +853,9 @@ def _verified_runtime_archive_asset(release: dict[str, Any]) -> dict[str, Any]:
     raise ValueError(f"release is missing verified runtime asset: {expected_name}")
 
 
-def _validate_runtime_layout(runtime_root: Path) -> None:
+def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False) -> None:
     missing: list[str] = []
-    for name in CORE_DIRS:
+    for name in RUNTIME_DIRS:
         if not (runtime_root / name).is_dir():
             missing.append(f"{name}/")
     for relative in (
@@ -856,12 +864,27 @@ def _validate_runtime_layout(runtime_root: Path) -> None:
         Path("agentlas_cloud") / "__main__.py",
         Path("agentlas_cloud") / "cli.py",
         Path("agentlas_cloud") / "update.py",
+        Path("career_graph") / "__init__.py",
+        Path("career_graph") / "runtime.py",
         Path("ontology") / "__init__.py",
+        Path("ontology") / "model_assets.py",
+        Path("templates") / "agentlas.json.tpl",
     ):
         if not (runtime_root / relative).is_file():
             missing.append(str(relative))
+    model_path = runtime_root / (RELEASE_MODEL2VEC_PATH if release_source else RUNTIME_MODEL2VEC_PATH)
+    if not model_path.is_dir():
+        missing.append(f"{model_path.relative_to(runtime_root)}/")
     if missing:
         raise ValueError(f"release runtime layout is incomplete: {', '.join(missing)}")
+
+    from ontology.model_assets import ModelAssetError, verify_model_asset
+
+    try:
+        verify_model_asset(model_path)
+    except (ModelAssetError, OSError, ValueError) as exc:
+        layout = "release" if release_source else "installed runtime"
+        raise ValueError(f"{layout} Model2Vec asset failed verification: {model_path}") from exc
 
 
 def _healthcheck_runtime(runtime_root: Path) -> None:
@@ -884,10 +907,13 @@ def _healthcheck_runtime(runtime_root: Path) -> None:
         "import agentlas_cloud\n"
         "import agentlas_cloud.cli\n"
         "import agentlas_cloud.update\n"
+        "import career_graph\n"
         "import ontology\n"
+        "from ontology.model_assets import verify_model_asset\n"
         "root = Path(os.environ['HEPHAESTUS_HEALTHCHECK_ROOT']).resolve()\n"
-        "modules = (agentlas_cloud, agentlas_cloud.cli, agentlas_cloud.update, ontology)\n"
+        "modules = (agentlas_cloud, agentlas_cloud.cli, agentlas_cloud.update, career_graph, ontology)\n"
         "bad = [m.__name__ for m in modules if root not in Path(m.__file__).resolve().parents]\n"
+        f"verify_model_asset(root / {str(RUNTIME_MODEL2VEC_PATH)!r})\n"
         "raise SystemExit(8 if bad else 0)\n"
     )
     try:

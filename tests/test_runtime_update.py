@@ -11,6 +11,7 @@ import pytest
 
 from agentlas_cloud.update import (
     _compare_semver,
+    _healthcheck_runtime,
     _release_status,
     _safe_extract,
     fetch_latest_release,
@@ -20,6 +21,11 @@ from agentlas_cloud.update import (
     sync_installed_runtime_adapters,
     write_python_shims,
 )
+from ontology.model_assets import verify_model_asset
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MODEL2VEC_ASSET = ROOT / "assets" / "model2vec" / "potion-base-8M-int8"
 
 
 def test_runtime_update_uses_semver_prerelease_precedence():
@@ -67,16 +73,35 @@ class FakeResponse:
 def _write_runtime_source(source: Path) -> None:
     (source / "bin").mkdir(parents=True)
     (source / "agentlas_cloud").mkdir()
+    (source / "career_graph").mkdir()
     (source / "ontology").mkdir()
+    (source / "templates").mkdir()
     (source / "bin" / "hephaestus").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     for relative in (
         Path("agentlas_cloud") / "__init__.py",
         Path("agentlas_cloud") / "__main__.py",
         Path("agentlas_cloud") / "cli.py",
         Path("agentlas_cloud") / "update.py",
+        Path("career_graph") / "__init__.py",
+        Path("career_graph") / "runtime.py",
         Path("ontology") / "__init__.py",
     ):
         (source / relative).write_text("", encoding="utf-8")
+    shutil.copy2(ROOT / "ontology" / "model_assets.py", source / "ontology" / "model_assets.py")
+    (source / "templates" / "agentlas.json.tpl").write_text("{}\n", encoding="utf-8")
+    shutil.copytree(
+        MODEL2VEC_ASSET,
+        source / "assets" / "model2vec" / "potion-base-8M-int8",
+    )
+
+
+def _convert_to_installed_runtime_layout(runtime_root: Path) -> Path:
+    release_model = runtime_root / "assets" / "model2vec" / "potion-base-8M-int8"
+    runtime_model = runtime_root / "models" / "model2vec" / "potion-base-8M-int8"
+    runtime_model.parent.mkdir(parents=True)
+    release_model.rename(runtime_model)
+    shutil.rmtree(runtime_root / "assets")
+    return runtime_model
 
 
 def _write_runtime_archive(tmp_path: Path, name: str = "source.tar.gz") -> Path:
@@ -170,9 +195,33 @@ def test_install_latest_runtime_flips_current_and_writes_shims(tmp_path, monkeyp
     assert current.resolve() == runtime_root.resolve()
     assert (runtime_root / "bin" / "python3").exists()
     assert "PYTHONUTF8" in (runtime_root / "bin" / "hephaestus.cmd").read_text(encoding="utf-8")
+    assert (runtime_root / "career_graph" / "runtime.py").is_file()
+    assert (runtime_root / "templates" / "agentlas.json.tpl").is_file()
+    model_root = runtime_root / "models" / "model2vec" / "potion-base-8M-int8"
+    assert verify_model_asset(model_root).content_sha256 == "fe492f69607b750142aa48d47d579b53252b3288547c27d4d0e473d6af485e1e"
+    assert not (runtime_root / "assets" / "model2vec").exists()
     assert result["archive_digest"] == f"sha256:{expected_sha256}"
     assert result["digest_verified"] is True
     assert result["archive_asset"] == "hephaestus-runtime-v0.7.5.tar.gz"
+    assert Path(result["model_root"]) == model_root
+    assert result["model_verified"] is True
+
+
+@pytest.mark.parametrize("damage", ["missing", "tampered"])
+def test_runtime_healthcheck_fails_closed_for_missing_or_tampered_model(tmp_path, damage):
+    runtime_root = tmp_path / "runtime"
+    _write_runtime_source(runtime_root)
+    model_root = _convert_to_installed_runtime_layout(runtime_root)
+    if damage == "missing":
+        shutil.rmtree(model_root)
+        message = "layout is incomplete"
+    else:
+        with (model_root / "LICENSE.model.txt").open("ab") as handle:
+            handle.write(b"tampered\n")
+        message = "Model2Vec asset failed verification"
+
+    with pytest.raises(ValueError, match=message):
+        _healthcheck_runtime(runtime_root)
 
 
 def test_install_latest_runtime_rejects_digest_mismatch_before_activation(tmp_path, monkeypatch):
