@@ -66,6 +66,72 @@ def test_hub_invocation_fetches_bundle_and_updates_memory(tmp_path, monkeypatch)
     ]
 
 
+def test_hub_team_graph_is_preserved_for_host_execution(tmp_path, monkeypatch):
+    home = tmp_path / "networking"
+    init_networking(home)
+    graph = {
+        "schemaVersion": "1.0",
+        "manager": {"path": "agents/00-manager/agent.md", "content": "manager"},
+        "workers": [{"id": "worker", "path": "agents/10-worker/agent.md", "content": "worker"}],
+    }
+
+    def fake_call(name, arguments=None, home=None, timeout=15):
+        if name == "agentlas.get_runtime_bundle":
+            return {"bundle": {
+                "agent": arguments["slug"],
+                "entityKind": "team",
+                "packageHash": "sha256:test",
+                "entry": {"path": "AGENTS.md", "content": "team"},
+                "toolPermissions": {},
+                "executionGraph": graph,
+            }}
+        if name == "agentlas.memory.status":
+            return {}
+        if name == "agentlas.wizard.start":
+            return {"ok": True}
+        if name == "agentlas.soul.update":
+            return {}
+        raise AssertionError(name)
+
+    monkeypatch.setattr("agentlas_cloud.networking.hub_invocation.call_hub_tool", fake_call)
+    result = invoke_hub_agent(
+        "Run the team.",
+        slug="release-team",
+        expected_entity_kind="team",
+        hub_decision={"hub": {"results": [{"slug": "release-team", "callable": True}]}},
+        home=home,
+    )
+    assert result["status"] == "prepared"
+    assert result["entityKind"] == "team"
+    assert result["output"]["runtime_bundle"]["execution_graph"] == graph
+
+
+def test_hub_team_without_graph_fails_closed(tmp_path, monkeypatch):
+    home = tmp_path / "networking"
+    init_networking(home)
+
+    def fake_call(name, arguments=None, home=None, timeout=15):
+        if name == "agentlas.get_runtime_bundle":
+            return {"bundle": {
+                "agent": arguments["slug"],
+                "entityKind": "team",
+                "packageHash": "sha256:test",
+                "entry": {"path": "AGENTS.md", "content": "team"},
+                "toolPermissions": {},
+            }}
+        raise AssertionError(name)
+
+    monkeypatch.setattr("agentlas_cloud.networking.hub_invocation.call_hub_tool", fake_call)
+    result = invoke_hub_agent(
+        "Run the team.",
+        slug="broken-team",
+        expected_entity_kind="team",
+        hub_decision={"hub": {"results": [{"slug": "broken-team", "callable": True}]}},
+        home=home,
+    )
+    assert result["status"] == "team_execution_graph_unavailable"
+
+
 def test_hub_invocation_passes_lease_through_and_caches_it(tmp_path, monkeypatch):
     home = tmp_path / "networking"
     init_networking(home)

@@ -122,6 +122,7 @@ def call_agents(
                     {
                         "slug": parsed["slug"],
                         "kind": "cloud-callable",
+                        "entityKind": parsed.get("entity_kind"),
                         "callable": True,
                         "name": parsed["slug"],
                     }
@@ -136,9 +137,12 @@ def call_agents(
             home=base,
             version=version,
             local_inventory=local_inventory or [],
+            expected_entity_kind=parsed.get("entity_kind"),
         )
         result["requested_ref"] = ref
         result["requested_scope"] = parsed["scope"]
+        if parsed.get("entity_kind"):
+            result["requested_entity_kind"] = parsed["entity_kind"]
         results.append(result)
 
     statuses = {str(item.get("status") or "unknown") for item in results}
@@ -230,6 +234,12 @@ def _parse_ref(ref: str) -> dict[str, str]:
     value = ref.strip().strip("`")
     value = value.lstrip("@")
     scope = "hub"
+    entity_kind = ""
+    slash_parts = value.split("/", 2)
+    if len(slash_parts) == 3 and slash_parts[0].lower() in {"hub", "cloud"} and slash_parts[1].lower() in {"agent", "team"}:
+        scope = slash_parts[0].lower()
+        entity_kind = slash_parts[1].lower()
+        value = slash_parts[2]
     if ":" in value:
         prefix, rest = value.split(":", 1)
         if prefix.lower() in {"hub", "network", "cloud", "bookmark", "bookmarks"}:
@@ -244,7 +254,7 @@ def _parse_ref(ref: str) -> dict[str, str]:
     tier, separator, remainder = value.partition("/")
     if separator and tier.lower() in {"paid", "free", "private", "restricted", "network", "hub"}:
         value = remainder
-    return {"slug": _slug(value), "scope": scope}
+    return {"slug": _slug(value), "scope": scope, "entity_kind": entity_kind}
 
 
 def _slug(value: str) -> str:

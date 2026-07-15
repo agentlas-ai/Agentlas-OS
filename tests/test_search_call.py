@@ -115,3 +115,23 @@ def test_call_agents_strips_router_marketplace_tiers(tmp_path, monkeypatch):
         "researcher-017-agent-repo-security-regression-suite",
     ]
     assert [item["requested_scope"] for item in result["agents"]] == ["hub", "hub"]
+
+
+def test_call_agents_preserves_exact_scope_and_entity_kind(tmp_path, monkeypatch):
+    prepared = []
+
+    def fake_invoke(request, **kwargs):
+        prepared.append(kwargs)
+        return {"status": "prepared", "slug": kwargs["slug"], "entityKind": kwargs.get("expected_entity_kind")}
+
+    monkeypatch.setattr("agentlas_cloud.networking.search_call.invoke_hub_agent", fake_invoke)
+    result = call_agents(
+        "cloud/team/release-control, hub/agent/reviewer",
+        "Run exact units.",
+        home=tmp_path / "networking",
+    )
+
+    assert [item["slug"] for item in result["agents"]] == ["release-control", "reviewer"]
+    assert [item["requested_scope"] for item in result["agents"]] == ["cloud", "hub"]
+    assert [item["requested_entity_kind"] for item in result["agents"]] == ["team", "agent"]
+    assert [item["expected_entity_kind"] for item in prepared] == ["team", "agent"]

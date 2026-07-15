@@ -27,6 +27,7 @@ def invoke_hub_agent(
     home: Path | str | None = None,
     version: str = "latest",
     local_inventory: list[str] | None = None,
+    expected_entity_kind: str | None = None,
 ) -> dict[str, Any]:
     """Fetch and prepare a Hub agent runtime bundle, then write an execution receipt."""
 
@@ -92,6 +93,30 @@ def invoke_hub_agent(
                 },
             )
         entry = bundle.get("entry") if isinstance(bundle.get("entry"), dict) else {}
+        entity_kind = str(bundle.get("entityKind") or "").lower()
+        if expected_entity_kind and entity_kind != expected_entity_kind:
+            return _record(
+                base,
+                {
+                    "action": "hub_invoke",
+                    "status": "entity_kind_mismatch",
+                    "slug": selected_slug,
+                    "expected_entity_kind": expected_entity_kind,
+                    "actual_entity_kind": entity_kind or "unproven",
+                    "request_hash": _request_hash(request),
+                },
+            )
+        execution_graph = bundle.get("executionGraph") if isinstance(bundle.get("executionGraph"), dict) else None
+        if entity_kind == "team" and execution_graph is None:
+            return _record(
+                base,
+                {
+                    "action": "hub_invoke",
+                    "status": "team_execution_graph_unavailable",
+                    "slug": selected_slug,
+                    "request_hash": _request_hash(request),
+                },
+            )
         package_hash = bundle.get("packageHash") or (bundle_response.get("version") or {}).get("current")
         missing = _missing_runtime_bundle_fields(bundle, entry, package_hash)
         if missing:
@@ -171,6 +196,7 @@ def invoke_hub_agent(
         "agent": selected_slug,
         "agent_id": agent_id,
         "agent_name": agent_display_name,
+        "entity_kind": entity_kind,
         "package_hash": package_hash,
         "entry_path": entry.get("path"),
         "entry_excerpt": _compact(entry.get("content") or "", 700),
@@ -179,12 +205,14 @@ def invoke_hub_agent(
         # the Hub; it contains no local prompt, memory, or project files.
         "runtime_bundle": {
             "agent": selected_slug,
+            "entity_kind": entity_kind,
             "package_hash": package_hash,
             "entry": {
                 "path": entry.get("path"),
                 "content": entry.get("content"),
             },
             "tool_permissions": bundle.get("toolPermissions") or {},
+            **({"execution_graph": execution_graph} if execution_graph is not None else {}),
         },
         "prompt_summary": _compact(request, 260),
         "grounding": grounding,
@@ -198,6 +226,7 @@ def invoke_hub_agent(
         "slug": selected_slug,
         "agent_id": agent_id,
         "kind": selected.get("kind"),
+        "entityKind": entity_kind,
         "callable": bool(selected.get("callable", selected.get("kind") == "cloud-callable")),
         "request_hash": _request_hash(request),
         "routing_receipt_id": (hub_decision or {}).get("receipt_id"),
@@ -263,7 +292,7 @@ def _local_slug_audit(home: Path) -> dict[str, Any]:
 # to surface as a clean, named status. Bundle-validity errors (manifest_invalid,
 # version_mismatch) are intentionally NOT here — they keep falling through to the
 # bundle_unavailable path with their detail/hub_response intact.
-_SURFACED_REFUSALS = {"insufficient_credits", "owner_only", "no_cloud_package", "agent_not_found"}
+_SURFACED_REFUSALS = {"insufficient_credits", "owner_only", "no_cloud_package", "agent_not_found", "team_execution_graph_unavailable"}
 
 
 def _server_refusal(response: dict[str, Any]) -> dict[str, Any] | None:

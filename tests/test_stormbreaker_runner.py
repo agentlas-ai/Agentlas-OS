@@ -102,6 +102,61 @@ scope.mkdir(parents=True, exist_ok=True)
     assert '"session_id": "codex:builder"' in ledger
 
 
+def test_stormbreaker_executor_packet_carries_local_goal_and_work_brief(tmp_path):
+    home = pipeline_home(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    query = "Plan, implement, test, and verify a dependency-ordering CLI"
+    brief = {
+        "schemaVersion": "work-brief/1.0",
+        "goal": "Build a deterministic dependency-ordering CLI",
+        "users": ["release engineer"],
+        "acceptance_criteria": ["Reports cycles", "Writes result.json"],
+        "constraints": ["Python standard library only"],
+        "anti_scope": ["No network calls"],
+        "risks": [{"risk": "cycle handling", "mitigation": "explicit verifier case"}],
+        "exit_conditions": [{"name": "tests", "criteria": "all verifier cases pass"}],
+        "evidence": [{"claim": "fixture", "source": "local benchmark"}],
+        "metadata": {"ambiguity_score": 0.1},
+    }
+    executor = executor_script(
+        tmp_path,
+        """
+import json
+import os
+from pathlib import Path
+
+packet = json.loads(Path(os.environ["STORMBREAKER_PACKET_FILE"]).read_text(encoding="utf-8"))
+scope = Path(os.environ["STORMBREAKER_WRITE_SCOPE"])
+(scope / "executor-context.json").write_text(json.dumps({
+    "execution_goal": packet.get("execution_goal"),
+    "work_brief": packet.get("work_brief"),
+}), encoding="utf-8")
+""",
+    )
+
+    result = run_stormbreaker_query(
+        query,
+        home=home,
+        project_dir=project,
+        use_hub=False,
+        executor_command=executor,
+        work_brief=brief,
+    )
+
+    assert result["status"] == "completed"
+    for packet in result["packets"]:
+        scope = project / packet["write_scope"]
+        context = json.loads((scope / "executor-context.json").read_text(encoding="utf-8"))
+        assert context["execution_goal"] == {
+            "request": query,
+            "source": "local_user_query",
+            "scope": "local_executor_only",
+        }
+        assert context["work_brief"]["goal"] == brief["goal"]
+        assert context["work_brief"]["acceptance_criteria"] == brief["acceptance_criteria"]
+
+
 def test_stormbreaker_runner_blocks_dependents_after_failed_packet(tmp_path):
     home = pipeline_home(tmp_path)
     project = tmp_path / "project"

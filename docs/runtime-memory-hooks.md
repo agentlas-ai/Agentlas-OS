@@ -53,7 +53,7 @@ path; the memory capsule does not create a stale duplicate.
 
 There are no network imports, server embedding calls, runtime model downloads,
 or Memory Curator writes in this path. Vector selection stays with the
-canonical local runtime. The v1.1.35 installer and self-updater verify and
+canonical local runtime. The v1.1.36 installer and self-updater verify and
 install the bundled Model2Vec asset under the versioned runtime's
 `models/model2vec/potion-base-8M-int8` path. Update activation fails closed if
 that payload is missing or tampered. If an installed asset is later rejected,

@@ -16,6 +16,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Mapping
 
+from agentlas_cloud.interview import brief_packet_context
+
 from .bootstrap import append_jsonl, atomic_write_json, networking_home, utc_now
 from .execution_fabric import build_execution_fabric, evaluate_final_gate
 from .goal_loop import GoalLoopConfig, run_goal_loop
@@ -75,6 +77,7 @@ def run_stormbreaker_query(
     research_depth: str = STORMBREAKER_DEFAULT_RESEARCH_DEPTH,
     research_follow_results: int = STORMBREAKER_DEFAULT_FOLLOW_RESULTS,
     research_variants: list[str] | None = None,
+    work_brief: dict[str, Any] | None = None,
     max_replans: int = 2,
 ) -> dict[str, Any]:
     """Route a query, then run the returned Stormbreaker pipeline fabric."""
@@ -90,9 +93,15 @@ def run_stormbreaker_query(
         scope=scope,
         caller_id=caller_id,
         session_inventory=session_inventory,
+        work_brief=work_brief,
     )
     decision = dict(decision)
     decision["_stormbreaker_user_query"] = query
+    if work_brief is not None:
+        # Hub temporary-TF promotion used to drop the interview output even
+        # though local pipeline planning retained it. Keep the same compact,
+        # bounded packet view for both paths.
+        decision["work_brief"] = brief_packet_context(work_brief)
     prepared = prepare_hub_task_force_decision(
         decision,
         home=home,
@@ -612,6 +621,15 @@ def _run_packet(
         "data_policy": packet.get("data_policy") or [],
         "execution_harness": execution_harness or goal_ultracode_harness(),
     }
+    if user_query:
+        # This file is a private local executor contract, not a Hub receipt.
+        # An external executor cannot perform the packet if the actual goal is
+        # available only as a truncated substring inside grounding commands.
+        packet_contract["execution_goal"] = {
+            "request": user_query,
+            "source": "local_user_query",
+            "scope": "local_executor_only",
+        }
     if work_brief is not None:
         packet_contract["work_brief"] = work_brief
     if research_summary is not None:

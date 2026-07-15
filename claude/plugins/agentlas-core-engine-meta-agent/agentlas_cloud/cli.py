@@ -107,6 +107,11 @@ def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--scope", choices=["network", "cloud"], default="network")
     parser.add_argument("--caller", default=None)
     parser.add_argument(
+        "--brief",
+        default=None,
+        help="Path to a Work Brief JSON or a project dir containing .agentlas/work-brief.json. The compact brief is attached to every execution packet.",
+    )
+    parser.add_argument(
         "--session-inventory",
         default=None,
         help="JSON array of active host sessions; packets in the same parallel group can run concurrently.",
@@ -124,6 +129,12 @@ def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--background", action="store_true", help="Detach the runner and write logs/results under .agentlas/stormbreaker/background/")
     parser.add_argument("--output-file", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--max-workers", type=int, default=None)
+    parser.add_argument(
+        "--max-replans",
+        type=int,
+        default=2,
+        help="Maximum bounded repair/replan passes after the initial pipeline execution.",
+    )
     parser.add_argument("--timeout", type=int, default=900, help="Per-packet executor timeout in seconds")
     parser.add_argument("--research-evidence", action="store_true", help="Attach Research Engine receipts to research/planning packets.")
     parser.add_argument("--research-loadout", default="safe", choices=["auto", "safe", "public-web", "social", "browser", "full", "recommended"], help="With --research-evidence, choose the detachable research module loadout or let Stormbreaker recommend one.")
@@ -1214,11 +1225,15 @@ def main(argv: list[str] | None = None) -> int:
                 research_depth=args.research_depth,
                 research_follow_results=args.research_follow_results,
                 research_variants=args.research_variant,
+                max_replans=max(0, args.max_replans),
             )
         else:
             if not args.query:
                 emit({"action": "stormbreaker_run", "status": "error", "error": "query or --decision-file is required"})
                 return 2
+            from .interview import load_work_brief
+
+            work_brief = load_work_brief(args.brief or args.project)
             result = run_stormbreaker_query(
                 args.query,
                 home=home,
@@ -1239,6 +1254,8 @@ def main(argv: list[str] | None = None) -> int:
                 research_depth=args.research_depth,
                 research_follow_results=args.research_follow_results,
                 research_variants=args.research_variant,
+                work_brief=work_brief,
+                max_replans=max(0, args.max_replans),
             )
         result["project_bootstrap"] = bootstrap
         emit(result)
@@ -1812,6 +1829,8 @@ def _stormbreaker_child_argv(args: argparse.Namespace, result_file: Path, decisi
         child.append("--hub-only")
     if args.caller:
         child.extend(["--caller", args.caller])
+    if getattr(args, "brief", None):
+        child.extend(["--brief", args.brief])
     if args.session_inventory:
         child.extend(["--session-inventory", args.session_inventory])
     if args.executor_command:
@@ -1820,6 +1839,7 @@ def _stormbreaker_child_argv(args: argparse.Namespace, result_file: Path, decisi
         child.append("--execute-card-commands")
     if args.max_workers is not None:
         child.extend(["--max-workers", str(args.max_workers)])
+    child.extend(["--max-replans", str(max(0, args.max_replans))])
     if getattr(args, "research_evidence", False):
         child.append("--research-evidence")
     if getattr(args, "research_loadout", None):
@@ -1934,7 +1954,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.35",
+            "version": "1.1.36",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

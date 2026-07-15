@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.1.36 - 2026-07-15
+
+- **Exact Cloud/Hub Team references retain their entity boundary.**
+  `cloud/team/<slug>` and `hub/team/<slug>` reach the Hub with the requested
+  scope and kind, and a mismatched or unproven returned kind fails closed.
+- **Executable Team graphs survive the BYOM handoff.** Hephaestus preserves the
+  signed manager/worker graph returned by Agentlas Hub instead of shrinking a
+  Team to one entry prompt. A Team without that graph returns
+  `team_execution_graph_unavailable` and never pretends a single model turn was
+  a multi-agent run.
+- **Stormbreaker external executors receive the complete local goal and Work
+  Brief.** Hub promotion and local pipelines now use the same bounded brief,
+  and every packet exposes the non-truncated execution goal only inside the
+  local executor contract.
+
 ## v1.1.35 - 2026-07-15
 
 - **Hub task forces now reject cross-domain specialist bundles.** High-precision
