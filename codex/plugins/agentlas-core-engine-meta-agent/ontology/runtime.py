@@ -8,12 +8,20 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from .embeddings import CJK_RUN_PATTERN, LATIN_TOKEN_PATTERN, LocalHashingVectorAdapter, cosine_similarity, tokenize
+from .embeddings import (
+    CJK_RUN_PATTERN,
+    LATIN_TOKEN_PATTERN,
+    VectorAdapter,
+    cosine_similarity,
+    select_vector_adapter,
+    tokenize,
+    vector_adapter_metadata,
+)
 from .parsers import ParsedRecord, SourceParserRegistry
 from .utils import clamp, content_hash, estimate_tokens, json_dumps, json_loads, normalize_name, normalized_key, stable_hash, utc_now
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_DB_PATH = Path(".agentlas/ontology-runtime.sqlite")
 
 # Hybrid retrieval (A-2/A-3): Reciprocal Rank Fusion over the FTS and vector
@@ -23,6 +31,16 @@ RRF_K = 60
 RRF_MISSING_RANK = 10_000
 VECTOR_FALLBACK_SCAN_CAP = 5_000
 MIN_VECTOR_SCORE = 0.05
+EXPERIENCE_SCAN_CAP = 5_000
+MIN_EXPERIENCE_VECTOR_SCORE = 0.08
+DEFAULT_EXPERIENCE_TOKEN_BUDGET = 800
+DEFAULT_EXPERIENCE_TOP_K = 8
+ACTIVE_EXPERIENCE_STATUSES = (
+    "active",
+    "approved",
+    "approved_pending_curator",
+    "promoted",
+)
 
 
 class DirectDurableMemoryWriteBlocked(RuntimeError):
@@ -45,6 +63,11 @@ class RuntimeConfig:
     hooks_run_locally: bool = False
     cloud_safe_scopes: tuple[str, ...] = ("public", "internal")
     rerank_candidate_limit: int = 20
+    # Hash-96 is the zero-install baseline. Model2Vec is opt-in and must point
+    # at an existing local model directory; the selector never downloads.
+    vector_adapter: VectorAdapter | None = None
+    vector_adapter_name: str = "hash"
+    local_model_path: Path | str | None = None
 
 
 class OntologyRuntime:
@@ -52,7 +75,10 @@ class OntologyRuntime:
         self.config = config or RuntimeConfig()
         self.db_path = Path(self.config.db_path)
         self.parser_registry = SourceParserRegistry()
-        self.vector_adapter = LocalHashingVectorAdapter()
+        self.vector_adapter = self.config.vector_adapter or select_vector_adapter(
+            self.config.vector_adapter_name,
+            model_path=self.config.local_model_path,
+        )
         self.fts_tokenizer = "unicode61"
         self._expansion_cache: dict[str, list[str]] = {}
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -165,6 +191,17 @@ class OntologyRuntime:
                   suggested_scope TEXT NOT NULL,
                   status TEXT NOT NULL,
                   durable_write_enabled INTEGER NOT NULL DEFAULT 0 CHECK (durable_write_enabled = 0),
+                  agent_id TEXT NOT NULL DEFAULT '',
+                  memory_kind TEXT NOT NULL DEFAULT 'candidate',
+                  tags_json TEXT NOT NULL DEFAULT '[]',
+                  salience REAL NOT NULL DEFAULT 0.5,
+                  privacy_scope TEXT NOT NULL DEFAULT 'internal',
+                  source_memory_id TEXT,
+                  source_updated_at TEXT,
+                  embedding_adapter TEXT NOT NULL DEFAULT '',
+                  embedding_dimensions INTEGER NOT NULL DEFAULT 0,
+                  embedding_json TEXT NOT NULL DEFAULT '[]',
+                  embedding_content_hash TEXT NOT NULL DEFAULT '',
                   created_at TEXT NOT NULL,
                   updated_at TEXT NOT NULL
                 );
@@ -219,22 +256,23 @@ class OntologyRuntime:
                 );
                 """
             )
+            self._ensure_memory_candidate_columns(conn)
             self.fts_tokenizer = self._ensure_fts_table(conn)
             applied = {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
-            vector_config = {"provider": self.vector_adapter.name}
-            if hasattr(self.vector_adapter, "dimensions"):
-                vector_config["dimensions"] = self.vector_adapter.dimensions
+            vector_config = vector_adapter_metadata(self.vector_adapter)
             needs_reindex = bool(applied) and max(applied) < SCHEMA_VERSION
             stale_vector_rows = [
                 row
                 for row in conn.execute("SELECT name, config_json FROM runtime_adapters WHERE kind = 'vector'")
                 if row["name"] != self.vector_adapter.name
                 or json_loads(row["config_json"], {}).get("dimensions") != vector_config.get("dimensions")
+                or json_loads(row["config_json"], {}).get("identity") not in {None, vector_config.get("identity")}
             ]
             if needs_reindex or stale_vector_rows:
-                # v1 -> v2 changed the tokenizer (CJK bigrams), and an adapter
-                # or dimension switch invalidates stored vectors either way.
+                # Tokenizer/schema upgrades and adapter switches invalidate
+                # stored document and experience vectors.
                 self._reindex_chunks(conn)
+                self._reindex_memory_candidates(conn)
                 conn.execute(
                     "DELETE FROM runtime_adapters WHERE kind = 'vector' AND name != ?",
                     (self.vector_adapter.name,),
@@ -243,13 +281,7 @@ class OntologyRuntime:
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (SCHEMA_VERSION, utc_now()),
             )
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO runtime_adapters(name, kind, status, config_json, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (self.vector_adapter.name, "vector", self.vector_adapter.status, json_dumps(vector_config), utc_now()),
-            )
+            self._register_vector_adapter(conn)
             conn.execute(
                 "INSERT OR REPLACE INTO runtime_adapters(name, kind, status, config_json, updated_at) VALUES (?, ?, ?, ?, ?)",
                 ("chunk_fts", "fts", "available", json_dumps({"tokenizer": self.fts_tokenizer}), utc_now()),
@@ -259,6 +291,36 @@ class OntologyRuntime:
                     "INSERT OR REPLACE INTO runtime_adapters(name, kind, status, config_json, updated_at) VALUES (?, ?, ?, ?, ?)",
                     (name, "parser", status, "{}", utc_now()),
                 )
+
+    @staticmethod
+    def _ensure_memory_candidate_columns(conn: sqlite3.Connection) -> None:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(memory_candidates)")}
+        additions = {
+            "agent_id": "TEXT NOT NULL DEFAULT ''",
+            "memory_kind": "TEXT NOT NULL DEFAULT 'candidate'",
+            "tags_json": "TEXT NOT NULL DEFAULT '[]'",
+            "salience": "REAL NOT NULL DEFAULT 0.5",
+            "privacy_scope": "TEXT NOT NULL DEFAULT 'internal'",
+            "source_memory_id": "TEXT",
+            "source_updated_at": "TEXT",
+            "embedding_adapter": "TEXT NOT NULL DEFAULT ''",
+            "embedding_dimensions": "INTEGER NOT NULL DEFAULT 0",
+            "embedding_json": "TEXT NOT NULL DEFAULT '[]'",
+            "embedding_content_hash": "TEXT NOT NULL DEFAULT ''",
+        }
+        for name, ddl in additions.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE memory_candidates ADD COLUMN {name} {ddl}")
+
+    def _register_vector_adapter(self, conn: sqlite3.Connection) -> None:
+        metadata = vector_adapter_metadata(self.vector_adapter)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO runtime_adapters(name, kind, status, config_json, updated_at)
+            VALUES (?, 'vector', ?, ?, ?)
+            """,
+            (self.vector_adapter.name, self.vector_adapter.status, json_dumps(metadata), utc_now()),
+        )
 
     def _ensure_fts_table(self, conn: sqlite3.Connection) -> str:
         desired = "trigram" if self._fts_trigram_supported(conn) else "unicode61"
@@ -304,6 +366,30 @@ class OntologyRuntime:
             )
         self._rebuild_fts_rows(conn)
 
+    def _reindex_memory_candidates(self, conn: sqlite3.Connection) -> None:
+        rows = conn.execute("SELECT ticket_id, candidate_text FROM memory_candidates").fetchall()
+        now = utc_now()
+        for row in rows:
+            text = row["candidate_text"] or ""
+            vector = self.vector_adapter.embed(text)
+            conn.execute(
+                """
+                UPDATE memory_candidates
+                SET embedding_adapter = ?, embedding_dimensions = ?, embedding_json = ?,
+                    embedding_content_hash = ?, updated_at = ?
+                WHERE ticket_id = ?
+                """,
+                (
+                    self.vector_adapter.name,
+                    len(vector),
+                    json_dumps(vector),
+                    content_hash(text.encode("utf-8")),
+                    now,
+                    row["ticket_id"],
+                ),
+            )
+        self._register_vector_adapter(conn)
+
     def ingest_path(self, path: str | Path, access_scope: str = "internal", parent_source_id: str | None = None) -> dict[str, Any]:
         root = Path(path)
         if root.is_file():
@@ -339,15 +425,36 @@ class OntologyRuntime:
         agent_id: str | None = None,
         allowed_scopes: Iterable[str] | None = None,
         limit: int = 5,
+        *,
+        record_memory: bool = True,
+        experience_token_budget: int = DEFAULT_EXPERIENCE_TOKEN_BUDGET,
+        experience_top_k: int = DEFAULT_EXPERIENCE_TOP_K,
     ) -> dict[str, Any]:
-        scopes = list(allowed_scopes or ["public", "internal"])
+        requested_scopes = list(allowed_scopes) if allowed_scopes is not None else None
+        document_scopes = requested_scopes or ["public", "internal"]
+        # An agent's dedicated experience projection is private by default and
+        # already exact-agent isolated. Project document privacy keeps the
+        # long-standing explicit opt-in boundary above.
+        experience_scopes = requested_scopes or (["public", "internal", "private"] if agent_id else ["public", "internal"])
         with closing(self.connect()) as conn, conn:
-            chunks = self._search_chunks(conn, question, scopes, limit)
+            chunks = self._search_chunks(conn, question, document_scopes, limit)
             entities = self._related_entities(conn, question, chunks)
             relations = self._relation_edges(conn, entities, chunks)
-            candidates = self._create_memory_candidates(conn, question, chunks, relations)
+            experience = (
+                self._query_experience(
+                    conn,
+                    question=question,
+                    agent_id=agent_id,
+                    allowed_scopes=experience_scopes,
+                    token_budget=experience_token_budget,
+                    top_k=experience_top_k,
+                )
+                if agent_id
+                else self._empty_experience_result(question, agent_id, experience_token_budget)
+            )
+            candidates = self._create_memory_candidates(conn, question, chunks, relations) if record_memory else []
             working_memory: list[dict[str, Any]] = []
-            if agent_id:
+            if agent_id and record_memory:
                 self._raise_if_no_source_refs(chunks)
                 for item in self._working_memory_items_from_query(question, chunks, relations):
                     self.add_working_memory(
@@ -366,17 +473,392 @@ class OntologyRuntime:
             "chunks": chunks,
             "related_entities": entities,
             "relation_edges": relations,
+            "experience_memory": experience,
             "memory_candidate_suggestions": candidates,
             "working_memory": working_memory,
-            "vector_adapter": {"name": self.vector_adapter.name, "status": self.vector_adapter.status},
+            "vector_adapter": vector_adapter_metadata(self.vector_adapter),
             "search": {
                 "fts_tokenizer": self.fts_tokenizer,
                 "fusion": "rrf",
                 "expanded_queries": self._expansion_cache.get(question, []),
                 "rerank_hook_enabled": self.config.rerank_hook is not None,
                 "hooks_run_locally": self.config.hooks_run_locally,
+                "record_memory": record_memory,
             },
         }
+
+    def ingest_experience(
+        self,
+        *,
+        agent_id: str,
+        summary: str,
+        tags: Iterable[str] | None = None,
+        salience: float = 0.5,
+        privacy_scope: str = "private",
+        status: str = "active",
+        memory_kind: str = "experience",
+        source_memory_id: str | None = None,
+        source_updated_at: str | None = None,
+        source_refs: list[dict[str, Any]] | None = None,
+        suggested_scope: str = "agent_repo",
+        reason: str = "Rebuildable agent experience projection supplied by its owning runtime.",
+        similar_threshold: float = 0.72,
+    ) -> dict[str, Any]:
+        """Upsert one rebuildable, agent-scoped experience projection.
+
+        This does not bypass the durable-memory guard: the owning runtime stays
+        authoritative and this row is a local retrieval projection with
+        ``durable_write_enabled=0``.
+        """
+
+        agent = agent_id.strip()
+        text = " ".join(summary.split())
+        if not agent:
+            raise ValueError("agent_id is required")
+        if not text:
+            raise ValueError("summary is required")
+        if privacy_scope not in {"public", "internal", "private"}:
+            raise ValueError("privacy_scope must be public, internal, or private")
+        if not status.strip():
+            raise ValueError("status is required")
+        if not 0.0 < similar_threshold <= 1.0:
+            raise ValueError("similar_threshold must be in (0, 1]")
+        normalized_tags = list(
+            dict.fromkeys(
+                value
+                for value in (" ".join(str(tag).split()).lower() for tag in (tags or []))
+                if value
+            )
+        )
+        stable_source_id = (source_memory_id or "").strip() or content_hash(text.encode("utf-8"))
+        idempotency_key = stable_hash(f"experience:{agent}:{stable_source_id}")
+        ticket_id = stable_hash(f"experience-ticket:{idempotency_key}")
+        vector = self.vector_adapter.embed(text)
+        now = utc_now()
+        with closing(self.connect()) as conn, conn:
+            self._register_vector_adapter(conn)
+            conn.execute(
+                """
+                INSERT INTO memory_candidates(
+                  ticket_id, idempotency_key, query, candidate_text, source_refs_json,
+                  reason, confidence, risk, expiry, suggested_scope, status,
+                  durable_write_enabled, agent_id, memory_kind, tags_json, salience,
+                  privacy_scope, source_memory_id, source_updated_at,
+                  embedding_adapter, embedding_dimensions, embedding_json,
+                  embedding_content_hash, created_at, updated_at
+                ) VALUES (?, ?, '', ?, ?, ?, ?, 'projection', NULL, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(ticket_id) DO UPDATE SET
+                  candidate_text = excluded.candidate_text,
+                  source_refs_json = excluded.source_refs_json,
+                  reason = excluded.reason,
+                  confidence = excluded.confidence,
+                  suggested_scope = excluded.suggested_scope,
+                  status = excluded.status,
+                  agent_id = excluded.agent_id,
+                  memory_kind = excluded.memory_kind,
+                  tags_json = excluded.tags_json,
+                  salience = excluded.salience,
+                  privacy_scope = excluded.privacy_scope,
+                  source_memory_id = excluded.source_memory_id,
+                  source_updated_at = excluded.source_updated_at,
+                  embedding_adapter = excluded.embedding_adapter,
+                  embedding_dimensions = excluded.embedding_dimensions,
+                  embedding_json = excluded.embedding_json,
+                  embedding_content_hash = excluded.embedding_content_hash,
+                  updated_at = excluded.updated_at
+                """,
+                (
+                    ticket_id,
+                    idempotency_key,
+                    text,
+                    json_dumps(source_refs or []),
+                    reason,
+                    clamp(salience),
+                    suggested_scope,
+                    status.strip(),
+                    agent,
+                    memory_kind.strip() or "experience",
+                    json_dumps(normalized_tags),
+                    clamp(salience),
+                    privacy_scope,
+                    stable_source_id,
+                    source_updated_at,
+                    self.vector_adapter.name,
+                    len(vector),
+                    json_dumps(vector),
+                    content_hash(text.encode("utf-8")),
+                    now,
+                    now,
+                ),
+            )
+            row = conn.execute("SELECT * FROM memory_candidates WHERE ticket_id = ?", (ticket_id,)).fetchone()
+            links = self._link_semantically_similar(
+                conn,
+                ticket_id=ticket_id,
+                agent_id=agent,
+                privacy_scope=privacy_scope,
+                vector=vector,
+                threshold=similar_threshold,
+            )
+        return {"experience": self._memory_candidate_row(row), "similar_links": links}
+
+    def query_experience(
+        self,
+        question: str,
+        *,
+        agent_id: str,
+        allowed_scopes: Iterable[str] | None = None,
+        token_budget: int = DEFAULT_EXPERIENCE_TOKEN_BUDGET,
+        top_k: int = DEFAULT_EXPERIENCE_TOP_K,
+    ) -> dict[str, Any]:
+        scopes = list(allowed_scopes or ["public", "internal", "private"])
+        with closing(self.connect()) as conn:
+            return self._query_experience(
+                conn,
+                question=question,
+                agent_id=agent_id,
+                allowed_scopes=scopes,
+                token_budget=token_budget,
+                top_k=top_k,
+            )
+
+    def _query_experience(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        question: str,
+        agent_id: str,
+        allowed_scopes: list[str],
+        token_budget: int,
+        top_k: int,
+    ) -> dict[str, Any]:
+        if token_budget < 1:
+            raise ValueError("token_budget must be at least 1")
+        if top_k < 1:
+            raise ValueError("top_k must be at least 1")
+        if not allowed_scopes:
+            return self._empty_experience_result(question, agent_id, token_budget)
+        scope_marks = ", ".join(["?"] * len(allowed_scopes))
+        status_marks = ", ".join(["?"] * len(ACTIVE_EXPERIENCE_STATUSES))
+        rows = conn.execute(
+            f"""
+            SELECT m.*
+            FROM memory_candidates m
+            WHERE m.agent_id = ?
+              AND m.memory_kind != 'candidate'
+              AND m.privacy_scope IN ({scope_marks})
+              AND m.status IN ({status_marks})
+              AND (m.expiry IS NULL OR m.expiry > ?)
+              AND NOT EXISTS (
+                SELECT 1
+                FROM memory_links ml
+                JOIN memory_candidates newer ON newer.ticket_id = ml.from_ticket
+                WHERE ml.to_ticket = m.ticket_id
+                  AND ml.link_type = 'supersedes'
+                  AND newer.agent_id = m.agent_id
+                  AND newer.status IN ({status_marks})
+              )
+            ORDER BY m.updated_at DESC, m.ticket_id
+            LIMIT ?
+            """,
+            (
+                agent_id,
+                *allowed_scopes,
+                *ACTIVE_EXPERIENCE_STATUSES,
+                utc_now(),
+                *ACTIVE_EXPERIENCE_STATUSES,
+                EXPERIENCE_SCAN_CAP,
+            ),
+        ).fetchall()
+        if not rows:
+            return self._empty_experience_result(question, agent_id, token_budget)
+
+        query_tokens = set(tokenize(question))
+        query_vector = self.vector_adapter.embed(question)
+        scored: list[dict[str, Any]] = []
+        for row in rows:
+            item = self._memory_candidate_row(row)
+            searchable = f"{item['candidate_text']} {' '.join(item['tags'])}"
+            memory_tokens = set(tokenize(searchable))
+            lexical = len(query_tokens & memory_tokens) / len(query_tokens) if query_tokens else 0.0
+            stored_vector = json_loads(row["embedding_json"], [])
+            stored_adapter = row["embedding_adapter"]
+            if not stored_vector and not stored_adapter:
+                # Legacy rows remain readable without mutating during recall.
+                stored_vector = self.vector_adapter.embed(row["candidate_text"])
+                stored_adapter = self.vector_adapter.name
+            compatible = stored_adapter == self.vector_adapter.name and len(stored_vector) == len(query_vector)
+            semantic = max(0.0, cosine_similarity(query_vector, stored_vector)) if compatible else 0.0
+            if lexical <= 0.0 and semantic < MIN_EXPERIENCE_VECTOR_SCORE:
+                continue
+            item["lexical_score"] = round(lexical, 6)
+            item["vector_score"] = round(semantic, 6)
+            item["token_estimate"] = estimate_tokens(item["candidate_text"])
+            scored.append(item)
+        if not scored:
+            result = self._empty_experience_result(question, agent_id, token_budget)
+            result["eligible_count"] = len(rows)
+            return result
+
+        lexical_order = [
+            item["ticket_id"]
+            for item in sorted(scored, key=lambda value: (value["lexical_score"], value["updated_at"]), reverse=True)
+            if item["lexical_score"] > 0.0
+        ]
+        vector_order = [
+            item["ticket_id"]
+            for item in sorted(scored, key=lambda value: (value["vector_score"], value["updated_at"]), reverse=True)
+            if item["vector_score"] >= MIN_EXPERIENCE_VECTOR_SCORE
+        ]
+        lexical_rank = {ticket: index for index, ticket in enumerate(lexical_order)}
+        vector_rank = {ticket: index for index, ticket in enumerate(vector_order)}
+        max_rrf = 2.0 / RRF_K
+        for item in scored:
+            ticket = item["ticket_id"]
+            rrf = (
+                1.0 / (RRF_K + lexical_rank.get(ticket, RRF_MISSING_RANK))
+                + 1.0 / (RRF_K + vector_rank.get(ticket, RRF_MISSING_RANK))
+            )
+            normalized_rrf = min(1.0, rrf / max_rrf)
+            item["rrf_score"] = round(rrf, 6)
+            item["score"] = round((normalized_rrf * 0.85) + (clamp(float(item["salience"])) * 0.15), 6)
+        ranked = sorted(
+            scored,
+            key=lambda item: (item["score"], item["vector_score"], item["updated_at"]),
+            reverse=True,
+        )
+        total_tokens = sum(item["token_estimate"] for item in ranked)
+        if total_tokens <= token_budget:
+            selected = ranked
+            mode = "all_relevant"
+        else:
+            selected = []
+            used = 0
+            for item in ranked:
+                if len(selected) >= top_k:
+                    break
+                size = int(item["token_estimate"])
+                if used + size <= token_budget:
+                    selected.append(item)
+                    used += size
+            if not selected:
+                first = dict(ranked[0])
+                first["candidate_text"] = self._truncate_to_token_budget(first["candidate_text"], token_budget)
+                first["token_estimate"] = estimate_tokens(first["candidate_text"])
+                selected = [first]
+            mode = "hybrid_top_k"
+        self._attach_memory_links(conn, selected)
+        return {
+            "query": question,
+            "agent_id": agent_id,
+            "mode": mode,
+            "token_budget": token_budget,
+            "total_relevant_tokens": total_tokens,
+            "eligible_count": len(rows),
+            "relevant_count": len(ranked),
+            "selected_count": len(selected),
+            "items": selected,
+            "governance": {
+                "agent_isolation": "exact",
+                "allowed_scopes": allowed_scopes,
+                "active_statuses": list(ACTIVE_EXPERIENCE_STATUSES),
+                "superseded_hidden": True,
+            },
+            "fusion": "rrf_lexical_cosine_with_salience_prior",
+        }
+
+    @staticmethod
+    def _empty_experience_result(question: str, agent_id: str | None, token_budget: int) -> dict[str, Any]:
+        return {
+            "query": question,
+            "agent_id": agent_id,
+            "mode": "empty",
+            "token_budget": token_budget,
+            "total_relevant_tokens": 0,
+            "eligible_count": 0,
+            "relevant_count": 0,
+            "selected_count": 0,
+            "items": [],
+            "governance": {"agent_isolation": "exact", "superseded_hidden": True},
+            "fusion": "rrf_lexical_cosine_with_salience_prior",
+        }
+
+    @staticmethod
+    def _truncate_to_token_budget(text: str, token_budget: int) -> str:
+        words = text.split()
+        if not words:
+            return ""
+        limit = max(1, int(token_budget / 1.3))
+        return " ".join(words[:limit])
+
+    def _attach_memory_links(self, conn: sqlite3.Connection, items: list[dict[str, Any]]) -> None:
+        ids = [item["ticket_id"] for item in items]
+        if not ids:
+            return
+        marks = ", ".join(["?"] * len(ids))
+        by_ticket = {ticket: [] for ticket in ids}
+        rows = conn.execute(
+            f"""
+            SELECT * FROM memory_links
+            WHERE from_ticket IN ({marks}) OR to_ticket IN ({marks})
+            ORDER BY link_type, score DESC
+            """,
+            (*ids, *ids),
+        ).fetchall()
+        for row in rows:
+            link = self._memory_link_row(row)
+            if link["from_ticket"] in by_ticket:
+                by_ticket[link["from_ticket"]].append(link)
+            if link["to_ticket"] in by_ticket and link["to_ticket"] != link["from_ticket"]:
+                by_ticket[link["to_ticket"]].append(link)
+        for item in items:
+            item["relations"] = by_ticket[item["ticket_id"]]
+
+    def _link_semantically_similar(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        ticket_id: str,
+        agent_id: str,
+        privacy_scope: str,
+        vector: list[float],
+        threshold: float,
+    ) -> list[dict[str, Any]]:
+        rows = conn.execute(
+            """
+            SELECT ticket_id, embedding_adapter, embedding_json
+            FROM memory_candidates
+            WHERE ticket_id != ? AND agent_id = ? AND privacy_scope = ?
+              AND memory_kind != 'candidate'
+              AND status IN ('active', 'approved', 'approved_pending_curator', 'promoted')
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (ticket_id, agent_id, privacy_scope, EXPERIENCE_SCAN_CAP),
+        ).fetchall()
+        links: list[dict[str, Any]] = []
+        for row in rows:
+            if row["embedding_adapter"] != self.vector_adapter.name:
+                continue
+            other = json_loads(row["embedding_json"], [])
+            if len(other) != len(vector):
+                continue
+            score = max(0.0, cosine_similarity(vector, other))
+            if score < threshold:
+                continue
+            first, second = sorted((ticket_id, row["ticket_id"]))
+            links.append(
+                self._write_memory_link(
+                    conn,
+                    from_ticket=first,
+                    to_ticket=second,
+                    link_type="similar_to",
+                    score=round(score, 6),
+                    reason=f"local vector cosine {round(score, 6)} >= threshold {threshold}",
+                    require_exists=False,
+                )
+            )
+        return links
 
     def graph_entity(self, name: str) -> dict[str, Any]:
         with closing(self.connect()) as conn, conn:
@@ -456,40 +938,57 @@ class OntologyRuntime:
         return result
 
     # ---- Memory Relation Graph -------------------------------------------------
-    # Typed edges between candidate tickets. similar_to is machine-detected near
-    # duplication (token Jaccard); supersedes/contradicts are curator-recorded so
-    # replacement and conflict are part of the graph, never a silent overwrite.
+    # Typed edges between candidate tickets. similar_to is machine-detected by
+    # local vector cosine; supersedes/contradicts are curator-recorded so
+    # replacement and conflict are structural, never guessed or overwritten.
     MEMORY_LINK_TYPES = ("similar_to", "supersedes", "contradicts")
 
-    def relate_memory_candidates(self, threshold: float = 0.6, scan_limit: int = 2000) -> dict[str, Any]:
+    def relate_memory_candidates(self, threshold: float = 0.72, scan_limit: int = 2000) -> dict[str, Any]:
         if not 0.0 < threshold <= 1.0:
             raise ValueError("threshold must be in (0, 1]")
         now = utc_now()
         with closing(self.connect()) as conn, conn:
             rows = conn.execute(
-                "SELECT ticket_id, candidate_text FROM memory_candidates ORDER BY created_at, ticket_id LIMIT ?",
+                """
+                SELECT ticket_id, agent_id, privacy_scope, candidate_text,
+                       embedding_adapter, embedding_json
+                FROM memory_candidates
+                ORDER BY created_at, ticket_id LIMIT ?
+                """,
                 (scan_limit,),
             ).fetchall()
-            shingles = {row["ticket_id"]: self._candidate_shingles(row["candidate_text"]) for row in rows}
-            ids = list(shingles)
             pairs_examined = 0
             links_created = 0
-            for i in range(len(ids)):
-                for j in range(i + 1, len(ids)):
+            for i in range(len(rows)):
+                left = rows[i]
+                left_vector = json_loads(left["embedding_json"], [])
+                if not left_vector:
+                    left_vector = self.vector_adapter.embed(left["candidate_text"])
+                for j in range(i + 1, len(rows)):
+                    right = rows[j]
+                    # Governance prefilter: automatic semantic edges never
+                    # bridge agent ownership or privacy boundaries.
+                    if left["agent_id"] != right["agent_id"] or left["privacy_scope"] != right["privacy_scope"]:
+                        continue
                     pairs_examined += 1
-                    score = self._jaccard(shingles[ids[i]], shingles[ids[j]])
+                    right_vector = json_loads(right["embedding_json"], [])
+                    if not right_vector:
+                        right_vector = self.vector_adapter.embed(right["candidate_text"])
+                    left_adapter = left["embedding_adapter"] or self.vector_adapter.name
+                    right_adapter = right["embedding_adapter"] or self.vector_adapter.name
+                    if left_adapter != right_adapter or len(left_vector) != len(right_vector):
+                        continue
+                    score = max(0.0, cosine_similarity(left_vector, right_vector))
                     if score < threshold:
                         continue
-                    # Canonical direction (sorted) so the undirected near-duplicate
-                    # edge is stored once.
-                    a, b = sorted((ids[i], ids[j]))
+                    a, b = sorted((left["ticket_id"], right["ticket_id"]))
                     written = self._write_memory_link(
                         conn,
                         from_ticket=a,
                         to_ticket=b,
                         link_type="similar_to",
                         score=round(score, 4),
-                        reason=f"token Jaccard {round(score, 4)} >= threshold {threshold}",
+                        reason=f"local vector cosine {round(score, 6)} >= threshold {threshold}",
                         require_exists=False,
                         _now=now,
                     )
@@ -498,7 +997,8 @@ class OntologyRuntime:
         return {
             "status": "ok",
             "threshold": threshold,
-            "candidates_scanned": len(ids),
+            "relation_basis": "local_vector_cosine",
+            "candidates_scanned": len(rows),
             "pairs_examined": pairs_examined,
             "similar_links_created": links_created,
         }
@@ -569,10 +1069,24 @@ class OntologyRuntime:
         require_exists: bool,
         _now: str | None = None,
     ) -> dict[str, Any]:
-        if require_exists:
-            for ticket in (from_ticket, to_ticket):
-                if conn.execute("SELECT 1 FROM memory_candidates WHERE ticket_id = ?", (ticket,)).fetchone() is None:
+        endpoints: dict[str, sqlite3.Row] = {}
+        for ticket in (from_ticket, to_ticket):
+            endpoint = conn.execute(
+                "SELECT agent_id, privacy_scope FROM memory_candidates WHERE ticket_id = ?",
+                (ticket,),
+            ).fetchone()
+            if endpoint is None:
+                if require_exists:
                     raise KeyError(ticket)
+                continue
+            endpoints[ticket] = endpoint
+        if len(endpoints) == 2:
+            left = endpoints[from_ticket]
+            right = endpoints[to_ticket]
+            if left["agent_id"] != right["agent_id"]:
+                raise ValueError("memory links cannot cross agent ownership boundaries")
+            if left["privacy_scope"] != right["privacy_scope"]:
+                raise ValueError("memory links cannot cross privacy scopes")
         now = _now or utc_now()
         link_id = stable_hash(f"memory-link:{from_ticket}:{to_ticket}:{link_type}")
         created = conn.execute(
@@ -597,27 +1111,6 @@ class OntologyRuntime:
             "reason": row["reason"],
             "created_at": row["created_at"],
         }
-
-    @staticmethod
-    def _candidate_shingles(text: str) -> set[str]:
-        tokens = tokenize(text or "")
-        if not tokens:
-            return set()
-        shingles = set(tokens)
-        # Add adjacent-token bigrams so near-duplicates with shared phrasing score
-        # higher than mere shared vocabulary.
-        for first, second in zip(tokens, tokens[1:]):
-            shingles.add(f"{first} {second}")
-        return shingles
-
-    @staticmethod
-    def _jaccard(a: set[str], b: set[str]) -> float:
-        if not a or not b:
-            return 0.0
-        intersection = len(a & b)
-        if intersection == 0:
-            return 0.0
-        return intersection / len(a | b)
 
     def write_durable_memory(self, agent_id: str, payload: dict[str, Any]) -> None:
         raise DirectDurableMemoryWriteBlocked(
@@ -758,7 +1251,7 @@ class OntologyRuntime:
             "unsupported_pending_adapters": unsupported,
             "direct_durable_memory_write_blocked": direct_write_blocked,
             "storage_adapter": {"name": "sqlite", "status": "available", "path": str(self.db_path)},
-            "vector_adapter": {"name": self.vector_adapter.name, "status": self.vector_adapter.status},
+            "vector_adapter": vector_adapter_metadata(self.vector_adapter),
             "fts_adapter": {"name": "chunk_fts", "status": "available", "tokenizer": self.fts_tokenizer},
         }
 
@@ -942,6 +1435,7 @@ class OntologyRuntime:
         chunk_id = stable_hash(f"chunk:{source_id}:{index}:{checksum}")
         now = utc_now()
         vector = self.vector_adapter.embed(record.text)
+        self._register_vector_adapter(conn)
         inserted = conn.execute(
             """
             INSERT OR IGNORE INTO chunks(
@@ -1264,6 +1758,8 @@ class OntologyRuntime:
             f"{edge['subject']} {edge['relation_type']} {edge['object']}" for edge in relations[:3]
         )
         candidate_text = relation_text or chunks[0]["text"][:360]
+        vector = self.vector_adapter.embed(candidate_text)
+        self._register_vector_adapter(conn)
         idempotency_key = stable_hash(f"memory-candidate:{question}:{json_dumps(source_refs)}")
         ticket_id = stable_hash(f"ticket:{idempotency_key}")
         now = utc_now()
@@ -1272,8 +1768,10 @@ class OntologyRuntime:
             INSERT OR IGNORE INTO memory_candidates(
               ticket_id, idempotency_key, query, candidate_text, source_refs_json,
               reason, confidence, risk, expiry, suggested_scope, status,
-              durable_write_enabled, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', 0, ?, ?)
+              durable_write_enabled, agent_id, memory_kind, tags_json, salience,
+              privacy_scope, embedding_adapter, embedding_dimensions,
+              embedding_json, embedding_content_hash, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', 0, '', 'candidate', '[]', ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticket_id,
@@ -1286,6 +1784,12 @@ class OntologyRuntime:
                 "low" if all(chunk["privacy_scope"] in {"public", "internal"} for chunk in chunks) else "review_required",
                 None,
                 "session",
+                0.5,
+                "private" if any(chunk["privacy_scope"] == "private" for chunk in chunks) else "internal",
+                self.vector_adapter.name,
+                len(vector),
+                json_dumps(vector),
+                content_hash(candidate_text.encode("utf-8")),
                 now,
                 now,
             ),
@@ -1456,6 +1960,18 @@ class OntologyRuntime:
             "suggested_scope": row["suggested_scope"],
             "status": row["status"],
             "durable_write_enabled": bool(row["durable_write_enabled"]),
+            "agent_id": row["agent_id"],
+            "memory_kind": row["memory_kind"],
+            "tags": json_loads(row["tags_json"], []),
+            "salience": row["salience"],
+            "privacy_scope": row["privacy_scope"],
+            "source_memory_id": row["source_memory_id"],
+            "source_updated_at": row["source_updated_at"],
+            "embedding": {
+                "adapter": row["embedding_adapter"],
+                "dimensions": row["embedding_dimensions"],
+                "content_hash": row["embedding_content_hash"],
+            },
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
