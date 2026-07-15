@@ -19,6 +19,9 @@ MAX_PROMPT_CHARS = 12_000
 MAX_CAPSULE_CHARS = 6_000
 DEFAULT_SESSION_QUERY = "current project decisions constraints architecture and active work"
 TRUSTED_ROUTING_STATUSES = frozenset({"routing_ready", "trusted"})
+HOST_POLICY_BASENAMES = frozenset(
+    {"agent.md", "agents.md", "claude.local.md", "claude.md", "gemini.md"}
+)
 
 _SECRET_PATTERNS = (
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.DOTALL),
@@ -168,7 +171,7 @@ def _query_runtime(
         question,
         agent_id=agent_id,
         allowed_scopes=allowed_scopes or ["public", "internal"],
-        limit=4,
+        limit=8,
         record_memory=False,
         experience_token_budget=450,
         experience_top_k=6,
@@ -184,14 +187,33 @@ def _source_label(item: dict[str, Any]) -> str:
     return _compact_text(label or "project", 80)
 
 
+def _is_host_policy_chunk(item: dict[str, Any]) -> bool:
+    raw = str(item.get("source_uri") or "")
+    try:
+        basename = Path(raw.removeprefix("file://")).name.lower()
+    except (OSError, ValueError):
+        return False
+    return basename in HOST_POLICY_BASENAMES
+
+
 def _context_lines(project_result: dict[str, Any], agent_result: dict[str, Any] | None) -> list[str]:
     lines: list[str] = []
-    for chunk in project_result.get("chunks", [])[:4]:
+    project_count = 0
+    for chunk in project_result.get("chunks", []):
         if not isinstance(chunk, dict):
+            continue
+        # Host-native policy files are already loaded by Claude/Codex/Grok/
+        # Gemini-compatible runtimes. Recalling them as evidence would both
+        # duplicate instructions and let stale indexed policy shadow the live
+        # file, so the capsule excludes them by source identity.
+        if _is_host_policy_chunk(chunk):
             continue
         text = _compact_text(chunk.get("text"), 720)
         if text:
             lines.append(f"project[{_source_label(chunk)}]: {text}")
+            project_count += 1
+            if project_count >= 4:
+                break
     experience = (agent_result or {}).get("experience_memory", {})
     if isinstance(experience, dict):
         for item in experience.get("items", [])[:6]:

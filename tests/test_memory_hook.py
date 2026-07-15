@@ -118,6 +118,24 @@ class MemoryHookTests(unittest.TestCase):
         self.assertIsNone(capsule)
         self.assertEqual(workspace, outside.resolve())
 
+    def test_native_host_policy_files_are_not_reinjected(self) -> None:
+        policy = self.root / "AGENTS.md"
+        policy.write_text(
+            "HOST_POLICY_DUPLICATE_SENTINEL database rollback instructions.",
+            encoding="utf-8",
+        )
+        OntologyRuntime(RuntimeConfig(db_path=self.db_path)).ingest_path(policy)
+        capsule, _ = build_capsule(
+            {
+                "cwd": str(self.root),
+                "user_prompt": "HOST_POLICY_DUPLICATE_SENTINEL database rollback",
+            }
+        )
+        self.assertIsNotNone(capsule)
+        assert capsule is not None
+        self.assertNotIn("HOST_POLICY_DUPLICATE_SENTINEL", capsule)
+        self.assertIn("schema verification", capsule)
+
     def test_unverified_agent_card_cannot_open_private_projection(self) -> None:
         agentlas_home = self._install_agent_projection()
         routing_path = self.root / ".agentlas" / "routing-card.json"

@@ -36,6 +36,11 @@ The hook:
    renders recalled text as evidence that cannot override host or project
    policy.
 
+Host-native instruction sources (`AGENT.md`, `AGENTS.md`, `CLAUDE.md`,
+`CLAUDE.local.md`, and `GEMINI.md`) are excluded by source basename even if the
+ontology indexed them. The host loads the live files through its native policy
+path; the memory capsule does not create a stale duplicate.
+
 There are no network imports, server embedding calls, runtime model downloads,
 or Memory Curator writes in this path. Vector selection stays with the
 canonical local runtime. A verified bundled Model2Vec asset is used when
