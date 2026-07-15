@@ -1,7 +1,7 @@
 {
   "id": "hephaestus",
   "name": "hephaestus",
-  "version": "1.1.34",
+  "version": "1.1.35",
   "description": "Open Agent OS for Claude Code, Codex, and Cursor: meta-agent builder, A2A Hub routing, local ontology, memory/security gates.",
   "author": {
     "name": "Agentlas",

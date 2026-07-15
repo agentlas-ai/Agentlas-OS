@@ -80,7 +80,9 @@ DOMAIN_MARKERS: dict[str, tuple[str, ...]] = {
     ),
     "security": (
         "보안취약", "취약점", "침투테스트", "펜테스트", "익스플로잇", "레드팀",
-        "vulnerability", "penetration test", "pentest", "exploit",
+        "vulnerability", "penetration test", "pentest", "exploit", "openssl",
+        "tls", "ssl certificate", "self-signed certificate", "certificate fingerprint",
+        "cross-site scripting", "cryptography", "rsa private key",
     ),
     "writing": (
         "글쓰기", "블로그", "에세이", "소설", "번역", "교정", "윤문", "blog post",

@@ -516,6 +516,70 @@ def test_hub_task_force_uses_core_workers_when_no_intent_fit_bundle_exists(tmp_p
     assert "travel-concierge-hq" not in result["execution"]["directive"]
 
 
+def test_hub_task_force_rejects_legal_bundle_for_openssl_task(tmp_path, monkeypatch):
+    home = setup_home(tmp_path)
+
+    def fake_search_hub(query_tokens, home=None, approved=False, scope="network"):
+        return {
+            "status": "ok",
+            "scope": scope,
+            "query": " ".join(query_tokens),
+            "results": [
+                {
+                    "slug": "korean-civil-litigation-selfrep",
+                    "nameEn": "Korean Civil Litigation Self Representation",
+                    "kind": "cloud-callable",
+                    "callable": True,
+                }
+            ],
+        }
+
+    monkeypatch.setattr("agentlas_cloud.networking.router.search_hub", fake_search_hub)
+    result = route_request(
+        "plan, implement, and verify an OpenSSL self-signed TLS certificate benchmark end-to-end",
+        home=home,
+        use_hub=True,
+        hub_only=True,
+    )
+
+    assert result["action"] == "hub_candidates"
+    assert result["execution"]["formation"] == "temporary_orchestrator"
+    assert result["execution"]["recommended_agents"] == []
+    assert result["execution"]["core_stages"] == ["plan", "build", "verify"]
+    assert "korean-civil-litigation-selfrep" not in result["execution"]["directive"]
+
+
+def test_hub_task_force_keeps_legal_bundle_for_legal_task(tmp_path, monkeypatch):
+    home = setup_home(tmp_path)
+
+    def fake_search_hub(query_tokens, home=None, approved=False, scope="network"):
+        return {
+            "status": "ok",
+            "scope": scope,
+            "query": " ".join(query_tokens),
+            "results": [
+                {
+                    "slug": "korean-civil-litigation-selfrep",
+                    "nameEn": "Korean Civil Litigation Self Representation",
+                    "kind": "cloud-callable",
+                    "callable": True,
+                }
+            ],
+        }
+
+    monkeypatch.setattr("agentlas_cloud.networking.router.search_hub", fake_search_hub)
+    result = route_request(
+        "대한민국 민사 소송을 계획하고 준비서면을 작성한 뒤 법률 검토까지 해줘",
+        home=home,
+        use_hub=True,
+        hub_only=True,
+    )
+
+    assert "korean-civil-litigation-selfrep" in [
+        item["agent"] for item in result["execution"]["recommended_agents"]
+    ]
+
+
 def test_hub_task_force_uses_core_workers_when_every_stage_search_clarifies(tmp_path, monkeypatch):
     home = setup_home(tmp_path)
 

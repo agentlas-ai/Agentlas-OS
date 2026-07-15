@@ -139,7 +139,7 @@ bin/ontology ingest examples/ontology-corpus --scope internal
 
 ## Search And GraphRAG
 
-Full-text search uses SQLite FTS5. In v1.1.34, vector search defaults to `auto`
+Full-text search uses SQLite FTS5. In v1.1.35, vector search defaults to `auto`
 and the verified bundled or installed `potion-base-8M` int8 asset is the
 required primary release path, not an optional online enhancement. The
 dependency-free runtime reconstructs a normalized 256-dimensional Model2Vec

@@ -70,6 +70,12 @@ def test_classify_domains_no_substring_false_positives():
     assert classify_domains("자산 관리 리포트") == ["finance"]
 
 
+def test_classify_domains_recognizes_terminal_security_tasks():
+    assert classify_domains("Generate a self-signed certificate with OpenSSL") == ["security"]
+    assert classify_domains("verify the TLS certificate fingerprint") == ["security"]
+    assert classify_domains("fix a sandboxed cross-site scripting task") == ["security"]
+
+
 # ── end-to-end routing guard ────────────────────────────────────────────────
 
 

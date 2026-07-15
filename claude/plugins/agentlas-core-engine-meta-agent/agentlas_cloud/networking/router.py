@@ -492,22 +492,26 @@ _STAGE_ROLE_TOKENS: dict[str, set[str]] = {
 _OFF_DOMAIN_ROLE_TOKENS = {
     "travel", "concierge", "game", "film", "wedding", "marketing", "instagram",
     "legal", "patent", "finance", "investment", "photo", "commerce", "sales",
+    "civil", "litigation", "lawsuit", "court", "selfrep", "민사", "소송", "법원",
 }
 
 
 def _hub_stage_candidate_fit(query: str, stage: str, item: dict[str, Any]) -> bool:
     """Reject callable-but-off-domain Hub slugs from automatic TF execution."""
 
+    candidate_text = " ".join(
+        [
+            str(item.get("slug") or ""),
+            str(item.get("name") or ""),
+            str(item.get("nameEn") or ""),
+        ]
+    )
     query_words = word_token_set(query or "") | snake_tokens(query or "")
-    candidate_words = word_token_set(
-        " ".join(
-            [
-                str(item.get("slug") or ""),
-                str(item.get("name") or ""),
-                str(item.get("nameEn") or ""),
-            ]
-        )
-    ) | snake_tokens(str(item.get("slug") or ""))
+    candidate_words = word_token_set(candidate_text) | snake_tokens(str(item.get("slug") or ""))
+    query_domains = set(classify_domains(query or ""))
+    candidate_domains = set(classify_domains(candidate_text))
+    if query_domains and candidate_domains and query_domains.isdisjoint(candidate_domains):
+        return False
     unrelated = (candidate_words & _OFF_DOMAIN_ROLE_TOKENS) - query_words
     if unrelated:
         return False

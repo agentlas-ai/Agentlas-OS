@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.35 - 2026-07-15
+
+- **Hub task forces now reject cross-domain specialist bundles.** High-precision
+  domain markers are compared before automatic execution, so an OpenSSL/TLS
+  terminal task cannot borrow a civil-litigation package merely because that
+  package is callable and shares generic plan/build/verify language.
+- **Security routing recognizes concrete certificate work.** OpenSSL, TLS,
+  self-signed certificates, fingerprints, cryptography, RSA private keys, and
+  cross-site scripting now provide an explicit security-domain signal. Legal
+  requests continue to route to legal specialists, while mismatched or absent
+  specialists fall back to the Agentlas Core temporary orchestrator.
+
 ## v1.1.34 - 2026-07-15
 
 - **Fully specified composite tasks survive a low-confidence Hub search.** If

@@ -345,7 +345,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.34
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.35
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). After install, `/prompts:hep-build` is the in-app entry.*
@@ -457,7 +457,7 @@ Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization]
 
 Features first-party Korean document parsing (HWPX and legacy HWP5) with zero GPL dependencies. Fully local and SQLite-backed; confidential and private chunks are isolated, preventing them from reaching external cloud hooks.
 
-The v1.1.34 release contract ships and verifies a dependency-free
+The v1.1.35 release contract ships and verifies a dependency-free
 `potion-base-8M` int8 Model2Vec asset as the primary semantic adapter. Its
 normalized 256-dimensional semantic vector is combined with a normalized
 hash-96 vector into one fixed 352-dimensional local vector. Runtime queries
@@ -465,7 +465,7 @@ never download a model or call a hosted embedding API. Hash-only mode is an
 explicitly reported degraded fallback when the verified local asset is missing
 or rejected, not an alternative silent default.
 
-The v1.1.34 self-updater installs the complete one-touch runtime payload,
+The v1.1.35 self-updater installs the complete one-touch runtime payload,
 including Career Graph, templates, and the verified model under the versioned
 `models/model2vec/potion-base-8M-int8` directory. It checks that payload before
 and after switching `~/.agentlas/runtime/current`, then repairs merge-safe
