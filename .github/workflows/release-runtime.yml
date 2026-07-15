@@ -28,19 +28,26 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils ripgrep
-          python -m pip install pytest
+          python -m pip install pytest jsonschema
 
       - name: Verify package and public safety
         run: |
           bash scripts/verify-package.sh
           bash scripts/public_safety_check.sh
 
+      - name: Verify Agent Workforce Ontology release gate
+        run: >-
+          python -m pytest -q
+          tests/test_workforce_ontology.py
+          tests/test_workforce_benchmark.py
+
       - name: Verify updater and credential gates
         run: |
           python -m pytest -q \
             tests/test_runtime_update.py \
             tests/test_public_safety_check.py \
-            tests/test_release_runtime_assets.py
+            tests/test_release_runtime_assets.py \
+            tests/test_workforce_workflow_gates.py
 
       - name: Build deterministic runtime archive
         run: bash scripts/build-runtime-release-asset.sh "$GITHUB_REF_NAME"

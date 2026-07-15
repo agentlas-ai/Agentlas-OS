@@ -5,13 +5,21 @@ on:
   pull_request:
     paths:
       - "agentlas_cloud/**"
+      - "docs/agent-workforce-ontology.md"
+      - "schemas/workforce-*.schema.json"
+      - "benchmarks/workforce-ontology/**"
+      - "manifest.json"
+      - "scripts/verify-package.sh"
       - ".gitattributes"
       - "assets/model2vec/**"
       - "ontology/model_assets.py"
       - "bin/hephaestus"
       - "bin/hephaestus.cmd"
       - "skills/hephaestus-storm/**"
+      - "skills/hephaestus-network/**"
       - ".agents/skills/hephaestus-storm/**"
+      - ".agents/skills/hephaestus-network/**"
+      - ".agents/workflows/hep-network.md"
       - "codex/**"
       - "claude/**"
       - "gemini/**"
@@ -24,18 +32,30 @@ on:
       - "tests/test_stormbreaker_goal_ultracode_harness.py"
       - "tests/test_stormbreaker_runner.py"
       - "tests/test_model2vec_asset.py"
+      - "tests/test_workforce_ontology.py"
+      - "tests/test_workforce_benchmark.py"
+      - "tests/test_workforce_workflow_gates.py"
       - ".github/workflows/cross-platform-harness.yml"
+      - ".github/workflows/release-runtime.yml"
   push:
     branches: [main]
     paths:
       - "agentlas_cloud/**"
+      - "docs/agent-workforce-ontology.md"
+      - "schemas/workforce-*.schema.json"
+      - "benchmarks/workforce-ontology/**"
+      - "manifest.json"
+      - "scripts/verify-package.sh"
       - ".gitattributes"
       - "assets/model2vec/**"
       - "ontology/model_assets.py"
       - "bin/hephaestus"
       - "bin/hephaestus.cmd"
       - "skills/hephaestus-storm/**"
+      - "skills/hephaestus-network/**"
       - ".agents/skills/hephaestus-storm/**"
+      - ".agents/skills/hephaestus-network/**"
+      - ".agents/workflows/hep-network.md"
       - "codex/**"
       - "claude/**"
       - "gemini/**"
@@ -48,7 +68,11 @@ on:
       - "tests/test_stormbreaker_goal_ultracode_harness.py"
       - "tests/test_stormbreaker_runner.py"
       - "tests/test_model2vec_asset.py"
+      - "tests/test_workforce_ontology.py"
+      - "tests/test_workforce_benchmark.py"
+      - "tests/test_workforce_workflow_gates.py"
       - ".github/workflows/cross-platform-harness.yml"
+      - ".github/workflows/release-runtime.yml"
 
 permissions:
   contents: read
@@ -76,6 +100,12 @@ jobs:
       - name: Install contract test dependencies
         run: python -m pip install pytest==8.4.1 jsonschema
 
+      - name: Verify Agent Workforce Ontology contracts
+        run: >-
+          python -m pytest -q
+          tests/test_workforce_ontology.py
+          tests/test_workforce_benchmark.py
+
       - name: Run Stormbreaker contract suite
         # Stormbreaker intentionally launches and reaps a real background child.
         # Disable Actions' descendant cleanup marker for this step so its Windows
@@ -90,6 +120,7 @@ jobs:
           tests/test_model_allocation.py
           tests/test_run_journal.py
           tests/test_model2vec_asset.py
+          tests/test_workforce_workflow_gates.py
 
       - name: Prove native wrapper and adapter byte identity
         run: >-
