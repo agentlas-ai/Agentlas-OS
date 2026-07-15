@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.1.42 - 2026-07-16
+
+- **Runtime bundle hashes now have a genuinely cross-language canonical
+  domain.** `agentlas.workforce-execution-plan.v3` requires
+  `agentlas.workforce-runtime-bundle-digest.v2`. Digest values permit only
+  strings, booleans, null, arrays, and ASCII-keyed objects; all numbers,
+  numeric-first or Unicode keys, lone surrogates, non-JSON containers, and
+  excessive depth or size fail closed. Arrays preserve order, object keys sort
+  lexicographically, Unicode scalar string values are UTF-8 encoded without
+  normalization, and producers represent quantities as decimal strings.
+- **Adversarial Python/JavaScript vectors pin the bytes, not just one happy
+  hash.** The shared fixture covers Korean, emoji, U+2028/U+2029, NFC versus
+  NFD, nested key order, tampering, numeric representations, unsafe integers,
+  Unicode keys, and lone surrogates. This retires v1 digest and v2 execution
+  plans, whose generic JSON number/key serialization was not interoperable.
+
 ## v1.1.41 - 2026-07-16
 
 - **Coverage repair is bounded, semantic, and candidate-blind.** The same host

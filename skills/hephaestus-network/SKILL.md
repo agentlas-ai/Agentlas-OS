@@ -68,12 +68,14 @@ selection. Re-plan on rejection. The validator may reject constraints,
 cardinality, cycles, drift, or out-of-menu releases; it must never pick for you.
 
 Call `workforce.prepare_execution` only after acceptance. Preparation must
-return `agentlas.workforce-execution-plan.v2`, status `prepared`, an exact
+return `agentlas.workforce-execution-plan.v3`, status `prepared`, an exact
 `preparationReceiptId`, and an `executionRoster` whose release version,
 package hash, and content digest match the candidate set. It returns BYOM
 `directiveBundle` records. Every row must declare
-`bundleDigestSchema=agentlas.workforce-runtime-bundle-digest.v1`; recompute its
-canonical digest before execution and fail closed on mismatch. Missing or
+`bundleDigestSchema=agentlas.workforce-runtime-bundle-digest.v2`; recompute its
+canonical digest before execution and fail closed on mismatch. Digest values
+allow only Unicode-scalar strings, booleans, null, arrays, and ASCII-keyed
+objects; numbers and invalid keys fail closed. Missing or
 changed releases create unfilled posts; there is no silent substitution.
 
 ## 4. Execute the real task force

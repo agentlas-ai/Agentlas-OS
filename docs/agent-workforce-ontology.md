@@ -288,19 +288,29 @@ transport; it is not a second planner or staffing authority.
 9. The execution fabric emits manager, worker, handoff, synthesis, verifier,
    and completion receipts.
 
-`agentlas.workforce-execution-plan.v2` makes the binding contract explicit.
+`agentlas.workforce-execution-plan.v3` makes the binding contract explicit.
 Every prepared roster row carries
-`bundleDigestSchema=agentlas.workforce-runtime-bundle-digest.v1` and
+`bundleDigestSchema=agentlas.workforce-runtime-bundle-digest.v2` and
 `bundleDigest`, computed as SHA-256 over a
 canonical JSON object whose `schemaVersion` is
-`agentlas.workforce-runtime-bundle-digest.v1` and whose remaining exact keys are
+`agentlas.workforce-runtime-bundle-digest.v2` and whose remaining exact keys are
 `slotId`, `agentDefinitionId`, `agentReleaseId`, `releaseVersion`, `packageHash`,
 `contentDigest`, `entityKind`, and `directiveBundle`. The preparation authority
 always recomputes this digest and ignores any digest supplied by the fetched
 bundle. Every host recomputes it before executing directives and fails closed
 on mismatch, cryptographically binding executable content to the selected
-release and post. A v1 execution plan or missing/unknown digest marker is not
-executable by a v2 host.
+release and post.
+
+Digest v2 intentionally uses a smaller, portable JSON domain: strings must be
+Unicode scalar sequences, object keys must match
+`^[A-Za-z_$][A-Za-z0-9_.$:/@+~-]*$`, and other values may only be booleans,
+null, arrays, or objects recursively. Numbers, lone surrogates, excessive
+depth/size, and implementation-specific containers are rejected; quantities
+must be decimal strings. Arrays retain order, keys sort lexicographically,
+compact JSON separators are used, and string values are UTF-8 encoded without
+Unicode normalization. The shared adversarial vectors live at
+`benchmarks/workforce-ontology/runtime-bundle-digest-v2-vectors.json`. A v1/v2
+execution plan or missing/unknown digest marker is not executable by a v3 host.
 
 `requiredRoles`, `requiredSkills`, `requiredToolCapabilities`, `consumes`, and
 `produces` are candidate-profile hard declarations, not a prose checklist of

@@ -24,6 +24,7 @@ from agentlas_cloud.workforce import (
     validate_execution_receipt,
     validate_ontology_proposal,
     validate_host_selection,
+    workforce_runtime_bundle_canonical_json,
     workforce_runtime_bundle_digest,
 )
 
@@ -561,27 +562,46 @@ def test_prepare_execution_pins_exact_release_hashes_and_never_substitutes():
 
 
 def test_runtime_bundle_digest_has_cross_language_golden_vector() -> None:
-    row = {
-        "slotId": "slot:payments",
-        "agentDefinitionId": "definition:payments",
-        "agentReleaseId": "release:payments@1.2.3",
-        "releaseVersion": "1.2.3",
-        "packageHash": "sha256:" + "a" * 64,
-        "contentDigest": "sha256:" + "b" * 64,
-        "entityKind": "agent",
-        "directiveBundle": {
-            "instructions": "Execute exactly.",
-            "agentMd": "결제 무결성을 검증한다.",
-            "runtimeBundle": {
-                "entityKind": "agent",
-                "executionGraph": None,
-                "tools": ["mongodb", "payments"],
-            },
-        },
-    }
-    assert workforce_runtime_bundle_digest(row) == (
-        "sha256:33463c138f6af8e0d130f4ecd8a7a503fc2c734ddcf70be0daf8701db393e933"
+    vectors_path = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks/workforce-ontology/runtime-bundle-digest-v2-vectors.json"
     )
+    vectors = json.loads(vectors_path.read_text(encoding="utf-8"))
+    assert vectors["digestSchemaVersion"] == WORKFORCE_RUNTIME_BUNDLE_DIGEST_SCHEMA
+    assert vectors["executionPlanSchemaVersion"] == WORKFORCE_EXECUTION_PLAN_SCHEMA
+
+    observed: dict[str, str] = {}
+    for vector in vectors["accepted"]:
+        row = {**vectors["baseRosterRow"], "directiveBundle": vector["directiveBundle"]}
+        if "canonicalJson" in vector:
+            assert workforce_runtime_bundle_canonical_json(row) == vector["canonicalJson"]
+        observed[vector["vectorId"]] = workforce_runtime_bundle_digest(row)
+        assert observed[vector["vectorId"]] == vector["bundleDigest"]
+    assert observed["nfc-preserved-without-normalization"] != observed["nfd-preserved-without-normalization"]
+
+    for vector in vectors["rejected"]:
+        row = {**vectors["baseRosterRow"], "directiveBundle": vector["directiveBundle"]}
+        with pytest.raises(ValueError):
+            workforce_runtime_bundle_digest(row)
+
+
+def test_prepare_execution_fails_closed_on_non_interoperable_directive_values() -> None:
+    _order, candidates, _decision, validation = accepted_selection_fixture()
+    candidate = candidates["slots"][0]["candidates"][0]
+    prepared = prepare_execution_plan(
+        validation_receipt=validation,
+        candidate_set=candidates,
+        runtime_bundles=[{
+            "agentReleaseId": "release:backend",
+            "packageHash": candidate["packageHash"],
+            "contentDigest": candidate["contentDigest"],
+            "directiveBundle": {"instructions": "Execute.", "threshold": 1.0},
+            "status": "prepared",
+        }],
+    )
+    assert prepared["status"] == "rejected"
+    assert prepared["executionRoster"] == []
+    assert prepared["issues"] == ["runtime_bundle_digest_domain_invalid:release:backend"]
 
 
 def execution_receipt(*, fallback: bool = False, workers: int = 2, verifier: bool = True) -> dict:

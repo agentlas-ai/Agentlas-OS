@@ -11,6 +11,7 @@ from .execution import (
     WORKFORCE_RUNTIME_BUNDLE_DIGEST_SCHEMA,
     prepare_execution_plan,
     validate_execution_receipt,
+    workforce_runtime_bundle_canonical_json,
     workforce_runtime_bundle_digest,
 )
 from .governance import apply_ontology_proposal, validate_ontology_proposal
@@ -35,6 +36,7 @@ __all__ = [
     "compile_workforce_profile",
     "prepare_execution_plan",
     "validate_execution_receipt",
+    "workforce_runtime_bundle_canonical_json",
     "workforce_runtime_bundle_digest",
     "apply_ontology_proposal",
     "validate_ontology_proposal",

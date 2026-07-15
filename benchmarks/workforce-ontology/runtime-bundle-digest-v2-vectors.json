@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "agentlas.workforce-runtime-bundle-digest-vectors.v1",
+  "digestSchemaVersion": "agentlas.workforce-runtime-bundle-digest.v2",
+  "executionPlanSchemaVersion": "agentlas.workforce-execution-plan.v3",
+  "baseRosterRow": {
+    "slotId": "slot:payments",
+    "agentDefinitionId": "definition:payments",
+    "agentReleaseId": "release:payments@1.2.3",
+    "releaseVersion": "1.2.3",
+    "packageHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "contentDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "entityKind": "agent"
+  },
+  "accepted": [
+    {
+      "vectorId": "golden-multilingual-nested",
+      "directiveBundle": {
+        "instructions": "Execute exactly.",
+        "agentMd": "결제 무결성을 검증한다.",
+        "runtimeBundle": {
+          "entityKind": "agent",
+          "executionGraph": null,
+          "tools": ["mongodb", "payments"]
+        }
+      },
+      "canonicalJson": "{\"agentDefinitionId\":\"definition:payments\",\"agentReleaseId\":\"release:payments@1.2.3\",\"contentDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"directiveBundle\":{\"agentMd\":\"결제 무결성을 검증한다.\",\"instructions\":\"Execute exactly.\",\"runtimeBundle\":{\"entityKind\":\"agent\",\"executionGraph\":null,\"tools\":[\"mongodb\",\"payments\"]}},\"entityKind\":\"agent\",\"packageHash\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"releaseVersion\":\"1.2.3\",\"schemaVersion\":\"agentlas.workforce-runtime-bundle-digest.v2\",\"slotId\":\"slot:payments\"}",
+      "bundleDigest": "sha256:edcd5ebd915a299102ad0cefe1d7b4b98ede13e9d28f7903c053bf6b2b48503e"
+    },
+    {
+      "vectorId": "unicode-scalars-controls-and-key-order",
+      "directiveBundle": {
+        "instructions": "한글😀\u2028\u2029 é é",
+        "runtimeBundle": {
+          "$schema": "awo:v2",
+          "_flag": true,
+          "nested": [null, false, {"z": "last", "a": "first"}]
+        }
+      },
+      "canonicalJson": "{\"agentDefinitionId\":\"definition:payments\",\"agentReleaseId\":\"release:payments@1.2.3\",\"contentDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"directiveBundle\":{\"instructions\":\"한글😀\u2028\u2029 é é\",\"runtimeBundle\":{\"$schema\":\"awo:v2\",\"_flag\":true,\"nested\":[null,false,{\"a\":\"first\",\"z\":\"last\"}]}},\"entityKind\":\"agent\",\"packageHash\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"releaseVersion\":\"1.2.3\",\"schemaVersion\":\"agentlas.workforce-runtime-bundle-digest.v2\",\"slotId\":\"slot:payments\"}",
+      "bundleDigest": "sha256:a50307b4679217314002fcb4b2f515964cb9fdd277f5185de52e8a204da6fd12"
+    },
+    {
+      "vectorId": "nfc-preserved-without-normalization",
+      "directiveBundle": {"instructions": "é"},
+      "bundleDigest": "sha256:a6bae038000cf2ca482c656ed2281a703b08e35a77a9d801ffd8c2f9f0899125"
+    },
+    {
+      "vectorId": "nfd-preserved-without-normalization",
+      "directiveBundle": {"instructions": "é"},
+      "bundleDigest": "sha256:4f52c650777e56720a3792df7f2fa145c564350e55ee37e5c79a1535e1e3d1f4"
+    }
+  ],
+  "rejected": [
+    {"vectorId": "integer", "directiveBundle": {"instructions": "x", "threshold": 1}},
+    {"vectorId": "decimal", "directiveBundle": {"instructions": "x", "threshold": 1.0}},
+    {"vectorId": "exponent", "directiveBundle": {"instructions": "x", "threshold": 1e-7}},
+    {"vectorId": "negative-zero", "directiveBundle": {"instructions": "x", "threshold": -0.0}},
+    {"vectorId": "unsafe-integer", "directiveBundle": {"instructions": "x", "threshold": 9007199254740992}},
+    {"vectorId": "numeric-first-key", "directiveBundle": {"instructions": "x", "1": "forbidden"}},
+    {"vectorId": "unicode-key", "directiveBundle": {"instructions": "x", "": "forbidden"}},
+    {"vectorId": "lone-surrogate", "directiveBundle": {"instructions": "\ud800"}}
+  ]
+}

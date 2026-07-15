@@ -9,7 +9,7 @@
     "candidateSetDigest", "decisionOwner", "substitutions", "executionRoster"
   ],
   "properties": {
-    "schemaVersion": { "const": "agentlas.workforce-execution-plan.v2" },
+    "schemaVersion": { "const": "agentlas.workforce-execution-plan.v3" },
     "status": { "enum": ["prepared", "rejected"] },
     "issues": { "$ref": "#/$defs/strings" },
     "preparationReceiptId": { "$ref": "#/$defs/id" },
@@ -38,11 +38,13 @@
           "directiveBundle": {
             "type": "object",
             "minProperties": 1,
-            "additionalProperties": true,
+            "maxProperties": 10000,
+            "propertyNames": { "$ref": "#/$defs/digestObjectKey" },
+            "additionalProperties": { "$ref": "#/$defs/digestValue" },
             "properties": {
-              "systemPrompt": { "type": "string", "minLength": 1 },
-              "instructions": { "type": "string", "minLength": 1 },
-              "agentMd": { "type": "string", "minLength": 1 }
+              "systemPrompt": { "$ref": "#/$defs/nonEmptyDigestString" },
+              "instructions": { "$ref": "#/$defs/nonEmptyDigestString" },
+              "agentMd": { "$ref": "#/$defs/nonEmptyDigestString" }
             },
             "anyOf": [
               { "required": ["systemPrompt"] },
@@ -50,7 +52,7 @@
               { "required": ["agentMd"] }
             ]
           },
-          "bundleDigestSchema": { "const": "agentlas.workforce-runtime-bundle-digest.v1" },
+          "bundleDigestSchema": { "const": "agentlas.workforce-runtime-bundle-digest.v2" },
           "bundleDigest": { "$ref": "#/$defs/hash" }
         }
       }
@@ -59,6 +61,27 @@
   "$defs": {
     "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
     "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "strings": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } }
+    "strings": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 500 } },
+    "digestObjectKey": { "type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_.$:/@+~-]*$" },
+    "digestString": { "type": "string", "pattern": "^[^\\uD800-\\uDFFF]*$" },
+    "nonEmptyDigestString": { "allOf": [{ "$ref": "#/$defs/digestString" }, { "minLength": 1 }] },
+    "digestValue": {
+      "oneOf": [
+        { "$ref": "#/$defs/digestString" },
+        { "type": "boolean" },
+        { "type": "null" },
+        {
+          "type": "array",
+          "maxItems": 10000,
+          "items": { "$ref": "#/$defs/digestValue" }
+        },
+        {
+          "type": "object",
+          "maxProperties": 10000,
+          "propertyNames": { "$ref": "#/$defs/digestObjectKey" },
+          "additionalProperties": { "$ref": "#/$defs/digestValue" }
+        }
+      ]
+    }
   }
 }

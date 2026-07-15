@@ -2,13 +2,83 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from typing import Any, Iterable, Mapping
 
 from .contracts import canonical_digest, normalized_strings
 
 
-WORKFORCE_RUNTIME_BUNDLE_DIGEST_SCHEMA = "agentlas.workforce-runtime-bundle-digest.v1"
-WORKFORCE_EXECUTION_PLAN_SCHEMA = "agentlas.workforce-execution-plan.v2"
+WORKFORCE_RUNTIME_BUNDLE_DIGEST_SCHEMA = "agentlas.workforce-runtime-bundle-digest.v2"
+WORKFORCE_EXECUTION_PLAN_SCHEMA = "agentlas.workforce-execution-plan.v3"
+
+_INTEROPERABLE_OBJECT_KEY_RE = re.compile(r"^[A-Za-z_$][A-Za-z0-9_.$:/@+~-]*$")
+_UNICODE_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+_MAX_DIGEST_VALUE_DEPTH = 32
+_MAX_DIGEST_VALUE_NODES = 10_000
+
+
+def _validate_interoperable_digest_value(value: Any) -> None:
+    """Accept only JSON values with identical Python/ECMAScript encoding.
+
+    Digest v2 deliberately avoids the non-portable corners of generic JSON:
+    every numeric value, non-ASCII or numeric-first object keys, lone Unicode
+    surrogates, excessive nesting, and implementation-specific container
+    types. Arrays retain source order and ASCII identifier-like object keys are
+    sorted lexicographically before hashing. Unicode scalar values remain
+    valid in strings and are hashed as UTF-8. Producers encode quantities as
+    decimal strings when a directive genuinely needs one.
+    """
+
+    nodes = 0
+
+    def visit(item: Any, depth: int) -> None:
+        nonlocal nodes
+        nodes += 1
+        if nodes > _MAX_DIGEST_VALUE_NODES:
+            raise ValueError("runtime bundle digest value is too large")
+        if depth > _MAX_DIGEST_VALUE_DEPTH:
+            raise ValueError("runtime bundle digest value is too deeply nested")
+        if item is None or isinstance(item, bool):
+            return
+        if isinstance(item, str):
+            if _UNICODE_SURROGATE_RE.search(item):
+                raise ValueError("runtime bundle digest string contains a lone Unicode surrogate")
+            return
+        if isinstance(item, (int, float)):
+            raise ValueError("runtime bundle digest numeric values are forbidden")
+        if isinstance(item, list):
+            for child in item:
+                visit(child, depth + 1)
+            return
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if not isinstance(key, str) or not _INTEROPERABLE_OBJECT_KEY_RE.fullmatch(key):
+                    raise ValueError("runtime bundle digest object keys must be ASCII identifiers")
+                visit(child, depth + 1)
+            return
+        raise ValueError("runtime bundle digest contains a non-JSON value")
+
+    visit(value, 0)
+
+
+def workforce_runtime_bundle_canonical_json(roster_row: Mapping[str, Any]) -> str:
+    """Return the language-neutral canonical bytes contract for digest v2."""
+
+    payload = {
+        "schemaVersion": WORKFORCE_RUNTIME_BUNDLE_DIGEST_SCHEMA,
+        "slotId": roster_row.get("slotId"),
+        "agentDefinitionId": roster_row.get("agentDefinitionId"),
+        "agentReleaseId": roster_row.get("agentReleaseId"),
+        "releaseVersion": roster_row.get("releaseVersion"),
+        "packageHash": roster_row.get("packageHash"),
+        "contentDigest": roster_row.get("contentDigest"),
+        "entityKind": roster_row.get("entityKind"),
+        "directiveBundle": roster_row.get("directiveBundle"),
+    }
+    _validate_interoperable_digest_value(payload)
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def workforce_runtime_bundle_digest(roster_row: Mapping[str, Any]) -> str:
@@ -20,19 +90,8 @@ def workforce_runtime_bundle_digest(roster_row: Mapping[str, Any]) -> str:
     the execution-plan schema rejects them separately.
     """
 
-    return canonical_digest(
-        {
-            "schemaVersion": WORKFORCE_RUNTIME_BUNDLE_DIGEST_SCHEMA,
-            "slotId": roster_row.get("slotId"),
-            "agentDefinitionId": roster_row.get("agentDefinitionId"),
-            "agentReleaseId": roster_row.get("agentReleaseId"),
-            "releaseVersion": roster_row.get("releaseVersion"),
-            "packageHash": roster_row.get("packageHash"),
-            "contentDigest": roster_row.get("contentDigest"),
-            "entityKind": roster_row.get("entityKind"),
-            "directiveBundle": roster_row.get("directiveBundle"),
-        }
-    )
+    canonical = workforce_runtime_bundle_canonical_json(roster_row)
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _candidate_lookup(candidate_set: Mapping[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -116,8 +175,12 @@ def prepare_execution_plan(
         }
         # Never trust a digest carried by the fetched runtime bundle.  The
         # preparation authority commits to the exact row that hosts will run.
+        try:
+            roster_row["bundleDigest"] = workforce_runtime_bundle_digest(roster_row)
+        except ValueError:
+            issues.append(f"runtime_bundle_digest_domain_invalid:{release_id}")
+            continue
         roster_row["bundleDigestSchema"] = WORKFORCE_RUNTIME_BUNDLE_DIGEST_SCHEMA
-        roster_row["bundleDigest"] = workforce_runtime_bundle_digest(roster_row)
         roster.append(roster_row)
     extras = set(bundles) - selected_release_ids
     if extras:
@@ -208,6 +271,7 @@ def validate_execution_receipt(receipt: Mapping[str, Any], *, benchmark_mode: bo
 __all__ = [
     "WORKFORCE_RUNTIME_BUNDLE_DIGEST_SCHEMA",
     "WORKFORCE_EXECUTION_PLAN_SCHEMA",
+    "workforce_runtime_bundle_canonical_json",
     "prepare_execution_plan",
     "validate_execution_receipt",
     "workforce_runtime_bundle_digest",
