@@ -158,6 +158,18 @@ def _passing_run() -> dict:
     }
 
 
+def _declare_optional_payment_expertise(run: dict) -> None:
+    payment_slot = next(
+        slot for slot in run["workOrder"]["roleSlots"] if slot["slotId"] == "payments"
+    )
+    payment_slot["title"] = "Payment reliability architect"
+    payment_slot["requiredCommunities"] = ["community:backend-engineering"]
+    payment_slot["optionalCommunities"] = ["community:payments-engineering"]
+    payment_slot["requiredRoles"] = []
+    payment_slot["requiredSkills"] = []
+    payment_slot["optionalSkills"] = ["skill:transaction-integrity"]
+
+
 def test_difficult_workforce_benchmark_passes_only_with_real_architecture_evidence() -> None:
     assert SPEC["ontologyVersion"] == WORKFORCE_ONTOLOGY_VERSION
     assert SPEC["ontologySnapshotSha256"] == WORKFORCE_ONTOLOGY_SNAPSHOT_SHA256
@@ -185,3 +197,58 @@ def test_difficult_workforce_benchmark_rejects_ontology_snapshot_drift() -> None
     result = score_module.score_run(SPEC, run)
     assert result["status"] == "fail"
     assert "candidate_set_ontology_version_drift" in result["issues"]
+
+
+def test_optional_payment_expertise_counts_without_copying_hidden_forbidden_probes() -> None:
+    run = _passing_run()
+    _declare_optional_payment_expertise(run)
+    run["workOrder"]["forbiddenCommunities"] = ["community:travel"]
+
+    result = score_module.score_run(SPEC, run)
+
+    assert result["status"] == "pass", result
+    assert result["roleFamilySlots"]["payments"] == "payments"
+
+
+def test_one_slot_cannot_cover_backend_and_payments_families() -> None:
+    slot = {
+        "slotId": "payment-platform",
+        "requiredCommunities": ["community:backend-engineering"],
+        "optionalCommunities": ["community:payments-engineering"],
+        "requiredRoles": [],
+        "requiredSkills": [],
+        "optionalSkills": ["skill:transaction-integrity"],
+    }
+    families = [
+        family
+        for family in SPEC["expectedRoleFamilies"]
+        if family["familyId"] in {"backend", "payments"}
+    ]
+
+    assert score_module._distinct_family_assignment(families, [slot]) is None
+
+
+def test_forbidden_candidate_is_rejected_even_when_work_order_does_not_list_probe() -> None:
+    run = _passing_run()
+    run["workOrder"]["forbiddenCommunities"] = ["community:travel"]
+    candidate = run["candidateSet"]["slots"][0]["candidates"][0]
+    candidate["communities"] = [*candidate["communities"], "community:marketing"]
+
+    result = score_module.score_run(SPEC, run)
+
+    assert result["status"] == "fail"
+    assert f"forbidden_candidate_recalled:{candidate['agentReleaseId']}" in result["issues"]
+
+
+def test_positive_forbidden_community_request_is_rejected() -> None:
+    run = _passing_run()
+    slot = run["workOrder"]["roleSlots"][0]
+    slot["optionalCommunities"] = ["community:marketing"]
+
+    result = score_module.score_run(SPEC, run)
+
+    assert result["status"] == "fail"
+    assert (
+        "work_order_requests_forbidden_community:backend:community:marketing"
+        in result["issues"]
+    )

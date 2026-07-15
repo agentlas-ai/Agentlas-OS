@@ -35,14 +35,15 @@ def _strings(value: Any) -> set[str]:
 
 
 def _slot_matches(slot: Mapping[str, Any], family: Mapping[str, Any]) -> bool:
-    return any(
-        _strings(slot.get(slot_key)) & _strings(family.get(family_key))
-        for slot_key, family_key in (
-            ("requiredCommunities", "anyCommunities"),
-            ("requiredRoles", "anyRoles"),
-            ("requiredSkills", "anySkills"),
-        )
-    )
+    for slot_keys, family_key in (
+        (("requiredCommunities", "optionalCommunities"), "anyCommunities"),
+        (("requiredRoles",), "anyRoles"),
+        (("requiredSkills", "optionalSkills"), "anySkills"),
+    ):
+        expected = _strings(family.get(family_key))
+        if any(_strings(slot.get(slot_key)) & expected for slot_key in slot_keys):
+            return True
+    return False
 
 
 def _distinct_family_assignment(
@@ -107,9 +108,14 @@ def score_run(spec: Mapping[str, Any], run: Mapping[str, Any]) -> dict[str, Any]
             issues.append("role_families_not_decomposed_into_distinct_slots")
 
     forbidden = _strings(spec.get("forbiddenCommunities"))
-    declared_forbidden = forbidden - _strings(work_order.get("forbiddenCommunities"))
-    if declared_forbidden:
-        issues.extend(f"work_order_missing_forbidden_community:{item}" for item in sorted(declared_forbidden))
+    for slot in slots:
+        requested_communities = _strings(slot.get("requiredCommunities")) | _strings(
+            slot.get("optionalCommunities")
+        )
+        for item in sorted(forbidden & requested_communities):
+            issues.append(
+                f"work_order_requests_forbidden_community:{slot.get('slotId')}:{item}"
+            )
     for candidate_slot in candidate_set.get("slots") or []:
         if not isinstance(candidate_slot, Mapping):
             continue

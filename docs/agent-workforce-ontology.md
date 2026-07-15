@@ -229,18 +229,24 @@ diagnostics and are not exposed as a total staffing score.
 
 1. `workforce.search_candidates` returns a selection session, ontology version,
    candidate-set digest, role-slot cards, and coverage gaps.
-2. The host LLM may call `workforce.expand_candidates` for a slot or adjacent
-   community.
-3. The host LLM submits `workforce.validate_selection` with assignments,
+2. When bounded coverage-gap codes show an unfilled role slot, the same active
+   host LLM may make a bounded WorkOrder refinement whose only new input is
+   those codes, then repeat `workforce.search_candidates`. The refined WorkOrder
+   and repeat search remain auditable and must retain the ontology version and
+   redaction boundary.
+3. Deterministic host/runtime code may validate or refuse that refinement, but
+   it must never add, remove, or relax required, optional, or forbidden
+   WorkOrder fields itself.
+4. The host LLM submits `workforce.validate_selection` with assignments,
    collaboration/handoff edges, alternatives considered, and short reason
    codes.
-4. The validator confirms provenance, hard eligibility, required coverage,
+5. The validator confirms provenance, hard eligibility, required coverage,
    cycles, cardinality, and candidate-set membership. It validates; it never
    chooses.
-5. `workforce.prepare_execution` resolves exact immutable BYOM releases and
+6. `workforce.prepare_execution` resolves exact immutable BYOM releases and
    returns separate `idealTeam`, `executableTeam`, `unfilledPosts`, and
    `substitutions`. Substitution requires another host-LLM decision.
-6. The execution fabric emits manager, worker, handoff, synthesis, verifier,
+7. The execution fabric emits manager, worker, handoff, synthesis, verifier,
    and completion receipts.
 
 Every accepted selection states `decisionAuthor.kind = host_llm` and records
@@ -254,6 +260,13 @@ workforce.search_candidates
 workforce.validate_selection
 workforce.prepare_execution
 ```
+
+`workforce.search_candidates` is content-only and read-only. A bounded replay
+after an ambiguous transport response may reuse the exact request and
+idempotency material, and every attempt is audited. Such a replay must not
+fabricate or relax the WorkOrder. `workforce.validate_selection` and
+`workforce.prepare_execution` are never replayed automatically; ambiguous
+outcomes fail closed and require an explicit host-controlled recovery flow.
 
 There is deliberately no `workforce.pick_best`. Candidate retrieval may be
 implemented deterministically, but final staffing belongs to the active host
