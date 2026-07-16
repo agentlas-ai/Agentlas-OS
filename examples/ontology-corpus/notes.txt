@@ -1,1 +1,0 @@
-Agent Working Memory caches graph-backed retrieval for a session and expires stale facts.
