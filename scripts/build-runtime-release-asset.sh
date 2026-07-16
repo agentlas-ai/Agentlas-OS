@@ -52,6 +52,7 @@ runtime_paths=(
   "agentlas_cloud"
   "agents"
   "antigravity"
+  "assets/model2vec/potion-base-8M-int8"
   "assets/model2vec/potion-multilingual-128M-int8"
   "bin"
   "career_graph"
@@ -114,6 +115,11 @@ required_runtime_paths=(
   "assets/model2vec/potion-multilingual-128M-int8/scales.f32le"
   "assets/model2vec/potion-multilingual-128M-int8/tokenizer.json"
   "assets/model2vec/potion-multilingual-128M-int8/LICENSE.model.txt"
+  "assets/model2vec/potion-base-8M-int8/manifest.json"
+  "assets/model2vec/potion-base-8M-int8/embeddings.i8"
+  "assets/model2vec/potion-base-8M-int8/scales.f32le"
+  "assets/model2vec/potion-base-8M-int8/tokenizer.json"
+  "assets/model2vec/potion-base-8M-int8/LICENSE.model.txt"
   "scripts/install-all-runtimes.sh"
 )
 for required in "${required_runtime_paths[@]}"; do

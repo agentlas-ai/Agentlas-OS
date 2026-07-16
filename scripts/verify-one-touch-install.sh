@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo="${HEPHAESTUS_REPO:-https://github.com/agentlas-ai/Agentlas-OS}"
 codex_repo="${HEPHAESTUS_CODEX_REPO:-agentlas-ai/Agentlas-OS}"
-version="${HEPHAESTUS_VERSION:-v1.1.47}"
+version="${HEPHAESTUS_VERSION:-v1.1.48}"
 keep="${HEPHAESTUS_KEEP_SMOKE_DIR:-0}"
 
 fail() {

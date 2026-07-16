@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.48 - 2026-07-16
+
+- **The runtime archive now bridges the previous updater to multilingual
+  recall.** It carries the legacy compact Model2Vec asset required by v1.1.46
+  bootstrap validation alongside the new multilingual asset selected by the
+  installed v1.1.48 runtime. This fixes the real `v1.1.46 -> v1.1.47` update
+  failure without downgrading the active Korean/cross-lingual retrieval path.
+
 ## v1.1.47 - 2026-07-16
 
 - **Korean and cross-lingual ontology recall now ships with the canonical
