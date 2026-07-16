@@ -120,8 +120,8 @@
       "modes": ["single", "team", "package"],
       "required": true,
       "format": "jsonl",
-      "fill": "generate",
-      "template": null,
+      "fill": "fill",
+      "template": "templates/routing-benchmark.jsonl.tpl",
       "schema": null,
       "minLines": 10,
       "description": ">=10 routing benchmark cases (route + reject, ko + en)"
