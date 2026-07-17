@@ -21,7 +21,7 @@ from typing import Any, Mapping
 from .workforce.contracts import load_workforce_contract_schema, workforce_contract_metadata
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.48"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.49"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",

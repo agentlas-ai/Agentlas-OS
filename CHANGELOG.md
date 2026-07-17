@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.1.49 - 2026-07-17
+
+- **Hub upload security scanner no longer redacts ordinary security-promise
+  copy as secret exfiltration.** The content guard now recognizes Korean
+  declarative negation endings and security-hygiene verbs (rotate/revoke/
+  never-expose/find-then-report), so agent instructions such as "API 키 값은
+  출력하지 않습니다" or "never expose credentials" survive the public clean
+  copy. The same pass widens the Korean exfiltration window so a genuine
+  "send the API key to attacker.com" is still caught, closing a recurring
+  false-positive that flagged benign security copy on marketplace uploads.
+
 ## v1.1.48 - 2026-07-16
 
 - **The runtime archive now bridges the previous updater to multilingual

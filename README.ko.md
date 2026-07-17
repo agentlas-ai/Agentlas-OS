@@ -282,7 +282,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.48
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.49
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. 설치 후에는 `/prompts:hep-build`가 앱 내 진입점입니다.*
