@@ -48,11 +48,15 @@ Cursor에 아래 내용을 붙여넣으세요:
 이 GitHub 저장소에서 Agentlas OS / Hephaestus를 설치해줘:
 https://github.com/agentlas-ai/Agentlas-OS
 
-플러그인 마켓플레이스에 등록하고 플러그인으로 설치해줘.
-다음 세션부터 Hephaestus 플러그인과 명령이 바로 동작하게 설정해줘.
-전역 라우팅을 지원하면 그것도 켜줘.
+마켓플레이스 플러그인만 설치하고 끝내지 말고, 다음 세션에도 유지되는
+호스트 명령 어댑터까지 설치하도록 저장소의 정식 원터치 설치기를 실행해줘:
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-마지막에는 활성화된 플러그인, 명령 표면, 전역 라우팅 상태를 확인해줘.
+Claude Code에서는 `hephaestus@agentlas-core-engine`이 user scope로 활성화됐고
+`~/.claude/commands/hep-build.md`가 존재하는지 확인해줘. 다음 세션에서 bare
+`/hep-build` 명령을 쓸 수 없는 상태라면 설치 완료라고 하지 마. 마지막에는
+활성화된 플러그인, 명령 표면, 전역 라우팅 상태를 확인하고, 호스트를
+재시작하거나 `/reload-plugins`를 실행하라고 알려줘.
 ```
 
 이미 쓰고 있는 LLM에서 Agentlas 명령 표면을 바로 활성화하고 싶을 때
@@ -273,7 +277,12 @@ OS 터미널에서:
 claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
-*참고: Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README에서는 일관성을 위해 단수형 `claude plugin ...`을 사용합니다.*
+*참고: Claude Code의 마켓플레이스 플러그인 명령에는 항상 namespace가
+붙으므로, 이 플러그인 전용 경로의 명령은 `/hephaestus:hep-build`입니다.
+새 세션마다 문서의 bare `/hep-build` 자동완성을 쓰려면 위 원터치 설치기를
+사용하세요. 원터치 설치기는 `~/.claude/commands/hep-*.md`도 기록합니다.
+Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README에서는
+일관성을 위해 단수형 `claude plugin ...`을 사용합니다.*
 
 </details>
 

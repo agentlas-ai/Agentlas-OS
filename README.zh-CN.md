@@ -41,10 +41,15 @@
 从这个 GitHub 仓库安装 Hephaestus:
 https://github.com/agentlas-ai/Agentlas-OS
 
-把它注册到 plugin marketplace，安装 plugin，并让 Hephaestus plugin 和
-commands 从下一次 session 开始可用。如果支持 global routing，也请开启。
+不要只安装 marketplace plugin 就停止。请运行仓库的标准一键安装器，
+同时写入可在下一次 session 中继续使用的 host command adapters：
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-最后确认已启用的 plugin、command surface 和 global routing 状态。
+对于 Claude Code，请确认 `hephaestus@agentlas-core-engine` 已在 user scope
+启用，并且 `~/.claude/commands/hep-build.md` 存在。如果下一次 session 中
+无法使用 bare `/hep-build`，不要报告安装完成。最后确认已启用的 plugin、
+command surface 和 global routing 状态，并提示我重启 host 或运行
+`/reload-plugins`。
 ```
 
 当你已经在某个 LLM 里，并希望直接启用 Hephaestus 时使用这段内容。
@@ -150,7 +155,12 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
-*注：Claude Code 也支持 `claude plugins ...` 作为别名，但本 README 为保持一致，统一使用单数形式的 `claude plugin ...`。*
+*注：Claude Code 会始终为 marketplace plugin command 添加 namespace，
+因此仅使用此 plugin 安装路径时，命令是 `/hephaestus:hep-build`。若要在每个
+新 session 中使用文档里的 bare `/hep-build` 自动补全，请使用上面的一键
+安装器；它还会写入 `~/.claude/commands/hep-*.md`。Claude Code 也支持
+`claude plugins ...` 别名，但本 README 统一使用单数形式的
+`claude plugin ...`。*
 
 </details>
 

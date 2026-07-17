@@ -62,12 +62,21 @@ claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --spars
 claude plugin install hephaestus@agentlas-core-engine
 ```
 
-Then open or restart Claude Code in the project and type:
+Those two plugin-manager commands expose Claude's required namespaced command,
+`/hephaestus:hep-build`. The one-command installer at the top additionally
+writes standalone user commands to `~/.claude/commands/hep-*.md`, which is what
+makes the shorter `/hep-build` surface persist in autocomplete across new
+sessions.
+
+After the one-command installer, open or restart Claude Code in the project and
+type:
 
 ```text
 /reload-plugins
 /hep-build ontology
 ```
+
+After a plugin-only install, use `/hephaestus:hep-build ontology` instead.
 
 If an older install still points at `agentlas-meta-agent`:
 

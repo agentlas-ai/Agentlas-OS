@@ -52,11 +52,16 @@ Gemini CLI, Antigravity, or Cursor:
 Install Agentlas OS / Hephaestus from this GitHub repo:
 https://github.com/agentlas-ai/Agentlas-OS
 
-Register it with the plugin marketplace, install the plugin, and make the
-Hephaestus plugin and commands available from my next session. If global routing
-is supported, turn that on too.
+Run the repository's canonical one-touch installer so the durable host command
+adapters are installed too; do not stop after only installing the marketplace
+plugin:
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-At the end, confirm the active plugin, command surface, and global routing status.
+For Claude Code, confirm that `hephaestus@agentlas-core-engine` is enabled at
+user scope and that `~/.claude/commands/hep-build.md` exists. Do not report the
+install complete unless bare `/hep-build` commands will be available in the
+next session. At the end, confirm the active plugin, command surface, and global
+routing status, then tell me to restart the host or run `/reload-plugins`.
 ```
 
 Use this when you are already inside an LLM and want the Agentlas command
@@ -336,7 +341,12 @@ From your OS terminal:
 claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
-*Note: Claude Code also supports `claude plugins ...` as an alias, but this README uses the singular `claude plugin ...` for consistency.*
+*Note: Claude Code always namespaces marketplace-plugin commands, so this
+plugin-only path exposes `/hephaestus:hep-build`. To get the documented bare
+`/hep-build` autocomplete in every new session, use the one-touch installer
+above; it also writes `~/.claude/commands/hep-*.md`. Claude Code supports
+`claude plugins ...` as an alias, but this README uses the singular
+`claude plugin ...` for consistency.*
 
 </details>
 

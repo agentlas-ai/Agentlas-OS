@@ -42,11 +42,15 @@ Codex, Gemini CLI, Antigravity या Cursor:
 इस GitHub repo से Hephaestus install करें:
 https://github.com/agentlas-ai/Agentlas-OS
 
-इसे plugin marketplace में register करें, plugin install करें, और अगली session
-से Hephaestus plugin और commands काम करें। अगर global routing support है, तो
-उसे भी enable करें।
+सिर्फ marketplace plugin install करके न रुकें। अगली session में भी बने रहने वाले
+host command adapters लिखने के लिए repo का canonical one-touch installer चलाएँ:
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-अंत में active plugin, command surface और global routing status confirm करें।
+Claude Code के लिए confirm करें कि `hephaestus@agentlas-core-engine` user scope में
+enabled है और `~/.claude/commands/hep-build.md` मौजूद है। अगर अगली session में
+bare `/hep-build` उपलब्ध नहीं होगा, तो install complete report न करें। अंत में
+active plugin, command surface और global routing status confirm करें और host restart
+या `/reload-plugins` चलाने को कहें।
 ```
 
 जब आप पहले से किसी LLM के अंदर हों और Hephaestus वहीं active करना चाहते हों,
@@ -152,7 +156,12 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
-*नोट: Claude Code `claude plugins ...` को alias के रूप में भी सपोर्ट करता है, लेकिन consistency के लिए यह README एकवचन `claude plugin ...` का उपयोग करता है।*
+*नोट: Claude Code marketplace plugin commands को हमेशा namespace देता है, इसलिए
+इस plugin-only path में command `/hephaestus:hep-build` है। हर नई session में
+documented bare `/hep-build` autocomplete के लिए ऊपर का one-touch installer
+इस्तेमाल करें; यह `~/.claude/commands/hep-*.md` भी लिखता है। Claude Code
+`claude plugins ...` alias भी support करता है, लेकिन यह README एकवचन
+`claude plugin ...` उपयोग करता है।*
 
 </details>
 

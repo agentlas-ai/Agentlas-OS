@@ -41,11 +41,15 @@
 この GitHub リポジトリから Hephaestus をインストールしてください:
 https://github.com/agentlas-ai/Agentlas-OS
 
-plugin marketplace に登録して plugin としてインストールし、
-次の session から Hephaestus plugin と commands が使えるようにしてください。
-global routing をサポートしている場合は、それも有効にしてください。
+marketplace plugin だけをインストールして終了せず、次の session にも残る
+host command adapters まで書き込む公式 one-touch installer を実行してください:
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-最後に、有効になった plugin、command surface、global routing の状態を確認してください。
+Claude Code では `hephaestus@agentlas-core-engine` が user scope で有効で、
+`~/.claude/commands/hep-build.md` が存在することを確認してください。次の
+session で bare `/hep-build` を使えない状態なら、install 完了と報告しないで
+ください。最後に plugin、command surface、global routing の状態を確認し、
+host の再起動または `/reload-plugins` の実行を案内してください。
 ```
 
 すでに使っている LLM の中で Hephaestus をすぐ有効化したいときに使ってください。
@@ -151,7 +155,13 @@ OS のターミナルから:
 claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
 claude plugin install hephaestus@agentlas-core-engine
 ```
-*注: Claude Code はエイリアスとして `claude plugins ...` もサポートしていますが、この README では一貫性のため単数形の `claude plugin ...` を使用します。*
+*注: Claude Code の marketplace plugin command には常に namespace が
+付くため、この plugin-only の経路では `/hephaestus:hep-build` を使います。
+新しい session ごとに文書どおりの bare `/hep-build` 補完を使うには、上の
+one-touch installer を使用してください。これは
+`~/.claude/commands/hep-*.md` も書き込みます。Claude Code は
+`claude plugins ...` もサポートしますが、この README では単数形の
+`claude plugin ...` を使用します。*
 
 </details>
 

@@ -364,7 +364,10 @@ install_claude() {
 
   run claude plugin install "$plugin_name@$marketplace_name" || return 1
   try claude plugin enable "$plugin_name@$marketplace_name" >/dev/null 2>&1 || true
-  write_claude_commands || warn "Claude global command refresh failed; copy .claude/commands/hep-*.md to ~/.claude/commands manually."
+  write_claude_commands || {
+    warn "Claude global command refresh failed; bare /hep-* autocomplete will not persist into the next session."
+    return 1
+  }
   log "Bundled MCP: local hephaestus-network Core (Cloud/Hub upstream stays behind Core)."
   ok=$((ok + 1))
 }
