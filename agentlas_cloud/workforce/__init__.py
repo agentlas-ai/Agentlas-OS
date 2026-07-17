@@ -94,6 +94,16 @@ from .federation import (
 )
 from .federation_store import FederationSessionError, FederationSessionStore
 from .local_registry import LocalWorkforceRegistry
+from .prepare_cache import (
+    WORKFORCE_PREPARE_ATTEMPT_SCHEMA,
+    WORKFORCE_PREPARE_PIN_BINDING_SCHEMA,
+    WORKFORCE_SOURCE_FETCH_IDEMPOTENCY_SCHEMA,
+    WorkforcePrepareCacheError,
+    WorkforcePrepareReceiptCache,
+    prepare_attempt_payload,
+    source_fetch_idempotency,
+    validate_prepare_attempt,
+)
 from .provenance import (
     FederatedProvenanceError,
     prepare_federated_execution_plan,
@@ -144,6 +154,9 @@ __all__ = [
     "WORKFORCE_SOURCE_BUNDLE_RECEIPT_SCHEMA",
     "WORKFORCE_SOURCE_BUNDLE_FAILURE_CODES",
     "WORKFORCE_SOURCE_BUNDLE_TOOL",
+    "WORKFORCE_PREPARE_ATTEMPT_SCHEMA",
+    "WORKFORCE_PREPARE_PIN_BINDING_SCHEMA",
+    "WORKFORCE_SOURCE_FETCH_IDEMPOTENCY_SCHEMA",
     "WorkforceFederationError",
     "FederationSessionError",
     "FederationSessionStore",
@@ -151,6 +164,8 @@ __all__ = [
     "FederatedProvenanceError",
     "WorkforceSourceError",
     "WorkforceSourceService",
+    "WorkforcePrepareCacheError",
+    "WorkforcePrepareReceiptCache",
     "SelectionHubBoundaryError",
     "WorkOrderHubBoundaryError",
     "assert_hub_selection_boundary",
@@ -162,6 +177,9 @@ __all__ = [
     "validate_federation_result",
     "validate_federated_host_selection",
     "prepare_federated_execution_plan",
+    "prepare_attempt_payload",
+    "source_fetch_idempotency",
+    "validate_prepare_attempt",
     "deny_all_permission_policy",
     "prepare_execution_plan",
     "project_execution_context",

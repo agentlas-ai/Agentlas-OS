@@ -40,6 +40,10 @@ WORKFORCE_SOURCE_FAILURE_CODES = (
     "source_slot_mismatch",
     "source_candidate_set_digest_mismatch",
     "source_history_influence_forbidden",
+    "insufficient_credits",
+    "owner_only",
+    "no_cloud_package",
+    "agent_not_found",
 )
 
 _FAILURES = frozenset(WORKFORCE_SOURCE_FAILURE_CODES)

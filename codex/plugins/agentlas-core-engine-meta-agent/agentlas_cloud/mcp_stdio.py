@@ -18,10 +18,22 @@ import sys
 from copy import deepcopy
 from typing import Any, Mapping
 
-from .workforce.contracts import load_workforce_contract_schema, workforce_contract_metadata
+from .workforce.contracts import (
+    WORKFORCE_ONTOLOGY_SNAPSHOT_SHA256,
+    WORKFORCE_ONTOLOGY_VERSION,
+    canonical_digest,
+    load_workforce_contract_schema,
+    workforce_contract_metadata,
+)
+from .workforce.execution import WORKFORCE_EXECUTION_PLAN_SCHEMA
+from .workforce.federation import WORKFORCE_FEDERATION_RESULT_SCHEMA
+from .workforce.provenance import (
+    WORKFORCE_FEDERATED_PREPARATION_SCHEMA,
+    WORKFORCE_FEDERATED_SELECTION_SCHEMA,
+)
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.49"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.50"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -29,6 +41,34 @@ _HOST_MODEL_POLICY_FIELDS = frozenset({
     "maxEffort",
     "requiredCapabilities",
 })
+WORKFORCE_PROTOCOL_VERSION = "2026-07-17.2"
+
+
+def workforce_protocol_metadata() -> dict[str, Any]:
+    metadata = {
+        "schemaVersion": "agentlas.workforce-protocol-metadata.v1",
+        "protocolVersion": WORKFORCE_PROTOCOL_VERSION,
+        "ontologyVersion": WORKFORCE_ONTOLOGY_VERSION,
+        "ontologySnapshotSha256": WORKFORCE_ONTOLOGY_SNAPSHOT_SHA256,
+        "candidateSetSchemaVersion": "agentlas.workforce-candidate-set.v1",
+        "federationResultSchemaVersion": WORKFORCE_FEDERATION_RESULT_SCHEMA,
+        "federatedSelectionSchemaVersion": WORKFORCE_FEDERATED_SELECTION_SCHEMA,
+        "federatedPreparationSchemaVersion": WORKFORCE_FEDERATED_PREPARATION_SCHEMA,
+        "executionPlanSchemaVersion": WORKFORCE_EXECUTION_PLAN_SCHEMA,
+        "sourceScopeRequired": True,
+        "prepareAttemptSchemaVersion": "agentlas.workforce-prepare-attempt.v1",
+        "sourceFetchIdempotencySchemaVersion": "agentlas.workforce-source-fetch-idempotency.v1",
+        "sourceBundleReceiptSchemaVersion": "agentlas.workforce-source-bundle-verification.v1",
+        "prepareIdempotencyRequired": True,
+    }
+    metadata["protocolDigest"] = canonical_digest(metadata)
+    return metadata
+
+
+def workforce_tool_meta() -> dict[str, Any]:
+    """MCP clients preserve tool metadata only inside the standard `_meta` bag."""
+
+    return {"agentlas/workforce-protocol": workforce_protocol_metadata()}
 
 
 def _contract_property(kind: str, description: str) -> dict[str, Any]:
@@ -310,6 +350,7 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["workOrder", "sourceScope"],
         },
         "x-agentlas-contracts": _workforce_tool_contracts("workOrder"),
+        "_meta": workforce_tool_meta(),
     },
     {
         "name": "workforce.validate_selection",
@@ -341,6 +382,7 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["workOrder", "candidateSet", "selection", "federationResult"],
         },
         "x-agentlas-contracts": _workforce_tool_contracts("workOrder", "selection"),
+        "_meta": workforce_tool_meta(),
     },
     {
         "name": "workforce.prepare_execution",
@@ -367,13 +409,39 @@ TOOLS: list[dict[str, Any]] = [
                     "type": "object",
                     "description": "Exact accepted result returned by federated workforce.validate_selection.",
                 },
+                "prepareAttempt": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "description": (
+                        "Caller-authored agentlas.workforce-prepare-attempt.v1. Its digest binds the "
+                        "logical occurrence, exact WorkOrder/Selection, federated selection, and every source pin."
+                    ),
+                    "properties": {
+                        "schemaVersion": {"const": "agentlas.workforce-prepare-attempt.v1"},
+                        "occurrenceId": {"type": "string", "minLength": 1, "maxLength": 512},
+                        "workOrderDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                        "selectionDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                        "federatedSelectionDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                        "selectedSourcePinDigests": {
+                            "type": "array", "minItems": 1, "maxItems": 128,
+                            "uniqueItems": True,
+                            "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                        },
+                        "idempotencyKey": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                    },
+                    "required": [
+                        "schemaVersion", "occurrenceId", "workOrderDigest", "selectionDigest",
+                        "federatedSelectionDigest", "selectedSourcePinDigests", "idempotencyKey",
+                    ],
+                },
             },
             "required": [
                 "workOrder", "candidateSet", "selection",
-                "federationResult", "federatedSelection",
+                "federationResult", "federatedSelection", "prepareAttempt",
             ],
         },
         "x-agentlas-contracts": _workforce_tool_contracts("workOrder", "selection"),
+        "_meta": workforce_tool_meta(),
     },
 ]
 
@@ -631,6 +699,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         federated_selection,
                         work_order=work_order,
                         selection=selection,
+                        prepare_attempt=arguments.get("prepareAttempt"),
                     )
                     return prepare_federated_execution_plan(
                         work_order=work_order,
@@ -641,11 +710,18 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         session_store=store,
                     )
                 except (FederatedProvenanceError, WorkforceSourceError, ValueError) as exc:
-                    return {
+                    failure = {
                         "action": name,
                         "status": "error",
                         "error": getattr(exc, "code", "federated_workforce_invalid"),
                     }
+                    retry_after_ms = getattr(exc, "retry_after_ms", None)
+                    receipt_expires_at = getattr(exc, "receipt_expires_at", None)
+                    if isinstance(retry_after_ms, int) and not isinstance(retry_after_ms, bool):
+                        failure["retryAfterMs"] = max(100, min(10_000, retry_after_ms))
+                    if isinstance(receipt_expires_at, str) and receipt_expires_at:
+                        failure["receiptExpiresAt"] = receipt_expires_at
+                    return failure
         return call_hub_tool(name, arguments)
     if name == "hephaestus_route":
         allow_local_routing = bool(arguments.get("allow_local_routing", False))
@@ -796,10 +872,15 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
                 msg_id,
                 {"content": [{"type": "text", "text": f"hephaestus tool failed: {exc}"}], "isError": True},
             )
-        return _result(
-            msg_id,
-            {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, sort_keys=True)}]},
-        )
+        tool_result = {
+            "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, sort_keys=True)}]
+        }
+        if isinstance(payload, Mapping) and payload.get("status") in {"error", "rejected", "blocked"}:
+            # Keep the finite JSON payload intact while also honoring MCP's
+            # application-error signal. Hosts can persist the exact code instead
+            # of replacing it with a later generic schema failure.
+            tool_result["isError"] = True
+        return _result(msg_id, tool_result)
     return _error(msg_id, -32601, f"method not found: {method}")
 
 

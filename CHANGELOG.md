@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.1.50 - 2026-07-17
+
+- **Hub Workforce preparation is now an exact, resumable protocol.** MCP
+  metadata publishes the versioned Workforce contract under the standard
+  Agentlas metadata key, remote responses are bounded before parsing, and
+  selection, release, package, content, account, and source-session pins are
+  revalidated before a prepared bundle can be reused.
+- **Interrupted preparation no longer repeats an ambiguous remote effect.** A
+  private durable prepare cache binds each request to its authenticated account
+  and immutable inputs, resumes only verified receipts, and returns typed
+  refusal or retry states instead of silently changing source or worker.
+- **Authentication and Workforce state survive restarts safely.** Token
+  rotation preserves a stable signed-in account subject, concurrent writers
+  use atomic private records, and token, federation, and prepare databases
+  reject symlink or hard-link redirection while retaining compatible shared
+  parent-directory permissions.
+
 ## v1.1.49 - 2026-07-17
 
 - **Hub upload security scanner no longer redacts ordinary security-promise

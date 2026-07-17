@@ -41,6 +41,17 @@ def _require_work_order_binding(
             now=now,
         )
     except FederationSessionError as exc:
+        if exc.code in {
+            "federation_session_expired",
+            "federation_session_not_found",
+            "source_candidate_set_expired",
+            "source_candidate_set_not_found",
+            "federated_selection_not_pinned",
+        }:
+            # Lifecycle errors are safe, finite protocol signals. Preserve them
+            # so the host can start a fresh immutable transaction instead of
+            # misreporting expiry as a tamper/binding failure.
+            raise FederatedProvenanceError(exc.code) from exc
         raise FederatedProvenanceError("federated_work_order_binding_mismatch") from exc
 
 

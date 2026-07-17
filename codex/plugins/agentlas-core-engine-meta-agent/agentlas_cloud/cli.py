@@ -627,6 +627,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     workforce_prepare.add_argument("selection")
     workforce_prepare.add_argument("validation_receipt")
+    workforce_prepare.add_argument(
+        "--occurrence-id",
+        required=True,
+        help="Stable logical occurrence id reused only when retrying this exact prepare request",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "wizard":
@@ -932,16 +937,32 @@ def main(argv: list[str] | None = None) -> int:
                 return emit(call_hub_tool("workforce.validate_selection", payload))
             validation_receipt = load_object(args.validation_receipt)
             if federation_result is not None:
+                from .workforce.contracts import canonical_digest
                 from .workforce.federation_store import FederationSessionStore
+                from .workforce.prepare_cache import prepare_attempt_payload
                 from .workforce.provenance import prepare_federated_execution_plan
                 from .workforce.source_service import WorkforceSourceService
 
                 store = FederationSessionStore()
                 service = WorkforceSourceService(session_store=store)
+                prepare_attempt = prepare_attempt_payload(
+                    args.occurrence_id,
+                    work_order_digest=canonical_digest(work_order),
+                    selection_digest=canonical_digest(selection),
+                    federated_selection_digest=str(
+                        validation_receipt.get("federatedSelectionDigest") or ""
+                    ),
+                    selected_source_pin_digests=[
+                        str(pin.get("sourcePinDigest") or "")
+                        for pin in validation_receipt.get("selectedSourcePins") or []
+                        if isinstance(pin, Mapping)
+                    ],
+                )
                 source_bundles = service.fetch_selected_runtime_bundles(
                     validation_receipt,
                     work_order=work_order,
                     selection=selection,
+                    prepare_attempt=prepare_attempt,
                 )
                 return emit(
                     prepare_federated_execution_plan(
@@ -2125,7 +2146,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.49",
+            "version": "1.1.50",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

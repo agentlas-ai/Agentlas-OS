@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import stat
 from typing import Any, Mapping
 
 from .contracts import canonical_digest, canonical_json, validate_candidate_set_coverage_gaps
@@ -41,8 +42,9 @@ class FederationSessionStore:
         lineage_verifier: LineageVerifier | None = None,
     ):
         self.path = (Path(path) if path else default_federation_store_path()).expanduser()
+        self._memory_only = str(self.path) == ":memory:"
         self.lineage_verifier = lineage_verifier
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._prepare_private_store_path()
         # sqlite3.Connection.__exit__ only commits or rolls back; it does not
         # close the underlying database handle. Pair the transaction context
         # with closing() so every short-lived store operation releases its FD.
@@ -92,13 +94,117 @@ class FederationSessionStore:
                 """
             )
 
+    def _prepare_private_store_path(self) -> None:
+        """Create the session database privately before SQLite may follow it.
+
+        The immediate parent is hardened only when this store created it.  A
+        caller-supplied existing directory may be shared with unrelated files,
+        so changing that directory's mode would exceed this store's authority.
+        The database and every SQLite sidecar are always private regular files.
+        """
+
+        if self._memory_only:
+            return
+        parent = self.path.parent
+        try:
+            self._assert_safe_parent_chain(parent)
+            parent_created = False
+            try:
+                parent.lstat()
+            except FileNotFoundError:
+                try:
+                    parent.mkdir(parents=True, mode=0o700, exist_ok=False)
+                    parent_created = True
+                except FileExistsError:
+                    # A peer won the creation race. Validate its node without
+                    # mutating a directory this process did not create.
+                    pass
+            self._assert_safe_parent_chain(parent)
+            parent_stat = parent.lstat()
+            if not stat.S_ISDIR(parent_stat.st_mode) or stat.S_ISLNK(parent_stat.st_mode):
+                raise FederationSessionError("federation_session_store_unsafe_path")
+            if os.name == "posix" and parent_created:
+                os.chmod(parent, 0o700)
+
+            if self.path.is_symlink():
+                raise FederationSessionError("federation_session_store_unsafe_path")
+            if not self.path.exists():
+                flags = os.O_CREAT | os.O_EXCL | os.O_RDWR
+                if hasattr(os, "O_NOFOLLOW"):
+                    flags |= os.O_NOFOLLOW
+                descriptor = os.open(self.path, flags, 0o600)
+                os.close(descriptor)
+            self._harden_private_store_files()
+        except FederationSessionError:
+            raise
+        except (OSError, ValueError) as exc:
+            raise FederationSessionError("federation_session_store_unavailable") from exc
+
+    @staticmethod
+    def _assert_safe_parent_chain(parent: Path) -> None:
+        """Reject link traversal anywhere above the database, not only at leaf."""
+
+        if ".." in parent.parts:
+            raise FederationSessionError("federation_session_store_unsafe_path")
+        absolute = Path(os.path.abspath(str(parent)))
+        current = Path(absolute.anchor)
+        for component in absolute.parts[1:]:
+            current /= component
+            try:
+                metadata = current.lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISLNK(metadata.st_mode):
+                # macOS exposes trusted system aliases such as /tmp ->
+                # /private/tmp and /var -> /private/var.  They are immutable to
+                # an unprivileged caller, unlike a user-owned workspace link.
+                if os.name == "posix" and metadata.st_uid == 0:
+                    continue
+                raise FederationSessionError("federation_session_store_unsafe_path")
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise FederationSessionError("federation_session_store_unsafe_path")
+
+    def _harden_private_store_files(self) -> None:
+        if self._memory_only:
+            return
+        for candidate in (
+            self.path,
+            Path(f"{self.path}-wal"),
+            Path(f"{self.path}-shm"),
+            Path(f"{self.path}-journal"),
+        ):
+            if candidate.is_symlink():
+                raise FederationSessionError("federation_session_store_unsafe_path")
+            try:
+                metadata = candidate.lstat()
+            except FileNotFoundError:
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                raise FederationSessionError("federation_session_store_unsafe_path")
+            if getattr(metadata, "st_nlink", 1) != 1:
+                raise FederationSessionError("federation_session_store_unsafe_path")
+            if os.name == "posix":
+                os.chmod(candidate, 0o600)
+
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(str(self.path), timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA synchronous = FULL")
-        return connection
+        self._prepare_private_store_path()
+        connection: sqlite3.Connection | None = None
+        try:
+            connection = sqlite3.connect(str(self.path), timeout=30)
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA synchronous = FULL")
+            self._harden_private_store_files()
+            return connection
+        except FederationSessionError:
+            if connection is not None:
+                connection.close()
+            raise
+        except (OSError, sqlite3.Error) as exc:
+            if connection is not None:
+                connection.close()
+            raise FederationSessionError("federation_session_store_unavailable") from exc
 
     def save(
         self,
