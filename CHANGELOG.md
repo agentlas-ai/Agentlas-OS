@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.51 - 2026-07-18
+
+- **Republishing a same-slug Cloud asset no longer hard-fails on
+  `428 client_upgrade_required`.** The publisher now reads the exact cloud id
+  and revision from the 428 error body and retries the register call with
+  `If-Match` + `x-agentlas-cloud-id`, so an intentional same-id overwrite
+  proceeds instead of dead-ending. Applied to all three `agentlas_cloud/upload.py`
+  mirrors (root runtime plus the Claude and Codex meta-agent plugins).
+
 ## v1.1.50 - 2026-07-17
 
 - **Hub Workforce preparation is now an exact, resumable protocol.** MCP
