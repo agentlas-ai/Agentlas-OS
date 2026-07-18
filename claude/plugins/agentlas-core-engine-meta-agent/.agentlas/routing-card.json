@@ -34,7 +34,7 @@
     "grant": "per_call",
     "ttl_seconds": null
   },
-  "benchmark_fixtures": "benchmarks/routing/local-hephaestus.jsonl",
+  "benchmark_fixtures": null,
   "canonical_id": "local/hephaestus-meta-agent",
   "capabilities": [
     "create_single_agents",
@@ -116,9 +116,7 @@
     }
   ],
   "quality": {
-    "benchmark_suites": [
-      "benchmarks/routing/local-hephaestus.jsonl"
-    ],
+    "benchmark_suites": [],
     "evaluated_at": "2026-06-25T00:00:00Z",
     "lint_version": "routing-card/2.0",
     "score": 0.91
@@ -135,7 +133,7 @@
     "tier": "medium"
   },
   "routing_status": "routing_ready",
-  "routing_status_reason": "Human-repaired routing-card with concrete triggers, anti-triggers, benchmark fixtures, entrypoint, memory, and upload validation gates.",
+  "routing_status_reason": "Human-repaired routing-card with concrete triggers, anti-triggers, entrypoint, memory, and upload validation gates.",
   "schemaVersion": "routing-card/2.0",
   "source": {
     "kind": "local_path",

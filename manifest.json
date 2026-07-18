@@ -64,7 +64,7 @@
     "hephaestusCloudCli": "bin/hep-cloud",
     "hephaestusHubCli": "bin/hep-hub",
     "gemini": "GEMINI.md",
-    "installer": "scripts/install.sh",
+    "installer": "scripts/install-all-runtimes.sh",
     "ontologyCli": "bin/ontology",
     "memoryHook": "bin/agentlas-memory-hook",
     "memoryHookInstaller": "scripts/install-memory-hooks.py",

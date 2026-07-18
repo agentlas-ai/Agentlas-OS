@@ -33,7 +33,6 @@ required_files=(
   "docs/model-allocation.md"
   "docs/skill-lifecycle-promotion.md"
   "docs/agentlas-cloud-runtime.md"
-  "docs/agentlas-career-graph-redesign-plan.md"
   "docs/robustness-protocol.md"
   "docs/robustness-eval.md"
   "docs/builder-interview-research-gate.md"
@@ -72,8 +71,6 @@ required_files=(
   "scripts/verify-mcp-surface.sh"
   "scripts/verify-builder-quality-contract.sh"
   "scripts/verify-experience-assets-contract.sh"
-  "scripts/verify-workforce-bundle-digest-v4.mjs"
-  "scripts/verify-workforce-capability-binding-v1.mjs"
   ".agents/agentlas-core-engine-meta-agent/agent.md"
   ".agents/plugins/marketplace.json"
   ".agentlas/mode-map.json"
@@ -176,11 +173,6 @@ required_files=(
   "schemas/super-ontology-reflexive-feedback-stability.schema.json"
   "schemas/super-ontology-memory-bridge.schema.json"
   "schemas/robustness-eval-result.schema.json"
-  "benchmarks/robustness/public-agent-repair.tasks.jsonl"
-  "benchmarks/robustness/example-results.jsonl"
-  "benchmarks/workforce-ontology/runtime-bundle-digest-v4-vectors.json"
-  "benchmarks/workforce-ontology/capability-binding-v1-vectors.json"
-  "scripts/score-robustness-eval.py"
   "templates/activation.json.tpl"
   "templates/agentlas.json.tpl"
   "templates/mcp-policy.json.tpl"
@@ -405,11 +397,6 @@ required_files=(
   "hermes/skills/hephaestus-network/SKILL.md"
   "hermes/skills/hephaestus-cloud/SKILL.md"
   "agentlas_cloud/mcp_stdio.py"
-  "tests/test_mcp_stdio.py"
-  "tests/test_experience_contracts.py"
-  "tests/test_team_package_gate.py"
-  "tests/fixtures/team-valid/.agentlas/company-blueprint.json"
-  "tests/fixtures/team-degenerate/agents/10-researcher/agent.md"
   "docs/local-models.md"
   "bin/ontology"
   "bin/career-graph"
@@ -418,8 +405,6 @@ required_files=(
   "career_graph/cli.py"
   "career_graph/runtime.py"
   "career_graph/experience_relations.py"
-  "tests/test_career_graph_runtime.py"
-  "tests/test_experience_relation_index.py"
   "ontology/__init__.py"
   "ontology/__main__.py"
   "ontology/cli.py"
@@ -428,18 +413,12 @@ required_files=(
   "ontology/parsers.py"
   "ontology/runtime.py"
   "ontology/utils.py"
-  "tests/test_ontology_runtime.py"
-  "tests/test_model2vec_asset.py"
-  "tests/test_memory_hook.py"
-  "tests/test_memory_hook_installer.py"
   "scripts/preflight-macos.sh"
   "scripts/install-all-runtimes.sh"
   "scripts/verify-install-docs.sh"
   "scripts/verify-global-command-contract.sh"
   "scripts/verify-builder-quality-contract.sh"
   "scripts/verify-gateway-channel-contract.sh"
-  "scripts/verify-one-touch-install.sh"
-  "scripts/run-one-touch-terminal.command"
   "scripts/verify-ontology-runtime.sh"
   "examples/ontology-corpus/company.md"
   "examples/ontology-corpus/notes.txt"
@@ -634,19 +613,9 @@ fi
 scripts/verify-install-docs.sh
 scripts/verify-global-command-contract.sh
 scripts/verify-builder-quality-contract.sh
-python3 scripts/test-build-cloud-choice-contract.py
 scripts/verify-experience-assets-contract.sh
 scripts/verify-gateway-channel-contract.sh
-node scripts/verify-workforce-bundle-digest-v4.mjs
-node scripts/verify-workforce-capability-binding-v1.mjs
-scripts/verify-team-package.sh tests/fixtures/team-valid >/dev/null
-if scripts/verify-team-package.sh tests/fixtures/team-degenerate >/tmp/agentlas-team-gate-negative.txt 2>&1; then
-  cat /tmp/agentlas-team-gate-negative.txt >&2
-  fail "degenerate team fixture unexpectedly passed"
-fi
-grep -q "degenerate team" /tmp/agentlas-team-gate-negative.txt || fail "degenerate team fixture did not report degenerate team"
 scripts/verify-ontology-runtime.sh
-python3 scripts/score-robustness-eval.py benchmarks/robustness/example-results.jsonl >/dev/null
 scripts/sync-adapters.sh --check
 scripts/verify-mcp-surface.sh
 examples/ontology-proposal-agent/verify.sh

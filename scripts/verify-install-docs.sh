@@ -228,8 +228,6 @@ for path in \
   scripts/preflight-macos.sh \
   scripts/verify-install-docs.sh \
   scripts/verify-global-command-contract.sh \
-  scripts/verify-one-touch-install.sh \
-  scripts/run-one-touch-terminal.command \
   scripts/verify-package.sh \
   scripts/public_safety_check.sh \
   scripts/verify-ontology-runtime.sh; do

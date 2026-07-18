@@ -622,15 +622,11 @@ runtime adapters, verification ledgers, and release gates together.
 | Understand the canonical route | [`AGENTS.md`](AGENTS.md) |
 | See the full team contract | [`agent.md`](agent.md) |
 | Architecture source of truth | [`docs/source-of-truth.md`](docs/source-of-truth.md) |
-| Chain/code map | [`docs/chain-map.md`](docs/chain-map.md) |
 | Runtime boundaries | [`docs/runtime-sync-boundaries.md`](docs/runtime-sync-boundaries.md) |
 | Sitemap contract | [`.agentlas/sitemap.json`](.agentlas/sitemap.json) and [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
 | Mode map | [`.agentlas/mode-map.json`](.agentlas/mode-map.json) |
 | Routing card | [`.agentlas/routing-card.json`](.agentlas/routing-card.json) and [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
 | Memory map | [`.agentlas/memory-map.json`](.agentlas/memory-map.json) and [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
-| Agent ontology | [`.agentlas/agent-ontology/`](.agentlas/agent-ontology/) and [`docs/agent-ontology-a2a-plan.md`](docs/agent-ontology-a2a-plan.md) |
-| Agentlas OS positioning | [`docs/agentlas-os-architecture-positioning-2026-07-08.md`](docs/agentlas-os-architecture-positioning-2026-07-08.md) |
-| Google Next 2026 comparison | [`docs/agentlas-os-google-next-2026-comparison-2026-07-08.md`](docs/agentlas-os-google-next-2026-comparison-2026-07-08.md) |
 | Briefing interview & research gate | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
 | Network 2.0 routing | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
 | Stormbreaker protocol | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |

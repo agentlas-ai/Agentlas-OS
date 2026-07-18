@@ -16,9 +16,6 @@ in the canonical Agentlas OS checkout.
   reconciling remote changes on that same branch.
 - Push only `main` and intentional release tags. Do not publish side branches.
 
-Run `scripts/install-main-only-git-guard.sh` after cloning. The tracked Git
-hooks reject non-`main` local branch updates and non-`main` branch pushes.
-
 ## Public Release Allowlist (Hard Rule)
 
 Before any commit, push, tag, release, or upload to a public GitHub repository,
@@ -53,8 +50,7 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
 - Runtime split and sync boundary: `docs/runtime-sync-boundaries.md`.
 - Global command contract: `docs/global-command-contract.md`.
 - Production Ontology Runtime: `docs/ontology-runtime.md`, `ontology/`,
-  `bin/ontology`, `tests/test_ontology_runtime.py`, and
-  `scripts/verify-ontology-runtime.sh`.
+  `bin/ontology`, and `scripts/verify-ontology-runtime.sh`.
 - Agentlas Cloud runtime contract: `docs/agentlas-cloud-runtime.md`,
   `agentlas_cloud/`, `schemas/agentlas-manifest.schema.json`, and
   `templates/agentlas.json.tpl`.
@@ -63,8 +59,7 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
   `schemas/routing-card.schema.json`, `.agentlas/routing-card.json`, and
   `scripts/verify-routing-cards.sh`.
 - Stormbreaker robust execution contract: `docs/robustness-protocol.md`,
-  `docs/robustness-eval.md`, `schemas/robustness-eval-result.schema.json`,
-  `benchmarks/robustness/`, and `scripts/score-robustness-eval.py`.
+  `docs/robustness-eval.md`, and `schemas/robustness-eval-result.schema.json`.
 - Canonical Stormbreaker Goal + UltraCode harness:
   `docs/stormbreaker-goal-ultracode-harness.md`,
   `agentlas_cloud/networking/stormbreaker_harness.py`, and

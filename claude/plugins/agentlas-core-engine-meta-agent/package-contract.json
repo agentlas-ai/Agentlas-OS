@@ -116,17 +116,6 @@
       "description": "Interview-derived work brief: goal, constraints, decisions"
     },
     {
-      "path": "benchmarks/routing-benchmark.jsonl",
-      "modes": ["single", "team", "package"],
-      "required": true,
-      "format": "jsonl",
-      "fill": "fill",
-      "template": "templates/routing-benchmark.jsonl.tpl",
-      "schema": null,
-      "minLines": 10,
-      "description": ">=10 routing benchmark cases (route + reject, ko + en)"
-    },
-    {
       "path": "docs/builder-interview.md",
       "modes": ["single", "team", "package"],
       "required": true,

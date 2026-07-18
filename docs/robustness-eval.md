@@ -82,7 +82,8 @@ For every task and arm:
 5. Run the verifier from outside the agent session.
 6. Write one JSONL result row matching
    `schemas/robustness-eval-result.schema.json`.
-7. Score all rows with `scripts/score-robustness-eval.py`.
+7. Score all rows with the private evaluation harness; its fixtures and
+   scorer are not part of the installable package.
 
 ## Guardrails
 

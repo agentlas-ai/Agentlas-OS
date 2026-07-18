@@ -516,15 +516,11 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 | 정본 라우트 이해하기 | [`AGENTS.md`](AGENTS.md) |
 | 전체 팀 계약 보기 | [`agent.md`](agent.md) |
 | 아키텍처의 단일 진실 원천 | [`docs/source-of-truth.md`](docs/source-of-truth.md) |
-| 체인/코드 맵 | [`docs/chain-map.md`](docs/chain-map.md) |
 | 런타임 경계 | [`docs/runtime-sync-boundaries.md`](docs/runtime-sync-boundaries.md) |
 | 사이트맵 계약 | [`.agentlas/sitemap.json`](.agentlas/sitemap.json) 및 [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
 | 모드 맵 | [`.agentlas/mode-map.json`](.agentlas/mode-map.json) |
 | 라우팅 카드 | [`.agentlas/routing-card.json`](.agentlas/routing-card.json) 및 [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
 | 메모리 맵 | [`.agentlas/memory-map.json`](.agentlas/memory-map.json) 및 [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
-| 에이전트 온톨로지 | [`.agentlas/agent-ontology/`](.agentlas/agent-ontology/) 및 [`docs/agent-ontology-a2a-plan.md`](docs/agent-ontology-a2a-plan.md) |
-| Agentlas OS 포지셔닝 | [`docs/agentlas-os-architecture-positioning-2026-07-08.md`](docs/agentlas-os-architecture-positioning-2026-07-08.md) |
-| Google Next 2026 비교 | [`docs/agentlas-os-google-next-2026-comparison-2026-07-08.md`](docs/agentlas-os-google-next-2026-comparison-2026-07-08.md) |
 | 브리핑 인터뷰 & 리서치 게이트 | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
 | Network 2.0 라우팅 | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
 | Stormbreaker 프로토콜 | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |

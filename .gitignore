@@ -109,6 +109,24 @@ test-results/
 .mypy_cache/
 .ruff_cache/
 .hypothesis/
+.github/
+.githooks/
+.playwright-mcp/
+
+# Maintainer-only CI, release, benchmark, and test harnesses.
+scripts/ao-gate.sh
+scripts/build-runtime-release-asset.sh
+scripts/bump-version.sh
+scripts/install-main-only-git-guard.sh
+scripts/publish-runtime-release-assets.sh
+scripts/run-one-touch-terminal.command
+scripts/score-robustness-eval.py
+scripts/test-build-cloud-choice-contract.py
+scripts/verify-cross-platform-harness.py
+scripts/verify-main-only-git-guard.sh
+scripts/verify-one-touch-install.sh
+scripts/verify-workforce-bundle-digest-v4.mjs
+scripts/verify-workforce-capability-binding-v1.mjs
 **/*_test.py
 **/test_*.py
 **/*_test.pyc

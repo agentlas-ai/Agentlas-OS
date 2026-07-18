@@ -320,10 +320,9 @@ keys `__proto__`, `prototype`, and `constructor` are rejected; quantities must
 be decimal strings. Arrays retain order, keys sort lexicographically, compact
 JSON separators are used, and string values are UTF-8 encoded without Unicode
 normalization. Each row also requires a nonblank top-level `systemPrompt`,
-`instructions`, or `agentMd`. The shared adversarial vectors live at
-`benchmarks/workforce-ontology/runtime-bundle-digest-v4-vectors.json`. A
-v1/v2/v3/v4 execution plan or missing/unknown digest marker is not executable
-by a v5 host.
+`instructions`, or `agentMd`. Adversarial vectors are maintained in the
+private verification suite rather than the installable package. A v1/v2/v3/v4
+execution plan or missing/unknown digest marker is not executable by a v5 host.
 
 Each v5 row also carries a first-class
 `agentlas.workforce-permission-policy.v1` plus its domain-separated digest.

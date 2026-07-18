@@ -1,6 +1,6 @@
 """Hephaestus Network 2.0 — Hub-first public agent/plugin routing layer.
 
-Contract: docs/hephaestus-network-2.0.md and docs/plans/hephaestus-network-2.0-plan.md.
+Contract: docs/hephaestus-network-2.0.md.
 
 Hub routing is the public default. Local cards under ~/.agentlas/networking/cards/
 exist only for explicit operator/debug routing; registry.sqlite is a rebuildable

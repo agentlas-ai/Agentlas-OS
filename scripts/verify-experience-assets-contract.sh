@@ -39,14 +39,6 @@ required=(
   templates/agent-variant.json.tpl
   templates/run-receipt.json.tpl
   templates/rental-resolution-receipt.json.tpl
-  tests/test_experience_contracts.py
-  tests/test_portable_experience_bundle.py
-  tests/test_experience_taxonomy.py
-  tests/test_experience_privacy.py
-  tests/fixtures/portable-experience-bundle-v1-golden.json
-  tests/fixtures/experience-taxonomy-v1-cross-surface.json
-  tests/fixtures/experience-privacy-v1-cross-surface.json
-  tests/test_experience_relation_index.py
 )
 
 for path in "${required[@]}"; do
@@ -113,9 +105,4 @@ assert experience_template["containsBasePackageMaterial"] is False
 print("Experience asset contract static verification passed.")
 PY
 
-PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" python3 -m pytest -q \
-  tests/test_experience_contracts.py tests/test_experience_relation_index.py \
-  tests/test_portable_experience_bundle.py tests/test_experience_taxonomy.py \
-  tests/test_experience_privacy.py
-
-echo "Experience asset contract verification passed."
+echo "Experience asset contract static verification passed."

@@ -354,8 +354,8 @@ public `https://` links and the exact `$PROJECT_ROOT` / `$OUTPUT_DIR`
 placeholders before path scanning, so normal `input/output` prose is not a
 false positive. Exact hashes, canonical asset IDs, receipt IDs, timestamps, and
 MCP `setupUrl` values receive exemptions only in their explicit metadata
-fields. The shared Python/TypeScript cases are frozen in
-`tests/fixtures/experience-privacy-v1-cross-surface.json`.
+fields. The shared Python/TypeScript cases are maintained in the private
+cross-surface verification suite and are not part of the installable package.
 
 This is a deterministic guard, not full de-identification. Unlabeled names,
 postal addresses, uncommon international phone forms, novel encodings, and

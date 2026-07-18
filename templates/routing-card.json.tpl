@@ -37,7 +37,7 @@
     "notes": "{{RISK_NOTES}}"
   },
   "memory_behavior": "{{MEMORY_BEHAVIOR}}",
-  "benchmark_fixtures": "benchmarks/routing-benchmark.jsonl",
+  "benchmark_fixtures": null,
   "locale_coverage": ["ko", "en"],
   "routing_status": "draft",
   "agent_card_ref": ".agentlas/agent-card.json"

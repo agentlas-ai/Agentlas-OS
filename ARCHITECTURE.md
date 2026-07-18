@@ -51,7 +51,6 @@ The canonical core is runtime-neutral:
 - `modes/`
 - `ontology/`
 - `bin/ontology`
-- `tests/test_ontology_runtime.py`
 - `scripts/verify-ontology-runtime.sh`
 - `examples/ontology-corpus/`
 - `.agents/agentlas-core-engine-meta-agent/agent.md`
