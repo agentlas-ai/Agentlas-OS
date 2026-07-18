@@ -211,6 +211,30 @@ def publish_agent(
     return packaged
 
 
+def _overwrite_precondition_headers(detail: str) -> dict[str, str] | None:
+    """From a 428 ``client_upgrade_required`` register response, build the
+    ``If-Match`` + ``x-agentlas-cloud-id`` headers the server requires to
+    overwrite an existing same-slug asset of a different generation. The server
+    hands us the current ETag and cloudId in the error body; returning them lets
+    a same-id overwrite proceed (the normal expectation) instead of hard-failing.
+    Returns ``None`` when the body is not this specific precondition case.
+    """
+    try:
+        body = json.loads(detail)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(body, dict) or body.get("code") != "client_upgrade_required":
+        return None
+    current = body.get("current")
+    if not isinstance(current, dict):
+        return None
+    etag = current.get("etag")
+    cloud_id = current.get("cloudId")
+    if not (isinstance(etag, str) and etag and isinstance(cloud_id, str) and cloud_id):
+        return None
+    return {"If-Match": etag, "x-agentlas-cloud-id": cloud_id}
+
+
 def register_package(
     manifest: dict[str, Any],
     bundle: dict[str, Any],
@@ -231,24 +255,46 @@ def register_package(
         "visibility": visibility,
         "billing": {"modelCallsPaidBy": review["costOwner"], "localRuntime": review.get("runtimeLabel")},
     }
-    request = urllib.request.Request(
-        f"{base}/api/cloud-agents/v1/register",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
+    data = json.dumps(payload).encode("utf-8")
+
+    def _post(extra_headers: dict[str, str] | None = None) -> dict[str, Any]:
+        headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
             "Authorization": f"Bearer {token}",
             "User-Agent": "hephaestus-upload",
             "Origin": base,
-        },
-        method="POST",
-    )
-    try:
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        request = urllib.request.Request(
+            f"{base}/api/cloud-agents/v1/register",
+            data=data,
+            headers=headers,
+            method="POST",
+        )
         with urllib.request.urlopen(request, timeout=60) as response:
             return json.loads(response.read().decode("utf-8"))
+
+    try:
+        return _post()
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:800]
-        raise UploadError(f"Agentlas Cloud registration failed HTTP {exc.code}: {detail}") from exc
+        detail = exc.read().decode("utf-8", errors="replace")
+        # A same-slug overwrite of a different-generation asset needs an
+        # optimistic-concurrency precondition. The 428 body hands us the current
+        # ETag + cloudId; retry once with them so the overwrite proceeds (the
+        # expected "same id overwrites" behavior) instead of hard-failing.
+        if exc.code == 428:
+            precondition = _overwrite_precondition_headers(detail)
+            if precondition:
+                try:
+                    return _post(precondition)
+                except urllib.error.HTTPError as retry_exc:
+                    retry_detail = retry_exc.read().decode("utf-8", errors="replace")[:800]
+                    raise UploadError(
+                        f"Agentlas Cloud registration failed HTTP {retry_exc.code} after precondition retry: {retry_detail}"
+                    ) from retry_exc
+        raise UploadError(f"Agentlas Cloud registration failed HTTP {exc.code}: {detail[:800]}") from exc
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
         raise UploadError(f"Agentlas Cloud registration failed: {exc}") from exc
 
