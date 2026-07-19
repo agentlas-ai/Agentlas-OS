@@ -1,4 +1,10 @@
 <p align="center">
+  <a href="https://agentlas.cloud/studio">
+    <img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One launch film" width="960">
+  </a>
+</p>
+
+<p align="center">
   <a href="https://agentlas.cloud">
     <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Agent Lab banner">
   </a>
