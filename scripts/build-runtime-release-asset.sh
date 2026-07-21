@@ -43,6 +43,7 @@ runtime_paths=(
   "README.zh-CN.md"
   "SECURITY.md"
   "agent.md"
+  "desktop-update-bridge-v1.json"
   "manifest.json"
   "package-contract.json"
   ".agents"
@@ -121,6 +122,7 @@ required_runtime_paths=(
   "assets/model2vec/potion-base-8M-int8/tokenizer.json"
   "assets/model2vec/potion-base-8M-int8/LICENSE.model.txt"
   "scripts/install-all-runtimes.sh"
+  "desktop-update-bridge-v1.json"
 )
 for required in "${required_runtime_paths[@]}"; do
   if ! grep -Fx "${prefix}${required}" "$manifest_tmp" >/dev/null; then

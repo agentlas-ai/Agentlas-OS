@@ -39,6 +39,10 @@ MAX_RUNTIME_ARCHIVE_BYTES = 256 * 1024 * 1024
 RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "ontology", "templates")
 RUNTIME_OPTIONAL_DIRS = ("schemas",)
 RUNTIME_FILES = ("package-contract.json",)
+RUNTIME_BRIDGE_FILES = (
+    "desktop-update-bridge-v1.json",
+    "scripts/install-memory-hooks.py",
+)
 MODEL2VEC_ASSET_NAME = "potion-multilingual-128M-int8"
 LEGACY_MODEL2VEC_ASSET_NAME = "potion-base-8M-int8"
 MODEL2VEC_ASSET_NAMES = (MODEL2VEC_ASSET_NAME, LEGACY_MODEL2VEC_ASSET_NAME)
@@ -409,6 +413,11 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
                 src = source / name
                 if src.is_file():
                     shutil.copy2(src, staged_target / name)
+            for relative_name in RUNTIME_BRIDGE_FILES:
+                src = source / relative_name
+                dest = staged_target / relative_name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
             runtime_model = staged_target / "models" / "model2vec" / source_model.name
             runtime_model.parent.mkdir(parents=True)
             shutil.copytree(source_model, runtime_model)
@@ -559,7 +568,25 @@ def sync_installed_memory_hooks(source: Path, home: Path | None = None) -> dict[
     if status == "fail" and not errors:
         detail = (completed.stderr or "hook installer failed without an error record").strip()[-500:]
         errors = {"installer": detail}
-    return {"status": status, "installed": installed, "errors": errors}
+    desktop_repair = payload.get("desktop_repair")
+    if not isinstance(desktop_repair, dict):
+        desktop_repair = {"status": "not_applicable", "reason": "not_reported"}
+    return {
+        "status": status,
+        "installed": installed,
+        "errors": errors,
+        "desktop_repair": desktop_repair,
+    }
+
+
+def retry_installed_desktop_repair(source: Path, home: Path | None = None) -> dict[str, Any]:
+    marker = source / "desktop-update-bridge-v1.json"
+    installer = source / "scripts" / "install-memory-hooks.py"
+    if not marker.is_file() or not installer.is_file():
+        return {"status": "not_applicable", "reason": "bridge_not_installed"}
+    result = sync_installed_memory_hooks(source, home)
+    repair = result.get("desktop_repair")
+    return repair if isinstance(repair, dict) else {"status": "not_applicable", "reason": "not_reported"}
 
 
 def write_python_shims(bin_dir: Path, executable: str) -> None:
@@ -709,11 +736,17 @@ def _marker_recent(epoch: Any, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
 
 def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
     runtime_root = root or Path(__file__).resolve().parent.parent
+    desktop_repair = retry_installed_desktop_repair(runtime_root)
     current = current_release(runtime_root)
     marker_path = _runtime_base() / AUTO_UPDATE_MARKER
     marker = _read_json(marker_path)
     if current is not None and not _is_comparable_release(current):
-        result = {"status": "skipped", "reason": "uncomparable_release", "current": current}
+        result = {
+            "status": "skipped",
+            "reason": "uncomparable_release",
+            "current": current,
+            "desktop_repair": desktop_repair,
+        }
         _write_json(marker_path, {**marker, **result, "last_checked_epoch": int(time.time())})
         return result
 
@@ -725,6 +758,7 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
         "current": current,
         "latest": latest_tag,
         "last_checked_epoch": int(time.time()),
+        "desktop_repair": desktop_repair,
     }
     if status not in {"update_available", "missing_release_marker"}:
         _write_json(marker_path, {**marker, **result})
@@ -965,12 +999,13 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
         Path("ontology") / "__init__.py",
         Path("ontology") / "model_assets.py",
         Path("templates") / "agentlas.json.tpl",
+        Path("desktop-update-bridge-v1.json"),
+        Path("scripts") / "install-memory-hooks.py",
     ):
         if not (runtime_root / relative).is_file():
             missing.append(str(relative))
     if release_source:
         for relative in (
-            Path("scripts") / "install-memory-hooks.py",
             Path("antigravity") / "hooks" / "agentlas-memory.json",
             Path("grok") / "hooks" / "agentlas-memory.json",
             Path("grok") / "agentlas-memory-rule.md",

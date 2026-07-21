@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.54 - 2026-07-21
+
+- **Affected Agentlas Desktop v0.8.58/v0.8.59 installations can restore their
+  original signed-resource seal without a website download or reinstall.** A
+  digest-verified runtime bridge runs only from the bundled Desktop Python and
+  only for the exact official bundle, Team ID, Developer ID authority,
+  designated requirement, and affected versions. It rejects linked ancestors,
+  hard links, signed resources, and changed inodes; removes only unsealed
+  generated `__pycache__/*.pyc`/`*.pyo`; records cache digests locally; and
+  requires `codesign` plus Gatekeeper verification afterward. The installed
+  runtime retains the bridge and retries it on every Desktop-started update
+  worker until the app seal is healthy.
+
 ## v1.1.53 - 2026-07-21
 
 - **Confirms the restored tag-triggered auto-release pipeline.** v1.1.52's
