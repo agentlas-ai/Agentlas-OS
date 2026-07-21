@@ -109,16 +109,17 @@ test-results/
 .mypy_cache/
 .ruff_cache/
 .hypothesis/
-.github/
 .githooks/
 .playwright-mcp/
 
 # Maintainer-only CI, release, benchmark, and test harnesses.
+# NOTE: build-runtime-release-asset.sh + publish-runtime-release-assets.sh are
+# intentionally tracked — the release-runtime.yml workflow invokes them, so they
+# must live in the repo for auto-publish CI to run. They contain no secrets and
+# self-enforce the runtime allowlist (no tests/credentials enter the download).
 scripts/ao-gate.sh
-scripts/build-runtime-release-asset.sh
 scripts/bump-version.sh
 scripts/install-main-only-git-guard.sh
-scripts/publish-runtime-release-assets.sh
 scripts/run-one-touch-terminal.command
 scripts/score-robustness-eval.py
 scripts/test-build-cloud-choice-contract.py

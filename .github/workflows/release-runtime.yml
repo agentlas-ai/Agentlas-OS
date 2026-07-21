@@ -1,0 +1,42 @@
+name: Release verified runtime asset
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-runtime-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The build step is self-guarding: build-runtime-release-asset.sh builds
+      # from an explicit runtime allowlist and scans the archive manifest for
+      # forbidden paths (tests, fixtures, credentials, signing material, .env),
+      # failing closed if any are present. End-user downloads therefore never
+      # contain test or maintainer-only material — independent of what the repo
+      # tracks. Test suites are intentionally NOT part of this public workflow.
+      - name: Build deterministic runtime archive
+        run: bash scripts/build-runtime-release-asset.sh "$GITHUB_REF_NAME"
+
+      - name: Publish release with verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="dist/runtime-release/hephaestus-runtime-${GITHUB_REF_NAME}.tar.gz"
+          checksum="${archive}.sha256"
+          bash scripts/publish-runtime-release-assets.sh "$GITHUB_REF_NAME" "$archive" "$checksum"
