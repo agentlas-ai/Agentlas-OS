@@ -107,6 +107,8 @@ required_runtime_paths=(
   "package-contract.json"
   "bin/hephaestus"
   "agentlas_cloud/mcp_stdio.py"
+  "agentlas_cloud/desktop_repair.py"
+  "agentlas_cloud/desktop-update-bridge-v1.json"
   "agentlas_cloud/workforce/contracts.py"
   "schemas/workforce-work-order.schema.json"
   "schemas/workforce-selection.schema.json"

@@ -582,11 +582,21 @@ def sync_installed_memory_hooks(source: Path, home: Path | None = None) -> dict[
 def retry_installed_desktop_repair(source: Path, home: Path | None = None) -> dict[str, Any]:
     marker = source / "desktop-update-bridge-v1.json"
     installer = source / "scripts" / "install-memory-hooks.py"
-    if not marker.is_file() or not installer.is_file():
+    if marker.is_file() and installer.is_file():
+        result = sync_installed_memory_hooks(source, home)
+        repair = result.get("desktop_repair")
+        return repair if isinstance(repair, dict) else {"status": "not_applicable", "reason": "not_reported"}
+
+    # Desktop v0.8.58/v0.8.59 ship the v1.1.50 updater. It copies the complete
+    # agentlas_cloud package but not newly added root bridge files. The embedded
+    # module and exact marker therefore remain available for every later app
+    # launch even if the freshly extracted one-shot repair did not finish.
+    try:
+        from agentlas_cloud.desktop_repair import repair_installed_desktop_python_cache_seal
+
+        return repair_installed_desktop_python_cache_seal(source, home)
+    except (ImportError, OSError):
         return {"status": "not_applicable", "reason": "bridge_not_installed"}
-    result = sync_installed_memory_hooks(source, home)
-    repair = result.get("desktop_repair")
-    return repair if isinstance(repair, dict) else {"status": "not_applicable", "reason": "not_reported"}
 
 
 def write_python_shims(bin_dir: Path, executable: str) -> None:
@@ -994,6 +1004,8 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
         Path("agentlas_cloud") / "__main__.py",
         Path("agentlas_cloud") / "cli.py",
         Path("agentlas_cloud") / "update.py",
+        Path("agentlas_cloud") / "desktop_repair.py",
+        Path("agentlas_cloud") / "desktop-update-bridge-v1.json",
         Path("career_graph") / "__init__.py",
         Path("career_graph") / "runtime.py",
         Path("ontology") / "__init__.py",

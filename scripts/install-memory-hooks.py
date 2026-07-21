@@ -15,6 +15,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+SOURCE_ROOT = Path(__file__).resolve().parent.parent
+if str(SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SOURCE_ROOT))
+
+from agentlas_cloud.desktop_repair import (
+    repair_installed_desktop_python_cache_seal as run_desktop_repair_bridge,
+)
+
 
 BEGIN_MARKER = "<!-- AGENTLAS:MEMORY-HOOK:BEGIN -->"
 END_MARKER = "<!-- AGENTLAS:MEMORY-HOOK:END -->"
@@ -168,6 +176,16 @@ def _sealed_resource_paths(app_path: Path) -> set[str]:
             raise InstallError("desktop signature directory is unreadable") from exc
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
             raise InstallError("desktop signature directory is linked")
+    try:
+        leaf_metadata = code_resources.lstat()
+    except OSError as exc:
+        raise InstallError("desktop CodeResources is unreadable") from exc
+    if (
+        stat.S_ISLNK(leaf_metadata.st_mode)
+        or not stat.S_ISREG(leaf_metadata.st_mode)
+        or leaf_metadata.st_nlink != 1
+    ):
+        raise InstallError("desktop CodeResources is linked")
     try:
         with code_resources.open("rb") as handle:
             payload = plistlib.load(handle)
@@ -488,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     installed: dict[str, list[str]] = {}
     errors: dict[str, str] = {}
-    desktop_repair = repair_installed_desktop_python_cache_seal(source_dir, home)
+    desktop_repair = run_desktop_repair_bridge(source_dir, home)
     for host in hosts:
         try:
             installed[host] = installers[host](source_dir, home)

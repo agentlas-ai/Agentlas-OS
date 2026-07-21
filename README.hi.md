@@ -170,7 +170,7 @@ documented bare `/hep-build` autocomplete के लिए ऊपर का one-
 
 अपने OS terminal से:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.55
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.56
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:hep-build` in-app entry है।*

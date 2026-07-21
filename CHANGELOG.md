@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.56 - 2026-07-21
+
+- **The Desktop recovery bridge now survives the exact v1.1.50 updater shipped
+  by Desktop v0.8.58/v0.8.59.** The retry implementation and exact marker live
+  inside `agentlas_cloud`, which the old updater already copies into the
+  managed runtime. A failed first repair is retried on later Desktop launches
+  from only the selected v1.1.56-or-newer managed runtime; no website download
+  or installer is used.
+- **The repair rejects a linked CodeResources leaf.** Both the first-run and
+  managed retry paths require the signature plist to be a regular single-link
+  file before reading it, in addition to the existing directory, sealed-file,
+  inode, hard-link, and post-repair signature gates.
+
 ## v1.1.55 - 2026-07-21
 
 - **The installed Desktop recovery bridge now genuinely retries after the

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "purpose": "repair-agentlas-desktop-python-cache-seal",
+  "bundleIdentifier": "com.agentlas.desktop",
+  "teamIdentifier": "F469CGM7T5",
+  "versions": [
+    "0.8.58",
+    "0.8.59"
+  ]
+}
