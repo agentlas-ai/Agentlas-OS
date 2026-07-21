@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.1.55 - 2026-07-21
+
+- **The installed Desktop recovery bridge now genuinely retries after the
+  runtime is already current.** In addition to the first digest-verified
+  temporary extraction, the bridge accepts only the exact regular version
+  directory selected by the managed `~/.agentlas/runtime/current` symlink,
+  with the exact repair marker and a v1.1.55-or-newer `RELEASE` marker.
+  Arbitrary copied directories, linked roots, linked or hard-linked markers,
+  and stale managed versions fail closed. This fixes the v1.1.54 path mismatch
+  that made post-install retries report `not_verified_update_context`.
+
 ## v1.1.54 - 2026-07-21
 
 - **Affected Agentlas Desktop v0.8.58/v0.8.59 installations can restore their

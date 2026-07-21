@@ -45,20 +45,69 @@ def _command(command: str, *args: str) -> subprocess.CompletedProcess[str]:
 def _verified_runtime_update_context(source_dir: Path) -> bool:
     if sys.platform != "darwin" or not os.environ.get("HEPHAESTUS_RUNTIME_ROOT"):
         return False
-    if not any(parent.name.startswith("hephaestus-update-") for parent in source_dir.parents):
-        return False
     marker = source_dir / DESKTOP_REPAIR_MARKER
     try:
+        source_metadata = source_dir.lstat()
+        marker_metadata = marker.lstat()
+        if (
+            not stat.S_ISDIR(source_metadata.st_mode)
+            or stat.S_ISLNK(source_metadata.st_mode)
+            or not stat.S_ISREG(marker_metadata.st_mode)
+            or stat.S_ISLNK(marker_metadata.st_mode)
+            or marker_metadata.st_nlink != 1
+        ):
+            return False
         payload = json.loads(marker.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
-    return payload == {
+    if payload != {
         "schemaVersion": 1,
         "purpose": "repair-agentlas-desktop-python-cache-seal",
         "bundleIdentifier": DESKTOP_BUNDLE_ID,
         "teamIdentifier": DESKTOP_TEAM_ID,
         "versions": sorted(DESKTOP_REPAIR_VERSIONS),
-    }
+    }:
+        return False
+
+    # A freshly downloaded, digest-verified runtime is extracted under this
+    # private temporary prefix before activation. Keep that first-run bridge.
+    if any(parent.name.startswith("hephaestus-update-") for parent in source_dir.parents):
+        return True
+
+    # Retrying after activation must use the exact managed runtime selected by
+    # ~/.agentlas/runtime/current. A marker copied to an arbitrary directory is
+    # not sufficient. v1.1.55 is the first version with this managed-context
+    # contract; later patch/minor releases remain eligible without another
+    # one-shot bridge.
+    runtime_base = Path(
+        os.environ.get("HEPHAESTUS_RUNTIME_BASE")
+        or Path.home() / ".agentlas" / "runtime"
+    )
+    current_link = runtime_base / "current"
+    release_marker = source_dir / "RELEASE"
+    try:
+        base_metadata = runtime_base.lstat()
+        current_metadata = current_link.lstat()
+        release_metadata = release_marker.lstat()
+        resolved_base = runtime_base.resolve(strict=True)
+        resolved_source = source_dir.resolve(strict=True)
+        resolved_current = current_link.resolve(strict=True)
+        release = release_marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    if (
+        not stat.S_ISDIR(base_metadata.st_mode)
+        or stat.S_ISLNK(base_metadata.st_mode)
+        or not stat.S_ISLNK(current_metadata.st_mode)
+        or not stat.S_ISREG(release_metadata.st_mode)
+        or stat.S_ISLNK(release_metadata.st_mode)
+        or release_metadata.st_nlink != 1
+        or resolved_current != resolved_source
+        or resolved_source.parent != resolved_base
+    ):
+        return False
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", release)
+    return bool(match and tuple(map(int, match.groups())) >= (1, 1, 55))
 
 
 def _desktop_metadata_is_exact(app_path: Path) -> bool:
