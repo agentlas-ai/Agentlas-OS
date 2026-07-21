@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.53 - 2026-07-21
+
+- **Confirms the restored tag-triggered auto-release pipeline.** v1.1.52's
+  release had to be published by hand because a prior cleanup removed the CI
+  workflow from the repo (0 registered workflows). The workflow is now tracked
+  again as a lean build+publish job (no test suite in the repo; the build step
+  self-enforces the runtime allowlist). No runtime behavior changes since
+  v1.1.52 — this patch exists to verify that pushing a `vX.Y.Z` tag once again
+  builds and publishes the verified runtime asset automatically.
+
 ## v1.1.52 - 2026-07-21
 
 - **The runtime self-update command is now `hep-update` and auto-update is the
