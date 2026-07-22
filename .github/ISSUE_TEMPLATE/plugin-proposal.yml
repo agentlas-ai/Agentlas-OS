@@ -1,0 +1,79 @@
+name: Plugin proposal
+description: Propose an independently installable Agentlas plugin or third-party connector
+title: "[Plugin]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Third-party providers are not added to Agentlas Core. Read `PLUGIN_CONTRIBUTIONS.md` before submitting this proposal.
+  - type: input
+    id: name
+    attributes:
+      label: Plugin name and slug
+      placeholder: Example Search / example-search
+    validations:
+      required: true
+  - type: dropdown
+    id: shape
+    attributes:
+      label: Plugin shape
+      options:
+        - Third-party connector
+        - Agentlas public plugin
+    validations:
+      required: true
+  - type: input
+    id: developer
+    attributes:
+      label: Developer and public source
+      description: Provide the developer name and a public repository or official source URL.
+    validations:
+      required: true
+  - type: textarea
+    id: capability
+    attributes:
+      label: Capability and user value
+      description: Explain what it does and mark operations as Read, Write, or Interactive.
+    validations:
+      required: true
+  - type: textarea
+    id: authority
+    attributes:
+      label: Authentication and authority
+      description: List auth type, credential field names, allowed hosts, allowed operations, and requested scope. Never include credential values.
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Privacy and data handling
+      description: Explain what leaves the host and link to privacy, retention, and deletion terms.
+    validations:
+      required: true
+  - type: textarea
+    id: lifecycle
+    attributes:
+      label: Install, disable, and uninstall behavior
+      description: List the tested Terminal or Desktop surfaces and describe clean removal.
+    validations:
+      required: true
+  - type: textarea
+    id: failures
+    attributes:
+      label: Failure behavior
+      description: Describe bounded behavior for missing credentials, denied permission, offline state, and provider errors.
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundary
+    attributes:
+      label: Core boundary
+      options:
+        - label: The plugin can be installed and removed without changing Agentlas Core.
+          required: true
+        - label: The plugin activates only after an explicit user choice and is not mounted by a default or full loadout.
+          required: true
+        - label: This proposal contains no credentials, private paths, logs, tests, fixtures, benchmark assets or results, screenshots, or internal plans.
+          required: true

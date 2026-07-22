@@ -48,6 +48,8 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
 - Canonical entry point: `AGENTS.md`.
 - Architecture ownership rule: `docs/source-of-truth.md`.
 - Runtime split and sync boundary: `docs/runtime-sync-boundaries.md`.
+- Third-party plugin contribution boundary: `CONTRIBUTING.md` and
+  `PLUGIN_CONTRIBUTIONS.md`.
 - Global command contract: `docs/global-command-contract.md`.
 - Production Ontology Runtime: `docs/ontology-runtime.md`, `ontology/`,
   `bin/ontology`, and `scripts/verify-ontology-runtime.sh`.
@@ -96,6 +98,31 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
 
 Runtime-specific folders are adapters. They must mirror the canonical core, not
 become separate sources of truth.
+
+## Third-Party Plugin Boundary
+
+Third-party services and optional provider integrations belong in independently
+installable Agentlas plugins, not in Agentlas Core. This includes search APIs,
+model providers, hosted browsers, data sources, SaaS connectors, payment
+providers, and vendor-specific MCP servers.
+
+Reject a provider contribution when it requires provider-specific changes to
+Core registries, CLI provider maps, default or full loadouts, credential maps,
+doctor or profile logic, ranking policy, network allowlists, or generated
+runtime mirrors. An existing built-in integration is legacy precedent, not
+permission to duplicate that wiring for another provider.
+
+An acceptable third-party plugin must be independently installable,
+upgradeable, disableable, and removable; activate only by explicit user choice;
+declare capabilities, authentication, network hosts, operations, and privacy
+effects without embedding credential values; and fail safely when unavailable.
+Installing or removing it must not require a Core patch.
+
+Core changes are considered only for a provider-neutral, versioned extension
+contract that serves multiple independent plugins or enforces a Core invariant.
+Propose that contract separately from any vendor implementation. Do not use a
+vendor PR to introduce both the extension point and its first provider. Follow
+`PLUGIN_CONTRIBUTIONS.md` for the submission and review checklist.
 
 ## Generated Instruction Language
 

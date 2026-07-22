@@ -642,6 +642,7 @@ runtime adapters, verification ledgers, and release gates together.
 | Runtime memory hooks | [`docs/runtime-memory-hooks.md`](docs/runtime-memory-hooks.md) |
 | Experience and Taste assets | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
 | MCP build resolution | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
+| Plugin contributions | [`PLUGIN_CONTRIBUTIONS.md`](PLUGIN_CONTRIBUTIONS.md) |
 | Model allocation | [`docs/model-allocation.md`](docs/model-allocation.md) |
 | Skill lifecycle promotion | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
 | Cloud runtime bundles | [`docs/agentlas-cloud-runtime.md`](docs/agentlas-cloud-runtime.md) |
@@ -659,6 +660,12 @@ Public output packages compiled by Hephaestus must exclude local absolute paths,
 ---
 
 ## Contributing and Verification
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. External
+services and optional providers must be submitted as independently installable
+Agentlas plugins; provider-specific Core wiring is not accepted. The detailed
+boundary and review checklist are in the
+[plugin contribution guide](PLUGIN_CONTRIBUTIONS.md).
 
 Before opening a pull request or publishing updates, run the verification test suite:
 
