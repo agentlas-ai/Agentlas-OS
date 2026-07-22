@@ -126,6 +126,17 @@ required_runtime_paths=(
   "scripts/install-all-runtimes.sh"
   "desktop-update-bridge-v1.json"
 )
+IFS=. read -r release_major release_minor release_patch <<< "${tag#v}"
+if ((
+  release_major > 1 ||
+  (release_major == 1 && release_minor > 1) ||
+  (release_major == 1 && release_minor == 1 && release_patch >= 57)
+)); then
+  required_runtime_paths+=(
+    "agentlas_cloud/desktop_updater_cleanup.py"
+    "agentlas_cloud/desktop-updater-cleanup-bridge-v1.json"
+  )
+fi
 for required in "${required_runtime_paths[@]}"; do
   if ! grep -Fx "${prefix}${required}" "$manifest_tmp" >/dev/null; then
     echo "release archive is missing required runtime path: $required" >&2

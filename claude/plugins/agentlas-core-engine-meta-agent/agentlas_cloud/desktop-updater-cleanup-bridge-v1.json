@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "purpose": "repair-agentlas-desktop-stale-updater-cache",
+  "bundleIdentifier": "com.agentlas.desktop",
+  "teamIdentifier": "F469CGM7T5",
+  "versions": [
+    "0.8.65",
+    "0.8.66"
+  ]
+}

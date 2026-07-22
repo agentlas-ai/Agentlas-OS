@@ -22,6 +22,9 @@ if str(SOURCE_ROOT) not in sys.path:
 from agentlas_cloud.desktop_repair import (
     repair_installed_desktop_python_cache_seal as run_desktop_repair_bridge,
 )
+from agentlas_cloud.desktop_updater_cleanup import (
+    repair_installed_desktop_updater_cache as run_desktop_updater_cleanup_bridge,
+)
 
 
 BEGIN_MARKER = "<!-- AGENTLAS:MEMORY-HOOK:BEGIN -->"
@@ -506,6 +509,15 @@ def main(argv: list[str] | None = None) -> int:
     }
     installed: dict[str, list[str]] = {}
     errors: dict[str, str] = {}
+    try:
+        # v1.1.56 callers terminate this installer after 30 seconds. Run the
+        # bounded v0.8.65/v0.8.66 updater recovery first so an unrelated older
+        # duplicate app cannot consume its delivery window.
+        desktop_updater_cleanup = run_desktop_updater_cleanup_bridge(source_dir, home)
+    except Exception:
+        # Desktop recovery must never roll back an otherwise verified Agentlas
+        # OS update. Keep the failure typed and retryable on the next launch.
+        desktop_updater_cleanup = {"status": "blocked", "reason": "bridge_failed"}
     desktop_repair = run_desktop_repair_bridge(source_dir, home)
     for host in hosts:
         try:
@@ -519,6 +531,7 @@ def main(argv: list[str] | None = None) -> int:
                 "installed": installed,
                 "errors": errors,
                 "desktop_repair": desktop_repair,
+                "desktop_updater_cleanup": desktop_updater_cleanup,
             },
             ensure_ascii=False,
             indent=2,

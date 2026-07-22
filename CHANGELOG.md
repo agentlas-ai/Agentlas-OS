@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.1.57 - 2026-07-23
+
+- **Desktop v0.8.65/v0.8.66 can escape the macOS stale-updater loop through
+  the independent Agentlas OS update channel.** The bridge runs only from a
+  digest-verified v1.1.57-or-newer runtime and the affected app's bundled
+  Python, requires the exact official bundle identity, Developer ID,
+  designated requirement, Gatekeeper approval, and an exact logged
+  `app.asar/dist` failure, then atomically quarantines only the cited signed
+  `ShipIt/update.*` payload. It never modifies Application Support, the update
+  journal, recovery copies, pending downloads, `ShipItState.plist`, or the
+  installed application. A bilingual popup asks the user to restart Agentlas
+  or press Retry after recovery is ready.
+- **The recovery bridge is serialized, bounded, and resumable.** A dedicated
+  owner-only `flock` prevents concurrent workers, a 20-second deadline limits
+  the already-shipped updater call, and one exact payload is signature- and
+  inode-verified before each same-filesystem rename. A committed quarantine is
+  recognized again after interruption; additional exact payloads are handled
+  on later launches while unrelated updater entries remain preserved. The old
+  Desktop state machine remains responsible for its own remaining cleanup.
+- **Historical release assets remain reproducible.** The runtime packager
+  requires the new recovery files only for v1.1.57 and newer; rebuilding
+  v1.1.56 still produces its original byte-identical archive and checksum.
+
 ## v1.1.56 - 2026-07-21
 
 - **The Desktop recovery bridge now survives the exact v1.1.50 updater shipped

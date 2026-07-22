@@ -571,11 +571,15 @@ def sync_installed_memory_hooks(source: Path, home: Path | None = None) -> dict[
     desktop_repair = payload.get("desktop_repair")
     if not isinstance(desktop_repair, dict):
         desktop_repair = {"status": "not_applicable", "reason": "not_reported"}
+    desktop_updater_cleanup = payload.get("desktop_updater_cleanup")
+    if not isinstance(desktop_updater_cleanup, dict):
+        desktop_updater_cleanup = {"status": "not_applicable", "reason": "not_reported"}
     return {
         "status": status,
         "installed": installed,
         "errors": errors,
         "desktop_repair": desktop_repair,
+        "desktop_updater_cleanup": desktop_updater_cleanup,
     }
 
 
@@ -597,6 +601,24 @@ def retry_installed_desktop_repair(source: Path, home: Path | None = None) -> di
         return repair_installed_desktop_python_cache_seal(source, home)
     except (ImportError, OSError):
         return {"status": "not_applicable", "reason": "bridge_not_installed"}
+
+
+def retry_installed_desktop_updater_cleanup(source: Path, home: Path | None = None) -> dict[str, Any]:
+    """Retry the v0.8.65/v0.8.66 stale updater cleanup from managed Core."""
+
+    marker = source / "agentlas_cloud" / "desktop-updater-cleanup-bridge-v1.json"
+    if not marker.is_file():
+        return {"status": "not_applicable", "reason": "bridge_not_installed"}
+    try:
+        from agentlas_cloud.desktop_updater_cleanup import repair_installed_desktop_updater_cache
+
+        return repair_installed_desktop_updater_cache(source, home)
+    except (ImportError, OSError):
+        return {"status": "not_applicable", "reason": "bridge_not_installed"}
+    except Exception:
+        # The runtime updater remains fail-silent and can try again later. Do
+        # not let a Desktop cache repair failure block a verified OS update.
+        return {"status": "blocked", "reason": "bridge_failed"}
 
 
 def write_python_shims(bin_dir: Path, executable: str) -> None:
@@ -747,6 +769,7 @@ def _marker_recent(epoch: Any, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
 def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
     runtime_root = root or Path(__file__).resolve().parent.parent
     desktop_repair = retry_installed_desktop_repair(runtime_root)
+    desktop_updater_cleanup = retry_installed_desktop_updater_cleanup(runtime_root)
     current = current_release(runtime_root)
     marker_path = _runtime_base() / AUTO_UPDATE_MARKER
     marker = _read_json(marker_path)
@@ -756,6 +779,7 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
             "reason": "uncomparable_release",
             "current": current,
             "desktop_repair": desktop_repair,
+            "desktop_updater_cleanup": desktop_updater_cleanup,
         }
         _write_json(marker_path, {**marker, **result, "last_checked_epoch": int(time.time())})
         return result
@@ -769,6 +793,7 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
         "latest": latest_tag,
         "last_checked_epoch": int(time.time()),
         "desktop_repair": desktop_repair,
+        "desktop_updater_cleanup": desktop_updater_cleanup,
     }
     if status not in {"update_available", "missing_release_marker"}:
         _write_json(marker_path, {**marker, **result})
@@ -1006,6 +1031,8 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
         Path("agentlas_cloud") / "update.py",
         Path("agentlas_cloud") / "desktop_repair.py",
         Path("agentlas_cloud") / "desktop-update-bridge-v1.json",
+        Path("agentlas_cloud") / "desktop_updater_cleanup.py",
+        Path("agentlas_cloud") / "desktop-updater-cleanup-bridge-v1.json",
         Path("career_graph") / "__init__.py",
         Path("career_graph") / "runtime.py",
         Path("ontology") / "__init__.py",

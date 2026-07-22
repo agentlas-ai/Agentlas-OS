@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Agentlas Core Engine plugins for developer-owned agent operating systems.",
-    "version": "1.1.56"
+    "version": "1.1.57"
   },
   "plugins": [
     {
       "name": "hephaestus",
       "description": "Open Agent OS for Claude Code, Codex, and Cursor: meta-agent builder, A2A Hub routing, local ontology, memory/security gates.",
-      "version": "1.1.56",
+      "version": "1.1.57",
       "author": {
         "name": "Agentlas",
         "email": "appbridge@appbridge.co.kr"
