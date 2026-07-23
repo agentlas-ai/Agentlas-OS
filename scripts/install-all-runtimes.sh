@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-version="${HEPHAESTUS_REF:-v1.1.57}"
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-${HOME:-${TMPDIR:-/tmp}}/.cache}/agentlas/python"
+
+version="${HEPHAESTUS_REF:-v1.1.58}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -270,21 +273,41 @@ write_python3_shim() {
   if [[ "$py" == "py -3" ]]; then
     cat > "$bin_dir/python3" <<'EOF'
 #!/usr/bin/env bash
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-${HOME:-${TMPDIR:-/tmp}}/.cache}/agentlas/python"
 exec py -3 "$@"
 EOF
-    printf '@py -3 %%*\r\n' > "$bin_dir/python3.cmd"
+    cat > "$bin_dir/python3.cmd" <<'EOF'
+@echo off
+setlocal
+set "PYTHONDONTWRITEBYTECODE=1"
+if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\Agentlas\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\Agentlas-PythonCache")
+py -3 %*
+exit /b %ERRORLEVEL%
+EOF
   else
     cat > "$bin_dir/python3" <<EOF
 #!/usr/bin/env bash
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPYCACHEPREFIX="\${XDG_CACHE_HOME:-\${HOME:-\${TMPDIR:-/tmp}}/.cache}/agentlas/python"
 exec "$py" "\$@"
 EOF
-    printf '@"%s" %%*\r\n' "$py" > "$bin_dir/python3.cmd"
+    cat > "$bin_dir/python3.cmd" <<EOF
+@echo off
+setlocal
+set "PYTHONDONTWRITEBYTECODE=1"
+if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\Agentlas\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\Agentlas-PythonCache")
+"$py" %*
+exit /b %ERRORLEVEL%
+EOF
   fi
   cat > "$bin_dir/hephaestus.cmd" <<'EOF'
 @echo off
 setlocal
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
+set "PYTHONDONTWRITEBYTECODE=1"
+if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\Agentlas\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\Agentlas-PythonCache")
 set "PYTHONPATH=%~dp0..;%PYTHONPATH%"
 if defined HEPHAESTUS_PYTHON goto use_env_python
 if exist "%~dp0python3.cmd" goto use_python3_shim
@@ -315,6 +338,8 @@ EOF
 @echo off
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
+set "PYTHONDONTWRITEBYTECODE=1"
+if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\Agentlas\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\Agentlas-PythonCache")
 set "PYTHONPATH=%~dp0..;%PYTHONPATH%"
 EOF
   chmod +x "$bin_dir/python3"

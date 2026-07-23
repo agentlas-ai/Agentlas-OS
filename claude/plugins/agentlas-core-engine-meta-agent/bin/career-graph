@@ -2,4 +2,6 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-${HOME:-${TMPDIR:-/tmp}}/.cache}/agentlas/python"
 PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" python3 -m career_graph "$@"

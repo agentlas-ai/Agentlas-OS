@@ -170,7 +170,7 @@ one-touch installer を使用してください。これは
 
 OS のターミナルから:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.57
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.58
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注: Codex アプリ内では `/plugin marketplace add` は利用できません。上記の 2 つのコマンドを OS のターミナルで実行してください。OS ターミナルの CLI コマンドは単数形（`codex plugin`）ですが、Codex アプリ内のプラグインブラウザーのスラッシュコマンドは複数形（`/plugins`）です。インストール後は、`/prompts:hep-build` がアプリ内のエントリーポイントになります。*

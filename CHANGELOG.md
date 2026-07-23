@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.58 - 2026-07-23
+
+- **Global Agentlas OS Python entrypoints can no longer mutate a signed
+  Desktop bundle.** POSIX and Windows runners now force Python bytecode off and
+  pin any defensive cache prefix to a per-user path outside the application,
+  even when a caller supplies hostile environment values or selects the
+  Desktop-bundled interpreter explicitly.
+- **Installed and self-updated runtimes keep the same boundary.** The one-touch
+  installer, atomic runtime updater, direct ontology/memory/career entrypoints,
+  and Claude/Codex adapter mirrors all emit the protected Python launch
+  contract, preventing a managed global runtime from invalidating the
+  Developer ID resource seal after Desktop starts.
+
 ## v1.1.57 - 2026-07-23
 
 - **Desktop v0.8.65/v0.8.66 can escape the macOS stale-updater loop through

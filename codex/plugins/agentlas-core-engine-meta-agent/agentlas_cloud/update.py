@@ -627,12 +627,31 @@ def write_python_shims(bin_dir: Path, executable: str) -> None:
     cmd_shim = bin_dir / "python3.cmd"
     cmd_runner = bin_dir / "hephaestus.cmd"
     env_cmd = bin_dir / "hephaestus-env.cmd"
-    shell_shim.write_text(f'#!/usr/bin/env bash\nexec "{executable}" "$@"\n', encoding="utf-8")
+    shell_shim.write_text(
+        '#!/usr/bin/env bash\n'
+        'export PYTHONDONTWRITEBYTECODE=1\n'
+        'export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-${HOME:-${TMPDIR:-/tmp}}/.cache}/agentlas/python"\n'
+        f'exec "{executable}" "$@"\n',
+        encoding="utf-8",
+    )
     shell_shim.chmod(0o755)
-    cmd_shim.write_text(f'@"{executable}" %*\r\n', encoding="utf-8")
+    cmd_shim.write_text(
+        '@echo off\r\n'
+        'setlocal\r\n'
+        'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
+        'if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\\Agentlas\\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\\Agentlas-PythonCache")\r\n'
+        f'"{executable}" %*\r\n'
+        'exit /b %ERRORLEVEL%\r\n',
+        encoding="utf-8",
+    )
     _write_cmd_runner(cmd_runner)
     env_cmd.write_text(
-        '@echo off\r\nset "PYTHONUTF8=1"\r\nset "PYTHONIOENCODING=utf-8"\r\nset "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n',
+        '@echo off\r\n'
+        'set "PYTHONUTF8=1"\r\n'
+        'set "PYTHONIOENCODING=utf-8"\r\n'
+        'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
+        'if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\\Agentlas\\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\\Agentlas-PythonCache")\r\n'
+        'set "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n',
         encoding="utf-8",
     )
 
@@ -643,6 +662,8 @@ def _write_cmd_runner(path: Path) -> None:
         'setlocal\r\n'
         'set "PYTHONUTF8=1"\r\n'
         'set "PYTHONIOENCODING=utf-8"\r\n'
+        'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
+        'if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\\Agentlas\\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\\Agentlas-PythonCache")\r\n'
         'set "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n'
         'if defined HEPHAESTUS_PYTHON goto use_env_python\r\n'
         'if exist "%~dp0python3.cmd" goto use_python3_shim\r\n'

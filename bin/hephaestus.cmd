@@ -2,6 +2,8 @@
 setlocal
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
+set "PYTHONDONTWRITEBYTECODE=1"
+if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\Agentlas\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\Agentlas-PythonCache")
 set "PYTHONPATH=%~dp0..;%PYTHONPATH%"
 if defined HEPHAESTUS_PYTHON goto use_env_python
 if exist "%~dp0python3.cmd" goto use_python3_shim
