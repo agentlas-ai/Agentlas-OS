@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.59 - 2026-07-24
+
+- **Memory-architecture parity with Desktop and Terminal.** The hep runtime now
+  carries the same unified memory contract: per-slug member cells (slug == cell
+  key), self-evolution proposals mirrored to `.agentlas/evolution-proposals.json`,
+  content-free context-source markers in the per-project ontology runtime, and a
+  `python -m agentlas_cloud.memory_import` path (dry-run/apply/idempotent). A
+  single source of truth (`memory_contract.py`) is cross-checked by
+  `scripts/verify-memory-contract.sh` so the three products cannot drift.
+
 ## v1.1.58 - 2026-07-23
 
 - **Global Agentlas OS Python entrypoints can no longer mutate a signed
