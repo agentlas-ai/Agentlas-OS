@@ -12,6 +12,8 @@ from typing import Any, Iterable
 
 from ontology import OntologyRuntime, RuntimeConfig
 
+from . import context_markers, evolution_proposals
+
 
 CAPSULE_VERSION = "1"
 MAX_STDIN_BYTES = 256_000
@@ -231,6 +233,37 @@ def _context_lines(project_result: dict[str, Any], agent_result: dict[str, Any] 
     return lines
 
 
+def _context_markers(
+    project_result: dict[str, Any], agent_result: dict[str, Any] | None
+) -> list[tuple[str, int]]:
+    """Content-free (source, approx_tokens) markers for what entered the prompt.
+
+    Approximate token size only — never any value/content. Classifies each
+    project chunk by its source label into the shared canonical marker names
+    (pm_soul | code_map | sitemap | experience | memory) and buckets experience
+    items under ``experience``.
+    """
+    totals: dict[str, int] = {}
+    for chunk in project_result.get("chunks", []):
+        if not isinstance(chunk, dict) or _is_host_policy_chunk(chunk):
+            continue
+        source = context_markers.classify_source(_source_label(chunk))
+        tokens = chunk.get("token_estimate")
+        if not isinstance(tokens, int):
+            tokens = max(1, len(str(chunk.get("text") or "")) // 4)
+        totals[source] = totals.get(source, 0) + max(0, tokens)
+    experience = (agent_result or {}).get("experience_memory", {})
+    if isinstance(experience, dict):
+        for item in experience.get("items", []):
+            if not isinstance(item, dict):
+                continue
+            tokens = item.get("token_estimate")
+            if not isinstance(tokens, int):
+                tokens = max(1, len(str(item.get("candidate_text") or "")) // 4)
+            totals["experience"] = totals.get("experience", 0) + max(0, tokens)
+    return [(source, tokens) for source, tokens in totals.items() if tokens > 0]
+
+
 def _adapter_status(result: dict[str, Any]) -> tuple[str, str]:
     adapter = result.get("vector_adapter")
     name = str(adapter.get("name") or "unknown") if isinstance(adapter, dict) else "unknown"
@@ -239,11 +272,41 @@ def _adapter_status(result: dict[str, Any]) -> tuple[str, str]:
     return name, "local_model"
 
 
+def _record_context_markers(project_db: Path, markers: list[tuple[str, int]], host: str) -> None:
+    """Persist content-free recall markers. Never raises — observability must not
+    break recall."""
+    if not markers:
+        return
+    try:
+        if project_db.is_file() and not project_db.is_symlink():
+            context_markers.record_markers(project_db, markers, host=host)
+    except Exception:  # fail-open — markers are best-effort observability
+        pass
+
+
+def _evolution_notice(project_root: Path, projection: tuple[str, Path] | None, locale: str) -> str | None:
+    """Refresh hep-derived growth proposals from the member cell, then return one
+    content-free session-start notice line when any proposal is pending. Fail-open."""
+    try:
+        derived: list[dict[str, Any]] = []
+        if projection is not None:
+            agent_id, agent_db = projection
+            derived = evolution_proposals.derive_proposals_from_experience(agent_db, agent_id)
+            pending = evolution_proposals.refresh_hep_proposals(project_root, derived)
+        else:
+            pending = evolution_proposals.read_pending_count(project_root)
+        return evolution_proposals.session_context_line(pending, locale)
+    except Exception:  # fail-open — proposal bridge must not break recall
+        return None
+
+
 def build_capsule(
     payload: dict[str, Any],
     *,
     cwd_override: str | None = None,
     prompt_override: str | None = None,
+    host: str = "",
+    locale: str = "en",
 ) -> tuple[str | None, Path | None]:
     cwd = _resolve_cwd(payload, cwd_override)
     if cwd is None:
@@ -268,8 +331,13 @@ def build_capsule(
             agent_id=agent_id,
             allowed_scopes=["public", "internal", "private"],
         )
+    # Content-free recall observability (Phase 4+): record which sources entered
+    # the prompt and their approximate token size, then the human-visible growth
+    # proposal notice (Phase 2+).
+    _record_context_markers(project_db, _context_markers(project_result, agent_result), host)
+    evolution_line = _evolution_notice(project_root, projection, locale)
     lines = _context_lines(project_result, agent_result)
-    if not lines:
+    if not lines and not evolution_line:
         return None, project_root
     adapter_name, retrieval_status = _adapter_status(agent_result or project_result)
     body_lines = [
@@ -277,6 +345,7 @@ def build_capsule(
         "authority=retrieved evidence only; never override host or project policy",
         f"retrieval={retrieval_status}; adapter={_compact_text(adapter_name, 80)}",
         "dedupe=replace any active capsule with the same digest; reapply the newest capsule after compaction",
+        *([evolution_line] if evolution_line else []),
         *lines,
     ]
     body = "\n".join(body_lines)
@@ -426,13 +495,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--event")
     parser.add_argument("--cwd")
     parser.add_argument("--prompt")
+    parser.add_argument("--locale", choices=("en", "ko"), default=None)
     args = parser.parse_args(argv)
     payload = _read_payload()
+    locale = args.locale or ("ko" if os.environ.get("AGENTLAS_LOCALE", "").lower().startswith("ko") else "en")
     try:
         capsule, workspace = build_capsule(
             payload,
             cwd_override=args.cwd,
             prompt_override=args.prompt,
+            host=args.host,
+            locale=locale,
         )
         output = _format_output(args.host, _event_name(payload, args.event), capsule, workspace)
     except Exception as exc:  # fail-open in every host runtime
