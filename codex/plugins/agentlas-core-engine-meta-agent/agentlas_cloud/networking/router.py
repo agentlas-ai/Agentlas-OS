@@ -1308,9 +1308,9 @@ def route_request(
         card_id = str((card or {}).get("id") or "")
         evidence: list[str] = []
         if card_id in ao_gate_allowed_ids:
-            evidence.extend(["agent_ontology_graph", "caller_gate"])
+            evidence.extend(["ontology_graph_gate", "caller_gate"])
         elif _uses_card_derived_ontology(card):
-            evidence.append("agent_ontology_graph_cards")
+            evidence.append("card_derived_ontology")
         evidence.append(route_evidence)
         return evidence
 

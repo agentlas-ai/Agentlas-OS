@@ -217,7 +217,7 @@ def plan_pipeline(
             "handoff_dir": handoff_dir,
             "graph_path": graph_path,
             "match_reason": "agent_ontology_pipeline_graph",
-            "allowed_by": ["agent_ontology_graph", "produces_consumes_path"],
+            "allowed_by": ["ontology_graph_gate", "produces_consumes_path"],
             "blocked_by_axiom": [],
             "target_artifact": target,
             "execution_fabric": execution_fabric,

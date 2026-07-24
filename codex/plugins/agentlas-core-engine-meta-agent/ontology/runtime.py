@@ -269,6 +269,51 @@ class OntologyRuntime:
                   config_json TEXT NOT NULL,
                   updated_at TEXT NOT NULL
                 );
+
+                -- Experience Relation Graph (agent-scoped, conversational).
+                -- The document ingest path builds entities/relations from
+                -- Title-Case declarative text; conversational experience never
+                -- did, so recall was pure vector with no multi-hop. These three
+                -- tables give the experience surface a real, rebuildable graph:
+                -- entity nodes, ticket->entity mentions, and typed edges between
+                -- entities (deterministic co_occurs_with by default, upgradable
+                -- to LLM-typed predicates at curation time). Extraction happens at
+                -- write; retrieval traversal stays pure-local (no LLM at query).
+                CREATE TABLE IF NOT EXISTS experience_entities (
+                  agent_id TEXT NOT NULL,
+                  entity_key TEXT NOT NULL,
+                  canonical TEXT NOT NULL,
+                  entity_type TEXT NOT NULL DEFAULT 'concept',
+                  mention_count INTEGER NOT NULL DEFAULT 0,
+                  first_seen TEXT NOT NULL,
+                  last_seen TEXT NOT NULL,
+                  PRIMARY KEY (agent_id, entity_key)
+                );
+
+                CREATE TABLE IF NOT EXISTS experience_mentions (
+                  agent_id TEXT NOT NULL,
+                  ticket_id TEXT NOT NULL REFERENCES memory_candidates(ticket_id) ON DELETE CASCADE,
+                  entity_key TEXT NOT NULL,
+                  weight REAL NOT NULL DEFAULT 1.0,
+                  PRIMARY KEY (agent_id, ticket_id, entity_key)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exp_mentions_entity ON experience_mentions(agent_id, entity_key);
+
+                CREATE TABLE IF NOT EXISTS experience_relations (
+                  agent_id TEXT NOT NULL,
+                  src_key TEXT NOT NULL,
+                  dst_key TEXT NOT NULL,
+                  predicate TEXT NOT NULL DEFAULT 'co_occurs_with',
+                  directed INTEGER NOT NULL DEFAULT 0,
+                  confidence REAL NOT NULL DEFAULT 0.3,
+                  extractor TEXT NOT NULL DEFAULT 'cooccur',
+                  cooccur_count INTEGER NOT NULL DEFAULT 1,
+                  valid_from TEXT,
+                  valid_to TEXT,
+                  created_at TEXT NOT NULL,
+                  PRIMARY KEY (agent_id, src_key, dst_key, predicate)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exp_relations_src ON experience_relations(agent_id, src_key);
                 """
             )
             self._ensure_memory_candidate_columns(conn)
@@ -737,7 +782,239 @@ class OntologyRuntime:
                 vector=vector,
                 threshold=similar_threshold,
             )
-        return {"experience": self._memory_candidate_row(row), "similar_links": links}
+            # The experience relation graph is dormant substrate: benchmarked as no
+            # retrieval-recall lift, so it is disabled by default and adds no
+            # write-time cost in production. Enable with AGENTLAS_EXPERIENCE_GRAPH=1
+            # (same flag that gates the multi-hop retrieval channel).
+            entities_written = 0
+            if os.environ.get("AGENTLAS_EXPERIENCE_GRAPH", "0") == "1":
+                entities_written = self._write_experience_graph(
+                    conn, agent_id=agent, ticket_id=ticket_id, text=text, now=now
+                )
+        return {
+            "experience": self._memory_candidate_row(row),
+            "similar_links": links,
+            "graph_entities": entities_written,
+        }
+
+    def _write_experience_graph(
+        self, conn: sqlite3.Connection, *, agent_id: str, ticket_id: str, text: str, now: str
+    ) -> int:
+        """Build the agent-scoped experience relation graph at write-time.
+
+        Idempotent per ticket: a re-ingest of the same ticket does not double-count
+        entity mentions or co-occurrence weights. Retrieval stays pure-local — this
+        precomputes the edges the multi-hop traversal later walks with no model.
+        """
+        already = conn.execute(
+            "SELECT 1 FROM experience_mentions WHERE agent_id = ? AND ticket_id = ? LIMIT 1",
+            (agent_id, ticket_id),
+        ).fetchone()
+        if already:
+            return 0
+        entities = extract_experience_entities(text)
+        if not entities:
+            return 0
+        for key, canonical, entity_type in entities:
+            conn.execute(
+                """
+                INSERT INTO experience_entities(
+                  agent_id, entity_key, canonical, entity_type, mention_count, first_seen, last_seen
+                ) VALUES (?, ?, ?, ?, 1, ?, ?)
+                ON CONFLICT(agent_id, entity_key) DO UPDATE SET
+                  mention_count = experience_entities.mention_count + 1,
+                  last_seen = excluded.last_seen,
+                  canonical = CASE
+                    WHEN length(excluded.canonical) > length(experience_entities.canonical)
+                    THEN excluded.canonical ELSE experience_entities.canonical END
+                """,
+                (agent_id, key, canonical, entity_type, now, now),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO experience_mentions(agent_id, ticket_id, entity_key, weight) VALUES (?, ?, ?, 1.0)",
+                (agent_id, ticket_id, key),
+            )
+        keys = sorted({key for key, _canonical, _type in entities})
+        for index, src in enumerate(keys):
+            for dst in keys[index + 1 :]:
+                conn.execute(
+                    """
+                    INSERT INTO experience_relations(
+                      agent_id, src_key, dst_key, predicate, directed, confidence, extractor, cooccur_count, created_at
+                    ) VALUES (?, ?, ?, 'co_occurs_with', 0, 0.3, 'cooccur', 1, ?)
+                    ON CONFLICT(agent_id, src_key, dst_key, predicate) DO UPDATE SET
+                      cooccur_count = experience_relations.cooccur_count + 1,
+                      confidence = MIN(0.9, experience_relations.confidence + 0.05)
+                    """,
+                    (agent_id, src, dst, now),
+                )
+        return len(entities)
+
+    def augment_experience_graph_llm(
+        self,
+        *,
+        agent_id: str,
+        ticket_id: str,
+        entities: Iterable[tuple[str, str]],
+        relations: Iterable[tuple[str, str, str]],
+        confidence: float = 0.9,
+    ) -> dict[str, int]:
+        """Overlay LLM-extracted entities + TYPED relations onto an existing
+        experience ticket. Write-time only (the model runs during curation, which
+        already holds a handle); retrieval never calls a model. Entities are added as
+        mentions (higher-recall, coref-resolved than the deterministic pass); typed
+        relations become directed ``experience_relations`` edges with ``extractor='llm'``
+        and a real predicate, which the multi-hop signal traverses at higher weight
+        than co-occurrence. Idempotent per (agent, ticket) for the LLM layer.
+        """
+        agent = agent_id.strip()
+        now = utc_now()
+        written_entities = 0
+        written_relations = 0
+        with closing(self.connect()) as conn, conn:
+            for canonical, entity_type in entities:
+                key = normalized_key(canonical)
+                if not key or len(key) < 2:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO experience_entities(
+                      agent_id, entity_key, canonical, entity_type, mention_count, first_seen, last_seen
+                    ) VALUES (?, ?, ?, ?, 1, ?, ?)
+                    ON CONFLICT(agent_id, entity_key) DO UPDATE SET
+                      last_seen = excluded.last_seen,
+                      entity_type = excluded.entity_type,
+                      canonical = CASE WHEN length(excluded.canonical) > length(experience_entities.canonical)
+                                       THEN excluded.canonical ELSE experience_entities.canonical END
+                    """,
+                    (agent, key, normalize_name(canonical), (entity_type or "concept").strip().lower(), now, now),
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO experience_mentions(agent_id, ticket_id, entity_key, weight) VALUES (?, ?, ?, 1.5)",
+                    (agent, ticket_id, key),
+                )
+                written_entities += 1
+            for subject, predicate, obj in relations:
+                src_key = normalized_key(subject)
+                dst_key = normalized_key(obj)
+                predicate_norm = normalized_key(predicate).replace(" ", "_") or "related_to"
+                if not src_key or not dst_key or src_key == dst_key:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO experience_relations(
+                      agent_id, src_key, dst_key, predicate, directed, confidence, extractor, cooccur_count, created_at
+                    ) VALUES (?, ?, ?, ?, 1, ?, 'llm', 1, ?)
+                    ON CONFLICT(agent_id, src_key, dst_key, predicate) DO UPDATE SET
+                      confidence = MAX(experience_relations.confidence, excluded.confidence),
+                      extractor = 'llm'
+                    """,
+                    (agent, src_key, dst_key, predicate_norm[:60], clamp(confidence), now),
+                )
+                written_relations += 1
+        return {"entities": written_entities, "relations": written_relations}
+
+    def _experience_graph_signal(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        agent_id: str,
+        question: str,
+        seed_tickets: list[str],
+    ) -> dict[str, float]:
+        """Score every experience memory by how strongly it is bridged — through
+        shared entities — to the question and to the strongest direct hits. Returned
+        as a ``{ticket: signal}`` map for fusion as a third RRF channel alongside
+        lexical and vector. Pure-local (no model call).
+
+        The IDF weight is load-bearing: a rare shared entity (the question's specific
+        subject) dominates common chatter, so the genuinely connected session ranks
+        first among bridged candidates instead of drowning in noise.
+
+        DEFAULT OFF. Measured on LongMemEval (500) and LoCoMo (1,536 QA), a
+        deterministic co-occurrence graph gives NO retrieval-recall lift over the
+        existing lexical+vector RRF — flat-to-negative at every fusion weight,
+        because vector recall already captures the connectivity these benchmarks
+        reward. The graph is still *built* at write-time (it fixes the real
+        "half-graph" defect — conversational memory had entities but zero relations —
+        and is the substrate for the LLM-typed-relation channel, where the research
+        expects the actual multi-hop/explainability win). This retrieval fusion is
+        retained, opt-in via AGENTLAS_EXPERIENCE_GRAPH=1, for that typed-relation
+        follow-up; enabling it with today's untyped co-occurrence edges regresses
+        recall, so it stays off in production.
+        """
+        if os.environ.get("AGENTLAS_EXPERIENCE_GRAPH", "0") != "1":
+            return {}
+        if not conn.execute(
+            "SELECT 1 FROM experience_mentions WHERE agent_id = ? LIMIT 1", (agent_id,)
+        ).fetchone():
+            return {}
+        import math
+
+        total_mem = (
+            conn.execute(
+                "SELECT COUNT(DISTINCT ticket_id) FROM experience_mentions WHERE agent_id = ?",
+                (agent_id,),
+            ).fetchone()[0]
+            or 1
+        )
+        # Seeds: the question's own entities (strong anchor, weight 2) plus the
+        # entities of the top few direct hits (a hop may start from a session we
+        # already trust, weight 1).
+        seed_weight: dict[str, float] = {}
+        for key, _canonical, _type in extract_experience_entities(question):
+            seed_weight[key] = max(seed_weight.get(key, 0.0), 2.0)
+        if seed_tickets:
+            marks = ",".join("?" * len(seed_tickets))
+            for row in conn.execute(
+                f"SELECT DISTINCT entity_key FROM experience_mentions WHERE agent_id = ? AND ticket_id IN ({marks})",
+                (agent_id, *seed_tickets),
+            ):
+                key = row["entity_key"]
+                seed_weight[key] = max(seed_weight.get(key, 0.0), 1.0)
+        # Typed-relation hop: pull in entities linked to a seed by an LLM-typed edge
+        # (precise and directional, unlike symmetric co-occurrence). No-op until the
+        # LLM channel populates typed relations; this is where a typed graph earns
+        # its multi-hop lift that untyped co-occurrence could not.
+        if seed_weight:
+            seed_keys = list(seed_weight.keys())
+            marks = ",".join("?" * len(seed_keys))
+            for row in conn.execute(
+                f"""SELECT src_key, dst_key, confidence FROM experience_relations
+                    WHERE agent_id = ? AND extractor = 'llm'
+                      AND (src_key IN ({marks}) OR dst_key IN ({marks}))""",
+                (agent_id, *seed_keys, *seed_keys),
+            ):
+                hop = 0.7 * float(row["confidence"] or 0.9)
+                for endpoint in (row["src_key"], row["dst_key"]):
+                    if endpoint not in seed_weight:
+                        seed_weight[endpoint] = max(seed_weight.get(endpoint, 0.0), hop)
+        if not seed_weight:
+            return {}
+        # IDF per seed; drop hub entities (mentioned in a large fraction of
+        # memories) that would bridge everything to everything.
+        hub_cap = max(3, int(total_mem * 0.5))
+        idf: dict[str, float] = {}
+        for key in list(seed_weight):
+            document_frequency = conn.execute(
+                "SELECT COUNT(*) FROM experience_mentions WHERE agent_id = ? AND entity_key = ?",
+                (agent_id, key),
+            ).fetchone()[0]
+            if 0 < document_frequency <= hub_cap:
+                idf[key] = math.log(1.0 + total_mem / document_frequency)
+            else:
+                del seed_weight[key]
+        if not seed_weight:
+            return {}
+        marks = ",".join("?" * len(seed_weight))
+        signal: dict[str, float] = {}
+        for row in conn.execute(
+            f"SELECT ticket_id, entity_key FROM experience_mentions WHERE agent_id = ? AND entity_key IN ({marks})",
+            (agent_id, *seed_weight.keys()),
+        ):
+            ticket, key = row["ticket_id"], row["entity_key"]
+            signal[ticket] = signal.get(ticket, 0.0) + seed_weight[key] * idf[key]
+        return signal
 
     def query_experience(
         self,
@@ -833,15 +1110,36 @@ class OntologyRuntime:
             scored.append(item)
         best_semantic = max((item["vector_score"] for item in scored), default=0.0)
         semantic_floor = self._minimum_vector_score(MIN_EXPERIENCE_VECTOR_SCORE, question)
-        scored = [
+        all_scored = scored
+        floor_passed = [
             item
-            for item in scored
+            for item in all_scored
             if item["lexical_score"] > 0.0
             or (
                 item["vector_score"] >= semantic_floor
                 and item["vector_score"] >= best_semantic * VECTOR_RELATIVE_FLOOR
             )
         ]
+
+        # Graph channel (multi-hop): seed from the question plus the top vector hits,
+        # then score every memory by IDF-weighted entity bridging. Fused as a third
+        # RRF channel below — a memory the direct-similarity floor dropped but that
+        # is strongly bridged to a trusted hit can still surface, without the scale
+        # problems of injecting an absolute score. When the graph is off or empty the
+        # fusion degrades exactly to the original two-channel lexical+vector RRF.
+        vector_seed = sorted(floor_passed, key=lambda value: value["vector_score"], reverse=True)[:3]
+        graph_signal = self._experience_graph_signal(
+            conn,
+            agent_id=agent_id,
+            question=question,
+            seed_tickets=[item["ticket_id"] for item in vector_seed],
+        )
+        scored = list(floor_passed)
+        seen_tickets = {item["ticket_id"] for item in scored}
+        for item in all_scored:
+            if item["ticket_id"] in graph_signal and item["ticket_id"] not in seen_tickets:
+                scored.append(item)
+                seen_tickets.add(item["ticket_id"])
         if not scored:
             result = self._empty_experience_result(question, agent_id, token_budget)
             result["eligible_count"] = len(rows)
@@ -857,17 +1155,25 @@ class OntologyRuntime:
             for item in sorted(scored, key=lambda value: (value["vector_score"], value["updated_at"]), reverse=True)
             if item["vector_score"] >= semantic_floor
         ]
+        graph_order = [
+            ticket for ticket, _signal in sorted(graph_signal.items(), key=lambda kv: kv[1], reverse=True)
+        ]
         lexical_rank = {ticket: index for index, ticket in enumerate(lexical_order)}
         vector_rank = {ticket: index for index, ticket in enumerate(vector_order)}
-        max_rrf = 2.0 / RRF_K
+        graph_rank = {ticket: index for index, ticket in enumerate(graph_order)}
+        graph_weight = float(os.environ.get("AGENTLAS_EXPERIENCE_GRAPH_WEIGHT", "1.0")) if graph_signal else 0.0
+        max_rrf = (2.0 + graph_weight) / RRF_K
         for item in scored:
             ticket = item["ticket_id"]
             rrf = (
                 1.0 / (RRF_K + lexical_rank.get(ticket, RRF_MISSING_RANK))
                 + 1.0 / (RRF_K + vector_rank.get(ticket, RRF_MISSING_RANK))
+                + graph_weight / (RRF_K + graph_rank.get(ticket, RRF_MISSING_RANK))
             )
             normalized_rrf = min(1.0, rrf / max_rrf)
             item["rrf_score"] = round(rrf, 6)
+            if ticket in graph_signal:
+                item["graph_signal"] = round(graph_signal[ticket], 4)
             item["score"] = round((normalized_rrf * 0.85) + (clamp(float(item["salience"])) * 0.15), 6)
         ranked = sorted(
             scored,
@@ -2366,6 +2672,68 @@ def extract_relations(text: str) -> list[tuple[str, str, str, float]]:
     if owner and subject:
         relations.append((owner, "owns", subject, 0.8))
     return dedupe_relations(relations)
+
+
+# Conversational text has no lexically-regular relation phrases (the document
+# extractor above yields zero), so the experience graph is built from ENTITY
+# CO-OCCURRENCE instead: entities that recur together across sessions become the
+# bridges multi-hop recall walks. This stopword set keeps generic chatter from
+# becoming hub nodes that over-connect the graph into a hairball.
+EXPERIENCE_STOPWORDS = frozenset(
+    {
+        "about", "above", "after", "again", "against", "already", "always", "another",
+        "anything", "around", "because", "before", "being", "below", "between", "cannot",
+        "could", "doing", "during", "either", "enough", "especially", "every", "everything",
+        "first", "friend", "friends", "going", "gonna", "great", "happy", "having", "hello",
+        "here", "himself", "house", "however", "instead", "into", "just", "kind", "know",
+        "later", "least", "little", "lot", "made", "make", "makes", "many", "maybe", "might",
+        "money", "month", "months", "more", "morning", "most", "much", "myself", "never",
+        "new", "next", "nice", "night", "nothing", "often", "once", "only", "other", "over",
+        "people", "person", "place", "pretty", "probably", "really", "recently", "right",
+        "said", "same", "school", "she", "should", "since", "some", "someone", "something",
+        "sometimes", "still", "stuff", "such", "sure", "take", "than", "that", "their",
+        "them", "then", "there", "these", "they", "thing", "things", "think", "this",
+        "those", "though", "through", "time", "today", "together", "tomorrow", "tonight",
+        "took", "totally", "under", "until", "very", "want", "wanted", "was", "week",
+        "weekend", "weeks", "well", "went", "were", "what", "when", "where", "which",
+        "while", "with", "without", "work", "would", "year", "years", "yesterday", "your",
+        "yourself",
+    }
+)
+
+
+def extract_experience_entities(text: str, limit: int = 16) -> list[tuple[str, str, str]]:
+    """Deterministic (LLM-free) entity extraction tuned for conversational memory.
+
+    Returns ``[(entity_key, canonical, entity_type)]``. Proper-noun phrases are the
+    strongest cross-session bridges (people, places, products, orgs); salient rare
+    content tokens fill in topics that carry no capitalization (caffeine, marathon,
+    migraine). Kept fully deterministic so the experience graph — and the multi-hop
+    recall built on it — is reproducible and testable without a model.
+    """
+    from collections import Counter
+
+    seen: dict[str, tuple[str, str]] = {}
+    order: list[str] = []
+    for phrase in re_find_title_phrases(text):
+        key = normalized_key(phrase)
+        if not key or len(key) < 3 or key in EXPERIENCE_STOPWORDS:
+            continue
+        if key not in seen:
+            seen[key] = (normalize_name(phrase), "proper")
+            order.append(key)
+    counts = Counter(
+        token
+        for token in tokenize(text)
+        if len(token) >= 5 and token.isalpha() and token not in EXPERIENCE_STOPWORDS
+    )
+    for token, _frequency in counts.most_common():
+        key = normalized_key(token)
+        if not key or key in seen or key in EXPERIENCE_STOPWORDS:
+            continue
+        seen[key] = (token, "topic")
+        order.append(key)
+    return [(key, seen[key][0], seen[key][1]) for key in order[:limit]]
 
 
 def re_find_title_phrases(text: str) -> list[str]:

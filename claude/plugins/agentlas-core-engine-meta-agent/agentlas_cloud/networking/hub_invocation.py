@@ -118,6 +118,13 @@ def invoke_hub_agent(
                 },
             )
         package_hash = bundle.get("packageHash") or (bundle_response.get("version") or {}).get("current")
+        agent_definition_id = str(
+            bundle.get("agentDefinitionId") or bundle.get("agent_definition_id") or ""
+        ).strip()
+        agent_release_id = str(
+            bundle.get("agentReleaseId") or bundle.get("agent_release_id") or ""
+        ).strip()
+        localized = _runtime_bundle_localized(bundle)
         missing = _missing_runtime_bundle_fields(bundle, entry, package_hash)
         if missing:
             return _record(
@@ -197,7 +204,10 @@ def invoke_hub_agent(
         "agent_id": agent_id,
         "agent_name": agent_display_name,
         "entity_kind": entity_kind,
+        "agent_definition_id": agent_definition_id,
+        "agent_release_id": agent_release_id,
         "package_hash": package_hash,
+        "localized": localized,
         "entry_path": entry.get("path"),
         "entry_excerpt": _compact(entry.get("content") or "", 700),
         # The executor needs the complete Hub instruction entry, not merely a
@@ -206,7 +216,10 @@ def invoke_hub_agent(
         "runtime_bundle": {
             "agent": selected_slug,
             "entity_kind": entity_kind,
+            "agentDefinitionId": agent_definition_id,
+            "agentReleaseId": agent_release_id,
             "package_hash": package_hash,
+            "localized": localized,
             "entry": {
                 "path": entry.get("path"),
                 "content": entry.get("content"),
@@ -227,6 +240,10 @@ def invoke_hub_agent(
         "agent_id": agent_id,
         "kind": selected.get("kind"),
         "entityKind": entity_kind,
+        "agentDefinitionId": agent_definition_id,
+        "agentReleaseId": agent_release_id,
+        "packageHash": package_hash,
+        "localized": localized,
         "callable": bool(selected.get("callable", selected.get("kind") == "cloud-callable")),
         "request_hash": _request_hash(request),
         "routing_receipt_id": (hub_decision or {}).get("receipt_id"),
@@ -347,10 +364,32 @@ def _derive_plugin_needs(bundle: dict[str, Any]) -> list[str]:
     return sorted(needs)
 
 
+def _runtime_bundle_localized(bundle: dict[str, Any]) -> dict[str, str]:
+    raw = bundle.get("localized")
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        key: str(raw.get(key) or "").strip()
+        for key in ("titleEn", "titleKo", "descriptionEn", "descriptionKo")
+    }
+
+
 def _missing_runtime_bundle_fields(bundle: dict[str, Any], entry: dict[str, Any], package_hash: str | None) -> list[str]:
     missing: list[str] = []
     if not package_hash:
         missing.append("packageHash")
+    if not str(bundle.get("agentDefinitionId") or bundle.get("agent_definition_id") or "").strip():
+        missing.append("agentDefinitionId")
+    if not str(bundle.get("agentReleaseId") or bundle.get("agent_release_id") or "").strip():
+        missing.append("agentReleaseId")
+    localized = _runtime_bundle_localized(bundle)
+    for key in ("titleEn", "titleKo", "descriptionEn", "descriptionKo"):
+        if not localized.get(key):
+            missing.append(f"localized.{key}")
+    if re.search(r"[\uac00-\ud7af]", localized.get("titleEn", "")):
+        missing.append("localized.titleEn.validEnglish")
+    if re.search(r"[\uac00-\ud7af]", localized.get("descriptionEn", "")):
+        missing.append("localized.descriptionEn.validEnglish")
     if not entry.get("path"):
         missing.append("entry.path")
     if not entry.get("content"):
