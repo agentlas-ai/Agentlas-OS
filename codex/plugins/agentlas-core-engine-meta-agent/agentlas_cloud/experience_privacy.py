@@ -209,6 +209,17 @@ def secret_like_kinds(value: str) -> tuple[str, ...]:
     return tuple(kind for kind, pattern in _SECRET_VALUE_PATTERNS if pattern.search(decoded))
 
 
+# Finding classes whose regexes are shape heuristics over natural language, so a hit is a
+# CANDIDATE rather than a verdict: a web route reads like a POSIX path, an order number like
+# a phone number, "user id: required" like an identifier, "token: optional" like a
+# credential assignment.  These are what made the accrual boundary reject overwhelmingly
+# legitimate experience.  The resident judge decides whether the text actually exposes
+# private data; with no model connected the deterministic finding stands (fail-closed).
+_JUDGEABLE_FINDING_CLASSES = frozenset(
+    {"local_path", "phone", "labeled_identifier", "ip_address", "credential_assignment"}
+)
+
+
 def scan_public_field(path: str, value: str) -> tuple[str, ...]:
     """Scan a public wire value with a narrow field-aware metadata allowlist."""
 
@@ -217,4 +228,50 @@ def scan_public_field(path: str, value: str) -> tuple[str, ...]:
         findings.extend(personal_identifier_kinds(value))
     if contains_private_path(value):
         findings.append("local_path")
-    return tuple(dict.fromkeys(findings))
+    deduped = tuple(dict.fromkeys(findings))
+    return _adjudicate_findings(value, deduped)
+
+
+def _adjudicate_findings(value: str, findings: tuple[str, ...]) -> tuple[str, ...]:
+    """Let the connected model drop shape-only false positives.
+
+    A real credential value (``secret_value``/``private_key``) is never adjudicated — that
+    class is a format match, language-independent and high-precision, and must hold whether
+    or not a model is available.  Only the natural-language shape heuristics are reviewed.
+    """
+
+    if not findings:
+        return findings
+    judgeable = [name for name in findings if name in _JUDGEABLE_FINDING_CLASSES]
+    if not judgeable:
+        return findings
+    try:
+        from .judgment import has_judgment_runner, judge_labels
+    except Exception:  # pragma: no cover - judgment module is optional at import time
+        return findings
+    if not has_judgment_runner():
+        return findings
+
+    confirmed, source = judge_labels(
+        kind="public-experience-privacy",
+        question=(
+            "Which of these flagged classes does this text ACTUALLY expose as private "
+            "information about a real person, customer, or machine?"
+        ),
+        labels=tuple(judgeable),
+        text=value,
+        guidance=(
+            "Confirm a class only when the text genuinely exposes that private data. Do NOT "
+            "confirm: web/API routes or URL paths (e.g. /api/v1/users, /login) as local_path; "
+            "order numbers, version strings, timestamps or ids as phone; placeholder or "
+            "documentation values (\"token: optional\", \"password: changeme\") as "
+            "credential_assignment; example/docs addresses or version-like numbers as "
+            "ip_address; prose such as \"user id is required\" as labeled_identifier."
+        ),
+        hints="the flagged classes were produced by shape regexes, which cannot tell a route from a filesystem path",
+        fallback=judgeable,
+    )
+    if source != "model":
+        return findings
+    kept = [name for name in findings if name not in _JUDGEABLE_FINDING_CLASSES or name in confirmed]
+    return tuple(dict.fromkeys(kept))
