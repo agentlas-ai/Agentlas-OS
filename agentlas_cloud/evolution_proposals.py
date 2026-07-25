@@ -11,8 +11,11 @@ file and the notice.
 Parity is deliberate: the JSON shape, the ``contract`` string, the
 ``reviewCommand``, the per-entry fields and the low/high trust tier all mirror
 the Desktop so a host reading either surface sees the same thing. Trigger
-detection is deterministic (counters over the per-slug experience store) — no
-embedding, no LLM — so it stays cheap and fail-open in the hook.
+counting stays deterministic (counters over the per-slug experience store),
+but the failure/gotcha classification of tag text follows the resident
+judgment contract: the connected model decides by meaning with the old
+_FAILURE_TAG_RE vocabulary as a hint, and with no runner the deterministic
+regex fallback applies — so the hook stays cheap and fail-open.
 """
 
 from __future__ import annotations
@@ -52,6 +55,47 @@ _SECRET_HINT_RE = re.compile(
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _is_failure_signal(tag_text: str, memory_kind: str) -> bool:
+    """Failure/gotcha classification for one experience row.
+
+    ``memory_kind == "risk"`` is a closed-form stored id and always counts.
+    For tag text, the connected model decides by meaning with _FAILURE_TAG_RE's
+    vocabulary as a hint; with no runner (or on any runner error) judge_bool
+    returns the deterministic regex fallback, keeping the hook cheap and
+    fail-open exactly as before.
+    """
+
+    if memory_kind == "risk":
+        return True
+    if not tag_text.strip():
+        return False
+    lexical = bool(_FAILURE_TAG_RE.search(tag_text))
+    try:
+        from .judgment import judge_bool
+    except Exception:  # pragma: no cover - judgment module is optional at import time
+        return lexical
+    decided, _source = judge_bool(
+        kind="evolution-failure-tag",
+        question=(
+            "Do these memory tags describe a failure, bug, incident, regression, or "
+            "security problem the agent ran into?"
+        ),
+        text=tag_text,
+        hints={
+            "failure": [
+                "fail", "error", "gotcha", "incident", "regress", "bug", "attack",
+                "vuln", "보안", "취약", "버그", "사고", "실패",
+            ]
+        },
+        guidance=(
+            "Judge meaning, not keyword presence — 'bugfix-released' is a success note, "
+            "while a novel word for a production outage still counts as failure."
+        ),
+        fallback=lexical,
+    )
+    return decided
 
 
 def _safe_keyword(value: str) -> str:
@@ -119,7 +163,7 @@ def derive_proposals_from_experience(db_path: Path, agent_id: str) -> list[dict[
         except (json.JSONDecodeError, TypeError):
             tags = []
         joined = " ".join(str(t) for t in tags)
-        if _FAILURE_TAG_RE.search(joined) or str(row["memory_kind"] or "") == "risk":
+        if _is_failure_signal(joined, str(row["memory_kind"] or "")):
             failure_count += 1
         for tag in tags[:3]:
             safe = _safe_keyword(tag)

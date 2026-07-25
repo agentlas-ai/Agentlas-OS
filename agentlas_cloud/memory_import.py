@@ -62,8 +62,40 @@ def _split_sections(text: str) -> list[tuple[str, str]]:
     return sections
 
 
-def _kind_for(heading: str, body: str) -> str:
-    return "risk" if _RISK_HINT.search(f"{heading}\n{body}") else "experience"
+def _kind_for(heading: str, body: str) -> tuple[str, str]:
+    """Classify an imported section as ("risk"|"experience", source).
+
+    The connected model decides by meaning; the _RISK_HINT regex is only a
+    reference hint. With no runner installed the deterministic regex result is
+    returned and labeled ``source="fallback"``.
+    """
+
+    text = f"{heading}\n{body}"
+    lexical = "risk" if _RISK_HINT.search(text) else "experience"
+    try:
+        from .judgment import judge_labels
+    except Exception:  # pragma: no cover - judgment module is optional at import time
+        return lexical, "fallback"
+    picked, source = judge_labels(
+        kind="memory-import-kind",
+        question=(
+            "Is this imported note primarily a RISK note (an unresolved failure, bug, "
+            "incident, security gotcha, or warning to future sessions) or general "
+            "EXPERIENCE (how-to knowledge, decisions, results)?"
+        ),
+        labels=("risk", "experience"),
+        text=text[:2000],
+        hints={"risk": ["security", "attack", "vuln", "bug", "gotcha", "incident", "보안", "취약", "버그", "사고"]},
+        guidance=(
+            "Judge the meaning of the note, not keyword presence — a changelog celebrating "
+            "a bug fix is experience; a pitfall future work must avoid is risk."
+        ),
+        fallback=(lexical,),
+        multi=False,
+    )
+    if source != "model" or not picked:
+        return lexical, "fallback"
+    return picked[0], "model"
 
 
 def _plan(files: list[Path], base: Path) -> list[dict[str, Any]]:
@@ -84,11 +116,13 @@ def _plan(files: list[Path], base: Path) -> list[dict[str, Any]]:
             source_id = "md-import:" + hashlib.sha256(
                 f"{rel}:{heading}:{summary}".encode("utf-8")
             ).hexdigest()[:24]
+            kind, kind_source = _kind_for(heading, body)
             plan.append(
                 {
                     "file": rel,
                     "heading": heading or "(untitled)",
-                    "kind": _kind_for(heading, body),
+                    "kind": kind,
+                    "kind_source": kind_source,
                     "chars": len(summary),
                     "summary": summary,
                     "source_id": source_id,
