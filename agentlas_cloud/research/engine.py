@@ -520,8 +520,8 @@ def _github_search_decision_for(request: ResearchRequest) -> tuple[bool, str]:
     A caller-supplied module id is closed-form: when the caller explicitly
     allowed ``search.github_repos`` (before loadout expansion) it always fans
     out. Otherwise the connected model decides whether repository search helps
-    (keywords are hints); with no runner the keyword detection is returned,
-    labeled as fallback.
+    (keywords are hints); with no model connected the module is NOT
+    auto-mounted and the decision is labeled ``"unavailable"``.
     """
 
     if GITHUB_SEARCH_MODULE in (request.caller_allowed_modules or []):

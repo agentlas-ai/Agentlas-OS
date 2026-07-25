@@ -198,7 +198,21 @@ def _recommend_browser_candidate(*, query: str, candidates: list[dict[str, Any]]
             "reason": "pass --query to get a non-executing hardpoint recommendation",
             "default_boundary": "use safe/public-web first; browser hardpoints stay detached",
         }
-    signals, selection_source = _judged_signals(compact, _query_signals(compact))
+    signals, selection_source = _judged_signals(compact)
+    if selection_source == "unavailable":
+        # No connected model → do NOT keyword-guess a browser hardpoint. Leave
+        # the browser mount undecided and surface the connect-a-model outcome.
+        return {
+            "status": "needs_model",
+            "query": compact,
+            "reason": "no_connected_model_cannot_judge_browser_need",
+            "preferred_loadout": "safe",
+            "mount_browser": False,
+            "selection_source": "unavailable",
+            "model_status": "unavailable",
+            "message": _NO_MODEL_MESSAGE_EN,
+            "message_ko": _NO_MODEL_MESSAGE_KO,
+        }
 
     order = _preferred_order(signals)
     by_id = {candidate["module_id"]: candidate for candidate in candidates}
@@ -240,8 +254,13 @@ def _recommendation_payload(candidate: dict[str, Any], query: str, signals: dict
     }
 
 
-# Keyword tuples are REFERENCE HINTS for the connected model, and double as the
-# deterministic labeled fallback when no judgment runner is installed.
+# Shown when no model is connected and browser need cannot be judged by meaning.
+_NO_MODEL_MESSAGE_EN = "No LLM is connected, so I can't decide this. Connect a model in settings."
+_NO_MODEL_MESSAGE_KO = "LLM(모델)이 연결되어 있지 않아 이 판단을 할 수 없어요. 설정에서 모델을 연결해 주세요."
+
+# Keyword tuples are REFERENCE HINTS for the connected model only. There is no
+# keyword browser verdict: with no model connected the browser need is left
+# undecided (no auto-mount).
 BROWSER_SIGNAL_KEYWORDS: dict[str, tuple[str, ...]] = {
     "local_first": ("local", "로컬", "privacy", "private", "프라이버시", "내 맥"),
     "interactive": ("click", "fill", "form", "login", "로그인", "클릭", "입력", "멀티스텝", "multi-step"),
@@ -265,28 +284,22 @@ BROWSER_SIGNAL_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _query_signals(query: str) -> dict[str, bool]:
-    lowered = query.lower()
-    return {
-        name: any(term in lowered for term in terms)
-        for name, terms in BROWSER_SIGNAL_KEYWORDS.items()
-    }
-
-
-def _judged_signals(query: str, lexical: dict[str, bool]) -> tuple[dict[str, bool], str]:
+def _judged_signals(query: str) -> tuple[dict[str, bool], str]:
     """The connected model decides which browser-need traits the task has.
 
-    The keyword tuples above are hints only. Returns (signals, source) where
-    source is ``"model"`` or ``"fallback"``; with no runner the lexical
-    signals are returned unchanged and labeled as fallback.
+    The keyword tuples are hints only. Returns (signals, source) where source
+    is ``"model"`` or ``"unavailable"``. There is no keyword verdict: with no
+    model connected every trait is undecided (all False) and labeled
+    ``"unavailable"`` so no browser hardpoint is auto-selected.
     """
 
+    none_signals = {name: False for name in BROWSER_SIGNAL_KEYWORDS}
     try:
         from ..judgment import has_judgment_runner, judge_labels
     except Exception:  # pragma: no cover - judgment module is optional at import time
-        return lexical, "fallback"
+        return none_signals, "unavailable"
     if not has_judgment_runner():
-        return lexical, "fallback"
+        return none_signals, "unavailable"
     picked, source = judge_labels(
         kind="research-browser-signals",
         question="Which of these browser-need traits does this research task genuinely have?",
@@ -300,11 +313,11 @@ def _judged_signals(query: str, lexical: dict[str, bool]) -> tuple[dict[str, boo
             "JS-heavy page snapshot is needed; public_web = blocked public pages best served "
             "without a browser. Return an empty list when no real browser evidence is needed."
         ),
-        fallback=tuple(name for name, hit in lexical.items() if hit),
+        fallback=(),
         multi=True,
     )
     if source != "model":
-        return lexical, "fallback"
+        return none_signals, "unavailable"
     return {name: name in picked for name in BROWSER_SIGNAL_KEYWORDS}, "model"
 
 

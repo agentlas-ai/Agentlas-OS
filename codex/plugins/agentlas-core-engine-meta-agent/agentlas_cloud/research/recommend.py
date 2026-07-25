@@ -32,6 +32,10 @@ BLOCKED_WEB_KEYWORDS = ("403", "blocked", "waf", "captcha", "차단", "막힌", 
 RESEARCH_KEYWORDS = ("search", "web search", "research", "찾아", "조사", "리서치", "웹서치", "웹 검색")
 OFFICIAL_KEYWORDS = ("official", "docs", "documentation", "github", "공식", "문서", "깃헙", "깃허브")
 
+# Shown when no model is connected and the loadout cannot be judged by meaning.
+_NO_MODEL_MESSAGE_EN = "No LLM is connected, so I can't decide this. Connect a model in settings."
+_NO_MODEL_MESSAGE_KO = "LLM(모델)이 연결되어 있지 않아 이 판단을 할 수 없어요. 설정에서 모델을 연결해 주세요."
+
 
 def run_research_recommendation(
     *,
@@ -122,17 +126,24 @@ AUTO_SELECTABLE_LOADOUTS = ("safe", "public-web", "browser")
 def _recommend(signals: dict[str, bool], judge_text: str = "") -> dict[str, Any]:
     """Pick the research loadout — the connected model decides by meaning.
 
-    The keyword-derived ``signals`` are demoted to reference hints; when a
+    The keyword-derived ``signals`` are demoted to reference hints. When a
     judgment runner is connected, ``judge_labels`` selects the loadout among
-    the auto-selectable option ids. With no runner the deterministic keyword
-    pick below is used and labeled ``selection_source="fallback"`` — never
-    silently presented as a semantic decision.
+    the auto-selectable option ids. There is no keyword loadout verdict: with
+    no model connected the recommendation defaults to the safe/minimal loadout
+    (never a keyword-guessed heavier one), labeled
+    ``selection_source="unavailable"`` with a plain "connect a model" message.
     """
 
-    choice = _deterministic_choice(signals)
-    selection_source = "fallback"
-    judged = _judge_loadout(judge_text, fallback_loadout=choice["loadout"])
-    if judged is not None:
+    judged = _judge_loadout(judge_text, fallback_loadout="safe")
+    if judged is None:
+        # No connected model → do NOT keyword-guess a loadout. Default to the
+        # safe/minimal loadout and surface the connect-a-model outcome.
+        choice = _safe_minimal_choice()
+        selection_source = "unavailable"
+    else:
+        # The model decides the loadout; the keyword signals only fill in
+        # loadout-dependent parameters and query variants, never the choice.
+        choice = _deterministic_choice(signals)
         selection_source = "model"
         if judged != choice["loadout"]:
             choice = _rebase_choice(choice, judged, signals)
@@ -140,7 +151,7 @@ def _recommend(signals: dict[str, bool], judge_text: str = "") -> dict[str, Any]
 
     loadout = choice["loadout"]
     reasons = choice["reasons"]
-    return {
+    recommendation = {
         "loadout": loadout,
         "depth": choice["depth"],
         "follow_results": choice["follow_results"],
@@ -158,10 +169,37 @@ def _recommend(signals: dict[str, bool], judge_text: str = "") -> dict[str, Any]
             loadout, choice["depth"], choice["follow_results"], choice["max_requests"], choice["query_variants"]
         ),
     }
+    if selection_source == "unavailable":
+        recommendation["model_status"] = "unavailable"
+        recommendation["message"] = _NO_MODEL_MESSAGE_EN
+        recommendation["message_ko"] = _NO_MODEL_MESSAGE_KO
+    return recommendation
+
+
+def _safe_minimal_choice() -> dict[str, Any]:
+    """The safe/minimal loadout used when no model can judge the request.
+
+    Not keyword-derived: it is the lightest loadout regardless of the query, so
+    a disconnected judge never auto-mounts a heavier browser/social loadout.
+    """
+
+    return {
+        "loadout": "safe",
+        "depth": "quick",
+        "follow_results": 2,
+        "max_requests": 5,
+        "query_variants": [],
+        "reasons": ["no_connected_model_defaulting_to_safe_loadout"],
+    }
 
 
 def _deterministic_choice(signals: dict[str, bool]) -> dict[str, Any]:
-    """Today's keyword pick — the labeled no-runner fallback."""
+    """Keyword-derived loadout parameters used only on the MODEL path.
+
+    The connected model owns the loadout DECISION; this fills in depth,
+    follow-up counts, request budgets and query variants from the signals. It
+    is never used as a standalone verdict when no model is connected.
+    """
 
     reasons: list[str] = []
     query_variants: list[str] = []
@@ -239,7 +277,8 @@ def _rebase_choice(choice: dict[str, Any], loadout: str, signals: dict[str, bool
 
 
 def _judge_loadout(judge_text: str, *, fallback_loadout: str) -> str | None:
-    """Connected-model loadout selection; None keeps the deterministic pick."""
+    """Connected-model loadout selection; None means no model decided (the
+    caller then falls back to the safe/minimal loadout, never a keyword pick)."""
 
     if not judge_text.strip():
         return None

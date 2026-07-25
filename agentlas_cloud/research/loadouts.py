@@ -256,19 +256,20 @@ def github_search_decision(
 ) -> tuple[bool, str]:
     """Decide whether GitHub repository search genuinely helps this request.
 
-    Returns ``(include, source)`` with source in {"model", "fallback"}. The
-    keyword list is a REFERENCE HINT for the connected model — a lexical miss
-    must not suppress the module when the model says it helps, and a lexical
-    hit must not force it when the model says it does not. With no runner the
-    deterministic keyword detection is returned, labeled as fallback.
+    Returns ``(include, source)`` with source in {"model", "unavailable"}. The
+    keyword list is a REFERENCE HINT for the connected model only. There is no
+    keyword verdict: with no model connected the module is NOT auto-mounted
+    (``(False, "unavailable")``) — an explicit caller allow-list is the only
+    way to include it. A keyword hit never forces the module on its own.
     """
 
     text = " ".join(part for part in [query, *source_hints, *query_variants] if part)
-    lexical = _is_github_hint(text.lower())
     try:
-        from ..judgment import judge_bool
+        from ..judgment import has_judgment_runner, judge_bool
     except Exception:  # pragma: no cover - judgment module is optional at import time
-        return lexical, "fallback"
+        return False, "unavailable"
+    if not has_judgment_runner():
+        return False, "unavailable"
     decided, source = judge_bool(
         kind="research-github-search",
         question=(
@@ -282,9 +283,9 @@ def github_search_decision(
             "implementation references mean yes; news, prices, people, or general facts "
             "mean no. A keyword match is not a need and a miss is not a refusal."
         ),
-        fallback=lexical,
+        fallback=False,
     )
-    return decided, ("model" if source == "model" else "fallback")
+    return (decided, "model") if source == "model" else (False, "unavailable")
 
 
 def _auto_max_weight(request: ResearchRequest, allowed_modules: list[str]) -> str:
@@ -301,10 +302,6 @@ def _auto_max_weight(request: ResearchRequest, allowed_modules: list[str]) -> st
 
 def _has_public_social_hint(request: ResearchRequest) -> bool:
     return any(_is_reddit_hint(hint.lower().strip()) or _is_threads_hint(hint.lower().strip()) for hint in request.source_hints)
-
-
-def _is_github_hint(value: str) -> bool:
-    return any(keyword in value for keyword in GITHUB_SEARCH_KEYWORDS)
 
 
 def _is_threads_hint(source_hint: str) -> bool:
