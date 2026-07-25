@@ -13,15 +13,17 @@ Parity is deliberate: the JSON shape, the ``contract`` string, the
 the Desktop so a host reading either surface sees the same thing. Trigger
 counting stays deterministic (counters over the per-slug experience store),
 but the failure/gotcha classification of tag text follows the resident
-judgment contract: the connected model decides by meaning with the old
-_FAILURE_TAG_RE vocabulary as a hint, and with no runner the deterministic
-regex fallback applies — so the hook stays cheap and fail-open.
+judgment contract: the connected model decides by meaning with the failure
+vocabulary as a hint. There is no keyword verdict — with no model connected
+the fuzzy tag text is left UNDECIDED (not counted as a failure); only the
+closed-form ``memory_kind == "risk"`` stored id still counts.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -37,14 +39,17 @@ from .memory_contract import (
     validate_proposal_entry,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 # Deterministic trigger thresholds (mirror of the Desktop evolution-triggers
 # intent: repeated failure / accumulated experience). Kept conservative so a
 # single noisy session never fabricates a proposal.
 ACCUMULATED_EXPERIENCE_MIN = 5
 REPEATED_FAILURE_MIN = 3
-_FAILURE_TAG_RE = re.compile(
-    r"(fail|error|gotcha|incident|regress|bug|attack|vuln|보안|취약|버그|사고|실패)",
-    re.IGNORECASE,
+# Reference vocabulary — passed to the judge as a HINT only, never a decider.
+_FAILURE_HINT_WORDS = (
+    "fail", "error", "gotcha", "incident", "regress", "bug", "attack",
+    "vuln", "보안", "취약", "버그", "사고", "실패",
 )
 _SECRET_HINT_RE = re.compile(
     r"(sk-[A-Za-z0-9]{16,}|gh[opsu]_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{20,}"
@@ -61,41 +66,37 @@ def _is_failure_signal(tag_text: str, memory_kind: str) -> bool:
     """Failure/gotcha classification for one experience row.
 
     ``memory_kind == "risk"`` is a closed-form stored id and always counts.
-    For tag text, the connected model decides by meaning with _FAILURE_TAG_RE's
-    vocabulary as a hint; with no runner (or on any runner error) judge_bool
-    returns the deterministic regex fallback, keeping the hook cheap and
-    fail-open exactly as before.
+    For tag text, the connected model decides by meaning with the failure
+    vocabulary as a hint. There is no keyword verdict: with no model connected
+    (or on any runner error) the row is left UNDECIDED and NOT counted as a
+    failure — never a keyword-derived True.
     """
 
     if memory_kind == "risk":
         return True
     if not tag_text.strip():
         return False
-    lexical = bool(_FAILURE_TAG_RE.search(tag_text))
     try:
-        from .judgment import judge_bool
+        from .judgment import has_judgment_runner, judge_bool
     except Exception:  # pragma: no cover - judgment module is optional at import time
-        return lexical
-    decided, _source = judge_bool(
+        return False
+    if not has_judgment_runner():
+        return False
+    decided, source = judge_bool(
         kind="evolution-failure-tag",
         question=(
             "Do these memory tags describe a failure, bug, incident, regression, or "
             "security problem the agent ran into?"
         ),
         text=tag_text,
-        hints={
-            "failure": [
-                "fail", "error", "gotcha", "incident", "regress", "bug", "attack",
-                "vuln", "보안", "취약", "버그", "사고", "실패",
-            ]
-        },
+        hints={"failure": list(_FAILURE_HINT_WORDS)},
         guidance=(
             "Judge meaning, not keyword presence — 'bugfix-released' is a success note, "
             "while a novel word for a production outage still counts as failure."
         ),
-        fallback=lexical,
+        fallback=False,
     )
-    return decided
+    return decided if source == "model" else False
 
 
 def _safe_keyword(value: str) -> str:
@@ -153,6 +154,20 @@ def derive_proposals_from_experience(db_path: Path, agent_id: str) -> list[dict[
             ).fetchall()
     except sqlite3.Error:
         return []
+
+    # One detectable signal that a dormant judge could not reach a model: the
+    # fuzzy failure/gotcha classification of tag text is skipped (left undecided)
+    # and only closed-form ``risk`` rows count. Never a silent keyword verdict.
+    try:
+        from .judgment import has_judgment_runner
+
+        if rows and not has_judgment_runner():
+            _LOGGER.debug(
+                "evolution failure-tag judgment unavailable: no connected model; "
+                "fuzzy tags left undecided, only closed-form risk rows counted"
+            )
+    except Exception:  # pragma: no cover - judgment module is optional at import time
+        pass
 
     total = len(rows)
     failure_count = 0

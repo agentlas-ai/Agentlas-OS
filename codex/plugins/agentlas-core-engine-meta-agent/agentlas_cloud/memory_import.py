@@ -28,7 +28,20 @@ MAX_FILES = 400
 MAX_SECTION_CHARS = 4000
 MIN_SECTION_CHARS = 24
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
-_RISK_HINT = re.compile(r"(security|attack|vuln|bug|gotcha|incident|보안|취약|버그|사고)", re.IGNORECASE)
+# Reference vocabulary — passed to the judge as a HINT only, never a decider.
+_RISK_HINT_WORDS = (
+    "security", "attack", "vuln", "bug", "gotcha", "incident", "보안", "취약", "버그", "사고",
+)
+
+# Shown when no model is connected and a meaning judgment cannot be made.
+_NO_MODEL_NOTE_EN = (
+    "note: no LLM is connected, so sections were not risk/experience-judged — "
+    "they default to 'experience'. Connect a model in settings to enable this."
+)
+_NO_MODEL_NOTE_KO = (
+    "안내: LLM(모델)이 연결되어 있지 않아 위험/경험 판정을 못 했어요 — "
+    "'experience'로 기본 처리했습니다. 설정에서 모델을 연결해 주세요."
+)
 
 
 def _iter_markdown_files(root: Path) -> list[Path]:
@@ -65,17 +78,19 @@ def _split_sections(text: str) -> list[tuple[str, str]]:
 def _kind_for(heading: str, body: str) -> tuple[str, str]:
     """Classify an imported section as ("risk"|"experience", source).
 
-    The connected model decides by meaning; the _RISK_HINT regex is only a
-    reference hint. With no runner installed the deterministic regex result is
-    returned and labeled ``source="fallback"``.
+    The connected model decides by meaning; the risk vocabulary is only a
+    reference hint. There is no keyword verdict: with no model connected the
+    section is left UNDECIDED — it takes the neutral ``"experience"`` kind and
+    is labeled ``source="unavailable"`` (never a keyword-derived ``"risk"``).
     """
 
     text = f"{heading}\n{body}"
-    lexical = "risk" if _RISK_HINT.search(text) else "experience"
     try:
-        from .judgment import judge_labels
+        from .judgment import has_judgment_runner, judge_labels
     except Exception:  # pragma: no cover - judgment module is optional at import time
-        return lexical, "fallback"
+        return "experience", "unavailable"
+    if not has_judgment_runner():
+        return "experience", "unavailable"
     picked, source = judge_labels(
         kind="memory-import-kind",
         question=(
@@ -85,16 +100,16 @@ def _kind_for(heading: str, body: str) -> tuple[str, str]:
         ),
         labels=("risk", "experience"),
         text=text[:2000],
-        hints={"risk": ["security", "attack", "vuln", "bug", "gotcha", "incident", "보안", "취약", "버그", "사고"]},
+        hints={"risk": list(_RISK_HINT_WORDS)},
         guidance=(
             "Judge the meaning of the note, not keyword presence — a changelog celebrating "
             "a bug fix is experience; a pitfall future work must avoid is risk."
         ),
-        fallback=(lexical,),
+        fallback=("experience",),
         multi=False,
     )
     if source != "model" or not picked:
-        return lexical, "fallback"
+        return "experience", "unavailable"
     return picked[0], "model"
 
 
@@ -150,6 +165,10 @@ def run_import(path: str, slug: str, *, apply: bool, out=print) -> int:
     out(f"{'kind':<11} {'chars':>6}  file :: heading")
     for item in plan:
         out(f"{item['kind']:<11} {item['chars']:>6}  {item['file']} :: {item['heading']}")
+    if any(item["kind_source"] == "unavailable" for item in plan):
+        out("")
+        out(_NO_MODEL_NOTE_EN)
+        out(_NO_MODEL_NOTE_KO)
     if not apply:
         out("")
         out("dry-run — nothing written. Re-run with --apply to write to the per-slug store.")
