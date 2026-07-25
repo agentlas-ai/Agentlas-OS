@@ -61,7 +61,23 @@ def detect_stages(
     extra_text: str | None = None,
     scoped: bool = False,
 ) -> list[tuple[str, str]]:
-    """Return [(stage_key, artifact_kind)] in canonical order for the query.
+    """Return [(stage_key, artifact_kind)] in canonical order for the query."""
+
+    return detect_stages_with_source(query, extra_text=extra_text, scoped=scoped)[0]
+
+
+def detect_stages_with_source(
+    query: str,
+    extra_text: str | None = None,
+    scoped: bool = False,
+) -> tuple[list[tuple[str, str]], str]:
+    """Return ([(stage_key, artifact_kind)], source) in canonical order.
+
+    The connected model decides BY MEANING which stages the request genuinely
+    needs; the STAGE_DEFS keyword sets are reference hints only. With no
+    judgment runner installed, today's deterministic keyword detection is
+    returned and labeled ``"fallback"`` — never silently presented as a
+    semantic decision.
 
     `extra_text` extends intent detection beyond the raw first message — a
     briefing interview's confirmed goal + acceptance criteria carry the user's
@@ -69,7 +85,45 @@ def detect_stages(
     Brief exists) relaxes the plan-anchored guard: the over-decomposition risk
     that guard defends against has already been retired by the interview.
     """
-    lowered = " ".join(part for part in [(query or ""), (extra_text or "")] if part).lower()
+    text = " ".join(part for part in [(query or ""), (extra_text or "")] if part)
+    deterministic = _detect_stages_lexical(text.lower(), scoped)
+    try:
+        from ..judgment import has_judgment_runner, judge_labels
+    except Exception:  # pragma: no cover - judgment module is optional at import time
+        return deterministic, "fallback"
+    if not has_judgment_runner():
+        return deterministic, "fallback"
+    picked, source = judge_labels(
+        kind="networking-pipeline-stages",
+        question=(
+            "Which pipeline stages does this request GENUINELY ask to be executed as "
+            "separate deliverables: plan (write a PRD/spec), build (implement code), "
+            "verify (test/QA the result)?"
+        ),
+        labels=tuple(key for key, _, _ in STAGE_DEFS),
+        text=text,
+        hints={key: sorted(keywords) for key, keywords, _ in STAGE_DEFS},
+        guidance=(
+            "Merely mentioning a word is NOT a stage need — a single task that mentions "
+            "testing or planning vocabulary is not a pipeline. Return the stages the user "
+            "wants performed; return an empty list for a single-intent request."
+        ),
+        fallback=tuple(key for key, _ in deterministic),
+        multi=True,
+    )
+    if source != "model":
+        return deterministic, "fallback"
+    kind_by_key = {key: kind for key, _, kind in STAGE_DEFS}
+    hits = [(key, kind_by_key[key]) for key, _, _ in STAGE_DEFS if key in picked]
+    if len(hits) < 2:
+        # One stage (or none) is a single task, never a pipeline.
+        return [], "model"
+    return hits, "model"
+
+
+def _detect_stages_lexical(lowered: str, scoped: bool) -> list[tuple[str, str]]:
+    """Deterministic keyword detection — the labeled no-runner fallback."""
+
     hits = [
         (key, kind)
         for key, keywords, kind in STAGE_DEFS
@@ -229,11 +283,12 @@ def plan_pipeline(
     view is attached to the plan so runners can inject it into every packet.
     """
     _graph_enabled = project_dir is not None
-    stages_wanted = detect_stages(
+    stages_wanted, stage_detection = detect_stages_with_source(
         query,
         extra_text=brief_scope_text(brief) if brief else None,
         scoped=brief is not None,
-    )[:max_stages]
+    )
+    stages_wanted = stages_wanted[:max_stages]
     if len(stages_wanted) < 2:
         return None
 
@@ -258,6 +313,7 @@ def plan_pipeline(
             "match_reason": "agent_ontology_pipeline_graph",
             "allowed_by": ["ontology_graph_gate", "produces_consumes_path"],
             "blocked_by_axiom": [],
+            "stage_detection": stage_detection,
             "target_artifact": target,
             "execution_fabric": execution_fabric,
             "runner_contract": _runner_contract(),
@@ -332,8 +388,13 @@ def plan_pipeline(
         "handoff_dir": handoff_dir,
         "graph_path": exposed_path,
         "match_reason": "pipeline_graph_sequence" if _graph_enabled else "pipeline_legacy_sequence",
-        "allowed_by": ["local_keyword_match"] if chosen else [],
+        "allowed_by": (
+            ["model_stage_judgment"] if stage_detection == "model" else ["local_keyword_match"]
+        )
+        if chosen
+        else [],
         "blocked_by_axiom": [],
+        "stage_detection": stage_detection,
         "execution_fabric": execution_fabric,
         "runner_contract": _runner_contract(),
         **({"work_brief": brief_packet_context(brief)} if brief else {}),

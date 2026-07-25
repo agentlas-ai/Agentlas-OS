@@ -28,7 +28,7 @@ from .adapters import (
 from .contracts import ResearchAttempt, ResearchRequest, ResearchResult
 from .evidence_coverage import analyze_evidence_coverage
 from .evidence_quality import analyze_evidence_quality
-from .loadouts import apply_loadout, loadout_policy
+from .loadouts import apply_loadout, github_search_decision, loadout_policy
 from .policy import module_allowed, weight_allowed
 from .platforms import RedditOAuthAdapter, RedditPublicAdapter, ThreadsPublicWebAdapter, ThreadsSearchAdapter
 from .query_variants import expand_query_variants
@@ -153,6 +153,9 @@ class ResearchEngine:
             "read_strategy": _read_strategy(request, attempts),
             "source_hints_used": source_hints,
             "auto_search_modules": _auto_search_modules(request),
+            "github_search_decision": dict(
+                zip(("included", "source"), _github_search_decision_for(request))
+            ),
             "loadout": loadout_policy(request.loadout),
             "registered_module_count": len(self.registry.adapters),
             "mounted_module_ids": mounted_module_ids,
@@ -453,7 +456,6 @@ SEARCH_MODULE_HINTS = {
     "search.jina": "jina",
 }
 GITHUB_SEARCH_MODULE = "search.github_repos"
-GITHUB_SEARCH_KEYWORDS = ("github", "깃헙", "깃허브", "repo:", "repository", "repositories", "open source", "오픈소스")
 
 
 def _expand_source_hints(request: ResearchRequest) -> list[str]:
@@ -503,7 +505,7 @@ def _auto_search_modules(request: ResearchRequest) -> list[str]:
     forbidden = set(request.forbidden_modules)
     if not allowed:
         return ["search.news_rss"] if "search.news_rss" not in forbidden else []
-    github_requested = _github_search_requested(request)
+    github_requested = _github_search_decision_for(request)[0]
     return [
         module
         for module in SEARCH_MODULE_HINTS
@@ -512,9 +514,19 @@ def _auto_search_modules(request: ResearchRequest) -> list[str]:
     ]
 
 
-def _github_search_requested(request: ResearchRequest) -> bool:
-    haystack = " ".join([request.query, *request.source_hints, *request.query_variants]).lower()
-    return any(keyword in haystack for keyword in GITHUB_SEARCH_KEYWORDS)
+def _github_search_decision_for(request: ResearchRequest) -> tuple[bool, str]:
+    """(include, source) for the GitHub search auto-fan-out.
+
+    A caller-supplied module id is closed-form: when the caller explicitly
+    allowed ``search.github_repos`` (before loadout expansion) it always fans
+    out. Otherwise the connected model decides whether repository search helps
+    (keywords are hints); with no runner the keyword detection is returned,
+    labeled as fallback.
+    """
+
+    if GITHUB_SEARCH_MODULE in (request.caller_allowed_modules or []):
+        return True, "caller_allowed_modules"
+    return github_search_decision(request.query, request.source_hints, request.query_variants)
 
 
 def _social_platform_hints(query: str, request: ResearchRequest) -> list[str]:
