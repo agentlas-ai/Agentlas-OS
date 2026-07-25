@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import { pathToFileURL } from 'node:url';
 
 const PORT = Number(process.env.AGENTLAS_CDP_PORT || 9222);
 const CDP_PROFILE = process.env.AGENTLAS_CDP_PROFILE || path.join(os.homedir(), '.agentlas', 'chrome-cdp-profile');
@@ -86,15 +87,44 @@ async function ensureChrome() {
 }
 
 // ── 승인 게이트 ──────────────────────────────────────────────────
+// CONTRACT (fail-closed): the regexes below only LABEL the approval kind —
+// they never make the final "no gate needed" decision for a commit-like
+// action. A click/keypress/upload that submits, pays, sends, or deletes but
+// misses every kind regex still raises an approval request with the generic
+// 'sensitive-action' kind (deterministic conservative fallback — this process
+// has no bridge to the resident judgment service). The parent client may
+// supply a pre-judged classification via tools/call params._meta
+// ['agentlas/actionKind'] ('payment'|'send'|'publish'|'delete'|
+// 'sensitive-action'|'none'); that model-side judgment overrides the local
+// lexical labeling, with 'none' meaning "judged safe, no gate". Trivial
+// navigation/typing/reading stays ungated.
 const PAY_RE = /(checkout|\bpay(ment)?\b|purchase|\bbuy\b|\border\b|donate|subscrib|billing|결제|구매|주문|결재)/;
 const SEND_RE = /(publish|\bpost\b|\bsend\b|submit|tweet|retweet|\bshare\b|reply|\bcomment\b|delete|remove|confirm|전송|게시|삭제|제출|답글|댓글|공유|보내)/;
-function classifyAction(name, args) {
+// Commit-shaped click text the kind regexes above do not label (fail-closed floor).
+const COMMIT_RE = /(submit|confirm|proceed|continue|complete|finish|apply|save|agree|accept|register|sign\s?up|log\s?in|sign\s?in|place|transfer|wire|withdraw|확인|진행|계속|완료|저장|동의|수락|등록|가입|신청|접수|확정|송금|이체|출금|입금|이관|탈퇴|해지)/;
+const APPROVAL_KINDS = new Set(['payment', 'send', 'publish', 'delete', 'sensitive-action']);
+function normalizeActionKindOverride(kind) {
+  const value = String(kind).toLowerCase().trim();
+  if (value === 'none' || value === 'safe') return null;
+  // an unknown override never widens autonomy — it degrades to the generic gate
+  return APPROVAL_KINDS.has(value) ? value : 'sensitive-action';
+}
+function classifyAction(name, args, preJudgedKind) {
+  if (preJudgedKind !== undefined && preJudgedKind !== null && preJudgedKind !== '') {
+    return normalizeActionKindOverride(preJudgedKind);
+  }
   let text = '';
   try { text = JSON.stringify(args || {}).toLowerCase(); } catch (e) { text = ''; }
   if (name === 'browser_navigate' || name === 'browser_navigate_back') return PAY_RE.test(text) ? 'payment' : null;
   if (name === 'browser_click' || name === 'browser_file_upload' || name === 'browser_press_key') {
     if (PAY_RE.test(text)) return 'payment';
     if (SEND_RE.test(text)) { if (/publish|\bpost\b|게시/.test(text)) return 'publish'; if (/delete|remove|삭제/.test(text)) return 'delete'; return 'send'; }
+    // Fail-closed floor: commit-like action the kind regexes failed to label.
+    if (name === 'browser_file_upload') return 'sensitive-action'; // local file data leaves the machine
+    if (name === 'browser_press_key' && /^(enter|return|numpadenter)$/i.test(String((args || {}).key || ''))) {
+      return 'sensitive-action'; // Enter submits the focused form
+    }
+    if (name === 'browser_click' && COMMIT_RE.test(text)) return 'sensitive-action';
   }
   return null;
 }
@@ -150,11 +180,14 @@ async function main() {
   const forwardRaw = (line) => { try { child.stdin.write(line + '\n'); } catch (e) {} };
 
   // 승인 게이트 통과 여부 판정(공유). 통과=null, 거부=사유문자열.
-  const gate = async (name, args) => {
-    const actionType = classifyAction(name, args);
+  const gate = async (name, args, preJudgedKind) => {
+    const actionType = classifyAction(name, args, preJudgedKind);
     if (!actionType) return null;
     let site = ''; try { site = new URL(currentUrl).host; } catch (e) { site = currentUrl; }
-    const decision = await requestApproval(site, actionType, actionType + ': ' + (args.element || args.url || name));
+    const summaryPrefix = actionType === 'sensitive-action'
+      ? 'sensitive-action (unclassified commit-like action; deterministic fallback gate): '
+      : actionType + ': ';
+    const decision = await requestApproval(site, actionType, summaryPrefix + (args.element || args.url || name));
     return decision === 'approved' ? null : actionType;
   };
 
@@ -196,11 +229,12 @@ async function main() {
         return;
       }
       if (name === 'browser_skill_replay') { doReplay(args.name, msg.id); return; }
-      // 일반 액션: 승인 게이트 + 기록.
+      // 일반 액션: 승인 게이트 + 기록. 부모가 _meta 로 사전판정을 보냈으면 그 판정이 우선.
       if (name === 'browser_navigate' && args.url) currentUrl = String(args.url);
-      const actionType = classifyAction(name, args);
+      const preJudgedKind = (msg.params._meta || {})['agentlas/actionKind'];
+      const actionType = classifyAction(name, args, preJudgedKind);
       if (actionType) {
-        gate(name, args).then((denied) => {
+        gate(name, args, preJudgedKind).then((denied) => {
           if (denied) { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'BLOCKED: The user did not approve this ' + denied + ' browser action.' }], isError: true } }); return; }
           if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
           forwardRaw(line);
@@ -245,4 +279,14 @@ async function main() {
   });
   process.stdin.on('end', () => { try { child.stdin.end(); } catch (e) {} });
 }
-main().catch((e) => { console.error('[agentlas-browser] fatal', e && e.stack || e); process.exit(1); });
+// Run only when executed directly; importing the module (tests) must stay
+// side-effect free so classifyAction can be unit-tested without a browser.
+const invokedDirectly = (() => {
+  try { return !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href; }
+  catch (e) { return true; }
+})();
+if (invokedDirectly) {
+  main().catch((e) => { console.error('[agentlas-browser] fatal', e && e.stack || e); process.exit(1); });
+}
+
+export { classifyAction, normalizeActionKindOverride };

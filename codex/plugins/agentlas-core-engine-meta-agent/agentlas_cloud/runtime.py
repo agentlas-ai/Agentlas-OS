@@ -302,6 +302,12 @@ def build_manifest(files: list[PackageFile], name: str) -> AgentlasManifest:
 
 def scan_files(files: list[PackageFile]) -> SecurityReport:
     findings: list[SecurityFinding] = []
+    nl_candidate_lines: dict[int, str] = {}
+
+    def add_nl(finding: SecurityFinding, line: str) -> None:
+        nl_candidate_lines[len(findings)] = line
+        findings.append(finding)
+
     for file in files:
         asset_identity = standalone_experience_asset_identity(file.content)
         if asset_identity:
@@ -320,15 +326,92 @@ def scan_files(files: list[PackageFile]) -> SecurityReport:
             if any(pattern.search(line) for pattern in SECRET_PATTERNS):
                 findings.append(SecurityFinding("BLOCK", "secret-like-value", file.path, "Secret-like value detected and redacted.", number))
             if PROMPT_INJECTION.search(line):
-                findings.append(SecurityFinding("WARN", "prompt-injection", file.path, "Prompt-injection style instruction needs review.", number))
+                add_nl(SecurityFinding("WARN", "prompt-injection", file.path, "Prompt-injection style instruction needs review.", number), line)
             if DESTRUCTIVE.search(line):
-                findings.append(SecurityFinding("WARN", "destructive-command", file.path, "Destructive or remote shell command needs review before execution.", number))
+                add_nl(SecurityFinding("WARN", "destructive-command", file.path, "Destructive or remote shell command needs review before execution.", number), line)
             if EXFIL.search(line):
-                findings.append(SecurityFinding("BLOCK", "external-exfiltration", file.path, "Potential credential exfiltration pattern blocked.", number))
+                add_nl(SecurityFinding("BLOCK", "external-exfiltration", file.path, "Potential credential exfiltration pattern blocked.", number), line)
             if UNICODE_OBFUSCATION.search(line):
-                findings.append(SecurityFinding("WARN", "unicode-obfuscation", file.path, "Unicode bidi or zero-width control character detected.", number))
+                add_nl(SecurityFinding("WARN", "unicode-obfuscation", file.path, "Unicode bidi or zero-width control character detected.", number), line)
+    findings = _adjudicate_nl_findings(findings, nl_candidate_lines)
     verdict = "BLOCK" if any(f.verdict == "BLOCK" for f in findings) else "WARN" if findings else "PASS"
     return SecurityReport(verdict=verdict, scannedAt=now_iso(), findings=findings)
+
+
+# Natural-language rule verdicts (and ONLY these) may be cleared as false
+# positives by the resident judgment runner. SECRET_PATTERNS, credential paths
+# and standalone-asset identities are closed-form shape checks — the model can
+# never clear them. The external BYOK judgment file (merge_llm_judgment) stays
+# escalate-only and is unaffected by this in-proc adjudication.
+_NL_JUDGEABLE_QUESTIONS = {
+    "prompt-injection": (
+        "Does this line genuinely instruct an AI agent to ignore/override its instructions "
+        "or reveal hidden prompts — rather than describing, quoting, teaching about, or "
+        "forbidding such an attack?"
+    ),
+    "destructive-command": (
+        "Does this line genuinely instruct running a destructive or remote-shell command — "
+        "rather than warning about, documenting, or forbidding one?"
+    ),
+    "external-exfiltration": (
+        "Does this line genuinely instruct sending credentials, secrets, or private data to "
+        "an external destination — rather than describing, testing for, or forbidding such "
+        "exfiltration?"
+    ),
+    "unicode-obfuscation": (
+        "Are the invisible/bidirectional control characters in this line used to hide or "
+        "smuggle instructions — rather than legitimate typography, emoji joiners, or text "
+        "copied from formatted documents?"
+    ),
+}
+
+
+def _adjudicate_nl_findings(
+    findings: list[SecurityFinding], nl_candidate_lines: dict[int, str]
+) -> list[SecurityFinding]:
+    """Let the connected model clear NL-regex candidates as false positives.
+
+    No runner installed → every deterministic finding stands (fail-closed);
+    findings are never invented here and closed-form findings never enter.
+    """
+
+    if not nl_candidate_lines:
+        return findings
+    try:
+        from .judgment import has_judgment_runner, judge_bool
+    except Exception:  # pragma: no cover - judgment module is optional at import time
+        return findings
+    if not has_judgment_runner():
+        return findings
+    cleared: set[int] = set()
+    for index, line in nl_candidate_lines.items():
+        finding = findings[index]
+        question = _NL_JUDGEABLE_QUESTIONS.get(finding.type)
+        if question is None:
+            continue
+        text = line
+        if finding.type == "unicode-obfuscation":
+            codepoints = sorted({f"U+{ord(ch):04X}" for ch in UNICODE_OBFUSCATION.findall(line)})
+            text = f"{line}\n[invisible code points present: {', '.join(codepoints)}]"
+        confirmed, source = judge_bool(
+            kind=f"package-scan:{finding.type}",
+            question=question,
+            text=text,
+            hints=(
+                "the static regex only recruited this line as a candidate; decide by the "
+                "meaning of the whole line"
+            ),
+            guidance=(
+                "Descriptive, quoted, negated, or defensive security copy is a false "
+                "positive. An instruction the reading agent is meant to execute is real."
+            ),
+            fallback=True,
+        )
+        if source == "model" and not confirmed:
+            cleared.add(index)
+    if not cleared:
+        return findings
+    return [finding for index, finding in enumerate(findings) if index not in cleared]
 
 
 def combine_verdicts(*verdicts: str) -> str:

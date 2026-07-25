@@ -44,7 +44,7 @@ def run_research_recommendation(
     compact_query = " ".join(query.split()).strip()
     hints = [hint.strip() for hint in source_hints or [] if hint and hint.strip()]
     signals = _signals(compact_query, hints)
-    recommendation = _recommend(signals)
+    recommendation = _recommend(signals, judge_text=" ".join([compact_query, *hints]).strip())
     preview_hints = hints or [f"search:auto:{compact_query}"] if compact_query else hints
     registry = default_registry(home=home)
     plan = run_research_plan(
@@ -114,7 +114,55 @@ def _signals(query: str, source_hints: list[str]) -> dict[str, bool]:
     }
 
 
-def _recommend(signals: dict[str, bool]) -> dict[str, Any]:
+# The recommender only ever auto-selects these; social/full stay operator
+# escalations (see _escalation_ladder) and are never chosen automatically.
+AUTO_SELECTABLE_LOADOUTS = ("safe", "public-web", "browser")
+
+
+def _recommend(signals: dict[str, bool], judge_text: str = "") -> dict[str, Any]:
+    """Pick the research loadout — the connected model decides by meaning.
+
+    The keyword-derived ``signals`` are demoted to reference hints; when a
+    judgment runner is connected, ``judge_labels`` selects the loadout among
+    the auto-selectable option ids. With no runner the deterministic keyword
+    pick below is used and labeled ``selection_source="fallback"`` — never
+    silently presented as a semantic decision.
+    """
+
+    choice = _deterministic_choice(signals)
+    selection_source = "fallback"
+    judged = _judge_loadout(judge_text, fallback_loadout=choice["loadout"])
+    if judged is not None:
+        selection_source = "model"
+        if judged != choice["loadout"]:
+            choice = _rebase_choice(choice, judged, signals)
+            choice["reasons"].append("loadout_selected_by_connected_model")
+
+    loadout = choice["loadout"]
+    reasons = choice["reasons"]
+    return {
+        "loadout": loadout,
+        "depth": choice["depth"],
+        "follow_results": choice["follow_results"],
+        "max_requests": choice["max_requests"],
+        "query_variants": _dedupe(choice["query_variants"]),
+        "reasons": reasons,
+        "selection_source": selection_source,
+        "mount_decision": _mount_decision(
+            loadout=loadout,
+            signals=signals,
+            reasons=reasons,
+            selection_source=selection_source,
+        ),
+        "suggested_command": _suggested_command(
+            loadout, choice["depth"], choice["follow_results"], choice["max_requests"], choice["query_variants"]
+        ),
+    }
+
+
+def _deterministic_choice(signals: dict[str, bool]) -> dict[str, Any]:
+    """Today's keyword pick — the labeled no-runner fallback."""
+
     reasons: list[str] = []
     query_variants: list[str] = []
     loadout = "safe"
@@ -164,11 +212,72 @@ def _recommend(signals: dict[str, bool]) -> dict[str, Any]:
         "depth": depth,
         "follow_results": follow_results,
         "max_requests": max_requests,
-        "query_variants": _dedupe(query_variants),
+        "query_variants": query_variants,
         "reasons": reasons,
-        "mount_decision": _mount_decision(loadout=loadout, signals=signals, reasons=reasons),
-        "suggested_command": _suggested_command(loadout, depth, follow_results, max_requests, query_variants),
     }
+
+
+def _rebase_choice(choice: dict[str, Any], loadout: str, signals: dict[str, bool]) -> dict[str, Any]:
+    """Re-derive loadout-dependent parameters for a model-chosen loadout."""
+
+    updated = dict(choice, loadout=loadout, reasons=list(choice["reasons"]))
+    if loadout == "browser":
+        updated["depth"] = "deep"
+        updated["follow_results"] = max(choice["follow_results"], 2)
+        updated["max_requests"] = max(choice["max_requests"], 6)
+        if signals["blocked_public_web"]:
+            updated["reasons"].append("browser_escalation_requested_for_blocked_or_dynamic_page")
+    elif loadout == "public-web":
+        updated["depth"] = "quick"
+        updated["follow_results"] = max(choice["follow_results"], 3)
+        updated["max_requests"] = max(choice["max_requests"], 6)
+    else:  # safe
+        updated["depth"] = "quick"
+        updated["follow_results"] = 2
+        updated["max_requests"] = 5
+    return updated
+
+
+def _judge_loadout(judge_text: str, *, fallback_loadout: str) -> str | None:
+    """Connected-model loadout selection; None keeps the deterministic pick."""
+
+    if not judge_text.strip():
+        return None
+    try:
+        from ..judgment import has_judgment_runner, judge_labels
+    except Exception:  # pragma: no cover - judgment module is optional at import time
+        return None
+    if not has_judgment_runner():
+        return None
+    fallback = fallback_loadout if fallback_loadout in AUTO_SELECTABLE_LOADOUTS else "safe"
+    picked, source = judge_labels(
+        kind="research-loadout",
+        question=(
+            "Which research loadout does this request need: 'safe' (fast public search and "
+            "static reads), 'public-web' (blocked public pages, feeds, social fallbacks, the "
+            "adaptive public reader), or 'browser' (JS-heavy or interactive pages that need a "
+            "real browser)?"
+        ),
+        labels=AUTO_SELECTABLE_LOADOUTS,
+        text=judge_text,
+        hints={
+            "browser": list(BROWSER_KEYWORDS),
+            "public-web": list(BLOCKED_WEB_KEYWORDS)
+            + list(RESEARCH_KEYWORDS)
+            + list(SOCIAL_REDDIT_KEYWORDS)
+            + list(SOCIAL_THREADS_KEYWORDS),
+        },
+        guidance=(
+            "Choose by what the task actually needs, not keyword presence. Prefer the "
+            "lightest loadout that can produce the evidence; credentialed social APIs stay "
+            "operator-approved and are never auto-selected."
+        ),
+        fallback=(fallback,),
+        multi=False,
+    )
+    if source != "model" or not picked:
+        return None
+    return picked[0]
 
 
 def _suggested_command(loadout: str, depth: str, follow_results: int, max_requests: int, variants: list[str]) -> str:
@@ -214,9 +323,16 @@ def _escalation_ladder(loadout: str) -> list[dict[str, object]]:
     return ladder
 
 
-def _mount_decision(*, loadout: str, signals: dict[str, bool], reasons: list[str]) -> dict[str, object]:
+def _mount_decision(
+    *,
+    loadout: str,
+    signals: dict[str, bool],
+    reasons: list[str],
+    selection_source: str = "fallback",
+) -> dict[str, object]:
     return {
         "selected_loadout": loadout,
+        "selection_source": selection_source,
         "mode": _decision_mode(loadout),
         "browser_hardpoints": "mounted" if loadout in {"browser", "full"} else "detached",
         "credentialed_social": "mounted" if loadout in {"social", "full"} else "detached",

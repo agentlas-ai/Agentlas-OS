@@ -87,6 +87,15 @@ class ResearchRequest:
     max_cost: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_MAX_COST))
     browser_args: list[str] = field(default_factory=list)
     browser_keep_open: bool = False
+    # Provenance marker (not part of the wire contract or request hash): the
+    # module ids the CALLER explicitly allowed, before any loadout expansion.
+    # A user-specified module id is closed-form and is never re-adjudicated by
+    # the judgment engine. Defaults to the constructor's allowed_modules.
+    caller_allowed_modules: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.caller_allowed_modules is None:
+            self.caller_allowed_modules = list(self.allowed_modules)
 
     @classmethod
     def from_value(cls, value: "ResearchRequest | dict[str, Any] | str") -> "ResearchRequest":

@@ -192,13 +192,13 @@ def _recommend_browser_candidate(*, query: str, candidates: list[dict[str, Any]]
     compact = " ".join((query or "").split()).strip()
     if not candidates:
         return {"status": "not_found", "reason": "no_browser_candidates"}
-    signals = _query_signals(compact)
     if not compact:
         return {
             "status": "not_requested",
             "reason": "pass --query to get a non-executing hardpoint recommendation",
             "default_boundary": "use safe/public-web first; browser hardpoints stay detached",
         }
+    signals, selection_source = _judged_signals(compact, _query_signals(compact))
 
     order = _preferred_order(signals)
     by_id = {candidate["module_id"]: candidate for candidate in candidates}
@@ -206,13 +206,16 @@ def _recommend_browser_candidate(*, query: str, candidates: list[dict[str, Any]]
         candidate = by_id.get(module_id)
         if candidate:
             ready = bool(candidate.get("registered") and candidate.get("readiness", {}).get("state") == "ready")
-            return _recommendation_payload(candidate, compact, signals, ready=ready)
+            payload = _recommendation_payload(candidate, compact, signals, ready=ready)
+            payload["selection_source"] = selection_source
+            return payload
     return {
         "status": "no_match",
         "query": compact,
         "reason": "query_did_not_require_browser_hardpoint",
         "preferred_loadout": "public-web" if signals["public_web"] else "safe",
         "mount_browser": False,
+        "selection_source": selection_source,
     }
 
 
@@ -237,32 +240,72 @@ def _recommendation_payload(candidate: dict[str, Any], query: str, signals: dict
     }
 
 
+# Keyword tuples are REFERENCE HINTS for the connected model, and double as the
+# deterministic labeled fallback when no judgment runner is installed.
+BROWSER_SIGNAL_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "local_first": ("local", "로컬", "privacy", "private", "프라이버시", "내 맥"),
+    "interactive": ("click", "fill", "form", "login", "로그인", "클릭", "입력", "멀티스텝", "multi-step"),
+    "structured": ("extract", "schema", "table", "structured", "구조화", "추출", "테이블"),
+    "scale_or_stealth": ("scale", "stealth", "captcha", "anti-bot", "차단", "캡차", "스텔스", "대량"),
+    "snapshot": (
+        "browser",
+        "agent-browser",
+        "headless",
+        "chromium",
+        "snapshot",
+        "screenshot",
+        "accessibility",
+        "js-heavy",
+        "dynamic",
+        "스냅샷",
+        "동적",
+        "브라우저",
+    ),
+    "public_web": ("403", "blocked", "waf", "rss", "public page", "공개 페이지"),
+}
+
+
 def _query_signals(query: str) -> dict[str, bool]:
     lowered = query.lower()
     return {
-        "local_first": any(term in lowered for term in ("local", "로컬", "privacy", "private", "프라이버시", "내 맥")),
-        "interactive": any(term in lowered for term in ("click", "fill", "form", "login", "로그인", "클릭", "입력", "멀티스텝", "multi-step")),
-        "structured": any(term in lowered for term in ("extract", "schema", "table", "structured", "구조화", "추출", "테이블")),
-        "scale_or_stealth": any(term in lowered for term in ("scale", "stealth", "captcha", "anti-bot", "차단", "캡차", "스텔스", "대량")),
-        "snapshot": any(
-            term in lowered
-            for term in (
-                "browser",
-                "agent-browser",
-                "headless",
-                "chromium",
-                "snapshot",
-                "screenshot",
-                "accessibility",
-                "js-heavy",
-                "dynamic",
-                "스냅샷",
-                "동적",
-                "브라우저",
-            )
-        ),
-        "public_web": any(term in lowered for term in ("403", "blocked", "waf", "rss", "public page", "공개 페이지")),
+        name: any(term in lowered for term in terms)
+        for name, terms in BROWSER_SIGNAL_KEYWORDS.items()
     }
+
+
+def _judged_signals(query: str, lexical: dict[str, bool]) -> tuple[dict[str, bool], str]:
+    """The connected model decides which browser-need traits the task has.
+
+    The keyword tuples above are hints only. Returns (signals, source) where
+    source is ``"model"`` or ``"fallback"``; with no runner the lexical
+    signals are returned unchanged and labeled as fallback.
+    """
+
+    try:
+        from ..judgment import has_judgment_runner, judge_labels
+    except Exception:  # pragma: no cover - judgment module is optional at import time
+        return lexical, "fallback"
+    if not has_judgment_runner():
+        return lexical, "fallback"
+    picked, source = judge_labels(
+        kind="research-browser-signals",
+        question="Which of these browser-need traits does this research task genuinely have?",
+        labels=tuple(BROWSER_SIGNAL_KEYWORDS),
+        text=query,
+        hints={name: list(terms) for name, terms in BROWSER_SIGNAL_KEYWORDS.items()},
+        guidance=(
+            "local_first = the browser must run locally/privately; interactive = the task "
+            "clicks, fills forms, or uses a login; structured = schema/table extraction; "
+            "scale_or_stealth = anti-bot or high-volume browsing; snapshot = a rendered "
+            "JS-heavy page snapshot is needed; public_web = blocked public pages best served "
+            "without a browser. Return an empty list when no real browser evidence is needed."
+        ),
+        fallback=tuple(name for name, hit in lexical.items() if hit),
+        multi=True,
+    )
+    if source != "model":
+        return lexical, "fallback"
+    return {name: name in picked for name in BROWSER_SIGNAL_KEYWORDS}, "model"
 
 
 def _preferred_order(signals: dict[str, bool]) -> list[str]:

@@ -174,6 +174,7 @@ def apply_loadout(request: ResearchRequest) -> ResearchRequest:
         privacy_scope=request.privacy_scope,
         max_weight=max_weight,
         max_cost=dict(request.max_cost),
+        caller_allowed_modules=list(request.caller_allowed_modules or []),
     )
 
 
@@ -224,12 +225,17 @@ def _apply_auto_loadout(request: ResearchRequest) -> ResearchRequest:
         privacy_scope=request.privacy_scope,
         max_weight=request.max_weight or _auto_max_weight(request, allowed_modules),
         max_cost=dict(request.max_cost),
+        caller_allowed_modules=list(request.caller_allowed_modules or []),
     )
 
 
 def _auto_allowed_modules(request: ResearchRequest) -> list[str]:
     modules = list(AUTO_PUBLIC_WEB_MODULES)
-    if _is_github_hint(request.query.lower()):
+    # GitHub inclusion is a semantic decision: the connected model judges
+    # whether repository search helps, with the keyword list as a hint. The
+    # reddit/threads/external checks below stay deterministic — they match
+    # closed-form hint prefixes and URL hosts, not natural language.
+    if github_search_decision(request.query, request.source_hints, request.query_variants)[0]:
         modules.extend(AUTO_GITHUB_MODULES)
     for source_hint in request.source_hints:
         lowered = source_hint.lower().strip()
@@ -237,12 +243,48 @@ def _auto_allowed_modules(request: ResearchRequest) -> list[str]:
             modules.extend(AUTO_REDDIT_MODULES)
         if _is_threads_hint(lowered):
             modules.extend(AUTO_THREADS_MODULES)
-        if _is_github_hint(lowered):
-            modules.extend(AUTO_GITHUB_MODULES)
         for prefix, module in AUTO_EXTERNAL_HINT_MODULES.items():
             if lowered.startswith(prefix):
                 modules.append(module)
     return _dedupe(modules)
+
+
+def github_search_decision(
+    query: str,
+    source_hints: list[str] | tuple[str, ...] = (),
+    query_variants: list[str] | tuple[str, ...] = (),
+) -> tuple[bool, str]:
+    """Decide whether GitHub repository search genuinely helps this request.
+
+    Returns ``(include, source)`` with source in {"model", "fallback"}. The
+    keyword list is a REFERENCE HINT for the connected model — a lexical miss
+    must not suppress the module when the model says it helps, and a lexical
+    hit must not force it when the model says it does not. With no runner the
+    deterministic keyword detection is returned, labeled as fallback.
+    """
+
+    text = " ".join(part for part in [query, *source_hints, *query_variants] if part)
+    lexical = _is_github_hint(text.lower())
+    try:
+        from ..judgment import judge_bool
+    except Exception:  # pragma: no cover - judgment module is optional at import time
+        return lexical, "fallback"
+    decided, source = judge_bool(
+        kind="research-github-search",
+        question=(
+            "Would searching GitHub repositories (open-source code, libraries, projects) "
+            "genuinely help answer this research request?"
+        ),
+        text=text,
+        hints={"github-repo-search": list(GITHUB_SEARCH_KEYWORDS)},
+        guidance=(
+            "Judge by the evidence the request needs: code, SDKs, open-source tools, or "
+            "implementation references mean yes; news, prices, people, or general facts "
+            "mean no. A keyword match is not a need and a miss is not a refusal."
+        ),
+        fallback=lexical,
+    )
+    return decided, ("model" if source == "model" else "fallback")
 
 
 def _auto_max_weight(request: ResearchRequest, allowed_modules: list[str]) -> str:
