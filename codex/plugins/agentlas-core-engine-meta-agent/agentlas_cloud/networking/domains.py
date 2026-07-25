@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import re
 
+_HANGUL_RE = re.compile(r"[가-힣]")
+
 # domain id -> high-precision substring markers (lowercased at match time)
 DOMAIN_MARKERS: dict[str, tuple[str, ...]] = {
     "finance": (
@@ -166,10 +168,47 @@ def classify_domains(*texts: str) -> list[str]:
     hits: set[str] = set()
     for domain, matchers in _DOMAIN_MATCHERS.items():
         for substring, pattern in matchers:
-            if (substring is not None and substring in blob) or (pattern is not None and pattern.search(blob)):
+            if (substring is not None and _marker_occurs(blob, substring)) or (
+                pattern is not None and pattern.search(blob)
+            ):
                 hits.add(domain)
                 break
     return sorted(hits)
+
+
+def _marker_occurs(blob: str, marker: str) -> bool:
+    """Marker hit that is not an accident inside a longer word.
+
+    Korean has no word boundary, so a raw ``in`` matched a marker inside an unrelated
+    compound: ``피부`` (skin → beauty) sits inside ``피부양자`` (a tax dependent), ``투자``
+    inside longer finance-unrelated words, and the mislabeled domain then applies a
+    cross-domain penalty that silently demotes a lexically-correct card. Require that a
+    Hangul marker is not glued to another Hangul syllable on its left, and that what follows
+    is not another Hangul syllable *unless* the marker already ends the word being inflected
+    — that is, allow a trailing particle by only rejecting a longer nominal compound.
+    """
+
+    if not marker:
+        return False
+    if not _HANGUL_RE.search(marker):
+        return marker in blob
+    start = 0
+    while True:
+        index = blob.find(marker, start)
+        if index < 0:
+            return False
+        before = blob[index - 1] if index > 0 else ""
+        after_index = index + len(marker)
+        after = blob[after_index] if after_index < len(blob) else ""
+        left_ok = not _HANGUL_RE.match(before)
+        # Any trailing Hangul syllable makes this a longer word, not the marker: 피부양자
+        # (dependent) is not 피부 (skin), 번역기 (translator app) is not 번역 (translation).
+        # Korean particles attach to the *phrase*, and these markers are phrase-shaped, so a
+        # real mention still matches with a space or punctuation after it.
+        right_ok = not _HANGUL_RE.match(after)
+        if left_ok and right_ok:
+            return True
+        start = index + 1
 
 
 def is_valid_domain(domain: str) -> bool:

@@ -13,6 +13,10 @@ an explicit end-to-end phrase. Single-intent requests never get decomposed.
 
 from __future__ import annotations
 
+import re
+
+_HANGUL_ONLY_RE = re.compile(r"[가-힣]")
+
 import uuid
 from typing import Any, Callable
 
@@ -66,8 +70,12 @@ def detect_stages(
     that guard defends against has already been retired by the interview.
     """
     lowered = " ".join(part for part in [(query or ""), (extra_text or "")] if part).lower()
-    hits = [(key, kind) for key, keywords, kind in STAGE_DEFS if any(word in lowered for word in keywords)]
-    explicit = any(phrase in lowered for phrase in EXPLICIT_PIPELINE_PHRASES)
+    hits = [
+        (key, kind)
+        for key, keywords, kind in STAGE_DEFS
+        if any(_stage_word_occurs(lowered, word) for word in keywords)
+    ]
+    explicit = any(_stage_word_occurs(lowered, phrase) for phrase in EXPLICIT_PIPELINE_PHRASES)
     if len(hits) < 2:
         return []
     # Plan-anchored or explicitly end-to-end — otherwise it is a single task
@@ -170,6 +178,37 @@ def _stage_for_artifact(kind: str) -> str:
     if kind in {"release-bundle", "qa_report"}:
         return "verify"
     return "stage"
+
+
+
+def _stage_word_occurs(text: str, word: str) -> bool:
+    """Stage keyword hit that is not an accident inside a longer word.
+
+    Raw substring matching over-decomposed single tasks into pipelines: ``app`` sits inside
+    ``happy``/``application``, ``spec`` inside ``inspect``, ``test`` inside ``latest``,
+    ``plan`` inside ``explanation``, ``ship`` inside ``relationship``. Latin keywords now need
+    a word boundary; Hangul (which has none) requires that the keyword is not glued to another
+    Hangul syllable on the left, allowing a single trailing particle.
+    """
+
+    if not word:
+        return False
+    if _HANGUL_ONLY_RE.fullmatch(word.replace(" ", "")):
+        index = 0
+        while True:
+            found = text.find(word, index)
+            if found < 0:
+                return False
+            before = text[found - 1] if found > 0 else ""
+            after_index = found + len(word)
+            after = text[after_index] if after_index < len(text) else ""
+            after2 = text[after_index + 1] if after_index + 1 < len(text) else ""
+            if not _HANGUL_ONLY_RE.match(before) and (
+                not _HANGUL_ONLY_RE.match(after) or not _HANGUL_ONLY_RE.match(after2)
+            ):
+                return True
+            index = found + 1
+    return re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])", text) is not None
 
 
 def plan_pipeline(
