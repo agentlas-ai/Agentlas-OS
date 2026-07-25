@@ -13,10 +13,7 @@ an explicit end-to-end phrase. Single-intent requests never get decomposed.
 
 from __future__ import annotations
 
-import re
-
-_HANGUL_ONLY_RE = re.compile(r"[가-힣]")
-
+import logging
 import uuid
 from typing import Any, Callable
 
@@ -24,6 +21,8 @@ from pathlib import Path
 
 from .execution_fabric import build_execution_fabric
 from ..interview.schema import brief_packet_context, brief_scope_text
+
+_LOGGER = logging.getLogger(__name__)
 
 # Canonical stage order. Each stage: (key, intent keywords, artifact kind).
 STAGE_DEFS: list[tuple[str, set[str], str]] = [
@@ -43,11 +42,6 @@ STAGE_DEFS: list[tuple[str, set[str], str]] = [
         "qa_report",
     ),
 ]
-
-EXPLICIT_PIPELINE_PHRASES = {
-    "끝까지", "전 과정", "한 번에 끝", "원스톱", "파이프라인으로",
-    "end to end", "end-to-end", "from prd to", "all the way to",
-}
 
 TARGET_ARTIFACT_TERMS: list[tuple[str, set[str]]] = [
     ("release-bundle", {"release", "릴리즈", "배포", "publish", "ship", "출시"}),
@@ -74,25 +68,29 @@ def detect_stages_with_source(
     """Return ([(stage_key, artifact_kind)], source) in canonical order.
 
     The connected model decides BY MEANING which stages the request genuinely
-    needs; the STAGE_DEFS keyword sets are reference hints only. With no
-    judgment runner installed, today's deterministic keyword detection is
-    returned and labeled ``"fallback"`` — never silently presented as a
-    semantic decision.
+    needs; the STAGE_DEFS keyword sets are reference hints only. There is no
+    keyword pipeline verdict: with no judgment runner installed the request
+    stays UNDECIDED — no decomposition (an empty stage list, routed as a single
+    task) — labeled ``source="unavailable"``. A keyword match must never
+    manufacture a multi-stage pipeline on its own.
 
     `extra_text` extends intent detection beyond the raw first message — a
     briefing interview's confirmed goal + acceptance criteria carry the user's
     real intent far better than the original prompt. `scoped=True` (a Work
-    Brief exists) relaxes the plan-anchored guard: the over-decomposition risk
-    that guard defends against has already been retired by the interview.
+    Brief exists) is forwarded to the judge as context.
     """
     text = " ".join(part for part in [(query or ""), (extra_text or "")] if part)
-    deterministic = _detect_stages_lexical(text.lower(), scoped)
     try:
         from ..judgment import has_judgment_runner, judge_labels
     except Exception:  # pragma: no cover - judgment module is optional at import time
-        return deterministic, "fallback"
+        return [], "unavailable"
     if not has_judgment_runner():
-        return deterministic, "fallback"
+        # Detectable signal that a dormant judge could not reach a model.
+        _LOGGER.debug(
+            "pipeline stage judgment unavailable: no connected model; "
+            "request left undecided (single task, no decomposition)"
+        )
+        return [], "unavailable"
     picked, source = judge_labels(
         kind="networking-pipeline-stages",
         question=(
@@ -108,35 +106,17 @@ def detect_stages_with_source(
             "testing or planning vocabulary is not a pipeline. Return the stages the user "
             "wants performed; return an empty list for a single-intent request."
         ),
-        fallback=tuple(key for key, _ in deterministic),
+        fallback=(),
         multi=True,
     )
     if source != "model":
-        return deterministic, "fallback"
+        return [], "unavailable"
     kind_by_key = {key: kind for key, _, kind in STAGE_DEFS}
     hits = [(key, kind_by_key[key]) for key, _, _ in STAGE_DEFS if key in picked]
     if len(hits) < 2:
         # One stage (or none) is a single task, never a pipeline.
         return [], "model"
     return hits, "model"
-
-
-def _detect_stages_lexical(lowered: str, scoped: bool) -> list[tuple[str, str]]:
-    """Deterministic keyword detection — the labeled no-runner fallback."""
-
-    hits = [
-        (key, kind)
-        for key, keywords, kind in STAGE_DEFS
-        if any(_stage_word_occurs(lowered, word) for word in keywords)
-    ]
-    explicit = any(_stage_word_occurs(lowered, phrase) for phrase in EXPLICIT_PIPELINE_PHRASES)
-    if len(hits) < 2:
-        return []
-    # Plan-anchored or explicitly end-to-end — otherwise it is a single task
-    # that merely mentions testing/building vocabulary.
-    if not scoped and hits[0][0] != "plan" and not explicit:
-        return []
-    return hits
 
 
 def _producers(cards: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
@@ -232,37 +212,6 @@ def _stage_for_artifact(kind: str) -> str:
     if kind in {"release-bundle", "qa_report"}:
         return "verify"
     return "stage"
-
-
-
-def _stage_word_occurs(text: str, word: str) -> bool:
-    """Stage keyword hit that is not an accident inside a longer word.
-
-    Raw substring matching over-decomposed single tasks into pipelines: ``app`` sits inside
-    ``happy``/``application``, ``spec`` inside ``inspect``, ``test`` inside ``latest``,
-    ``plan`` inside ``explanation``, ``ship`` inside ``relationship``. Latin keywords now need
-    a word boundary; Hangul (which has none) requires that the keyword is not glued to another
-    Hangul syllable on the left, allowing a single trailing particle.
-    """
-
-    if not word:
-        return False
-    if _HANGUL_ONLY_RE.fullmatch(word.replace(" ", "")):
-        index = 0
-        while True:
-            found = text.find(word, index)
-            if found < 0:
-                return False
-            before = text[found - 1] if found > 0 else ""
-            after_index = found + len(word)
-            after = text[after_index] if after_index < len(text) else ""
-            after2 = text[after_index + 1] if after_index + 1 < len(text) else ""
-            if not _HANGUL_ONLY_RE.match(before) and (
-                not _HANGUL_ONLY_RE.match(after) or not _HANGUL_ONLY_RE.match(after2)
-            ):
-                return True
-            index = found + 1
-    return re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])", text) is not None
 
 
 def plan_pipeline(
@@ -388,11 +337,9 @@ def plan_pipeline(
         "handoff_dir": handoff_dir,
         "graph_path": exposed_path,
         "match_reason": "pipeline_graph_sequence" if _graph_enabled else "pipeline_legacy_sequence",
-        "allowed_by": (
-            ["model_stage_judgment"] if stage_detection == "model" else ["local_keyword_match"]
-        )
-        if chosen
-        else [],
+        # A pipeline only ever forms when the connected model judged >=2 stages
+        # (a keyword match never manufactures one), so the gate is model_stage_judgment.
+        "allowed_by": ["model_stage_judgment"] if chosen else [],
         "blocked_by_axiom": [],
         "stage_detection": stage_detection,
         "execution_fabric": execution_fabric,
