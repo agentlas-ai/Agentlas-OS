@@ -900,6 +900,12 @@ def serve(stdin=None, stdout=None) -> int:
     from .project_bootstrap import MCP_AUTO_BOOTSTRAP_ENV
 
     os.environ.setdefault(MCP_AUTO_BOOTSTRAP_ENV, "1")
+    # Wire the resident judge to the host's connected model when the host opted
+    # in via AGENTLAS_JUDGE_RUNTIME; otherwise judged sites stay honestly
+    # unavailable rather than keyword-deciding.
+    from .judgment_bootstrap import install_judgment_from_env
+
+    install_judgment_from_env()
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
     for line in stdin:

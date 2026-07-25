@@ -145,6 +145,12 @@ def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     configure_utf8_stdio()
+    # Wire the resident judge to the host's connected model (if the host opted in
+    # via AGENTLAS_JUDGE_RUNTIME). Judged sites then decide by meaning; without it
+    # they return the labeled "connect a model" outcome, never a keyword verdict.
+    from .judgment_bootstrap import install_judgment_from_env
+
+    install_judgment_from_env()
     parser = argparse.ArgumentParser(prog="agentlas-cloud", description="Agentlas Cloud v1 local package tools")
     sub = parser.add_subparsers(dest="command", required=True)
 
