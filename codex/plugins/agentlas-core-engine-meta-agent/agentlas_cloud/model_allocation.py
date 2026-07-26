@@ -23,6 +23,48 @@ TIER_RANK = {tier: index for index, tier in enumerate(TIERS)}
 EFFORT_RANK = {effort: index for index, effort in enumerate(EFFORTS)}
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$")
 HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+DECISION_FIELDS = {
+    "schemaVersion",
+    "decisionId",
+    "packetId",
+    "agentId",
+    "phase",
+    "authoredBy",
+    "selectorVersion",
+    "inputFeatureHash",
+    "features",
+    "selection",
+    "reasonCodes",
+}
+REQUIRED_DECISION_FIELDS = {
+    "schemaVersion",
+    "decisionId",
+    "phase",
+    "authoredBy",
+    "selectorVersion",
+    "features",
+    "selection",
+    "reasonCodes",
+}
+FEATURE_FIELDS = {
+    "complexity",
+    "risk",
+    "inputTokens",
+    "expectedOutputTokens",
+    "toolRequired",
+    "multimodalRequired",
+    "parallelFanout",
+}
+SELECTION_FIELDS = {
+    "tier",
+    "modelClass",
+    "effort",
+    "exactModelId",
+    "provider",
+    "fallbackTiers",
+    "maxEscalations",
+}
+REQUIRED_SELECTION_FIELDS = {"tier", "effort", "fallbackTiers", "maxEscalations"}
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
@@ -35,6 +77,18 @@ def _bounded_int(value: Any, *, default: int, minimum: int, maximum: int | None 
         parsed = default
     parsed = max(minimum, parsed)
     return min(maximum, parsed) if maximum is not None else parsed
+
+
+def _is_integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _valid_nullable_id(value: Any) -> bool:
+    return value is None or isinstance(value, str) and ID_RE.fullmatch(value) is not None
+
+
+def _valid_nullable_text(value: Any, maximum: int) -> bool:
+    return value is None or isinstance(value, str) and len(value) <= maximum
 
 
 def normalize_tier(value: Any) -> str | None:
@@ -59,20 +113,9 @@ def validate_allocation_decision(raw: Mapping[str, Any] | None) -> tuple[dict[st
         return None, ["decision_not_object"]
 
     issues: list[str] = []
-    allowed = {
-        "schemaVersion",
-        "decisionId",
-        "packetId",
-        "agentId",
-        "phase",
-        "authoredBy",
-        "selectorVersion",
-        "inputFeatureHash",
-        "features",
-        "selection",
-        "reasonCodes",
-    }
-    if unknown := sorted(set(raw) - allowed):
+    if missing := sorted(REQUIRED_DECISION_FIELDS - set(raw)):
+        issues.append("missing_required_fields:" + ",".join(missing))
+    if unknown := sorted(set(raw) - DECISION_FIELDS):
         issues.append("unknown_fields:" + ",".join(unknown))
 
     if raw.get("schemaVersion") != SCHEMA_VERSION:
@@ -86,50 +129,99 @@ def validate_allocation_decision(raw: Mapping[str, Any] | None) -> tuple[dict[st
     phase = _text(raw.get("phase")).lower()
     if phase not in PHASES:
         issues.append("invalid_phase")
-    raw_feature_hash = _text(raw.get("inputFeatureHash"))
-    if raw_feature_hash and not HASH_RE.fullmatch(raw_feature_hash):
+    selector_version = _text(raw.get("selectorVersion"))
+    if not ID_RE.fullmatch(selector_version):
+        issues.append("invalid_selector_version")
+    raw_feature_hash_value = raw.get("inputFeatureHash")
+    raw_feature_hash = _text(raw_feature_hash_value)
+    if "inputFeatureHash" in raw and raw_feature_hash_value is not None and not (
+        isinstance(raw_feature_hash_value, str) and HASH_RE.fullmatch(raw_feature_hash_value)
+    ):
         issues.append("invalid_input_feature_hash")
+    for field in ("packetId", "agentId"):
+        if field in raw and not _valid_nullable_id(raw.get(field)):
+            issues.append(f"invalid_{field}")
 
     features_raw = raw.get("features")
     if not isinstance(features_raw, Mapping):
         features_raw = {}
         issues.append("features_not_object")
+    else:
+        if missing := sorted(FEATURE_FIELDS - set(features_raw)):
+            issues.append("missing_feature_fields:" + ",".join(missing))
+        if unknown := sorted(set(features_raw) - FEATURE_FIELDS):
+            issues.append("unknown_feature_fields:" + ",".join(unknown))
     complexity = _text(features_raw.get("complexity")).lower()
     risk = _text(features_raw.get("risk")).lower()
     if complexity not in {"simple", "moderate", "complex"}:
         issues.append("invalid_complexity")
     if risk not in {"low", "moderate", "high", "critical"}:
         issues.append("invalid_risk")
+    for field in ("inputTokens", "expectedOutputTokens"):
+        if not _is_integer(features_raw.get(field)) or features_raw.get(field) < 0:
+            issues.append(f"invalid_{field}")
+    for field in ("toolRequired", "multimodalRequired"):
+        if not isinstance(features_raw.get(field), bool):
+            issues.append(f"invalid_{field}")
+    parallel_fanout = features_raw.get("parallelFanout")
+    if not _is_integer(parallel_fanout) or not 1 <= parallel_fanout <= 128:
+        issues.append("invalid_parallelFanout")
 
     selection_raw = raw.get("selection")
     if not isinstance(selection_raw, Mapping):
         selection_raw = {}
         issues.append("selection_not_object")
+    else:
+        if missing := sorted(REQUIRED_SELECTION_FIELDS - set(selection_raw)):
+            issues.append("missing_selection_fields:" + ",".join(missing))
+        if unknown := sorted(set(selection_raw) - SELECTION_FIELDS):
+            issues.append("unknown_selection_fields:" + ",".join(unknown))
     tier = normalize_tier(selection_raw.get("tier"))
     effort = normalize_effort(selection_raw.get("effort"))
     if tier is None:
         issues.append("invalid_tier")
     if effort is None:
         issues.append("invalid_effort")
+    if not _valid_nullable_text(selection_raw.get("modelClass"), 32):
+        issues.append("invalid_model_class")
+    if not _valid_nullable_text(selection_raw.get("exactModelId"), 255):
+        issues.append("invalid_exact_model_id")
+    if not _valid_nullable_text(selection_raw.get("provider"), 80):
+        issues.append("invalid_provider")
     raw_fallbacks = selection_raw.get("fallbackTiers")
     if not isinstance(raw_fallbacks, list):
         raw_fallbacks = []
         issues.append("fallback_tiers_not_array")
+    elif len(raw_fallbacks) > 3:
+        issues.append("too_many_fallback_tiers")
     fallback_tiers: list[str] = []
     for item in raw_fallbacks:
         candidate = normalize_tier(item)
-        if candidate and candidate not in fallback_tiers:
+        if candidate is None:
+            issues.append("invalid_fallback_tier")
+        elif candidate in fallback_tiers:
+            issues.append("duplicate_fallback_tier")
+        else:
             fallback_tiers.append(candidate)
+    max_escalations = selection_raw.get("maxEscalations")
+    if not _is_integer(max_escalations) or not 0 <= max_escalations <= 2:
+        issues.append("invalid_max_escalations")
 
     raw_reason_codes = raw.get("reasonCodes")
     if not isinstance(raw_reason_codes, list):
         raw_reason_codes = []
         issues.append("reason_codes_not_array")
+    elif not 1 <= len(raw_reason_codes) <= 12:
+        issues.append("invalid_reason_code_count")
     reason_codes = [
         _text(item)
         for item in raw_reason_codes
-        if ID_RE.fullmatch(_text(item)) and len(_text(item)) <= 80
+        if isinstance(item, str) and ID_RE.fullmatch(item)
     ][:12]
+    if len(reason_codes) != len(raw_reason_codes):
+        issues.append("invalid_reason_code")
+    if len(reason_codes) != len(set(reason_codes)):
+        issues.append("duplicate_reason_code")
     if not reason_codes:
         issues.append("missing_reason_codes")
 
@@ -140,7 +232,7 @@ def validate_allocation_decision(raw: Mapping[str, Any] | None) -> tuple[dict[st
         "agentId": _text(raw.get("agentId")) or None,
         "phase": phase,
         "authoredBy": authored_by,
-        "selectorVersion": _text(raw.get("selectorVersion")) or "host-unspecified",
+        "selectorVersion": selector_version,
         "inputFeatureHash": raw_feature_hash if HASH_RE.fullmatch(raw_feature_hash) else None,
         "features": {
             "complexity": complexity,
@@ -158,7 +250,7 @@ def validate_allocation_decision(raw: Mapping[str, Any] | None) -> tuple[dict[st
             "exactModelId": _text(selection_raw.get("exactModelId")) or None,
             "provider": _text(selection_raw.get("provider")) or None,
             "fallbackTiers": fallback_tiers,
-            "maxEscalations": _bounded_int(selection_raw.get("maxEscalations"), default=0, minimum=0, maximum=2),
+            "maxEscalations": _bounded_int(max_escalations, default=0, minimum=0, maximum=2),
         },
         "reasonCodes": reason_codes,
     }
@@ -177,13 +269,22 @@ def _normalize_inventory(raw_inventory: list[Any] | None) -> list[dict[str, Any]
             continue
         tier = normalize_tier(raw.get("tier") or raw.get("cost_tier") or raw.get("costTier"))
         raw_efforts = raw.get("supported_efforts")
-        if not isinstance(raw_efforts, list):
-            raw_efforts = list(EFFORTS)
+        efforts_known = isinstance(raw_efforts, list)
+        if not efforts_known:
+            raw_efforts = []
         efforts = [
             effort
             for item in raw_efforts
             if (effort := normalize_effort(item))
         ]
+        raw_context_window = raw.get("context_window")
+        context_window = (
+            raw_context_window
+            if _is_integer(raw_context_window) and raw_context_window >= 0
+            else None
+        )
+        supports_tools = raw.get("supports_tools")
+        supports_multimodal = raw.get("supports_multimodal")
         inventory.append(
             {
                 "index": index,
@@ -192,9 +293,10 @@ def _normalize_inventory(raw_inventory: list[Any] | None) -> list[dict[str, Any]
                 "model_id": model_id,
                 "tier": tier,
                 "supported_efforts": efforts or ["none"],
-                "context_window": _bounded_int(raw.get("context_window"), default=0, minimum=0),
-                "supports_tools": bool(raw.get("supports_tools", True)),
-                "supports_multimodal": bool(raw.get("supports_multimodal", False)),
+                "supported_efforts_known": efforts_known,
+                "context_window": context_window,
+                "supports_tools": supports_tools if isinstance(supports_tools, bool) else None,
+                "supports_multimodal": supports_multimodal if isinstance(supports_multimodal, bool) else None,
                 "capabilities": [str(item).lower() for item in (raw.get("capabilities") or [])],
             }
         )
@@ -244,13 +346,19 @@ def resolve_model_allocation(
             return True
         features = decision["features"]
         total_tokens = features["inputTokens"] + features["expectedOutputTokens"]
-        if item["context_window"] and item["context_window"] < total_tokens:
+        if item["tier"] is None:
             return False
-        if features["toolRequired"] and not item["supports_tools"]:
+        if total_tokens and (
+            item["context_window"] is None or item["context_window"] < total_tokens
+        ):
             return False
-        if features["multimodalRequired"] and not item["supports_multimodal"]:
+        if features["toolRequired"] and item["supports_tools"] is not True:
+            return False
+        if features["multimodalRequired"] and item["supports_multimodal"] is not True:
             return False
         if required_capabilities and not required_capabilities.issubset(set(item["capabilities"])):
+            return False
+        if decision["selection"]["effort"] != "none" and not item["supported_efforts_known"]:
             return False
         return True
 
@@ -260,10 +368,15 @@ def resolve_model_allocation(
     reasons: list[str] = []
 
     if pinned_model_id:
-        selected = next((item for item in compatible_inventory if item["model_id"] == pinned_model_id), None)
-        if selected:
+        pinned_candidates = [
+            item for item in compatible_inventory if item["model_id"] == pinned_model_id
+        ]
+        if len(pinned_candidates) == 1:
+            selected = pinned_candidates[0]
             status = "user-pin"
             reasons.append("explicit_user_or_scope_pin")
+        elif len(pinned_candidates) > 1:
+            reasons.append("pinned_model_ambiguous_across_sessions")
         else:
             reasons.append("pinned_model_unavailable_or_incompatible")
 
@@ -280,8 +393,18 @@ def resolve_model_allocation(
         )
         exact = decision["selection"]["exactModelId"]
         if exact:
-            exact_candidate = next((item for item in compatible_inventory if item["model_id"] == exact), None)
-            if exact_candidate is None:
+            exact_candidates = [
+                item for item in compatible_inventory if item["model_id"] == exact
+            ]
+            requested_provider = _text(decision["selection"]["provider"]).lower()
+            if requested_provider:
+                exact_candidates = [
+                    item for item in exact_candidates if item["provider"] == requested_provider
+                ]
+            exact_candidate = exact_candidates[0] if len(exact_candidates) == 1 else None
+            if len(exact_candidates) > 1:
+                reasons.append("requested_exact_model_ambiguous_across_sessions")
+            elif exact_candidate is None:
                 reasons.append("requested_exact_model_unavailable")
             elif exact_candidate["tier"] is None and configured_max_tier is not None:
                 reasons.append("requested_exact_model_cost_tier_unknown")
