@@ -31,17 +31,14 @@ from .receipts import write_receipt
 from .router_agent_call import router_escalation
 from .tokenize import has_hangul, snake_tokens, token_set, tokenize, word_token_set, word_tokens
 
-# Meaning signal. `select_vector_adapter("auto")` returns the verified local
-# Model2Vec asset (potion-multilingual-128M-int8) when one is present and only
-# degrades to the hashed bag-of-words adapter when it is not. The hashed adapter
-# is NOT a meaning model — it buckets tokens by hash, so "사업계획서" and
-# "business plan" land in unrelated buckets. Hardcoding it here silently made
-# every "semantic" score lexical. Routing must still survive a missing adapter,
-# so the import degrades to None.
+# Optional semantic signal. The ontology ships a deterministic, offline hashed
+# vector adapter (no provider key, Korean-aware bigrams). It's a recall enhancer
+# layered on top of lexical scoring, not a replacement — and routing must keep
+# working if it's ever unavailable, so the import degrades to None.
 try:  # pragma: no cover - exercised indirectly
-    from ontology.embeddings import cosine_similarity as _cosine_similarity, select_vector_adapter
+    from ontology.embeddings import LocalHashingVectorAdapter, cosine_similarity as _cosine_similarity
 
-    _VECTOR_ADAPTER: Any = select_vector_adapter("auto")
+    _VECTOR_ADAPTER: Any = LocalHashingVectorAdapter()
 except Exception:  # pragma: no cover
     _VECTOR_ADAPTER = None
 
@@ -77,26 +74,9 @@ def _cached_index(card: dict[str, Any]) -> dict[str, Any]:
     return _INDEX_CACHE[key]
 
 
-def _entry_texts(entries: Any) -> list[str]:
-    """Card trigger/anti-trigger lists hold either plain strings or {locale,text}."""
-    out: list[str] = []
-    for entry in entries or []:
-        if isinstance(entry, str) and entry.strip():
-            out.append(entry.strip())
-        elif isinstance(entry, dict) and str(entry.get("text") or "").strip():
-            out.append(str(entry["text"]).strip())
-    return out
-
-
 def _card_vector(card: dict[str, Any]) -> list[float] | None:
-    """Cached meaning vector for what this card DOES, or None when no adapter.
-
-    Trigger examples are included as meaning material, not as tokens to match:
-    the phrasing of a real request describes the job better than a terse
-    capability slug does. Anti-triggers are deliberately excluded — they
-    describe work the card must NOT take, and folding them in here would pull
-    the card toward the very requests it should decline.
-    """
+    """Cached semantic vector for a card (name + summary + capabilities), or
+    None when the embedding adapter is unavailable."""
     if _VECTOR_ADAPTER is None:
         return None
     key = _card_key(card)
@@ -107,8 +87,7 @@ def _card_vector(card: dict[str, Any]) -> list[float] | None:
                 str(card.get("name_ko") or ""),
                 str(card.get("summary") or ""),
                 str(card.get("summary_ko") or ""),
-                " ".join(str(c).replace("_", " ") for c in (card.get("capabilities") or [])),
-                " ".join(_entry_texts(card.get("trigger_examples"))),
+                " ".join(str(c) for c in (card.get("capabilities") or [])),
             ]
         ).strip()
         try:
@@ -116,49 +95,6 @@ def _card_vector(card: dict[str, Any]) -> list[float] | None:
         except Exception:  # pragma: no cover - never let embedding break routing
             _EMBED_CACHE[key] = None
     return _EMBED_CACHE[key]
-
-
-def _card_anti_vector(card: dict[str, Any]) -> list[float] | None:
-    """Cached meaning vector for the work this card explicitly refuses."""
-    if _VECTOR_ADAPTER is None:
-        return None
-    key = f"anti::{_card_key(card)}"
-    if key not in _EMBED_CACHE:
-        text = " ".join(_entry_texts(card.get("anti_triggers"))).strip()
-        try:
-            _EMBED_CACHE[key] = _VECTOR_ADAPTER.embed(text) if text else None
-        except Exception:  # pragma: no cover
-            _EMBED_CACHE[key] = None
-    return _EMBED_CACHE[key]
-
-
-def _score_card_semantic(
-    card: dict[str, Any],
-    query_vector: list[float] | None,
-    *,
-    scale: float,
-    anti_penalty_weight: float,
-    anti_margin: float,
-) -> tuple[float, list[str]]:
-    """Meaning-only score: cosine against what the card does, minus cosine
-    against what it refuses. No token overlap participates."""
-    card_vector = _card_vector(card)
-    if query_vector is None or card_vector is None:
-        return 0.0, ["semantic unavailable"]
-    similarity = max(0.0, _cosine_similarity(query_vector, card_vector))
-    score = scale * similarity
-    reasons = [f"meaning match {similarity:.3f}"]
-
-    anti_vector = _card_anti_vector(card)
-    if anti_vector is not None:
-        anti_similarity = max(0.0, _cosine_similarity(query_vector, anti_vector))
-        # Only an anti-trigger that resembles the query MORE than the card's own
-        # job does is evidence of a refusal; otherwise every card would be
-        # penalized for merely living in the same domain as its exclusions.
-        if anti_similarity > similarity + anti_margin:
-            score -= anti_penalty_weight * (anti_similarity - similarity)
-            reasons.append(f"anti-trigger meaning {anti_similarity:.3f}")
-    return score, reasons
 
 
 def _embed_query(query: str) -> list[float] | None:
@@ -264,23 +200,7 @@ def _score_card(
     semantic_weight: float = 0.0,
     domain_boost: float = 1.5,
     domain_penalty: float = 6.0,
-    scoring_mode: str = "lexical",
-    semantic_scale: float = 20.0,
-    semantic_anti_weight: float = 20.0,
-    semantic_anti_margin: float = 0.05,
 ) -> tuple[float, list[str]]:
-    # Meaning-only routing. Token overlap decides nothing here — not the name,
-    # not the trigger examples, not the anti-triggers. The lexical branch below
-    # is kept solely so `scoring_mode: "lexical"` can roll the change back.
-    if scoring_mode == "semantic":
-        return _score_card_semantic(
-            card,
-            query_vector,
-            scale=semantic_scale,
-            anti_penalty_weight=semantic_anti_weight,
-            anti_margin=semantic_anti_margin,
-        )
-
     index = _cached_index(card)
     common = common or set()
     distinctive = query_tokens - common
@@ -1472,20 +1392,7 @@ def route_request(
     semantic_weight = float(policy.get("semantic_weight", 0.5))
     domain_boost = float(policy.get("domain_boost", 1.5))
     domain_penalty = float(policy.get("domain_penalty", 6.0))
-    # Meaning is the recruiter, not a tie-breaker. "lexical" restores the old
-    # token-overlap scorer and exists only as a rollback switch.
-    scoring_mode = str(policy.get("scoring_mode", "semantic")).strip().lower()
-    semantic_scale = float(policy.get("semantic_scale", 20.0))
-    semantic_anti_weight = float(policy.get("semantic_anti_weight", 20.0))
-    semantic_anti_margin = float(policy.get("semantic_anti_margin", 0.05))
-    if scoring_mode == "semantic" and _VECTOR_ADAPTER is None:
-        # No meaning model, no silent token fallback: routing degrades loudly
-        # rather than pretending a hashed bag of words is understanding.
-        scoring_mode = "lexical"
-        chain.append("router:semantic-unavailable-fell-back-to-lexical")
-    query_vector = (
-        _embed_query(query) if (semantic_weight > 0 or scoring_mode == "semantic") else None
-    )
+    query_vector = _embed_query(query) if semantic_weight > 0 else None
     scored: list[tuple[float, list[str], dict[str, Any]]] = []
     for card in usable:
         score, reasons = _score_card(
@@ -1501,10 +1408,6 @@ def route_request(
             semantic_weight=semantic_weight,
             domain_boost=domain_boost,
             domain_penalty=domain_penalty,
-            scoring_mode=scoring_mode,
-            semantic_scale=semantic_scale,
-            semantic_anti_weight=semantic_anti_weight,
-            semantic_anti_margin=semantic_anti_margin,
         )
         if score > 0:
             scored.append((score, reasons, card))
