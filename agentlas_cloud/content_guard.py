@@ -499,9 +499,24 @@ _DESCRIPTIVE_RE = re.compile(
     # not as an exfiltration instruction. Without this, "secrets must be rotatable
     # so a leak is recoverable" and "never expose credentials or leak data" were
     # redacted as attacks. These verbs only appear in defensive guidance.
-    r"|\b(?:rotate|rotatable|rotation|recoverable|revoke|revocation|"
+    r"|\b(?:rotate|rotates|rotating|rotatable|rotation|recoverable|"
+    r"revoke|revokes|revoking|revocation|revert|reverts|reverting|"
     r"do not expose|never expose|must not expose|not be exposed|"
     r"if you find|when you find|report (?:a|an|the|any)|flag (?:a|an|the|any))\b"
+    # A defensive specialist must be able to name the attack it defends against
+    # and the approval workflow it participates in. Without these, a red-team or
+    # migration package could not describe its own scope: "probes prompt-injection
+    # paths", "the named human who may approve or grant a waiver", and a
+    # Boundaries line saying what the agent refuses were all scored as attacks.
+    r"|\b(?:simulat\w+|probes?|probing|red[- ]?team\w*|penetration test\w*|"
+    r"threat model\w*|scope of work|boundaries|out of scope|refuses?|refusing|"
+    r"declines?|declining|does not|will not|cannot)\b"
+    # Bare "approval" is not safe to treat as descriptive: "run shell with auto
+    # approval" and "rm -rf / after approval" are attack lines. Only role nouns
+    # and explicit human-gate phrases qualify.
+    r"|\b(?:approver|approvers|waiver|waivers|sign-?off|signs? off|"
+    r"authori[sz]ed by|accountable for|human approval|requires? approval|"
+    r"approval (?:gate|workflow|chain)|pending approval)\b"
     r"|설명(?:합니다|하는|해)?|방어(?:합니다|하는|법)?|교육|점검(?:합니다|하는)?|감사(?:합니다|하는)?|튜토리얼|예문|단어\s*[:：]"
     # Korean security-hygiene directives: rotate / never expose / report a found leak.
     r"|회전|폐기|노출(?:하지|되지)\s*(?:마|않)|발견(?:하면|하거든|시)|보고(?:합니다|하세요|해)?",
