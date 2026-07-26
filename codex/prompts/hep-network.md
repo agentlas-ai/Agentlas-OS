@@ -8,11 +8,30 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 Raw request: `$ARGUMENTS`
 
-Act as the temporary top-level workforce orchestrator. Use MCP server
+Act as the active top-level workforce orchestrator. Use MCP server
 `hephaestus-network`, the local Agentlas OS Core and only host-visible
 Workforce MCP. Core reaches Cloud and Hub through its internal upstream client.
 Network means registered
 Local + signed-in owner Cloud + public Hub.
+
+The user does not need to say `goal`. First read
+`workforce.goal_context(projectDir)` and reuse an active binding for the same
+ongoing work before considering recruitment.
+
+Before the first Cloud or Hub source call, reuse the installed Agentlas
+sign-in. Resolve the runner only for authentication; staffing remains in the
+Workforce MCP tools:
+
+```bash
+RUNNER=""
+for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  "./bin/hephaestus"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
+done
+[ -n "$RUNNER" ] && "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+```
 
 1. Author a redacted `agentlas.workforce-work-order.v1` with substantive role
    slots, skills/knowledge/MCP capabilities, artifacts, runtimes, languages,
@@ -31,11 +50,25 @@ Local + signed-in owner Cloud + public Hub.
    enforce governance but may not pick, rerank, or silently substitute.
 4. Call `workforce.prepare_execution` with
    `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult, federatedSelection}` and require
+   federationResult, federatedSelection, projectDir, goalId?}` and require
    exact source, release, package/content, runtime-bundle, permission, and
-   context pins for every selected row.
-5. Spawn distinct planner/manager, worker, synthesis, and verifier invocations
-   with explicit artifact handoffs; preserve authoritative Team graphs.
+   context pins for every selected row. `projectDir` is mandatory; pass the
+   incumbent `goalId` when continuing. Otherwise Core derives it from the
+   WorkOrder id and automatically binds the successful plan before execution.
+5. Every later turn reads `workforce.goal_context`, reuses the incumbent roster
+   plus local skills when sufficient, and recruits only a real additive gap
+   using the same `goalId`. Record the turn posture through
+   `workforce.record_goal_turn`.
+6. Spawn only the useful bound planner/manager, worker, synthesis, and verifier
+   invocations with explicit artifact handoffs; preserve authoritative Team
+   graphs.
+
+Keep the roster bound across turns, sessions, runtime restarts, and context
+compaction until explicit whole-goal completion/cancellation via
+`workforce.complete_goal(explicitCompletion=true)`. Lease expiry affects only
+the next Hub charge; it never dismisses the roster. Standby is durable
+availability, not a continuously running model. Memory/Experience accrue on
+actual invocations.
 
 Report `executed` only from a receipt proving every child invocation, handoff,
 synthesis, and a passing independent verifier. Otherwise report the last

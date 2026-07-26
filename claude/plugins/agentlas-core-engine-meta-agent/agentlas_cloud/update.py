@@ -44,6 +44,24 @@ RUNTIME_BRIDGE_FILES = (
     "desktop-update-bridge-v1.json",
     "scripts/install-memory-hooks.py",
 )
+HOST_ADAPTER_BUNDLE_DIR = "host_adapters"
+HOST_ADAPTER_DIRS = (
+    ".agents",
+    ".claude",
+    ".claude-plugin",
+    ".gemini",
+    "antigravity",
+    "claude",
+    "codex",
+    "cursor",
+    "gemini",
+    "grok",
+    "hermes",
+    "hooks",
+    "openclaw",
+    "opencode",
+    "skills",
+)
 MODEL2VEC_ASSET_NAME = "potion-multilingual-128M-int8"
 LEGACY_MODEL2VEC_ASSET_NAME = "potion-base-8M-int8"
 MODEL2VEC_ASSET_NAMES = (MODEL2VEC_ASSET_NAME, LEGACY_MODEL2VEC_ASSET_NAME)
@@ -52,11 +70,14 @@ RUNTIME_MODEL2VEC_PATH = Path("models") / "model2vec" / MODEL2VEC_ASSET_NAME
 HEP_COMMANDS = (
     "hep-build",
     "hep-network",
+    "hep-local",
     "hep-cloud",
+    "hep-hub",
     "hep-search",
     "hep-browser",
     "hep-call",
     "hep-upload",
+    "hep-connect",
     "hep-storm",
 )
 HEP_SKILLS = ("hephaestus-network", "hephaestus-cloud", "hephaestus-storm")
@@ -253,7 +274,10 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
         reconciled = reconcile_adapters()
         if reconciled["count"]:
             result["adapters_sanitized"] = reconciled["sanitized"]
-    if check_only or status not in {"update_available", "missing_release_marker"}:
+    if check_only:
+        return result
+    if status not in {"update_available", "missing_release_marker"}:
+        result["reconciliation"] = reconcile_current_installation(runtime_root)
         return result
 
     installed = install_latest_runtime(latest)
@@ -282,6 +306,14 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
             pass
         if _auto_update_disabled():
             return
+        if os.environ.get("HEPHAESTUS_INSTALL_AUTO_UPDATE_SERVICE", "1") != "0":
+            try:
+                from .auto_update_service import auto_update_service_status, install_auto_update_service
+
+                if not auto_update_service_status().get("installed"):
+                    install_auto_update_service()
+            except Exception:
+                pass
         runtime_root = root or Path(__file__).resolve().parent.parent
         current = current_release(runtime_root)
         if current is not None and not _is_comparable_release(current):
@@ -371,7 +403,9 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     target = base / _runtime_version_dir_name(tag)
     lock = base / ".update.lock"
     adapter_sync: dict[str, Any] = {"updated": [], "skipped_missing": [], "failed": []}
+    host_plugin_sync: dict[str, Any] = {"status": "not_run", "hosts": []}
     memory_hook_sync: dict[str, Any] = {"status": "not_run", "installed": {}, "errors": {}}
+    global_router_sync: dict[str, Any] = {"status": "not_run"}
     archive_sha256 = ""
     staged_target: Path | None = None
     installed_model_path: Path | None = None
@@ -419,6 +453,22 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
                 dest = staged_target / relative_name
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
+            adapter_bundle = staged_target / HOST_ADAPTER_BUNDLE_DIR
+            adapter_bundle.mkdir()
+            for name in HOST_ADAPTER_DIRS:
+                src = source / name
+                if src.is_dir():
+                    shutil.copytree(src, adapter_bundle / name)
+            for name in ("manifest.json", "RELEASE"):
+                src = source / name
+                if src.is_file():
+                    shutil.copy2(src, adapter_bundle / name)
+            hook_installer = source / "scripts" / "install-memory-hooks.py"
+            if hook_installer.is_file():
+                (adapter_bundle / "scripts").mkdir(exist_ok=True)
+                shutil.copy2(hook_installer, adapter_bundle / "scripts" / hook_installer.name)
+            (adapter_bundle / "RELEASE").write_text(f"{tag}\n", encoding="utf-8")
+            _validate_host_adapter_bundle(adapter_bundle, tag)
             runtime_model = staged_target / "models" / "model2vec" / source_model.name
             runtime_model.parent.mkdir(parents=True)
             shutil.copytree(source_model, runtime_model)
@@ -429,7 +479,11 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             _activate_runtime(staged_target, target)
             staged_target = None
             adapter_sync = sync_installed_runtime_adapters(source)
+            from .host_update import reconcile_host_plugins
+
+            host_plugin_sync = reconcile_host_plugins(target / HOST_ADAPTER_BUNDLE_DIR, tag)
             memory_hook_sync = sync_installed_memory_hooks(source)
+            global_router_sync = _sync_installed_global_router(target)
     finally:
         if staged_target is not None and _path_present(staged_target):
             _remove_path(staged_target)
@@ -445,7 +499,9 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
         "model_root": str(installed_model_path or target / RUNTIME_MODEL2VEC_PATH),
         "model_verified": True,
         "adapter_sync": adapter_sync,
+        "host_plugin_sync": host_plugin_sync,
         "memory_hook_sync": memory_hook_sync,
+        "global_router_sync": global_router_sync,
     }
 
 
@@ -504,6 +560,81 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
         "skipped_missing": skipped_missing,
         "failed": failed,
     }
+
+
+def reconcile_current_installation(
+    runtime_root: Path | None = None,
+    *,
+    home: Path | None = None,
+) -> dict[str, Any]:
+    """Retry every installed host from the persisted verified adapter bundle."""
+
+    selected_root = runtime_root or Path(__file__).resolve().parent.parent
+    release = current_release(selected_root)
+    bundle = selected_root / HOST_ADAPTER_BUNDLE_DIR
+    if not release or not bundle.is_dir():
+        return {
+            "status": "not_available",
+            "reason": "verified_host_adapter_bundle_missing",
+            "release": release,
+        }
+    try:
+        _validate_host_adapter_bundle(bundle, release)
+    except (OSError, ValueError) as exc:
+        return {"status": "blocked", "reason": "host_adapter_bundle_invalid", "error": str(exc)}
+
+    adapters = sync_installed_runtime_adapters(bundle, home=home)
+    from .host_update import reconcile_host_plugins
+
+    plugins = reconcile_host_plugins(bundle, release, home=home)
+    hooks = sync_installed_memory_hooks(bundle, home=home)
+    global_router = _sync_installed_global_router(selected_root, home=home)
+    failed = (
+        bool(adapters.get("failed"))
+        or plugins.get("status") != "pass"
+        or hooks.get("status") == "fail"
+        or global_router.get("status") == "failed"
+    )
+    return {
+        "status": "partial" if failed else "pass",
+        "release": release,
+        "adapterSync": adapters,
+        "hostPluginSync": plugins,
+        "memoryHookSync": hooks,
+        "globalRouterSync": global_router,
+    }
+
+
+def _sync_installed_global_router(runtime_root: Path, *, home: Path | None = None) -> dict[str, Any]:
+    home_dir = (home or Path.home()).expanduser().resolve()
+    managed_files = (
+        home_dir / ".codex" / "AGENTS.md",
+        home_dir / ".claude" / "CLAUDE.md",
+        home_dir / ".gemini" / "GEMINI.md",
+    )
+    if not any(path.is_file() and "HEPHAESTUS:GLOBAL-ROUTER:BEGIN" in path.read_text(encoding="utf-8", errors="ignore") for path in managed_files):
+        return {"status": "not_installed"}
+    runner = runtime_root / "bin" / ("hephaestus.cmd" if os.name == "nt" else "hephaestus")
+    if not runner.is_file():
+        return {"status": "failed", "reason": "runner_missing"}
+    env = os.environ.copy()
+    env["HOME"] = str(home_dir)
+    env["HEPHAESTUS_AUTO_UPDATE"] = "0"
+    try:
+        completed = subprocess.run(
+            [str(runner), "global", "install"],
+            cwd=str(home_dir),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"status": "failed", "reason": type(exc).__name__}
+    return {"status": "updated" if completed.returncode == 0 else "failed", "exitCode": completed.returncode}
 
 
 def sync_installed_memory_hooks(source: Path, home: Path | None = None) -> dict[str, Any]:
@@ -923,6 +1054,7 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
         "desktop_updater_cleanup": desktop_updater_cleanup,
     }
     if status not in {"update_available", "missing_release_marker"}:
+        result["reconciliation"] = reconcile_current_installation(runtime_root)
         _write_json(marker_path, {**marker, **result})
         return result
     if marker.get("last_applied_tag") == latest_tag and _marker_recent(marker.get("last_applied_epoch")):
@@ -1145,6 +1277,41 @@ def _model_path(runtime_root: Path, *, release_source: bool) -> Path | None:
     return None
 
 
+def _validate_host_adapter_bundle(bundle_root: Path, release_tag: str) -> None:
+    expected = release_tag.lstrip("vV")
+    manifests = (
+        bundle_root
+        / "codex"
+        / "plugins"
+        / "agentlas-core-engine-meta-agent"
+        / ".codex-plugin"
+        / "plugin.json",
+        bundle_root
+        / "claude"
+        / "plugins"
+        / "agentlas-core-engine-meta-agent"
+        / ".claude-plugin"
+        / "plugin.json",
+        bundle_root / "gemini" / "extension" / "gemini-extension.json",
+    )
+    missing: list[str] = []
+    mismatched: list[str] = []
+    for manifest in manifests:
+        if not manifest.is_file():
+            missing.append(str(manifest.relative_to(bundle_root)))
+            continue
+        try:
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"host adapter manifest is invalid: {manifest}") from exc
+        actual = str(payload.get("version") or "").strip().lstrip("vV")
+        if actual != expected:
+            mismatched.append(f"{manifest.relative_to(bundle_root)}={actual or 'missing'}")
+    if missing or mismatched:
+        details = ", ".join([*(f"missing:{item}" for item in missing), *(f"version:{item}" for item in mismatched)])
+        raise ValueError(f"host adapter bundle does not match {release_tag}: {details}")
+
+
 def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False) -> Path:
     missing: list[str] = []
     for name in RUNTIME_DIRS:
@@ -1179,6 +1346,12 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
         ):
             if not (runtime_root / relative).is_file():
                 missing.append(str(relative))
+    else:
+        adapter_bundle = runtime_root / HOST_ADAPTER_BUNDLE_DIR
+        if adapter_bundle.is_dir():
+            release = current_release(runtime_root)
+            if release:
+                _validate_host_adapter_bundle(adapter_bundle, release)
     # Old signed releases predate the package-contract/schemas surface. Keep
     # them installable for rollback, but any runtime that ships the command
     # module must carry the complete root contract and Workforce schemas.

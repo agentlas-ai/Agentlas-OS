@@ -71,20 +71,18 @@ To enable this during one-command install:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 ```
 
-Inside the Codex app, `/prompts:hep-build`, `/prompts:hep-network`,
-`/prompts:hep-local`, `/prompts:hep-cloud`, `/prompts:hep-hub`,
-`/prompts:hep-search`, `/prompts:hep-browser`, `/prompts:hep-call`,
-`/prompts:hep-upload`, and `/prompts:hep-connect` first run the app-host auto-update preflight when Codex
-has local command execution. That preflight refreshes
-`~/.agentlas/runtime/current` and installed prompt/plugin surfaces without
-asking the user to open a separate terminal. If this Codex install is too old to
-contain the preflight, run the one-command installer once or refresh the plugin
-from the plugin manager.
+The one-command installer also registers the per-user Agentlas update service.
+It checks a digest-verified official release every six hours and moves the
+Codex marketplace/plugin plus installed prompts to the same exact release as
+`~/.agentlas/runtime/current`; stale `--ref` pins are replaced during that
+reconciliation. An open Codex task keeps its loaded plugin code until the next
+task or app restart. Check the service with
+`hephaestus hep-update --service-status`.
 
 Codex-only manual install:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.62
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.63
 codex plugin add hephaestus@agentlas-core-engine
 mkdir -p ~/.codex/prompts
 cp codex/prompts/hep-build.md codex/prompts/hep-network.md codex/prompts/hep-local.md codex/prompts/hep-cloud.md codex/prompts/hep-hub.md codex/prompts/hep-search.md codex/prompts/hep-browser.md codex/prompts/hep-call.md codex/prompts/hep-upload.md codex/prompts/hep-connect.md ~/.codex/prompts/

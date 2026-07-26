@@ -5,10 +5,14 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 Request: {{args}}
 
-Act as the temporary top-level workforce orchestrator. Use the local Agentlas
+Act as the active top-level workforce orchestrator. Use the local Agentlas
 OS MCP server `hephaestus-network`, the only host-visible Workforce MCP. Core
 reaches Cloud and Hub through its internal upstream client. Network means registered Local + signed-in owner
 Cloud + public Hub.
+
+The user does not need to say `goal`. First read
+`workforce.goal_context(projectDir)` and reuse an active binding for the same
+ongoing work before considering recruitment.
 
 1. Author a redacted `agentlas.workforce-work-order.v1`; private grounding
    stays on-host.
@@ -22,10 +26,23 @@ Cloud + public Hub.
    deterministic code may govern but may not choose, rerank, or substitute.
 4. Call `workforce.prepare_execution` with
    `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult, federatedSelection}` and require
+   federationResult, federatedSelection, projectDir, goalId?}` and require
    exact source/release/package/content/runtime/permission/context pins.
-5. Run distinct planner/manager, worker, synthesis, and verifier invocations
-   with explicit handoffs and preserve Team graphs.
+   `projectDir` is mandatory; pass an incumbent `goalId` when continuing.
+   Otherwise Core derives one from the WorkOrder id and automatically binds the
+   successful plan before execution.
+5. On every later turn read `workforce.goal_context`, reuse the incumbent
+   roster plus local skills when sufficient, recruit only a real additive gap
+   using the same `goalId`, and record the posture with
+   `workforce.record_goal_turn`.
+6. Run only useful bound planner/manager, worker, synthesis, and verifier
+   invocations with explicit handoffs and preserve Team graphs.
+
+The roster survives turns, sessions, restarts, compaction, and 24-hour lease
+expiry. Release it only through
+`workforce.complete_goal(explicitCompletion=true)` when the whole goal is
+explicitly completed/cancelled. Lease expiry controls only the next Hub charge;
+standby is durable availability, not a continuously running model.
 
 Report execution only from a receipt proving every child invocation and a
 passing verifier. Otherwise report the last truthful state, including every

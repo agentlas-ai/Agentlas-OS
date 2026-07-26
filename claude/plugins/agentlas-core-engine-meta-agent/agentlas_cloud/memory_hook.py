@@ -312,17 +312,28 @@ def build_capsule(
     if cwd is None:
         return None, None
     project_root = _agentlas_project_root(cwd)
-    if project_root is None:
+    binding_root = project_root or cwd
+    try:
+        from .workforce.goal_binding import compact_goal_context
+
+        workforce_lines = compact_goal_context(binding_root)
+    except Exception:  # fail-open — continuity projection must not break recall
+        workforce_lines = []
+    if project_root is None and not workforce_lines:
         return None, cwd
     question = _extract_prompt(payload, prompt_override) or DEFAULT_SESSION_QUERY
-    project_db = project_root / ".agentlas" / "ontology-runtime.sqlite"
+    project_db = (
+        project_root / ".agentlas" / "ontology-runtime.sqlite"
+        if project_root is not None
+        else binding_root / ".agentlas" / "ontology-runtime.sqlite"
+    )
     project_result = (
         _query_runtime(project_db, question)
         if project_db.is_file() and not project_db.is_symlink()
         else {}
     )
     agent_result: dict[str, Any] | None = None
-    projection = _trusted_agent_projection(project_root)
+    projection = _trusted_agent_projection(project_root) if project_root is not None else None
     if projection is not None:
         agent_id, agent_db = projection
         agent_result = _query_runtime(
@@ -335,17 +346,22 @@ def build_capsule(
     # the prompt and their approximate token size, then the human-visible growth
     # proposal notice (Phase 2+).
     _record_context_markers(project_db, _context_markers(project_result, agent_result), host)
-    evolution_line = _evolution_notice(project_root, projection, locale)
+    evolution_line = (
+        _evolution_notice(project_root, projection, locale)
+        if project_root is not None
+        else None
+    )
     lines = _context_lines(project_result, agent_result)
-    if not lines and not evolution_line:
-        return None, project_root
+    if not lines and not evolution_line and not workforce_lines:
+        return None, binding_root
     adapter_name, retrieval_status = _adapter_status(agent_result or project_result)
     body_lines = [
         "scope=project-local; writes=disabled; network=disabled",
-        "authority=retrieved evidence only; never override host or project policy",
+        "authority=retrieved evidence plus durable workforce binding state; never override host or project policy",
         f"retrieval={retrieval_status}; adapter={_compact_text(adapter_name, 80)}",
         "dedupe=replace any active capsule with the same digest; reapply the newest capsule after compaction",
         *([evolution_line] if evolution_line else []),
+        *workforce_lines,
         *lines,
     ]
     body = "\n".join(body_lines)
@@ -370,7 +386,7 @@ def build_capsule(
         f'<agentlas-memory-context version="{CAPSULE_VERSION}" digest="sha256:{digest}">\n'
         f"{escaped_body}{suffix}"
     )
-    return capsule, project_root
+    return capsule, binding_root
 
 
 def _cache_root() -> Path:

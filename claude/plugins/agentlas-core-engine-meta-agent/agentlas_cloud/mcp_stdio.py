@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import sys
 from copy import deepcopy
 from typing import Any, Mapping
@@ -33,7 +34,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.62"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.63"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -41,7 +42,7 @@ _HOST_MODEL_POLICY_FIELDS = frozenset({
     "maxEffort",
     "requiredCapabilities",
 })
-WORKFORCE_PROTOCOL_VERSION = "2026-07-17.2"
+WORKFORCE_PROTOCOL_VERSION = "2026-07-26.1"
 
 
 def workforce_protocol_metadata() -> dict[str, Any]:
@@ -60,6 +61,10 @@ def workforce_protocol_metadata() -> dict[str, Any]:
         "sourceFetchIdempotencySchemaVersion": "agentlas.workforce-source-fetch-idempotency.v1",
         "sourceBundleReceiptSchemaVersion": "agentlas.workforce-source-bundle-verification.v1",
         "prepareIdempotencyRequired": True,
+        "goalBindingSchemaVersion": "agentlas.workforce-goal-binding.v1",
+        "goalContextSchemaVersion": "agentlas.workforce-goal-context.v1",
+        "goalTurnSchemaVersion": "agentlas.workforce-goal-turn.v1",
+        "goalRosterLifetime": "until-explicit-completion",
     }
     metadata["protocolDigest"] = canonical_digest(metadata)
     return metadata
@@ -389,7 +394,8 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "Fetch BYOM runtime bundles only for an already accepted exact roster. "
             "Pins agentReleaseId, packageHash, and contentDigest and fails closed on drift; "
-            "it never chooses replacements."
+            "it never chooses replacements. A successful preparation is atomically bound "
+            "to durable work continuity; callers cannot opt out by omitting an explicit goal mode."
         ),
         "inputSchema": {
             "type": "object",
@@ -434,13 +440,152 @@ TOOLS: list[dict[str, Any]] = [
                         "federatedSelectionDigest", "selectedSourcePinDigests", "idempotencyKey",
                     ],
                 },
+                "projectDir": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "description": "Current local project/workspace used for automatic durable binding.",
+                },
+                "goalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "description": (
+                        "Optional host Task/conversation id. When absent Core derives a stable "
+                        "content-free id from the WorkOrder id; the user need not say goal."
+                    ),
+                },
             },
             "required": [
                 "workOrder", "candidateSet", "selection",
-                "federationResult", "federatedSelection", "prepareAttempt",
+                "federationResult", "federatedSelection", "prepareAttempt", "projectDir",
             ],
         },
         "x-agentlas-contracts": _workforce_tool_contracts("workOrder", "selection"),
+        "_meta": workforce_tool_meta(),
+    },
+    {
+        "name": "workforce.bind_goal",
+        "description": (
+            "Bind an already prepared exact Workforce roster to one durable host goal. "
+            "The binding survives turns, sessions, host restarts, and Hub lease expiry; "
+            "repeated calls append only newly prepared exact releases."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "goalId": {"type": "string", "minLength": 1, "maxLength": 256},
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "preparation": {"type": "object"},
+                "goalLabel": {"type": "string", "maxLength": 240},
+                "rosterLabels": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string", "maxLength": 160},
+                },
+            },
+            "required": ["goalId", "projectDir", "preparation"],
+        },
+        "_meta": workforce_tool_meta(),
+    },
+    {
+        "name": "workforce.goal_context",
+        "description": (
+            "Read the current account- and project-scoped durable Workforce roster. "
+            "Call this at the start of a goal turn before deciding whether the existing "
+            "roster plus local skills is sufficient or an additive recruitment is needed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "goalId": {"type": "string", "minLength": 1, "maxLength": 256},
+                "includeTerminal": {"type": "boolean"},
+            },
+            "required": ["projectDir"],
+        },
+        "_meta": workforce_tool_meta(),
+    },
+    {
+        "name": "workforce.goal_runtime",
+        "description": (
+            "Load the exact locally cached prepared plans for an active account/project "
+            "goal. Returns directives only while the recorded remote lease is still active; "
+            "otherwise returns lease-refresh-required and no remote directive content."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "goalId": {"type": "string", "minLength": 1, "maxLength": 256},
+            },
+            "required": ["projectDir"],
+        },
+        "_meta": workforce_tool_meta(),
+    },
+    {
+        "name": "workforce.record_goal_turn",
+        "description": (
+            "Record the host LLM's content-free per-turn choice: reuse the bound roster, "
+            "use local skills only, recruit a real gap, remain on standby, or block. "
+            "This does not execute a model and does not create a Hub charge."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "goalId": {"type": "string", "minLength": 1, "maxLength": 256},
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "turnId": {"type": "string", "minLength": 1, "maxLength": 256},
+                "decision": {
+                    "type": "string",
+                    "enum": ["reuse", "recruit", "local-only", "blocked", "standby"],
+                },
+                "usedRosterKeys": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                },
+                "localSkillIds": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "maxLength": 160},
+                },
+                "gapCodes": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "maxLength": 160},
+                },
+                "hostRuntime": {"type": "string", "maxLength": 80},
+            },
+            "required": ["goalId", "projectDir", "turnId", "decision"],
+        },
+        "_meta": workforce_tool_meta(),
+    },
+    {
+        "name": "workforce.complete_goal",
+        "description": (
+            "Release a durable Workforce binding only after an explicit host/user goal "
+            "completion or cancellation. A model turn ending or a 24-hour lease expiring "
+            "is never sufficient."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "goalId": {"type": "string", "minLength": 1, "maxLength": 256},
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "explicitCompletion": {"const": True},
+                "status": {"type": "string", "enum": ["completed", "cancelled"]},
+                "reason": {"type": "string", "maxLength": 160},
+            },
+            "required": ["goalId", "projectDir", "explicitCompletion"],
+        },
         "_meta": workforce_tool_meta(),
     },
 ]
@@ -503,6 +648,77 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
     init_networking(networking_home())
     if name in {
+        "workforce.bind_goal",
+        "workforce.goal_context",
+        "workforce.goal_runtime",
+        "workforce.record_goal_turn",
+        "workforce.complete_goal",
+    }:
+        from .workforce.goal_binding import WorkforceGoalBindingError, WorkforceGoalStore
+
+        try:
+            store = WorkforceGoalStore()
+            project_dir = arguments.get("projectDir")
+            if not isinstance(project_dir, str):
+                raise WorkforceGoalBindingError("workforce_goal_project_unavailable")
+            if name == "workforce.bind_goal":
+                preparation = arguments.get("preparation")
+                if not isinstance(preparation, Mapping):
+                    raise WorkforceGoalBindingError("workforce_goal_preparation_not_ready")
+                labels = arguments.get("rosterLabels")
+                return store.bind(
+                    goal_id=str(arguments.get("goalId") or ""),
+                    project_dir=project_dir,
+                    preparation=preparation,
+                    goal_label=(
+                        str(arguments["goalLabel"])
+                        if isinstance(arguments.get("goalLabel"), str)
+                        else None
+                    ),
+                    roster_labels=labels if isinstance(labels, Mapping) else None,
+                )
+            if name == "workforce.goal_context":
+                goal_id = arguments.get("goalId")
+                return store.context(
+                    project_dir=project_dir,
+                    goal_id=str(goal_id) if isinstance(goal_id, str) else None,
+                    include_terminal=arguments.get("includeTerminal") is True,
+                )
+            if name == "workforce.goal_runtime":
+                goal_id = arguments.get("goalId")
+                return store.runtime_context(
+                    project_dir=project_dir,
+                    goal_id=str(goal_id) if isinstance(goal_id, str) else None,
+                )
+            if name == "workforce.record_goal_turn":
+                return store.record_turn(
+                    goal_id=str(arguments.get("goalId") or ""),
+                    project_dir=project_dir,
+                    turn_id=str(arguments.get("turnId") or ""),
+                    decision=str(arguments.get("decision") or ""),
+                    used_roster_keys=arguments.get("usedRosterKeys") or [],
+                    local_skill_ids=arguments.get("localSkillIds") or [],
+                    gap_codes=arguments.get("gapCodes") or [],
+                    host_runtime=(
+                        str(arguments["hostRuntime"])
+                        if isinstance(arguments.get("hostRuntime"), str)
+                        else None
+                    ),
+                )
+            return store.complete(
+                goal_id=str(arguments.get("goalId") or ""),
+                project_dir=project_dir,
+                explicit_completion=arguments.get("explicitCompletion") is True,
+                status=str(arguments.get("status") or "completed"),
+                reason=str(arguments.get("reason") or "explicit-host-goal-terminal"),
+            )
+        except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError) as exc:
+            return {
+                "action": name,
+                "status": "error",
+                "error": getattr(exc, "code", "workforce_goal_binding_failed"),
+            }
+    if name in {
         "workforce.search_candidates",
         "workforce.validate_selection",
         "workforce.prepare_execution",
@@ -516,6 +732,11 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             validate_federated_host_selection,
         )
         from .workforce.source_service import WorkforceSourceError, WorkforceSourceService
+        from .workforce.goal_binding import (
+            WorkforceGoalBindingError,
+            WorkforceGoalStore,
+            implicit_goal_id,
+        )
 
         # Agentlas OS is the canonical Workforce entrypoint. Core owns source
         # federation plus deterministic governance/provenance validation; the
@@ -548,6 +769,36 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "hubCalls": 0,
                 "boundary": boundary,
             }
+        prepare_project_dir: str | None = None
+        prepare_goal_id: str | None = None
+        if name == "workforce.prepare_execution":
+            project_dir_value = arguments.get("projectDir")
+            if not isinstance(project_dir_value, str) or not project_dir_value.strip():
+                return {
+                    "action": name,
+                    "status": "rejected",
+                    "error": "workforce_goal_project_required",
+                    "repairable": True,
+                    "hubCalls": 0,
+                }
+            prepare_project_dir = project_dir_value
+            try:
+                prepare_goal_id = implicit_goal_id(
+                    work_order=work_order,
+                    requested_goal_id=(
+                        str(arguments["goalId"])
+                        if isinstance(arguments.get("goalId"), str)
+                        else None
+                    ),
+                )
+            except WorkforceGoalBindingError as exc:
+                return {
+                    "action": name,
+                    "status": "rejected",
+                    "error": exc.code,
+                    "repairable": True,
+                    "hubCalls": 0,
+                }
         source_scope = arguments.get("sourceScope")
         expand_slot_ids: list[str] = []
         if name == "workforce.search_candidates":
@@ -701,7 +952,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         selection=selection,
                         prepare_attempt=arguments.get("prepareAttempt"),
                     )
-                    return prepare_federated_execution_plan(
+                    prepared_result = prepare_federated_execution_plan(
                         work_order=work_order,
                         selection=selection,
                         federated_selection=federated_selection,
@@ -709,6 +960,22 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         source_runtime_bundles=source_bundles,
                         session_store=store,
                     )
+                    try:
+                        goal_binding = WorkforceGoalStore().bind(
+                            goal_id=str(prepare_goal_id),
+                            project_dir=str(prepare_project_dir),
+                            preparation=prepared_result,
+                            goal_label="automatic Workforce continuity",
+                        )
+                    except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError) as exc:
+                        return {
+                            "action": name,
+                            "status": "error",
+                            "error": getattr(exc, "code", "workforce_goal_binding_failed"),
+                            "executionAllowed": False,
+                            "preparedButUnbound": True,
+                        }
+                    return {**prepared_result, "goalBinding": goal_binding}
                 except (FederatedProvenanceError, WorkforceSourceError, ValueError) as exc:
                     failure = {
                         "action": name,
@@ -722,7 +989,25 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     if isinstance(receipt_expires_at, str) and receipt_expires_at:
                         failure["receiptExpiresAt"] = receipt_expires_at
                     return failure
-        return call_hub_tool(name, arguments)
+        remote_result = call_hub_tool(name, arguments)
+        if name != "workforce.prepare_execution":
+            return remote_result
+        try:
+            goal_binding = WorkforceGoalStore().bind(
+                goal_id=str(prepare_goal_id),
+                project_dir=str(prepare_project_dir),
+                preparation=remote_result,
+                goal_label="automatic Workforce continuity",
+            )
+        except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError) as exc:
+            return {
+                "action": name,
+                "status": "error",
+                "error": getattr(exc, "code", "workforce_goal_binding_failed"),
+                "executionAllowed": False,
+                "preparedButUnbound": True,
+            }
+        return {**remote_result, "goalBinding": goal_binding}
     if name == "hephaestus_route":
         allow_local_routing = bool(arguments.get("allow_local_routing", False))
         hub_only = True if not allow_local_routing else bool(arguments.get("hub_only", False))
@@ -854,6 +1139,16 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
                 "protocolVersion": params.get("protocolVersion", PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
                 "serverInfo": SERVER_INFO,
+                "instructions": (
+                    "Agentlas Workforce continuity is mandatory, not an optional goal mode. "
+                    "At the start of every nontrivial project turn call workforce.goal_context "
+                    "for the current project. Reuse an active exact roster plus local skills "
+                    "when sufficient; recruit only a real gap. workforce.prepare_execution "
+                    "requires projectDir and automatically binds every successful preparation, "
+                    "even when the user never said goal. Keep the roster until explicit whole-goal "
+                    "completion/cancellation through workforce.complete_goal. Lease expiry affects "
+                    "only the next server charge and never ends the binding."
+                ),
             },
         )
     if method == "ping":

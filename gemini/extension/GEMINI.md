@@ -13,3 +13,13 @@ or open the local ontology GUI.
 
 Generated or packaged agents must include `.agentlas/global-commands.json` and
 the final response must include `global_commands`.
+
+Agentlas Workforce continuity is mandatory, not an explicit goal-mode feature.
+At the start of every nontrivial project turn call
+`workforce.goal_context({projectDir})`. Reuse an active exact roster plus local
+skills when sufficient; recruit only a real gap. Every
+`workforce.prepare_execution` call must include `projectDir` and the incumbent
+`goalId` when continuing; Core derives one when absent and automatically binds
+the successful plan. Keep it across turns, sessions, restarts, compaction, and
+lease expiry. Release only after explicit whole-goal completion/cancellation
+through `workforce.complete_goal(explicitCompletion=true)`.

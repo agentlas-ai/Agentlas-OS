@@ -304,7 +304,18 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-This installs the neutral runner at `~/.agentlas/runtime/current/bin/hephaestus` and registers the command adapters for Claude Code, Codex, Gemini CLI, Antigravity, and Cursor. The installer verifies each runtime surface after registration.
+This installs the neutral runner at `~/.agentlas/runtime/current/bin/hephaestus` and registers the command adapters for Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, and compatible local/API hosts. The installer verifies each runtime surface after registration and installs a per-user automatic update service by default.
+
+The service checks the official release every six hours on macOS, Linux, and
+Windows. It accepts only the tag-specific runtime asset whose size and SHA-256
+digest match GitHub release metadata, activates the runtime atomically, then
+reconciles every already-installed host plugin/extension to that exact release.
+Open sessions keep their loaded code until reload or restart. Manage it with
+`hephaestus hep-update --service-status`,
+`hephaestus hep-update --install-service`, and
+`hephaestus hep-update --remove-service`. Set
+`HEPHAESTUS_INSTALL_AUTO_UPDATE_SERVICE=0` only for managed environments that
+provide their own updater.
 
 ### Optional Global Router
 ```bash
@@ -361,7 +372,7 @@ above; it also writes `~/.claude/commands/hep-*.md`. Claude Code supports
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.62
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.63
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). After install, `/prompts:hep-build` is the in-app entry.*

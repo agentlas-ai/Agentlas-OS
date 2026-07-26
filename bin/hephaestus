@@ -197,6 +197,11 @@ Usage:
   bin/hephaestus network init|status|reindex|bench
   bin/hephaestus network add-source <path> | remove-source <path>
   bin/hephaestus network grant <capability> --target <id> [--scope ...]
+  bin/hephaestus workforce goal-bind <goal-id> <prepared-plan.json> [--project <dir>]
+  bin/hephaestus workforce goal-status [--goal-id <id>] [--project <dir>]
+  bin/hephaestus workforce goal-runtime [--goal-id <id>] [--project <dir>]
+  bin/hephaestus workforce goal-turn <goal-id> <turn-id> reuse|recruit|local-only|blocked|standby [--project <dir>]
+  bin/hephaestus workforce goal-complete <goal-id> --explicit [--project <dir>]
   bin/hephaestus cards lint [path] | cards migrate <root> --tier restricted|private|plugin|local
   bin/hephaestus ao lint [dir] | ao graph [--agent <agent>] [dir] | ao query "<query>" [dir]
   bin/hephaestus ao plan <from> <to> [--max-depth N] [dir]

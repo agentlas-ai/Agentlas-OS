@@ -48,14 +48,12 @@ To enable this during one-command install:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 ```
 
-After this surface is installed, `/hep-build`, `/hep-network`, `/hep-local`,
-`/hep-cloud`, `/hep-hub`, `/hep-search`, `/hep-browser`, `/hep-call`,
-`/hep-upload`, and `/hep-connect` first run the app-host
-auto-update preflight inside Claude Code when the Bash tool is available. That
-preflight refreshes `~/.agentlas/runtime/current` and existing plugin cache
-surfaces without asking the user to open a separate terminal. If the existing
-Claude command file is too old to contain this preflight, refresh the plugin
-once from Claude's plugin manager or run the one-command installer above.
+The one-command installer also registers the per-user Agentlas update service.
+It checks a digest-verified official release every six hours and reconciles the
+Claude marketplace/plugin to the same release as
+`~/.agentlas/runtime/current`. Claude keeps the plugin already loaded by an
+open session; use `/reload-plugins` or start a new session after an update.
+Check the service with `hephaestus hep-update --service-status`.
 
 ```bash
 claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins

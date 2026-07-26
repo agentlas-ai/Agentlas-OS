@@ -1,6 +1,6 @@
 ---
 name: hephaestus-network
-description: "Use when the user types /hep-network, mentions @Hephaestus, or asks Agentlas to staff a task from registered Local, owner Cloud, and public Hub agents or teams. The active host LLM is the temporary orchestrator."
+description: "Use when the user types /hep-network, mentions @Hephaestus, or asks Agentlas to staff a durable goal from registered Local, owner Cloud, and public Hub agents or teams. The active host LLM staffs each turn; the exact roster remains goal-bound until explicit completion."
 ---
 
 # Hephaestus Agent Workforce Network
@@ -19,6 +19,33 @@ Source scopes are exact:
 Public demos and distribution proof use explicit `hub` scope. They must not use
 private Local/Cloud inventory as evidence of public availability.
 
+## Resolve the runner and sign in
+
+Network can query owner Cloud and public Hub inventory, so establish the same
+saved Agentlas session before staffing:
+
+```bash
+RUNNER=""
+for c in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  ./bin/hephaestus
+do [ -x "$c" ] && RUNNER="$c" && break; done
+if [ -z "$RUNNER" ]; then
+  for cache in \
+    "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus" \
+    "$HOME/.codex/plugins/cache/agentlas-core-engine/hephaestus"; do
+    newest="$(ls -d "$cache"/*/bin/hephaestus 2>/dev/null | sort -V | tail -1)"
+    [ -n "$newest" ] && [ -x "$newest" ] && RUNNER="$newest" && break
+  done
+fi
+if [ -n "$RUNNER" ] && [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
+  "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+fi
+```
+
+The browser opens only when no reusable local sign-in exists. In CI or another
+headless environment, set `HEPHAESTUS_AUTH_AUTOPOPUP=0`.
+
 ## Required MCP sequence
 
 Use the Agentlas Core Workforce contracts in this order:
@@ -26,7 +53,7 @@ Use the Agentlas Core Workforce contracts in this order:
 ```text
 workforce.search_candidates(sourceScope="network")
 workforce.validate_selection(workOrder=..., candidateSet=federationResult.candidateSet, selection=..., federationResult=...)
-workforce.prepare_execution(workOrder=..., candidateSet=federationResult.candidateSet, selection=..., federationResult=..., federatedSelection=...)
+workforce.prepare_execution(workOrder=..., candidateSet=federationResult.candidateSet, selection=..., federationResult=..., federatedSelection=..., projectDir=..., goalId=activeGoalId?)
 ```
 
 The source-internal `workforce.fetch_runtime_bundle` call is performed by Core
@@ -42,7 +69,7 @@ decision. If a source is unavailable, preserve its finite failure receipt.
 
 ## 1. Perform job analysis
 
-Act as the temporary top-level orchestrator. Convert the user's task into one
+Act as the active top-level orchestrator. Convert the user's task into one
 redacted `agentlas.workforce-work-order.v1` object. Keep raw local files,
 secrets, memory, and private prompt details on the host. Create one `roleSlots`
 entry per materially distinct responsibility. Each slot identifies:
@@ -59,6 +86,12 @@ Do not create decorative roles. A single specialist is valid for a genuinely
 single-role task; a composite task should become a real temporary task force.
 Executable slots allow only `agent` or `team`; `group` is discovery-only until
 an authoritative group execution contract exists.
+
+The user never has to write the word `goal` or enable a goal mode. Before a new
+search, call `workforce.goal_context` for the current project. If an active
+binding is the same ongoing work, treat its `goalId` and roster as incumbent.
+Only create a new WorkOrder when no active binding covers the work or the
+incumbent has a real gap.
 
 ## 2. Retrieve the menu, then make the LLM decision
 
@@ -126,7 +159,46 @@ must preserve every validated slot demand, WorkOrder/Selection edge and
 artifact kind, assignment and reason code. Missing or
 changed releases create unfilled posts; there is no silent substitution.
 
-## 4. Execute the real task force
+## 4. Bind the roster to the durable goal
+
+Exact preparation must include `projectDir` and the incumbent `goalId` when one
+exists. Core rejects a preparation without a project and automatically binds
+every successful exact plan before it can be executed. On first contact, when
+the host has no durable Task/conversation id, Core derives a content-free
+stable id from the already-required WorkOrder id. Therefore “the user did not
+explicitly say goal” is never a valid reason to omit continuity. Later
+accepted preparations with the incumbent `goalId` append only newly recruited
+exact releases. Never replace or silently remove an incumbent release.
+
+At the start of every later turn, read `workforce.goal_context` (the installed
+SessionStart/UserPromptSubmit hooks also project the same bounded context).
+The active host LLM must choose exactly one turn posture:
+
+- `reuse`: the bound roster plus local skills can handle this turn;
+- `local-only`: no bound worker invocation is useful for this turn;
+- `recruit`: a real role/tool/modality gap requires another Network cycle,
+  followed by another additive `workforce.bind_goal`;
+- `standby`: no worker needs to execute, but the roster remains bound;
+- `blocked`: the goal cannot progress safely.
+
+Record that content-free decision with `workforce.record_goal_turn`. A turn
+ending, session closing, runtime restarting, context compaction, worker
+invocation completing, or a 24-hour Hub lease expiring must not release the
+roster. The Hub/Web account authority alone decides whether the next actual
+remote preparation is covered by an existing same-account lease or creates a
+new charge. Never manufacture lease state locally.
+
+`standby` means a durable roster binding available to later turns. It does not
+mean a continuously running model, process, socket, or background token burn.
+Only actual worker invocations accumulate their normal Memory Curator and
+Experience records.
+
+Call `workforce.complete_goal` only after the user or authoritative host goal
+state explicitly marks the whole goal completed or cancelled. It requires
+`explicitCompletion=true`; lease expiry and successful completion of one model
+turn are invalid completion signals.
+
+## 5. Execute the real task force
 
 Run the prepared roster through the current host runtime:
 
@@ -157,7 +229,7 @@ If the host cannot create distinct child invocations, stop at `prepared` and
 say so. A route id, bundle id, process exit code, or prose that imitates several
 roles is not execution proof.
 
-## 5. Truthful receipts
+## 6. Truthful receipts
 
 For an executed task force, retain one joined
 `agentlas.workforce-execution-receipt.v2` joined to the exact v5 plan containing:

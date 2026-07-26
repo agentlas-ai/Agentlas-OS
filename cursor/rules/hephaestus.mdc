@@ -1,6 +1,6 @@
 ---
-description: Hephaestus Workforce routing for /hep-network or @Hephaestus requests through local Agentlas OS Core.
-alwaysApply: false
+description: Hephaestus Workforce routing and mandatory multi-turn roster continuity through local Agentlas OS Core.
+alwaysApply: true
 ---
 
 # Hephaestus Network (Cursor fallback)
@@ -9,6 +9,11 @@ Cursor ships explicit `/hep-network`, `/hep-local`, `/hep-cloud`, and
 `/hep-hub` commands. For `/hep-network <request>` or `@Hephaestus <request>`,
 use MCP server `hephaestus-network`, the only host-visible Workforce MCP. Core
 owns its Cloud/Hub upstream calls.
+
+At the start of every nontrivial project turn, call
+`workforce.goal_context({projectDir})`. If an active binding covers the ongoing
+work, reuse that exact roster plus local skills before recruiting. The user
+does not need to say `goal`.
 
 1. Author a redacted `agentlas.workforce-work-order.v1`; keep private files,
    memory, secrets, and raw project grounding local.
@@ -20,9 +25,18 @@ owns its Cloud/Hub upstream calls.
    federationResult}` and keep `federatedSelection`.
 4. Call `workforce.prepare_execution` with
    `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult, federatedSelection}`.
+   federationResult, federatedSelection, projectDir, goalId?}`. Core requires
+   `projectDir`, derives a goal id when needed, and automatically binds every
+   successful preparation before execution.
 5. Run planner/manager, workers, synthesis, and verifier as distinct calls with
    explicit handoffs. Claim execution only from complete receipts.
+
+On later turns record `reuse|local-only|recruit|standby|blocked` through
+`workforce.record_goal_turn`. Release a roster only after explicit whole-goal
+completion/cancellation with
+`workforce.complete_goal(explicitCompletion=true)`. A 24-hour lease affects
+only the next Hub charge and never ends the binding. Standby is durable
+availability, not a continuously running model.
 
 Network is registered Local + signed-in owner Cloud + public Hub. Missing
 sources stay explicit. Do not call `hephaestus_route`, bypass Core with direct

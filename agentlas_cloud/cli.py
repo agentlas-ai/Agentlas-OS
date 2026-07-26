@@ -193,9 +193,25 @@ def main(argv: list[str] | None = None) -> int:
     update = sub.add_parser(
         "hep-update",
         aliases=["update"],
-        help="Check for or install the latest Hephaestus runtime",
+        help="Update the verified runtime and every installed host adapter",
     )
     update.add_argument("--check", action="store_true", help="Only report whether a newer release is available")
+    update.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)
+    update.add_argument(
+        "--install-service",
+        action="store_true",
+        help="Install the per-user automatic update service for this OS",
+    )
+    update.add_argument(
+        "--remove-service",
+        action="store_true",
+        help="Remove the per-user automatic update service",
+    )
+    update.add_argument(
+        "--service-status",
+        action="store_true",
+        help="Report automatic update service installation status",
+    )
 
     global_router = sub.add_parser("global", help="Install or remove Hephaestus global router prompt blocks")
     global_sub = global_router.add_subparsers(dest="global_command", required=True)
@@ -642,6 +658,81 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="Stable logical occurrence id reused only when retrying this exact prepare request",
     )
+    workforce_prepare.add_argument(
+        "--project",
+        default=".",
+        help="Current project/workspace; successful preparation is automatically bound here",
+    )
+    workforce_prepare.add_argument(
+        "--goal-id",
+        default=None,
+        help="Optional host Task/conversation id; omitted derives from WorkOrder id",
+    )
+    workforce_prepare.add_argument("--account-subject", default=None, help=argparse.SUPPRESS)
+    workforce_prepare.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
+    workforce_goal_bind = workforce_sub.add_parser(
+        "goal-bind",
+        help="Bind an exact prepared roster until explicit goal completion",
+    )
+    workforce_goal_bind.add_argument("goal_id")
+    workforce_goal_bind.add_argument("preparation", help="Prepared execution plan/wrapper JSON")
+    workforce_goal_bind.add_argument("--project", default=".")
+    workforce_goal_bind.add_argument("--label", default=None)
+    workforce_goal_bind.add_argument("--account-subject", default=None, help=argparse.SUPPRESS)
+    workforce_goal_bind.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
+    workforce_goal_status = workforce_sub.add_parser(
+        "goal-status",
+        help="Read the active account/project Workforce goal roster",
+    )
+    workforce_goal_status.add_argument("--goal-id", default=None)
+    workforce_goal_status.add_argument("--project", default=".")
+    workforce_goal_status.add_argument("--include-terminal", action="store_true")
+    workforce_goal_status.add_argument("--account-subject", default=None, help=argparse.SUPPRESS)
+    workforce_goal_status.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
+    workforce_goal_runtime = workforce_sub.add_parser(
+        "goal-runtime",
+        help="Load cached prepared plans while their remote lease remains active",
+    )
+    workforce_goal_runtime.add_argument("--goal-id", default=None)
+    workforce_goal_runtime.add_argument("--project", default=".")
+    workforce_goal_runtime.add_argument("--account-subject", default=None, help=argparse.SUPPRESS)
+    workforce_goal_runtime.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
+    workforce_goal_turn = workforce_sub.add_parser(
+        "goal-turn",
+        help="Record a content-free reuse/recruit/local/standby decision",
+    )
+    workforce_goal_turn.add_argument("goal_id")
+    workforce_goal_turn.add_argument("turn_id")
+    workforce_goal_turn.add_argument(
+        "decision",
+        choices=["reuse", "recruit", "local-only", "blocked", "standby"],
+    )
+    workforce_goal_turn.add_argument("--project", default=".")
+    workforce_goal_turn.add_argument("--host-runtime", default=None)
+    workforce_goal_turn.add_argument("--use-roster", action="append", default=[])
+    workforce_goal_turn.add_argument("--local-skill", action="append", default=[])
+    workforce_goal_turn.add_argument("--gap", action="append", default=[])
+    workforce_goal_turn.add_argument("--account-subject", default=None, help=argparse.SUPPRESS)
+    workforce_goal_turn.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
+    workforce_goal_complete = workforce_sub.add_parser(
+        "goal-complete",
+        help="Explicitly complete/cancel a durable Workforce goal binding",
+    )
+    workforce_goal_complete.add_argument("goal_id")
+    workforce_goal_complete.add_argument("--project", default=".")
+    workforce_goal_complete.add_argument(
+        "--status",
+        choices=["completed", "cancelled"],
+        default="completed",
+    )
+    workforce_goal_complete.add_argument("--reason", default="explicit-host-goal-terminal")
+    workforce_goal_complete.add_argument(
+        "--explicit",
+        action="store_true",
+        help="Required acknowledgement that the goal itself is terminal",
+    )
+    workforce_goal_complete.add_argument("--account-subject", default=None, help=argparse.SUPPRESS)
+    workforce_goal_complete.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
 
     args = parser.parse_args(argv)
     # Auto-update is the default: every command kicks off a fail-silent,
@@ -694,6 +785,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         return emit(run_doctor())
     if args.command in {"hep-update", "update"}:
+        from .auto_update_service import (
+            auto_update_service_status,
+            install_auto_update_service,
+            remove_auto_update_service,
+        )
+
+        if args.install_service:
+            return emit(install_auto_update_service())
+        if args.remove_service:
+            return emit(remove_auto_update_service())
+        if args.service_status:
+            return emit(auto_update_service_status())
         return emit(run_update(check_only=args.check))
     if args.command == "global":
         from .global_router import global_router_status, install_global_router, remove_global_router
@@ -888,6 +991,67 @@ def main(argv: list[str] | None = None) -> int:
                 if args.workforce_command == "local-list":
                     return emit({"status": "ok", "registrations": registry.list_registrations()})
                 return emit(registry.reconcile(args.networking_home))
+            if args.workforce_command.startswith("goal-"):
+                from .workforce.goal_binding import (
+                    WorkforceGoalStore,
+                    account_partition_for_subject,
+                )
+
+                account_partition = (
+                    account_partition_for_subject(
+                        args.account_subject,
+                        base_url=args.hub_base_url,
+                    )
+                    if args.account_subject
+                    else None
+                )
+                store = WorkforceGoalStore(account_partition=account_partition)
+                if args.workforce_command == "goal-bind":
+                    return emit(
+                        store.bind(
+                            goal_id=args.goal_id,
+                            project_dir=args.project,
+                            preparation=load_object(args.preparation),
+                            goal_label=args.label,
+                        )
+                    )
+                if args.workforce_command == "goal-status":
+                    return emit(
+                        store.context(
+                            project_dir=args.project,
+                            goal_id=args.goal_id,
+                            include_terminal=args.include_terminal,
+                        )
+                    )
+                if args.workforce_command == "goal-runtime":
+                    return emit(
+                        store.runtime_context(
+                            project_dir=args.project,
+                            goal_id=args.goal_id,
+                        )
+                    )
+                if args.workforce_command == "goal-turn":
+                    return emit(
+                        store.record_turn(
+                            goal_id=args.goal_id,
+                            project_dir=args.project,
+                            turn_id=args.turn_id,
+                            decision=args.decision,
+                            used_roster_keys=args.use_roster,
+                            local_skill_ids=args.local_skill,
+                            gap_codes=args.gap,
+                            host_runtime=args.host_runtime,
+                        )
+                    )
+                return emit(
+                    store.complete(
+                        goal_id=args.goal_id,
+                        project_dir=args.project,
+                        explicit_completion=args.explicit,
+                        status=args.status,
+                        reason=args.reason,
+                    )
+                )
             work_order = load_object(args.work_order)
             boundary = validate_hub_work_order_boundary(work_order)
             if boundary["status"] != "accepted":
@@ -951,6 +1115,16 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 return emit(call_hub_tool("workforce.validate_selection", payload))
             validation_receipt = load_object(args.validation_receipt)
+            from .workforce.goal_binding import (
+                WorkforceGoalStore,
+                account_partition_for_subject,
+                implicit_goal_id,
+            )
+
+            automatic_goal_id = implicit_goal_id(
+                work_order=work_order,
+                requested_goal_id=args.goal_id,
+            )
             if federation_result is not None:
                 from .workforce.contracts import canonical_digest
                 from .workforce.federation_store import FederationSessionStore
@@ -979,20 +1153,58 @@ def main(argv: list[str] | None = None) -> int:
                     selection=selection,
                     prepare_attempt=prepare_attempt,
                 )
-                return emit(
-                    prepare_federated_execution_plan(
-                        work_order=work_order,
-                        selection=selection,
-                        federated_selection=validation_receipt,
-                        federation_result=federation_result,
-                        source_runtime_bundles=source_bundles,
-                        session_store=store,
-                    )
+                prepared_result = prepare_federated_execution_plan(
+                    work_order=work_order,
+                    selection=selection,
+                    federated_selection=validation_receipt,
+                    federation_result=federation_result,
+                    source_runtime_bundles=source_bundles,
+                    session_store=store,
                 )
+                prepare_account_partition = (
+                    account_partition_for_subject(
+                        args.account_subject,
+                        base_url=args.hub_base_url,
+                    )
+                    if args.account_subject
+                    else None
+                )
+                goal_binding = WorkforceGoalStore(
+                    account_partition=prepare_account_partition
+                ).bind(
+                    goal_id=automatic_goal_id,
+                    project_dir=args.project,
+                    preparation=prepared_result,
+                    goal_label="automatic Workforce continuity",
+                )
+                return emit({**prepared_result, "goalBinding": goal_binding})
             payload["validationReceipt"] = validation_receipt
-            return emit(call_hub_tool("workforce.prepare_execution", payload))
+            prepared_result = call_hub_tool("workforce.prepare_execution", payload)
+            prepare_account_partition = (
+                account_partition_for_subject(
+                    args.account_subject,
+                    base_url=args.hub_base_url,
+                )
+                if args.account_subject
+                else None
+            )
+            goal_binding = WorkforceGoalStore(
+                account_partition=prepare_account_partition
+            ).bind(
+                goal_id=automatic_goal_id,
+                project_dir=args.project,
+                preparation=prepared_result,
+                goal_label="automatic Workforce continuity",
+            )
+            return emit({**prepared_result, "goalBinding": goal_binding})
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            return emit({"action": "workforce", "status": "error", "error": str(exc)}) or 2
+            return emit(
+                {
+                    "action": "workforce",
+                    "status": "error",
+                    "error": getattr(exc, "code", str(exc)),
+                }
+            ) or 2
     if args.command == "research" and args.research_command == "read":
         from .research import run_research
 
@@ -2157,7 +2369,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.62",
+            "version": "1.1.63",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

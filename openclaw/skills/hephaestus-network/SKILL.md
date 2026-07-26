@@ -1,12 +1,12 @@
 ---
 name: hephaestus-network
-description: "Use when the user asks OpenClaw to staff a task from Agentlas Hub agents or teams. The active host LLM chooses from the Agent Workforce Ontology."
+description: "Use when the user asks OpenClaw to staff a durable goal from Agentlas Hub agents or teams. The active host LLM chooses the exact roster, which remains goal-bound until explicit completion."
 metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Agentlas-OS"}}
 ---
 
 # Hephaestus Agent Workforce Network
 
-The active host LLM is the temporary orchestrator. Hub supplies content and
+The active host LLM is the per-turn orchestrator. Hub supplies content and
 qualification evidence, exact immutable releases, and BYOM directives; it does
 not select the final team or run a server-side LLM.
 
@@ -20,10 +20,21 @@ not select the final team or run a server-side LLM.
 4. Call `workforce.validate_selection`, revise on rejection, then call
    `workforce.prepare_execution`. Require exact release version, package hash,
    content digest, and directive bundle; never silently substitute.
-5. Run manager/planner, each worker, synthesis, and verifier as distinct model
+5. Bind the prepared plan to the stable current goal/task id with
+   `workforce.bind_goal`. On every later turn read `workforce.goal_context`,
+   reuse the incumbent roster plus local skills when sufficient, recruit only
+   a real additive gap, and record the posture with
+   `workforce.record_goal_turn`.
+6. Run only useful bound manager/planner, workers, synthesis, and verifier as distinct model
    invocations with explicit artifact handoffs and nested Team graphs.
 
-If this OpenClaw host cannot call the three MCP tools or create separate child
+Keep the roster across turns, sessions, restarts, compaction, and lease expiry.
+Release it only with `workforce.complete_goal(explicitCompletion=true)` after
+explicit whole-goal completion/cancellation. A 24-hour lease controls only the
+next Hub charge; standby is durable availability, not a continuously running
+model. Memory/Experience accrue on actual invocations.
+
+If this OpenClaw host cannot call the Workforce MCP tools or create separate child
 invocations, report the last truthful state instead of calling the legacy
 router. Execution success requires planner parse success without fallback,
 every child/handoff receipt, synthesis, and a passing verifier.
