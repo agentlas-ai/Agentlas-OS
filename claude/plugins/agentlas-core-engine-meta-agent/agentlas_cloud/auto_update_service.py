@@ -172,6 +172,31 @@ def remove_auto_update_service(
     return result
 
 
+def install_auto_update_service(
+    *,
+    home: Path | None = None,
+    runtime_root: Path | None = None,
+    platform_name: str | None = None,
+    execute: bool = True,
+    **_: Any,
+) -> dict[str, Any]:
+    """Compatibility shim that retires the scheduler instead of installing it.
+
+    Older host adapters may still import this Python symbol while the shared
+    runtime is being reconciled. Keeping the import valid prevents a mixed-
+    version crash, but the retired service can never be recreated.
+    """
+
+    del runtime_root
+    result = remove_auto_update_service(
+        home=home,
+        platform_name=platform_name,
+        execute=execute,
+    )
+    result["compatibilityShim"] = True
+    return result
+
+
 def retire_auto_update_service(
     *,
     home: Path | None = None,
