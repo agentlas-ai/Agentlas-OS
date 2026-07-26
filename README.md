@@ -64,8 +64,8 @@ plugin:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
 For Claude Code, confirm that `hephaestus@agentlas-core-engine` is enabled at
-user scope and that `~/.claude/commands/hep-build.md` exists. Do not report the
-install complete unless bare `/hep-build` commands will be available in the
+user scope and that `~/.claude/commands/agentlas.md` exists. Do not report the
+install complete unless a bare `/agentlas` command will be available in the
 next session. At the end, confirm the active plugin, command surface, and global
 routing status, then tell me to restart the host or run `/reload-plugins`.
 ```
@@ -387,6 +387,12 @@ Clone the repo and copy `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`,
 </details>
 
 **Just talk:** After installation, speak in plain language within native Agentlas interfaces to auto-route tasks. In external LLM tools, use the explicit commands listed below. When you don't know what agents exist, start with `/hep-search`. To connect Telegram, use `/hep-connect` in Claude Code or `/prompts:hep-connect` in Codex.
+
+**One command to remember:** every command below also answers to
+`/agentlas <command>` — `/agentlas network …` is `/hep-network …`, and
+`/agentlas build …` is `/hep-build …`. Both spellings stay supported, so use
+whichever you prefer. The shell runner works the same way: `agentlas` and
+`hephaestus` are the same program.
 
 ---
 

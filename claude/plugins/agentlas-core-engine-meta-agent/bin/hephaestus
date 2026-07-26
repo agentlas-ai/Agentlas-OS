@@ -2,12 +2,16 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Whatever name the user actually typed. `agentlas` is a symlink to this same
+# runner, and answering "hephaestus:" to someone who ran `agentlas` is the
+# half-renamed confusion this symlink exists to remove.
+self="$(basename "${BASH_SOURCE[0]}")"
 export PYTHONUTF8="${PYTHONUTF8:-1}"
 export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
 export PYTHONDONTWRITEBYTECODE=1
 source "$root/bin/agentlas-python-cache-boundary"
 if ! agentlas_export_python_cache_boundary; then
-  echo "hephaestus: could not establish a safe external Python cache directory." >&2
+  echo "$self: could not establish a safe external Python cache directory." >&2
   exit 78
 fi
 
@@ -36,7 +40,7 @@ HEPHAESTUS_PY="$(resolve_python || true)"
 
 run_python_module() {
   if [[ -z "$HEPHAESTUS_PY" ]]; then
-    echo "hephaestus: Python 3.9+ not found. On Windows, install Python from python.org or run 'py -3' once, then rerun hephaestus doctor." >&2
+    echo "$self: Python 3.9+ not found. On Windows, install Python from python.org or run 'py -3' once, then rerun hephaestus doctor." >&2
     exit 127
   fi
   # shellcheck disable=SC2086
@@ -171,7 +175,7 @@ run_upload_gate() {
 }
 
 usage() {
-  cat <<'EOF'
+  cat <<'EOF' | sed "s|bin/hephaestus|$self|g"
 Usage:
   bin/hephaestus career-graph status|ingest|verify|trace|public-card [--project <dir>]
   bin/hephaestus career-graph query "<question>" [--project <dir>]
@@ -286,7 +290,7 @@ case "$command" in
 	        run_python_module agentlas_cloud read-agent-file "$@"
 	        ;;
       *)
-        echo "hephaestus: unknown runtime command: $runtime_sub" >&2
+        echo "$self: unknown runtime command: $runtime_sub" >&2
         usage >&2
         exit 2
         ;;
@@ -402,7 +406,7 @@ EOF
         run_upload_gate "$@"
         ;;
   -*)
-    echo "hephaestus: unknown command: $command" >&2
+    echo "$self: unknown command: $command" >&2
     usage >&2
     exit 2
     ;;

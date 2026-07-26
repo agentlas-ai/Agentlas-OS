@@ -249,6 +249,10 @@ install_runtime_home() {
   if [[ ! -e "$home_dir/bin/Hephaestus" ]]; then
     ln -sfn hephaestus "$home_dir/bin/Hephaestus" 2>/dev/null || true
   fi
+  # The product is Agentlas; `hephaestus` stays as the original spelling. The
+  # runner resolves its root from BASH_SOURCE and never reads argv[0], so the
+  # two names are the same program.
+  ln -sfn hephaestus "$home_dir/bin/agentlas" 2>/dev/null || true
   rm -f "$home_dir/bin/Hephaestus-build" "$home_dir/bin/Hephaestus-search" \
         "$home_dir/bin/Hephaestus-call" "$home_dir/bin/Hephaestus-storm" \
         "$home_dir/bin/hephaestus-network" \
@@ -265,7 +269,7 @@ install_runtime_home() {
   local user_bin="$HOME/.local/bin"
   if mkdir -p "$user_bin" 2>/dev/null; then
 	  local -a shell_commands=(
-	    hephaestus ontology hep-build hep-network hep-local hep-cloud hep-hub hep-search hep-browser hep-call hep-upload hep-storm hep-global hep-update
+	    agentlas hephaestus ontology hep-build hep-network hep-local hep-cloud hep-hub hep-search hep-browser hep-call hep-upload hep-storm hep-global hep-update
 	  )
     local command
     for command in "${shell_commands[@]}"; do
@@ -278,7 +282,7 @@ EOF
     done
     if [[ -x "$user_bin/hephaestus" ]]; then
       case ":$PATH:" in
-	        *":$user_bin:"*) log "Installed shell commands: hephaestus, ontology, hep-build, hep-network, hep-local, hep-cloud, hep-hub, hep-search, hep-browser, hep-call, hep-upload, hep-storm, hep-global" ;;
+	        *":$user_bin:"*) log "Installed shell commands: agentlas (same runner as hephaestus), ontology, hep-build, hep-network, hep-local, hep-cloud, hep-hub, hep-search, hep-browser, hep-call, hep-upload, hep-storm, hep-global" ;;
         *) log "Installed shell commands in $user_bin (add ~/.local/bin to PATH to use them)" ;;
       esac
     fi
