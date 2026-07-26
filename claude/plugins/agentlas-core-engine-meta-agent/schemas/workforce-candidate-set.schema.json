@@ -129,6 +129,7 @@
         "gap:requirement-vocabulary-unsupported:skill",
         "gap:requirement-vocabulary-unsupported:knowledge",
         "gap:requirement-vocabulary-unsupported:tool",
+        "gap:candidate-contract-invalid",
         "gap:requirement-vocabulary-unsupported:consumed-artifact",
         "gap:requirement-vocabulary-unsupported:produced-artifact",
         "gap:requirement-vocabulary-unsupported:runtime",
@@ -138,7 +139,7 @@
     },
     "coverageGaps": {
       "type": "array",
-      "maxItems": 32,
+      "maxItems": 33,
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/coverageGap"

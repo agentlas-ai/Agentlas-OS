@@ -234,18 +234,15 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-이 명령은 중립 러너를 `~/.agentlas/runtime/current/bin/hephaestus`에 설치하고, Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes와 호환 로컬/API 호스트용 명령 어댑터를 등록합니다. 설치기는 등록이 끝난 뒤 각 런타임 표면을 검증하고 사용자 단위 자동 업데이트 서비스도 기본 설치합니다.
+이 명령은 중립 러너를 `~/.agentlas/runtime/current/bin/hephaestus`에 설치하고, Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes와 호환 로컬/API 호스트용 명령 어댑터를 등록합니다. 설치기는 등록이 끝난 뒤 각 런타임 표면을 검증합니다.
 
-자동 업데이트 서비스는 macOS, Linux, Windows에서 6시간마다 공식 릴리스를
-확인합니다. GitHub 릴리스 메타데이터의 크기와 SHA-256이 일치하는 태그 전용
-런타임 자산만 받아 원자적으로 활성화한 뒤, 이미 설치된 모든 호스트
-플러그인/확장을 정확히 같은 릴리스로 맞춥니다. 열려 있는 세션은 reload 또는
-재시작 후 새 코드를 사용합니다. 상태 확인과 관리는
-`agentlas hep-update --service-status`,
-`agentlas hep-update --install-service`,
-`agentlas hep-update --remove-service`를 사용하세요. 자체 업데이트 체계를
-가진 관리 환경에서만 `HEPHAESTUS_INSTALL_AUTO_UPDATE_SERVICE=0`으로 설치를
-생략하세요.
+Desktop 시작과 모든 `/hep-*` 명령은 동일한 무결성 검증·횟수 제한
+업데이트를 백그라운드에서 시작합니다. 현재 명령은 네트워크나 설치 작업을
+기다리지 않습니다. 업데이트가 성공하면 `~/.agentlas/runtime/current`가
+원자적으로 교체되고 이미 설치된 호스트 어댑터가 같은 릴리스로 맞춰집니다.
+다음 명령 또는 다시 불러온 세션부터 새 릴리스를 사용합니다. v1.1.63부터
+v1.1.68까지 잠시 설치됐던 별도 6시간 OS 예약 서비스는 현재 설치 과정과
+다음 `/hep-*` 실행에서 자동 제거됩니다.
 
 ### 선택형 전역 라우터
 ```bash
@@ -302,7 +299,7 @@ Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README�
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.68
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.69
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. 설치 후에는 `/prompts:agentlas`가 앱 내 진입점입니다.*

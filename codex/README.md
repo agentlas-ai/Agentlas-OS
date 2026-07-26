@@ -71,18 +71,17 @@ To enable this during one-command install:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 ```
 
-The one-command installer also registers the per-user Agentlas update service.
-It checks a digest-verified official release every six hours and moves the
-Codex marketplace/plugin plus installed prompts to the same exact release as
-`~/.agentlas/runtime/current`; stale `--ref` pins are replaced during that
-reconciliation. An open Codex task keeps its loaded plugin code until the next
-task or app restart. Check the service with
-`hephaestus hep-update --service-status`.
+The one-command installer registers the shared runtime and adapters. Desktop
+startup and `/hep-*` commands start a digest-verified, rate-limited update in
+the background without delaying the current task. A successful update moves
+`~/.agentlas/runtime/current` atomically and reconciles the Codex plugin and
+installed prompts. An open task keeps its loaded code until the next task or
+app restart.
 
 Codex-only manual install:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.68
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.69
 codex plugin add hephaestus@agentlas-core-engine
 mkdir -p ~/.codex/prompts
 cp codex/prompts/hep-build.md codex/prompts/hep-network.md codex/prompts/hep-local.md codex/prompts/hep-cloud.md codex/prompts/hep-hub.md codex/prompts/hep-search.md codex/prompts/hep-browser.md codex/prompts/hep-call.md codex/prompts/hep-upload.md codex/prompts/hep-connect.md ~/.codex/prompts/

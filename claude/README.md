@@ -48,12 +48,11 @@ To enable this during one-command install:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 ```
 
-The one-command installer also registers the per-user Agentlas update service.
-It checks a digest-verified official release every six hours and reconciles the
-Claude marketplace/plugin to the same release as
-`~/.agentlas/runtime/current`. Claude keeps the plugin already loaded by an
-open session; use `/reload-plugins` or start a new session after an update.
-Check the service with `hephaestus hep-update --service-status`.
+The one-command installer registers the shared runtime and adapters. Desktop
+startup and `/hep-*` commands start a digest-verified, rate-limited update in
+the background without delaying the current task. A successful update moves
+`~/.agentlas/runtime/current` atomically and reconciles the installed Claude
+adapter. Use `/reload-plugins` or start a new session to load new plugin code.
 
 ```bash
 claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins

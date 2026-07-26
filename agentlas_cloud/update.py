@@ -300,6 +300,15 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
     """
 
     try:
+        # v1.1.63 briefly installed an independent six-hour OS scheduler. The
+        # intended contract is command/Desktop-triggered, fail-silent updating,
+        # so retire any legacy scheduler before doing normal local maintenance.
+        try:
+            from .auto_update_service import retire_auto_update_service
+
+            retire_auto_update_service()
+        except Exception:
+            pass
         # Always self-heal stale command adapters first. This is network free
         # and must run even when version auto-update is disabled, because the
         # legacy curl|bash preflight is blocked by host classifiers on every
@@ -311,14 +320,6 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
             pass
         if _auto_update_disabled():
             return
-        if os.environ.get("HEPHAESTUS_INSTALL_AUTO_UPDATE_SERVICE", "1") != "0":
-            try:
-                from .auto_update_service import auto_update_service_status, install_auto_update_service
-
-                if not auto_update_service_status().get("installed"):
-                    install_auto_update_service()
-            except Exception:
-                pass
         runtime_root = root or Path(__file__).resolve().parent.parent
         current = current_release(runtime_root)
         if current is not None and not _is_comparable_release(current):
@@ -1053,6 +1054,12 @@ def _marker_recent(epoch: Any, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
 
 
 def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
+    try:
+        from .auto_update_service import retire_auto_update_service
+
+        retire_auto_update_service()
+    except Exception:
+        pass
     runtime_root = root or Path(__file__).resolve().parent.parent
     desktop_repair = retry_installed_desktop_repair(runtime_root)
     desktop_updater_cleanup = retry_installed_desktop_updater_cleanup(runtime_root)

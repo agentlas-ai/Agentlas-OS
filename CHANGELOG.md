@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.1.69 - 2026-07-27
+
+- **Updates return to the command-triggered contract.** Desktop startup and
+  `/hep-*` commands continue to launch the same digest-verified, rate-limited,
+  non-blocking updater. Fresh installs no longer create a separate six-hour OS
+  scheduler.
+- **Older periodic jobs retire themselves.** The first command, Desktop update
+  worker, or reinstall after upgrading removes the legacy macOS LaunchAgent,
+  Linux user timer, or Windows scheduled task. Removal checks the loaded macOS
+  service label as well as the current plist path so a job loaded from an
+  obsolete runtime or QA location is not left behind.
+- **The public update instructions now match runtime behavior.** Installation
+  output and host-specific guides describe atomic runtime replacement and
+  adapter reconciliation without promising or recreating a periodic daemon.
+
 ## v1.1.68 - 2026-07-26
 
 - **The router's semantic signal is actually semantic.** Card routing used a

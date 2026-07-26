@@ -26,7 +26,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.1.68}"
+version="${HEPHAESTUS_REF:-v1.1.69}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -940,10 +940,8 @@ main() {
 	  if [[ "${HEPHAESTUS_INSTALL_GLOBAL_ROUTER:-0}" == "1" ]]; then
 	    "$HOME/.agentlas/runtime/current/bin/hephaestus" global install || warn "Global router prompt install failed; run 'hep-global install' manually."
 	  fi
-	  if [[ "${HEPHAESTUS_INSTALL_AUTO_UPDATE_SERVICE:-1}" == "1" ]]; then
-	    "$HOME/.agentlas/runtime/current/bin/hephaestus" hep-update --install-service \
-	      || { warn "Automatic update service install failed; run 'hephaestus hep-update --install-service' manually."; failed=$((failed + 1)); }
-	  fi
+	  "$HOME/.agentlas/runtime/current/bin/hephaestus" hep-update --remove-service >/dev/null 2>&1 \
+	    || warn "Legacy periodic update service cleanup was deferred; the next /hep-* command will retry it."
 	  prune_legacy_public_surfaces
 
   log ""
@@ -952,7 +950,7 @@ main() {
   log ""
   log "Public chat surface: core external commands are installed or refreshed; Claude/Codex also get the Telegram connect helper; Agentlas native surfaces use plain language."
   log "Local memory recall: Claude/Codex hooks, Antigravity PreInvocation, and OpenCode system injection are dynamic; Grok uses passive cache refresh plus its static AGENTS.md pointer."
-  log "Automatic updates: the per-user OS scheduler checks the verified Agentlas release every six hours and reconciles every installed host to the same release."
+  log "Automatic updates: Desktop startup and /hep-* commands launch a verified, rate-limited background update without delaying the current task."
   log "Restart open Claude Code, Codex, Gemini, Antigravity, Cursor, OpenCode, OpenClaw, and Hermes apps."
   log "Then use:"
   log "  Agentlas:    describe the task in plain language; native tools choose the path"

@@ -198,19 +198,14 @@ def main(argv: list[str] | None = None) -> int:
     update.add_argument("--check", action="store_true", help="Only report whether a newer release is available")
     update.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)
     update.add_argument(
-        "--install-service",
-        action="store_true",
-        help="Install the per-user automatic update service for this OS",
-    )
-    update.add_argument(
         "--remove-service",
         action="store_true",
-        help="Remove the per-user automatic update service",
+        help="Remove the retired periodic update service if an older release installed it",
     )
     update.add_argument(
         "--service-status",
         action="store_true",
-        help="Report automatic update service installation status",
+        help="Report whether a retired periodic update service is still installed",
     )
 
     global_router = sub.add_parser("global", help="Install or remove Hephaestus global router prompt blocks")
@@ -818,16 +813,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in {"hep-update", "update"}:
         from .auto_update_service import (
             auto_update_service_status,
-            install_auto_update_service,
             remove_auto_update_service,
+            retire_auto_update_service,
         )
 
-        if args.install_service:
-            return emit(install_auto_update_service())
         if args.remove_service:
             return emit(remove_auto_update_service())
         if args.service_status:
             return emit(auto_update_service_status())
+        if args.scheduled:
+            # A scheduler created by v1.1.63-v1.1.68 may invoke the newer
+            # `current` runner. Its final action is to remove itself.
+            return emit(retire_auto_update_service())
+        retire_auto_update_service()
         return emit(run_update(check_only=args.check))
     if args.command == "global":
         from .global_router import global_router_status, install_global_router, remove_global_router
