@@ -282,6 +282,51 @@ def _overwrite_precondition_headers(detail: str) -> dict[str, str] | None:
     return {"If-Match": etag, "x-agentlas-cloud-id": cloud_id}
 
 
+
+def _with_localized_listing(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Attach the bilingual listing block the marketplace register endpoint requires.
+
+    The endpoint reads `manifest.localized.{titleEn,titleKo,descriptionEn,descriptionKo}`
+    and rejects a publish with `localized_metadata_required` when any is missing.
+    Packages carry exactly that copy — in `publicProfile` (the market-page gate
+    already blocks upload without it) and again as `name/nameKo/summary/summaryKo`
+    — but nothing ever mapped it onto the manifest, so a package that passed every
+    local gate still failed at registration. This maps it; it never invents copy.
+    """
+    if not isinstance(manifest, dict):
+        return manifest
+    existing = manifest.get("localized")
+    if isinstance(existing, dict) and all(
+        str(existing.get(key) or "").strip()
+        for key in ("titleEn", "titleKo", "descriptionEn", "descriptionKo")
+    ):
+        return manifest
+    profile = manifest.get("publicProfile") if isinstance(manifest.get("publicProfile"), dict) else {}
+    card = manifest.get("routingCard") if isinstance(manifest.get("routingCard"), dict) else {}
+
+    def pick(*candidates: Any) -> str:
+        for value in candidates:
+            text = str(value or "").strip()
+            if text:
+                return text
+        return ""
+
+    localized = {
+        "titleEn": pick(profile.get("titleEn"), card.get("name"), manifest.get("name")),
+        "titleKo": pick(profile.get("titleKo"), card.get("name_ko"), card.get("name"), manifest.get("name")),
+        "descriptionEn": pick(
+            profile.get("descriptionEn"), card.get("summary"), card.get("description"), manifest.get("tagline")
+        ),
+        "descriptionKo": pick(
+            profile.get("descriptionKo"), card.get("summary_ko"), card.get("summary"), manifest.get("tagline")
+        ),
+    }
+    if not all(localized.values()):
+        return manifest
+    merged = dict(manifest)
+    merged["localized"] = localized
+    return merged
+
 def register_package(
     manifest: dict[str, Any],
     bundle: dict[str, Any],
@@ -296,7 +341,7 @@ def register_package(
     if not token:
         raise UploadError("Agentlas sign-in is required. Run `bin/hephaestus auth login` first.")
     payload = {
-        "manifest": manifest,
+        "manifest": _with_localized_listing(manifest),
         "bundle": bundle,
         "review": review,
         "visibility": visibility,
@@ -320,7 +365,7 @@ def register_package(
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=180) as response:
             return json.loads(response.read().decode("utf-8"))
 
     try:
