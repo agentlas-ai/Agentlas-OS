@@ -1,0 +1,37 @@
+description = "Agentlas commands — one entry point for network, build, storm, call, and the rest."
+prompt = """
+Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
+# /agentlas
+
+Argument: {{args}}
+
+Single entry point for every Agentlas command. `/agentlas <command> <request>`
+does exactly what `/hep-<command> <request>` does. Both names stay supported and
+neither is deprecated — this command only spells the product name out loud.
+
+Read the first whitespace-delimited token of the argument as COMMAND, and treat
+everything after it as REQUEST, verbatim.
+
+COMMAND is one of:
+`network`, `build`, `storm`, `call`, `search`, `hub`, `local`, `cloud`,
+`browser`, `connect`, `upload`.
+
+If COMMAND is missing, or is not in that list, print the list, ask which one the
+user meant, and stop. Never guess a command, and never improvise a workflow from
+memory.
+
+Otherwise resolve the canonical workflow file for that command:
+
+    ls "$HOME/.agentlas/runtime/current/host_adapters"/*/prompts/hep-<COMMAND>.md \
+       "$HOME/.agentlas/runtime/current/host_adapters"/*/plugins/*/commands/hep-<COMMAND>.md \
+       2>/dev/null | head -1
+
+Read the file that resolves and follow its instructions exactly, using REQUEST
+as the request. That file is the authority. The table above only chooses which
+file to read; it adds no behaviour of its own, so the two spellings can never
+drift apart.
+
+If nothing resolves, report that the Agentlas runtime is missing or incomplete
+and suggest `hephaestus update`. Do not substitute a remembered version of the
+workflow.
+"""

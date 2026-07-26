@@ -429,7 +429,7 @@ write_claude_commands() {
   ensure_downloaded_source || return 1
   mkdir -p "$HOME/.claude/commands"
   local name src dest
-  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-connect.md hep-storm.md; do
+  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-connect.md hep-storm.md agentlas.md; do
     src="$source_dir/.claude/commands/$name"
     dest="$HOME/.claude/commands/$name"
     rm -f "$dest"
@@ -458,7 +458,7 @@ write_codex_prompts() {
   [[ -d "$prompts_src" ]] || { warn "codex prompts not found: $prompts_src"; return 1; }
   mkdir -p "$HOME/.codex/prompts"
   local name
-  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-connect.md hep-storm.md; do
+  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-connect.md hep-storm.md agentlas.md; do
     rm -f "$HOME/.codex/prompts/$name"
     cp "$prompts_src/$name" "$HOME/.codex/prompts/$name" || return 1
   done
@@ -542,7 +542,7 @@ write_gemini_fallback_command() {
   local command_dir="$HOME/.gemini/commands"
   mkdir -p "$command_dir"
   local name
-  for name in hep-build.toml hep-network.toml hep-local.toml hep-cloud.toml hep-hub.toml hep-search.toml hep-browser.toml hep-call.toml hep-upload.toml hep-storm.toml; do
+  for name in hep-build.toml hep-network.toml hep-local.toml hep-cloud.toml hep-hub.toml hep-search.toml hep-browser.toml hep-call.toml hep-upload.toml hep-storm.toml agentlas.toml; do
     rm -f "$command_dir/$name"
     cp "$source_dir/gemini/extension/commands/$name" "$command_dir/$name" || return 1
   done
@@ -613,7 +613,7 @@ install_antigravity() {
       local global_dir="$data_dir/global_workflows"
       mkdir -p "$global_dir"
       local name
-      for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-storm.md; do
+      for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-storm.md agentlas.md; do
         rm -f "$global_dir/$name"
         cp "$source_dir/antigravity/workflows/$name" "$global_dir/$name" || return 1
       done
@@ -737,7 +737,7 @@ install_cursor() {
   ensure_downloaded_source || return 1
   mkdir -p "$HOME/.cursor/commands" "$HOME/.cursor/skills"
   local name
-  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-storm.md; do
+  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-storm.md agentlas.md; do
     rm -f "$HOME/.cursor/commands/$name"
     cp "$source_dir/cursor/plugin/commands/$name" "$HOME/.cursor/commands/$name" || return 1
   done
@@ -765,7 +765,7 @@ install_opencode() {
   ensure_downloaded_source || return 1
   mkdir -p "$HOME/.config/opencode/commands"
   local name
-  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-storm.md; do
+  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-storm.md agentlas.md; do
     rm -f "$HOME/.config/opencode/commands/$name"
     cp "$source_dir/opencode/commands/$name" "$HOME/.config/opencode/commands/$name" || return 1
   done
