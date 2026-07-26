@@ -33,6 +33,9 @@ import unicodedata
 from dataclasses import dataclass
 
 MAX_MULTILINE_WINDOW = 5
+# Markdown section headings, code fences, and table rules end a thought; the
+# multiline joiner must not read across them.
+_STRUCTURAL_BOUNDARY_RE = re.compile(r"^\s{0,3}(?:#{1,6}\s|```|~~~|\||-{3,}\s*$|\*{3,}\s*$)")
 
 
 @dataclass(frozen=True)
@@ -402,8 +405,16 @@ _SQUISH_RULES: list[tuple[str, re.Pattern[str], str, str, str]] = [
     (
         "prompt-injection",
         re.compile(
-            r"(?:reveal|print|show|expose|output|dump|leak|repeat|echo)\w{0,3}(?:the|your|me|all){0,3}"
-            r"(?:systemprompt|hiddeninstruction|developermessage|secret|apikey|token|password)",
+            # Canonicalisation strips spaces to defeat "o u t p u t   t o k e n",
+            # which also fused the ordinary phrase "output tokens" into a match.
+            # Named targets stay loose; the generic ones (secret/token/password)
+            # now need a possessive or definite filler, so "output tokens" and
+            # "token budget" read as prose while "output your token" still does not.
+            r"(?:reveal|print|show|expose|output|dump|leak|repeat|echo)\w{0,3}"
+            r"(?:(?:the|your|my|me|all|user|admin|its|his|her){0,3}"
+            r"(?:systemprompt|hiddeninstruction|developermessage|apikey)"
+            r"|(?:the|your|my|me|all|user|admin|its|his|her){1,3}"
+            r"(?:secret|token|password|credential)s?)",
         ),
         "Removed prompt-injection style instruction before upload.",
         "redact",
@@ -676,8 +687,26 @@ def find_multiline_spans(lines: list[str]) -> list[SpanReason]:
         if not lines[start].strip():
             continue
         acc = lines[start].rstrip("\r\n")
+        blank_run = 0
         for end in range(start + 1, min(start + MAX_MULTILINE_WINDOW, n)):
-            acc = acc + " " + lines[end].rstrip("\r\n")
+            nxt = lines[end].rstrip("\r\n")
+            # A split injection is contiguous prose. Joining across a section
+            # heading, a code fence, or a paragraph break invented matches
+            # between unrelated text — one build lost a line because
+            # "...goes ignored by the third week." and "...and the rule that
+            # produced it", two paragraphs and a heading apart, joined into
+            # "ignore ... the ... rule". Structural breaks end the window;
+            # a single blank line still carries, since that is how a real
+            # split reads.
+            if _STRUCTURAL_BOUNDARY_RE.match(nxt):
+                break
+            if not nxt.strip():
+                blank_run += 1
+                if blank_run > 1:
+                    break
+                continue
+            blank_run = 0
+            acc = acc + " " + nxt
             canon = canonicalize(acc)
             cjk = _cjk_shadow(acc)
             hit = None
