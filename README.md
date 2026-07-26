@@ -372,7 +372,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.65
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.66
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). After install, `/prompts:agentlas` is the in-app entry.*
@@ -637,6 +637,28 @@ Hephaestus packages agents into a standard directory layout that any workspace r
 That package shape is why an Agentlas agent is more than an LLM-written role
 prompt. It carries routing, memory, sitemap, code/agent ontology, permissions,
 runtime adapters, verification ledgers, and release gates together.
+
+### Dependency-aware project context
+
+Hephaestus keeps the project map local, refreshes it by source fingerprint, and
+hands each concrete task only the goals, constraints, definitions, backlinks,
+interfaces, and related files it structurally depends on.
+
+```sh
+hephaestus context refresh --project .
+hephaestus context refs resolveHubEntityKind --project .
+hephaestus context slice --project . --task "fix entity kind routing" \
+  --target src/package-kind.ts --render
+hephaestus context impact --project . --changed src/package-kind.ts
+hephaestus context verify --project . --changed src/package-kind.ts \
+  --reviewed src/register/route.ts
+```
+
+Claude and Codex receive the task slice from their local hook and get a
+reverse-reference warning immediately before edit tools. Desktop, Terminal,
+Stormbreaker, and Workforce call the same Core implementation. Network/Cloud
+search and bundle fetches remain redacted and never receive local source paths
+or Context Map contents.
 
 ---
 

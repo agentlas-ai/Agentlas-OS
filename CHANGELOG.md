@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.1.66 - 2026-07-26
+
+- **Code maps now have one dependency-capable contract on every host.** The
+  canonical `agentlas.code-map.v2` generator writes definitions, reverse
+  references, module edges, and a source fingerprint instead of distributing a
+  weaker map under the same filename. Fingerprint checks refresh stale maps
+  without requiring a user to remember a maintenance command.
+- **Concrete work receives a bounded Context Slice, not a project dump.**
+  `context slice` inherits active project goals and constraints, then selects
+  definitions, backlinks, interfaces, and related files by structural
+  dependency. Claude, Codex, Desktop, Terminal, Stormbreaker, and Workforce use
+  the same local implementation; Hub and Cloud discovery never receive project
+  source or local map paths.
+- **Mutation and completion have inspectable change-impact receipts.** The
+  local MCP and CLI expose `context locate|refs|slice|impact|verify`. Claude and
+  Codex hooks add a fail-open reverse-reference warning immediately before edit
+  tools, while the Stormbreaker contract requires impact review before mutation
+  and verification before completion.
+- **The sitemap is no longer treated as a file-count prompt.** Bootstrap
+  preserves operator nodes and adds typed project, goal, constraint, and
+  requirement nodes with dependency edges. File/directory inventory remains
+  separate from the functional project context inherited by a task.
+
 ## v1.1.59 - 2026-07-24
 
 - **Memory-architecture parity with Desktop and Terminal.** The hep runtime now

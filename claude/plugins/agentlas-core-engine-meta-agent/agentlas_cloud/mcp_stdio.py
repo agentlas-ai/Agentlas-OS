@@ -34,7 +34,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.65"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.66"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -65,6 +65,11 @@ def workforce_protocol_metadata() -> dict[str, Any]:
         "goalContextSchemaVersion": "agentlas.workforce-goal-context.v1",
         "goalTurnSchemaVersion": "agentlas.workforce-goal-turn.v1",
         "goalRosterLifetime": "until-explicit-completion",
+        "codeMapSchemaVersion": "agentlas.code-map.v2",
+        "contextSliceSchemaVersion": "agentlas.context-slice.v1",
+        "contextImpactReceiptSchemaVersion": "agentlas.context-impact-receipt.v1",
+        "contextVerificationReceiptSchemaVersion": "agentlas.context-verification-receipt.v1",
+        "localContextNetworkTransfer": "denied",
     }
     metadata["protocolDigest"] = canonical_digest(metadata)
     return metadata
@@ -588,6 +593,123 @@ TOOLS: list[dict[str, Any]] = [
         },
         "_meta": workforce_tool_meta(),
     },
+    {
+        "name": "context.locate",
+        "description": (
+            "Locate exact project symbols, definitions, and reverse references in the "
+            "local dependency map. Project files and query results never leave the host."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "query": {"type": "string", "minLength": 1, "maxLength": 12_000},
+                "refresh": {"type": "boolean"},
+            },
+            "required": ["projectDir", "query"],
+        },
+    },
+    {
+        "name": "context.refs",
+        "description": (
+            "Return every bounded local backlink for one exact symbol. Use this before "
+            "editing a function, type, route, field, or public contract."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "symbol": {"type": "string", "minLength": 1, "maxLength": 256},
+                "refresh": {"type": "boolean"},
+            },
+            "required": ["projectDir", "symbol"],
+        },
+    },
+    {
+        "name": "context.slice",
+        "description": (
+            "Build the minimal dependency-selected Context Slice for a resolved task. "
+            "Selection follows definitions, backlinks, module edges, declared inheritance, "
+            "and interfaces rather than embedding similarity."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "task": {"type": "string", "maxLength": 12_000},
+                "targets": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "maxLength": 4096},
+                },
+                "refresh": {"type": "boolean"},
+                "render": {"type": "boolean"},
+            },
+            "required": ["projectDir", "task"],
+        },
+    },
+    {
+        "name": "context.impact",
+        "description": (
+            "Trace changed files or symbols through reverse references and module "
+            "dependencies. Returns a local, content-free impact receipt."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "changed": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 256,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "maxLength": 4096},
+                },
+                "refresh": {"type": "boolean"},
+            },
+            "required": ["projectDir", "changed"],
+        },
+    },
+    {
+        "name": "context.verify",
+        "description": (
+            "Completion gate: fail closed while any impacted file is neither changed, "
+            "reviewed, nor explicitly waived. Returns a deterministic verification receipt."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "changed": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 256,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "maxLength": 4096},
+                },
+                "reviewed": {
+                    "type": "array",
+                    "maxItems": 512,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "maxLength": 4096},
+                },
+                "waived": {
+                    "type": "array",
+                    "maxItems": 512,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "maxLength": 4096},
+                },
+                "refresh": {"type": "boolean"},
+            },
+            "required": ["projectDir", "changed"],
+        },
+    },
 ]
 
 
@@ -645,6 +767,71 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if bootstrap is not None:
             result["project_bootstrap"] = bootstrap
         return result
+
+    if name in {
+        "context.locate",
+        "context.refs",
+        "context.slice",
+        "context.impact",
+        "context.verify",
+    }:
+        from .context_map import (
+            ContextMapError,
+            context_slice,
+            impact,
+            locate,
+            references,
+            render_context_slice,
+            verify_impact,
+        )
+        from .project_bootstrap import ensure_project
+
+        project_dir = arguments.get("projectDir")
+        if not isinstance(project_dir, str) or not project_dir.strip():
+            return {"action": name, "status": "error", "error": "context_project_invalid"}
+        try:
+            project_receipt = ensure_project(
+                project_dir,
+                reason=f"mcp:{name}",
+                force_code_map=False,
+            )
+            if project_receipt.get("status") not in {"active", "privacy_warning"}:
+                return {
+                    "action": name,
+                    "status": "blocked",
+                    "error": "project_bootstrap_incomplete",
+                    "project_bootstrap": project_receipt,
+                }
+            refresh = arguments.get("refresh") is not False
+            if name == "context.locate":
+                result = locate(project_dir, str(arguments.get("query") or ""), refresh=refresh)
+            elif name == "context.refs":
+                result = references(project_dir, str(arguments.get("symbol") or ""), refresh=refresh)
+            elif name == "context.slice":
+                result = context_slice(
+                    project_dir,
+                    str(arguments.get("task") or ""),
+                    targets=arguments.get("targets") or [],
+                    refresh=refresh,
+                )
+                if arguments.get("render") is True:
+                    result["rendered"] = render_context_slice(result)
+            elif name == "context.impact":
+                result = impact(project_dir, arguments.get("changed") or [], refresh=refresh)
+            else:
+                result = verify_impact(
+                    project_dir,
+                    arguments.get("changed") or [],
+                    arguments.get("reviewed") or [],
+                    waived=arguments.get("waived") or [],
+                    refresh=refresh,
+                )
+            result["project_bootstrap"] = project_receipt
+            return result
+        except ContextMapError as exc:
+            return {"action": name, "status": "error", "error": exc.code}
+        except (OSError, TimeoutError, ValueError):
+            return {"action": name, "status": "error", "error": "context_operation_failed"}
 
     init_networking(networking_home())
     if name in {
@@ -960,6 +1147,31 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         source_runtime_bundles=source_bundles,
                         session_store=store,
                     )
+                    # Project grounding is attached only after every remote
+                    # source call and exact bundle verification has completed.
+                    # It is never included in Hub/Cloud search, selection, or
+                    # bundle-fetch payloads.
+                    try:
+                        from .context_map import context_slice
+
+                        prepared_result = {
+                            **prepared_result,
+                            "localContextSlice": context_slice(
+                                str(prepare_project_dir),
+                                str(work_order.get("taskBrief") or ""),
+                                refresh=True,
+                            ),
+                            "localContextBoundary": {
+                                "networkTransfer": "denied",
+                                "scope": "project-local",
+                                "inheritance": "all-selected-workers",
+                            },
+                        }
+                    except Exception:
+                        prepared_result = {
+                            **prepared_result,
+                            "localContextSliceStatus": "unavailable",
+                        }
                     try:
                         goal_binding = WorkforceGoalStore().bind(
                             goal_id=str(prepare_goal_id),
@@ -992,6 +1204,24 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         remote_result = call_hub_tool(name, arguments)
         if name != "workforce.prepare_execution":
             return remote_result
+        try:
+            from .context_map import context_slice
+
+            remote_result = {
+                **remote_result,
+                "localContextSlice": context_slice(
+                    str(prepare_project_dir),
+                    str(work_order.get("taskBrief") or ""),
+                    refresh=True,
+                ),
+                "localContextBoundary": {
+                    "networkTransfer": "denied",
+                    "scope": "project-local",
+                    "inheritance": "all-selected-workers",
+                },
+            }
+        except Exception:
+            remote_result = {**remote_result, "localContextSliceStatus": "unavailable"}
         try:
             goal_binding = WorkforceGoalStore().bind(
                 goal_id=str(prepare_goal_id),
@@ -1147,7 +1377,11 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
                     "requires projectDir and automatically binds every successful preparation, "
                     "even when the user never said goal. Keep the roster until explicit whole-goal "
                     "completion/cancellation through workforce.complete_goal. Lease expiry affects "
-                    "only the next server charge and never ends the binding."
+                    "only the next server charge and never ends the binding. Once a concrete project "
+                    "task is resolved, call context.slice; before mutating a path call context.impact; "
+                    "before declaring completion call context.verify and account for every affected "
+                    "file. Context Map source paths and contents stay project-local and must never be "
+                    "sent in Network or Cloud discovery requests."
                 ),
             },
         )

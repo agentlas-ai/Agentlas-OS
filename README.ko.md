@@ -302,7 +302,7 @@ Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README�
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.65
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.66
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. 설치 후에는 `/prompts:agentlas`가 앱 내 진입점입니다.*
@@ -522,6 +522,28 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 이 구조 때문에 Agentlas 에이전트는 LLM이 쓴 역할 프롬프트 하나가 아닙니다.
 라우팅, 메모리, 사이트맵, code/agent ontology, 권한, 런타임 어댑터, 검증 원장,
 릴리즈 게이트가 함께 들어 있는 운영 단위입니다.
+
+### 의존관계 기반 프로젝트 맥락
+
+Hephaestus는 프로젝트 지도를 로컬에만 보관하고 소스 fingerprint로 자동
+갱신합니다. 작업이 구체화되면 전체 문서를 밀어 넣는 대신 그 작업이
+구조적으로 의존하는 목표, 제약, 정의, 역참조, 인터페이스와 관련 파일만
+Context Slice로 전달합니다.
+
+```sh
+hephaestus context refresh --project .
+hephaestus context refs resolveHubEntityKind --project .
+hephaestus context slice --project . --task "entity kind 라우팅 수정" \
+  --target src/package-kind.ts --render
+hephaestus context impact --project . --changed src/package-kind.ts
+hephaestus context verify --project . --changed src/package-kind.ts \
+  --reviewed src/register/route.ts
+```
+
+Claude와 Codex는 로컬 훅으로 작업 조각을 받고 편집 직전에 역참조 경고를
+받습니다. Desktop, Terminal, Stormbreaker, Workforce도 같은 Core 구현을
+사용합니다. Network/Cloud 검색과 번들 가져오기는 계속 redacted 상태이며,
+로컬 소스 경로나 Context Map 내용은 외부로 보내지 않습니다.
 
 ---
 

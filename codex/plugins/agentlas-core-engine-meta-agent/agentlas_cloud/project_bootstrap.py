@@ -33,7 +33,7 @@ MAX_CODE_FILES = 12_000
 MAX_CODE_FILE_BYTES = 1_500_000
 MAX_CODE_TOTAL_READ_BYTES = 32 * 1024 * 1024
 MAX_CODE_SCAN_SECONDS = 12.0
-MAX_CODE_MAP_BYTES = 4 * 1024 * 1024
+MAX_CODE_MAP_BYTES = 16 * 1024 * 1024
 MAX_GIT_FILE_LIST_BYTES = 8 * 1024 * 1024
 MAX_GITIGNORE_BYTES = 1024 * 1024
 MAX_TRACKED_PATH_BYTES = 1024 * 1024
@@ -44,12 +44,13 @@ MAX_SYMBOLS_PER_FILE = 200
 MAX_TOTAL_SYMBOLS = 20_000
 MAX_UNIQUE_TOKENS = 50_000
 MAX_TOKEN_OCCURRENCES = 2_000_000
+MAX_REF_FILES_PER_SYMBOL = 64
 POSIX_PRIVATE_MODE_ENFORCEMENT = os.name != "nt"
 AUTO_BOOTSTRAP_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_AUTO"
 MCP_AUTO_BOOTSTRAP_ENV = "AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO"
 AUTO_ALLOWED_ROOTS_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_ALLOWED_ROOTS"
-CODE_MAP_CACHE_SCHEMA = "agentlas.code-map-cache.v2"
-CODE_MAP_POLICY_VERSION = "bounded-scan.v3"
+CODE_MAP_CACHE_SCHEMA = "agentlas.code-map-cache.v3"
+CODE_MAP_POLICY_VERSION = "dependency-index.v1"
 
 PRIVACY_PATTERNS = (
     ".agentlas/",
@@ -459,6 +460,57 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
                 "ontologyRuntime": ".agentlas/ontology-runtime.json",
                 "careerGraph": ".agentlas/career-graph.json",
                 "mergeOnly": True,
+                "nodes": [
+                    {
+                        "id": f"project:{project_id}",
+                        "type": "project",
+                        "kind": "project",
+                        "title": root.name,
+                        "status": "active",
+                        "source": "project-bootstrap",
+                    },
+                    {
+                        "id": "goal:global-coherence",
+                        "type": "goal",
+                        "kind": "goal",
+                        "title": "Keep decomposed tasks globally coherent and integration-ready.",
+                        "status": "active",
+                        "source": "project-bootstrap",
+                    },
+                    {
+                        "id": "constraint:project-local",
+                        "type": "constraint",
+                        "kind": "constraint",
+                        "title": "Project source, memory, and context-map details remain local.",
+                        "status": "validated",
+                        "source": "project-bootstrap",
+                    },
+                    {
+                        "id": "requirement:impact-check",
+                        "type": "requirement",
+                        "kind": "requirement",
+                        "title": "Review reverse references before mutation and verify change impact before completion.",
+                        "status": "active",
+                        "source": "project-bootstrap",
+                    },
+                ],
+                "edges": [
+                    {
+                        "from": "goal:global-coherence",
+                        "to": f"project:{project_id}",
+                        "type": "contributes_to",
+                    },
+                    {
+                        "from": "goal:global-coherence",
+                        "to": "constraint:project-local",
+                        "type": "constrained_by",
+                    },
+                    {
+                        "from": "requirement:impact-check",
+                        "to": "goal:global-coherence",
+                        "type": "contributes_to",
+                    },
+                ],
             },
             ensure_ascii=False,
             indent=2,
@@ -471,6 +523,27 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
                 "projectId": project_id,
                 "secretsStoredHere": False,
                 "references": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        ".agentlas/context-map.json": json.dumps(
+            {
+                "schemaVersion": "agentlas.context-map.v1",
+                "projectId": project_id,
+                "nodes": [],
+                "edges": [],
+                "statuses": [
+                    "active",
+                    "deprecated",
+                    "superseded",
+                    "tentative",
+                    "validated",
+                    "rejected",
+                ],
+                "mergeOnly": True,
+                "note": "Add explicit goals, requirements, decisions, interfaces, and change events here. Generated code dependencies stay in code-map/project-map.json.",
             },
             ensure_ascii=False,
             indent=2,
@@ -510,6 +583,110 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
     else:
         warnings.append("template_root_missing:super_ontology_not_seeded")
     return created, warnings
+
+
+def _merge_managed_sitemap_context(root: Path) -> str | None:
+    """Upgrade an existing file-only sitemap without replacing user data."""
+
+    path = root / ".agentlas" / "sitemap.json"
+    try:
+        raw = _read_bounded_regular_text(path, 32 * 1024 * 1024)
+        payload = json.loads(raw)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return "sitemap_context_merge_deferred"
+    if not isinstance(payload, dict):
+        return "sitemap_context_merge_deferred"
+    project_id = re.sub(r"[^A-Za-z0-9._-]+", "-", root.name).strip("-") or "project"
+    managed_nodes = [
+        {
+            "id": f"project:{project_id}",
+            "type": "project",
+            "kind": "project",
+            "title": root.name,
+            "status": "active",
+            "source": "project-bootstrap",
+        },
+        {
+            "id": "goal:global-coherence",
+            "type": "goal",
+            "kind": "goal",
+            "title": "Keep decomposed tasks globally coherent and integration-ready.",
+            "status": "active",
+            "source": "project-bootstrap",
+        },
+        {
+            "id": "constraint:project-local",
+            "type": "constraint",
+            "kind": "constraint",
+            "title": "Project source, memory, and context-map details remain local.",
+            "status": "validated",
+            "source": "project-bootstrap",
+        },
+        {
+            "id": "requirement:impact-check",
+            "type": "requirement",
+            "kind": "requirement",
+            "title": "Review reverse references before mutation and verify change impact before completion.",
+            "status": "active",
+            "source": "project-bootstrap",
+        },
+    ]
+    managed_edges = [
+        {
+            "from": "goal:global-coherence",
+            "to": f"project:{project_id}",
+            "type": "contributes_to",
+        },
+        {
+            "from": "goal:global-coherence",
+            "to": "constraint:project-local",
+            "type": "constrained_by",
+        },
+        {
+            "from": "requirement:impact-check",
+            "to": "goal:global-coherence",
+            "type": "contributes_to",
+        },
+    ]
+    nodes = payload.get("nodes")
+    edges = payload.get("edges")
+    if not isinstance(nodes, list):
+        nodes = []
+        payload["nodes"] = nodes
+    if not isinstance(edges, list):
+        edges = []
+        payload["edges"] = edges
+    existing_ids = {
+        str(node.get("id") or "")
+        for node in nodes
+        if isinstance(node, dict)
+    }
+    changed = False
+    for node in managed_nodes:
+        if node["id"] not in existing_ids:
+            nodes.append(node)
+            changed = True
+    existing_edges = {
+        (
+            str(edge.get("from") or ""),
+            str(edge.get("to") or ""),
+            str(edge.get("type") or ""),
+        )
+        for edge in edges
+        if isinstance(edge, dict)
+    }
+    for edge in managed_edges:
+        key = (edge["from"], edge["to"], edge["type"])
+        if key not in existing_edges:
+            edges.append(edge)
+            changed = True
+    if changed:
+        _atomic_write(
+            path,
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n",
+            mode=_existing_mode(path, 0o600),
+        )
+    return None
 
 
 def _ensure_graph_runtimes(root: Path) -> tuple[list[str], list[str]]:
@@ -757,14 +934,45 @@ def _read_json_object(path: Path) -> dict[str, Any]:
 
 
 def _bounded_project_map(project_map: dict[str, Any]) -> tuple[str, int]:
-    raw = json.dumps(project_map, ensure_ascii=False, indent=2) + "\n"
+    raw = json.dumps(project_map, ensure_ascii=False, separators=(",", ":")) + "\n"
     original_files = len(project_map.get("fileSymbols") or {})
     while len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and project_map.get("fileSymbols"):
         items = list(project_map["fileSymbols"].items())
         project_map["fileSymbols"] = dict(items[: max(0, len(items) // 2)])
         project_map["stats"]["outputTruncated"] = True
         project_map["stats"]["fileSymbolFilesOmitted"] = original_files - len(project_map["fileSymbols"])
-        raw = json.dumps(project_map, ensure_ascii=False, indent=2) + "\n"
+        raw = json.dumps(project_map, ensure_ascii=False, separators=(",", ":")) + "\n"
+    ref_index = project_map.get("refIndex")
+    if isinstance(ref_index, dict):
+        for cap in (32, 16, 8):
+            if len(raw.encode("utf-8")) <= MAX_CODE_MAP_BYTES:
+                break
+            project_map["refIndex"] = {
+                key: values[:cap] if isinstance(values, list) else []
+                for key, values in ref_index.items()
+            }
+            project_map["stats"]["outputTruncated"] = True
+            project_map["stats"]["refFilesPerSymbolCap"] = cap
+            raw = json.dumps(project_map, ensure_ascii=False, separators=(",", ":")) + "\n"
+    if len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and isinstance(project_map.get("refIndex"), dict):
+        ref_counts = project_map.get("refCount") if isinstance(project_map.get("refCount"), dict) else {}
+        ordered = sorted(
+            project_map["refIndex"],
+            key=lambda key: (-int(ref_counts.get(key) or 0), key),
+        )
+        original_refs = len(ordered)
+        while len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and len(ordered) > 1_000:
+            ordered = ordered[: max(1_000, len(ordered) // 2)]
+            allowed = set(ordered)
+            project_map["refIndex"] = {
+                key: value for key, value in project_map["refIndex"].items() if key in allowed
+            }
+            project_map["refCount"] = {
+                key: value for key, value in ref_counts.items() if key in allowed
+            }
+            project_map["stats"]["outputTruncated"] = True
+            project_map["stats"]["refIndexSymbolsOmitted"] = original_refs - len(allowed)
+            raw = json.dumps(project_map, ensure_ascii=False, separators=(",", ":")) + "\n"
     if len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES:
         raise OSError("code_map_output_budget_exceeded")
     return raw, len(raw.encode("utf-8"))
@@ -775,6 +983,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     out_dir = project / ".agentlas" / "code-map"
     json_path = out_dir / "project-map.json"
     md_path = out_dir / "project-map.md"
+    seed_path = out_dir / "project-seed.json"
     cache_path = out_dir / ".cache.json"
     started = time.monotonic()
     deadline = started + MAX_CODE_SCAN_SECONDS
@@ -817,14 +1026,14 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         and cache.get("completeListing") is True
         and complete_listing
     )
-    if json_path.exists() and md_path.exists() and not force and cache_current:
+    if json_path.exists() and md_path.exists() and seed_path.exists() and not force and cache_current:
         return {
             "status": "existing",
             "path": ".agentlas/code-map/project-map.json",
             "created": [],
             "refresh": "fingerprint_current",
         }
-    if json_path.exists() and md_path.exists() and not force and not complete_listing:
+    if json_path.exists() and md_path.exists() and seed_path.exists() and not force and not complete_listing:
         return {
             "status": "existing",
             "path": ".agentlas/code-map/project-map.json",
@@ -835,6 +1044,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
 
     file_symbols: dict[str, list[dict[str, Any]]] = {}
     definitions: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    display_names: dict[str, str] = {}
+    file_tokens: dict[str, set[str]] = {}
     token_counts: Counter[str] = Counter()
     by_extension: Counter[str] = Counter()
     skipped_large = 0
@@ -869,7 +1080,10 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         if symbols:
             file_symbols[relative] = symbols
             for symbol in symbols:
-                definitions[symbol["n"].lower()].append({"f": relative, "l": symbol["l"]})
+                normalized = symbol["n"].lower()
+                definitions[normalized].append({"f": relative, "l": symbol["l"]})
+                display_names.setdefault(normalized, symbol["n"])
+        tokens_in_file: set[str] = set()
         for match in TOKEN_PATTERN.finditer(text):
             if token_occurrences >= MAX_TOKEN_OCCURRENCES:
                 budget_stop = budget_stop or "token_occurrences"
@@ -877,7 +1091,9 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             token = match.group(0).lower()
             if token in token_counts or len(token_counts) < MAX_UNIQUE_TOKENS:
                 token_counts[token] += 1
+                tokens_in_file.add(token)
             token_occurrences += 1
+        file_tokens[relative] = tokens_in_file
         by_extension[Path(relative).suffix.lower()] += 1
 
     modules: list[dict[str, Any]] = []
@@ -886,7 +1102,12 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         parts = Path(relative).parts
         module_counts[parts[0] if len(parts) > 1 else "."] += 1
     modules = [
-        {"path": name, "codeFiles": count}
+        {
+            "id": name,
+            "path": name,
+            "role": f"source module ({count} code files)",
+            "codeFiles": count,
+        }
         for name, count in sorted(module_counts.items(), key=lambda item: (-item[1], item[0]))[:50]
     ]
     entry_points = [
@@ -894,28 +1115,46 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         for relative in relative_files
         if Path(relative).name in ENTRY_NAMES
     ][:40]
+    ref_index: dict[str, list[str]] = defaultdict(list)
+    ref_count: Counter[str] = Counter()
+    definition_keys = set(definitions)
+    module_dependencies: Counter[tuple[str, str]] = Counter()
+    for relative, tokens in file_tokens.items():
+        source_module = Path(relative).parts[0] if len(Path(relative).parts) > 1 else "."
+        for normalized in tokens.intersection(definition_keys):
+            ref_count[normalized] += 1
+            if len(ref_index[normalized]) < MAX_REF_FILES_PER_SYMBOL:
+                ref_index[normalized].append(relative)
+            first_definition = definitions[normalized][0]
+            target_file = str(first_definition["f"])
+            target_module = Path(target_file).parts[0] if len(Path(target_file).parts) > 1 else "."
+            if source_module != target_module:
+                module_dependencies[(source_module, target_module)] += 1
+
     top_symbols: list[dict[str, Any]] = []
-    for normalized, refs in token_counts.most_common():
-        defs = definitions.get(normalized)
-        if not defs:
-            continue
-        first = defs[0]
-        display = next(
-            symbol["n"]
-            for symbol in file_symbols.get(first["f"], [])
-            if symbol["n"].lower() == normalized
-        )
+    for normalized, refs in ref_count.most_common():
+        first = definitions[normalized][0]
         top_symbols.append(
-            {"name": display, "key": normalized, "refs": max(0, refs - len(defs)), "defAt": f"{first['f']}:{first['l']}"}
+            {
+                "name": display_names.get(normalized, normalized),
+                "key": normalized,
+                "refs": max(0, refs - len(definitions[normalized])),
+                "defAt": f"{first['f']}:{first['l']}",
+            }
         )
         if len(top_symbols) >= 100:
             break
+    module_edges = [
+        {"from": source_module, "to": target_module, "weight": weight}
+        for (source_module, target_module), weight in module_dependencies.most_common(100)
+    ]
 
     generated_at = utc_now()
     project_map = {
-        "schemaVersion": "agentlas.code-map.v1",
+        "schemaVersion": "agentlas.code-map.v2",
         "project": project.name,
         "projectRootHash": "sha256:" + hashlib.sha256(str(project).encode("utf-8")).hexdigest(),
+        "fingerprintHash": fingerprint,
         "generatedAt": generated_at,
         "source": source,
         "stats": {
@@ -923,6 +1162,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "candidateCodeFiles": len(code_files),
             "codeFiles": len(scanned_files),
             "symbols": len(definitions),
+            "refIndexSymbols": len(ref_index),
+            "refsEdges": sum(ref_count.values()),
             "entryPoints": len(entry_points),
             "skippedLarge": skipped_large,
             "skippedUnsafe": skipped_unsafe,
@@ -934,10 +1175,14 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "genMs": int((time.monotonic() - started) * 1000),
         },
         "modules": modules,
+        "moduleEdges": module_edges,
         "entryPoints": entry_points,
         "topSymbols": top_symbols,
         "byExt": dict(by_extension.most_common(30)),
         "fileSymbols": file_symbols,
+        "defIndex": dict(definitions),
+        "refIndex": dict(ref_index),
+        "refCount": dict(ref_count),
     }
     markdown = "\n".join(
         [
@@ -958,10 +1203,29 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     )
     project_map["stats"]["outputLimitBytes"] = MAX_CODE_MAP_BYTES
     serialized_map, output_bytes = _bounded_project_map(project_map)
-    existed = {path for path in (json_path, md_path, cache_path) if path.exists()}
+    existed = {path for path in (json_path, md_path, seed_path, cache_path) if path.exists()}
     _ensure_dir(out_dir, 0o700)
     _atomic_write(json_path, serialized_map)
     _atomic_write(md_path, markdown)
+    _atomic_write(
+        seed_path,
+        json.dumps(
+            {
+                "schemaVersion": project_map["schemaVersion"],
+                "project": project_map["project"],
+                "generatedAt": project_map["generatedAt"],
+                "fingerprintHash": project_map["fingerprintHash"],
+                "stats": project_map["stats"],
+                "modules": modules,
+                "moduleEdges": module_edges[:50],
+                "entryPoints": entry_points,
+                "topSymbols": top_symbols,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\n",
+    )
     _atomic_write(
         cache_path,
         json.dumps(
@@ -983,7 +1247,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         "path": ".agentlas/code-map/project-map.json",
         "created": [
             path.relative_to(project).as_posix()
-            for path in (json_path, md_path, cache_path)
+            for path in (json_path, md_path, seed_path, cache_path)
             if path not in existed
         ],
         "stats": project_map["stats"],
@@ -1017,6 +1281,7 @@ def project_status(project: str | Path) -> dict[str, Any]:
     required = (
         "project-soul-memory.md",
         "sitemap.json",
+        "context-map.json",
         "memory-map.json",
         "memory-tickets.jsonl",
         "vault-references.json",
@@ -1089,6 +1354,9 @@ def ensure_project(project: str | Path, *, reason: str = "host-first-contact", f
     with _project_lock(root):
         gitignore_changed, gitignore_path = _ensure_gitignore(root)
         seed_created, seed_warnings = _seed_project_files(root)
+        sitemap_warning = _merge_managed_sitemap_context(root)
+        if sitemap_warning:
+            seed_warnings.append(sitemap_warning)
         graph_created, graph_warnings = _ensure_graph_runtimes(root)
         code_map = generate_code_map(root, force=force_code_map)
         permission_warnings = _harden_private_tree(root)

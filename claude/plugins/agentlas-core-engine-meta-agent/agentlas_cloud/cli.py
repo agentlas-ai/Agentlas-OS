@@ -256,6 +256,37 @@ def main(argv: list[str] | None = None) -> int:
     project_status = project_sub.add_parser("status", help="Inspect bootstrap and privacy state without writing")
     project_status.add_argument("--project", default=".")
 
+    context_cmd = sub.add_parser("context", help="Dependency-aware project context map and impact gates")
+    context_sub = context_cmd.add_subparsers(dest="context_command", required=True)
+    context_refresh = context_sub.add_parser("refresh", help="Refresh the canonical code/context map")
+    context_refresh.add_argument("--project", default=".")
+    context_refresh.add_argument("--force", action="store_true")
+    context_locate = context_sub.add_parser("locate", help="Locate exact symbols and their backlinks")
+    context_locate.add_argument("query")
+    context_locate.add_argument("--project", default=".")
+    context_locate.add_argument("--no-refresh", action="store_true")
+    context_refs = context_sub.add_parser("refs", help="List definitions and reverse references for one symbol")
+    context_refs.add_argument("symbol")
+    context_refs.add_argument("--project", default=".")
+    context_refs.add_argument("--no-refresh", action="store_true")
+    context_slice = context_sub.add_parser("slice", help="Build a bounded dependency-selected task context")
+    context_slice.add_argument("--project", default=".")
+    context_slice.add_argument("--task", default="")
+    context_slice.add_argument("--task-stdin", action="store_true")
+    context_slice.add_argument("--target", action="append", default=[])
+    context_slice.add_argument("--no-refresh", action="store_true")
+    context_slice.add_argument("--render", action="store_true")
+    context_impact = context_sub.add_parser("impact", help="Find files affected by changed files or symbols")
+    context_impact.add_argument("--project", default=".")
+    context_impact.add_argument("--changed", action="append", required=True)
+    context_impact.add_argument("--no-refresh", action="store_true")
+    context_verify = context_sub.add_parser("verify", help="Gate completion on reviewed change impact")
+    context_verify.add_argument("--project", default=".")
+    context_verify.add_argument("--changed", action="append", required=True)
+    context_verify.add_argument("--reviewed", action="append", default=[])
+    context_verify.add_argument("--waived", action="append", default=[])
+    context_verify.add_argument("--no-refresh", action="store_true")
+
     network = sub.add_parser("network", help="Hephaestus Network 2.0 (~/.agentlas/networking)")
     network_sub = network.add_subparsers(dest="network_command", required=True)
     network_sub.add_parser("init", help="Create or migrate the global networking structure (idempotent)")
@@ -883,6 +914,71 @@ def main(argv: list[str] | None = None) -> int:
                     "detail": "project_bootstrap_failed",
                 }
             ) or 2
+    if args.command == "context":
+        from .context_map import (
+            ContextMapError,
+            context_slice,
+            impact,
+            locate,
+            references,
+            render_context_slice,
+            verify_impact,
+        )
+        from .project_bootstrap import ensure_project, generate_code_map
+
+        try:
+            should_bootstrap = args.context_command == "refresh" or not getattr(args, "no_refresh", False)
+            if should_bootstrap:
+                project_receipt = ensure_project(
+                    args.project,
+                    reason=f"context:{args.context_command}",
+                    force_code_map=args.context_command == "refresh" and args.force,
+                )
+                if project_receipt.get("status") not in {"active", "privacy_warning"}:
+                    return emit(
+                        {
+                            "action": "context",
+                            "status": "blocked",
+                            "error": "project_bootstrap_incomplete",
+                            "project_bootstrap": project_receipt,
+                        }
+                    ) or 2
+            if args.context_command == "refresh":
+                return emit(generate_code_map(args.project, force=False))
+            if args.context_command == "locate":
+                return emit(locate(args.project, args.query, refresh=not args.no_refresh))
+            if args.context_command == "refs":
+                return emit(references(args.project, args.symbol, refresh=not args.no_refresh))
+            if args.context_command == "slice":
+                task = args.task
+                if args.task_stdin:
+                    task = sys.stdin.read(12_001)
+                    if len(task) > 12_000:
+                        raise ContextMapError("context_task_too_large")
+                result = context_slice(
+                    args.project,
+                    task,
+                    targets=args.target,
+                    refresh=not args.no_refresh,
+                )
+                if args.render:
+                    result["rendered"] = render_context_slice(result)
+                return emit(result)
+            if args.context_command == "impact":
+                return emit(impact(args.project, args.changed, refresh=not args.no_refresh))
+            return emit(
+                verify_impact(
+                    args.project,
+                    args.changed,
+                    args.reviewed,
+                    waived=args.waived,
+                    refresh=not args.no_refresh,
+                )
+            )
+        except ContextMapError as exc:
+            return emit({"action": "context", "status": "error", "error": exc.code}) or 2
+        except (OSError, TimeoutError, ValueError):
+            return emit({"action": "context", "status": "error", "error": "context_operation_failed"}) or 2
     if args.command == "network":
         from . import networking
 
@@ -2369,7 +2465,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.65",
+            "version": "1.1.66",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

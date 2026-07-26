@@ -694,6 +694,31 @@ def _run_packet(
         "data_policy": packet.get("data_policy") or [],
         "execution_harness": execution_harness or goal_ultracode_harness(),
     }
+    try:
+        from agentlas_cloud.context_map import context_slice
+
+        packet_task = "\n".join(
+            value
+            for value in (
+                user_query,
+                str(packet.get("objective") or ""),
+                str(packet.get("description") or ""),
+                str(packet.get("canonical_command") or ""),
+            )
+            if value
+        )
+        packet_contract["context_slice"] = context_slice(
+            project,
+            packet_task,
+            targets=[str(packet.get("write_scope") or "")],
+            refresh=False,
+        )
+        packet_contract["context_slice_boundary"] = {
+            "network_transfer": "denied",
+            "scope": "local_executor_only",
+        }
+    except Exception:
+        packet_contract["context_slice_status"] = "unavailable"
     if user_query:
         # This file is a private local executor contract, not a Hub receipt.
         # An external executor cannot perform the packet if the actual goal is

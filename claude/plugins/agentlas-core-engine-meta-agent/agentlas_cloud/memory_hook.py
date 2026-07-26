@@ -106,6 +106,8 @@ def _agentlas_project_root(cwd: Path) -> Path | None:
         ontology_db = agentlas_dir / "ontology-runtime.sqlite"
         if (ontology_db.is_file() and not ontology_db.is_symlink()) or (
             agentlas_dir / "routing-card.json"
+        ).is_file() or (
+            agentlas_dir / "code-map" / "project-map.json"
         ).is_file():
             return root
     return None
@@ -351,8 +353,28 @@ def build_capsule(
         if project_root is not None
         else None
     )
+    context_slice_line: str | None = None
+    if project_root is not None:
+        try:
+            from .context_map import context_slice, render_context_slice
+
+            structural_slice = context_slice(
+                project_root,
+                question,
+                refresh=False,
+            )
+            context_slice_line = render_context_slice(structural_slice, max_chars=2_400)
+            _record_context_markers(
+                project_db,
+                [("code_map", max(1, len(context_slice_line) // 4))],
+                host,
+            )
+        except Exception:
+            # The hook is recall-only and fail-open. First-contact/bootstrap or
+            # a task-resolved MCP query upgrades/materializes the map.
+            context_slice_line = None
     lines = _context_lines(project_result, agent_result)
-    if not lines and not evolution_line and not workforce_lines:
+    if not lines and not evolution_line and not workforce_lines and not context_slice_line:
         return None, binding_root
     adapter_name, retrieval_status = _adapter_status(agent_result or project_result)
     body_lines = [
@@ -362,6 +384,7 @@ def build_capsule(
         "dedupe=replace any active capsule with the same digest; reapply the newest capsule after compaction",
         *([evolution_line] if evolution_line else []),
         *workforce_lines,
+        *([context_slice_line] if context_slice_line else []),
         *lines,
     ]
     body = "\n".join(body_lines)
@@ -475,6 +498,86 @@ def _event_name(payload: dict[str, Any], override: str | None) -> str:
     return value or "UserPromptSubmit"
 
 
+def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -> tuple[str | None, Path | None]:
+    """Return a bounded reverse-reference warning immediately before mutation.
+
+    This hook never blocks a host tool and never reads source contents into its
+    output. It supplies only the changed path, dependency-index paths, and a
+    content-free receipt so the executing model can inspect the affected files.
+    """
+
+    tool_name = _payload_string(payload, ("tool_name", "toolName", "name")).lower()
+    if tool_name and not any(
+        marker in tool_name
+        for marker in ("edit", "write", "patch", "notebook")
+    ):
+        return None, _resolve_cwd(payload, cwd_override)
+    cwd = _resolve_cwd(payload, cwd_override)
+    if cwd is None:
+        return None, None
+    project_root = _agentlas_project_root(cwd)
+    if project_root is None:
+        return None, cwd
+    tool_input = payload.get("tool_input") or payload.get("toolInput") or payload.get("input")
+    candidates: list[str] = []
+    if isinstance(tool_input, dict):
+        for key in ("file_path", "filePath", "path", "notebook_path", "notebookPath"):
+            value = tool_input.get(key)
+            if isinstance(value, str) and value.strip():
+                candidates.append(value.strip())
+    elif isinstance(tool_input, str):
+        candidates.extend(
+            match.group(1).strip()
+            for match in re.finditer(
+                r"^\*\*\* (?:Update|Add|Delete) File:\s*(.+?)\s*$",
+                tool_input,
+                flags=re.MULTILINE,
+            )
+        )
+    changed: list[str] = []
+    for raw in candidates[:8]:
+        try:
+            candidate = Path(raw).expanduser()
+            absolute = candidate.resolve(strict=False) if candidate.is_absolute() else (cwd / candidate).resolve(strict=False)
+            changed.append(absolute.relative_to(project_root.resolve()).as_posix())
+        except (OSError, RuntimeError, ValueError):
+            continue
+    if not changed:
+        return None, project_root
+    try:
+        from .context_map import impact
+
+        result = impact(project_root, changed, refresh=False)
+    except Exception:
+        return None, project_root
+    impacted = [
+        str(value)
+        for value in result.get("impactedFiles", [])
+        if isinstance(value, str) and value not in changed
+    ]
+    receipt = result.get("receipt") if isinstance(result.get("receipt"), dict) else {}
+    lines = [
+        "<agentlas-pretool-impact>",
+        "Project-local dependency check. No source contents or paths were sent over the network.",
+        f"Changing: {', '.join(changed)}",
+    ]
+    if impacted:
+        lines.append("Inspect affected files before completing this edit:")
+        lines.extend(f"- {value}" for value in impacted[:24])
+        if len(impacted) > 24:
+            lines.append(f"- ... and {len(impacted) - 24} more from context impact")
+    else:
+        lines.append("No additional reverse-reference files were found in the current map.")
+    lines.extend(
+        (
+            f"Impact receipt: {receipt.get('receiptDigest', 'missing')}",
+            "Before completion, run context.verify or explicitly account for every affected file.",
+            "</agentlas-pretool-impact>",
+        )
+    )
+    return "\n".join(lines)[:3_600], project_root
+
+
 def _empty_output(host: str) -> str:
     return "{}" if host in {"claude", "codex", "antigravity", "grok"} else ""
 
@@ -516,14 +619,18 @@ def main(argv: list[str] | None = None) -> int:
     payload = _read_payload()
     locale = args.locale or ("ko" if os.environ.get("AGENTLAS_LOCALE", "").lower().startswith("ko") else "en")
     try:
-        capsule, workspace = build_capsule(
-            payload,
-            cwd_override=args.cwd,
-            prompt_override=args.prompt,
-            host=args.host,
-            locale=locale,
-        )
-        output = _format_output(args.host, _event_name(payload, args.event), capsule, workspace)
+        event = _event_name(payload, args.event)
+        if event == "PreToolUse":
+            capsule, workspace = _pretool_impact_context(payload, args.cwd)
+        else:
+            capsule, workspace = build_capsule(
+                payload,
+                cwd_override=args.cwd,
+                prompt_override=args.prompt,
+                host=args.host,
+                locale=locale,
+            )
+        output = _format_output(args.host, event, capsule, workspace)
     except Exception as exc:  # fail-open in every host runtime
         if os.environ.get("AGENTLAS_MEMORY_HOOK_DEBUG") == "1":
             print(f"agentlas-memory-hook: {type(exc).__name__}: {exc}", file=sys.stderr)
