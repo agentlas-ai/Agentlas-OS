@@ -97,8 +97,61 @@ def _profile_sets(profile: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _hard_eligibility(profile: Mapping[str, Any], slot: Mapping[str, Any]) -> tuple[bool, list[str]]:
-    """Apply lifecycle, integrity, and every explicit required contract."""
+_REQUIREMENT_VOCABULARY_KINDS = ("roles", "skills", "knowledge", "tools")
+_REQUIREMENT_GAP_KIND = {"roles": "role", "skills": "skill", "knowledge": "knowledge", "tools": "tool"}
+
+
+def _inventory_vocabulary(profiles: Iterable[Mapping[str, Any]]) -> dict[str, bool]:
+    """Which requirement dimensions the live inventory populates at all.
+
+    A dimension no profile declares anything in (the Hub inventory publishes
+    zero `role:*` terms) is a data gap, not a discriminator: requiring a role
+    empties every slot no matter which role is asked for. Such a dimension is
+    demoted to a ranking signal and reported.
+
+    Coverage is measured per dimension, never per term: demoting an individual
+    unmatched term would let a poisoned candidate through whenever no profile
+    happens to declare the exact required term, which is precisely what a hard
+    contract exists to prevent.
+    """
+
+    populated: dict[str, bool] = {kind: False for kind in _REQUIREMENT_VOCABULARY_KINDS}
+    for profile in profiles:
+        have = _profile_sets(profile)
+        for kind in _REQUIREMENT_VOCABULARY_KINDS:
+            if have[kind]:
+                populated[kind] = True
+        if all(populated.values()):
+            break
+    return populated
+
+
+def _unsupported_requirements(
+    req: Mapping[str, Any],
+    populated: Mapping[str, bool] | None,
+) -> dict[str, set[str]]:
+    """Required terms in dimensions the inventory never populates."""
+
+    if populated is None:
+        return {kind: set() for kind in _REQUIREMENT_VOCABULARY_KINDS}
+    return {
+        kind: (set() if populated.get(kind) else set(req[kind]))
+        for kind in _REQUIREMENT_VOCABULARY_KINDS
+    }
+
+
+def _hard_eligibility(
+    profile: Mapping[str, Any],
+    slot: Mapping[str, Any],
+    populated: Mapping[str, bool] | None = None,
+) -> tuple[bool, list[str]]:
+    """Apply lifecycle, integrity, and every explicit required contract.
+
+    Requirements in a dimension the inventory never populates are excluded from
+    the hard filter (they stay in the slot search text, so they still rank) and
+    the caller reports them as an explicit vocabulary gap. Every dimension the
+    inventory does populate keeps full hard-filter force.
+    """
 
     reasons: list[str] = []
     if profile.get("status") != "active":
@@ -112,25 +165,27 @@ def _hard_eligibility(profile: Mapping[str, Any], slot: Mapping[str, Any]) -> tu
 
     req = _slot_requirements(slot)
     have = _profile_sets(profile)
+    unsupported = _unsupported_requirements(req, populated)
+    enforced = {kind: set(req[kind]) - unsupported[kind] for kind in _REQUIREMENT_VOCABULARY_KINDS}
     entity_kind = str(profile.get("entityKind") or "")
     if req["entity_kinds"] and entity_kind not in req["entity_kinds"]:
         reasons.append("entity-kind-mismatch")
     if req["excluded_communities"] & have["communities"]:
         reasons.append("excluded-community")
-    if req["roles"] - have["roles"]:
+    if enforced["roles"] - have["roles"]:
         reasons.append("missing-required-role")
-    if req["skills"] - have["skills"]:
+    if enforced["skills"] - have["skills"]:
         reasons.append("missing-required-skill")
-    if req["knowledge"] - have["knowledge"]:
+    if enforced["knowledge"] - have["knowledge"]:
         reasons.append("missing-required-knowledge")
-    if req["tools"] - have["tools"]:
+    if enforced["tools"] - have["tools"]:
         reasons.append("missing-required-tool")
     minimum_level = {"declared": 0, "checked": 1, "demonstrated": 2, "attested": 3}.get(
         str(slot.get("minimumEvidenceLevel") or "declared"), 0
     )
-    if any(have["skill_levels"].get(item, -1) < minimum_level for item in req["skills"]):
+    if any(have["skill_levels"].get(item, -1) < minimum_level for item in enforced["skills"]):
         reasons.append("required-skill-evidence-below-minimum")
-    if any(have["tool_levels"].get(item, -1) < minimum_level for item in req["tools"]):
+    if any(have["tool_levels"].get(item, -1) < minimum_level for item in enforced["tools"]):
         reasons.append("required-tool-evidence-below-minimum")
     if req["consumes"] - have["consumes"]:
         reasons.append("missing-consumed-artifact")
@@ -488,12 +543,14 @@ class WorkforceIndex:
             "slots": slots,
         }
         session_id = "selection:" + canonical_digest(base).split(":", 1)[1][:24]
+        vocabulary = _inventory_vocabulary(self.profiles.values())
         slot_results: list[dict[str, Any]] = []
         for slot in slots:
             if not isinstance(slot, Mapping) or not slot.get("slotId"):
                 raise ValueError("invalid role slot")
             ranked_inputs: list[dict[str, Any]] = []
             exclusion_reasons: set[str] = set()
+            unsupported = _unsupported_requirements(_slot_requirements(slot), vocabulary)
             slot_text = _slot_search_text(slot)
             try:
                 slot_vector = self.vector_adapter.embed(slot_text)
@@ -504,7 +561,7 @@ class WorkforceIndex:
                 if forbidden & _profile_sets(profile)["communities"]:
                     exclusion_reasons.add("forbidden-community")
                     continue
-                eligible, reasons = _hard_eligibility(profile, slot)
+                eligible, reasons = _hard_eligibility(profile, slot, vocabulary)
                 if not eligible:
                     exclusion_reasons.update(reasons)
                     continue
@@ -558,6 +615,13 @@ class WorkforceIndex:
             gaps: list[str] = []
             if len(cards) < minimum:
                 gaps.append("gap:minimum-candidate-count")
+            # Report a demoted requirement term even when the slot filled: the
+            # host LLM must know its stated contract was not enforced as written.
+            gaps.extend(
+                f"gap:requirement-vocabulary-unsupported:{_REQUIREMENT_GAP_KIND[kind]}"
+                for kind in _REQUIREMENT_VOCABULARY_KINDS
+                if unsupported[kind]
+            )
             if not cards:
                 gaps.append("gap:no-hard-eligible-candidate")
                 gaps.extend(_excluded_gap(reason) for reason in sorted(exclusion_reasons)[:12])

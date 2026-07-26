@@ -509,6 +509,13 @@ WORKFORCE_COVERAGE_GAP_CODES = (
     "gap:excluded:missing-required-community",
     "gap:excluded:required-skill-evidence-below-minimum",
     "gap:excluded:required-tool-evidence-below-minimum",
+    # A required term that no live profile declares cannot discriminate — it can
+    # only empty the menu. Such a term is demoted to a ranking signal and
+    # reported here, so a stated contract is never silently unenforced.
+    "gap:requirement-vocabulary-unsupported:role",
+    "gap:requirement-vocabulary-unsupported:skill",
+    "gap:requirement-vocabulary-unsupported:knowledge",
+    "gap:requirement-vocabulary-unsupported:tool",
 )
 _WORKFORCE_COVERAGE_GAP_CODE_SET = frozenset(WORKFORCE_COVERAGE_GAP_CODES)
 
