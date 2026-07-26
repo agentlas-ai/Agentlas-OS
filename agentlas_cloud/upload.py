@@ -438,11 +438,24 @@ def validate_public_profile_for_upload(base: Path, visibility: str) -> list[dict
 
     findings: list[dict[str, Any]] = []
     title = _first_text(public_profile, ("titleKo", "titleEn", "title"))
-    description = _first_text(public_profile, ("descriptionKo", "descriptionEn", "description"))
+    # Judge the BEST description across locales, not the first one present.
+    # Reading Korean first meant a 36-character Korean line blocked upload even
+    # when the English description was complete — the gate exists to guarantee a
+    # readable market page, and one adequate locale delivers that. A package may
+    # ship English-only; it may not ship an empty market page.
+    description, description_field = _best_localized_text(
+        public_profile, ("descriptionKo", "descriptionEn", "description")
+    )
     if not title or _looks_generic_copy(title):
         findings.append(_finding("public-profile-title", "blocker", "market-page", "publicProfile title is missing or generic.", "agentlas.json", "Use a concrete agent/team name, not boilerplate."))
-    if len(description) < 40 or _looks_generic_copy(description):
-        findings.append(_finding("public-profile-description", "blocker", "market-page", "publicProfile description is missing, too short, or generic.", "agentlas.json", "Explain what the package does, who it is for, and what it produces."))
+    # Name the field and the measurement: "missing, too short, or generic" put
+    # three different causes behind one message and sent authors hunting.
+    if not description:
+        findings.append(_finding("public-profile-description", "blocker", "market-page", "publicProfile descriptionKo is missing.", "agentlas.json", "Explain what the package does, who it is for, and what it produces."))
+    elif len(description) < 40:
+        findings.append(_finding("public-profile-description", "blocker", "market-page", f"publicProfile {description_field} needs at least 40 characters (has {len(description)}).", "agentlas.json", "Explain what the package does, who it is for, and what it produces. The gate reads the Korean copy first."))
+    elif _looks_generic_copy(description):
+        findings.append(_finding("public-profile-description", "blocker", "market-page", f"publicProfile {description_field} is boilerplate copy.", "agentlas.json", "Replace placeholder wording with what this specific package does."))
 
     guide = public_profile.get("guide")
     if not isinstance(guide, dict):
@@ -459,12 +472,17 @@ def validate_public_profile_for_upload(base: Path, visibility: str) -> list[dict
         ("careful-with", "carefulWith", "carefulWithKo"),
     ]
     filled = 0
+    missing_sections: list[str] = []
     for keys in section_keys:
         value = _first_text(guide, keys)
         if value and not _looks_generic_copy(value):
             filled += 1
+        else:
+            missing_sections.append(keys[0])
     if filled < 4:
-        findings.append(_finding("public-profile-guide-sections", "blocker", "market-page", "publicProfile guide lacks enough concrete sections.", "agentlas.json", "Fill at least four concrete guide sections for marketplace readers."))
+        # List the sections that are actually empty or boilerplate instead of
+        # asking the author to guess which four of five already count.
+        findings.append(_finding("public-profile-guide-sections", "blocker", "market-page", f"publicProfile guide needs at least 4 concrete sections (has {filled}); missing or generic: {', '.join(missing_sections)}.", "agentlas.json", "Fill these guide sections with copy specific to this package."))
     return findings
 
 
@@ -902,6 +920,31 @@ def _read_text(path: Path, max_chars: int) -> str:
         return path.read_text(encoding="utf-8")[:max_chars]
     except (FileNotFoundError, UnicodeDecodeError, OSError):
         return ""
+
+
+def _best_localized_text(payload: dict[str, Any], keys: tuple[str, ...]) -> tuple[str, str]:
+    """Return the strongest localized value and the key it came from.
+
+    Locale order states preference, not authority: a package that documents its
+    market page in one language should not be refused because a sibling locale
+    holds a stub. Prefers a non-generic value that clears the length gate, then
+    the longest available, so the reported field is the one the author must fix.
+    """
+
+    candidates: list[tuple[str, str]] = []
+    for key in keys:
+        text = _first_text(payload, (key,))
+        if text:
+            candidates.append((key, text))
+    if not candidates:
+        return "", keys[0]
+    passing = [
+        (key, text)
+        for key, text in candidates
+        if len(text) >= 40 and not _looks_generic_copy(text)
+    ]
+    key, text = (passing or sorted(candidates, key=lambda item: len(item[1]), reverse=True))[0]
+    return text, key
 
 
 def _first_text(payload: dict[str, Any], keys: tuple[str, ...]) -> str:
