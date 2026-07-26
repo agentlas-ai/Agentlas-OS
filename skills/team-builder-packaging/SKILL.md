@@ -25,6 +25,22 @@ description: "Use when generating or auditing a multi-role agent team package wi
 8. Encode handoff and return contracts.
 9. Emit one orchestrator/HQ global command in `.agentlas/global-commands.json`
    and runtime command files. Do not expose worker commands unless requested.
+9b. Declare the execution graph in `manifest.json`. This is what the Hub runtime
+   reads to build the team; a package that omits it is published, charged for as
+   a team, and can never be called:
+
+   ```json
+   {
+     "entrypoints": { "orchestrator": "agents/00-orchestrator/agent.md" },
+     "roster": ["agents/10-<role>/agent.md", "agents/20-<role>/agent.md"]
+   }
+   ```
+
+   Write both keys explicitly. The runtime also accepts older spellings
+   (`entrypoint`, `orchestrator`, `entry`; `workers`, `members`, `team`) and can
+   derive the roster from `agents/<name>/agent.md`, but relying on that leaves
+   the team's shape implicit and it drifts. Note that `entry` in `agentlas.json`
+   is the PACKAGE entrypoint, not the team manager — never reuse it for that.
 10. Emit runtime adapters and package verification.
 11. Run `scripts/verify-team-package.sh <package-root>` before reporting
     `completed`. If it fails, do not hand off a result; correct the package by

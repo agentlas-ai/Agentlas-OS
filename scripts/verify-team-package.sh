@@ -51,6 +51,16 @@ def load_blueprint() -> dict[str, Any]:
     return value
 
 
+def load_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def normalize(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
@@ -215,6 +225,68 @@ def check_global_command() -> None:
     if len(distinct) != 1:
         fail(f"TEAM global commands must expose one public HQ command, found {sorted(distinct)}")
 
+
+def runtime_execution_graph_declared() -> tuple[bool, str]:
+    """Can the Hub runtime build this package as a team?
+
+    Structural checks above prove the FILES exist. The runtime instead reads a
+    declared manager and roster, and a package can satisfy every check here and
+    still be uncallable once published — which is how 26 published teams became
+    unsellable. Mirror exactly what the runtime accepts so the failure surfaces
+    while the author still has the package.
+    """
+    manager_keys = ("entrypoints.orchestrator", "entrypoint", "orchestrator", "entry")
+    roster_keys = ("roster", "workers", "members", "team", "agents")
+    containers = (
+        "agents", "team", "teams", "crew", "members", "roles",
+        "subagents", "sub-agents", "squad", "staff", "hr-departments", "departments",
+    )
+
+    team_manifest = load_json(root / "manifest.json") or {}
+    package_manifest = load_json(root / "agentlas.json") or {}
+
+    def manager_from(doc: dict, allow_entry: bool) -> str:
+        entrypoints = doc.get("entrypoints")
+        if isinstance(entrypoints, dict) and isinstance(entrypoints.get("orchestrator"), str):
+            return entrypoints["orchestrator"]
+        for key in ("entrypoint", "orchestrator"):
+            if isinstance(doc.get(key), str):
+                return doc[key]
+        # `entry` is the PACKAGE entrypoint in agentlas.json and the TEAM manager
+        # only in the team's own manifest.json.
+        if allow_entry and isinstance(doc.get("entry"), str):
+            return doc["entry"]
+        return ""
+
+    manager = manager_from(team_manifest, allow_entry=True) or manager_from(package_manifest, allow_entry=False)
+    if not manager:
+        return False, (
+            "runtime cannot find a manager: declare it as "
+            f"{manager_keys[0]} in manifest.json (or {', '.join(manager_keys[1:])})"
+        )
+
+    declared_roster = next(
+        (team_manifest[key] for key in roster_keys if isinstance(team_manifest.get(key), list) and team_manifest[key]),
+        None,
+    )
+    if declared_roster:
+        return True, ""
+    for container in containers:
+        base = root / container
+        if not base.is_dir():
+            continue
+        if any(base.glob("*/agent.md")) or any(base.glob("*/AGENTS.md")) or any(base.glob("*.md")):
+            return True, ""
+    return False, (
+        "runtime cannot find a roster: declare `roster` in manifest.json or place each "
+        f"member under one of {', '.join(containers[:4])}/<name>/agent.md"
+    )
+
+
+if worker_count >= 2 or topology not in ("", "single-agent"):
+    graph_ok, graph_detail = runtime_execution_graph_declared()
+    if not graph_ok:
+        fail(f"team package would not be callable after publishing — {graph_detail}")
 
 if worker_count == 0:
     fail("no worker agent.md files found under agents/*/agent.md or .agents/*/agent.md")
