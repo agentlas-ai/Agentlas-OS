@@ -966,15 +966,15 @@ def main(argv: list[str] | None = None) -> int:
                 return emit(result)
             if args.context_command == "impact":
                 return emit(impact(args.project, args.changed, refresh=not args.no_refresh))
-            return emit(
-                verify_impact(
-                    args.project,
-                    args.changed,
-                    args.reviewed,
-                    waived=args.waived,
-                    refresh=not args.no_refresh,
-                )
+            verification = verify_impact(
+                args.project,
+                args.changed,
+                args.reviewed,
+                waived=args.waived,
+                refresh=not args.no_refresh,
             )
+            emit(verification)
+            return 0 if verification.get("status") == "passed" else 3
         except ContextMapError as exc:
             return emit({"action": "context", "status": "error", "error": exc.code}) or 2
         except (OSError, TimeoutError, ValueError):
@@ -2465,7 +2465,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.66",
+            "version": "1.1.67",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

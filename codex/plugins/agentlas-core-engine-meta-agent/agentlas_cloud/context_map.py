@@ -266,10 +266,11 @@ def _select_declared_context(
     # Structural closure: carry parents, constraints, decisions, dependencies,
     # interfaces, and validation nodes one hop in either direction.
     selected_edges: list[dict[str, Any]] = []
+    selected_edge_keys: set[tuple[str, str, str]] = set()
     for _ in range(2):
         changed = False
         for edge in edges:
-            source, target, _relation = _edge_parts(edge)
+            source, target, relation = _edge_parts(edge)
             if not source or not target:
                 continue
             if source in selected or target in selected:
@@ -279,7 +280,10 @@ def _select_declared_context(
                 if target in by_id and target not in selected:
                     selected.add(target)
                     changed = True
-                selected_edges.append(edge)
+                edge_key = (source, target, relation)
+                if edge_key not in selected_edge_keys:
+                    selected_edge_keys.add(edge_key)
+                    selected_edges.append(edge)
         if not changed:
             break
     selected_nodes = [by_id[node_id] for node_id in sorted(selected) if node_id in by_id][

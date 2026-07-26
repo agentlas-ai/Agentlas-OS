@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.1.67 - 2026-07-26
+
+- **The documented `hephaestus context` command now reaches the Context Map
+  engine.** The public shell dispatches `refresh`, `locate`, `refs`, `slice`,
+  `impact`, and `verify` directly instead of passing the unknown word
+  `context` to the natural-language router.
+- **A refresh is not considered successful until the canonical map exists.**
+  Code Map v2 covers CommonJS and ESM source extensions, carries definitions
+  and backlinks, and projects bounded module, entry-point, and dependency
+  nodes into the functional AI Sitemap.
+- **Completion verification is an actual gate.** Unreviewed impacted files
+  return a blocked receipt and a nonzero process exit; a fully reviewed impact
+  set returns a passing receipt and exit zero.
+- **Context graph traversal no longer repeats edges.** Context Slices retain
+  one canonical copy of every selected project or dependency relationship.
+
 ## v1.1.66 - 2026-07-26
 
 - **Code maps now have one dependency-capable contract on every host.** The

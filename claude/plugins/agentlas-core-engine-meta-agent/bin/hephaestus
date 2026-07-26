@@ -324,7 +324,7 @@ Open Claude Code or Codex with the installed plugin, then run:
 /hep-build $request
 EOF
     ;;
-	  network|cards|ao|route|mcp|workforce|local-gui|package|publish|project)
+	  network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context)
 	    run_python_module agentlas_cloud "$command" "$@"
 	    ;;
 	  hep-network|hephaestus-network|hephaests-network)

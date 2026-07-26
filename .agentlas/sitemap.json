@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "agentlas-ai-sitemap",
+  "projectId": "agentlas-os",
+  "state": "active",
+  "purpose": "Portable Agentlas Core runtime, host adapters, project context, and public release gates.",
+  "memoryRoots": [
+    ".agentlas/project-soul-memory.md",
+    ".agentlas/memory-tickets.jsonl"
+  ],
+  "codeMap": ".agentlas/code-map/project-map.json",
+  "nodes": [
+    {
+      "id": "project:agentlas-os",
+      "type": "project",
+      "kind": "project",
+      "title": "Agentlas OS public core",
+      "status": "active",
+      "owner": "agentlas-core"
+    },
+    {
+      "id": "surface:core-cli",
+      "type": "surface",
+      "kind": "surface",
+      "title": "Hephaestus public command surface",
+      "path": "bin/hephaestus",
+      "status": "active",
+      "owner": "agentlas-core"
+    },
+    {
+      "id": "surface:context-map",
+      "type": "surface",
+      "kind": "surface",
+      "title": "Dependency-aware Context Slice and impact gates",
+      "path": "agentlas_cloud/context_map.py",
+      "status": "active",
+      "owner": "agentlas-core"
+    },
+    {
+      "id": "surface:code-map",
+      "type": "surface",
+      "kind": "surface",
+      "title": "Canonical agentlas.code-map.v2 generator",
+      "path": "agentlas_cloud/project_bootstrap.py",
+      "status": "active",
+      "owner": "agentlas-core"
+    },
+    {
+      "id": "surface:memory-hooks",
+      "type": "surface",
+      "kind": "surface",
+      "title": "Claude and Codex project-context hooks",
+      "path": "agentlas_cloud/memory_hook.py",
+      "status": "active",
+      "owner": "agentlas-core"
+    },
+    {
+      "id": "surface:host-adapters",
+      "type": "surface",
+      "kind": "surface",
+      "title": "Claude, Codex, Gemini, and external host adapters",
+      "status": "active",
+      "owner": "agentlas-core"
+    },
+    {
+      "id": "gate:public-package",
+      "type": "validation",
+      "kind": "validation",
+      "title": "Public package and safety verification",
+      "path": "scripts/verify-package.sh",
+      "status": "validated",
+      "owner": "agentlas-core"
+    }
+  ],
+  "edges": [
+    {
+      "from": "surface:core-cli",
+      "to": "surface:context-map",
+      "type": "routes_to"
+    },
+    {
+      "from": "surface:context-map",
+      "to": "surface:code-map",
+      "type": "depends_on"
+    },
+    {
+      "from": "surface:memory-hooks",
+      "to": "surface:context-map",
+      "type": "depends_on"
+    },
+    {
+      "from": "surface:host-adapters",
+      "to": "surface:memory-hooks",
+      "type": "depends_on"
+    },
+    {
+      "from": "gate:public-package",
+      "to": "project:agentlas-os",
+      "type": "validates"
+    }
+  ],
+  "taskBiases": [],
+  "conceptCoverage": {
+    "sitemap": true,
+    "pmSoul": true,
+    "memoryArchitecture": true,
+    "allLlmRuntimeArchitecture": true,
+    "publicPluginPackaging": true,
+    "terminalInstaller": true
+  }
+}

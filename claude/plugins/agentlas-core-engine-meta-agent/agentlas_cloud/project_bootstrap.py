@@ -93,9 +93,11 @@ PRIVACY_PATTERNS = (
 CODE_EXTENSIONS = {
     ".c": "c",
     ".cc": "cpp",
+    ".cjs": "javascript",
     ".cpp": "cpp",
     ".cs": "csharp",
     ".css": "css",
+    ".cts": "typescript",
     ".dart": "dart",
     ".ex": "elixir",
     ".exs": "elixir",
@@ -106,7 +108,9 @@ CODE_EXTENSIONS = {
     ".kt": "kotlin",
     ".kts": "kotlin",
     ".m": "objective-c",
+    ".mjs": "javascript",
     ".mm": "objective-cpp",
+    ".mts": "typescript",
     ".php": "php",
     ".py": "python",
     ".rb": "ruby",
@@ -585,8 +589,11 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
     return created, warnings
 
 
-def _merge_managed_sitemap_context(root: Path) -> str | None:
-    """Upgrade an existing file-only sitemap without replacing user data."""
+def _merge_managed_sitemap_context(
+    root: Path,
+    code_map: dict[str, Any] | None = None,
+) -> str | None:
+    """Merge project intent and a bounded functional projection without replacing user data."""
 
     path = root / ".agentlas" / "sitemap.json"
     try:
@@ -648,6 +655,84 @@ def _merge_managed_sitemap_context(root: Path) -> str | None:
             "type": "contributes_to",
         },
     ]
+    if isinstance(code_map, dict):
+        module_ids: dict[str, str] = {}
+        for module in code_map.get("modules") or []:
+            if not isinstance(module, dict):
+                continue
+            module_path = str(module.get("path") or module.get("id") or "").strip()
+            if not module_path:
+                continue
+            node_id = f"surface:module:{module_path}"
+            module_ids[module_path] = node_id
+            managed_nodes.append(
+                {
+                    "id": node_id,
+                    "type": "surface",
+                    "kind": "surface",
+                    "title": str(module.get("role") or module_path),
+                    "path": module_path,
+                    "status": "active",
+                    "source": "code-map",
+                    "generated": True,
+                    "codeFiles": int(module.get("codeFiles") or 0),
+                }
+            )
+            managed_edges.append(
+                {
+                    "from": node_id,
+                    "to": f"project:{project_id}",
+                    "type": "contributes_to",
+                    "source": "code-map",
+                    "generated": True,
+                }
+            )
+        for entry in code_map.get("entryPoints") or []:
+            if not isinstance(entry, dict):
+                continue
+            entry_path = str(entry.get("path") or "").strip()
+            if not entry_path:
+                continue
+            entry_id = f"artifact:entry:{entry_path}"
+            managed_nodes.append(
+                {
+                    "id": entry_id,
+                    "type": "artifact",
+                    "kind": "artifact",
+                    "title": str(entry.get("why") or "Application entry point"),
+                    "path": entry_path,
+                    "status": "active",
+                    "source": "code-map",
+                    "generated": True,
+                }
+            )
+            entry_module = Path(entry_path).parts[0] if len(Path(entry_path).parts) > 1 else "."
+            managed_edges.append(
+                {
+                    "from": entry_id,
+                    "to": module_ids.get(entry_module, f"project:{project_id}"),
+                    "type": "belongs_to",
+                    "source": "code-map",
+                    "generated": True,
+                }
+            )
+        for dependency in code_map.get("moduleEdges") or []:
+            if not isinstance(dependency, dict):
+                continue
+            source = str(dependency.get("from") or "").strip()
+            target = str(dependency.get("to") or "").strip()
+            if source not in module_ids or target not in module_ids:
+                continue
+            managed_edges.append(
+                {
+                    "from": module_ids[source],
+                    "to": module_ids[target],
+                    "type": "depends_on",
+                    "source": "code-map",
+                    "generated": True,
+                    "weight": int(dependency.get("weight") or 0),
+                }
+            )
     nodes = payload.get("nodes")
     edges = payload.get("edges")
     if not isinstance(nodes, list):
@@ -656,12 +741,32 @@ def _merge_managed_sitemap_context(root: Path) -> str | None:
     if not isinstance(edges, list):
         edges = []
         payload["edges"] = edges
+    before_node_count = len(nodes)
+    before_edge_count = len(edges)
+    nodes[:] = [
+        node
+        for node in nodes
+        if not (
+            isinstance(node, dict)
+            and node.get("source") == "code-map"
+            and node.get("generated") is True
+        )
+    ]
+    edges[:] = [
+        edge
+        for edge in edges
+        if not (
+            isinstance(edge, dict)
+            and edge.get("source") == "code-map"
+            and edge.get("generated") is True
+        )
+    ]
     existing_ids = {
         str(node.get("id") or "")
         for node in nodes
         if isinstance(node, dict)
     }
-    changed = False
+    changed = len(nodes) != before_node_count or len(edges) != before_edge_count
     for node in managed_nodes:
         if node["id"] not in existing_ids:
             nodes.append(node)
@@ -679,6 +784,32 @@ def _merge_managed_sitemap_context(root: Path) -> str | None:
         key = (edge["from"], edge["to"], edge["type"])
         if key not in existing_edges:
             edges.append(edge)
+            changed = True
+    if isinstance(code_map, dict):
+        next_projection = {
+            "schemaVersion": "agentlas.functional-sitemap-projection.v1",
+            "source": "code-map",
+            "mapSchemaVersion": str(code_map.get("schemaVersion") or ""),
+            "mapFingerprint": str(code_map.get("fingerprintHash") or ""),
+            "generatedAt": str(code_map.get("generatedAt") or utc_now()),
+            "surfaceNodes": sum(
+                1
+                for node in managed_nodes
+                if isinstance(node, dict) and node.get("type") == "surface"
+            ),
+            "entryPointNodes": sum(
+                1
+                for node in managed_nodes
+                if isinstance(node, dict) and node.get("type") == "artifact"
+            ),
+            "dependencyEdges": sum(
+                1
+                for edge in managed_edges
+                if isinstance(edge, dict) and edge.get("type") == "depends_on"
+            ),
+        }
+        if payload.get("functionalProjection") != next_projection:
+            payload["functionalProjection"] = next_projection
             changed = True
     if changed:
         _atomic_write(
@@ -933,6 +1064,34 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _functional_sitemap_summary(root: Path) -> dict[str, Any]:
+    payload = _read_json_object(root / ".agentlas" / "sitemap.json")
+    nodes = [node for node in payload.get("nodes") or [] if isinstance(node, dict)]
+    edges = [edge for edge in payload.get("edges") or [] if isinstance(edge, dict)]
+    functional_nodes = [
+        node
+        for node in nodes
+        if str(node.get("type") or node.get("kind") or "").lower() not in {"file", "directory"}
+    ]
+    generated_nodes = [
+        node
+        for node in functional_nodes
+        if node.get("source") == "code-map" and node.get("generated") is True
+    ]
+    dependency_edges = [
+        edge
+        for edge in edges
+        if str(edge.get("type") or edge.get("relation") or "").lower() == "depends_on"
+    ]
+    return {
+        "schemaVersion": "agentlas.functional-sitemap-receipt.v1",
+        "functionalNodes": len(functional_nodes),
+        "generatedFunctionalNodes": len(generated_nodes),
+        "dependencyEdges": len(dependency_edges),
+        "mapFingerprint": str((payload.get("functionalProjection") or {}).get("mapFingerprint") or ""),
+    }
+
+
 def _bounded_project_map(project_map: dict[str, Any]) -> tuple[str, int]:
     raw = json.dumps(project_map, ensure_ascii=False, separators=(",", ":")) + "\n"
     original_files = len(project_map.get("fileSymbols") or {})
@@ -1027,19 +1186,25 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         and complete_listing
     )
     if json_path.exists() and md_path.exists() and seed_path.exists() and not force and cache_current:
+        sitemap_warning = _merge_managed_sitemap_context(project, _read_json_object(json_path))
         return {
             "status": "existing",
             "path": ".agentlas/code-map/project-map.json",
             "created": [],
             "refresh": "fingerprint_current",
+            "functionalSitemap": _functional_sitemap_summary(project),
+            **({"warning": sitemap_warning} if sitemap_warning else {}),
         }
     if json_path.exists() and md_path.exists() and seed_path.exists() and not force and not complete_listing:
+        sitemap_warning = _merge_managed_sitemap_context(project, _read_json_object(json_path))
         return {
             "status": "existing",
             "path": ".agentlas/code-map/project-map.json",
             "created": [],
             "refresh": "deferred",
             "budgetStop": list_stop,
+            "functionalSitemap": _functional_sitemap_summary(project),
+            **({"warning": sitemap_warning} if sitemap_warning else {}),
         }
 
     file_symbols: dict[str, list[dict[str, Any]]] = {}
@@ -1242,6 +1407,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         )
         + "\n",
     )
+    sitemap_warning = _merge_managed_sitemap_context(project, project_map)
     return {
         "status": "refreshed" if json_path in existed else "generated",
         "path": ".agentlas/code-map/project-map.json",
@@ -1252,6 +1418,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         ],
         "stats": project_map["stats"],
         "outputBytes": output_bytes,
+        "functionalSitemap": _functional_sitemap_summary(project),
+        **({"warning": sitemap_warning} if sitemap_warning else {}),
     }
 
 
@@ -1354,11 +1522,10 @@ def ensure_project(project: str | Path, *, reason: str = "host-first-contact", f
     with _project_lock(root):
         gitignore_changed, gitignore_path = _ensure_gitignore(root)
         seed_created, seed_warnings = _seed_project_files(root)
-        sitemap_warning = _merge_managed_sitemap_context(root)
-        if sitemap_warning:
-            seed_warnings.append(sitemap_warning)
         graph_created, graph_warnings = _ensure_graph_runtimes(root)
         code_map = generate_code_map(root, force=force_code_map)
+        if code_map.get("warning"):
+            seed_warnings.append(str(code_map["warning"]))
         permission_warnings = _harden_private_tree(root)
         status = project_status(root)
     created = list(dict.fromkeys(seed_created + graph_created + list(code_map.get("created") or [])))

@@ -1,65 +1,160 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agentlas.dev/schemas/sitemap.schema.json",
-  "title": "Agentlas Sitemap",
+  "title": "Agentlas Functional AI Sitemap",
   "type": "object",
-  "required": ["schemaVersion", "projectId", "nodes", "edges", "taskBiases", "conceptCoverage"],
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "nodes",
+    "edges"
+  ],
   "properties": {
-    "schemaVersion": { "type": "string" },
-    "projectId": { "type": "string" },
-    "purpose": { "type": "string" },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string"
+    },
     "nodes": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "kind", "owner"],
+        "required": [
+          "id"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "kind": { "type": "string" },
-          "owner": { "type": "string" }
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "relative_path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "generated": {
+            "type": "boolean"
+          },
+          "codeFiles": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         },
-        "additionalProperties": false
+        "anyOf": [
+          {
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "required": [
+              "kind"
+            ]
+          }
+        ],
+        "additionalProperties": true
       }
     },
     "edges": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["from", "to", "reason"],
+        "required": [
+          "from",
+          "to"
+        ],
         "properties": {
-          "from": { "type": "string" },
-          "to": { "type": "string" },
-          "reason": { "type": "string" }
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "generated": {
+            "type": "boolean"
+          },
+          "weight": {
+            "type": "number"
+          }
         },
-        "additionalProperties": false
+        "anyOf": [
+          {
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "required": [
+              "relation"
+            ]
+          },
+          {
+            "required": [
+              "reason"
+            ]
+          }
+        ],
+        "additionalProperties": true
       }
     },
     "taskBiases": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id", "rule", "appliesTo"],
-        "properties": {
-          "id": { "type": "string" },
-          "rule": { "type": "string" },
-          "appliesTo": { "type": "array", "items": { "type": "string" } }
-        },
-        "additionalProperties": false
+        "type": "object"
       }
     },
     "conceptCoverage": {
-      "type": "object",
-      "required": ["sitemap", "pmSoul", "memoryArchitecture", "allLlmRuntimeArchitecture"],
-      "properties": {
-        "sitemap": { "type": "boolean" },
-        "pmSoul": { "type": "boolean" },
-        "memoryArchitecture": { "type": "boolean" },
-        "allLlmRuntimeArchitecture": { "type": "boolean" },
-        "publicPluginPackaging": { "type": "boolean" },
-        "terminalInstaller": { "type": "boolean" }
-      },
-      "additionalProperties": false
+      "type": "object"
+    },
+    "functionalProjection": {
+      "type": "object"
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }
