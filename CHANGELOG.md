@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.1.68 - 2026-07-26
+
+- **The router's semantic signal is actually semantic.** Card routing used a
+  token hashing adapter, which scored equivalent Korean and English requests
+  ("사업계획서 만들어줘" vs "business plan writer") at 0.0 — every value the code
+  called a semantic score was really lexical. It now uses the verified local
+  sentence model that the ontology and Hub rerank paths already use, with
+  hashing kept only as an explicitly degraded fallback. That pair now scores
+  0.383. Card vectors additionally embed trigger phrasing as meaning material
+  (anti-triggers stay out: they name work the card must refuse), and the
+  caller's sentence reaches the Hub rerank path so semantics can order
+  lexically tied candidates.
+- **Locally registered teams can be prepared again.** Local team runtime
+  bundles shipped without an execution graph, so `prepare_execution` rejected
+  them with `team_execution_graph_missing` and an empty roster. A team package
+  now projects its own organization — entrypoint as manager, `agents/<member>`
+  directives as workers, read through the same bounded no-follow reader — and a
+  package with no readable member directive fails closed instead of having an
+  organization invented for it.
+- **A rejected preparation reports its own cause.** The MCP layer bound a
+  rejected preparation anyway; goal binding then failed and the response
+  claimed `preparedButUnbound: true` with the real `issues[]` dropped,
+  inverting cause and effect. Binding is now gated on real readiness, so
+  `preparedButUnbound` only ever means "prepared, then binding failed".
+- **An unpopulated requirement dimension no longer empties every slot.** The
+  published inventory declares zero `role:*` terms, so any work order using the
+  documented `requiredRoles` vocabulary hard-filtered every candidate and
+  returned an empty menu. A requirement dimension that no live profile
+  populates is a data gap, not a discriminator: it is demoted to a ranking
+  signal and reported as `gap:requirement-vocabulary-unsupported:<kind>`.
+  Coverage is measured per dimension, never per term — demoting an individual
+  unmatched term would let a poisoned candidate through whenever no profile
+  declares the exact required term.
+
 ## v1.1.67 - 2026-07-26
 
 - **The documented `hephaestus context` command now reaches the Context Map
