@@ -174,8 +174,45 @@ def package_agent(
         "review": review,
         "routing": routing,
         "routingMetadata": routing_meta,
-        "summary": "Blocked by package review." if status == "blocked" else f"Ready: {manifest['slug']}.",
+        "summary": (
+            "Blocked by package review."
+            if status == "blocked"
+            else (
+                f"Ready: {manifest['slug']} (content guard removed {sanitized_line_count} line(s))."
+                if sanitized_line_count
+                else f"Ready: {manifest['slug']}."
+            )
+        ),
     }
+
+
+def _dry_run_summary(packaged: dict[str, Any]) -> str:
+    """Never report a bare pass when the package that would ship is not the
+    package the author wrote.
+
+    The content guard removes lines it scores as high severity, and the dry run
+    used to answer "Dry run passed" while `sanitizationApplied` was true — an
+    author could publish an agent whose method had silently lost steps, triggers,
+    or benchmark cases. Deleted content and a review that still wants a human
+    both belong in the one line the caller actually reads.
+    """
+
+    manifest = packaged.get("manifest") or {}
+    review = packaged.get("review") or {}
+    slug = manifest.get("slug")
+    notes: list[str] = []
+    removed = manifest.get("sanitizedLineCount") or 0
+    if manifest.get("sanitizationApplied") or removed:
+        notes.append(
+            f"content guard removed {removed} line(s) — the uploaded package differs from your source; "
+            "review the flagged findings and rewrite those lines before publishing"
+        )
+    verdict = review.get("verdict")
+    if verdict and verdict not in {"pass", "passed", "ok"}:
+        notes.append(f"package review verdict: {verdict}")
+    if not notes:
+        return f"Dry run passed: {slug}."
+    return f"Dry run completed with warnings: {slug} — " + "; ".join(notes)
 
 
 def publish_agent(
@@ -194,7 +231,7 @@ def publish_agent(
     if dry_run:
         packaged["status"] = "dry-run"
         packaged["registration"] = None
-        packaged["summary"] = f"Dry run passed: {packaged['manifest']['slug']}."
+        packaged["summary"] = _dry_run_summary(packaged)
         return packaged
 
     registration = register_package(
@@ -207,7 +244,17 @@ def publish_agent(
     )
     packaged["status"] = "registered"
     packaged["registration"] = registration
-    packaged["summary"] = f"Registered {registration.get('slug') or packaged['manifest']['slug']}."
+    registered_slug = registration.get("slug") or packaged["manifest"]["slug"]
+    removed_lines = packaged.get("manifest", {}).get("sanitizedLineCount") or 0
+    if removed_lines:
+        # What shipped is not what the author wrote. Say it at the top level, on
+        # the real upload too — after this point the Hub serves the sanitized copy.
+        packaged["summary"] = (
+            f"Registered {registered_slug} — content guard removed {removed_lines} line(s) from the "
+            "uploaded copy; the published package differs from your source"
+        )
+    else:
+        packaged["summary"] = f"Registered {registered_slug}."
     return packaged
 
 
