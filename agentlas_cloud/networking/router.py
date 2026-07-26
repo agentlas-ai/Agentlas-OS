@@ -36,9 +36,24 @@ from .tokenize import has_hangul, snake_tokens, token_set, tokenize, word_token_
 # layered on top of lexical scoring, not a replacement — and routing must keep
 # working if it's ever unavailable, so the import degrades to None.
 try:  # pragma: no cover - exercised indirectly
-    from ontology.embeddings import LocalHashingVectorAdapter, cosine_similarity as _cosine_similarity
+    from ontology.embeddings import (
+        LocalHashingVectorAdapter,
+        cosine_similarity as _cosine_similarity,
+        select_vector_adapter,
+    )
 
-    _VECTOR_ADAPTER: Any = LocalHashingVectorAdapter()
+    # The hashing adapter buckets tokens, so it scores "사업계획서" against
+    # "business plan writer" at 0.0 — every "semantic" number it produced was
+    # really lexical. Prefer the verified local sentence model (the same adapter
+    # the ontology and Hub rerank paths already use) and keep hashing only as a
+    # last resort so routing still runs when the model asset is missing.
+    try:
+        _VECTOR_ADAPTER: Any = select_vector_adapter("auto")
+    except Exception:  # pragma: no cover - model asset unavailable
+        _VECTOR_ADAPTER = LocalHashingVectorAdapter(
+            status="degraded_fallback",
+            fallback_reason="verified_local_model2vec_asset_unavailable",
+        )
 except Exception:  # pragma: no cover
     _VECTOR_ADAPTER = None
 
@@ -75,8 +90,14 @@ def _cached_index(card: dict[str, Any]) -> dict[str, Any]:
 
 
 def _card_vector(card: dict[str, Any]) -> list[float] | None:
-    """Cached semantic vector for a card (name + summary + capabilities), or
-    None when the embedding adapter is unavailable."""
+    """Cached semantic vector for a card (name + summary + capabilities +
+    trigger phrasing), or None when the embedding adapter is unavailable.
+
+    Trigger examples join as meaning material, not as tokens to match: how a
+    real request is phrased describes the job better than a terse capability
+    slug. Anti-triggers stay out — they name work the card must refuse, and
+    folding them in would pull it toward the very requests it should decline.
+    """
     if _VECTOR_ADAPTER is None:
         return None
     key = _card_key(card)
@@ -87,7 +108,11 @@ def _card_vector(card: dict[str, Any]) -> list[float] | None:
                 str(card.get("name_ko") or ""),
                 str(card.get("summary") or ""),
                 str(card.get("summary_ko") or ""),
-                " ".join(str(c) for c in (card.get("capabilities") or [])),
+                " ".join(str(c).replace("_", " ") for c in (card.get("capabilities") or [])),
+                " ".join(
+                    str(entry.get("text") or "") if isinstance(entry, dict) else str(entry)
+                    for entry in (card.get("trigger_examples") or [])
+                ),
             ]
         ).strip()
         try:
@@ -989,7 +1014,7 @@ def route_request(
     def _search_hub(query_tokens: list[str], *, search_scope: str) -> dict[str, Any]:
         if search_scope in {"cloud", "bookmark"}:
             try:
-                return search_hub(query_tokens, home=base, approved=True, scope=search_scope)
+                return search_hub(query_tokens, home=base, approved=True, scope=search_scope, query_text=query)
             except TypeError as exc:
                 if "scope" not in str(exc):
                     raise
@@ -1000,7 +1025,7 @@ def route_request(
                     "results": [],
                     "note": "search_hub implementation does not support this scope",
                 }
-        return search_hub(query_tokens, home=base, approved=True)
+        return search_hub(query_tokens, home=base, approved=True, query_text=query)
 
     def _search_hub_ordered(query_tokens: list[str], *, search_scope: str) -> dict[str, Any]:
         if cloud_only or search_scope != "network":

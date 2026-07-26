@@ -36,9 +36,24 @@ from .tokenize import has_hangul, snake_tokens, token_set, tokenize, word_token_
 # layered on top of lexical scoring, not a replacement — and routing must keep
 # working if it's ever unavailable, so the import degrades to None.
 try:  # pragma: no cover - exercised indirectly
-    from ontology.embeddings import LocalHashingVectorAdapter, cosine_similarity as _cosine_similarity
+    from ontology.embeddings import (
+        LocalHashingVectorAdapter,
+        cosine_similarity as _cosine_similarity,
+        select_vector_adapter,
+    )
 
-    _VECTOR_ADAPTER: Any = LocalHashingVectorAdapter()
+    # The hashing adapter buckets tokens, so it scores "사업계획서" against
+    # "business plan writer" at 0.0 — every "semantic" number it produced was
+    # really lexical. Prefer the verified local sentence model (the same adapter
+    # the ontology and Hub rerank paths already use) and keep hashing only as a
+    # last resort so routing still runs when the model asset is missing.
+    try:
+        _VECTOR_ADAPTER: Any = select_vector_adapter("auto")
+    except Exception:  # pragma: no cover - model asset unavailable
+        _VECTOR_ADAPTER = LocalHashingVectorAdapter(
+            status="degraded_fallback",
+            fallback_reason="verified_local_model2vec_asset_unavailable",
+        )
 except Exception:  # pragma: no cover
     _VECTOR_ADAPTER = None
 
