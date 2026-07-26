@@ -713,6 +713,42 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
+def _workforce_preparation_ready(result: Any) -> bool:
+    """Whether a preparation actually pinned an executable roster.
+
+    A rejected preparation (for example team_execution_graph_missing) carries an
+    empty executionRoster. Binding it produces a goal-binding error whose code
+    hides the real cause, so readiness must gate the bind call.
+    """
+
+    if not isinstance(result, Mapping):
+        return False
+    if result.get("status") != "prepared":
+        return False
+    if result.get("issues"):
+        return False
+    roster = result.get("executionRoster")
+    return isinstance(roster, list) and bool(roster)
+
+
+def _workforce_preparation_refusal(name: str, result: Any) -> dict[str, Any]:
+    """Return the preparation's own refusal, never a binding error in its place."""
+
+    payload = dict(result) if isinstance(result, Mapping) else {}
+    issues = payload.get("issues")
+    return {
+        **payload,
+        "action": name,
+        "status": payload.get("status") or "rejected",
+        "error": payload.get("error") or "workforce_preparation_not_executable",
+        "issues": list(issues) if isinstance(issues, list) else [],
+        "executionAllowed": False,
+        # Preparation never succeeded, so the roster was never bound to a goal.
+        # Reporting preparedButUnbound here would invert cause and effect.
+        "preparedButUnbound": False,
+    }
+
+
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
@@ -1172,6 +1208,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             **prepared_result,
                             "localContextSliceStatus": "unavailable",
                         }
+                    if not _workforce_preparation_ready(prepared_result):
+                        return _workforce_preparation_refusal(name, prepared_result)
                     try:
                         goal_binding = WorkforceGoalStore().bind(
                             goal_id=str(prepare_goal_id),
@@ -1222,6 +1260,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             }
         except Exception:
             remote_result = {**remote_result, "localContextSliceStatus": "unavailable"}
+        if not _workforce_preparation_ready(remote_result):
+            return _workforce_preparation_refusal(name, remote_result)
         try:
             goal_binding = WorkforceGoalStore().bind(
                 goal_id=str(prepare_goal_id),

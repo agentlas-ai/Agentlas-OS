@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import tempfile
@@ -17,6 +18,7 @@ from ..networking.bootstrap import atomic_write_json, networking_home, read_json
 from ..networking.card_lint import effective_status
 from .compiler import compile_workforce_profile
 from .contracts import canonical_digest, verify_profile_integrity
+from .execution import WORKFORCE_EXECUTION_GRAPH_SCHEMA
 from .federation import (
     WORKFORCE_LINEAGE_ATTESTATION_SCHEMA,
     validate_lineage_attestation,
@@ -69,6 +71,63 @@ def _token(value: str) -> str:
 
 def _detached(value: Any) -> Any:
     return json.loads(json.dumps(value, ensure_ascii=False))
+
+
+_WORKER_ID_SAFE_RE = re.compile(r"[^A-Za-z0-9._:@-]+")
+_TEAM_MEMBER_ENTRY_NAMES = ("agent.md", "AGENTS.md")
+_TEAM_MEMBER_MAX = 32
+
+
+def _local_team_execution_graph(
+    *,
+    package_root: Path,
+    entry_relative: str,
+    manager_content: str,
+) -> dict[str, Any]:
+    """Project a local team package's organization into an execution graph.
+
+    The manager is the team's own entrypoint directive; workers are the member
+    directives under `agents/<member>/`. Contents are read through the same
+    bounded no-follow reader as the entrypoint, so a symlinked or oversized
+    member file fails closed instead of escaping the package.
+    """
+
+    members_root = package_root / "agents"
+    workers: list[dict[str, str]] = []
+    if members_root.is_dir() and not members_root.is_symlink():
+        for member_dir in sorted(members_root.iterdir(), key=lambda item: item.name):
+            if not member_dir.is_dir() or member_dir.is_symlink():
+                continue
+            entry = next(
+                (
+                    member_dir / name
+                    for name in _TEAM_MEMBER_ENTRY_NAMES
+                    if (member_dir / name).is_file() and not (member_dir / name).is_symlink()
+                ),
+                None,
+            )
+            if entry is None:
+                continue
+            relative = entry.relative_to(package_root).as_posix()
+            if relative == entry_relative:
+                continue
+            content = _bounded_nofollow_text(entry, maximum=200_000)
+            if not content.strip():
+                continue
+            worker_id = _WORKER_ID_SAFE_RE.sub("-", member_dir.name).strip("-") or member_dir.name
+            workers.append({"id": worker_id[:255], "path": relative, "content": content})
+    if not workers:
+        # Refuse to invent an organization. A team package with no readable
+        # member directive is a packaging defect, and reporting it here is what
+        # lets the caller see the real cause.
+        raise KeyError("local_team_execution_graph_unavailable")
+    if len(workers) > _TEAM_MEMBER_MAX:
+        raise KeyError("local_team_execution_graph_too_large")
+    return {
+        "schemaVersion": WORKFORCE_EXECUTION_GRAPH_SCHEMA,
+        "manager": {"path": entry_relative, "content": manager_content},
+        "workers": workers,
+    }
 
 
 def _bounded_nofollow_text(path: Path, *, maximum: int) -> str:
@@ -603,7 +662,7 @@ class LocalWorkforceRegistry:
             manifest = {}
         if snapshot_package_hash(package_root) != registration.get("snapshotHash"):
             raise KeyError("local_runtime_bundle_snapshot_drift")
-        return {
+        bundle: dict[str, Any] = {
             "agentReleaseId": release_id,
             "packageHash": registration["packageHash"],
             "contentDigest": registration["contentDigest"],
@@ -613,6 +672,17 @@ class LocalWorkforceRegistry:
             "denyRead": list(manifest.get("denyRead") or []),
             "status": "ready",
         }
+        # A team is not executable without its organization: prepare_execution
+        # rejects a team bundle with team_execution_graph_missing. Local teams
+        # used to ship without one, so every locally registered team failed at
+        # preparation while the surface reported a bind problem instead.
+        if str(profile.get("entityKind") or "") == "team":
+            bundle["executionGraph"] = _local_team_execution_graph(
+                package_root=package_root,
+                entry_relative=entry_relative.as_posix(),
+                manager_content=instructions,
+            )
+        return bundle
 
     def events_after(self, cursor: int = 0) -> list[dict[str, Any]]:
         if not isinstance(cursor, int) or cursor < 0:

@@ -75,8 +75,14 @@ def _cached_index(card: dict[str, Any]) -> dict[str, Any]:
 
 
 def _card_vector(card: dict[str, Any]) -> list[float] | None:
-    """Cached semantic vector for a card (name + summary + capabilities), or
-    None when the embedding adapter is unavailable."""
+    """Cached semantic vector for a card (name + summary + capabilities +
+    trigger phrasing), or None when the embedding adapter is unavailable.
+
+    Trigger examples join as meaning material, not as tokens to match: how a
+    real request is phrased describes the job better than a terse capability
+    slug. Anti-triggers stay out — they name work the card must refuse, and
+    folding them in would pull it toward the very requests it should decline.
+    """
     if _VECTOR_ADAPTER is None:
         return None
     key = _card_key(card)
@@ -87,7 +93,11 @@ def _card_vector(card: dict[str, Any]) -> list[float] | None:
                 str(card.get("name_ko") or ""),
                 str(card.get("summary") or ""),
                 str(card.get("summary_ko") or ""),
-                " ".join(str(c) for c in (card.get("capabilities") or [])),
+                " ".join(str(c).replace("_", " ") for c in (card.get("capabilities") or [])),
+                " ".join(
+                    str(entry.get("text") or "") if isinstance(entry, dict) else str(entry)
+                    for entry in (card.get("trigger_examples") or [])
+                ),
             ]
         ).strip()
         try:
@@ -989,7 +999,7 @@ def route_request(
     def _search_hub(query_tokens: list[str], *, search_scope: str) -> dict[str, Any]:
         if search_scope in {"cloud", "bookmark"}:
             try:
-                return search_hub(query_tokens, home=base, approved=True, scope=search_scope)
+                return search_hub(query_tokens, home=base, approved=True, scope=search_scope, query_text=query)
             except TypeError as exc:
                 if "scope" not in str(exc):
                     raise
@@ -1000,7 +1010,7 @@ def route_request(
                     "results": [],
                     "note": "search_hub implementation does not support this scope",
                 }
-        return search_hub(query_tokens, home=base, approved=True)
+        return search_hub(query_tokens, home=base, approved=True, query_text=query)
 
     def _search_hub_ordered(query_tokens: list[str], *, search_scope: str) -> dict[str, Any]:
         if cloud_only or search_scope != "network":

@@ -85,7 +85,12 @@ def search_hub(
     home: Path | str | None = None,
     approved: bool = False,
     scope: str = SCOPE_NETWORK,
+    query_text: str | None = None,
 ) -> dict[str, Any]:
+    """`query_text` is the user's untouched sentence. It is NEVER transmitted —
+    only the redacted keyword tokens go to the Hub, exactly as before. It is
+    used solely to re-rank the returned candidates locally, recovering the
+    intent that tokenization destroys."""
     base = Path(home) if home else networking_home()
     _ = approved  # Kept for backwards-compatible callers; routing no longer gates Hub lookup.
     scope = scope if scope in _SCOPE_TOOL else SCOPE_NETWORK
@@ -177,6 +182,8 @@ def search_hub(
         set(safe_tokens),
         local_terms,
         recommendation_intent,
+        query_vector=embed_query_text(query_text),
+        query_text=query_text,
     )
     append_jsonl(
         cache_path,
@@ -242,6 +249,69 @@ def _project_clarify(
     }
 
 
+# Meaning-based client re-rank. The Hub only ever receives redacted keyword
+# tokens, so its ordering is built from fragments: "SBA 구조로 투자자용
+# 사업계획서를 만들어줘" reaches it as "sba 구조 투자자용 사업계획서", and
+# "다 고쳐라" reaches it as "고쳐라". The full sentence never leaves this host,
+# so re-ranking the returned candidates against it locally recovers the intent
+# without weakening the privacy boundary — an embedding is computed here and
+# nothing new is transmitted.
+try:  # pragma: no cover - exercised indirectly
+    from ontology.embeddings import cosine_similarity as _cosine_similarity, select_vector_adapter
+
+    _RERANK_ADAPTER: Any = select_vector_adapter("auto")
+except Exception:  # pragma: no cover
+    _RERANK_ADAPTER = None
+
+    def _cosine_similarity(left: Any, right: Any) -> float:  # type: ignore[misc]
+        return 0.0
+
+
+# Gate constants proven by memory recall (electron/memory/local-embedding.ts):
+# a similarity the model cannot form an opinion about is noise, not weak signal.
+_SEMANTIC_MIN_SCORE = 0.15
+_SEMANTIC_RELATIVE_FLOOR = 0.72
+
+_ITEM_VECTOR_CACHE: dict[str, list[float] | None] = {}
+_ITEM_TEXT_FIELDS = ("name", "nameEn", "tagline", "taglineEn", "summary", "summaryEn", "description")
+
+
+def embed_query_text(query_text: str | None) -> list[float] | None:
+    """Vector for the user's own sentence, or None when no adapter/text."""
+    if _RERANK_ADAPTER is None or not (query_text or "").strip():
+        return None
+    try:
+        return _RERANK_ADAPTER.embed(query_text)
+    except Exception:  # pragma: no cover - never let embedding break routing
+        return None
+
+
+def _item_vector(item: dict[str, Any]) -> list[float] | None:
+    if _RERANK_ADAPTER is None:
+        return None
+    key = str(item.get("slug") or item.get("nameEn") or item.get("name") or "")
+    if not key:
+        return None
+    if key not in _ITEM_VECTOR_CACHE:
+        text = " ".join(str(item.get(field) or "") for field in _ITEM_TEXT_FIELDS).strip()
+        try:
+            _ITEM_VECTOR_CACHE[key] = _RERANK_ADAPTER.embed(text) if text else None
+        except Exception:  # pragma: no cover
+            _ITEM_VECTOR_CACHE[key] = None
+    return _ITEM_VECTOR_CACHE[key]
+
+
+def _semantic_score(item: dict[str, Any], query_vector: list[float] | None) -> float:
+    """Cosine against the user's full sentence; 0.0 disables this signal so the
+    existing lexical order is preserved exactly when no adapter is available."""
+    if query_vector is None:
+        return 0.0
+    item_vector = _item_vector(item)
+    if item_vector is None:
+        return 0.0
+    return max(0.0, float(_cosine_similarity(query_vector, item_vector)))
+
+
 def _cache_key(redacted_query: str) -> str:
     return sha256(redacted_query.encode("utf-8")).hexdigest()[:16]
 
@@ -283,6 +353,8 @@ def _prepare_results(
     query_tokens: set[str],
     local_terms: set[str] | None = None,
     recommendation_intent: bool = False,
+    query_vector: list[float] | None = None,
+    query_text: str | None = None,
 ) -> list[dict[str, Any]]:
     local_terms = local_terms or set()
     # Client re-rank by query relevance with local inventory as a weak
@@ -291,13 +363,31 @@ def _prepare_results(
     # not churn the Hub's sophisticated ranking. Relevance (_combined_score) is
     # specificity-aware via the Hub fields it reads, so this corrects a clearly
     # off-query top result without inverting an already-good Hub order.
+    # Lexical relevance is measured against the user's WHOLE sentence (plus the
+    # confirmed brief when there is one), not against the redacted fragments the
+    # Hub was queried with. Tokenizing "다 고쳐라" down to "고쳐라" is fine for a
+    # privacy-bound wire query, but scoring the answers with those same crumbs
+    # throws away the intent — memory recall reaches hit@10 0.964 precisely
+    # because it matches the full text. Meaning stays a gated tiebreaker below
+    # lexical, mirroring rankHybridLocal instead of overriding it.
+    rank_tokens = query_tokens | (token_set(query_text) if query_text else set())
+    semantic_scores = [_semantic_score(item, query_vector) for item in results]
+    best_semantic = max(semantic_scores, default=0.0)
+
+    def _gated_semantic(index: int) -> float:
+        score = semantic_scores[index]
+        if score < _SEMANTIC_MIN_SCORE or score < best_semantic * _SEMANTIC_RELATIVE_FLOOR:
+            return 0.0
+        return score
+
     ranked = [
         item
         for _index, item in sorted(
             enumerate(results),
             key=lambda pair: (
-                _combined_score(pair[1], query_tokens, local_terms, recommendation_intent),
-                _result_score(pair[1], query_tokens),
+                _combined_score(pair[1], rank_tokens, local_terms, recommendation_intent),
+                _gated_semantic(pair[0]),
+                _result_score(pair[1], rank_tokens),
                 1 if pair[1].get("routingReady") else 0,
                 1 if pair[1].get("callable") else 0,
                 _local_context_score(pair[1], local_terms, query_tokens),
