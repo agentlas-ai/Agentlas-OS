@@ -154,7 +154,13 @@ def squish(text: str) -> str:
 # Concept rules (matched against the canonical shadow unless noted)
 # --------------------------------------------------------------------------- #
 _SENSITIVE = (
-    r"(?:\.env|token|secret|password|passphrase|credentials?|cookies?|keychain|"
+    # "token" is also the standard word for a lexical unit and for model usage
+    # accounting. Treating every occurrence as a credential redacted ordinary
+    # prose — "compare token-normalized fingerprints", "output tokens", "token
+    # budget" — so those senses are excluded here rather than downgraded later.
+    r"(?:\.env|(?<!output )(?<!input )(?<!completion )(?<!prompt )(?<!lexical )"
+    r"token(?!s?[-_ ]?(?:stream|normaliz|count|budget|limit|window|iz|per ))|"
+    r"secret|password|passphrase|credentials?|cookies?|keychain|"
     r"ssh|id_rsa|api[-_ ]?keys?|openai[-_ ]?api|anthropic[-_ ]?api|agentlas[-_ ]?session|"
     r"git-credentials|login\.keychain|private[-_ ]?key|access[-_ ]?key)"
 )
