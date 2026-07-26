@@ -172,9 +172,9 @@ claim of regulated financial or legal trust services.
 
 | Value | What Agentlas does | Entry point in an external LLM host |
 | --- | --- | --- |
-| **Build** | Compiles a plain-language request into a runnable single-agent or team package with roles, tools, memory boundaries, permissions, routing, and verification contracts. | `/hep-build` |
-| **Borrow** | Finds public Hub specialists and brings the selected runtime bundle into your current Agentlas host. The publisher's private source work is not copied into your workspace. | `/hep-hub` (Hub only) or `/hep-network` (Local + Cloud + Hub) |
-| **Own** | Keeps agents you create in a private, owner-scoped Agent Cloud so you can retrieve and call them again after changing models or computers. | Choose **private Agent Cloud** at `/hep-upload`, then retrieve with `/hep-cloud` |
+| **Build** | Compiles a plain-language request into a runnable single-agent or team package with roles, tools, memory boundaries, permissions, routing, and verification contracts. | `/agentlas build` |
+| **Borrow** | Finds public Hub specialists and brings the selected runtime bundle into your current Agentlas host. The publisher's private source work is not copied into your workspace. | `/agentlas hub` (Hub only) or `/agentlas network` (Local + Cloud + Hub) |
+| **Own** | Keeps agents you create in a private, owner-scoped Agent Cloud so you can retrieve and call them again after changing models or computers. | Choose **private Agent Cloud** at `/agentlas upload`, then retrieve with `/agentlas cloud` |
 
 ### Portable package, local execution
 
@@ -183,7 +183,7 @@ Describe the work
   -> build a portable agent or team
   -> save it to my owner-scoped Agent Cloud
   -> install Agentlas OS and sign in on another supported host
-  -> retrieve it with /hep-cloud
+  -> retrieve it with /agentlas cloud
   -> my chosen model and current host execute the work
 ```
 
@@ -197,8 +197,8 @@ travel with the package—you configure those separately on each computer.
 
 | Surface | What it contains | What it is for |
 | --- | --- | --- |
-| **Agentlas Hub** | Public packages from creators and teams | Find and borrow only public specialists with `/hep-hub`; `/hep-network` federates Hub with Local and owner Cloud. Publish only through an explicit public-Hub choice. |
-| **My Agent Cloud** | Only the signed-in owner's Cloud packages | Privately store, restore, and call packages you own with the `/hep-upload` Cloud choice and `/hep-cloud`. |
+| **Agentlas Hub** | Public packages from creators and teams | Find and borrow only public specialists with `/agentlas hub`; `/agentlas network` federates Hub with Local and owner Cloud. Publish only through an explicit public-Hub choice. |
+| **My Agent Cloud** | Only the signed-in owner's Cloud packages | Privately store, restore, and call packages you own with the `/agentlas upload` Cloud choice and `/agentlas cloud`. |
 | **Current host** | The installed runtime, chosen model, local project, credentials, and granted permissions | Execute the selected local, Cloud, or Hub package. |
 
 ---
@@ -311,15 +311,15 @@ Windows. It accepts only the tag-specific runtime asset whose size and SHA-256
 digest match GitHub release metadata, activates the runtime atomically, then
 reconciles every already-installed host plugin/extension to that exact release.
 Open sessions keep their loaded code until reload or restart. Manage it with
-`hephaestus hep-update --service-status`,
-`hephaestus hep-update --install-service`, and
-`hephaestus hep-update --remove-service`. Set
+`agentlas hep-update --service-status`,
+`agentlas hep-update --install-service`, and
+`agentlas hep-update --remove-service`. Set
 `HEPHAESTUS_INSTALL_AUTO_UPDATE_SERVICE=0` only for managed environments that
 provide their own updater.
 
 ### Optional Global Router
 ```bash
-hep-global install
+agentlas global install
 ```
 This appends a managed marker block to `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md`. After that, Codex, Claude Code, and Antigravity/Gemini can treat ordinary prompts more like Agentlas-native sessions. For substantial work the router order is: Hephaestus Network first, Hephaestus Cloud second, local agents third, and local skills last. If Network or Cloud is blocked by credits, entitlement, or a poor match, the runtime reports that boundary and continues down the fallback order. The command is idempotent and keeps a timestamped backup before editing.
 
@@ -335,18 +335,18 @@ Global router command reference:
 
 | Command | What it does |
 | --- | --- |
-| `hep-global install` | Install or refresh the managed router block for Codex, Claude Code, and Antigravity/Gemini. |
-| `hep-global status` | Show whether each runtime file has the managed router block. |
-| `hep-global remove` | Remove only the managed Hephaestus router block. Existing user content stays in place. |
-| `hep-global install --target codex` | Install only `~/.codex/AGENTS.md`. |
-| `hep-global install --target claude` | Install only `~/.claude/CLAUDE.md`. |
-| `hep-global install --target antigravity` | Install only `~/.gemini/GEMINI.md`, which Antigravity shares with Gemini CLI. |
-| `hep-global install --target codex --target claude --target antigravity` | Explicitly install all supported targets. |
-| `hep-global install --dry-run` | Preview what would change without writing files. |
-| `hep-global install --no-backup` | Edit without writing a timestamped `.bak.*` file. |
-| `hep-global install --home /tmp/test-home` | Test against another home directory. Useful for installer QA. |
-| `hephaestus global install` | Same command through the main Hephaestus runner. |
-| `~/.agentlas/runtime/current/bin/hephaestus global status` | Use the installed runtime directly when shell shims are not on `PATH`. |
+| `agentlas global install` | Install or refresh the managed router block for Codex, Claude Code, and Antigravity/Gemini. |
+| `agentlas global status` | Show whether each runtime file has the managed router block. |
+| `agentlas global remove` | Remove only the managed Hephaestus router block. Existing user content stays in place. |
+| `agentlas global install --target codex` | Install only `~/.codex/AGENTS.md`. |
+| `agentlas global install --target claude` | Install only `~/.claude/CLAUDE.md`. |
+| `agentlas global install --target antigravity` | Install only `~/.gemini/GEMINI.md`, which Antigravity shares with Gemini CLI. |
+| `agentlas global install --target codex --target claude --target antigravity` | Explicitly install all supported targets. |
+| `agentlas global install --dry-run` | Preview what would change without writing files. |
+| `agentlas global install --no-backup` | Edit without writing a timestamped `.bak.*` file. |
+| `agentlas global install --home /tmp/test-home` | Test against another home directory. Useful for installer QA. |
+| `hep-global install` | The original spelling of the same command. Still supported. |
+| `~/.agentlas/runtime/current/bin/agentlas global status` | Use the installed runtime directly when shell shims are not on `PATH`. |
 
 ### Per-Runtime Plugin Drivers
 
@@ -359,9 +359,9 @@ claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --spars
 claude plugin install hephaestus@agentlas-core-engine
 ```
 *Note: Claude Code always namespaces marketplace-plugin commands, so this
-plugin-only path exposes `/hephaestus:hep-build`. To get the documented bare
-`/hep-build` autocomplete in every new session, use the one-touch installer
-above; it also writes `~/.claude/commands/hep-*.md`. Claude Code supports
+plugin-only path exposes `/hephaestus:agentlas`. To get the documented bare
+`/agentlas` autocomplete in every new session, use the one-touch installer
+above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Code supports
 `claude plugins ...` as an alias, but this README uses the singular
 `claude plugin ...` for consistency.*
 
@@ -375,7 +375,7 @@ From your OS terminal:
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.65
 codex plugin add hephaestus@agentlas-core-engine
 ```
-*Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). After install, `/prompts:hep-build` is the in-app entry.*
+*Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). After install, `/prompts:agentlas` is the in-app entry.*
 
 </details>
 
@@ -386,13 +386,10 @@ Clone the repo and copy `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`,
 
 </details>
 
-**Just talk:** After installation, speak in plain language within native Agentlas interfaces to auto-route tasks. In external LLM tools, use the explicit commands listed below. When you don't know what agents exist, start with `/hep-search`. To connect Telegram, use `/hep-connect` in Claude Code or `/prompts:hep-connect` in Codex.
+**Just talk:** After installation, speak in plain language within native Agentlas interfaces to auto-route tasks. In external LLM tools, use the explicit commands listed below. When you don't know what agents exist, start with `/agentlas search`. To connect Telegram, use `/agentlas connect`.
 
-**One command to remember:** every command below also answers to
-`/agentlas <command>` — `/agentlas network …` is `/hep-network …`, and
-`/agentlas build …` is `/hep-build …`. Both spellings stay supported, so use
-whichever you prefer. The shell runner works the same way: `agentlas` and
-`hephaestus` are the same program.
+**One word to remember:** everything starts with `agentlas` — `/agentlas` in an
+LLM host, `agentlas` in a shell.
 
 ---
 
@@ -420,18 +417,23 @@ be installed and the package owner to be signed in.
 
 Inside native Agentlas environments, Hephaestus operates commandless. External LLM tools use a deliberately small visible command set. System-level utilities like Stormbreaker, research loadouts, and configuration tables attach automatically from context:
 
-| System Subsystem | Shell Command | Example |
+| System Subsystem | Command | Example |
 | :--- | :--- | :--- |
-| **Agent / Team Builder** | `/hep-build` | `/hep-build create a customer support agent for Shopify refunds` |
-| **Workforce Federation (Local + Cloud + Hub)** | `/hep-network` | `/hep-network split this launch plan into research, copy, QA, and release agents` |
-| **Registered Local Agents Only** | `/hep-local` | `/hep-local use only agents registered on this machine` |
-| **Owned Cloud Agents Only** | `/hep-cloud` | `/hep-cloud use my saved finance analyst agent to review this report` |
-| **Public Hub Agents Only** | `/hep-hub` | `/hep-hub find public specialists for accessibility QA` |
-| **Directory Search** | `/hep-search` | `/hep-search find agents for a market report workflow` |
-| **Browser Hardpoint** | `/hep-browser` or `/prompts:hep-browser` | `/hep-browser https://example.com` |
-| **Inter-Process Call (IPC)** | `/hep-call` | `/hep-call market-researcher, report-writer {draft a market report}` |
-| **Cloud / Hub Destination Gate** | `/hep-upload` | `/hep-upload ./agents/customer-support-hq` |
-| **Telegram Setup** | `/hep-connect` or `/prompts:hep-connect` | `/hep-connect Telegram for Marketing Agent Team` |
+| **Agent / Team Builder** | `/agentlas build` | `/agentlas build create a customer support agent for Shopify refunds` |
+| **Workforce Federation (Local + Cloud + Hub)** | `/agentlas network` | `/agentlas network split this launch plan into research, copy, QA, and release agents` |
+| **Registered Local Agents Only** | `/agentlas local` | `/agentlas local use only agents registered on this machine` |
+| **Owned Cloud Agents Only** | `/agentlas cloud` | `/agentlas cloud use my saved finance analyst agent to review this report` |
+| **Public Hub Agents Only** | `/agentlas hub` | `/agentlas hub find public specialists for accessibility QA` |
+| **Directory Search** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
+| **Browser Hardpoint** | `/agentlas browser` | `/agentlas browser https://example.com` |
+| **Inter-Process Call (IPC)** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
+| **Cloud / Hub Destination Gate** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
+| **Telegram Setup** | `/agentlas connect` | `/agentlas connect Telegram for Marketing Agent Team` |
+
+Every row also answers to its original `/hep-*` name — `/agentlas network` and
+`/hep-network` are the same command. Nothing was renamed away, so existing
+scripts, notes, and muscle memory keep working. In Codex the plugin-scoped forms
+`/prompts:agentlas` and `/prompts:hep-browser` work as well.
 
 ---
 

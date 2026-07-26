@@ -47,8 +47,8 @@ host command adapters लिखने के लिए repo का canonical one
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
 Claude Code के लिए confirm करें कि `hephaestus@agentlas-core-engine` user scope में
-enabled है और `~/.claude/commands/hep-build.md` मौजूद है। अगर अगली session में
-bare `/hep-build` उपलब्ध नहीं होगा, तो install complete report न करें। अंत में
+enabled है और `~/.claude/commands/agentlas build.md` मौजूद है। अगर अगली session में
+bare `/agentlas build` उपलब्ध नहीं होगा, तो install complete report न करें। अंत में
 active plugin, command surface और global routing status confirm करें और host restart
 या `/reload-plugins` चलाने को कहें।
 ```
@@ -157,9 +157,9 @@ claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --spars
 claude plugin install hephaestus@agentlas-core-engine
 ```
 *नोट: Claude Code marketplace plugin commands को हमेशा namespace देता है, इसलिए
-इस plugin-only path में command `/hephaestus:hep-build` है। हर नई session में
-documented bare `/hep-build` autocomplete के लिए ऊपर का one-touch installer
-इस्तेमाल करें; यह `~/.claude/commands/hep-*.md` भी लिखता है। Claude Code
+इस plugin-only path में command `/hephaestus:agentlas` है। हर नई session में
+documented bare `/agentlas build` autocomplete के लिए ऊपर का one-touch installer
+इस्तेमाल करें; यह `~/.claude/commands/agentlas.md` भी लिखता है। Claude Code
 `claude plugins ...` alias भी support करता है, लेकिन यह README एकवचन
 `claude plugin ...` उपयोग करता है।*
 
@@ -173,7 +173,7 @@ documented bare `/hep-build` autocomplete के लिए ऊपर का one-
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.65
 codex plugin add hephaestus@agentlas-core-engine
 ```
-*नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:hep-build` in-app entry है।*
+*नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:agentlas` in-app entry है।*
 
 </details>
 
@@ -184,7 +184,7 @@ Repo को clone करें और `AGENTS.md`, `agent.md`, `agents/`, `skill
 
 </details>
 
-**बस बात कीजिए:** Installation के बाद native Agentlas interfaces में plain language में बोलें — tasks अपने-आप route हो जाते हैं। External LLM tools में नीचे दिए गए explicit commands का उपयोग करें। जब पता न हो कि कौन-से agents मौजूद हैं, तो `/hep-search` से शुरू करें। Telegram connect करने के लिए Claude Code में `/hep-connect` या Codex में `/prompts:hep-connect` use करें।
+**बस बात कीजिए:** Installation के बाद native Agentlas interfaces में plain language में बोलें — tasks अपने-आप route हो जाते हैं। External LLM tools में नीचे दिए गए explicit commands का उपयोग करें। जब पता न हो कि कौन-से agents मौजूद हैं, तो `/agentlas search` से शुरू करें। Telegram connect करने के लिए Claude Code में `/agentlas connect` या Codex में `/prompts:agentlas` use करें।
 
 ---
 
@@ -194,15 +194,20 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 
 | सिस्टम सबसिस्टम | Shell Command | उदाहरण |
 | :--- | :--- | :--- |
-| **Process Builder** | `/hep-build` | `/hep-build create a customer support agent for Shopify refunds` |
-| **Workforce Federation (Local + Cloud + Hub)** | `/hep-network` | `/hep-network split this launch plan into research, copy, QA, and release agents` |
-| **केवल registered Local agents** | `/hep-local` | `/hep-local use only agents registered on this machine` |
-| **केवल owned Cloud agents** | `/hep-cloud` | `/hep-cloud use my saved finance analyst agent to review this report` |
-| **केवल public Hub agents** | `/hep-hub` | `/hep-hub find public specialists for accessibility QA` |
-| **Directory Search** | `/hep-search` | `/hep-search find agents for a market report workflow` |
-| **Inter-Process Call (IPC)** | `/hep-call` | `/hep-call market-researcher, report-writer {draft a market report}` |
-| **Package Exporter** | `/hep-upload` | `/hep-upload ./agents/customer-support-hq` |
-| **Telegram Setup** | `/hep-connect` या `/prompts:hep-connect` | `/hep-connect Telegram for Marketing Agent Team` |
+| **Process Builder** | `/agentlas build` | `/agentlas build create a customer support agent for Shopify refunds` |
+| **Workforce Federation (Local + Cloud + Hub)** | `/agentlas network` | `/agentlas network split this launch plan into research, copy, QA, and release agents` |
+| **केवल registered Local agents** | `/agentlas local` | `/agentlas local use only agents registered on this machine` |
+| **केवल owned Cloud agents** | `/agentlas cloud` | `/agentlas cloud use my saved finance analyst agent to review this report` |
+| **केवल public Hub agents** | `/agentlas hub` | `/agentlas hub find public specialists for accessibility QA` |
+| **Directory Search** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
+| **Inter-Process Call (IPC)** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
+| **Package Exporter** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
+| **Telegram Setup** | `/agentlas connect` या `/prompts:agentlas` | `/agentlas connect Telegram for Marketing Agent Team` |
+
+हर कमांड अपने मूल नाम `/hep-*` से भी काम करती है। `/agentlas network` और
+`/hep-network` एक ही कमांड हैं। कोई नाम हटाया नहीं गया है, इसलिए मौजूदा
+स्क्रिप्ट, नोट्स और आपकी आदत सब वैसे ही चलते रहेंगे।
+
 
 ---
 

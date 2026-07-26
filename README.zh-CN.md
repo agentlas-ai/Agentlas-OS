@@ -46,8 +46,8 @@ https://github.com/agentlas-ai/Agentlas-OS
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
 对于 Claude Code，请确认 `hephaestus@agentlas-core-engine` 已在 user scope
-启用，并且 `~/.claude/commands/hep-build.md` 存在。如果下一次 session 中
-无法使用 bare `/hep-build`，不要报告安装完成。最后确认已启用的 plugin、
+启用，并且 `~/.claude/commands/agentlas build.md` 存在。如果下一次 session 中
+无法使用 bare `/agentlas build`，不要报告安装完成。最后确认已启用的 plugin、
 command surface 和 global routing 状态，并提示我重启 host 或运行
 `/reload-plugins`。
 ```
@@ -156,9 +156,9 @@ claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --spars
 claude plugin install hephaestus@agentlas-core-engine
 ```
 *注：Claude Code 会始终为 marketplace plugin command 添加 namespace，
-因此仅使用此 plugin 安装路径时，命令是 `/hephaestus:hep-build`。若要在每个
-新 session 中使用文档里的 bare `/hep-build` 自动补全，请使用上面的一键
-安装器；它还会写入 `~/.claude/commands/hep-*.md`。Claude Code 也支持
+因此仅使用此 plugin 安装路径时，命令是 `/hephaestus:agentlas`。若要在每个
+新 session 中使用文档里的 bare `/agentlas build` 自动补全，请使用上面的一键
+安装器；它还会写入 `~/.claude/commands/agentlas.md`。Claude Code 也支持
 `claude plugins ...` 别名，但本 README 统一使用单数形式的
 `claude plugin ...`。*
 
@@ -172,7 +172,7 @@ claude plugin install hephaestus@agentlas-core-engine
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.65
 codex plugin add hephaestus@agentlas-core-engine
 ```
-*注：Codex 应用内不支持 `/plugin marketplace add`，请在操作系统终端中运行上面两条命令。操作系统终端的 CLI 命令为单数形式（`codex plugin`）；在 Codex 应用内，插件浏览器的斜杠命令为复数形式（`/plugins`）。安装完成后，`/prompts:hep-build` 即为应用内入口。*
+*注：Codex 应用内不支持 `/plugin marketplace add`，请在操作系统终端中运行上面两条命令。操作系统终端的 CLI 命令为单数形式（`codex plugin`）；在 Codex 应用内，插件浏览器的斜杠命令为复数形式（`/plugins`）。安装完成后，`/prompts:agentlas` 即为应用内入口。*
 
 </details>
 
@@ -183,7 +183,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 </details>
 
-**直接开口即可：** 安装完成后，在原生 Agentlas 界面中用自然语言说话即可自动路由任务。在外部 LLM tools 中，使用下面列出的显式命令。不清楚有哪些智能体时，先从 `/hep-search` 开始。要连接 Telegram，请在 Claude Code 中使用 `/hep-connect`，或在 Codex 中使用 `/prompts:hep-connect`。
+**直接开口即可：** 安装完成后，在原生 Agentlas 界面中用自然语言说话即可自动路由任务。在外部 LLM tools 中，使用下面列出的显式命令。不清楚有哪些智能体时，先从 `/agentlas search` 开始。要连接 Telegram，请在 Claude Code 中使用 `/agentlas connect`，或在 Codex 中使用 `/prompts:agentlas`。
 
 ---
 
@@ -193,15 +193,19 @@ codex plugin add hephaestus@agentlas-core-engine
 
 | 系统子系统 | Shell 命令 | 示例 |
 | :--- | :--- | :--- |
-| **进程构建器** | `/hep-build` | `/hep-build create a customer support agent for Shopify refunds` |
-| **Workforce 联合（Local + Cloud + Hub）** | `/hep-network` | `/hep-network split this launch plan into research, copy, QA, and release agents` |
-| **仅已注册的 Local 智能体** | `/hep-local` | `/hep-local use only agents registered on this machine` |
-| **仅本人 Cloud 智能体** | `/hep-cloud` | `/hep-cloud use my saved finance analyst agent to review this report` |
-| **仅公开 Hub 智能体** | `/hep-hub` | `/hep-hub find public specialists for accessibility QA` |
-| **目录搜索** | `/hep-search` | `/hep-search find agents for a market report workflow` |
-| **进程间调用（IPC）** | `/hep-call` | `/hep-call market-researcher, report-writer {draft a market report}` |
-| **包导出器** | `/hep-upload` | `/hep-upload ./agents/customer-support-hq` |
-| **Telegram 设置** | `/hep-connect` 或 `/prompts:hep-connect` | `/hep-connect Telegram for Marketing Agent Team` |
+| **进程构建器** | `/agentlas build` | `/agentlas build create a customer support agent for Shopify refunds` |
+| **Workforce 联合（Local + Cloud + Hub）** | `/agentlas network` | `/agentlas network split this launch plan into research, copy, QA, and release agents` |
+| **仅已注册的 Local 智能体** | `/agentlas local` | `/agentlas local use only agents registered on this machine` |
+| **仅本人 Cloud 智能体** | `/agentlas cloud` | `/agentlas cloud use my saved finance analyst agent to review this report` |
+| **仅公开 Hub 智能体** | `/agentlas hub` | `/agentlas hub find public specialists for accessibility QA` |
+| **目录搜索** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
+| **进程间调用（IPC）** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
+| **包导出器** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
+| **Telegram 设置** | `/agentlas connect` 或 `/prompts:agentlas` | `/agentlas connect Telegram for Marketing Agent Team` |
+
+每条命令仍可使用原名 `/hep-*`。`/agentlas network` 与 `/hep-network` 是同一条
+命令。旧名称并未移除，因此现有脚本、笔记和使用习惯都不受影响。
+
 
 ---
 

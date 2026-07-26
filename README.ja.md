@@ -46,8 +46,8 @@ host command adapters まで書き込む公式 one-touch installer を実行し�
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
 Claude Code では `hephaestus@agentlas-core-engine` が user scope で有効で、
-`~/.claude/commands/hep-build.md` が存在することを確認してください。次の
-session で bare `/hep-build` を使えない状態なら、install 完了と報告しないで
+`~/.claude/commands/agentlas build.md` が存在することを確認してください。次の
+session で bare `/agentlas build` を使えない状態なら、install 完了と報告しないで
 ください。最後に plugin、command surface、global routing の状態を確認し、
 host の再起動または `/reload-plugins` の実行を案内してください。
 ```
@@ -156,10 +156,10 @@ claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --spars
 claude plugin install hephaestus@agentlas-core-engine
 ```
 *注: Claude Code の marketplace plugin command には常に namespace が
-付くため、この plugin-only の経路では `/hephaestus:hep-build` を使います。
-新しい session ごとに文書どおりの bare `/hep-build` 補完を使うには、上の
+付くため、この plugin-only の経路では `/hephaestus:agentlas` を使います。
+新しい session ごとに文書どおりの bare `/agentlas build` 補完を使うには、上の
 one-touch installer を使用してください。これは
-`~/.claude/commands/hep-*.md` も書き込みます。Claude Code は
+`~/.claude/commands/agentlas.md` も書き込みます。Claude Code は
 `claude plugins ...` もサポートしますが、この README では単数形の
 `claude plugin ...` を使用します。*
 
@@ -173,7 +173,7 @@ OS のターミナルから:
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.65
 codex plugin add hephaestus@agentlas-core-engine
 ```
-*注: Codex アプリ内では `/plugin marketplace add` は利用できません。上記の 2 つのコマンドを OS のターミナルで実行してください。OS ターミナルの CLI コマンドは単数形（`codex plugin`）ですが、Codex アプリ内のプラグインブラウザーのスラッシュコマンドは複数形（`/plugins`）です。インストール後は、`/prompts:hep-build` がアプリ内のエントリーポイントになります。*
+*注: Codex アプリ内では `/plugin marketplace add` は利用できません。上記の 2 つのコマンドを OS のターミナルで実行してください。OS ターミナルの CLI コマンドは単数形（`codex plugin`）ですが、Codex アプリ内のプラグインブラウザーのスラッシュコマンドは複数形（`/plugins`）です。インストール後は、`/prompts:agentlas` がアプリ内のエントリーポイントになります。*
 
 </details>
 
@@ -184,7 +184,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 </details>
 
-**話しかけるだけ:** インストール後は、ネイティブ Agentlas インターフェース内で平易な自然言語で話しかければ、タスクは自動的にルーティングされます。外部 LLM tools では、以下に示す明示的なコマンドを使用してください。どのようなエージェントが存在するのか分からないときは、まず `/hep-search` から始めてください。Telegram を接続するには、Claude Code では `/hep-connect`、Codex では `/prompts:hep-connect` を使います。
+**話しかけるだけ:** インストール後は、ネイティブ Agentlas インターフェース内で平易な自然言語で話しかければ、タスクは自動的にルーティングされます。外部 LLM tools では、以下に示す明示的なコマンドを使用してください。どのようなエージェントが存在するのか分からないときは、まず `/agentlas search` から始めてください。Telegram を接続するには、Claude Code では `/agentlas connect`、Codex では `/prompts:agentlas` を使います。
 
 ---
 
@@ -194,15 +194,20 @@ codex plugin add hephaestus@agentlas-core-engine
 
 | システムサブシステム | シェルコマンド | 例 |
 | :--- | :--- | :--- |
-| **プロセスビルダー** | `/hep-build` | `/hep-build create a customer support agent for Shopify refunds` |
-| **Workforce 連合（Local + Cloud + Hub）** | `/hep-network` | `/hep-network split this launch plan into research, copy, QA, and release agents` |
-| **登録済み Local エージェントのみ** | `/hep-local` | `/hep-local use only agents registered on this machine` |
-| **所有する Cloud エージェントのみ** | `/hep-cloud` | `/hep-cloud use my saved finance analyst agent to review this report` |
-| **公開 Hub エージェントのみ** | `/hep-hub` | `/hep-hub find public specialists for accessibility QA` |
-| **ディレクトリ検索** | `/hep-search` | `/hep-search find agents for a market report workflow` |
-| **プロセス間呼び出し（IPC）** | `/hep-call` | `/hep-call market-researcher, report-writer {draft a market report}` |
-| **パッケージエクスポーター** | `/hep-upload` | `/hep-upload ./agents/customer-support-hq` |
-| **Telegram 設定** | `/hep-connect` または `/prompts:hep-connect` | `/hep-connect Telegram for Marketing Agent Team` |
+| **プロセスビルダー** | `/agentlas build` | `/agentlas build create a customer support agent for Shopify refunds` |
+| **Workforce 連合（Local + Cloud + Hub）** | `/agentlas network` | `/agentlas network split this launch plan into research, copy, QA, and release agents` |
+| **登録済み Local エージェントのみ** | `/agentlas local` | `/agentlas local use only agents registered on this machine` |
+| **所有する Cloud エージェントのみ** | `/agentlas cloud` | `/agentlas cloud use my saved finance analyst agent to review this report` |
+| **公開 Hub エージェントのみ** | `/agentlas hub` | `/agentlas hub find public specialists for accessibility QA` |
+| **ディレクトリ検索** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
+| **プロセス間呼び出し（IPC）** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
+| **パッケージエクスポーター** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
+| **Telegram 設定** | `/agentlas connect` または `/prompts:agentlas` | `/agentlas connect Telegram for Marketing Agent Team` |
+
+各コマンドは元の名前 `/hep-*` でもそのまま動作します。`/agentlas network` と
+`/hep-network` は同じコマンドです。名前を削除したわけではないので、既存の
+スクリプトやメモ、慣れた操作はそのまま使えます。
+
 
 ---
 

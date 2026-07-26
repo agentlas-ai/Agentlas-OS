@@ -53,8 +53,8 @@ https://github.com/agentlas-ai/Agentlas-OS
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
 Claude Code에서는 `hephaestus@agentlas-core-engine`이 user scope로 활성화됐고
-`~/.claude/commands/hep-build.md`가 존재하는지 확인해줘. 다음 세션에서 bare
-`/hep-build` 명령을 쓸 수 없는 상태라면 설치 완료라고 하지 마. 마지막에는
+`~/.claude/commands/agentlas build.md`가 존재하는지 확인해줘. 다음 세션에서 bare
+`/agentlas build` 명령을 쓸 수 없는 상태라면 설치 완료라고 하지 마. 마지막에는
 활성화된 플러그인, 명령 표면, 전역 라우팅 상태를 확인하고, 호스트를
 재시작하거나 `/reload-plugins`를 실행하라고 알려줘.
 ```
@@ -106,9 +106,9 @@ Claude Code에서는 `hephaestus@agentlas-core-engine`이 user scope로 활성�
 
 | 가치 | Agentlas가 하는 일 | 외부 LLM 호스트의 진입점 |
 | --- | --- | --- |
-| **Build · 만들기** | 평범한 요청을 역할, 도구, 메모리 경계, 권한, 라우팅, 검증 계약을 갖춘 실행 가능한 싱글 에이전트 또는 팀 패키지로 컴파일한 뒤, **Cloud에 올리기** 또는 **로컬에만 저장**을 직접 선택하게 합니다. | `/hep-build` |
-| **Borrow · 빌리기** | 공개 Hub에서 전문가를 찾아 선택한 런타임 번들을 현재 Agentlas 호스트로 가져옵니다. 창작자의 비공개 원본 작업은 내 워크스페이스에 복사되지 않습니다. | `/hep-hub`(Hub 전용) 또는 `/hep-network`(Local + Cloud + Hub) |
-| **Own · 소유하기** | 내가 만든 에이전트를 비공개 소유자 전용 Agent Cloud에 보관해, 모델이나 컴퓨터가 바뀐 뒤에도 다시 불러 호출할 수 있게 합니다. | `/hep-upload`에서 **비공개 Agent Cloud**를 선택한 뒤 `/hep-cloud`로 불러오기 |
+| **Build · 만들기** | 평범한 요청을 역할, 도구, 메모리 경계, 권한, 라우팅, 검증 계약을 갖춘 실행 가능한 싱글 에이전트 또는 팀 패키지로 컴파일한 뒤, **Cloud에 올리기** 또는 **로컬에만 저장**을 직접 선택하게 합니다. | `/agentlas build` |
+| **Borrow · 빌리기** | 공개 Hub에서 전문가를 찾아 선택한 런타임 번들을 현재 Agentlas 호스트로 가져옵니다. 창작자의 비공개 원본 작업은 내 워크스페이스에 복사되지 않습니다. | `/agentlas hub`(Hub 전용) 또는 `/agentlas network`(Local + Cloud + Hub) |
+| **Own · 소유하기** | 내가 만든 에이전트를 비공개 소유자 전용 Agent Cloud에 보관해, 모델이나 컴퓨터가 바뀐 뒤에도 다시 불러 호출할 수 있게 합니다. | `/agentlas upload`에서 **비공개 Agent Cloud**를 선택한 뒤 `/agentlas cloud`로 불러오기 |
 
 ### 패키지는 이동하고, 실행은 현재 호스트에서
 
@@ -118,7 +118,7 @@ Claude Code에서는 `hephaestus@agentlas-core-engine`이 user scope로 활성�
   -> Cloud에 올리기 또는 로컬에만 저장을 선택한다
   -> Cloud 선택 시 내 소유자 전용 Agent Cloud에 보관한다
   -> 다른 지원 호스트에 Agentlas OS를 설치하고 로그인한다
-  -> /hep-cloud로 다시 불러온다
+  -> /agentlas cloud로 다시 불러온다
   -> 내가 선택한 모델과 현재 호스트가 작업을 실행한다
 ```
 
@@ -132,8 +132,8 @@ Agent Cloud는 소유자의 패키지를 보관하고 다시 전달합니다. �
 
 | 표면 | 포함하는 것 | 용도 |
 | --- | --- | --- |
-| **Agentlas Hub** | 창작자와 팀이 공개한 패키지 | `/hep-hub`로 공개 전문가만 찾습니다. `/hep-network`는 Hub를 Local 및 내 Cloud와 함께 연합 검색합니다. 공개 발행은 명시적으로 공개 Hub를 선택했을 때만 진행합니다. |
-| **내 Agent Cloud** | 로그인한 소유자 본인의 Cloud 패키지만 | `/hep-upload`에서 Cloud를 선택해 비공개로 보관하고, `/hep-cloud`로 내가 소유한 패키지를 복원·호출합니다. |
+| **Agentlas Hub** | 창작자와 팀이 공개한 패키지 | `/agentlas hub`로 공개 전문가만 찾습니다. `/agentlas network`는 Hub를 Local 및 내 Cloud와 함께 연합 검색합니다. 공개 발행은 명시적으로 공개 Hub를 선택했을 때만 진행합니다. |
+| **내 Agent Cloud** | 로그인한 소유자 본인의 Cloud 패키지만 | `/agentlas upload`에서 Cloud를 선택해 비공개로 보관하고, `/agentlas cloud`로 내가 소유한 패키지를 복원·호출합니다. |
 | **현재 호스트** | 설치된 런타임, 선택한 모델, 로컬 프로젝트, 자격 증명, 부여된 권한 | 선택한 로컬·Cloud·Hub 패키지를 실제로 실행합니다. |
 
 ---
@@ -241,9 +241,9 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 런타임 자산만 받아 원자적으로 활성화한 뒤, 이미 설치된 모든 호스트
 플러그인/확장을 정확히 같은 릴리스로 맞춥니다. 열려 있는 세션은 reload 또는
 재시작 후 새 코드를 사용합니다. 상태 확인과 관리는
-`hephaestus hep-update --service-status`,
-`hephaestus hep-update --install-service`,
-`hephaestus hep-update --remove-service`를 사용하세요. 자체 업데이트 체계를
+`agentlas hep-update --service-status`,
+`agentlas hep-update --install-service`,
+`agentlas hep-update --remove-service`를 사용하세요. 자체 업데이트 체계를
 가진 관리 환경에서만 `HEPHAESTUS_INSTALL_AUTO_UPDATE_SERVICE=0`으로 설치를
 생략하세요.
 
@@ -265,16 +265,16 @@ hep-global install
 
 | 명령 | 역할 |
 | --- | --- |
-| `hep-global install` | Codex, Claude Code, Antigravity/Gemini에 관리용 router block을 설치하거나 갱신합니다. |
-| `hep-global status` | 각 런타임 파일에 router block이 설치되어 있는지 확인합니다. |
-| `hep-global remove` | Hephaestus가 관리하는 router block만 제거합니다. 기존 사용자 내용은 유지합니다. |
-| `hep-global install --target codex` | `~/.codex/AGENTS.md`에만 설치합니다. |
-| `hep-global install --target claude` | `~/.claude/CLAUDE.md`에만 설치합니다. |
-| `hep-global install --target antigravity` | Antigravity가 Gemini CLI와 공유하는 `~/.gemini/GEMINI.md`에만 설치합니다. |
-| `hep-global install --target codex --target claude --target antigravity` | 지원되는 모든 타깃을 명시적으로 설치합니다. |
-| `hep-global install --dry-run` | 파일을 쓰지 않고 변경 예정 내용만 확인합니다. |
-| `hep-global install --no-backup` | timestamp `.bak.*` 백업 없이 수정합니다. |
-| `hep-global install --home /tmp/test-home` | 다른 home 디렉터리를 대상으로 테스트합니다. 설치기 QA에 유용합니다. |
+| `agentlas global install` | Codex, Claude Code, Antigravity/Gemini에 관리용 router block을 설치하거나 갱신합니다. |
+| `agentlas global status` | 각 런타임 파일에 router block이 설치되어 있는지 확인합니다. |
+| `agentlas global remove` | Hephaestus가 관리하는 router block만 제거합니다. 기존 사용자 내용은 유지합니다. |
+| `agentlas global install --target codex` | `~/.codex/AGENTS.md`에만 설치합니다. |
+| `agentlas global install --target claude` | `~/.claude/CLAUDE.md`에만 설치합니다. |
+| `agentlas global install --target antigravity` | Antigravity가 Gemini CLI와 공유하는 `~/.gemini/GEMINI.md`에만 설치합니다. |
+| `agentlas global install --target codex --target claude --target antigravity` | 지원되는 모든 타깃을 명시적으로 설치합니다. |
+| `agentlas global install --dry-run` | 파일을 쓰지 않고 변경 예정 내용만 확인합니다. |
+| `agentlas global install --no-backup` | timestamp `.bak.*` 백업 없이 수정합니다. |
+| `agentlas global install --home /tmp/test-home` | 다른 home 디렉터리를 대상으로 테스트합니다. 설치기 QA에 유용합니다. |
 | `hephaestus global install` | 메인 Hephaestus runner를 통한 동일 명령입니다. |
 | `~/.agentlas/runtime/current/bin/hephaestus global status` | shell shim이 `PATH`에 없을 때 설치된 runtime을 직접 호출합니다. |
 
@@ -289,9 +289,9 @@ claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --spars
 claude plugin install hephaestus@agentlas-core-engine
 ```
 *참고: Claude Code의 마켓플레이스 플러그인 명령에는 항상 namespace가
-붙으므로, 이 플러그인 전용 경로의 명령은 `/hephaestus:hep-build`입니다.
-새 세션마다 문서의 bare `/hep-build` 자동완성을 쓰려면 위 원터치 설치기를
-사용하세요. 원터치 설치기는 `~/.claude/commands/hep-*.md`도 기록합니다.
+붙으므로, 이 플러그인 전용 경로의 명령은 `/hephaestus:agentlas`입니다.
+새 세션마다 문서의 bare `/agentlas` 자동완성을 쓰려면 위 원터치 설치기를
+사용하세요. 원터치 설치기는 `~/.claude/commands/agentlas.md`도 기록합니다.
 Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README에서는
 일관성을 위해 단수형 `claude plugin ...`을 사용합니다.*
 
@@ -305,7 +305,7 @@ OS 터미널에서:
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.65
 codex plugin add hephaestus@agentlas-core-engine
 ```
-*참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. 설치 후에는 `/prompts:hep-build`가 앱 내 진입점입니다.*
+*참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. 설치 후에는 `/prompts:agentlas`가 앱 내 진입점입니다.*
 
 </details>
 
@@ -316,7 +316,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 </details>
 
-**그냥 말하세요:** 설치 후 네이티브 Agentlas 인터페이스에서는 평문으로 말하면 태스크가 자동 라우팅됩니다. 외부 LLM 도구에서는 아래에 나열된 명시적 명령을 사용하세요. 어떤 에이전트가 있는지 모를 때는 `/hep-search`부터 시작하세요. Telegram을 연결하려면 Claude Code에서는 `/hep-connect`, Codex에서는 `/prompts:hep-connect`를 사용하세요.
+**그냥 말하세요:** 설치 후 네이티브 Agentlas 인터페이스에서는 평문으로 말하면 태스크가 자동 라우팅됩니다. 외부 LLM 도구에서는 아래에 나열된 명시적 명령을 사용하세요. 어떤 에이전트가 있는지 모를 때는 `/agentlas search`부터 시작하세요. Telegram을 연결하려면 Claude Code에서는 `/agentlas connect`, Codex에서는 `/prompts:agentlas`를 사용하세요.
 
 ---
 
@@ -345,16 +345,21 @@ Agentlas OS 호스트를 설치하고 패키지 소유자로 로그인해야 합
 
 | 시스템 서브시스템 | 셸 명령 | 예시 |
 | :--- | :--- | :--- |
-| **에이전트 / 팀 빌더** | `/hep-build` | `/hep-build create a customer support agent for Shopify refunds` |
-| **Workforce 연합 라우팅(Local + Cloud + Hub)** | `/hep-network` | `/hep-network split this launch plan into research, copy, QA, and release agents` |
-| **등록된 로컬 에이전트 전용** | `/hep-local` | `/hep-local use only agents registered on this machine` |
-| **내 Cloud 에이전트 전용** | `/hep-cloud` | `/hep-cloud use my saved finance analyst agent to review this report` |
-| **공개 Hub 에이전트 전용** | `/hep-hub` | `/hep-hub find public specialists for accessibility QA` |
-| **디렉터리 검색** | `/hep-search` | `/hep-search find agents for a market report workflow` |
-| **브라우저 하드포인트** | `/hep-browser` 또는 `/prompts:hep-browser` | `/hep-browser https://example.com` |
-| **프로세스 간 호출(IPC)** | `/hep-call` | `/hep-call market-researcher, report-writer {draft a market report}` |
-| **Cloud / Hub 목적지 선택 게이트** | `/hep-upload` | `/hep-upload ./agents/customer-support-hq` |
-| **Telegram 설정** | `/hep-connect` 또는 `/prompts:hep-connect` | `/hep-connect Telegram for Marketing Agent Team` |
+| **에이전트 / 팀 빌더** | `/agentlas build` | `/agentlas build create a customer support agent for Shopify refunds` |
+| **Workforce 연합 라우팅(Local + Cloud + Hub)** | `/agentlas network` | `/agentlas network split this launch plan into research, copy, QA, and release agents` |
+| **등록된 로컬 에이전트 전용** | `/agentlas local` | `/agentlas local use only agents registered on this machine` |
+| **내 Cloud 에이전트 전용** | `/agentlas cloud` | `/agentlas cloud use my saved finance analyst agent to review this report` |
+| **공개 Hub 에이전트 전용** | `/agentlas hub` | `/agentlas hub find public specialists for accessibility QA` |
+| **디렉터리 검색** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
+| **브라우저 하드포인트** | `/agentlas browser` 또는 `/prompts:agentlas` | `/agentlas browser https://example.com` |
+| **프로세스 간 호출(IPC)** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
+| **Cloud / Hub 목적지 선택 게이트** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
+| **Telegram 설정** | `/agentlas connect` 또는 `/prompts:agentlas` | `/agentlas connect Telegram for Marketing Agent Team` |
+
+각 명령은 원래 이름인 `/hep-*`로도 그대로 동작합니다. `/agentlas network`와
+`/hep-network`는 같은 명령입니다. 이름을 없앤 것이 아니므로 기존 스크립트와
+메모, 손에 익은 습관이 그대로 유지됩니다.
+
 
 ---
 
