@@ -516,6 +516,9 @@ WORKFORCE_COVERAGE_GAP_CODES = (
     "gap:requirement-vocabulary-unsupported:skill",
     "gap:requirement-vocabulary-unsupported:knowledge",
     "gap:requirement-vocabulary-unsupported:tool",
+    # A candidate was dropped because it violated the portable contract itself.
+    # Reported so an incomplete menu is never mistaken for an exhausted catalogue.
+    "gap:candidate-contract-invalid",
     "gap:requirement-vocabulary-unsupported:consumed-artifact",
     "gap:requirement-vocabulary-unsupported:produced-artifact",
     "gap:requirement-vocabulary-unsupported:runtime",
