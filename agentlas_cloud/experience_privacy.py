@@ -44,7 +44,14 @@ _POSIX_ABSOLUTE_RE = re.compile(
     # evaluated, so a colon is not a safe reason to exempt the following
     # slash.  Exempting it allowed labels such as ``path:/etc/passwd`` to pass
     # the public projection boundary.
-    r"(?<![A-Za-z0-9$])/(?!/|\s)(?:[^/\s\"'`<>]+/)*[^/\s\"'`<>]+"
+    #
+    # At least TWO segments are required. A single-segment token ("/hep-network",
+    # "/login", "/tmp") discloses nothing private, while every private location
+    # has a parent — "/Users/mason/…", "/home/user/…", "path:/etc/passwd" all
+    # still match. Accepting one segment meant a slash command typed by the user
+    # was classified as a local path, so any "/hep-network …" request was
+    # rejected at the Hub boundary before a single byte left the host.
+    r"(?<![A-Za-z0-9$])/(?!/|\s)(?:[^/\s\"'`<>]+/)+[^/\s\"'`<>]+"
 )
 
 # Public, model-free credential detectors shared by every outbound public/Hub
