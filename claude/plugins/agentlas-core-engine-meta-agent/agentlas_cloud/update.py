@@ -277,7 +277,12 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
     if check_only:
         return result
     if status not in {"update_available", "missing_release_marker"}:
-        result["reconciliation"] = reconcile_current_installation(runtime_root)
+        reconciliation = reconcile_current_installation(runtime_root)
+        result["reconciliation"] = reconciliation
+        if _requires_current_release_rehydrate(current, latest.get("tag_name"), reconciliation):
+            installed = install_latest_runtime(latest)
+            result.update(installed)
+            result["status"] = "repaired_current"
         return result
 
     installed = install_latest_runtime(latest)
@@ -603,6 +608,29 @@ def reconcile_current_installation(
         "memoryHookSync": hooks,
         "globalRouterSync": global_router,
     }
+
+
+def _requires_current_release_rehydrate(
+    current: str | None,
+    latest: Any,
+    reconciliation: dict[str, Any],
+) -> bool:
+    """Recover users upgraded by an older updater that lacked host_adapters.
+
+    Releases before the all-host updater can activate the new runtime but
+    cannot persist its verified adapter bundle. The next run is already on the
+    latest version, so it must safely reinstall that exact same digest-verified
+    release once instead of remaining permanently unable to reconcile host
+    plugin registries.
+    """
+
+    latest_tag = str(latest or "").strip()
+    return (
+        bool(current)
+        and str(current).strip() == latest_tag
+        and reconciliation.get("status") == "not_available"
+        and reconciliation.get("reason") == "verified_host_adapter_bundle_missing"
+    )
 
 
 def _sync_installed_global_router(runtime_root: Path, *, home: Path | None = None) -> dict[str, Any]:
@@ -1054,7 +1082,14 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
         "desktop_updater_cleanup": desktop_updater_cleanup,
     }
     if status not in {"update_available", "missing_release_marker"}:
-        result["reconciliation"] = reconcile_current_installation(runtime_root)
+        reconciliation = reconcile_current_installation(runtime_root)
+        result["reconciliation"] = reconciliation
+        if _requires_current_release_rehydrate(current, latest_tag, reconciliation):
+            installed = install_latest_runtime(latest)
+            result.update(installed)
+            result["status"] = "repaired_current"
+            result["last_applied_tag"] = latest_tag
+            result["last_applied_epoch"] = int(time.time())
         _write_json(marker_path, {**marker, **result})
         return result
     if marker.get("last_applied_tag") == latest_tag and _marker_recent(marker.get("last_applied_epoch")):
