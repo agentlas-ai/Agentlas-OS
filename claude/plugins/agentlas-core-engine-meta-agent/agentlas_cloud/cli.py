@@ -924,7 +924,7 @@ def main(argv: list[str] | None = None) -> int:
             render_context_slice,
             verify_impact,
         )
-        from .project_bootstrap import ensure_project, generate_code_map
+        from .project_bootstrap import ensure_project
 
         try:
             should_bootstrap = args.context_command == "refresh" or not getattr(args, "no_refresh", False)
@@ -935,6 +935,23 @@ def main(argv: list[str] | None = None) -> int:
                     force_code_map=args.context_command == "refresh" and args.force,
                 )
                 if project_receipt.get("status") not in {"active", "privacy_warning"}:
+                    code_map_receipt = (
+                        project_receipt.get("codeMap")
+                        if isinstance(project_receipt.get("codeMap"), dict)
+                        else {}
+                    )
+                    if (
+                        args.context_command == "refresh"
+                        and code_map_receipt.get("coverageComplete") is False
+                    ):
+                        return emit(
+                            {
+                                "action": "context.refresh",
+                                "status": "error",
+                                "error": "context_refresh_incomplete",
+                                "refresh": code_map_receipt,
+                            }
+                        ) or 2
                     return emit(
                         {
                             "action": "context",
@@ -944,7 +961,26 @@ def main(argv: list[str] | None = None) -> int:
                         }
                     ) or 2
             if args.context_command == "refresh":
-                return emit(generate_code_map(args.project, force=False))
+                refresh_result = project_receipt["codeMap"]
+                refresh_stats = (
+                    refresh_result.get("stats")
+                    if isinstance(refresh_result.get("stats"), dict)
+                    else {}
+                )
+                if (
+                    refresh_result.get("refresh") == "deferred"
+                    or refresh_stats.get("budgetStop")
+                    or refresh_stats.get("outputTruncated") is True
+                ):
+                    return emit(
+                        {
+                            "action": "context.refresh",
+                            "status": "error",
+                            "error": "context_refresh_incomplete",
+                            "refresh": refresh_result,
+                        }
+                    ) or 2
+                return emit(refresh_result)
             if args.context_command == "locate":
                 return emit(locate(args.project, args.query, refresh=not args.no_refresh))
             if args.context_command == "refs":

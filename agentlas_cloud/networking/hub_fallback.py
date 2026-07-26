@@ -25,7 +25,12 @@ from .memory import redact_tokens
 from .tokenize import token_set
 
 _HUB_TIMEOUT_SECONDS = int(os.environ.get("HEPHAESTUS_HUB_TIMEOUT_SECONDS", "12") or "12")
-_HUB_RESULT_LIMIT = int(os.environ.get("HEPHAESTUS_HUB_RESULT_LIMIT", "10") or "10")
+# Recall is wide and the final pick belongs to the host LLM, which already holds
+# the user's sentence. A static embedding cannot order candidates reliably (it
+# has no context and no asymmetric query/document encoding), so asking it for a
+# top-10 verdict was asking the weakest component to decide. Return a menu the
+# host can judge instead.
+_HUB_RESULT_LIMIT = int(os.environ.get("HEPHAESTUS_HUB_RESULT_LIMIT", "30") or "30")
 _HUB_CACHE_TTL_SECONDS = int(os.environ.get("HEPHAESTUS_HUB_CACHE_TTL_SECONDS", "600") or "600")
 HUB_TARGET = "agentlas-hub"
 _HUB_CACHE_FILE = "hub-search.jsonl"
@@ -96,18 +101,22 @@ def search_hub(
     scope = scope if scope in _SCOPE_TOOL else SCOPE_NETWORK
     owner_scoped = scope in {SCOPE_CLOUD, SCOPE_BOOKMARK}
     safe_tokens = _hub_query_tokens(query_tokens)
-    # 의도 브릿지 토큰(예: 카피/쓰레드/홍보 → copywriter·writer·content)을 실제 Hub 검색어에 주입한다.
-    # 이게 없으면 클라이언트 재랭킹이 "서버가 반환한 적 없는 후보"를 끌어올릴 수 없다 —
-    # "Agentlas 쓰레드 글 써줘"에서 매칭 토큰이 브랜드명뿐이라 카피라이터가 검색조차 안 되는 문제를 고친다.
-    _bridged = _bridged_query_tokens(set(safe_tokens))
-    _query_terms = list(dict.fromkeys([*safe_tokens, *sorted(_bridged)]))
-    redacted_query = " ".join(_query_terms)[:200]
+    # No hand-maintained intent vocabulary. A curated map ("쓰레드/홍보" →
+    # copywriter) only ever covers the phrasings someone thought of, silently
+    # mis-routes the ones they did not, and has to be edited forever. Meaning is
+    # carried by the sentence embedding instead: the caller's own words reach the
+    # rerank below, which is what pulls an intent-matching candidate up.
+    redacted_query = " ".join(dict.fromkeys(safe_tokens))[:200]
     local_terms = _local_inventory_terms(base)
     recommendation_intent = _recommendation_intent(set(safe_tokens))
     local_fingerprint = _local_inventory_fingerprint(local_terms)
     # Cache is keyed by scope too, so an owner-cloud lookup never serves (or
     # poisons) a public-marketplace result for the same query and vice versa.
-    query_key = _cache_key(f"{scope}|{redacted_query}|local:{local_fingerprint}")
+    # The sentence is part of the key because the cached value is already
+    # reranked by meaning. Keying on tokens alone served two differently-worded
+    # questions the first one's ordering for the whole TTL.
+    sentence_key = _cache_key(str(query_text or ""))[:16]
+    query_key = _cache_key(f"{scope}|{redacted_query}|sent:{sentence_key}|local:{local_fingerprint}")
     cache_path = base / "cache" / _HUB_CACHE_FILE
     cached_hit = _cached_success(cache_path, query_key)
     if cached_hit is not None:
@@ -444,34 +453,7 @@ def _result_score(item: dict[str, Any], query_tokens: set[str]) -> float:
         for field in ("slug", "name", "nameEn", "tagline", "taglineEn")
     )
     haystack_tokens = token_set(haystack)
-    score = float(len(query_tokens & haystack_tokens))
-    bridged = _bridged_query_tokens(query_tokens)
-    if bridged:
-        score += 0.75 * len(bridged & haystack_tokens)
-    return score
-
-
-def _bridged_query_tokens(query_tokens: set[str]) -> set[str]:
-    bridges: set[str] = set()
-    # 글쓰기·SNS·홍보 의도어를 copywriter/writer role 토큰으로 확장한다. "쓰레드에 올릴 글 써줘"
-    # 처럼 사용자가 '카피라이터'라는 단어를 안 써도, 실제 의도(콘텐츠 작성)에 맞는 에이전트를
-    # 후보로 끌어오기 위함. (토큰화에서 살아남는 표현 위주로 트리거를 잡는다.)
-    if query_tokens & {
-        "카피", "카피라이터", "문구", "글쓰기", "쓰기", "써줘", "작성", "적어",
-        "쓰레드", "스레드", "포스팅", "포스트", "게시글", "게시물", "홍보", "링크드인",
-        "sns", "thread", "threads", "post", "posting", "linkedin", "tweet", "트윗",
-        "블로그", "blog", "copywriting", "copywriter", "content", "카피라이팅",
-    }:
-        bridges.update({"copy", "copywriter", "writer", "content", "marketing"})
-    if query_tokens & {"한국어", "한글"}:
-        bridges.add("korean")
-    if query_tokens & {"영어", "영문"}:
-        bridges.add("english")
-    if query_tokens & {"근거", "주장"}:
-        bridges.add("claim")
-    if query_tokens & {"원장"}:
-        bridges.add("ledger")
-    return bridges - query_tokens
+    return float(len(query_tokens & haystack_tokens))
 
 
 def _local_context_score(item: dict[str, Any], local_terms: set[str], query_tokens: set[str]) -> int:

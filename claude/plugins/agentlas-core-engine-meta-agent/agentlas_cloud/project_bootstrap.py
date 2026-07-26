@@ -35,6 +35,7 @@ MAX_CODE_TOTAL_READ_BYTES = 32 * 1024 * 1024
 MAX_CODE_SCAN_SECONDS = 12.0
 MAX_CODE_MAP_BYTES = 16 * 1024 * 1024
 MAX_GIT_FILE_LIST_BYTES = 8 * 1024 * 1024
+MAX_GIT_PREFIX_BYTES = 64 * 1024
 MAX_GITIGNORE_BYTES = 1024 * 1024
 MAX_TRACKED_PATH_BYTES = 1024 * 1024
 MAX_TRACKED_PATHS = 10_000
@@ -49,8 +50,8 @@ POSIX_PRIVATE_MODE_ENFORCEMENT = os.name != "nt"
 AUTO_BOOTSTRAP_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_AUTO"
 MCP_AUTO_BOOTSTRAP_ENV = "AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO"
 AUTO_ALLOWED_ROOTS_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_ALLOWED_ROOTS"
-CODE_MAP_CACHE_SCHEMA = "agentlas.code-map-cache.v3"
-CODE_MAP_POLICY_VERSION = "dependency-index.v1"
+CODE_MAP_CACHE_SCHEMA = "agentlas.code-map-cache.v4"
+CODE_MAP_POLICY_VERSION = "dependency-index.v2"
 
 PRIVACY_PATTERNS = (
     ".agentlas/",
@@ -980,6 +981,20 @@ def _complete_nul_items(raw_output: bytes) -> list[bytes]:
 
 
 def _git_file_list(root: Path, deadline: float) -> tuple[list[Path] | None, str | None, int]:
+    raw_prefix, prefix_stop = _run_bounded_stdout(
+        ["git", "-C", str(root), "rev-parse", "--show-prefix"],
+        deadline=deadline,
+        max_bytes=MAX_GIT_PREFIX_BYTES,
+    )
+    if raw_prefix is None:
+        return None, "file_list_" + str(prefix_stop or "unavailable"), 0
+    if prefix_stop is not None:
+        return None, "file_list_prefix_" + str(prefix_stop), 0
+    if raw_prefix.strip(b"\r\n"):
+        # The explicit Agentlas project boundary is authoritative. A parent
+        # repository must not make an ignored or untracked nested project look
+        # like a complete, empty Git listing.
+        return None, "outside_git_root", 0
     raw_output, process_stop = _run_bounded_stdout(
         ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z"],
         deadline=deadline,
@@ -1029,17 +1044,20 @@ def _walk_file_list(root: Path, deadline: float) -> tuple[list[Path], str | None
     return files, stop, skipped_unsafe
 
 
-def _extract_symbols(text: str, limit: int) -> list[dict[str, Any]]:
+def _extract_symbols(text: str, limit: int) -> tuple[list[dict[str, Any]], bool]:
+    effective_limit = min(MAX_SYMBOLS_PER_FILE, max(0, limit))
+    if effective_limit <= 0:
+        return [], any(pattern.search(line) for line in text.splitlines() for _kind, pattern in SYMBOL_PATTERNS)
     symbols: list[dict[str, Any]] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         for kind, pattern in SYMBOL_PATTERNS:
             match = pattern.search(line)
             if match:
+                if len(symbols) >= effective_limit:
+                    return symbols, True
                 symbols.append({"n": match.group(1), "k": kind, "l": line_number})
                 break
-        if len(symbols) >= min(MAX_SYMBOLS_PER_FILE, max(0, limit)):
-            break
-    return symbols
+    return symbols, False
 
 
 def _fingerprint_hash(files: dict[str, dict[str, int]]) -> str:
@@ -1058,10 +1076,83 @@ def _fingerprint_hash(files: dict[str, dict[str, int]]) -> str:
 
 def _read_json_object(path: Path) -> dict[str, Any]:
     try:
+        metadata = path.stat(follow_symlinks=False)
+    except OSError:
+        return {}
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_size <= 0
+        or metadata.st_size > MAX_CODE_MAP_BYTES
+    ):
+        return {}
+    try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _canonical_json_digest(value: Any) -> str:
+    raw = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _project_root_hash(project: Path) -> str:
+    return "sha256:" + hashlib.sha256(str(project).encode("utf-8")).hexdigest()
+
+
+def _code_map_binding_complete(
+    project: Path,
+    project_map: dict[str, Any],
+    cache: dict[str, Any],
+) -> bool:
+    stats = project_map.get("stats") if isinstance(project_map.get("stats"), dict) else {}
+    expected_root_hash = _project_root_hash(project)
+    return (
+        project_map.get("schemaVersion") == "agentlas.code-map.v2"
+        and project_map.get("projectRootHash") == expected_root_hash
+        and isinstance(project_map.get("defIndex"), dict)
+        and isinstance(project_map.get("refIndex"), dict)
+        and cache.get("schemaVersion") == CODE_MAP_CACHE_SCHEMA
+        and cache.get("policyVersion") == CODE_MAP_POLICY_VERSION
+        and cache.get("projectRootHash") == expected_root_hash
+        and cache.get("fingerprintHash") == project_map.get("fingerprintHash")
+        and cache.get("mapPayloadDigest") == _canonical_json_digest(project_map)
+        and cache.get("completeMap") is True
+        and stats.get("coverageComplete") is True
+        and stats.get("incompleteReasons") == []
+        and stats.get("scanComplete") is True
+        and not stats.get("budgetStop")
+        and stats.get("outputTruncated") is False
+        and int(stats.get("candidateCodeFiles") or 0) == int(stats.get("codeFiles") or 0)
+    )
+
+
+def _code_map_incomplete_reasons(stats: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    if stats.get("budgetStop"):
+        reasons.append("budget_stop")
+    if stats.get("scanComplete") is not True:
+        reasons.append("scan_incomplete")
+    if int(stats.get("skippedLarge") or 0) > 0:
+        reasons.append("large_code_files")
+    if int(stats.get("skippedUnreadable") or 0) > 0:
+        reasons.append("unreadable_code_files")
+    if int(stats.get("fingerprintFailures") or 0) > 0:
+        reasons.append("fingerprint_failures")
+    if int(stats.get("candidateCodeFiles") or 0) != int(stats.get("codeFiles") or 0):
+        reasons.append("code_file_coverage")
+    if stats.get("refIndexTruncated") is True:
+        reasons.append("reference_index_truncated")
+    if stats.get("outputTruncated") is True:
+        reasons.append("output_truncated")
+    return sorted(set(reasons))
 
 
 def _functional_sitemap_summary(root: Path) -> dict[str, Any]:
@@ -1148,9 +1239,13 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     deadline = started + MAX_CODE_SCAN_SECONDS
     all_files, list_stop, skipped_unsafe = _git_file_list(project, deadline)
     source = "git" if all_files is not None else "filesystem"
+    fallback_reason: str | None = None
     if all_files is None:
+        fallback_reason = list_stop
         all_files, fallback_stop, fallback_unsafe = _walk_file_list(project, deadline)
-        list_stop = list_stop or fallback_stop
+        # A failed Git probe is only the reason the filesystem fallback ran.
+        # Once that fallback completes, its own stop state is authoritative.
+        list_stop = fallback_stop
         skipped_unsafe += fallback_unsafe
     relative_files = sorted(
         {path.relative_to(project).as_posix()
@@ -1163,10 +1258,12 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     if len([relative for relative in relative_files if Path(relative).suffix.lower() in CODE_EXTENSIONS]) > MAX_CODE_FILES:
         list_stop = list_stop or "code_file_count"
     fingerprints: dict[str, dict[str, int]] = {}
+    fingerprint_failures = 0
     for relative in code_files:
         try:
             file_stat = os.stat(project / relative, follow_symlinks=False)
         except OSError:
+            fingerprint_failures += 1
             continue
         fingerprints[relative] = {
             "mtimeNs": file_stat.st_mtime_ns,
@@ -1176,13 +1273,14 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     fingerprint = _fingerprint_hash(fingerprints)
 
     cache = _read_json_object(cache_path)
+    existing_map = _read_json_object(json_path)
     complete_listing = list_stop is None
     cache_current = (
-        cache.get("schemaVersion") == CODE_MAP_CACHE_SCHEMA
-        and cache.get("policyVersion") == CODE_MAP_POLICY_VERSION
+        _code_map_binding_complete(project, existing_map, cache)
         and cache.get("fingerprintHash") == fingerprint
         and int(cache.get("candidateCodeFiles") or -1) == len(fingerprints)
         and cache.get("completeListing") is True
+        and cache.get("listingSource") == source
         and complete_listing
     )
     if json_path.exists() and md_path.exists() and seed_path.exists() and not force and cache_current:
@@ -1192,6 +1290,10 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "path": ".agentlas/code-map/project-map.json",
             "created": [],
             "refresh": "fingerprint_current",
+            "source": source,
+            **({"fallbackReason": fallback_reason} if fallback_reason else {}),
+            "stats": existing_map.get("stats") or {},
+            "coverageComplete": True,
             "functionalSitemap": _functional_sitemap_summary(project),
             **({"warning": sitemap_warning} if sitemap_warning else {}),
         }
@@ -1203,6 +1305,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "created": [],
             "refresh": "deferred",
             "budgetStop": list_stop,
+            "source": source,
+            **({"fallbackReason": fallback_reason} if fallback_reason else {}),
             "functionalSitemap": _functional_sitemap_summary(project),
             **({"warning": sitemap_warning} if sitemap_warning else {}),
         }
@@ -1214,6 +1318,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     token_counts: Counter[str] = Counter()
     by_extension: Counter[str] = Counter()
     skipped_large = 0
+    skipped_unreadable = 0
     read_bytes = 0
     token_occurrences = 0
     scanned_files: list[str] = []
@@ -1237,11 +1342,14 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
                 break
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
+            skipped_unreadable += 1
             continue
         read_bytes += file_stat.st_size
         scanned_files.append(relative)
-        symbols = _extract_symbols(text, MAX_TOTAL_SYMBOLS - total_symbols)
+        symbols, symbols_truncated = _extract_symbols(text, MAX_TOTAL_SYMBOLS - total_symbols)
         total_symbols += len(symbols)
+        if symbols_truncated:
+            budget_stop = budget_stop or "symbol_count"
         if symbols:
             file_symbols[relative] = symbols
             for symbol in symbols:
@@ -1257,6 +1365,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             if token in token_counts or len(token_counts) < MAX_UNIQUE_TOKENS:
                 token_counts[token] += 1
                 tokens_in_file.add(token)
+            else:
+                budget_stop = budget_stop or "unique_tokens"
             token_occurrences += 1
         file_tokens[relative] = tokens_in_file
         by_extension[Path(relative).suffix.lower()] += 1
@@ -1282,6 +1392,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     ][:40]
     ref_index: dict[str, list[str]] = defaultdict(list)
     ref_count: Counter[str] = Counter()
+    truncated_ref_symbols: set[str] = set()
     definition_keys = set(definitions)
     module_dependencies: Counter[tuple[str, str]] = Counter()
     for relative, tokens in file_tokens.items():
@@ -1290,6 +1401,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             ref_count[normalized] += 1
             if len(ref_index[normalized]) < MAX_REF_FILES_PER_SYMBOL:
                 ref_index[normalized].append(relative)
+            else:
+                truncated_ref_symbols.add(normalized)
             first_definition = definitions[normalized][0]
             target_file = str(first_definition["f"])
             target_module = Path(target_file).parts[0] if len(Path(target_file).parts) > 1 else "."
@@ -1315,10 +1428,22 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     ]
 
     generated_at = utc_now()
+    scan_complete = (
+        budget_stop is None
+        and skipped_large == 0
+        and skipped_unreadable == 0
+        and fingerprint_failures == 0
+        and len(scanned_files) == len(code_files)
+    )
+    ref_files_omitted = sum(
+        max(0, int(ref_count.get(key) or 0) - len(ref_index.get(key) or []))
+        for key in truncated_ref_symbols
+    )
+    project_root_hash = _project_root_hash(project)
     project_map = {
         "schemaVersion": "agentlas.code-map.v2",
         "project": project.name,
-        "projectRootHash": "sha256:" + hashlib.sha256(str(project).encode("utf-8")).hexdigest(),
+        "projectRootHash": project_root_hash,
         "fingerprintHash": fingerprint,
         "generatedAt": generated_at,
         "source": source,
@@ -1331,12 +1456,22 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "refsEdges": sum(ref_count.values()),
             "entryPoints": len(entry_points),
             "skippedLarge": skipped_large,
+            "skippedUnreadable": skipped_unreadable,
+            "fingerprintFailures": fingerprint_failures,
             "skippedUnsafe": skipped_unsafe,
             "bytesRead": read_bytes,
             "readByteLimit": MAX_CODE_TOTAL_READ_BYTES,
             "scanTimeLimitMs": int(MAX_CODE_SCAN_SECONDS * 1000),
             "budgetStop": budget_stop,
-            "outputTruncated": False,
+            "scanComplete": scan_complete,
+            "refIndexTruncated": bool(truncated_ref_symbols),
+            "refSymbolsTruncated": len(truncated_ref_symbols),
+            "refFilesOmitted": ref_files_omitted,
+            "outputTruncated": bool(truncated_ref_symbols),
+            "coverageComplete": False,
+            "incompleteReasons": [],
+            "listingSource": source,
+            "fallbackReason": fallback_reason,
             "genMs": int((time.monotonic() - started) * 1000),
         },
         "modules": modules,
@@ -1344,6 +1479,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         "entryPoints": entry_points,
         "topSymbols": top_symbols,
         "byExt": dict(by_extension.most_common(30)),
+        "indexedFiles": scanned_files,
         "fileSymbols": file_symbols,
         "defIndex": dict(definitions),
         "refIndex": dict(ref_index),
@@ -1367,7 +1503,22 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         ]
     )
     project_map["stats"]["outputLimitBytes"] = MAX_CODE_MAP_BYTES
+    serialized_map = ""
+    output_bytes = 0
+    for _ in range(3):
+        serialized_map, output_bytes = _bounded_project_map(project_map)
+        incomplete_reasons = _code_map_incomplete_reasons(project_map["stats"])
+        coverage_complete = not incomplete_reasons
+        if (
+            project_map["stats"].get("coverageComplete") is coverage_complete
+            and project_map["stats"].get("incompleteReasons") == incomplete_reasons
+        ):
+            break
+        project_map["stats"]["coverageComplete"] = coverage_complete
+        project_map["stats"]["incompleteReasons"] = incomplete_reasons
     serialized_map, output_bytes = _bounded_project_map(project_map)
+    coverage_complete = project_map["stats"].get("coverageComplete") is True
+    map_payload_digest = _canonical_json_digest(project_map)
     existed = {path for path in (json_path, md_path, seed_path, cache_path) if path.exists()}
     _ensure_dir(out_dir, 0o700)
     _atomic_write(json_path, serialized_map)
@@ -1401,6 +1552,10 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
                 "fingerprintHash": fingerprint,
                 "candidateCodeFiles": len(fingerprints),
                 "completeListing": complete_listing,
+                "completeMap": coverage_complete,
+                "listingSource": source,
+                "projectRootHash": project_root_hash,
+                "mapPayloadDigest": map_payload_digest,
             },
             ensure_ascii=False,
             indent=2,
@@ -1417,6 +1572,9 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             if path not in existed
         ],
         "stats": project_map["stats"],
+        "coverageComplete": coverage_complete,
+        "source": source,
+        **({"fallbackReason": fallback_reason} if fallback_reason else {}),
         "outputBytes": output_bytes,
         "functionalSitemap": _functional_sitemap_summary(project),
         **({"warning": sitemap_warning} if sitemap_warning else {}),
@@ -1455,6 +1613,9 @@ def project_status(project: str | Path) -> dict[str, Any]:
         "vault-references.json",
         "activation.json",
         "code-map/project-map.json",
+        "code-map/project-map.md",
+        "code-map/project-seed.json",
+        "code-map/.cache.json",
         "ontology-runtime.json",
         "ontology-runtime.sqlite",
         "career-graph.json",
@@ -1498,12 +1659,26 @@ def project_status(project: str | Path) -> dict[str, Any]:
     tracked_sensitive, tracked_scan_complete = _tracked_sensitive_paths(root)
     if not tracked_scan_complete:
         privacy_warnings.append("tracked_sensitive_scan_incomplete")
+    code_map_payload = _read_json_object(agentlas / "code-map" / "project-map.json")
+    code_map_cache = _read_json_object(agentlas / "code-map" / ".cache.json")
+    code_map_complete = _code_map_binding_complete(root, code_map_payload, code_map_cache)
     if missing:
         status = "incomplete"
     elif not privacy_block or permission_issues or tracked_sensitive or privacy_warnings:
         status = "privacy_warning"
     else:
         status = "active"
+    code_map_incomplete_reasons = (
+        []
+        if code_map_complete
+        else _code_map_incomplete_reasons(
+            code_map_payload.get("stats")
+            if isinstance(code_map_payload.get("stats"), dict)
+            else {}
+        )
+    )
+    if not code_map_complete and not code_map_incomplete_reasons:
+        code_map_incomplete_reasons = ["integrity_or_cache_binding"]
     return {
         "schemaVersion": BOOTSTRAP_SCHEMA,
         "status": status,
@@ -1513,6 +1688,8 @@ def project_status(project: str | Path) -> dict[str, Any]:
         "permissionIssues": permission_issues,
         "trackedSensitivePaths": tracked_sensitive,
         "trackedSensitiveScanComplete": tracked_scan_complete,
+        "codeMapComplete": code_map_complete,
+        "codeMapIncompleteReasons": code_map_incomplete_reasons,
         "privacyWarnings": privacy_warnings,
     }
 
@@ -1556,11 +1733,14 @@ def _redact_automatic_receipt(result: dict[str, Any]) -> dict[str, Any]:
         "permissionIssueCount": len(result.get("permissionIssues") or []),
         "trackedSensitivePathCount": len(result.get("trackedSensitivePaths") or []),
         "gitignoreChanged": bool((result.get("gitignore") or {}).get("changed")),
+        "codeMapComplete": result.get("codeMapComplete") is True,
+        "codeMapIncompleteReasons": list(result.get("codeMapIncompleteReasons") or []),
         "codeMap": {
             "status": code_map.get("status"),
             "stats": code_map.get("stats") or {},
             "refresh": code_map.get("refresh"),
             "budgetStop": code_map.get("budgetStop"),
+            "coverageComplete": code_map.get("coverageComplete"),
         },
         "warningCount": len(result.get("warnings") or []),
         "mergeOnly": True,

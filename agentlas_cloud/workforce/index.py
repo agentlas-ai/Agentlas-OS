@@ -97,8 +97,34 @@ def _profile_sets(profile: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-_REQUIREMENT_VOCABULARY_KINDS = ("roles", "skills", "knowledge", "tools")
-_REQUIREMENT_GAP_KIND = {"roles": "role", "skills": "skill", "knowledge": "knowledge", "tools": "tool"}
+# Every dimension a slot may require and the inventory may leave empty. The
+# demotion below applies to all of them: a work order that names the language it
+# needs must not empty every slot merely because no profile declares a language.
+# `authorities` is deliberately absent — it is a security contract, not an
+# inventory-coverage question, and must keep full hard-filter force even when no
+# profile declares one.
+_REQUIREMENT_VOCABULARY_KINDS = (
+    "roles",
+    "skills",
+    "knowledge",
+    "tools",
+    "consumes",
+    "produces",
+    "runtimes",
+    "languages",
+    "modalities",
+)
+_REQUIREMENT_GAP_KIND = {
+    "roles": "role",
+    "skills": "skill",
+    "knowledge": "knowledge",
+    "tools": "tool",
+    "consumes": "consumed-artifact",
+    "produces": "produced-artifact",
+    "runtimes": "runtime",
+    "languages": "language",
+    "modalities": "modality",
+}
 
 
 def _inventory_vocabulary(profiles: Iterable[Mapping[str, Any]]) -> dict[str, bool]:
@@ -187,9 +213,9 @@ def _hard_eligibility(
         reasons.append("required-skill-evidence-below-minimum")
     if any(have["tool_levels"].get(item, -1) < minimum_level for item in enforced["tools"]):
         reasons.append("required-tool-evidence-below-minimum")
-    if req["consumes"] - have["consumes"]:
+    if enforced["consumes"] - have["consumes"]:
         reasons.append("missing-consumed-artifact")
-    if req["produces"] - have["produces"]:
+    if enforced["produces"] - have["produces"]:
         reasons.append("missing-produced-artifact")
     if req["authorities"] - have["authorities"]:
         reasons.append("missing-required-authority")
@@ -197,11 +223,11 @@ def _hard_eligibility(
         reasons.append("forbidden-authority-conflict")
     if have["forbidden_authorities"] & req["authorities"]:
         reasons.append("candidate-prohibits-required-authority")
-    if req["runtimes"] and not req["runtimes"] & have["runtimes"]:
+    if enforced["runtimes"] and not enforced["runtimes"] & have["runtimes"]:
         reasons.append("runtime-mismatch")
-    if req["languages"] and not req["languages"] & have["languages"]:
+    if enforced["languages"] and not enforced["languages"] & have["languages"]:
         reasons.append("language-mismatch")
-    if req["modalities"] and not req["modalities"] & have["modalities"]:
+    if enforced["modalities"] and not enforced["modalities"] & have["modalities"]:
         reasons.append("modality-mismatch")
 
     # Community edges are a broad-recall hint when a slot already names direct

@@ -16,7 +16,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from .project_bootstrap import generate_code_map
+from .project_bootstrap import (
+    CODE_MAP_CACHE_SCHEMA,
+    CODE_MAP_POLICY_VERSION,
+    generate_code_map,
+)
 
 
 CODE_MAP_SCHEMA = "agentlas.code-map.v2"
@@ -105,8 +109,12 @@ def _regular_json(path: Path, *, max_bytes: int) -> dict[str, Any]:
 
 
 def _normalize_file(root: Path, value: str) -> str | None:
-    raw = value.strip().replace("\\", "/").lstrip("./")
+    raw = value.strip().replace("\\", "/")
+    while raw.startswith("./"):
+        raw = raw[2:]
     if not raw or raw.startswith("/") or "\x00" in raw:
+        return None
+    if any(part == ".." for part in raw.split("/")):
         return None
     try:
         candidate = (root / raw).resolve(strict=False)
@@ -177,13 +185,77 @@ def load_code_map(
     refresh_receipt: dict[str, Any] | None = None
     if refresh:
         refresh_receipt = generate_code_map(root, force=force_refresh)
+        refresh_stats = (
+            refresh_receipt.get("stats")
+            if isinstance(refresh_receipt.get("stats"), dict)
+            else {}
+        )
+        if (
+            str(refresh_receipt.get("refresh") or "") == "deferred"
+            or refresh_receipt.get("coverageComplete") is False
+            or refresh_stats.get("coverageComplete") is False
+            or refresh_stats.get("budgetStop")
+            or refresh_stats.get("outputTruncated") is True
+        ):
+            raise ContextMapError("context_refresh_incomplete")
     payload = _regular_json(root / ".agentlas" / "code-map" / "project-map.json", max_bytes=MAX_MAP_BYTES)
     schema = str(payload.get("schemaVersion") or "")
     if schema not in {CODE_MAP_SCHEMA, "5.0"}:
         raise ContextMapError("context_map_upgrade_required")
-    if not isinstance(payload.get("defIndex"), dict) or not isinstance(payload.get("refIndex"), dict):
+    if (
+        not isinstance(payload.get("defIndex"), dict)
+        or not isinstance(payload.get("refIndex"), dict)
+        or not isinstance(payload.get("refCount"), dict)
+        or not isinstance(payload.get("fileSymbols"), dict)
+        or not isinstance(payload.get("indexedFiles"), list)
+    ):
         raise ContextMapError("context_map_upgrade_required")
+    cache = _regular_json(
+        root / ".agentlas" / "code-map" / ".cache.json",
+        max_bytes=1024 * 1024,
+    )
+    expected_root_hash = "sha256:" + hashlib.sha256(str(root).encode("utf-8")).hexdigest()
+    fingerprint = str(payload.get("fingerprintHash") or "")
+    stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}
+    reference_index = payload["refIndex"]
+    reference_count = payload["refCount"]
+    coherent_references = all(
+        isinstance(reference_index.get(key), list)
+        and len(reference_index[key]) == int(count)
+        for key, count in reference_count.items()
+        if isinstance(count, int) and count >= 0
+    ) and all(isinstance(count, int) and count >= 0 for count in reference_count.values())
+    if (
+        not re.fullmatch(r"sha256:[0-9a-f]{64}", fingerprint)
+        or payload.get("projectRootHash") != expected_root_hash
+        or cache.get("schemaVersion") != CODE_MAP_CACHE_SCHEMA
+        or cache.get("policyVersion") != CODE_MAP_POLICY_VERSION
+        or cache.get("projectRootHash") != expected_root_hash
+        or cache.get("fingerprintHash") != fingerprint
+        or cache.get("mapPayloadDigest") != _canonical_digest(payload)
+        or (
+            not coherent_references
+            and stats.get("outputTruncated") is not True
+        )
+    ):
+        raise ContextMapError("context_map_integrity_failed")
+    if (
+        cache.get("completeMap") is not True
+        or stats.get("coverageComplete") is not True
+        or stats.get("incompleteReasons") != []
+        or stats.get("scanComplete") is not True
+        or stats.get("budgetStop")
+        or stats.get("outputTruncated") is not False
+        or int(stats.get("candidateCodeFiles") or 0) != int(stats.get("codeFiles") or 0)
+    ):
+        raise ContextMapError("context_map_incomplete")
     return root, payload, refresh_receipt
+
+
+def _refresh_status(receipt: Mapping[str, Any] | None) -> str:
+    if not receipt:
+        return "not_requested"
+    return str(receipt.get("refresh") or receipt.get("status") or "unknown")
 
 
 def _node_id(node: Mapping[str, Any]) -> str:
@@ -413,7 +485,7 @@ def context_slice(
         "selectedSymbols": symbols,
         "selectedFiles": selected_files,
         "selectedContextNodeIds": [_node_id(node) for node in selected_nodes],
-        "refreshStatus": str((refresh_receipt or {}).get("status") or "not_requested"),
+        "refreshStatus": _refresh_status(refresh_receipt),
         "issuedAt": _utc_now(),
     }
     receipt_base["receiptDigest"] = _canonical_digest(receipt_base)
@@ -468,7 +540,7 @@ def locate(
         "status": "ok",
         "project": root.name,
         "mapFingerprint": code_map.get("fingerprintHash"),
-        "refreshStatus": str((refresh_receipt or {}).get("status") or "not_requested"),
+        "refreshStatus": _refresh_status(refresh_receipt),
         "matches": matches,
     }
 
@@ -493,7 +565,7 @@ def references(
         "referencedBy": ref_index.get(key, [])[:MAX_IMPACT_FILES] if found else [],
         "referenceCount": int((code_map.get("refCount") or {}).get(key) or 0),
         "mapFingerprint": code_map.get("fingerprintHash"),
-        "refreshStatus": str((refresh_receipt or {}).get("status") or "not_requested"),
+        "refreshStatus": _refresh_status(refresh_receipt),
     }
 
 
@@ -507,31 +579,33 @@ def impact(
     definitions = code_map.get("defIndex", {})
     references_index = code_map.get("refIndex", {})
     file_symbols = code_map.get("fileSymbols", {})
+    indexed_files = {
+        str(value)
+        for value in code_map.get("indexedFiles", [])
+        if isinstance(value, str)
+    }
     changed_files: list[str] = []
     changed_symbols: list[str] = []
     for raw in changed:
         normalized = _normalize_file(root, raw)
-        if normalized and (
-            normalized in file_symbols
-            or (root / normalized).exists()
-            or "/" in raw
-            or "." in Path(raw).name
-        ):
+        if normalized and normalized in indexed_files:
             changed_files.append(normalized)
             for item in file_symbols.get(normalized, []) if isinstance(file_symbols, dict) else []:
                 if isinstance(item, dict):
                     display = str(item.get("n") or "")
                     key = display.lower()
-                    if key and (
-                        "_" in display
-                        or re.search(r"[a-z][A-Z]", display)
-                        or len(display) >= 12
-                    ):
+                    if key:
                         changed_symbols.append(key)
         else:
+            if normalized is None:
+                raise ContextMapError("context_changed_target_invalid")
             key = raw.strip().lower()
             if key and key in definitions:
                 changed_symbols.append(key)
+            else:
+                raise ContextMapError("context_changed_target_unknown")
+    if not changed_files and not changed_symbols:
+        raise ContextMapError("context_changed_target_required")
 
     impacted: set[str] = set(changed_files)
     paths: list[dict[str, Any]] = []
@@ -550,14 +624,29 @@ def impact(
             }
         )
     impacted_files = sorted(impacted)[:MAX_IMPACT_FILES]
+    map_stats = code_map.get("stats") if isinstance(code_map.get("stats"), dict) else {}
+    map_budget_stop = str(map_stats.get("budgetStop") or "")
+    map_output_truncated = map_stats.get("outputTruncated") is True
+    map_complete = (
+        bool(map_stats)
+        and map_stats.get("coverageComplete") is True
+        and map_stats.get("incompleteReasons") == []
+        and map_stats.get("scanComplete") is True
+        and not map_budget_stop
+        and not map_output_truncated
+    )
     receipt = {
         "schemaVersion": CONTEXT_IMPACT_RECEIPT_SCHEMA,
         "mapFingerprint": str(code_map.get("fingerprintHash") or ""),
+        "mapComplete": map_complete,
+        "mapBudgetStop": map_budget_stop or None,
+        "mapOutputTruncated": map_output_truncated,
+        "mapIncompleteReasons": list(map_stats.get("incompleteReasons") or []),
         "changedFiles": sorted(set(changed_files)),
         "changedSymbols": sorted(set(changed_symbols)),
         "impactedFiles": impacted_files,
         "truncated": len(impacted) > MAX_IMPACT_FILES,
-        "refreshStatus": str((refresh_receipt or {}).get("status") or "not_requested"),
+        "refreshStatus": _refresh_status(refresh_receipt),
         "issuedAt": _utc_now(),
     }
     receipt["receiptDigest"] = _canonical_digest(receipt)
@@ -580,7 +669,12 @@ def verify_impact(
     waived: Sequence[str] = (),
     refresh: bool = True,
 ) -> dict[str, Any]:
+    if not refresh:
+        raise ContextMapError("context_verification_refresh_required")
     impact_result = impact(project, changed, refresh=refresh)
+    impact_receipt = impact_result["receipt"]
+    if impact_receipt.get("mapComplete") is not True or impact_receipt.get("truncated") is True:
+        raise ContextMapError("context_verification_map_incomplete")
     root = _project_root(project)
     reviewed_files = {
         value for raw in reviewed if (value := _normalize_file(root, raw))
@@ -588,13 +682,13 @@ def verify_impact(
     waived_files = {
         value for raw in waived if (value := _normalize_file(root, raw))
     }
-    changed_files = set(impact_result["receipt"]["changedFiles"])
+    changed_files = set(impact_receipt["changedFiles"])
     required = set(impact_result["impactedFiles"])
     unresolved = sorted(required - changed_files - reviewed_files - waived_files)
     receipt = {
         "schemaVersion": CONTEXT_VERIFICATION_RECEIPT_SCHEMA,
-        "impactReceiptDigest": impact_result["receipt"]["receiptDigest"],
-        "mapFingerprint": impact_result["receipt"]["mapFingerprint"],
+        "impactReceiptDigest": impact_receipt["receiptDigest"],
+        "mapFingerprint": impact_receipt["mapFingerprint"],
         "changedFiles": sorted(changed_files),
         "reviewedFiles": sorted(reviewed_files),
         "waivedFiles": sorted(waived_files),

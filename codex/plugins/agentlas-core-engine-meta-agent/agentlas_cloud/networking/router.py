@@ -37,7 +37,6 @@ from .tokenize import has_hangul, snake_tokens, token_set, tokenize, word_token_
 # working if it's ever unavailable, so the import degrades to None.
 try:  # pragma: no cover - exercised indirectly
     from ontology.embeddings import (
-        LocalHashingVectorAdapter,
         cosine_similarity as _cosine_similarity,
         select_vector_adapter,
     )
@@ -47,13 +46,15 @@ try:  # pragma: no cover - exercised indirectly
     # really lexical. Prefer the verified local sentence model (the same adapter
     # the ontology and Hub rerank paths already use) and keep hashing only as a
     # last resort so routing still runs when the model asset is missing.
+    # No hashing fallback. Substituting it kept the "semantic" label alive over a
+    # mechanism that scores equivalent Korean and English at 0.0, which is worse
+    # than having no semantic signal: it looks like meaning and behaves like
+    # tokens. When the verified model is unavailable, semantics are off and the
+    # lexical path stands on its own.
     try:
         _VECTOR_ADAPTER: Any = select_vector_adapter("auto")
     except Exception:  # pragma: no cover - model asset unavailable
-        _VECTOR_ADAPTER = LocalHashingVectorAdapter(
-            status="degraded_fallback",
-            fallback_reason="verified_local_model2vec_asset_unavailable",
-        )
+        _VECTOR_ADAPTER = None
 except Exception:  # pragma: no cover
     _VECTOR_ADAPTER = None
 

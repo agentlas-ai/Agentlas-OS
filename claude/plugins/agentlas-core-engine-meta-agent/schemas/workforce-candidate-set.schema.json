@@ -128,12 +128,17 @@
         "gap:requirement-vocabulary-unsupported:role",
         "gap:requirement-vocabulary-unsupported:skill",
         "gap:requirement-vocabulary-unsupported:knowledge",
-        "gap:requirement-vocabulary-unsupported:tool"
+        "gap:requirement-vocabulary-unsupported:tool",
+        "gap:requirement-vocabulary-unsupported:consumed-artifact",
+        "gap:requirement-vocabulary-unsupported:produced-artifact",
+        "gap:requirement-vocabulary-unsupported:runtime",
+        "gap:requirement-vocabulary-unsupported:language",
+        "gap:requirement-vocabulary-unsupported:modality"
       ]
     },
     "coverageGaps": {
       "type": "array",
-      "maxItems": 27,
+      "maxItems": 32,
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/coverageGap"

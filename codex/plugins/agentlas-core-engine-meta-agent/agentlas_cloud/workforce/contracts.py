@@ -516,6 +516,11 @@ WORKFORCE_COVERAGE_GAP_CODES = (
     "gap:requirement-vocabulary-unsupported:skill",
     "gap:requirement-vocabulary-unsupported:knowledge",
     "gap:requirement-vocabulary-unsupported:tool",
+    "gap:requirement-vocabulary-unsupported:consumed-artifact",
+    "gap:requirement-vocabulary-unsupported:produced-artifact",
+    "gap:requirement-vocabulary-unsupported:runtime",
+    "gap:requirement-vocabulary-unsupported:language",
+    "gap:requirement-vocabulary-unsupported:modality",
 )
 _WORKFORCE_COVERAGE_GAP_CODE_SET = frozenset(WORKFORCE_COVERAGE_GAP_CODES)
 

@@ -832,6 +832,18 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 force_code_map=False,
             )
             if project_receipt.get("status") not in {"active", "privacy_warning"}:
+                code_map_receipt = (
+                    project_receipt.get("codeMap")
+                    if isinstance(project_receipt.get("codeMap"), dict)
+                    else {}
+                )
+                if code_map_receipt.get("coverageComplete") is False:
+                    return {
+                        "action": name,
+                        "status": "error",
+                        "error": "context_refresh_incomplete",
+                        "project_bootstrap": project_receipt,
+                    }
                 return {
                     "action": name,
                     "status": "blocked",
