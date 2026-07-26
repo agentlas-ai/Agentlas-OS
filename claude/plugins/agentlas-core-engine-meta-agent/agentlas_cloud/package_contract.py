@@ -193,7 +193,11 @@ def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> d
         # card's source.ref (set by card_store on import). Inside a package
         # workspace that anchor is the workspace itself.
         source = dict(doc.get("source")) if isinstance(doc.get("source"), dict) else {}
-        source.setdefault("ref", str(workspace))
+        # A card exported before import carries an explicit ``"ref": null``, so
+        # setdefault() would leave the anchor empty and every shipped benchmark
+        # fixture would count as zero. Treat any falsy ref as "not anchored".
+        if not source.get("ref"):
+            source["ref"] = str(workspace)
         try:
             lint = lint_card({**doc, "source": source})
         except Exception as err:  # 카드가 어떤 모양이든 게이트는 크래시하지 않는다
