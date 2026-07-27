@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Built packages must ship the workforce résumé block.** `card lint` now
+  requires `workforce: {roles, communities, modalities, languages}` on the
+  routing card, validated against the pinned Agent Workforce Ontology
+  (awo:2026-07-15.2); ids outside the pinned vocabulary are errors, a missing
+  block is a `routing_ready` blocker, and `roles: []` stays honest when no
+  canonical role fits. The packaging skill authors the block at build time.
+  Measured over the live catalog, sellers declared roles/modalities on 0 of
+  250 cards, which silently excluded the whole catalog from every WorkOrder
+  that used those fields.
+
 ## v1.1.69 - 2026-07-27
 
 - **Updates return to the command-triggered contract.** Desktop startup and

@@ -33,12 +33,24 @@ description: "Use when converting, repairing, or packaging an existing local or 
    - `.agentlas/global-commands.json`;
    - runtime adapters;
    - verification scripts.
-5. Add or repair the global command across Claude Code, Codex, Gemini CLI,
+5. Author the workforce résumé block on the routing card (`workforce` on
+   `.agentlas/agent-card.json` / the marketplace routing card). The hub
+   Workforce search matches on exactly these fields; a card without them is
+   invisible to every WorkOrder that uses them, and `card lint` blocks
+   `routing_ready` without the block. Use ONLY the pinned ontology
+   (`agentlas_cloud/workforce/ontology_v1.json`, awo:2026-07-15.2):
+   - `roles`: 0-2 `role:*` ids, only when the agent genuinely performs that
+     professional role — most niche agents fit none, and `[]` is honest;
+   - `communities`: 1-3 `community:*` ids the work belongs to;
+   - `modalities`: what it consumes/produces (`text` alone for text-only);
+   - `languages`: languages it actually works in (public v1 language ids).
+   Never invent ids outside the pinned vocabulary; the lint rejects them.
+6. Add or repair the global command across Claude Code, Codex, Gemini CLI,
    generic AGENTS.md tools, and terminal adapters.
-6. Remove secrets, raw logs, private local notes, and unsafe public paths.
-7. Run `scripts/verify-team-package.sh <package-root>` after repair. If it
+7. Remove secrets, raw logs, private local notes, and unsafe public paths.
+8. Run `scripts/verify-team-package.sh <package-root>` after repair. If it
    fails, correct the package shape before any final handoff.
-8. Run package verification and public-safety checks before release.
+9. Run package verification and public-safety checks before release.
 
 ## Output
 

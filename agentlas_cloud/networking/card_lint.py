@@ -15,6 +15,21 @@ from typing import Any
 
 from .domains import DOMAIN_IDS
 
+
+def _workforce_ontology() -> dict[str, Any]:
+    """Pinned Agent Workforce Ontology vocabulary (awo:2026-07-15.2)."""
+    import json
+
+    path = Path(__file__).resolve().parent.parent / "workforce" / "ontology_v1.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except OSError:
+        return {}
+
+
+WORKFORCE_MODALITY_IDS = {"text", "image", "audio", "video", "multimodal"}
+WORKFORCE_LANGUAGE_IDS = {"ar", "de", "en", "es", "fr", "hi", "it", "ja", "ko", "pt", "zh", "zh-CN", "zh-TW"}
+
 VERB_CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)+$")
 BROAD_CAPABILITIES = {
     "do_anything",
@@ -114,6 +129,44 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
         ready_blockers.append("memory_behavior must be declared")
     if bench_cases < 10:
         ready_blockers.append(f"needs >=10 benchmark cases (has {bench_cases})")
+
+    # 이력서(workforce) block — the hub standard résumé the Workforce search
+    # matches on. Measured over the live catalog (2026-07-27) sellers declared
+    # roles/modalities on 0 of 250 cards, so every WorkOrder using those fields
+    # excluded the whole catalog. Built packages must ship the block filled;
+    # roles may honestly be [] when no canonical role fits, but the block and
+    # its modality/language coverage must exist and use the pinned vocabulary.
+    workforce = card.get("workforce")
+    if not isinstance(workforce, dict):
+        ready_blockers.append(
+            "workforce block must be declared: {roles, communities, modalities, languages} from the pinned ontology (roles may be [])"
+        )
+    else:
+        ontology = _workforce_ontology()
+        role_ids = {str(item.get("id")) for item in ontology.get("roles") or []}
+        community_ids = {str(item.get("id")) for item in ontology.get("communities") or []}
+        if not isinstance(workforce.get("roles"), list):
+            ready_blockers.append("workforce.roles must be a list (empty is allowed when no canonical role fits)")
+        elif role_ids:
+            unknown_roles = [str(r) for r in workforce["roles"] if str(r) not in role_ids]
+            if unknown_roles:
+                errors.append(f"workforce.roles outside the pinned ontology: {unknown_roles[:3]}")
+        if not workforce.get("communities"):
+            ready_blockers.append("workforce.communities must declare 1-3 pinned community ids")
+        elif community_ids:
+            unknown_communities = [str(c) for c in workforce.get("communities") or [] if str(c) not in community_ids]
+            if unknown_communities:
+                errors.append(f"workforce.communities outside the pinned ontology: {unknown_communities[:3]}")
+        bad_modalities = [str(m) for m in workforce.get("modalities") or [] if str(m) not in WORKFORCE_MODALITY_IDS]
+        if not workforce.get("modalities"):
+            ready_blockers.append('workforce.modalities must be declared (text-only agents: ["text"])')
+        elif bad_modalities:
+            errors.append(f"workforce.modalities outside the public vocabulary: {bad_modalities[:3]}")
+        bad_languages = [str(l) for l in workforce.get("languages") or [] if str(l) not in WORKFORCE_LANGUAGE_IDS]
+        if not workforce.get("languages"):
+            ready_blockers.append("workforce.languages must declare the languages the agent actually works in")
+        elif bad_languages:
+            errors.append(f"workforce.languages outside the public vocabulary: {bad_languages[:3]}")
 
     score += min(trigger_total, 8) * 0.06
     score += min(anti_total, 5) * 0.05
