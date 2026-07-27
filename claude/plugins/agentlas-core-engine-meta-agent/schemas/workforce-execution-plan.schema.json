@@ -209,7 +209,7 @@
       "properties": {
         "slotId": { "$ref": "#/$defs/id" },
         "title": { "type": "string", "minLength": 1, "maxLength": 160 },
-        "task": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "task": { "type": "string", "minLength": 1, "maxLength": 32000 },
         "cardinality": { "type": "string", "pattern": "^(?:[1-9]|1[0-6])$" },
         "criticality": { "enum": ["required", "optional"] },
         "requiredCommunities": { "$ref": "#/$defs/ids" },
@@ -264,7 +264,7 @@
       "properties": {
         "schemaVersion": { "const": "agentlas.workforce-execution-context.v1" },
         "workOrderId": { "$ref": "#/$defs/id" },
-        "taskBrief": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "taskBrief": { "type": "string", "minLength": 1, "maxLength": 64000 },
         "forbiddenCommunities": { "$ref": "#/$defs/ids" },
         "slots": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/contextSlot" } },
         "workOrderEdges": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/workOrderEdge" } },

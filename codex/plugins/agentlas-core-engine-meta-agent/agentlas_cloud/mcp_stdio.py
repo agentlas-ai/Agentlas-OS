@@ -40,7 +40,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.72"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.73"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -124,8 +124,10 @@ def _host_model_allocation_policy() -> dict[str, Any]:
         return {}
     try:
         parsed = json.loads(raw)
-    except (TypeError, ValueError):
-        raise ValueError("invalid host model allocation policy JSON") from None
+    except (TypeError, ValueError) as exc:
+        # Keep the decoder's line/column so a trailing comma is locatable. The
+        # decoder message carries a position, never the policy value itself.
+        raise ValueError(f"invalid host model allocation policy JSON: {exc}") from None
     if not isinstance(parsed, Mapping):
         raise ValueError("host model allocation policy must be an object")
     unknown = sorted(set(parsed) - _HOST_MODEL_POLICY_FIELDS)
@@ -923,11 +925,23 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if name in {"hephaestus_route", "model.resolve_allocation"}:
         try:
             host_model_policy = _host_model_allocation_policy()
-        except ValueError:
+        except ValueError as exc:
+            # The validator already knows which field is wrong; discarding that
+            # diagnosis makes a one-character policy typo indistinguishable from
+            # any other, so the operator has to guess a field and restart the
+            # host per guess. Every message raised by
+            # _host_model_allocation_policy names only policy key names, never
+            # their values, so it is safe to return. Collapse whitespace and cap
+            # the length because unknown-field names come from operator JSON.
+            reason = " ".join(str(exc).split())[:200] or "host model allocation policy is invalid"
             return {
                 "action": "refuse" if name == "hephaestus_route" else name,
                 "status": "invalid_host_model_allocation_policy",
-                "detail": f"Fix {MODEL_ALLOCATION_POLICY_ENV} in the MCP server launch environment.",
+                "reason": reason,
+                "detail": (
+                    f"{reason}. Fix {MODEL_ALLOCATION_POLICY_ENV} in the MCP "
+                    "server launch environment."
+                ),
             }
 
     if name == "model.resolve_allocation":

@@ -12,7 +12,7 @@
   "properties": {
     "schemaVersion": { "const": "agentlas.workforce-work-order.v1" },
     "workOrderId": { "$ref": "#/$defs/id" },
-    "taskBrief": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "taskBrief": { "type": "string", "minLength": 1, "maxLength": 64000 },
     "redacted": { "const": true },
     "ontologyVersion": { "const": "awo:2026-07-15.2" },
     "roleSlots": {
@@ -65,7 +65,7 @@
       "properties": {
         "slotId": { "$ref": "#/$defs/id" },
         "title": { "type": "string", "minLength": 1, "maxLength": 160 },
-        "task": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "task": { "type": "string", "minLength": 1, "maxLength": 32000 },
         "cardinality": { "type": "integer", "minimum": 1, "maximum": 16 },
         "criticality": { "enum": ["required", "optional"] },
         "requiredCommunities": { "$ref": "#/$defs/ids" },

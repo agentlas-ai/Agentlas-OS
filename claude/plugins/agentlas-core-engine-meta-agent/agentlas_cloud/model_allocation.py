@@ -454,10 +454,15 @@ def resolve_model_allocation(
     inventory = _normalize_inventory(raw_inventory)
     policy = dict(policy or {})
     escalation_request, escalation_issues = _validate_escalation(escalation)
+    # maxEscalations는 부모가 선언한 비용 상한이다. 상한은 "권한을 주는 값"이 아니라
+    # "권한을 제한하는 값"이므로, 관계없는 검증 이슈(unknown_fields 등)가 하나만 섞여도
+    # 상한 검사를 통째로 건너뛰면 안 된다. 예전에는 `and not issues` 때문에 무관한
+    # 필드 하나가 상한을 무력화해 maxEscalations=0인 결정도 frontier/xhigh로 승격됐다.
+    # decision이 존재하면 selection.maxEscalations는 항상 정규화되어 있고(불량/누락은
+    # 기본값 0) 따라서 이슈가 있는 결정일수록 더 보수적으로 막힌다 — fail-closed.
     if (
         escalation_request is not None
         and decision is not None
-        and not issues
         and decision["selection"]["maxEscalations"] < escalation_request["attempt"]
     ):
         escalation_issues.append("escalation_exceeds_max_escalations")
@@ -591,11 +596,49 @@ def resolve_model_allocation(
             elif len(tier_candidates) > 1:
                 reasons.append("parent_exact_model_required_for_ambiguous_inventory")
 
+    if selected is None and escalation_request is not None:
+        # 승격 재시도는 위 블록에서 parent decision을 의도적으로 건너뛴다. 그래서
+        # 운영자 핀(pinnedModelId)이 없으면 여기까지 어떤 분기도 selected를 채우지
+        # 못했고, 유일하게 허용된 재시도가 항상 unresolved로 죽었다 — 핀은 선택
+        # 사항이므로 핀을 두지 않은 모든 운영자에게 승격 계약 자체가 사문화된다.
+        # 핀이 없을 때도 orchestrator 역할 정책만으로 결정적으로 고른다: maxTier
+        # 이하 후보 중 최상위 tier를 쓰고("약모델 실패 → 강모델 승격"), 동률이면
+        # 역할의 현재 모델로 가른다. 정책 상한을 넘기지 않으므로 승격이 비용
+        # 가드레일을 뚫는 경로가 되지는 않는다.
+        allowed = [
+            item
+            for item in compatible_inventory
+            if item["tier"] is not None and TIER_RANK[item["tier"]] <= TIER_RANK[max_tier]
+        ]
+        if allowed:
+            top_rank = max(TIER_RANK[item["tier"]] for item in allowed)
+            top_candidates = [item for item in allowed if TIER_RANK[item["tier"]] == top_rank]
+            current_candidate = next(
+                (item for item in top_candidates if item["model_id"] == current_model_id),
+                None,
+            )
+            if current_candidate is not None:
+                selected = current_candidate
+            elif len(top_candidates) == 1:
+                selected = top_candidates[0]
+            if selected is not None:
+                reasons.append("escalated_to_highest_allowed_role_tier")
+            else:
+                reasons.append("escalation_target_ambiguous_across_sessions")
+
     if selected is None:
         if decision is None or issues:
             selected = next((item for item in compatible_inventory if item["model_id"] == current_model_id), None)
         status = "fallback-current" if selected else "unresolved"
-        reasons.append("parent_decision_missing_or_invalid" if decision is None or issues else "no_compatible_requested_model")
+        if decision is None or issues:
+            reasons.append("parent_decision_missing_or_invalid")
+        elif escalation_request is not None:
+            # 승격 경로는 parent decision의 모델을 요청하지 않는다. 여기서
+            # no_compatible_requested_model을 남기면 살아 있는 호환 모델을 두고도
+            # "요청 모델이 비호환"이라는 거짓 사유를 보고하게 된다.
+            reasons.append("escalation_target_unavailable")
+        else:
+            reasons.append("no_compatible_requested_model")
 
     requested_effort = decision["selection"]["effort"] if decision and not issues else "none"
     resolved_effort = "none"
