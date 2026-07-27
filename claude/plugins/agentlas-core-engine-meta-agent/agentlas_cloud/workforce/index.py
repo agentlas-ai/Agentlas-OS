@@ -199,6 +199,28 @@ _REQUIREMENT_GAP_KIND = {
 }
 
 
+def _can_appear_as_candidate(profile: Mapping[str, Any]) -> bool:
+    """Whether this profile could ever be returned as a candidate.
+
+    Mirrors the slot-independent gates in `_hard_eligibility`. The vocabulary
+    below has to be measured over exactly this population: a dimension declared
+    only by a withdrawn, quarantined or non-routing-eligible profile counts as
+    "populated", which re-arms the hard filter against candidates that CAN be
+    returned — and because the dimension is populated, no vocabulary gap is
+    reported either. The caller is told `gap:no-hard-eligible-candidate` and
+    reads it as "the catalogue has nobody", when in fact a usable agent was in
+    the index and the requirement simply could not discriminate.
+    """
+
+    if profile.get("status") != "active":
+        return False
+    qualification = profile.get("qualification") if isinstance(profile.get("qualification"), Mapping) else {}
+    if qualification.get("structuralStatus") == "invalid":
+        return False
+    operational = profile.get("operational") if isinstance(profile.get("operational"), Mapping) else {}
+    return operational.get("routingEligible") is True
+
+
 def _inventory_vocabulary(profiles: Iterable[Mapping[str, Any]]) -> dict[str, bool]:
     """Which requirement dimensions the live inventory populates at all.
 
@@ -215,6 +237,8 @@ def _inventory_vocabulary(profiles: Iterable[Mapping[str, Any]]) -> dict[str, bo
 
     populated: dict[str, bool] = {kind: False for kind in _REQUIREMENT_VOCABULARY_KINDS}
     for profile in profiles:
+        if not _can_appear_as_candidate(profile):
+            continue
         have = _profile_sets(profile)
         for kind in _REQUIREMENT_VOCABULARY_KINDS:
             if have[kind]:
@@ -659,7 +683,14 @@ class WorkforceIndex:
             "slots": slots,
         }
         session_id = "selection:" + canonical_digest(base).split(":", 1)[1][:24]
-        vocabulary = _inventory_vocabulary(self.profiles.values())
+        # Excluding the work order's forbidden communities as well: a profile the
+        # order itself rules out is no more returnable than a withdrawn one.
+        forbidden_communities = _strings(work_order.get("forbiddenCommunities"))
+        vocabulary = _inventory_vocabulary(
+            profile
+            for profile in self.profiles.values()
+            if not (forbidden_communities & _profile_sets(profile)["communities"])
+        )
         slot_results: list[dict[str, Any]] = []
         for slot in slots:
             if not isinstance(slot, Mapping) or not slot.get("slotId"):

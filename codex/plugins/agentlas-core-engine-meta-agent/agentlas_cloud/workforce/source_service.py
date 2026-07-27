@@ -17,7 +17,7 @@ from ..networking.hub_client import (
     hub_url,
     list_hub_tools,
 )
-from .contracts import canonical_digest, canonical_json
+from .contracts import WORKFORCE_COVERAGE_GAP_CODES, canonical_digest, canonical_json
 from .federation import (
     LineageVerifier,
     WORKFORCE_SOURCE_FAILURE_CODES,
@@ -357,6 +357,14 @@ class WorkforceSourceService:
             payload["expandSlotIds"] = list(expand_slot_ids)
         if scope_mode == "typed":
             payload["sourceScope"] = source
+        # A source withholds any gap code an older runtime would discard the whole
+        # CandidateSet over, so by default it never sends
+        # `gap:requirement-vocabulary-unsupported:*` — the code that says a stated
+        # requirement could NOT be enforced and the slot was filled without it.
+        # Silence there reads as "your contract held". Declare exactly what this
+        # build parses so the source can tell the truth; a server that predates
+        # the field ignores it, so this is safe in either deployment order.
+        payload["acceptedCoverageGapCodes"] = list(WORKFORCE_COVERAGE_GAP_CODES)
         # Workforce runs can be scheduled/headless. Never open an interactive
         # login after dispatch: surface source_unauthorized so Desktop can keep
         # the automation enabled and request attention without hanging it.

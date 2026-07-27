@@ -24,9 +24,9 @@
 
 # The Workforce Ontology snapshot is pinned by its raw SHA-256 digest. Keep the
 # canonical file and both packaged adapter mirrors byte-identical on Windows.
-/agentlas_cloud/workforce/ontology_v1.json text eol=lf
-/claude/plugins/agentlas-core-engine-meta-agent/agentlas_cloud/workforce/ontology_v1.json text eol=lf
-/codex/plugins/agentlas-core-engine-meta-agent/agentlas_cloud/workforce/ontology_v1.json text eol=lf
+/agentlas_cloud/workforce/ontology_v1.json -text
+/claude/plugins/agentlas-core-engine-meta-agent/agentlas_cloud/workforce/ontology_v1.json -text
+/codex/plugins/agentlas-core-engine-meta-agent/agentlas_cloud/workforce/ontology_v1.json -text
 
 # Source archives and release snapshots must not expose development-only
 # material. The files can remain available in the private working tree for
