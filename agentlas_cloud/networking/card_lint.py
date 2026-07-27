@@ -30,6 +30,35 @@ def _workforce_ontology() -> dict[str, Any]:
 WORKFORCE_MODALITY_IDS = {"text", "image", "audio", "video", "multimodal"}
 WORKFORCE_LANGUAGE_IDS = {"ar", "de", "en", "es", "fr", "hi", "it", "ja", "ko", "pt", "zh", "zh-CN", "zh-TW"}
 
+
+def ensure_workforce_block(card: dict[str, Any]) -> dict[str, Any]:
+    """Deterministically fill a missing workforce résumé block in place.
+
+    Auto-built agents (storm workers, packaged conversions) cannot hand-author
+    the block, and the pipeline must not call a model during packaging. The
+    honest deterministic floor: roles [] (no canonical role claimed),
+    communities [] (the hub infers them from card text — measured 249/250),
+    modalities ["text"], languages detected from the card's own scripts.
+    An existing block is never overwritten.
+    """
+    if isinstance(card.get("workforce"), dict):
+        return card
+    texts: list[str] = [str(card.get("name") or ""), str(card.get("summary") or "")]
+    for field in ("trigger_examples", "anti_triggers"):
+        for entry in card.get(field) or []:
+            if isinstance(entry, dict):
+                texts.append(str(entry.get("text") or ""))
+    joined = " ".join(texts)
+    languages = ["en"]
+    if re.search(r"[가-힣]", joined):
+        languages.append("ko")
+    if re.search(r"[぀-ヿ]", joined):
+        languages.append("ja")
+    if re.search(r"[一-鿿]", joined) and "ja" not in languages:
+        languages.append("zh")
+    card["workforce"] = {"roles": [], "communities": [], "modalities": ["text"], "languages": languages}
+    return card
+
 VERB_CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)+$")
 BROAD_CAPABILITIES = {
     "do_anything",
@@ -138,10 +167,15 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     # its modality/language coverage must exist and use the pinned vocabulary.
     workforce = card.get("workforce")
     if not isinstance(workforce, dict):
-        ready_blockers.append(
-            "workforce block must be declared: {roles, communities, modalities, languages} from the pinned ontology (roles may be [])"
+        # 자동 빌드 파이프라인(스톰 워커, 변환 패키징)은 블록을 손으로 못 쓴다 —
+        # 결정적 파생이 가능하므로 린트는 경고만 남기고, 하드 게이트는 서버
+        # 등록 경계(workforce_resume_incomplete)와 업로드 관문의 자동 채움이 맡는다.
+        derived = ensure_workforce_block(dict(card))
+        workforce = derived["workforce"]
+        warnings.append(
+            "workforce block missing — deterministically derivable (roles [], languages by script); declare it explicitly for better ranking"
         )
-    else:
+    if True:
         ontology = _workforce_ontology()
         role_ids = {str(item.get("id")) for item in ontology.get("roles") or []}
         community_ids = {str(item.get("id")) for item in ontology.get("communities") or []}
@@ -152,7 +186,9 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
             if unknown_roles:
                 errors.append(f"workforce.roles outside the pinned ontology: {unknown_roles[:3]}")
         if not workforce.get("communities"):
-            ready_blockers.append("workforce.communities must declare 1-3 pinned community ids")
+            # 서버 투영이 카드 텍스트에서 커뮤니티를 추론한다(라이브 249/250 실측) —
+            # 빌드에서 비어 있어도 막지 않고 품질 경고만 남긴다.
+            warnings.append("workforce.communities empty — the hub will infer from card text; declaring 1-3 ids ranks better")
         elif community_ids:
             unknown_communities = [str(c) for c in workforce.get("communities") or [] if str(c) not in community_ids]
             if unknown_communities:

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.1.70 - 2026-07-27
 
 - **Upload repair loop for the workforce résumé.** When registration returns
   `workforce_resume_incomplete`, the uploader now surfaces the server's full

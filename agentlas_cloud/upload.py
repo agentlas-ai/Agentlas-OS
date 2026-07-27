@@ -430,6 +430,11 @@ def refresh_routing_card_metadata(base: Path) -> dict[str, Any]:
         return {"updated": False, "reason": "invalid_routing_card"}
 
     before = json.dumps(card, sort_keys=True, ensure_ascii=False)
+    # 이력서(workforce) 블록이 없는 카드는 결정적 최소 블록으로 채운다 — 자동 빌드
+    # 에이전트가 새 표준 게이트에서 죽지 않게 하는 관문(모델 호출 없음, 기존 블록 보존).
+    from .networking.card_lint import ensure_workforce_block
+
+    ensure_workforce_block(card)
     agent_card_path = base / ".agentlas" / "agent-card.json"
     if isinstance(card.get("agent_card_ref"), dict) and agent_card_path.is_file():
         card["agent_card_ref"]["content_hash"] = _sha256_bytes(agent_card_path.read_bytes())
