@@ -1,6 +1,11 @@
 # Changelog
 
-## v1.1.70 - 2026-07-27
+## v1.1.71 - 2026-07-27
+
+- Supersedes v1.1.70, whose release asset failed the updater's host-adapter
+  version validation (adapter plugin manifests still carried 1.1.69) and was
+  therefore never installable. Adapter mirrors are re-rendered from the
+  canonical core and every version pin now moves together.
 
 - **Upload repair loop for the workforce résumé.** When registration returns
   `workforce_resume_incomplete`, the uploader now surfaces the server's full
