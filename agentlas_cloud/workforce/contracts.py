@@ -237,10 +237,22 @@ def _validate_schema_node(
         issues.append({"path": path or "$", "code": "schema_enum"})
 
     if isinstance(value, str):
+        # A bound violation must carry the bound. A caller told only
+        # "schema_max_length at roleSlots[0].task" knows a field is too long but
+        # not by how much or what to aim for, so its one repair attempt writes
+        # something too long again — the exact loop that discarded a completed
+        # 20-agent run on 2026-07-27. Reporting limit/actual makes the repair
+        # possible without the caller having to re-derive the schema.
         if isinstance(schema.get("minLength"), int) and len(value) < schema["minLength"]:
-            issues.append({"path": path or "$", "code": "schema_min_length"})
+            issues.append({
+                "path": path or "$", "code": "schema_min_length",
+                "limit": schema["minLength"], "actual": len(value),
+            })
         if isinstance(schema.get("maxLength"), int) and len(value) > schema["maxLength"]:
-            issues.append({"path": path or "$", "code": "schema_max_length"})
+            issues.append({
+                "path": path or "$", "code": "schema_max_length",
+                "limit": schema["maxLength"], "actual": len(value),
+            })
         pattern = schema.get("pattern")
         if isinstance(pattern, str) and re.search(pattern, value) is None:
             issues.append({"path": path or "$", "code": "schema_pattern"})

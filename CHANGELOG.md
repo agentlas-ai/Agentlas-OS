@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **A schema bound violation now reports the bound.** `schema_max_length` and
+  `schema_min_length` issues carried only a path, so a caller told its field
+  was too long knew neither the ceiling nor by how much it had overshot — its
+  one repair attempt then wrote something too long again. Both issues now
+  carry `limit` and `actual`. Measured 2026-07-27: a completed 20-agent run
+  was discarded whole by exactly this loop.
+
 ## v1.1.72 - 2026-07-27
 
 - Supersedes v1.1.71: the MCP server/agent-card version constants
