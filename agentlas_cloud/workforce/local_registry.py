@@ -171,6 +171,8 @@ class LocalWorkforceRegistry:
         self.user_home = (Path(user_home) if user_home else Path.home()).expanduser().resolve()
         for relative in ("definitions", "releases", "outbox", "quarantine", "staging"):
             (self.home / relative).mkdir(parents=True, exist_ok=True)
+        # Releases dropped by the last active_profiles() integrity pass.
+        self.last_integrity_drops = 0
 
     @contextmanager
     def _locked(self) -> Iterator[None]:
@@ -591,7 +593,20 @@ class LocalWorkforceRegistry:
         return sorted(self._records(), key=lambda row: str(row.get("agentDefinitionId")))
 
     def active_profiles(self) -> list[dict[str, Any]]:
+        """Every locally registered release whose stored profile still verifies.
+
+        The integrity check used to run unguarded, so one truncated or edited
+        `profile.json` raised out of the whole loop and the caller turned that
+        into `source_unavailable` for the entire local source — the same code it
+        emits when the machine cannot be reached. Every other locally registered
+        agent disappeared from the menu, and the reason shown was an outage that
+        was not happening. A corrupt release is one candidate that cannot be
+        offered, not a source that is down: skip it and keep the rest. The count
+        is exposed on `last_integrity_drops` so the caller can report it.
+        """
+
         profiles: list[dict[str, Any]] = []
+        dropped = 0
         for record in self._records():
             if record.get("status") != "active":
                 continue
@@ -599,8 +614,13 @@ class LocalWorkforceRegistry:
             profile = read_json(release_dir / "profile.json", default=None)
             if not isinstance(profile, Mapping):
                 continue
-            verify_profile_integrity(profile)
+            try:
+                verify_profile_integrity(profile)
+            except ValueError:
+                dropped += 1
+                continue
             profiles.append(dict(profile))
+        self.last_integrity_drops = dropped
         return profiles
 
     def lineage_attestations(self) -> dict[str, dict[str, str]]:

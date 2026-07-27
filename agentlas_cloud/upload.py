@@ -25,6 +25,9 @@ from .runtime import (
 
 MAX_TOTAL_BYTES = 3 * 1024 * 1024
 MAX_FILE_BYTES = 512 * 1024
+# Walk bound so a pathological tree terminates; the package ceiling is MAX_FILES,
+# measured on the files actually uploaded.
+MAX_WALKED_ENTRIES = 20_000
 MAX_FILES = 400
 TEXT_EXTENSIONS = {".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".py", ".js", ".ts", ".tsx", ".cjs", ".mjs", ".sh"}
 AGENT_DEFINITION_FILES = {"AGENT.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md", "agent.md", "manifest.md", "system-prompt.md"}
@@ -789,6 +792,7 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
     findings: list[dict[str, Any]] = []
     total_bytes = 0
     file_count = 0
+    walked = 0
     for path in sorted(base.rglob("*")):
         rel = path.relative_to(base).as_posix()
         if any(part in SKIP_DIRS for part in path.relative_to(base).parts):
@@ -800,15 +804,13 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             continue
         if not path.is_file():
             continue
-        file_count += 1
-        if file_count > MAX_FILES:
+        # A pathological tree must still terminate even when almost nothing in it
+        # is uploadable, but this is a walk bound, not the package ceiling.
+        walked += 1
+        if walked > MAX_WALKED_ENTRIES:
             findings.append(_finding("file-count-limit", "blocker", "size", f"Package has more than {MAX_FILES} files.", None, "Publish a focused agent/team folder."))
-            continue
+            break
         stat = path.stat()
-        total_bytes += stat.st_size
-        if total_bytes > MAX_TOTAL_BYTES:
-            findings.append(_finding("package-size-limit", "blocker", "size", f"Package exceeds {MAX_TOTAL_BYTES} bytes.", None, "Publish a smaller package."))
-            continue
         if any(pattern.search(path.name) for pattern in BLOCKED_FILE_PATTERNS):
             findings.append(_finding("blocked-file", "blocker", "secret", "Secret-bearing file names are not allowed in cloud packages.", rel, "Remove credentials and publish only setup instructions or env key names."))
             continue
@@ -847,6 +849,19 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
                 findings.append(_finding(finding_id, "blocker", "secret", f"Possible {label} found in package content.", rel, "Remove the value and require each user to configure their own key."))
         if re.search(r"(?:curl|wget)[^\n|&;]+[|]\s*(?:sh|bash)", text, re.I):
             findings.append(_finding("curl-pipe-shell", "high", "network", "Remote shell install pattern detected.", rel, "Use explicit, reviewable install steps."))
+        # Count only what is actually uploaded. These two ran before the
+        # inclusion filters, so a 4 MB PNG that is never shipped still consumed
+        # the package ceiling and blocked the upload — and the blocker carried
+        # `file: None`, so the author could not tell which file to remove while
+        # the same response reported a manifest of a few kilobytes.
+        file_count += 1
+        if file_count > MAX_FILES:
+            findings.append(_finding("file-count-limit", "blocker", "size", f"Package has more than {MAX_FILES} files.", rel, "Publish a focused agent/team folder."))
+            break
+        total_bytes += len(raw)
+        if total_bytes > MAX_TOTAL_BYTES:
+            findings.append(_finding("package-size-limit", "blocker", "size", f"Package exceeds {MAX_TOTAL_BYTES} bytes at {rel}.", rel, "Publish a smaller package."))
+            break
         digest = _sha256_bytes(raw)
         files.append(
             UploadFile(
