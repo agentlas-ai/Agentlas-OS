@@ -290,17 +290,42 @@ def runtime_execution_graph_declared() -> tuple[bool, str]:
         # A blueprint that names the manager by path rather than by node id.
         return declared if "/" in declared else ""
 
-    manager = (
+    def runtime_safe_path(value: str) -> str:
+        """The Hub runtime's `safeGraphPath`, mirrored exactly.
+
+        A gate that accepts a manager path the runtime refuses is worse than no
+        gate: it prints PASS(team) and the package is uncallable once published.
+        The runtime drops a leading `./` and rejects an absolute path, a
+        backslash (a blueprint written by a builder on Windows), or a `..`
+        segment. Keep the two rules identical.
+        """
+        path = value.strip()
+        if path.startswith("./"):
+            path = path[2:]
+        if not path or path.startswith("/") or "\\" in path or ".." in path.split("/"):
+            return ""
+        return path
+
+    raw_manager = (
         manager_from(team_manifest, allow_entry=True)
         or manager_from(package_manifest, allow_entry=False)
         or manager_from_blueprint()
     )
-    if not manager:
+    if not raw_manager:
         return False, (
             "runtime cannot find a manager: declare it as "
             f"{manager_keys[0]} in manifest.json (or {', '.join(manager_keys[1:])}), "
             "or name the orchestrator node in .agentlas/company-blueprint.json"
         )
+    manager = runtime_safe_path(raw_manager)
+    if not manager:
+        return False, (
+            f"declared manager path {raw_manager!r} is one the runtime refuses: it must be "
+            "relative to the package root, use forward slashes, and contain no `..` segment"
+        )
+    # A declaration pointing at nothing is a declaration the runtime cannot load.
+    if not (root / manager).is_file():
+        return False, f"declared manager {manager!r} does not exist in the package"
 
     declared_roster = next(
         (team_manifest[key] for key in roster_keys if isinstance(team_manifest.get(key), list) and team_manifest[key]),
