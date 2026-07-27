@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Mapping
@@ -63,6 +65,60 @@ def _slot_requirements(slot: Mapping[str, Any]) -> dict[str, set[str]]:
         "excluded_communities": _strings(slot.get("excludedCommunities")),
         "entity_kinds": _strings(slot.get("allowedEntityKinds")),
     }
+
+
+_CONCEPT_INFLECTION_RE = re.compile(r"(ations?|ments?|ings?|ers?|eds?|es|s)$")
+
+
+def _concept_tokens(value: str) -> list[str]:
+    """Tokens of a concept id with the endings publishers vary on folded off."""
+
+    body = re.sub(r"^[a-z]+:", "", str(value).strip().lower())
+    tokens = [token for token in re.split(r"[^a-z0-9]+", body) if token]
+    folded = [_CONCEPT_INFLECTION_RE.sub("", token) for token in tokens]
+    return [token for token in folded if len(token) >= 3]
+
+
+def _covers(subset: list[str], superset: list[str]) -> bool:
+    return all(
+        any(
+            other.startswith(token) if len(token) <= len(other) else token.startswith(other)
+            for other in superset
+        )
+        for token in subset
+    )
+
+
+def concept_family_matches(left: str, right: str) -> bool:
+    """Does one concept id name the same thing as another, as actually spelled?
+
+    Measured across 188 live listings: the authority vocabulary contains
+    ``authority:shell-execution`` (13 listings) and ``authority:shell-exec`` (8)
+    while the public catalogue advertises ``authority:shell``; the runtime list
+    has 186 listings declaring ``claude-code`` and none declaring the advertised
+    ``claude``. Compared as opaque strings, a slot forbidding
+    ``authority:shell`` excludes none of them — the host LLM asks for no shell
+    access and is handed an agent that declares it.
+
+    This is morphology, not a synonym list: tokens compare by prefix so ``exec``
+    covers ``execution``, and one id matches when its token set is contained in
+    the other's. Containment keeps the pairs that must stay apart apart —
+    ``file-read`` and ``file-write`` share only ``file``. Where the rule is
+    asymmetric it errs wide, the safe direction for a prohibition.
+
+    Kept in step with `conceptFamilyMatches` in the Cloud workforce ontology;
+    the two judge the same candidate for the same caller.
+    """
+
+    a = _concept_tokens(left)
+    b = _concept_tokens(right)
+    if not a or not b:
+        return str(left).strip().lower() == str(right).strip().lower()
+    return _covers(a, b) or _covers(b, a)
+
+
+def _family_any(available: Iterable[str], required: str) -> bool:
+    return any(concept_family_matches(term, required) for term in available)
 
 
 def _profile_sets(profile: Mapping[str, Any]) -> dict[str, Any]:
@@ -217,13 +273,18 @@ def _hard_eligibility(
         reasons.append("missing-consumed-artifact")
     if enforced["produces"] - have["produces"]:
         reasons.append("missing-produced-artifact")
-    if req["authorities"] - have["authorities"]:
+    # Authorities are never demoted, but they are matched by concept family:
+    # the advertised spelling and the declared one differ for every authority
+    # that matters, and set difference let a prohibition pass straight through.
+    if any(not _family_any(have["authorities"], item) for item in req["authorities"]):
         reasons.append("missing-required-authority")
-    if req["forbidden_authorities"] & have["authorities"]:
+    if any(_family_any(have["authorities"], item) for item in req["forbidden_authorities"]):
         reasons.append("forbidden-authority-conflict")
-    if have["forbidden_authorities"] & req["authorities"]:
+    if any(_family_any(req["authorities"], item) for item in have["forbidden_authorities"]):
         reasons.append("candidate-prohibits-required-authority")
-    if enforced["runtimes"] and not enforced["runtimes"] & have["runtimes"]:
+    if enforced["runtimes"] and not any(
+        _family_any(have["runtimes"], item) for item in enforced["runtimes"]
+    ):
         reasons.append("runtime-mismatch")
     if enforced["languages"] and not enforced["languages"] & have["languages"]:
         reasons.append("language-mismatch")
