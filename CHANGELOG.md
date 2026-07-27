@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.72 - 2026-07-27
+
+- Supersedes v1.1.71: the MCP server/agent-card version constants
+  (mcp_stdio SERVER_INFO, cli agent card, a2a card) had sat at 1.1.67 since
+  that release and failed Desktop's pinned-contract preflight. bump-version.sh
+  now snaps these canonical in-code pins and the host adapter manifests to the
+  release version regardless of the value they carry, so a pin that fell
+  behind can never stick again.
+
 ## v1.1.71 - 2026-07-27
 
 - Supersedes v1.1.70, whose release asset failed the updater's host-adapter
