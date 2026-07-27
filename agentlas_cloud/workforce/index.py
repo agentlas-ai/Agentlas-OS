@@ -170,6 +170,22 @@ _REQUIREMENT_VOCABULARY_KINDS = (
     "languages",
     "modalities",
 )
+# Dimensions that can never hard-filter, however full they look. Publishers
+# describe what they emit in their own words, so the compiler mints one
+# identifier per asset: 660 distinct `produces` values across 188 live listings,
+# 2.3% of them shared by more than one asset; `consumes` is 1291 values at 4.2%.
+# A vocabulary that is 97% singletons cannot separate candidates, it can only
+# empty the slot — and the published catalogue advertises seven artifact ids no
+# live asset produces, so a caller who follows the documentation exactly gets
+# zero results from every source. Measured: a work order asking for
+# `artifact:worker-result` matched nothing anywhere.
+#
+# They stay in the slot search text, so they still rank, and the demotion is
+# reported. Skills are deliberately not here: their terms come from a published
+# closed vocabulary, and quietly dropping `skill:security-review` would hand
+# back agents that never claimed to do security review.
+_RANKING_ONLY_KINDS = frozenset({"consumes", "produces"})
+
 _REQUIREMENT_GAP_KIND = {
     "roles": "role",
     "skills": "skill",
@@ -212,12 +228,25 @@ def _unsupported_requirements(
     req: Mapping[str, Any],
     populated: Mapping[str, bool] | None,
 ) -> dict[str, set[str]]:
-    """Required terms in dimensions the inventory never populates."""
+    """Required terms that cannot act as a hard filter.
+
+    Either the inventory never populates the dimension, or the dimension is
+    ranking-only by measurement (see `_RANKING_ONLY_KINDS`). Both are reported
+    the same way, because to a caller they mean the same thing: the constraint
+    you wrote was not enforced as written.
+    """
 
     if populated is None:
-        return {kind: set() for kind in _REQUIREMENT_VOCABULARY_KINDS}
+        return {
+            kind: (set(req[kind]) if kind in _RANKING_ONLY_KINDS else set())
+            for kind in _REQUIREMENT_VOCABULARY_KINDS
+        }
     return {
-        kind: (set() if populated.get(kind) else set(req[kind]))
+        kind: (
+            set(req[kind])
+            if kind in _RANKING_ONLY_KINDS or not populated.get(kind)
+            else set()
+        )
         for kind in _REQUIREMENT_VOCABULARY_KINDS
     }
 
