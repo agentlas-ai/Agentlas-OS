@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Upload repair loop for the workforce résumé.** When registration returns
+  `workforce_resume_incomplete`, the uploader now surfaces the server's full
+  mismatch list and pinned ontology menus verbatim (no truncation) so the
+  submitter's own model can repair the card and resubmit; the hep-upload
+  command adapters document the loop.
+
 - **Built packages must ship the workforce résumé block.** `card lint` now
   requires `workforce: {roles, communities, modalities, languages}` on the
   routing card, validated against the pinned Agent Workforce Ontology

@@ -386,6 +386,33 @@ def register_package(
                     raise UploadError(
                         f"Agentlas Cloud registration failed HTTP {retry_exc.code} after precondition retry: {retry_detail}"
                     ) from retry_exc
+        # BYOM 반복 교정 루프의 CLI 절반: 서버는 업로드 중 플랫폼 LLM을 부르지 않고
+        # 불일치 목록 + 핀 온톨로지 메뉴를 돌려준다. 이 메시지를 읽는 것은 업로드를
+        # 실행 중인 제출자의 자기 모델이므로, 800자 캡에 가이드가 잘리면 루프가
+        # 죽는다 — 전문을 구조화해 그대로 전달한다.
+        if exc.code == 422:
+            try:
+                body = json.loads(detail)
+            except ValueError:
+                body = None
+            if isinstance(body, dict) and body.get("code") == "workforce_resume_incomplete":
+                issues = body.get("issues") or []
+                guide = body.get("repairGuide") or {}
+                menus = guide.get("menus") or {}
+                lines = [
+                    "Agentlas Cloud registration refused: the workforce résumé block does not match the hub standard.",
+                    "Repair the routing card's `workforce` block with YOUR OWN model using ONLY the pinned menus below, then rerun this upload. Repeat until registered.",
+                    "",
+                    "Mismatches:",
+                    *[f"  - {issue}" for issue in issues],
+                    "",
+                    str(guide.get("howToRepair") or ""),
+                    f"ontologyVersion: {guide.get('ontologyVersion')}",
+                ]
+                for key in ("roles", "communities", "modalities", "languages"):
+                    values = menus.get(key) or []
+                    lines.append(f"{key} menu: {', '.join(str(value) for value in values)}")
+                raise UploadError("\n".join(lines)) from exc
         raise UploadError(f"Agentlas Cloud registration failed HTTP {exc.code}: {detail[:800]}") from exc
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
         raise UploadError(f"Agentlas Cloud registration failed: {exc}") from exc

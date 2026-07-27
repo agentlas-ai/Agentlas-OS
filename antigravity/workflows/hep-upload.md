@@ -82,3 +82,13 @@ after the user has answered. Use one explicit command instead:
 
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요.
 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
+
+## Workforce résumé repair loop
+
+If registration returns `workforce_resume_incomplete`, the server refused the
+card because its `workforce` block (roles/communities/modalities/languages)
+does not match the hub standard résumé. The error carries the exact
+mismatches and the pinned ontology menus. YOU repair it — the platform never
+edits the card for you: update the routing card's `workforce` block using ONLY
+ids from the returned menus (roles may honestly stay `[]`), rerun the upload,
+and repeat until registration succeeds.

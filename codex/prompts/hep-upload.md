@@ -49,3 +49,13 @@ packages that exceed the public bundle limits.
 
 If the destination is answered but the target folder is ambiguous, ask for the
 exact agent folder before running any upload.
+
+## Workforce résumé repair loop
+
+If registration returns `workforce_resume_incomplete`, the server refused the
+card because its `workforce` block (roles/communities/modalities/languages)
+does not match the hub standard résumé. The error carries the exact
+mismatches and the pinned ontology menus. YOU repair it — the platform never
+edits the card for you: update the routing card's `workforce` block using ONLY
+ids from the returned menus (roles may honestly stay `[]`), rerun the upload,
+and repeat until registration succeeds.
