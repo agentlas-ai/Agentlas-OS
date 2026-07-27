@@ -258,11 +258,48 @@ def runtime_execution_graph_declared() -> tuple[bool, str]:
             return doc["entry"]
         return ""
 
-    manager = manager_from(team_manifest, allow_entry=True) or manager_from(package_manifest, allow_entry=False)
+    def manager_from_blueprint() -> str:
+        """The manager as declared in the team blueprint.
+
+        This builder is told to emit `.agentlas/company-blueprint.json` with the
+        team topology, and that file names the orchestrator and every node's
+        path. Reading only the manifests would reject a package whose execution
+        graph is completely and explicitly declared, just in the other file the
+        builder writes. The runtime reads it too; keep the two identical.
+        """
+        blueprint = load_json(root / ".agentlas" / "company-blueprint.json") or {}
+        declared = next(
+            (
+                blueprint[key]
+                for key in ("orchestrator", "router", "manager", "entrypoint")
+                if isinstance(blueprint.get(key), str) and blueprint[key].strip()
+            ),
+            "",
+        )
+        if not declared:
+            return ""
+        for node in blueprint.get("nodes") or []:
+            if not isinstance(node, dict) or node.get("id") != declared:
+                continue
+            path = next(
+                (node[key] for key in ("path", "file", "promptFileRef") if isinstance(node.get(key), str)),
+                "",
+            )
+            if path:
+                return path
+        # A blueprint that names the manager by path rather than by node id.
+        return declared if "/" in declared else ""
+
+    manager = (
+        manager_from(team_manifest, allow_entry=True)
+        or manager_from(package_manifest, allow_entry=False)
+        or manager_from_blueprint()
+    )
     if not manager:
         return False, (
             "runtime cannot find a manager: declare it as "
-            f"{manager_keys[0]} in manifest.json (or {', '.join(manager_keys[1:])})"
+            f"{manager_keys[0]} in manifest.json (or {', '.join(manager_keys[1:])}), "
+            "or name the orchestrator node in .agentlas/company-blueprint.json"
         )
 
     declared_roster = next(

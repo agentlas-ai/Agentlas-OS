@@ -1,20 +1,24 @@
-# The bundled Model2Vec payload is verified byte-for-byte at runtime. Keep its
-# text files on LF even when Windows Git uses core.autocrlf=true, and never let
-# Git treat the quantized tensors as text. The multilingual payload is kept in
-# the canonical asset only; the plugin rules remain for legacy migration files.
-/assets/model2vec/**/*.json text eol=lf
-/assets/model2vec/**/*.txt text eol=lf
+# The bundled Model2Vec payload is verified byte-for-byte at runtime, so every
+# file here is byte-addressed — including the JSON and the licence text, whose
+# SHA-256 the manifest pins. `text eol=lf` protected the checkout but still ran
+# the normalizing filter on commit, so a payload regenerated on Windows would be
+# silently rewritten and diverge from its pinned digest with nothing to show for
+# it. `-text` stores and restores the exact bytes in both directions, which is
+# also what the checkout-integrity guard requires. The multilingual payload is
+# kept in the canonical asset only; the plugin rules remain for legacy files.
+/assets/model2vec/**/*.json -text
+/assets/model2vec/**/*.txt -text
 /assets/model2vec/**/*.i8 binary
 /assets/model2vec/**/*.i8.part-* binary
 /assets/model2vec/**/*.f32le binary
 
-/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.json text eol=lf
-/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.txt text eol=lf
+/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.json -text
+/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.txt -text
 /claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.i8 binary
 /claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.f32le binary
 
-/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.json text eol=lf
-/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.txt text eol=lf
+/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.json -text
+/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.txt -text
 /codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.i8 binary
 /codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.f32le binary
 
