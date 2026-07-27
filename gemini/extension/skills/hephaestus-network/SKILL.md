@@ -1,6 +1,6 @@
 ---
 name: hephaestus-network
-description: "Use when the user types /hep-network, mentions @Hephaestus, or asks Agentlas to staff a durable goal from registered Local, owner Cloud, and public Hub agents or teams. The active host LLM staffs each turn; the exact roster remains goal-bound until explicit completion."
+description: "Use when the user types $hephaestus-network or /hep-network, mentions @Hephaestus, or asks Agentlas to staff a durable goal from registered Local, owner Cloud, and public Hub agents or teams. The active host LLM staffs each turn; the exact roster remains goal-bound until explicit completion."
 ---
 
 # Hephaestus Agent Workforce Network
@@ -198,7 +198,31 @@ state explicitly marks the whole goal completed or cancelled. It requires
 `explicitCompletion=true`; lease expiry and successful completion of one model
 turn are invalid completion signals.
 
-## 5. Execute the real task force
+## 5. Resolve the model for every invocation
+
+Before every bound planner/manager, worker, synthesis, and verifier invocation,
+advertise the current host's real available sessions and call
+`model.resolve_allocation`. The host owns the invocation stage:
+
+- `planner`, `manager-plan`, and `nested-manager` resolve as `orchestrator`;
+- `worker`, `execute`, `delegate`, and `task` resolve as `worker`;
+- `manager-synthesis` and `synthesis` resolve as `orchestrator`;
+- `verifier` resolves as `orchestrator`.
+
+Model pins and ceilings come only from the MCP server's operator policy in
+`AGENTLAS_MODEL_ALLOCATION_POLICY_JSON`; a task, Hub bundle, or tool argument
+must not override them. Prefer role-scoped `orchestrator` and `worker` policy
+objects. A missing worker policy inherits the orchestrator for quality;
+orchestrator never falls through to a cheaper worker policy.
+
+Use the allocation receipt's exact provider, model, session, and effort for the
+invocation. The pre-invocation receipt has `usage: null`; record observed usage
+only in the later invocation/run receipt. A resolved allocation proves policy
+selection, not that a worker model ran. If the host cannot launch the selected
+provider/model as a distinct invocation, stop at allocation-only evidence and
+report that boundary.
+
+## 6. Execute the real task force
 
 Run the prepared roster through the current host runtime:
 
@@ -229,7 +253,7 @@ If the host cannot create distinct child invocations, stop at `prepared` and
 say so. A route id, bundle id, process exit code, or prose that imitates several
 roles is not execution proof.
 
-## 6. Truthful receipts
+## 7. Truthful receipts
 
 For an executed task force, retain one joined
 `agentlas.workforce-execution-receipt.v2` joined to the exact v5 plan containing:

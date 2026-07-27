@@ -302,7 +302,7 @@ OS 터미널에서:
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.72
 codex plugin add hephaestus@agentlas-core-engine
 ```
-*참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. 설치 후에는 `/prompts:agentlas`가 앱 내 진입점입니다.*
+*참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. Codex 0.117+에서는 custom `/prompts:*` 명령이 제거됐으므로, 설치 후에는 `$hephaestus-network <요청>` 스킬을 호출하세요.*
 
 </details>
 
@@ -313,7 +313,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 </details>
 
-**그냥 말하세요:** 설치 후 네이티브 Agentlas 인터페이스에서는 평문으로 말하면 태스크가 자동 라우팅됩니다. 외부 LLM 도구에서는 아래에 나열된 명시적 명령을 사용하세요. 어떤 에이전트가 있는지 모를 때는 `/agentlas search`부터 시작하세요. Telegram을 연결하려면 Claude Code에서는 `/agentlas connect`, Codex에서는 `/prompts:agentlas`를 사용하세요.
+**그냥 말하세요:** 설치 후 네이티브 Agentlas 인터페이스에서는 평문으로 말하면 태스크가 자동 라우팅됩니다. 외부 LLM 도구에서는 아래에 나열된 명시적 명령을 사용하세요. Codex 0.117+에서는 `$hephaestus-network`, `$hephaestus-build`, `$hephaestus-cloud`, `$hephaestus-storm` 스킬을 사용하고 다른 MCP 표면은 평문으로 요청합니다.
 
 ---
 
@@ -348,10 +348,10 @@ Agentlas OS 호스트를 설치하고 패키지 소유자로 로그인해야 합
 | **내 Cloud 에이전트 전용** | `/agentlas cloud` | `/agentlas cloud use my saved finance analyst agent to review this report` |
 | **공개 Hub 에이전트 전용** | `/agentlas hub` | `/agentlas hub find public specialists for accessibility QA` |
 | **디렉터리 검색** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
-| **브라우저 하드포인트** | `/agentlas browser` 또는 `/prompts:agentlas` | `/agentlas browser https://example.com` |
+| **브라우저 하드포인트** | `/agentlas browser` | `/agentlas browser https://example.com` |
 | **프로세스 간 호출(IPC)** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
 | **Cloud / Hub 목적지 선택 게이트** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
-| **Telegram 설정** | `/agentlas connect` 또는 `/prompts:agentlas` | `/agentlas connect Telegram for Marketing Agent Team` |
+| **Telegram 설정** | `/agentlas connect` | `/agentlas connect Telegram for Marketing Agent Team` |
 
 각 명령은 원래 이름인 `/hep-*`로도 그대로 동작합니다. `/agentlas network`와
 `/hep-network`는 같은 명령입니다. 이름을 없앤 것이 아니므로 기존 스크립트와

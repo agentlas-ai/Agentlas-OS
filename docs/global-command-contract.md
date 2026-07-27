@@ -86,10 +86,10 @@ External LLM hosts expose these commands:
 - `/hep-storm <request>` — force-robust Stormbreaker loop: route the goal,
   materialize a verified pipeline fabric (`hephaestus hep-storm` =
   `stormbreaker run`), then have the host model execute it to completion under
-  the verifier-first, no-fake-pass Stormbreaker Loop protocol; Codex uses
-  `/prompts:hep-storm`.
-- `/hep-connect <target>` — Telegram setup helper in Claude Code; Codex uses
-  `/prompts:hep-connect`.
+  the verifier-first, no-fake-pass Stormbreaker Loop protocol; current Codex
+  uses `$hephaestus-storm`.
+- `/hep-connect <target>` — Telegram setup helper in command-capable hosts;
+  current Codex requests the connect MCP surface in plain language.
 
 Network routing is backed by the local-first router
 (`docs/hephaestus-network-2.0.md`). Fresh installs expose the seven core external
@@ -109,11 +109,10 @@ and `--plan-only` is not present. Required visible external surfaces:
   `.claude/commands/hep-upload.md`, `.claude/commands/hep-storm.md`, and
   `.claude/commands/hep-connect.md`
   (+ global copies).
-- Codex: `codex/prompts/hep-build.md`,
-  `codex/prompts/hep-network.md`, `codex/prompts/hep-cloud.md`,
-  `codex/prompts/hep-search.md`, `codex/prompts/hep-call.md`,
-  `codex/prompts/hep-upload.md`, `codex/prompts/hep-storm.md`, and
-  `codex/prompts/hep-connect.md`.
+- Codex: plugin skills `hephaestus-build`, `hephaestus-network`,
+  `hephaestus-cloud`, and `hephaestus-storm`, invoked explicitly with `$`.
+  The `codex/prompts/*.md` files are legacy adapters for Codex 0.116 and
+  earlier; Codex 0.117+ removed the custom-prompt surface.
 - Gemini CLI: `gemini/extension/commands/hep-build.toml`,
   `hep-network.toml`, `hep-cloud.toml`, `hep-search.toml`, `hep-call.toml`,
   `hep-upload.toml`, and `hep-storm.toml` (+ `~/.gemini/commands/` fallbacks).

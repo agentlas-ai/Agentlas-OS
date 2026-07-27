@@ -453,11 +453,35 @@ remove_codex_existing() {
   rm -rf "${CODEX_HOME:-$HOME/.codex}/plugins/cache/$marketplace_name/$plugin_name" 2>/dev/null || true
 }
 
-# Codex plugins cannot register slash commands (skills only), so the explicit
-# command surface is a custom prompt: ~/.codex/prompts/<name>.md →
-# /prompts:<name>. Top-level files only — Codex ignores subdirectories.
+# Codex 0.117+ removed custom prompts in favor of plugin skills. Keep the
+# prompt copier only for older Codex releases and remove only our managed dead
+# prompt files on current releases so the installer does not advertise a
+# command the host rejects.
+codex_custom_prompts_supported() {
+  local raw parsed major minor rest
+  raw="$(codex --version 2>/dev/null || true)"
+  parsed="$(printf '%s\n' "$raw" | sed -nE 's/^[^0-9]*([0-9]+)\.([0-9]+)(\.[0-9]+)?.*/\1.\2/p' | head -1)"
+  [[ "$parsed" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+  major="${parsed%%.*}"
+  rest="${parsed#*.}"
+  minor="${rest%%.*}"
+  [[ "$major" == "0" && "$minor" -lt 117 ]]
+}
+
+prune_managed_codex_prompts() {
+  local name
+  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-connect.md hep-storm.md agentlas.md; do
+    rm -f "$HOME/.codex/prompts/$name"
+  done
+}
+
 write_codex_prompts() {
   ensure_downloaded_source || return 1
+  if ! codex_custom_prompts_supported; then
+    prune_managed_codex_prompts
+    log 'Codex 0.117+ skill entrypoints: $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-storm'
+    return 0
+  fi
   local prompts_src="$source_dir/codex/prompts"
   [[ -d "$prompts_src" ]] || { warn "codex prompts not found: $prompts_src"; return 1; }
   mkdir -p "$HOME/.codex/prompts"
@@ -493,7 +517,7 @@ install_codex() {
   fi
 
   run codex plugin add "$plugin_name@$marketplace_name" || return 1
-  write_codex_prompts || warn "Codex custom prompt install failed; copy codex/prompts/*.md to ~/.codex/prompts manually."
+  write_codex_prompts || warn "Codex command-surface install failed; reinstall the Hephaestus plugin skills."
   register_codex_mcp || warn "Codex MCP registration failed; add it manually to ~/.codex/config.toml."
   ok=$((ok + 1))
 }
@@ -524,6 +548,7 @@ stamp_plugin_cache_releases() {
 # is also removed because strict Codex versions reject it.
 register_codex_mcp() {
   local cfg="$HOME/.codex/config.toml"
+  local preserved_env_table
   mkdir -p "$HOME/.codex"
   touch "$cfg" || return 1
 
@@ -532,6 +557,22 @@ register_codex_mcp() {
       && mv "$cfg.tmp" "$cfg" || return 1
   fi
 
+  # The installer owns the command and args, but the operator owns model pins,
+  # provider choices, and other server-launch environment policy. Preserve the
+  # complete Codex-generated env subtable without reading or logging its values.
+  # This keeps AGENTLAS_MODEL_ALLOCATION_POLICY_JSON stable across updates.
+  preserved_env_table="$(
+    awk '
+      /^[[:space:]]*\[mcp_servers\.("?hephaestus-network"?)\.env\][[:space:]]*$/ {
+        capture=1
+        print
+        next
+      }
+      capture && /^[[:space:]]*\[/ { capture=0 }
+      capture { print }
+    ' "$cfg"
+  )"
+
   awk '
     /^[[:space:]]*\[mcp_servers\.("?agentlas"?|"?hephaestus-network"?)(\.|\])[[:space:]]*/ { skip=1; next }
     skip && /^[[:space:]]*\[/ { skip=0 }
@@ -539,6 +580,9 @@ register_codex_mcp() {
   ' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg" || return 1
   printf '\n[mcp_servers.hephaestus-network]\ncommand = "%s"\nargs = ["mcp", "serve"]\n' \
     "$HOME/.agentlas/runtime/current/bin/hephaestus" >> "$cfg"
+  if [[ -n "$preserved_env_table" ]]; then
+    printf '\n%s\n' "$preserved_env_table" >> "$cfg"
+  fi
   log "Registered canonical local hephaestus-network MCP in $cfg"
 }
 
@@ -955,7 +999,7 @@ main() {
   log "Then use:"
   log "  Agentlas:    describe the task in plain language; native tools choose the path"
 	  log "  Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-connect"
-	  log "  Codex:       /prompts:hep-build, /prompts:hep-network, /prompts:hep-local, /prompts:hep-cloud, /prompts:hep-hub, /prompts:hep-storm, /prompts:hep-search, /prompts:hep-browser, /prompts:hep-call, /prompts:hep-upload, /prompts:hep-connect"
+	  log '  Codex:       $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-storm; use plain language for local/hub/search/browser/call/upload/connect'
 	  log "  Gemini CLI:  /extensions list or /commands list, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
 	  log "  Antigravity: reopen the workspace, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
 	  log "  Cursor:      /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"

@@ -19,6 +19,27 @@ SCHEMA_VERSION = "agentlas.model-allocation-decision.v1"
 TIERS = ("economy", "balanced", "frontier")
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 PHASES = ("plan", "execute", "verify", "synthesize", "route", "clarify")
+MODEL_ROLES = ("orchestrator", "worker")
+ORCHESTRATOR_PHASES = frozenset({"plan", "verify", "synthesize", "route", "clarify"})
+INVOCATION_STAGE_PHASES = {
+    "plan": "plan",
+    "planner": "plan",
+    "leader": "plan",
+    "manager-plan": "plan",
+    "nested-manager": "plan",
+    "build": "execute",
+    "execute": "execute",
+    "worker": "execute",
+    "delegate": "execute",
+    "task": "execute",
+    "verify": "verify",
+    "verifier": "verify",
+    "synthesize": "synthesize",
+    "synthesis": "synthesize",
+    "manager-synthesis": "synthesize",
+    "route": "route",
+    "clarify": "clarify",
+}
 TIER_RANK = {tier: index for index, tier in enumerate(TIERS)}
 EFFORT_RANK = {effort: index for index, effort in enumerate(EFFORTS)}
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$")
@@ -99,6 +120,69 @@ def normalize_tier(value: Any) -> str | None:
 def normalize_effort(value: Any) -> str | None:
     normalized = _text(value).lower()
     return normalized if normalized in EFFORTS else None
+
+
+def normalize_model_role(value: Any) -> str | None:
+    normalized = _text(value).lower()
+    return normalized if normalized in MODEL_ROLES else None
+
+
+def normalize_phase(value: Any) -> str | None:
+    normalized = _text(value).lower()
+    return normalized if normalized in PHASES else None
+
+
+def model_role_for_phase(value: Any) -> str | None:
+    phase = normalize_phase(value)
+    if phase == "execute":
+        return "worker"
+    if phase in ORCHESTRATOR_PHASES:
+        return "orchestrator"
+    return None
+
+
+def canonical_phase_for_stage(value: Any) -> str | None:
+    """Map a host-owned invocation stage to the shared allocation phase."""
+
+    return INVOCATION_STAGE_PHASES.get(_text(value).lower())
+
+
+def model_role_for_stage(value: Any) -> str:
+    """Unknown host stages stay on the quality-first orchestrator path."""
+
+    return model_role_for_phase(canonical_phase_for_stage(value)) or "orchestrator"
+
+
+def _policy_for_role(
+    raw_policy: Mapping[str, Any],
+    role: str,
+) -> tuple[dict[str, Any], bool]:
+    """Resolve one role without letting orchestrator fall through to worker."""
+
+    flat_fields = {
+        "currentModelId",
+        "pinnedModelId",
+        "pinnedProvider",
+        "maxTier",
+        "maxEffort",
+        "requiredCapabilities",
+    }
+    resolved = {key: raw_policy[key] for key in flat_fields if key in raw_policy}
+    orchestrator = raw_policy.get("orchestrator")
+    worker = raw_policy.get("worker")
+    orchestrator_policy = dict(orchestrator) if isinstance(orchestrator, Mapping) else {}
+    worker_policy = dict(worker) if isinstance(worker, Mapping) else {}
+
+    if role == "orchestrator":
+        resolved.update({key: value for key, value in orchestrator_policy.items() if key != "inherit"})
+        return resolved, False
+
+    if not worker_policy or worker_policy.get("inherit") is True:
+        resolved.update({key: value for key, value in orchestrator_policy.items() if key != "inherit"})
+        return resolved, True
+
+    resolved.update({key: value for key, value in worker_policy.items() if key != "inherit"})
+    return resolved, False
 
 
 def validate_allocation_decision(raw: Mapping[str, Any] | None) -> tuple[dict[str, Any] | None, list[str]]:
@@ -323,25 +407,96 @@ def _feature_hash(decision: Mapping[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
+def _validate_escalation(raw: Any) -> tuple[dict[str, Any] | None, list[str]]:
+    """Validate a host-owned worker-to-orchestrator escalation request.
+
+    The only accepted shape is the bounded tiering contract: the worker role
+    failed the same task exactly twice and this call is the single allowed
+    orchestrator retry.  Any other shape is recorded as an issue and the call
+    resolves un-escalated — partial escalation metadata must never reach a
+    receipt.
+    """
+
+    if raw is None:
+        return None, []
+    if (
+        not isinstance(raw, Mapping)
+        or set(raw) != {"fromRole", "failureCount", "attempt"}
+        or raw.get("fromRole") != "worker"
+        or isinstance(raw.get("failureCount"), bool)
+        or raw.get("failureCount") != 2
+        or isinstance(raw.get("attempt"), bool)
+        or raw.get("attempt") != 1
+    ):
+        return None, ["escalation_metadata_invalid"]
+    return {"fromRole": "worker", "failureCount": 2, "attempt": 1}, []
+
+
 def resolve_model_allocation(
     raw_decision: Mapping[str, Any] | None,
     raw_inventory: list[Any] | None,
     *,
     policy: Mapping[str, Any] | None = None,
+    role: str | None = None,
+    expected_phase: str | None = None,
+    escalation: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Resolve a parent AI decision inside deterministic host guardrails."""
+    """Resolve a parent AI decision inside deterministic host guardrails.
+
+    ``escalation`` is the host-owned bounded retry contract: after exactly two
+    worker-role failures on the same task, the single allowed retry resolves
+    against the orchestrator role policy and the receipt carries all-or-nothing
+    escalation metadata.  An invalid escalation request never degrades a valid
+    parent decision — it is recorded in ``validationIssues`` and ignored.
+    """
 
     decision, issues = validate_allocation_decision(raw_decision)
     inventory = _normalize_inventory(raw_inventory)
     policy = dict(policy or {})
-    current_model_id = _text(policy.get("currentModelId"))
-    pinned_model_id = _text(policy.get("pinnedModelId"))
-    configured_max_tier = normalize_tier(policy.get("maxTier"))
+    escalation_request, escalation_issues = _validate_escalation(escalation)
+    if (
+        escalation_request is not None
+        and decision is not None
+        and not issues
+        and decision["selection"]["maxEscalations"] < escalation_request["attempt"]
+    ):
+        escalation_issues.append("escalation_exceeds_max_escalations")
+        escalation_request = None
+    normalized_role = normalize_model_role(role)
+    if role is not None and normalized_role is None:
+        issues.append("invalid_model_role")
+    normalized_expected_phase = normalize_phase(expected_phase)
+    if expected_phase is not None and normalized_expected_phase is None:
+        issues.append("invalid_expected_phase")
+    expected_role = model_role_for_phase(normalized_expected_phase)
+    if decision and normalized_expected_phase and decision["phase"] != normalized_expected_phase:
+        issues.append("phase_stage_mismatch")
+    if escalation_request is None and normalized_role and expected_role and normalized_role != expected_role:
+        issues.append("role_phase_mismatch")
+    resolved_role = (
+        expected_role
+        or normalized_role
+        or model_role_for_phase(decision["phase"] if decision else None)
+        or "orchestrator"
+    )
+    if escalation_request is not None:
+        # 승격은 단계→역할 기본 매핑에 대한 유일한 허용 예외다. worker 단계의
+        # 마지막 재시도 한 번만 orchestrator 역할 정책으로 해석한다.
+        resolved_role = "orchestrator"
+    role_policy, inherited_role_policy = _policy_for_role(policy, resolved_role)
+    current_model_id = _text(role_policy.get("currentModelId"))
+    pinned_model_id = _text(role_policy.get("pinnedModelId"))
+    pinned_provider = _text(role_policy.get("pinnedProvider")).lower()
+    configured_max_tier = normalize_tier(role_policy.get("maxTier"))
     max_tier = configured_max_tier or "frontier"
-    max_effort = normalize_effort(policy.get("maxEffort")) or "max"
-    required_capabilities = {str(item).lower() for item in (policy.get("requiredCapabilities") or [])}
+    max_effort = normalize_effort(role_policy.get("maxEffort")) or "max"
+    required_capabilities = {
+        str(item).lower() for item in (role_policy.get("requiredCapabilities") or [])
+    }
 
     def compatible(item: Mapping[str, Any]) -> bool:
+        if required_capabilities and not required_capabilities.issubset(set(item["capabilities"])):
+            return False
         if decision is None:
             return True
         features = decision["features"]
@@ -356,8 +511,6 @@ def resolve_model_allocation(
             return False
         if features["multimodalRequired"] and item["supports_multimodal"] is not True:
             return False
-        if required_capabilities and not required_capabilities.issubset(set(item["capabilities"])):
-            return False
         if decision["selection"]["effort"] != "none" and not item["supported_efforts_known"]:
             return False
         return True
@@ -366,11 +519,17 @@ def resolve_model_allocation(
     selected: dict[str, Any] | None = None
     status = "resolved"
     reasons: list[str] = []
+    if inherited_role_policy:
+        reasons.append("worker_inherits_orchestrator_policy")
 
     if pinned_model_id:
         pinned_candidates = [
             item for item in compatible_inventory if item["model_id"] == pinned_model_id
         ]
+        if pinned_provider:
+            pinned_candidates = [
+                item for item in pinned_candidates if item["provider"] == pinned_provider
+            ]
         if len(pinned_candidates) == 1:
             selected = pinned_candidates[0]
             status = "user-pin"
@@ -380,7 +539,9 @@ def resolve_model_allocation(
         else:
             reasons.append("pinned_model_unavailable_or_incompatible")
 
-    if selected is None and decision is not None and not issues:
+    # 승격된 재시도는 worker 단계용 parent decision이 아니라 orchestrator 역할
+    # 정책이 지배한다 — decision은 맥락으로만 남고 모델 선택에는 쓰지 않는다.
+    if selected is None and decision is not None and not issues and escalation_request is None:
         requested_tier = decision["selection"]["tier"]
         if TIER_RANK[requested_tier] > TIER_RANK[max_tier]:
             requested_tier = max_tier
@@ -444,10 +605,19 @@ def resolve_model_allocation(
             reasons.append("effort_clamped_to_host_support")
 
     risk = decision["features"]["risk"] if decision else "unknown"
+    parent_reason_codes = list(decision["reasonCodes"]) if decision else []
+    if escalation_request is None and "escalated-after-failure" in parent_reason_codes:
+        # 승격 없이 승격 사유코드만 오는 것은 계약 위반이다 — 조용히 통과시키면
+        # 소비자가 승격 필드 없는 승격을 믿게 된다. 사유코드를 떼고 이슈로 남긴다.
+        escalation_issues.append("escalation_reason_code_without_escalation")
+        parent_reason_codes = [code for code in parent_reason_codes if code != "escalated-after-failure"]
+    if escalation_request is not None:
+        reasons.append("escalated-after-failure")
     receipt = {
         "schemaVersion": "agentlas.model-allocation-receipt.v1",
         "decisionId": decision["decisionId"] if decision else None,
         "packetId": decision["packetId"] if decision else None,
+        "role": resolved_role,
         "status": status,
         "requested": {
             "tier": decision["selection"]["tier"] if decision else None,
@@ -462,11 +632,16 @@ def resolve_model_allocation(
             "sessionId": selected["session_id"] if selected else None,
             "effort": resolved_effort,
         },
-        "reasonCodes": list(dict.fromkeys((decision["reasonCodes"] if decision else []) + reasons)),
+        "reasonCodes": list(dict.fromkeys(parent_reason_codes + reasons)),
         "inputFeatureHash": decision.get("inputFeatureHash") or _feature_hash(decision) if decision else None,
         "selectorVersion": decision["selectorVersion"] if decision else "deterministic-host-fallback",
         "independentVerificationRequired": risk in {"high", "critical"},
-        "validationIssues": issues,
+        "usage": None,
+        "validationIssues": issues + escalation_issues,
         "privacy": {"rawPromptIncluded": False, "rawTranscriptIncluded": False},
     }
+    if escalation_request is not None:
+        receipt["escalatedFromRole"] = "worker"
+        receipt["failureCount"] = 2
+        receipt["escalationAttempt"] = 1
     return receipt

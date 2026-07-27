@@ -1083,6 +1083,49 @@ def _invocation(
         issues.append(f"{label}_runtime_not_in_tool_inventory")
     if value.get("status") != "completed":
         issues.append(f"{label}_not_completed")
+    if "usage" in value:
+        usage = value.get("usage")
+        if (
+            not isinstance(usage, Mapping)
+            or set(usage) != {"inputTokens", "outputTokens"}
+            or any(
+                isinstance(usage.get(field), bool)
+                or not isinstance(usage.get(field), int)
+                or usage.get(field) < 0
+                for field in ("inputTokens", "outputTokens")
+            )
+        ):
+            issues.append(f"{label}_usage_invalid")
+    role = value.get("role")
+    if role is not None and role not in {"orchestrator", "worker"}:
+        issues.append(f"{label}_role_invalid")
+    reason_codes = value.get("reasonCodes")
+    if reason_codes is not None and (
+        not isinstance(reason_codes, list)
+        or len(reason_codes) > 32
+        or any(
+            not isinstance(item, str) or not item or len(item) > 128
+            for item in reason_codes
+        )
+        or len(set(reason_codes)) != len(reason_codes)
+    ):
+        issues.append(f"{label}_reason_codes_invalid")
+    escalation_fields = {"escalatedFromRole", "failureCount", "escalationAttempt"}
+    present_escalation_fields = escalation_fields.intersection(value)
+    escalation_claimed = bool(present_escalation_fields) or (
+        isinstance(reason_codes, list)
+        and "escalated-after-failure" in reason_codes
+    )
+    if escalation_claimed and (
+        present_escalation_fields != escalation_fields
+        or role != "orchestrator"
+        or value.get("escalatedFromRole") != "worker"
+        or value.get("failureCount") != 2
+        or value.get("escalationAttempt") != 1
+        or not isinstance(reason_codes, list)
+        or "escalated-after-failure" not in reason_codes
+    ):
+        issues.append(f"{label}_escalation_metadata_invalid")
     requested = value.get("requestedEffort")
     applied = value.get("appliedEffort")
     evidence = value.get("effortEvidence")
@@ -1451,6 +1494,25 @@ def validate_execution_receipt(
         if row.get("executionGraph") is None:
             if worker.get("executionMode") != "direct" or worker.get("nestedExecutionId") is not None:
                 issues.append("direct_execution_mode_invalid")
+            prior_invocations = worker.get("priorInvocations")
+            if prior_invocations is None:
+                prior_invocations = []
+            if not isinstance(prior_invocations, list) or not (0 <= len(prior_invocations) <= 2):
+                issues.append("direct_prior_invocations_invalid")
+                prior_invocations = []
+            for prior_index, prior_invocation in enumerate(prior_invocations):
+                _invocation(
+                    prior_invocation,
+                    label=f"direct_worker_{index}_prior_{prior_index}",
+                    issues=issues,
+                    invocation_ids=invocation_ids,
+                    permission_policy_digest=str(row.get("permissionPolicyDigest") or ""),
+                    expected_tool_inventory_digest=tool_inventory_digest,
+                    expected_granted_tool_ids=granted_tool_ids,
+                    eligible_runtime_ids=eligible_runtime_ids,
+                )
+                if not isinstance(prior_invocation, Mapping) or prior_invocation.get("role") != "worker":
+                    issues.append(f"direct_worker_{index}_prior_role_invalid")
             _invocation(
                 worker.get("directInvocation"),
                 label=f"direct_worker_{index}",
@@ -1462,6 +1524,15 @@ def validate_execution_receipt(
                 eligible_runtime_ids=eligible_runtime_ids,
             )
             direct_invocation = worker.get("directInvocation")
+            if prior_invocations and (
+                not isinstance(direct_invocation, Mapping)
+                or direct_invocation.get("role") != "orchestrator"
+                or direct_invocation.get("escalatedFromRole") != "worker"
+                or direct_invocation.get("failureCount") != 2
+                or direct_invocation.get("escalationAttempt") != 1
+                or "escalated-after-failure" not in (direct_invocation.get("reasonCodes") or [])
+            ):
+                issues.append(f"direct_worker_{index}_prior_without_exact_escalation")
             direct_enforcement = (
                 direct_invocation.get("permissionEnforcement")
                 if isinstance(direct_invocation, Mapping)
@@ -1474,7 +1545,11 @@ def validate_execution_receipt(
                 issues.append(f"required_capability_executed_without_authority:{pair[0]}")
         else:
             nested_id = worker.get("nestedExecutionId")
-            if worker.get("executionMode") != "nested" or worker.get("directInvocation") is not None:
+            if (
+                worker.get("executionMode") != "nested"
+                or worker.get("directInvocation") is not None
+                or worker.get("priorInvocations") not in (None, [])
+            ):
                 issues.append("nested_execution_mode_invalid")
             if not isinstance(nested_id, str) or not _ID_RE.fullmatch(nested_id) or nested_id in nested_refs:
                 issues.append("nested_execution_reference_invalid")
@@ -1593,6 +1668,99 @@ def validate_execution_receipt(
     }
 
 
+def project_run_receipt_metrics(
+    receipt: Mapping[str, Any],
+    *,
+    duration_ms: int,
+    retry_count: int,
+) -> dict[str, int] | None:
+    """Project complete observed Workforce usage into RunReceipt.metrics.
+
+    Missing, partial, malformed, or duplicate invocation usage is not converted
+    to zero.  The caller must supply an observed wall-clock duration and the
+    bounded retry count because neither can be reconstructed truthfully from the
+    public execution receipt alone.
+    """
+
+    if (
+        receipt.get("schemaVersion") != WORKFORCE_EXECUTION_RECEIPT_SCHEMA
+        or receipt.get("status") != "passed"
+        or isinstance(duration_ms, bool)
+        or not isinstance(duration_ms, int)
+        or duration_ms < 0
+        or isinstance(retry_count, bool)
+        or not isinstance(retry_count, int)
+        or retry_count < 0
+    ):
+        return None
+
+    invocations: list[Any] = [receipt.get("orchestrator"), receipt.get("planner")]
+    workers = receipt.get("workers")
+    nested_executions = receipt.get("nestedExecutions")
+    if not isinstance(workers, list) or not isinstance(nested_executions, list):
+        return None
+    for worker in workers:
+        if not isinstance(worker, Mapping):
+            return None
+        prior_invocations = worker.get("priorInvocations")
+        if prior_invocations is not None:
+            if not isinstance(prior_invocations, list) or not prior_invocations:
+                return None
+            invocations.extend(prior_invocations)
+        direct = worker.get("directInvocation")
+        if direct is not None:
+            invocations.append(direct)
+    for nested in nested_executions:
+        if not isinstance(nested, Mapping):
+            return None
+        nested_workers = nested.get("workers")
+        if not isinstance(nested_workers, list):
+            return None
+        invocations.extend([nested.get("managerPlan"), *nested_workers, nested.get("managerSynthesis")])
+    invocations.extend([receipt.get("synthesis"), receipt.get("verifier")])
+
+    seen: set[str] = set()
+    prompt_tokens = 0
+    completion_tokens = 0
+    for invocation in invocations:
+        if not isinstance(invocation, Mapping):
+            return None
+        invocation_id = invocation.get("invocationId")
+        usage = invocation.get("usage")
+        if (
+            not isinstance(invocation_id, str)
+            or not invocation_id
+            or invocation_id in seen
+            or not isinstance(usage, Mapping)
+            or set(usage) != {"inputTokens", "outputTokens"}
+        ):
+            return None
+        input_tokens = usage.get("inputTokens")
+        output_tokens = usage.get("outputTokens")
+        if (
+            isinstance(input_tokens, bool)
+            or not isinstance(input_tokens, int)
+            or input_tokens < 0
+            or isinstance(output_tokens, bool)
+            or not isinstance(output_tokens, int)
+            or output_tokens < 0
+        ):
+            return None
+        seen.add(invocation_id)
+        prompt_tokens += input_tokens
+        completion_tokens += output_tokens
+
+    if not seen:
+        return None
+    return {
+        "promptTokens": prompt_tokens,
+        "completionTokens": completion_tokens,
+        "totalTokens": prompt_tokens + completion_tokens,
+        "durationMs": duration_ms,
+        "retryCount": retry_count,
+    }
+
+
 __all__ = [
     "WORKFORCE_CAPABILITY_BINDING_PLAN_DIGEST_SCHEMA",
     "WORKFORCE_CAPABILITY_BINDING_PLAN_SCHEMA",
@@ -1614,6 +1782,7 @@ __all__ = [
     "project_permission_policy",
     "validate_execution_graph",
     "validate_execution_receipt",
+    "project_run_receipt_metrics",
     "validate_capability_binding_plan",
     "validate_tool_inventory",
     "validate_permission_policy",

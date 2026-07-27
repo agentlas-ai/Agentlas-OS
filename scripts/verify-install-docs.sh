@@ -95,11 +95,19 @@ fi
 for path in README.md README.ko.md codex/README.md; do
   rg -q "codex plugin marketplace add agentlas-ai/Agentlas-OS --ref ${expected_tag_re}" "$path" || fail "missing Codex marketplace command in $path"
   rg -q 'codex plugin add hephaestus@agentlas-core-engine' "$path" || fail "missing Codex add command in $path"
+  rg -q '\$hephaestus-network' "$path" || fail "missing current Codex network skill entrypoint in $path"
 done
 
 rg -q 'Codex does not accept `/plugin marketplace add` inside the app' README.md || fail "README.md does not warn about Codex /plugin"
 rg -q 'Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다' README.ko.md || fail "README.ko.md does not warn about Codex /plugin"
 rg -q '/plugins' README.md README.ko.md codex/README.md assets/install-codex-chat.svg assets/install-codex-cli.svg || fail "Codex /plugins browser command missing"
+rg -q 'mcp_servers\.hephaestus-network\.env' codex/README.md docs/model-allocation.md \
+  || fail "Codex role-model policy launch env is undocumented"
+rg -q 'preserved_env_table' scripts/install-all-runtimes.sh \
+  || fail "Codex MCP registration does not preserve operator env policy"
+if rg -n 'After install, `/prompts:|설치 후에는 `/prompts:|deprecated-but-functional custom prompts' README.md README.ko.md codex/README.md docs/runtime-fallback-adapters.md; then
+  fail "current Codex docs still advertise removed custom prompts"
+fi
 rg -q -- '--target antigravity' README.md README.ko.md antigravity/README.md || fail "Antigravity global router target docs missing"
 rg -q 'xcode-select --install' README.md README.ko.md claude/README.md codex/README.md scripts/preflight-macos.sh || fail "macOS xcode-select preflight missing"
 rg -q 'git --version' README.md README.ko.md claude/README.md codex/README.md scripts/preflight-macos.sh || fail "git verification missing"

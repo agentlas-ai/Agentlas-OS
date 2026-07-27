@@ -19,6 +19,12 @@ import sys
 from copy import deepcopy
 from typing import Any, Mapping
 
+from .model_allocation import (
+    INVOCATION_STAGE_PHASES,
+    canonical_phase_for_stage,
+    model_role_for_stage,
+    resolve_model_allocation,
+)
 from .workforce.contracts import (
     WORKFORCE_ONTOLOGY_SNAPSHOT_SHA256,
     WORKFORCE_ONTOLOGY_VERSION,
@@ -38,9 +44,20 @@ SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.72"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
+    "pinnedProvider",
     "maxTier",
     "maxEffort",
     "requiredCapabilities",
+    "orchestrator",
+    "worker",
+})
+_HOST_MODEL_ROLE_POLICY_FIELDS = frozenset({
+    "pinnedModelId",
+    "pinnedProvider",
+    "maxTier",
+    "maxEffort",
+    "requiredCapabilities",
+    "inherit",
 })
 WORKFORCE_PROTOCOL_VERSION = "2026-07-26.1"
 
@@ -111,13 +128,68 @@ def _host_model_allocation_policy() -> dict[str, Any]:
         raise ValueError("invalid host model allocation policy JSON") from None
     if not isinstance(parsed, Mapping):
         raise ValueError("host model allocation policy must be an object")
+    unknown = sorted(set(parsed) - _HOST_MODEL_POLICY_FIELDS)
+    if unknown:
+        raise ValueError(f"host model allocation policy has unknown fields: {','.join(unknown)}")
     policy = {key: parsed[key] for key in _HOST_MODEL_POLICY_FIELDS if key in parsed}
+
+    def validate_scope(value: Mapping[str, Any], label: str, *, allow_inherit: bool) -> dict[str, Any]:
+        unknown = sorted(set(value) - _HOST_MODEL_ROLE_POLICY_FIELDS)
+        if unknown:
+            raise ValueError(f"host {label} model policy has unknown fields: {','.join(unknown)}")
+        scoped = dict(value)
+        if "inherit" in scoped:
+            if not allow_inherit or not isinstance(scoped["inherit"], bool):
+                raise ValueError(f"host {label} inherit flag is invalid")
+            if scoped["inherit"] and set(scoped) != {"inherit"}:
+                raise ValueError(f"host {label} inherit policy cannot also pin or clamp a model")
+        pinned_model_id = scoped.get("pinnedModelId")
+        if pinned_model_id is not None and (
+            not isinstance(pinned_model_id, str)
+            or not pinned_model_id.strip()
+            or len(pinned_model_id) > 255
+        ):
+            raise ValueError(f"host {label} pinnedModelId is invalid")
+        pinned_provider = scoped.get("pinnedProvider")
+        if pinned_provider is not None and (
+            not isinstance(pinned_provider, str)
+            or not pinned_provider.strip()
+            or len(pinned_provider) > 80
+        ):
+            raise ValueError(f"host {label} pinnedProvider is invalid")
+        if scoped.get("maxTier") not in {None, "economy", "balanced", "frontier"}:
+            raise ValueError(f"host {label} maxTier is invalid")
+        if scoped.get("maxEffort") not in {None, "none", "minimal", "low", "medium", "high", "xhigh", "max"}:
+            raise ValueError(f"host {label} maxEffort is invalid")
+        capabilities = scoped.get("requiredCapabilities")
+        if capabilities is not None and (
+            not isinstance(capabilities, list)
+            or len(capabilities) > 32
+            or any(not isinstance(item, str) or not item.strip() or len(item) > 80 for item in capabilities)
+        ):
+            raise ValueError(f"host {label} requiredCapabilities is invalid")
+        return scoped
+
+    for role in ("orchestrator", "worker"):
+        scoped = policy.get(role)
+        if scoped is None:
+            continue
+        if not isinstance(scoped, Mapping):
+            raise ValueError(f"host {role} model policy must be an object")
+        policy[role] = validate_scope(scoped, role, allow_inherit=role == "worker")
+
     if "pinnedModelId" in policy and (
         not isinstance(policy["pinnedModelId"], str)
         or not policy["pinnedModelId"].strip()
         or len(policy["pinnedModelId"]) > 255
     ):
         raise ValueError("host pinnedModelId is invalid")
+    if "pinnedProvider" in policy and (
+        not isinstance(policy["pinnedProvider"], str)
+        or not policy["pinnedProvider"].strip()
+        or len(policy["pinnedProvider"]) > 80
+    ):
+        raise ValueError("host pinnedProvider is invalid")
     if policy.get("maxTier") not in {None, "economy", "balanced", "frontier"}:
         raise ValueError("host maxTier is invalid")
     if policy.get("maxEffort") not in {None, "none", "minimal", "low", "medium", "high", "xhigh", "max"}:
@@ -198,6 +270,92 @@ TOOLS: list[dict[str, Any]] = [
                 },
             },
             "required": ["request"],
+        },
+    },
+    {
+        "name": "model.resolve_allocation",
+        "description": (
+            "Resolve one host-owned invocation stage to an orchestrator or worker "
+            "model using the operator's provider-neutral role policy. This tool "
+            "does not call a model and never accepts pins or cost ceilings from "
+            "tool arguments."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "stage": {
+                    "type": "string",
+                    "enum": sorted(INVOCATION_STAGE_PHASES),
+                    "description": (
+                        "Host-owned execution stage. Planning, synthesis, routing, "
+                        "clarification, and verification resolve to orchestrator; "
+                        "build/execute/worker/delegate/task resolve to worker."
+                    ),
+                },
+                "session_inventory": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "properties": {
+                            "session_id": {"type": "string"},
+                            "provider": {"type": "string"},
+                            "model": {"type": "string"},
+                            "active": {"type": "boolean"},
+                            "tier": {"enum": ["economy", "balanced", "frontier"]},
+                            "supported_efforts": {
+                                "type": "array",
+                                "items": {
+                                    "enum": [
+                                        "none",
+                                        "minimal",
+                                        "low",
+                                        "medium",
+                                        "high",
+                                        "xhigh",
+                                        "max",
+                                    ]
+                                },
+                            },
+                            "context_window": {"type": "integer", "minimum": 0},
+                            "supports_tools": {"type": "boolean"},
+                            "supports_multimodal": {"type": "boolean"},
+                            "capabilities": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                    },
+                    "description": (
+                        "Live host sessions. Model identifiers are opaque inventory "
+                        "values; Core has no vendor model-name table."
+                    ),
+                },
+                "decision": {
+                    "type": "object",
+                    "description": (
+                        "Optional parent/leader agentlas.model-allocation-decision.v1. "
+                        "Its phase must match the canonical phase for stage."
+                    ),
+                },
+                "escalation": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["fromRole", "failureCount", "attempt"],
+                    "properties": {
+                        "fromRole": {"const": "worker"},
+                        "failureCount": {"const": 2},
+                        "attempt": {"const": 1},
+                    },
+                    "description": (
+                        "Host-owned bounded escalation: the worker role failed the "
+                        "same task exactly twice and this is the single allowed "
+                        "orchestrator retry. Any other shape is recorded and ignored."
+                    ),
+                },
+            },
+            "required": ["stage", "session_inventory"],
         },
     },
     {
@@ -727,7 +885,15 @@ def _workforce_preparation_ready(result: Any) -> bool:
         return False
     if result.get("issues"):
         return False
-    roster = result.get("executionRoster")
+    prepared_plan = result
+    nested_plan = result.get("executionPlan")
+    if isinstance(nested_plan, Mapping):
+        prepared_plan = nested_plan
+        if prepared_plan.get("status") != "prepared":
+            return False
+        if prepared_plan.get("issues"):
+            return False
+    roster = prepared_plan.get("executionRoster")
     return isinstance(roster, list) and bool(roster)
 
 
@@ -754,15 +920,71 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from .networking.bootstrap import networking_home
 
     host_model_policy: dict[str, Any] = {}
-    if name == "hephaestus_route":
+    if name in {"hephaestus_route", "model.resolve_allocation"}:
         try:
             host_model_policy = _host_model_allocation_policy()
         except ValueError:
             return {
-                "action": "refuse",
+                "action": "refuse" if name == "hephaestus_route" else name,
                 "status": "invalid_host_model_allocation_policy",
                 "detail": f"Fix {MODEL_ALLOCATION_POLICY_ENV} in the MCP server launch environment.",
             }
+
+    if name == "model.resolve_allocation":
+        stage = str(arguments.get("stage") or "").strip().lower()
+        phase = canonical_phase_for_stage(stage)
+        if phase is None:
+            return {
+                "action": name,
+                "status": "invalid_invocation_stage",
+                "executionAllowed": False,
+            }
+        inventory = arguments.get("session_inventory")
+        if not isinstance(inventory, list):
+            return {
+                "action": name,
+                "status": "invalid_session_inventory",
+                "executionAllowed": False,
+            }
+        active = [
+            item
+            for item in inventory
+            if isinstance(item, Mapping) and item.get("active") is True
+        ]
+        if len(active) > 1:
+            return {
+                "action": name,
+                "status": "ambiguous_active_session",
+                "executionAllowed": False,
+            }
+        if active:
+            current_model_id = str(
+                active[0].get("model")
+                or active[0].get("model_id")
+                or active[0].get("id")
+                or ""
+            ).strip()
+            if current_model_id:
+                host_model_policy.setdefault("currentModelId", current_model_id)
+        raw_decision = arguments.get("decision")
+        receipt = resolve_model_allocation(
+            raw_decision if isinstance(raw_decision, Mapping) else None,
+            inventory,
+            policy=host_model_policy,
+            role=model_role_for_stage(stage),
+            expected_phase=phase,
+            escalation=arguments.get("escalation"),
+        )
+        return {
+            "action": name,
+            "status": receipt["status"],
+            "stage": stage,
+            "phase": phase,
+            "role": receipt["role"],
+            "allocationReceipt": receipt,
+            "usageStatus": "not-observed-before-invocation",
+            "executionAllowed": bool(receipt["resolved"].get("modelId")),
+        }
 
     bootstrap: dict[str, Any] | None = None
     if name in {

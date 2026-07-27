@@ -25,8 +25,15 @@ not select the final team or run a server-side LLM.
    reuse the incumbent roster plus local skills when sufficient, recruit only
    a real additive gap, and record the posture with
    `workforce.record_goal_turn`.
-6. Run only useful bound manager/planner, workers, synthesis, and verifier as distinct model
-   invocations with explicit artifact handoffs and nested Team graphs.
+6. Before each bound planner/manager, worker, synthesis, or verifier call,
+   advertise the host's real sessions and call `model.resolve_allocation` with
+   the host-owned stage. Use the exact provider/model/effort receipt. Pins and
+   ceilings come only from `AGENTLAS_MODEL_ALLOCATION_POLICY_JSON`; missing
+   worker policy inherits orchestrator. `usage: null` before invocation is not
+   worker-execution proof.
+7. Run only useful bound manager/planner, workers, synthesis, and verifier as
+   distinct model invocations with explicit artifact handoffs and nested Team
+   graphs.
 
 Keep the roster across turns, sessions, restarts, compaction, and lease expiry.
 Release it only with `workforce.complete_goal(explicitCompletion=true)` after

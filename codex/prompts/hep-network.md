@@ -59,9 +59,17 @@ done
    plus local skills when sufficient, and recruits only a real additive gap
    using the same `goalId`. Record the turn posture through
    `workforce.record_goal_turn`.
-6. Spawn only the useful bound planner/manager, worker, synthesis, and verifier
+6. Before every bound invocation, advertise the live host sessions and call
+   `model.resolve_allocation` with that inventory plus the host-owned stage:
+   `planner`/`manager-plan`, `worker`, `manager-synthesis`/`synthesis`, or
+   `verifier`. Use the receipt's exact provider, model, and effort for that
+   invocation. Model pins and ceilings come only from the MCP server's operator
+   policy, never from the task or tool arguments. A missing worker policy
+   inherits orchestrator; orchestrator never falls through to worker.
+7. Spawn only the useful bound planner/manager, worker, synthesis, and verifier
    invocations with explicit artifact handoffs; preserve authoritative Team
-   graphs.
+   graphs. Allocation receipts have `usage: null` before execution, so record
+   actual usage on the later invocation/run receipt instead of inventing zero.
 
 Keep the roster bound across turns, sessions, runtime restarts, and context
 compaction until explicit whole-goal completion/cancellation via

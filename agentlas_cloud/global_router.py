@@ -9,7 +9,7 @@ from typing import Any
 
 BEGIN = "<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->"
 END = "<!-- HEPHAESTUS:GLOBAL-ROUTER:END -->"
-VERSION = "global-router.v4"
+VERSION = "global-router.v5"
 
 
 @dataclass(frozen=True)
@@ -116,7 +116,7 @@ def _select_targets(*, home: Path | None, targets: list[str] | None) -> list[Tar
 def _router_block(target_id: str) -> str:
     if target_id == "codex":
         host = "Codex"
-        command = "/prompts:hep-network"
+        command = "$hephaestus-network"
         cloud_command = "/prompts:hep-cloud"
         local_command = "/prompts:hep-local"
         hub_command = "/prompts:hep-hub"

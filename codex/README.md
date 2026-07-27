@@ -1,22 +1,13 @@
 # Codex Adapter
 
-Codex plugins CANNOT register slash commands — the loader reads only
-`skills/`, `hooks/`, `.mcp.json`, and `.app.json` from a plugin (no
-`commands/` or `prompts/` directory exists in the plugin spec). Hephaestus
-therefore exposes one clear Codex product surface in three places:
+Codex plugins expose skills, hooks, MCP, and app metadata. Codex 0.117+
+removed the separate custom-prompt slash surface, so Hephaestus exposes the
+current Codex product surface in two places:
 
-1. **Compatibility skills** (in the plugin): `hephaestus-build`,
-   `hephaestus-network`, and `hephaestus-cloud`. Codex may trigger them
-   implicitly from the description.
-2. **Custom prompts** (explicit slash surface): `codex/prompts/*.md` are
-   copied to `~/.codex/prompts/` by the installer and appear as
-   `/prompts:hep-build`, `/prompts:hep-network`, `/prompts:hep-local`,
-   `/prompts:hep-cloud`, and `/prompts:hep-hub`, with power-user prompts
-   `/prompts:hep-search`, `/prompts:hep-call`, `/prompts:hep-upload`, and
-   `/prompts:hep-connect`.
-   Top-level
-   files only — Codex ignores subdirectories there.
-3. **MCP**: the installer registers the local stdio server
+1. **Plugin skills**: explicitly invoke `$hephaestus-build`,
+   `$hephaestus-network`, `$hephaestus-cloud`, or `$hephaestus-storm`.
+   Codex may also select them implicitly from plain language.
+2. **MCP**: the installer registers the local stdio server
    (`hephaestus mcp serve`) as `mcp_servers.hephaestus-network` in
    `~/.codex/config.toml`. It is the only host-visible Workforce MCP and
    exposes `workforce.search_candidates`, `workforce.validate_selection`, and
@@ -72,10 +63,10 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 ```
 
 The one-command installer registers the shared runtime and adapters. Desktop
-startup and `/hep-*` commands start a digest-verified, rate-limited update in
+startup and Hephaestus commands start a digest-verified, rate-limited update in
 the background without delaying the current task. A successful update moves
 `~/.agentlas/runtime/current` atomically and reconciles the Codex plugin and
-installed prompts. An open task keeps its loaded code until the next task or
+installed skills. An open task keeps its loaded code until the next task or
 app restart.
 
 Codex-only manual install:
@@ -83,30 +74,51 @@ Codex-only manual install:
 ```bash
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.72
 codex plugin add hephaestus@agentlas-core-engine
-mkdir -p ~/.codex/prompts
-cp codex/prompts/hep-build.md codex/prompts/hep-network.md codex/prompts/hep-local.md codex/prompts/hep-cloud.md codex/prompts/hep-hub.md codex/prompts/hep-search.md codex/prompts/hep-browser.md codex/prompts/hep-call.md codex/prompts/hep-upload.md codex/prompts/hep-connect.md ~/.codex/prompts/
 ```
 
 The OS-terminal Codex CLI command is singular: `codex plugin`, not
 `codex plugins`. Inside the Codex app, use `/plugins` to browse installed
 plugins; do not run `/plugin marketplace add` inside the app.
 
+## Orchestrator and worker models
+
+Codex launches the Hephaestus MCP as its own child process. Put role-specific
+model policy in that server's explicit `env` table; setting the variable only
+on the outer Codex shell is not a portable contract.
+
+```toml
+[mcp_servers.hephaestus-network]
+command = "/Users/you/.agentlas/runtime/current/bin/hephaestus"
+args = ["mcp", "serve"]
+
+[mcp_servers.hephaestus-network.env]
+AGENTLAS_MODEL_ALLOCATION_POLICY_JSON = '{"orchestrator":{"pinnedProvider":"codex","pinnedModelId":"gpt-5.6-sol","maxTier":"frontier","maxEffort":"max"},"worker":{"pinnedProvider":"codex","pinnedModelId":"gpt-5.3-codex-spark","maxTier":"economy","maxEffort":"medium"}}'
+```
+
+Start a fresh Codex session after changing the table. The installer refreshes
+the owned command and arguments but preserves this operator-owned `env`
+subtable across updates. Provider and model values are matched only against the
+host's advertised live inventory. To select an Ollama or other local worker,
+pin that inventory's exact provider/model pair instead; a pin does not install
+or launch a missing runtime.
+
 ## Use
 
 Open or restart Codex and type:
 
 ```text
-/prompts:hep-build create a support operations agent
-/prompts:hep-network find me an agent for app store reviews
-/prompts:hep-local use only agents registered on this machine
-/prompts:hep-cloud use my saved finance analyst agent
-/prompts:hep-hub find only public Hub agents for accessibility QA
-/prompts:hep-search find agents for market report research
-/prompts:hep-browser https://example.com
-/prompts:hep-call market-researcher, report-writer {draft a market report brief}
-/prompts:hep-upload ./agents/customer-support-hq
-/prompts:hep-connect Telegram for Marketing Agent Team
+$hephaestus-build create a support operations agent
+$hephaestus-network find me an agent for app store reviews
+$hephaestus-network use only agents registered on this machine
+$hephaestus-cloud use my saved finance analyst agent
+$hephaestus-network use only public Hub agents for accessibility QA
+$hephaestus-storm finish and verify this release goal
 ```
+
+Use plain language for search-only, browser, exact-call, upload, and connect
+requests; the installed MCP exposes those tools. `/plugins` shows whether the
+Hephaestus plugin is enabled. `/prompts:*` is a legacy Codex 0.116-and-earlier
+surface and is not installed on current Codex.
 
 If an older install still shows `agentlas-meta-agent`, `mode-classification`,
 `clarify-question-loop`, or other internal support names, rerun the one-touch

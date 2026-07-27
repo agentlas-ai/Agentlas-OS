@@ -10,7 +10,11 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
-from ..model_allocation import resolve_model_allocation
+from ..model_allocation import (
+    canonical_phase_for_stage,
+    model_role_for_stage,
+    resolve_model_allocation,
+)
 from .stormbreaker_harness import goal_ultracode_harness, harness_reference
 
 
@@ -220,7 +224,15 @@ def build_execution_fabric(
         )
         allocation_policy = dict(model_allocation_policy or {})
         allocation_policy.setdefault("currentModelId", chosen_session["model"])
-        allocation_receipt = resolve_model_allocation(raw_decision, sessions, policy=allocation_policy)
+        host_phase = canonical_phase_for_stage(stage_name)
+        model_role = model_role_for_stage(stage_name)
+        allocation_receipt = resolve_model_allocation(
+            raw_decision,
+            sessions,
+            policy=allocation_policy,
+            role=model_role,
+            expected_phase=host_phase,
+        )
         resolved_session_id = allocation_receipt["resolved"].get("sessionId")
         if resolved_session_id:
             chosen_session = next(
@@ -248,7 +260,13 @@ def build_execution_fabric(
                 "model_allocation_contract": {
                     "decision_schema": "agentlas.model-allocation-decision.v1",
                     "decision_owner": "parent_or_leader_ai",
-                    "status": "resolved" if raw_decision else "awaiting-parent-ai",
+                    "phase": host_phase,
+                    "role": allocation_receipt["role"],
+                    "status": (
+                        allocation_receipt["status"]
+                        if raw_decision
+                        else "awaiting-parent-ai"
+                    ),
                     "rule": "AI judges workload; host validates inventory, pins, capability, context and cost policy",
                     "raw_prompt_allowed_in_receipt": False,
                 },

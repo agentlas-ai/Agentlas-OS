@@ -33,7 +33,7 @@ MAX_CODE_FILES = 12_000
 MAX_CODE_FILE_BYTES = 1_500_000
 MAX_CODE_TOTAL_READ_BYTES = 32 * 1024 * 1024
 MAX_CODE_SCAN_SECONDS = 12.0
-MAX_CODE_MAP_BYTES = 16 * 1024 * 1024
+MAX_CODE_MAP_BYTES = 24 * 1024 * 1024
 MAX_GIT_FILE_LIST_BYTES = 8 * 1024 * 1024
 MAX_GIT_PREFIX_BYTES = 64 * 1024
 MAX_GITIGNORE_BYTES = 1024 * 1024
@@ -41,11 +41,11 @@ MAX_TRACKED_PATH_BYTES = 1024 * 1024
 MAX_TRACKED_PATHS = 10_000
 MAX_PERMISSION_PATHS = 20_000
 MAX_DISCOVERED_FILES = MAX_CODE_FILES * 3
-MAX_SYMBOLS_PER_FILE = 200
-MAX_TOTAL_SYMBOLS = 20_000
+MAX_SYMBOLS_PER_FILE = 1_000
+MAX_TOTAL_SYMBOLS = 100_000
 MAX_UNIQUE_TOKENS = 50_000
 MAX_TOKEN_OCCURRENCES = 2_000_000
-MAX_REF_FILES_PER_SYMBOL = 64
+MAX_REF_FILES_PER_SYMBOL = 1_024
 POSIX_PRIVATE_MODE_ENFORCEMENT = os.name != "nt"
 AUTO_BOOTSTRAP_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_AUTO"
 MCP_AUTO_BOOTSTRAP_ENV = "AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO"
@@ -1211,8 +1211,12 @@ def _bounded_project_map(project_map: dict[str, Any]) -> tuple[str, int]:
             key=lambda key: (-int(ref_counts.get(key) or 0), key),
         )
         original_refs = len(ordered)
-        while len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and len(ordered) > 1_000:
-            ordered = ordered[: max(1_000, len(ordered) // 2)]
+        # 바이트 예산이 계약이고 "최소 1,000개 유지"는 휴리스틱이다. 파일당 심볼
+        # 상한을 올린 뒤로는 이 바닥이 작은 예산과 교착해 맵 전체를 잃게 했다
+        # (예산 초과 = OSError = 맵 없음). ordered는 참조 빈도순이므로 바닥을
+        # 1로 내려도 가장 뜨거운 심볼부터 예산이 허락하는 만큼 남는다.
+        while len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and len(ordered) > 1:
+            ordered = ordered[: max(1, len(ordered) // 2)]
             allowed = set(ordered)
             project_map["refIndex"] = {
                 key: value for key, value in project_map["refIndex"].items() if key in allowed
@@ -1222,6 +1226,32 @@ def _bounded_project_map(project_map: dict[str, Any]) -> tuple[str, int]:
             }
             project_map["stats"]["outputTruncated"] = True
             project_map["stats"]["refIndexSymbolsOmitted"] = original_refs - len(allowed)
+            raw = json.dumps(project_map, ensure_ascii=False, separators=(",", ":")) + "\n"
+    # 파일당 심볼 상한을 올린 뒤로는 defIndex/topSymbols 단독으로도 작은 예산을
+    # 넘을 수 있다. 사다리 뒤쪽에 두어 정의 색인이 가장 오래 살아남게 하되,
+    # 바이트 예산이 최종 계약이므로 여기서도 수렴할 때까지 절반씩 줄인다.
+    if len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and isinstance(project_map.get("defIndex"), dict) and project_map["defIndex"]:
+        def_counts = project_map.get("refCount") if isinstance(project_map.get("refCount"), dict) else {}
+        ordered_defs = sorted(
+            project_map["defIndex"],
+            key=lambda key: (-int(def_counts.get(key) or 0), key),
+        )
+        original_defs = len(ordered_defs)
+        while len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and len(ordered_defs) > 1:
+            ordered_defs = ordered_defs[: max(1, len(ordered_defs) // 2)]
+            allowed_defs = set(ordered_defs)
+            project_map["defIndex"] = {
+                key: value for key, value in project_map["defIndex"].items() if key in allowed_defs
+            }
+            project_map["stats"]["outputTruncated"] = True
+            project_map["stats"]["defIndexSymbolsOmitted"] = original_defs - len(allowed_defs)
+            raw = json.dumps(project_map, ensure_ascii=False, separators=(",", ":")) + "\n"
+    if len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and isinstance(project_map.get("topSymbols"), list) and project_map["topSymbols"]:
+        original_top = len(project_map["topSymbols"])
+        while len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and len(project_map["topSymbols"]) > 1:
+            project_map["topSymbols"] = project_map["topSymbols"][: max(1, len(project_map["topSymbols"]) // 2)]
+            project_map["stats"]["outputTruncated"] = True
+            project_map["stats"]["topSymbolsOmitted"] = original_top - len(project_map["topSymbols"])
             raw = json.dumps(project_map, ensure_ascii=False, separators=(",", ":")) + "\n"
     if len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES:
         raise OSError("code_map_output_budget_exceeded")

@@ -18,7 +18,7 @@ installer):
 | Runtime | Registration | Mechanism |
 |---------|--------------|-----------|
 | Claude Code | automatic | plugin install (commands + `hephaestus-network` skill) + `~/.claude/commands/*.md`; plugin `SessionStart` and `UserPromptSubmit` hooks inject bounded local ontology recall |
-| Codex | automatic | `codex plugin add hephaestus@agentlas-core-engine` (skills — plugins cannot register slash commands) + custom prompts `~/.codex/prompts/` → `/prompts:hep-network` + local MCP in `~/.codex/config.toml`; the mirrored plugin hooks use the same point-of-need recall contract |
+| Codex | automatic | `codex plugin add hephaestus@agentlas-core-engine` + explicit `$hephaestus-network` skill + local MCP in `~/.codex/config.toml`; Codex 0.117+ removed custom prompts, and the mirrored plugin hooks use the same point-of-need recall contract |
 | Gemini CLI | automatic (partial) | `gemini extensions install …` (commands TOML + skill) + fallback TOML copied to `~/.gemini/commands/` |
 | Antigravity | automatic | global workflow copied to `~/.gemini/antigravity*/global_workflows/`; the installer merges a named `agentlas-memory` `PreInvocation` hook into `~/.gemini/config/hooks.json`, returning `injectSteps[].ephemeralMessage` |
 | Grok CLI | automatic with passive-hook limit | global `SessionStart`/`UserPromptSubmit` hooks write a bounded workspace-scoped capsule under `~/.agentlas/runtime-memory-context/grok/`. Grok ignores passive-hook stdout, so a managed block in `~/.grok/AGENTS.md` points the model at the exact-workspace capsule; this is not direct dynamic hook injection. |
@@ -33,10 +33,9 @@ installer):
 
 Realistic limits, stated plainly:
 
-- Codex plugins cannot contribute slash commands (loader reads `skills/`,
-  `hooks/`, `.mcp.json`, `.app.json` only) — the explicit slash surface is the
-  deprecated-but-functional custom prompts dir, namespaced as
-  `/prompts:hep-network`.
+- Current Codex invokes plugin skills explicitly as `$hephaestus-network`.
+  Custom `/prompts:*` commands were removed in Codex 0.117 and are retained in
+  this repository only as legacy source for older hosts.
 - Claude Code and Codex receive real hook-provided `additionalContext` on each
   prompt. Antigravity receives an ephemeral pre-invocation step. OpenCode
   receives a system-prompt transform. Grok lifecycle hooks are passive, so its

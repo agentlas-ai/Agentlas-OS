@@ -206,7 +206,7 @@ for runtime, adapter in {
         raise SystemExit(f"{runtime} /hep-connect adapter file does not exist: {adapter}")
 required = {
     "claude-code": ".claude/commands/hep-build.md",
-    "codex": "codex/prompts/hep-build.md",
+    "codex": "codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-build/SKILL.md",
     "gemini-cli": "gemini/extension/commands/hep-build.toml",
     "antigravity": "antigravity/workflows/hep-build.md",
     "generic-agents-md": "AGENTS.md",
@@ -221,12 +221,29 @@ for runtime, adapter in required.items():
     if not Path(adapter).exists():
         raise SystemExit(f"{runtime} adapter file does not exist: {adapter}")
 
-# Codex plugins cannot register slash commands; the explicit surface is the
-# /prompts: namespace, so the canonical command appears as /prompts:<name>.
 prompt_namespaced = "/prompts:" + command.lstrip("/")
 for runtime in ("claude-code", "codex", "gemini-cli", "antigravity", "generic-agents-md"):
-    if commands[runtime].get("command") not in (command, prompt_namespaced):
+    expected_commands = (
+        ("$hephaestus-build",)
+        if runtime == "codex"
+        else (command, prompt_namespaced)
+    )
+    if commands[runtime].get("command") not in expected_commands:
         raise SystemExit(f"{runtime} command does not match canonical command")
+
+codex_network = next(
+    (
+        item
+        for item in registry.get("commands", [])
+        if item.get("runtime") == "codex"
+        and item.get("command") == "$hephaestus-network"
+    ),
+    None,
+)
+if not codex_network:
+    raise SystemExit("missing current Codex $hephaestus-network skill entry")
+if codex_network.get("adapterPath") != "codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-network/SKILL.md":
+    raise SystemExit("Codex network skill adapter path mismatch")
 
 message = registry.get("postCreationUserMessage", {})
 if message.get("required") is not True:

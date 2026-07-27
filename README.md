@@ -372,7 +372,7 @@ From your OS terminal:
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.72
 codex plugin add hephaestus@agentlas-core-engine
 ```
-*Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). After install, `/prompts:agentlas` is the in-app entry.*
+*Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
 
 </details>
 
@@ -429,8 +429,11 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 
 Every row also answers to its original `/hep-*` name — `/agentlas network` and
 `/hep-network` are the same command. Nothing was renamed away, so existing
-scripts, notes, and muscle memory keep working. In Codex the plugin-scoped forms
-`/prompts:agentlas` and `/prompts:hep-browser` work as well.
+scripts, notes, and muscle memory keep working. Current Codex uses explicit
+plugin skills such as `$hephaestus-network`, `$hephaestus-build`,
+`$hephaestus-cloud`, and `$hephaestus-storm`; other MCP surfaces can be
+requested in plain language. Custom `/prompts:*` commands were removed from
+Codex 0.117+.
 
 ---
 

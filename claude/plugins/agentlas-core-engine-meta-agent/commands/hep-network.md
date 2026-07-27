@@ -67,11 +67,20 @@ done
    the same `goalId` to preparation so new releases append. Record
    `reuse|local-only|recruit|standby|blocked` with
    `workforce.record_goal_turn`.
-6. Run only the bound workers useful for this turn. For a selected team,
+6. Before every bound invocation, advertise the live host sessions and call
+   `model.resolve_allocation` with that inventory plus the host-owned stage:
+   `planner`/`manager-plan`, `worker`, `manager-synthesis`/`synthesis`, or
+   `verifier`. Use the receipt's exact provider, model, and effort for that
+   invocation. Model pins and ceilings come only from the MCP server's operator
+   policy, never from the task or tool arguments. A missing worker policy
+   inherits orchestrator; orchestrator never falls through to worker.
+7. Run only the bound workers useful for this turn. For a selected team,
    preserve its authoritative manager/worker graph. Run planner/manager,
    workers, synthesis, and verifier as distinct invocations with explicit
-   artifact handoffs.
-7. Report `executed` only when the execution receipt proves every selected
+   artifact handoffs. Allocation receipts have `usage: null` before execution,
+   so record actual usage on the later invocation/run receipt instead of
+   inventing zero.
+8. Report `executed` only when the execution receipt proves every selected
    invocation, handoff, synthesis, and an independent passing verifier.
    Otherwise report the last truthful state: `selected`, `prepared`,
    `source_unavailable`, `blocked`, or `failed`.
