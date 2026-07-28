@@ -300,32 +300,6 @@
         }
       }
     },
-    "grounding": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "claims": {
-          "enum": [
-            "per_claim_source",
-            "whole_output_source",
-            "none",
-            "other"
-          ]
-        },
-        "freshness": {
-          "enum": [
-            "checked_at_required",
-            "point_in_time",
-            "not_applicable",
-            "other"
-          ]
-        },
-        "primaryOnly": {
-          "type": "boolean"
-        }
-      },
-      "description": "How strongly the output is tied to sources. Absent scores zero and is never inferred from neighbouring text."
-    },
     "host": {
       "type": "array",
       "maxItems": 24,
@@ -343,16 +317,6 @@
             "maxLength": 400,
             "description": "A vendor-free verb phrase for what the MACHINE must be able to do: 'open the page in a real browser and read what a user would see'. Never a product."
           },
-          "permission": {
-            "enum": [
-              "read-only",
-              "network-read",
-              "browser-read",
-              "artifact-write",
-              "external-write",
-              "other"
-            ]
-          },
           "preferred": {
             "type": "string",
             "maxLength": 200,
@@ -366,32 +330,7 @@
           }
         }
       },
-      "description": "Preconditions of the METHOD on the machine, not capabilities of the agent. The runtime reads the web; the package does not. Ranked, never filtered."
-    },
-    "exam": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "contractValid": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "escapeHatch": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "gateObserved": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        }
-      },
-      "description": "Three checks, none of them model-judged: does the example validate against its schema (server validator), do matched-reachable enums carry an escape member (server static check), does a declared gate actually raise an approval prompt (host runtime). Under BYOM the only honest defence against marking your own homework is to make the model not the marker. Scores here gate PUBLICATION and never enter ranking - the moment a count enters ranking it gets padded, which is why 97 of 140 benchmark files are exactly 10 lines long."
+      "description": "Preconditions of the METHOD on the machine, not capabilities of the agent. The runtime reads the web; the package does not. Ranked, never filtered. `permission` was removed: the owner's ruling is that permissions are not a qualification — an employer hands you a computer after hiring you, so what a host is willing to grant says nothing about whether this method fits the work."
     },
     "provenance": {
       "type": "object",

@@ -16,6 +16,7 @@ from typing import Any
 from . import content_guard
 from .auth import ensure_access_token, normalize_base_url
 from .networking.card_lint import lint_card
+from .brief.write import write_offer_brief
 from .upload_repair import classify_findings, repair_package
 from .runtime import (
     collect_package_files,
@@ -47,6 +48,14 @@ UPLOAD_DERIVED_EVIDENCE_PATHS = frozenset(
         # Separate local/user-owned Experience lineage must never be folded
         # into an AgentDefinition artifact or its delivered package hash.
         ".agentlas/experience-relations.jsonl",
+        # The routing brief is DERIVED — every field of it is computed from the
+        # card, the manifest and the contracts that ship beside it. Shipping a
+        # derived file would tie the artifact's identity to the compiler rather
+        # than to the author's work: improving how a shape is inferred would mint
+        # a new release for all 247 published packages without one of them having
+        # changed. It is written locally so an author can read what the routing
+        # layer sees, and the reader compiles its own from the same sources.
+        ".agentlas/brief.json",
     }
 )
 BLOCKED_FILE_PATTERNS = [
@@ -119,6 +128,18 @@ def package_agent(
         # filter would leave a stale blocker that the package no longer has.
         files, file_count, findings = collect_upload_files(base)
         findings = prepare_public_career_card_for_upload(base) + findings
+
+    # Compile the resume LAST, after every repair has run, so it describes what is
+    # actually about to ship rather than what arrived. Without this call the whole
+    # brief pipeline is dead code: an audit of the shipped tree found
+    # `.agentlas/brief.json` on 0 of 186 packages because nothing ever invoked the
+    # compiler. It is deterministic and reads only files already in the package, so
+    # it cannot fail the upload — a package that yields a thin brief gets a thin
+    # brief, and `provenance` says which fields were absent rather than guessing.
+    if write_manifest:
+        brief_findings = write_offer_brief(base)
+        findings.extend(brief_findings)
+        files, file_count, _ = collect_upload_files(base)
 
     if setup_wizard.get("mcpPolicyValidation", {}).get("status") != "valid":
         findings.append(

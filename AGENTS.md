@@ -201,8 +201,19 @@ behavior into English before writing runtime instructions.
     report. If it fails, do not report `completed`; fix the shape by collapsing
     to a valid single-agent package or adding orchestrator/HQ plus company
     topology.
-16. Verify with `scripts/verify-package.sh`.
-17. For ontology runtime changes, also verify with
+16. Also run `scripts/verify-generated-package.sh <generated-package-root>`.
+    This is the gate that checks the package against `package-contract.json` —
+    every required artifact present, parseable, schema-valid, and with no
+    `{{PLACEHOLDER}}` left unfilled. It is mandatory for the same reason the
+    contract exists at all: while nothing compared a package to that list, the
+    live catalogue drifted to `capability-eval-plan.json` on 4% of published
+    releases and `mcp-policy.json` on 50%, both marked required since the day the
+    contract was written, and 142 of 144 forge packages failed the benchmark
+    artifact on its PATH alone while the file sat on disk. Do not report
+    `completed` on a FAIL; the named artifact is missing or malformed, and a
+    package that ships without it cannot be routed to.
+17. Verify with `scripts/verify-package.sh`.
+18. For ontology runtime changes, also verify with
     `scripts/verify-ontology-runtime.sh`.
 18. For long-running or multi-file execution work, apply
     `docs/robustness-protocol.md`: scope lock, plan lock, evidence loop,

@@ -80,11 +80,18 @@ class WorkforceSourceError(ValueError):
     def __init__(
         self,
         code: str,
+        reason: str | None = None,
         *,
         retry_after_ms: int | None = None,
         receipt_expires_at: str | None = None,
     ):
         self.code = code
+        # Which specific check refused, in words, when the code alone cannot say.
+        # `source_bundle_verification_failed` covers both "the source rejected our
+        # request digest before building anything" and "we rejected the receipt it
+        # returned" — unrelated failures behind one name, which is why a live
+        # occurrence survived three diagnoses read off the source.
+        self.reason = reason if isinstance(reason, str) and reason else None
         self.retry_after_ms = (
             max(100, min(10_000, retry_after_ms))
             if isinstance(retry_after_ms, int) and not isinstance(retry_after_ms, bool)
@@ -95,7 +102,7 @@ class WorkforceSourceError(ValueError):
             if isinstance(receipt_expires_at, str) and receipt_expires_at
             else None
         )
-        super().__init__(code)
+        super().__init__(f"{code}: {self.reason}" if self.reason else code)
 
 
 def _finite_failure(code: str) -> str:
@@ -419,6 +426,15 @@ class WorkforceSourceService:
         pin: Mapping[str, Any],
         response: Mapping[str, Any],
     ) -> bool:
+        """True when the receipt proves this exact release was fetched.
+
+        `bundle_verification_reason()` re-runs the same checks and names the one
+        that failed. Keep the two in step: a bare False here is what made a live
+        failure unreadable — the same `source_bundle_verification_failed` is
+        raised whether the Hub refused our request digest before building
+        anything, or we refused the receipt it returned, and the two have nothing
+        to do with each other.
+        """
         receipt = response.get("verificationReceipt")
         bundle = response.get("runtimeBundle")
         if not isinstance(receipt, Mapping) or not isinstance(bundle, Mapping):
@@ -456,6 +472,77 @@ class WorkforceSourceService:
             if receipt.get(field) != pin.get(field):
                 return False
         return all(bundle.get(field) == pin.get(field) for field in ("agentReleaseId", "packageHash", "contentDigest"))
+
+    @staticmethod
+    def bundle_verification_reason(
+        source: str,
+        pin: Mapping[str, Any],
+        response: Mapping[str, Any],
+    ) -> str | None:
+        """Which check rejected this response, in words. None when it passed.
+
+        Diagnosis, never control flow: the caller still refuses on the boolean
+        verifier. This exists because reading the code was not enough to tell why
+        a live prepare failed — three plausible causes were ruled out from source
+        alone and the real one was still unknown, because the failure names the
+        step and not the field.
+        """
+        receipt = response.get("verificationReceipt")
+        bundle = response.get("runtimeBundle")
+        if not isinstance(receipt, Mapping):
+            return "response carried no verificationReceipt (the source refused before building a bundle)"
+        if not isinstance(bundle, Mapping):
+            return "response carried a receipt but no runtimeBundle"
+        required = {
+            "schemaVersion", "status", "verification", "source",
+            "sourceSelectionSessionId", "sourceCandidateSetDigest",
+            "agentDefinitionId", "agentReleaseId", "releaseVersion",
+            "packageHash", "contentDigest", "entityKind",
+            "prepareAttemptDigest", "selectedSourcePinDigest",
+            "sourceFetchBindingDigest", "sourceFetchIdempotencyKey",
+            "receiptDigest",
+        }
+        extra = sorted(set(receipt) - required)
+        missing = sorted(required - set(receipt))
+        if extra or missing:
+            return (
+                "receipt key set differs — "
+                f"unexpected {extra or 'none'}, missing {missing or 'none'}; "
+                "the two sides disagree on the receipt shape"
+            )
+        if receipt.get("schemaVersion") != WORKFORCE_SOURCE_BUNDLE_RECEIPT_SCHEMA:
+            return f"receipt schemaVersion is {receipt.get('schemaVersion')!r}"
+        if receipt.get("status") != "verified":
+            return f"receipt status is {receipt.get('status')!r}, not 'verified'"
+        if receipt.get("verification") not in {"verified_transport", "verified_signature"}:
+            return f"receipt verification is {receipt.get('verification')!r}"
+        if receipt.get("source") != source:
+            return f"receipt source is {receipt.get('source')!r}, expected {source!r}"
+        recomputed = canonical_digest(
+            {key: value for key, value in receipt.items() if key != "receiptDigest"}
+        )
+        if receipt.get("receiptDigest") != recomputed:
+            return (
+                "receiptDigest does not match the receipt's own contents — the two sides "
+                "canonicalise differently, or a field was altered in transit"
+            )
+        for field in (
+            "sourceSelectionSessionId", "sourceCandidateSetDigest",
+            "agentDefinitionId", "agentReleaseId", "releaseVersion",
+            "packageHash", "contentDigest", "entityKind",
+            "prepareAttemptDigest", "selectedSourcePinDigest",
+            "sourceFetchBindingDigest", "sourceFetchIdempotencyKey",
+        ):
+            if receipt.get(field) != pin.get(field):
+                return (
+                    f"receipt {field} is {receipt.get(field)!r} but the pin says "
+                    f"{pin.get(field)!r} — the source answered about a different release "
+                    "or a different fetch"
+                )
+        for field in ("agentReleaseId", "packageHash", "contentDigest"):
+            if bundle.get(field) != pin.get(field):
+                return f"bundle {field} is {bundle.get(field)!r} but the pin says {pin.get(field)!r}"
+        return None
 
     def _search_remote(
         self,
@@ -876,7 +963,16 @@ class WorkforceSourceService:
                         or self.remote_bundle_verifier(source, remote_pin, response) is not True
                     ):
                         release_claim()
-                        raise WorkforceSourceError("source_bundle_verification_failed")
+                        # Carry WHY. The bare code is the same whether the source
+                        # refused our request digest before building anything or we
+                        # refused the receipt it returned, and those two failures
+                        # share no cause — a live occurrence cost three wrong
+                        # diagnoses read off the source before anyone could say
+                        # which half had rejected what.
+                        raise WorkforceSourceError(
+                            "source_bundle_verification_failed",
+                            self.bundle_verification_reason(source, remote_pin, response),
+                        )
                     try:
                         self.prepare_receipt_cache.store_verified(
                             auth_partition=auth_partition,

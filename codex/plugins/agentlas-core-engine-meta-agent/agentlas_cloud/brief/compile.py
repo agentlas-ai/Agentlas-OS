@@ -283,9 +283,6 @@ def compile_offer(root: Path) -> dict[str, Any]:
                 "withoutIt": str(item.get("fallback") or "").strip()
                              or "not stated by the package",
             }
-            permission = item.get("permission")
-            if isinstance(permission, str) and permission.strip():
-                row["permission"] = permission.strip()
             preferred = item.get("preferred")
             if isinstance(preferred, str) and preferred.strip():
                 row["preferred"] = preferred.strip()

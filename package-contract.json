@@ -318,12 +318,12 @@
         "team",
         "package"
       ],
-      "required": true,
+      "required": false,
       "format": "json",
       "fill": "fill",
       "template": "templates/brief.json.tpl",
       "schema": "schemas/agentlas-brief.schema.json",
-      "description": "The package's side of the match, compiled - never hand-written. side=offer. Sentences stay sentences; every field records in `provenance` whether it was extracted, read, graded or absent, and `absent` scores zero rather than being filled with something plausible."
+      "description": "The compiled resume, schemaVersion agentlas.brief/1, side=offer. Written by the upload path so an author can read exactly what the routing layer sees, and NOT shipped: every field is derived from the card, the manifest and contracts/ that travel with it, so including it would tie the package's identity to the compiler — improving how a shape is inferred would mint a new release for every published package without one of them having changed. The reader compiles its own from the same sources."
     }
   ]
 }

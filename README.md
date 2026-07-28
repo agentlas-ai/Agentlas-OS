@@ -246,7 +246,35 @@ real browser and read what a user would see") and every requirement states
 `agentlas.brief/1` is written from either side — `side: "offer"` is the
 package's resume, `side: "need"` is the requester's work order. The same form,
 so the two can be compared without a translation step. Its schema is
-`schemas/agentlas-brief.schema.json`.
+`schemas/agentlas-brief.schema.json`, and it is **compiled, never hand-written**:
+the upload path writes it from the files the package already ships.
+
+| field | what it holds | where it comes from |
+|---|---|---|
+| `statement` | the author's own sentence about the work | the routing card, carried whole |
+| `deliverables[].label` / `.contains` | what the requester ends up holding, and what is inside it | `contracts/output.schema.json` — the title and its property names |
+| `deliverables[].shape` | `ledger` / `verdict` / `dossier` / `computation` / `blueprint` / `rendition` / `other` | computed from the output schema's **topology** — arity and value spaces, never a title or a filename |
+| `deliverables[].rowVerdict` / `.verdictValues` | the per-record judgement and its allowed values | copied verbatim from the publisher's own enum; there is nothing to match them against, so no value is ever rejected |
+| `obligations[].about` / `.stage` | a fact the requester must supply, and *when* it comes to exist | `contracts/intake.schema.json` and the card's stated inputs |
+| `authority.performs` / `.gated` | what this method does to the requester's world, and what it stops to ask about first | derived from the approval requirements, not from what the package calls itself |
+| `host[].capability` / `.withoutIt` | what the machine must be able to do, and what still happens when it cannot | `.agentlas/mcp-policy.json` |
+| `provenance` | per field: `extracted`, `read`, `graded` or `absent` | written by the compiler |
+
+`provenance` is the part that keeps the rest honest. `absent` is a legal value
+that scores zero, so a gap stays a gap. Filling gaps with something plausible is
+how `capabilities` came to equal `snake_case(agent.md ## Responsibilities)` in
+130 of 130 packages — a field that was always full and never once informative.
+
+The reference shape is `Web_master`: it ships input and output contracts as real
+JSON Schema, a domain catalogue its rules are checked against, and verification
+scripts that run. Everything above is what a build has to emit to be readable the
+way that package already is.
+
+Deliberately absent: there is no field for what an agent is *good at*, and none
+for its permissions. Quality cannot be read off a package that has never run, and
+permissions are granted by the host after the fact — an employer hands you a
+computer once you are hired, so neither says anything about whether this method
+fits the work.
 
 ### Hub and Agent Cloud are different scopes
 

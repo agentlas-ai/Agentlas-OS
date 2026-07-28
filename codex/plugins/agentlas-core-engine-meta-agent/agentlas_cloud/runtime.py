@@ -140,6 +140,12 @@ PACKAGE_HASH_EXCLUDED_PATHS = frozenset(
         # Experience lineage is a separate user-owned/local Experience source,
         # never immutable AgentDefinition package material.
         LOCAL_EXPERIENCE_LINEAGE_PATH,
+        # The routing brief is derived from the card, the manifest and contracts/
+        # that sit beside it, and the upload path rewrites it on every run. Left in
+        # the hash it makes a package's identity depend on itself: the first upload
+        # writes the brief, the second sees it and hashes differently, so the same
+        # untouched source mints a new release every time it is published.
+        ".agentlas/brief.json",
     }
 )
 

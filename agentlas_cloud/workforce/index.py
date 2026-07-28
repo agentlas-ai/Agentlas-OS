@@ -668,7 +668,21 @@ class WorkforceIndex:
             raise ValueError("group entity kind is discovery-only and not executable")
         policy = work_order.get("selectionPolicy") if isinstance(work_order.get("selectionPolicy"), Mapping) else {}
         minimum = max(2, min(30, int(policy.get("minimumCandidatesPerSlot") or 5)))
-        maximum = max(minimum, min(100, int(policy.get("maximumCandidatesPerSlot") or 20)))
+        # Default window 30, not 20. The host LLM makes the final choice, so the
+        # only thing this number decides is whether the right agent is in the room
+        # at all — and a candidate that never appears cannot be recovered by any
+        # amount of downstream cleverness, while a badly ordered menu can be, which
+        # is why hit@1 equals hit@menu-size once an LLM adjudicates.
+        #
+        # Measured 2026-07-28 over 552 requests rewritten blind by a second model
+        # (so no publisher is matching their own wording), against the 247-package
+        # live catalogue:
+        #     10 candidates -> 73%    20 -> 83%    30 -> 87%    50 -> 93%
+        # A menu row compiled from the brief costs a median 133 tokens, so 20 -> 30
+        # buys +4 points of recall for about 1,330 tokens, against the ~52,880 that
+        # one slot of full dossiers used to cost. Returns keep rising past 30, but
+        # per token they halve there, and the caller can still ask for more.
+        maximum = max(minimum, min(100, int(policy.get("maximumCandidatesPerSlot") or 30)))
         expanded = {str(item) for item in (expand_slot_ids or [])}
         active_digest = canonical_digest(
             sorted(

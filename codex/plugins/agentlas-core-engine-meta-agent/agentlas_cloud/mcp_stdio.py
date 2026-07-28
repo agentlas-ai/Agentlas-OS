@@ -1605,7 +1605,31 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         "hubCalls": 0,
                     }
                 selection = resolved_selection
-            if not isinstance(candidate_set, Mapping) or not isinstance(selection, Mapping):
+            # Name the argument that is actually wrong. This check covers two
+            # unrelated mistakes and used to report both as `selection` /
+            # `schema_type`: a caller who omitted the candidate set — or the
+            # `federationResult` it is derived from — was told its selection had
+            # the wrong type, so it rewrote a correct selection over and over.
+            # Measured 2026-07-28: two different host models each burned several
+            # attempts on this, one of them abandoning the network path entirely.
+            shape_issues: list[dict[str, str]] = []
+            if not isinstance(candidate_set, Mapping):
+                shape_issues.append({
+                    "path": "candidateSet",
+                    "code": "missing_or_not_object",
+                    "detail": (
+                        "pass the candidateSet from the search response, or pass federationResult "
+                        "and Core will take the candidate set from it; alternatively pass only "
+                        "selection.selectionSessionId and Core resolves the set it already holds"
+                    ),
+                })
+            if not isinstance(selection, Mapping):
+                shape_issues.append({
+                    "path": "selection",
+                    "code": "missing_or_not_object",
+                    "detail": "selection must be the agentlas.workforce-selection.v1 object itself",
+                })
+            if shape_issues:
                 return {
                     "action": name,
                     "status": "rejected",
@@ -1619,7 +1643,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         "repairable": True,
                         "mutation": "none",
                         "selectionDigest": None,
-                        "issues": [{"path": "selection", "code": "schema_type"}],
+                        "issues": shape_issues,
                     },
                 }
             federated_candidate_set = (
