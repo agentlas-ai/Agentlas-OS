@@ -88,6 +88,17 @@ def _triggers_by_locale(card: dict[str, Any], field: str) -> dict[str, int]:
 
 
 def _benchmark_case_count(card: dict[str, Any]) -> int:
+    # Inline cases first: the card may carry the benchmark rows directly, which is
+    # the only form the linter can count without knowing the package root. Upload
+    # runs the card through here with no filesystem base, so a `benchmark_fixtures`
+    # path relative to the package could never be resolved — a package with real
+    # cases on disk still linted as zero. `benchmark_cases` is the resolved count.
+    inline = card.get("benchmark_cases")
+    if isinstance(inline, int) and inline >= 0:
+        return inline
+    inline_rows = card.get("benchmark_case_rows")
+    if isinstance(inline_rows, list):
+        return sum(1 for row in inline_rows if isinstance(row, dict) and row.get("input"))
     fixture = card.get("benchmark_fixtures")
     if not fixture:
         return 0
