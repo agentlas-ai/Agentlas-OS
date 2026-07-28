@@ -533,8 +533,10 @@ TOOLS: list[dict[str, Any]] = [
         "name": "workforce.validate_selection",
         "description": (
             "Validate a team selected by the calling host LLM against an exact candidate set. "
-            "With federationResult, Agentlas Core validates its locally pinned federated session; "
-            "it never sends the merged menu to a remote source or selects/reranks/substitutes agents."
+            "Core holds the federated session it issued, so send only selection.selectionSessionId "
+            "and it loads the pinned menu itself — echoing a wide candidate set back does not fit "
+            "in one call. It never sends the merged menu to a remote source or "
+            "selects/reranks/substitutes agents."
         ),
         "inputSchema": {
             "type": "object",
@@ -543,12 +545,22 @@ TOOLS: list[dict[str, Any]] = [
                     "workOrder",
                     "The exact complete WorkOrder used to create candidateSet.",
                 ),
-                "candidateSet": {"type": "object"},
+                "candidateSet": {
+                    "type": "object",
+                    "description": (
+                        "Optional. Omit it: Core resolves the exact pinned set from "
+                        "selection.selectionSessionId and re-verifies its digest and expiry. Send it "
+                        "only to validate a set this process did not issue."
+                    ),
+                },
                 "federationResult": {
                     "type": "object",
                     "description": (
-                        "Exact locally pinned federation result from a source-scoped search. "
-                        "When present, Core validates locally and never sends the merged menu to a remote source."
+                        "Optional. Omit it: Core loads the locally pinned federation result for "
+                        "selection.selectionSessionId. A live menu wide enough to contain the right "
+                        "agent does not fit in one tool call, and its digest covers the exact bytes "
+                        "so it cannot be trimmed — narrowing the menu to fit is how the intended "
+                        "pick gets cut. Core never sends the merged menu to a remote source."
                     ),
                 },
                 "selection": _contract_property(
@@ -556,7 +568,7 @@ TOOLS: list[dict[str, Any]] = [
                     "Complete agentlas.workforce-selection.v1 authored by the host LLM; use the exact canonical schema declared in x-agentlas-contract.",
                 ),
             },
-            "required": ["workOrder", "candidateSet", "selection", "federationResult"],
+            "required": ["workOrder", "selection"],
         },
         "x-agentlas-contracts": _workforce_tool_contracts("workOrder", "selection"),
         "_meta": workforce_tool_meta(),
@@ -1282,7 +1294,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     }:
         from .workforce import validate_hub_selection_boundary, validate_hub_work_order_boundary
         from .networking.hub_client import call_hub_tool
-        from .workforce.federation_store import FederationSessionStore
+        from .workforce.federation_store import FederationSessionError, FederationSessionStore
         from .workforce.provenance import (
             FederatedProvenanceError,
             prepare_federated_execution_plan,
@@ -1413,6 +1425,39 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             selection = arguments.get("selection")
             federation_result = arguments.get("federationResult")
             federated_selection = arguments.get("federatedSelection")
+            # This process issued the federation result and still holds it, keyed
+            # by the selectionSessionId printed on the menu. Requiring the caller
+            # to echo the whole thing back made the contract unusable at the size
+            # a good menu actually is: a live 80-candidate set is ~461KB, past
+            # what one tool call can carry, and the digest is over the exact
+            # bytes so it cannot be trimmed. The caller was left choosing between
+            # a menu wide enough to contain the right agent and a menu small
+            # enough to send back — measured on 2026-07-28, the intended pick
+            # ranked 4th, so a 3-candidate menu would have cut the answer out.
+            # Resolve it here instead; the store re-validates digest and expiry,
+            # so nothing about the pin is weakened. The Hub already accepts a
+            # session id this way (mcp/workforce.ts); Core simply had not.
+            if not isinstance(federation_result, Mapping):
+                pinned_session = (
+                    selection.get("selectionSessionId")
+                    if isinstance(selection, Mapping)
+                    else None
+                ) or arguments.get("selectionSessionId")
+                if isinstance(pinned_session, str) and pinned_session.strip():
+                    try:
+                        federation_result = store.get(pinned_session.strip())
+                    except FederationSessionError as exc:
+                        return {
+                            "action": name,
+                            "status": "rejected",
+                            "error": str(getattr(exc, "args", ["federation_session_unavailable"])[0]),
+                            "repairable": True,
+                            "hubCalls": 0,
+                        }
+            if not isinstance(candidate_set, Mapping) and isinstance(federation_result, Mapping):
+                stored_set = federation_result.get("candidateSet")
+                if isinstance(stored_set, Mapping):
+                    candidate_set = stored_set
             if not isinstance(candidate_set, Mapping) or not isinstance(selection, Mapping):
                 return {
                     "action": name,
