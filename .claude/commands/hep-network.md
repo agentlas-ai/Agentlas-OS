@@ -39,6 +39,16 @@ done
    slots, required skills/knowledge/MCP capabilities, artifacts, runtimes,
    languages, authorities, cardinality, and collaboration edges. Keep private
    files, memory, secrets, direct identifiers, and raw local context on-host.
+   Write every discovery-facing field (statement, role descriptions, required
+   skills/knowledge, artifacts) in English, faithfully translating a
+   non-English request rather than passing its original wording through: the
+   candidate corpus is English and cross-lingual matching silently buries the
+   correct agent (measured: an identical query ranked its target 1st in English
+   and 144th in Korean). Keep an untranslatable proper term alongside a short
+   English gloss, e.g. `종합소득세 (Korean comprehensive income tax)`. The
+   `languages` slot is the delivery requirement, not the search language — set
+   it to the language the work product must be produced in (e.g. `ko`) even
+   though the order itself is written in English.
 2. Call `workforce.search_candidates` on `hephaestus-network` with
    `{workOrder, sourceScope: "network"}` and keep the complete response as
    `federationResult`. Preserve every source receipt and provenance row. An

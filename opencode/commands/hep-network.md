@@ -8,7 +8,11 @@ Act as the active top-level workforce orchestrator. Use local MCP server
 Cloud/Hub upstream calls. The user does not need to say `goal`: first read
 `workforce.goal_context(projectDir)` and reuse any active binding for the same
 ongoing work. Author a redacted
-WorkOrder and call `workforce.search_candidates` with exact
+WorkOrder — write its discovery-facing fields in English, faithfully translating
+a non-English request (the candidate corpus is English; cross-lingual matching
+buries the right agent, measured 1st vs 144th for one query), while keeping
+`languages` as the required delivery language — and call
+`workforce.search_candidates` with exact
 `sourceScope: "network"` (registered Local + owner Cloud + public Hub), keeping
 the response as `federationResult`. Author the final Selection yourself, call
 `workforce.validate_selection` with

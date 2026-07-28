@@ -36,7 +36,12 @@ done
 1. Author a redacted `agentlas.workforce-work-order.v1` with substantive role
    slots, skills/knowledge/MCP capabilities, artifacts, runtimes, languages,
    authorities, cardinality, and collaboration edges. Private grounding stays
-   local.
+   local. Write every discovery-facing field in English, faithfully translating
+   a non-English request (the candidate corpus is English and cross-lingual
+   matching buries the correct agent — measured 1st vs 144th for one query);
+   keep an untranslatable term with a short English gloss. `languages` is the
+   delivery language, not the search language — keep it as the required output
+   language even though the order is authored in English.
 2. Call `workforce.search_candidates` with
    `{workOrder, sourceScope: "network"}` and keep the response as
    `federationResult`. Preserve source receipts and provenance; unavailable

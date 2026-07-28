@@ -1,13 +1,25 @@
 # Changelog
 
-## Unreleased
-
-## v1.1.74 - 2026-07-28
+## v1.1.74 - 2026-07-29
 
 Staffing over MCP stops shipping the filing cabinet. A host LLM now reads a
 decision menu, answers with a number, and Core resolves both against the
 session it already holds.
 
+- **Network routing normalises the query to English.** `/hep-network` step 1
+  now has the host LLM author the work order's discovery-facing fields in
+  English, faithfully translating a non-English request rather than passing its
+  wording through: the candidate corpus is English and cross-lingual matching
+  silently buried the correct agent (measured: an identical query ranked its
+  target 1st in English and 144th in Korean). The `languages` slot stays the
+  required delivery language, and marketplace search stays multilingual — only
+  network routing normalises, because it is the LLM that authors the query.
+- **The résumé is compiled and stored on upload.** The offer brief is generated
+  from package files at publish time — it had been dead code with zero callers —
+  the candidate menu is widened, and boundary failures are no longer misnamed.
+- **Uploads repair instead of refusing.** A package shipping fewer than ten
+  benchmark cases has one synthesised from its trigger examples, and the card
+  lint counts inline cases it can see.
 - **Search returns a decision menu, not a dossier.** Audit-weight fields
   (`qualificationEvidence`, `packageHash`, `contentDigest`,
   `candidateProvenance`) stay in Core's session store instead of crossing the
