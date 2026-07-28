@@ -193,6 +193,61 @@ model and current host runtime execute it under that host's permission and
 safety model. Credentials, local files, and machine-specific permissions do not
 travel with the package—you configure those separately on each computer.
 
+### The package contract — what every build must emit
+
+An agent package is not a worker with capabilities. It is a **method document**.
+Three layers, and conflating them is the single most expensive mistake this
+project has made:
+
+| layer | what it is | who supplies it |
+|---|---|---|
+| **LLM** | the worker: reasoning, language, general knowledge | you (BYOM) |
+| **Runtime** | the facilities: read the web, write files, run a shell, drive a browser | the host machine |
+| **Agent** | the work manual: procedure, judgement rules, source priority, input/output contracts, stop conditions | the package |
+
+"Can this agent read the web?" is a category error. The runtime reads the web.
+The only question a package can answer is *what method does it carry, and what
+must the machine be able to do for that method to run.*
+
+`package-contract.json` is the machine-readable list of artifacts every build
+emits, and `scripts/verify-generated-package.sh <folder>` is what enforces it.
+A build that omits a required artifact **fails**; it does not ship. Four of
+those artifacts carry the routing contract:
+
+```text
+contracts/intake.schema.json     what a requester must hand over before work starts
+contracts/output.schema.json     what the requester ends up holding
+contracts/output.example.json    one real instance, validated by a JSON Schema
+                                 validator at publish time — never by a model
+.agentlas/brief.json             the compiled resume, schemaVersion agentlas.brief/1
+```
+
+Direction lives in the filename because nothing else ever marked it, and a
+schema whose direction must be guessed cannot be matched against a request.
+
+**Two rules bind every enum a build writes.** Both were paid for in production:
+
+1. **Any enum reachable from matching must carry an escape member** (`"other"`,
+   `"unknown"`). Matching one stated requirement against a 23-word closed list
+   took a three-candidate inventory to zero on eight probes out of eight. A
+   publisher whose real case is not on the list must still be findable.
+2. **Sentences stay sentences.** No field that holds an author's sentence may be
+   split into terms for matching. Shredding refusal sentences into the bare
+   words `tests` and `ci` cut a correct agent's score to a quarter and pushed it
+   from rank 2 to rank 24 — on a query that was literally its own job.
+
+Vendor and MCP names live in exactly one place, `host[].preferred`, and that
+field is display-only. Roughly 99.9% of machines have no MCP servers installed,
+so a package wired to its author's own Slack, Notion or Jira has to stay usable
+by everyone else: the matcher reads `host[].capability` ("open the page in a
+real browser and read what a user would see") and every requirement states
+`withoutIt`, what the method still does on a machine that lacks the facility.
+
+`agentlas.brief/1` is written from either side — `side: "offer"` is the
+package's resume, `side: "need"` is the requester's work order. The same form,
+so the two can be compared without a translation step. Its schema is
+`schemas/agentlas-brief.schema.json`.
+
 ### Hub and Agent Cloud are different scopes
 
 | Surface | What it contains | What it is for |
@@ -369,7 +424,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.73
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.74
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*

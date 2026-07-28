@@ -16,6 +16,7 @@ from typing import Any
 from . import content_guard
 from .auth import ensure_access_token, normalize_base_url
 from .networking.card_lint import lint_card
+from .upload_repair import classify_findings, repair_package
 from .runtime import (
     collect_package_files,
     is_local_experience_lineage_path,
@@ -101,6 +102,24 @@ def package_agent(
     career_card_findings = prepare_public_career_card_for_upload(base)
     files, file_count, findings = collect_upload_files(base)
     findings = career_card_findings + findings
+
+    # Repair before judging. Upload does not reject: a refusal hands the author a
+    # list of field names and lets them guess the house format, and the measured
+    # result of that policy is `capability-eval-plan.json` present on 4% of live
+    # releases and `mcp-policy.json` on 50% — both marked required since the
+    # contract was written. Anything derivable from what the package already says
+    # gets written here; only a defect that cannot be fixed without inventing a
+    # fact or deleting the author's content still blocks. Every repair is recorded
+    # and surfaced, exactly like the lines the content guard strips.
+    repairs = repair_package(base, findings + validate_routing_card_for_upload(base, visibility=visibility)["findings"]
+                             + validate_public_profile_for_upload(base, visibility))
+    if repairs:
+        # Re-read from disk: the repair rewrote the card and the manifest, so every
+        # finding derived from them has to be recomputed rather than filtered. A
+        # filter would leave a stale blocker that the package no longer has.
+        files, file_count, findings = collect_upload_files(base)
+        findings = prepare_public_career_card_for_upload(base) + findings
+
     if setup_wizard.get("mcpPolicyValidation", {}).get("status") != "valid":
         findings.append(
             _finding(
@@ -179,7 +198,17 @@ def package_agent(
     }
     if public_career_card:
         bundle["careerGraph"] = public_career_card
-    status = "blocked" if review["verdict"] == "fail" else "ready"
+    if repairs:
+        # What shipped is not what the author wrote. Say so where the author will
+        # see it, not only in a findings list nobody reads.
+        bundle["repairs"] = repairs
+    # ANY blocker still standing after the repair pass blocks. The classification
+    # only decides what the repair ATTEMPTS; it never excuses a defect the repair
+    # failed to fix. Letting "repairable" mean "ignorable" would publish a package
+    # nobody fixed while reporting it ready — the same silent-default failure this
+    # file's content guard exists to prevent.
+    remaining = [f for f in findings if f["severity"] == "blocker"]
+    status = "blocked" if remaining else "ready"
     return {
         "status": status,
         "folder": str(base),

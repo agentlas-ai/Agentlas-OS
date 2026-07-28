@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+## v1.1.74 - 2026-07-28
+
+Staffing over MCP stops shipping the filing cabinet. A host LLM now reads a
+decision menu, answers with a number, and Core resolves both against the
+session it already holds.
+
+- **Search returns a decision menu, not a dossier.** Audit-weight fields
+  (`qualificationEvidence`, `packageHash`, `contentDigest`,
+  `candidateProvenance`) stay in Core's session store instead of crossing the
+  wire; each candidate carries a `candidateOrdinal`, and evidence is summarised
+  as `qualificationEvidenceCount`. Measured 2026-07-28 on a live 10-candidate
+  slot: 41,216 → 22,512 bytes with the candidate-set digest unchanged, because
+  the digest is computed over the stored original. Only the fields named above
+  are removed, so a résumé schema that gains or renames a field passes through
+  untouched. `fullDossier: true` returns the original shape for a caller that
+  still wants it.
+- **A selection may name its candidate by ordinal.** Copying a 48-hex
+  `agentReleaseId` by hand is a transcription surface, not a contract: measured
+  2026-07-28, a local 30B model truncated one to 34 characters in 1 of 12
+  attempts, while ordinals were never malformed across 19 answers from two
+  models. `assignments[].candidateOrdinal` is resolved against the pinned menu
+  before validation; an out-of-range ordinal, or an ordinal that disagrees with
+  an `agentReleaseId` sent alongside it, is refused rather than silently
+  resolved. The canonical selection schema is unchanged — only the MCP tool
+  input relaxes — so Hub and Terminal contracts are untouched.
+- **The resolve-by-session branch had never once run.** `_call_tool` binds
+  `store` twice, making it a function-local that was unbound on that path, so
+  every attempt raised `UnboundLocalError` — not a `FederationSessionError`, so
+  the handler's own except never caught it and the call died. The escape from
+  echoing a ~461KB candidate set therefore stayed theoretical from the day it
+  was written. First live proof it works: validation accepted in 0.03s from a
+  3.6KB request.
+- **Selection validates by session id.** `candidateSet` and `federationResult`
+  are optional; omitting them resolves the pinned session, whose digest,
+  expiry, and lineage are re-verified exactly as before. A menu wide enough to
+  contain the right agent does not fit in one tool call, and the digest covers
+  the exact bytes so it cannot be trimmed — in the measured run the intended
+  pick ranked 4th, so a 3-candidate menu would have cut the answer out.
+- **Eligibility stops deciding by string equality over words.** Both sides of a
+  match are model-written prose, yet exact equality ran against a 23-word skill
+  list and an 11-word tool list. Measured 2026-07-28: `"api design"` matched but
+  `"designing REST APIs"` did not, Korean input could never match, and stating
+  any single requirement took a 3-candidate inventory to 0 across all eight
+  probes. Eligibility now decides only on facts this system owns.
 - **A schema bound violation now reports the bound.** `schema_max_length` and
   `schema_min_length` issues carried only a path, so a caller told its field
   was too long knew neither the ceiling nor by how much it had overshot — its

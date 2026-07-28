@@ -129,10 +129,15 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     ready_blockers: list[str] = []
     if trigger_total < 5:
         ready_blockers.append(f"needs >=5 trigger_examples (has {trigger_total})")
-    if trigger_counts.get("ko", 0) < 2 or trigger_counts.get("en", 0) < 2:
-        ready_blockers.append(
-            f"needs >=2 ko and >=2 en trigger_examples (ko={trigger_counts.get('ko', 0)}, en={trigger_counts.get('en', 0)})"
-        )
+    # No per-language minimum. Demanding >=2 Korean and >=2 English examples
+    # excluded every monolingual publisher, and it did not even buy routing
+    # quality: measured live on 2026-07-27, a Korean work order ranked an
+    # accessibility auditor first precisely BECAUSE it was one of the few cards
+    # carrying Korean triggers — the requirement rewarded having the sentences,
+    # not fitting the work. Cross-language recall is the multilingual embedding's
+    # job (see semantic-ranking-adapter.ts), which is why writing one set of
+    # sentences per language was abandoned there. The total count below still
+    # stands: a card with no examples has said nothing about when to call it.
     if anti_total < 3:
         ready_blockers.append(f"needs >=3 anti_triggers (has {anti_total})")
     if non_verb:

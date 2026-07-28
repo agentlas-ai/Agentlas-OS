@@ -1,0 +1,426 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/agentlas-brief.schema.json",
+  "title": "Agentlas Brief",
+  "description": "One form, written from either side. side=offer is a package describing the method it carries; side=need is a requester describing the job. Matching compares the two directly, so a field that cannot be written from both sides may be displayed but never matched on. Sentences stay sentences: no field here is tokenised, because shredding anti-trigger sentences into the bare words 'tests' and 'ci' is what pushed a correct agent from rank 2 to rank 24 on a query that was literally its own job.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "side",
+    "statement"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "agentlas.brief/1"
+    },
+    "side": {
+      "enum": [
+        "offer",
+        "need"
+      ],
+      "description": "offer = a package's resume. need = a requester's work order."
+    },
+    "ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "locale": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 16
+      },
+      "description": "Languages this brief is written in. Kept so a sentence index never has to guess."
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "description": "offer: what this method does, in the author's own sentence. need: the user's request, verbatim. Stored and indexed as a sentence. Never split into terms for matching."
+    },
+    "deliverables": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "effect"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "What the author or requester calls the result, in their own words. Free text forever - every domain noun in the catalogue lives here. Ranked, never filtered. The bound is deliberately loose: a first pass capped this at 200 and eight live packages failed instantly because they describe a deliverable in a full sentence ('Environment block, ranked statements with total and mean time, per-query index candidates...'), which is more useful than a noun, not less. A cap on a descriptive field is a guess about how other people write."
+          },
+          "effect": {
+            "enum": [
+              "describe",
+              "decide",
+              "compose",
+              "modify",
+              "transact",
+              "other"
+            ],
+            "description": "What happens in the requester's world. Derived from approval requirements on the offer side; read from the request on the need side. 'other' ranks at zero and never removes a candidate."
+          },
+          "shape": {
+            "enum": [
+              "ledger",
+              "verdict",
+              "dossier",
+              "computation",
+              "blueprint",
+              "rendition",
+              "other"
+            ],
+            "description": "Computed from the OUTPUT SCHEMA'S TOPOLOGY, never authored. An array of uniform records with a per-row judgement is a ledger; a single judgement with reasons is a verdict, and so on. 38% of live output schemas already land on 'other', so the escape is load-bearing, not decorative."
+          },
+          "format": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "description": "md, json, csv, pptx, hwpx, diff, ... Open list. A format nobody anticipated is still a format."
+          },
+          "contract": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Package-relative path to the JSON Schema this deliverable validates against."
+          },
+          "contractDigest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "rowVerdict": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "JSON Pointer to the per-row judgement property, when the shape has one."
+          },
+          "verdictValues": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Copied verbatim from the publisher's own schema enum. This is NOT a controlled vocabulary - there is nothing to match it against, and no value is ever rejected."
+          },
+          "example": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Path to one real output instance."
+          },
+          "exampleValid": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Did `example` validate against `contract` at build time? null = not run. Graded by a JSON Schema validator, never by a model."
+          },
+          "contains": {
+            "type": "array",
+            "maxItems": 40,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 400
+            },
+            "description": "What is actually inside the deliverable, as sentences: the output schema's property names and their descriptions. This is where a contract earns its place in matching. `label` alone is the schema title, which is usually just the package's own name again — measured: a request for a 'contract alignment log with a provision-level verdict' scored the correct DORA package 4th, because the phrase it was looking for is a PROPERTY inside that schema and the title said only 'DORA Compliance Control Room — output'. Extracted, never authored; ranked, never filtered."
+          }
+        }
+      }
+    },
+    "obligations": {
+      "type": "array",
+      "maxItems": 48,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "about",
+          "stage"
+        ],
+        "properties": {
+          "about": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "One sentence naming the fact that must exist. Free text, never normalised."
+          },
+          "stage": {
+            "enum": [
+              "request",
+              "intake",
+              "artifact",
+              "work"
+            ],
+            "description": "WHEN the fact comes to exist: knowable from the first sentence / answerable if asked / only inside a handed-over file / only after doing the work. This is a time axis, not a classification, so it has no escape member by design - there is no fifth moment. When undecidable the compiler must write 'intake', which becomes a question and never excludes. Only 'request' participates in unmet, and unmet is a deduction plus a printed list."
+          },
+          "form": {
+            "enum": [
+              "fact",
+              "document",
+              "location",
+              "corpus",
+              "access",
+              "none",
+              "other"
+            ],
+            "description": "What the requester physically hands over. Scores ZERO. It exists only to print a useful note ('this method wants a repo path and you have a PDF')."
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "pointer": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "JSON Pointer from this prose obligation into the machine intake schema property that carries it."
+          },
+          "fallback": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "The DEGRADATION policy when the fact is absent - what the method still does, and at what reduced confidence. Not a substitute tool."
+          }
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "performs": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "enum": [
+              "describe",
+              "decide",
+              "compose",
+              "modify",
+              "transact",
+              "other"
+            ]
+          },
+          "description": "Derived, not authored: the effect set this method actually reaches. An offer that declares nothing here can NEVER be excluded."
+        },
+        "gated": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "effect",
+              "act"
+            ],
+            "properties": {
+              "effect": {
+                "enum": [
+                  "describe",
+                  "decide",
+                  "compose",
+                  "modify",
+                  "transact",
+                  "other"
+                ]
+              },
+              "act": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "gate": {
+                "enum": [
+                  "per_call",
+                  "per_session",
+                  "other"
+                ]
+              }
+            }
+          },
+          "description": "Acts performed only after the host shows an approval prompt. Observed by the host runtime, which is why a model cannot claim it paused when it did not."
+        },
+        "refuses": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "act",
+              "why"
+            ],
+            "properties": {
+              "effect": {
+                "enum": [
+                  "describe",
+                  "decide",
+                  "compose",
+                  "modify",
+                  "transact",
+                  "other"
+                ]
+              },
+              "act": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "why": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
+          },
+          "description": "Categorical refusals, as sentences. Replaces anti_triggers, of which 29-37% were not refusals at all but neighbour routing ('that is X's job') - and it was tokenising those that cost a correct agent 22 rank positions. A neighbour's name cannot be expressed in this shape."
+        },
+        "forbid": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "enum": [
+              "describe",
+              "decide",
+              "compose",
+              "modify",
+              "transact"
+            ]
+          },
+          "description": "NEED SIDE ONLY, and the ONLY field in this whole form that can remove a candidate. Fires only against an offer's positively declared `performs`, and only when performs is a subset of forbid - i.e. everything the method does is forbidden. 'other' is deliberately not a member, so a publisher who fell through to 'other' is structurally unexcludable. This is the requester's own choice, not a vocabulary miss."
+        }
+      }
+    },
+    "grounding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claims": {
+          "enum": [
+            "per_claim_source",
+            "whole_output_source",
+            "none",
+            "other"
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "checked_at_required",
+            "point_in_time",
+            "not_applicable",
+            "other"
+          ]
+        },
+        "primaryOnly": {
+          "type": "boolean"
+        }
+      },
+      "description": "How strongly the output is tied to sources. Absent scores zero and is never inferred from neighbouring text."
+    },
+    "host": {
+      "type": "array",
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "capability",
+          "withoutIt"
+        ],
+        "properties": {
+          "capability": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400,
+            "description": "A vendor-free verb phrase for what the MACHINE must be able to do: 'open the page in a real browser and read what a user would see'. Never a product."
+          },
+          "permission": {
+            "enum": [
+              "read-only",
+              "network-read",
+              "browser-read",
+              "artifact-write",
+              "external-write",
+              "other"
+            ]
+          },
+          "preferred": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The one place a product name may live (playwright, astryx, notion, slack). DISPLAY ONLY - it must never reach a matching input. Roughly 99.9% of machines have no MCP servers installed, so a package wired to its author's own tools has to remain usable by everyone else."
+          },
+          "withoutIt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Required sibling of `preferred`. What this method does on a machine that lacks the facility. A requirement with no stated degradation is how a package becomes unusable to the 99.9%."
+          }
+        }
+      },
+      "description": "Preconditions of the METHOD on the machine, not capabilities of the agent. The runtime reads the web; the package does not. Ranked, never filtered."
+    },
+    "exam": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contractValid": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "escapeHatch": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "gateObserved": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "description": "Three checks, none of them model-judged: does the example validate against its schema (server validator), do matched-reachable enums carry an escape member (server static check), does a declared gate actually raise an approval prompt (host runtime). Under BYOM the only honest defence against marking your own homework is to make the model not the marker. Scores here gate PUBLICATION and never enter ranking - the moment a count enters ranking it gets padded, which is why 97 of 140 benchmark files are exactly 10 lines long."
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from"
+        ],
+        "properties": {
+          "from": {
+            "enum": [
+              "extracted",
+              "read",
+              "graded",
+              "absent"
+            ]
+          },
+          "file": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "method": {
+            "type": "string",
+            "maxLength": 300
+          }
+        }
+      },
+      "description": "Per-field record of where the value came from, keyed by JSON Pointer. 'absent' is a legal value scoring zero - an unstated capability is never inferred from adjacent prose. This is what keeps a generated brief honest about which half of it was actually read off the package."
+    }
+  }
+}

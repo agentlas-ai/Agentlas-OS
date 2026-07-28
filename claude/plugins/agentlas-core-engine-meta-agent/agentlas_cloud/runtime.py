@@ -102,8 +102,16 @@ LOCAL_EXPERIENCE_LINEAGE_PATH = ".agentlas/experience-relations.jsonl"
 #                            plus the tool-selection / domain-expert-synthesis /
 #                            prompt-performance docs that templates/AGENTS.md.tpl
 #                            tells the host govern the agent's behavior.
-#   benchmarks/**          - `benchmarks/routing-benchmark.jsonl` in
-#                            package-contract.json.
+#   benchmarks/**          - kept for packages that shipped a benchmark there
+#                            before the canonical path became
+#                            `.agentlas/routing-benchmarks.jsonl`, which the
+#                            `.agentlas/*.jsonl` entry below covers.
+#   contracts/**           - `contracts/intake.schema.json`,
+#                            `contracts/output.schema.json` and
+#                            `contracts/output.example.json` in
+#                            package-contract.json: what the method takes in and
+#                            hands back. A host that cannot read these cannot
+#                            check its own output against the contract it shipped.
 #   .agentlas/*.jsonl      - `.agentlas/memory-tickets.jsonl`, the durable-memory
 #                            handoff AGENTS.md.tpl points the host at; `*.json`
 #                            does not match a `.jsonl` suffix.
@@ -119,6 +127,7 @@ DEFAULT_ALLOW_READ = [
     ".agents/**",
     "docs/**",
     "benchmarks/**",
+    "contracts/**",
     ".agentlas/*.json",
     ".agentlas/*.jsonl",
 ]
