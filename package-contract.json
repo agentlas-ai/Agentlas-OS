@@ -96,6 +96,16 @@
       "description": "Skill registry (empty list allowed)"
     },
     {
+      "path": ".agentlas/memory-tickets.jsonl",
+      "modes": ["single", "team", "package"],
+      "required": true,
+      "format": "jsonl",
+      "fill": "static",
+      "template": "templates/memory-tickets.jsonl.tpl",
+      "schema": null,
+      "description": "Append-only candidate memory events ledger (empty on export); every builder emits it and the team gate rejects a package without it"
+    },
+    {
       "path": ".agentlas/capability-eval-plan.json",
       "modes": ["single", "team", "package"],
       "required": true,
@@ -147,6 +157,17 @@
       "schema": null,
       "minLines": 2,
       "description": "Sources consulted during build research"
+    },
+    {
+      "path": "agents/*/agent.md",
+      "modes": ["team"],
+      "required": true,
+      "format": "markdown",
+      "fill": "generate",
+      "template": null,
+      "schema": null,
+      "lint": "team-shape",
+      "description": "Worker roster: one folder per worker at agents/<role>/agent.md, plus an orchestrator/HQ and a company-blueprint topology that names them — a team with zero workers is not a team. Verified by the same team-shape rule scripts/verify-team-package.sh runs"
     },
     {
       "path": ".agentlas/company-blueprint.json",

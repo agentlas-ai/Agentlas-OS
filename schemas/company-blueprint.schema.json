@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Agentlas Company Blueprint",
   "type": "object",
-  "required": ["schemaVersion", "teamId", "name", "orchestrator", "nodes"],
+  "required": ["schemaVersion", "teamId", "name", "orchestrator", "topology", "nodes"],
   "properties": {
     "schemaVersion": { "type": "string" },
     "teamId": { "type": "string" },

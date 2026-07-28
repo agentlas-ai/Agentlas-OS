@@ -20,7 +20,14 @@ from ..experience_contracts import ContractValidationError, validate_mcp_policy
 from ..networking.bootstrap import atomic_write_json, read_json
 from ..networking.card_lint import VALID_STATUSES, VERB_CAPABILITY_RE, lint_card
 from ..networking.card_migrate import migrate_package
-from ..runtime import PackageFile, SECRET_PATTERNS, TEXT_FILE_ALLOW, build_manifest, package_hash
+from ..runtime import (
+    PackageFile,
+    SECRET_PATTERNS,
+    TEXT_FILE_ALLOW,
+    build_manifest,
+    is_value_free_credential_template,
+    package_hash,
+)
 
 
 LOCAL_PACKAGE_ADAPTER_VERSION = "agentlas.local-package-adapter.v1"
@@ -29,6 +36,13 @@ _TEAM_MARKERS = ("TEAM.md", "team.md")
 _IGNORED_DIRS = frozenset({".git", "node_modules", "__pycache__", ".pytest_cache"})
 _MAX_SOURCE_FILES = 4096
 _MAX_SOURCE_BYTES = 32 * 1024 * 1024
+# Built from the limits themselves so the numbers the user is told can never
+# drift from the numbers actually enforced.
+_SOURCE_LIMIT_REMEDIATION = (
+    f"A registrable root may snapshot at most {_MAX_SOURCE_FILES} text files and "
+    f"{_MAX_SOURCE_BYTES // (1024 * 1024)} MB in total. Register the package folder itself rather than a "
+    "parent workspace, or move build output and vendored dependencies out of it."
+)
 _ALLOWED_HIDDEN_ROOTS = frozenset({".agentlas", ".agents", ".claude", ".codex", ".gemini"})
 _ALLOWED_EXTENSIONLESS = frozenset(
     {*_AGENT_MARKERS, *_TEAM_MARKERS, "README", "LICENSE", "NOTICE"}
@@ -61,9 +75,52 @@ _SECURE_DIR_FD_AVAILABLE = bool(
 
 
 class PackageAdaptationError(ValueError):
-    def __init__(self, code: str, message: str):
+    """One refusal carrying the code, the human reason, and how to fix it.
+
+    ``code`` is the machine reason a projection consumer switches on; the
+    message has always been written here but only the code reached the user,
+    so `workforce local-register` refused with `source_missing` and a digest
+    and never said the folder does not exist. Remediation belongs at the raise
+    site because only this code knows what would make the source acceptable —
+    a table of remediation strings kept elsewhere drifts away from the check.
+    Same contract the sibling `agentlas-cloud package` surface already honors
+    per finding: message plus optional remediation.
+    """
+
+    def __init__(self, code: str, message: str, remediation: str | None = None):
         self.code = code
+        self.remediation = remediation
         super().__init__(message)
+
+
+def refusal_fields(error: BaseException) -> dict[str, str]:
+    """Forward the words a coded refusal already wrote, beside its code.
+
+    `_quarantine` was not the only emitter that reduced one of these errors to
+    `error.code`. Every generic workforce handler does `getattr(exc, "code",
+    str(exc))`, which prefers the internal enum and discards the sentence the
+    raise site wrote — so the same `source_missing` reaches the CLI and the MCP
+    host as a bare token by a second route. Adding fields is safe for consumers
+    that switch on the code, so emitters keep `error` and gain the words.
+
+    Closed wire enumerations (`WorkforceSourceError`, `ContextMapError`)
+    construct their message *as* the code; they carry no extra sentence, so
+    this returns nothing for them rather than echoing the code twice. Errors
+    without a code (plain `OSError`) already surface `str(exc)` as the error
+    itself and are likewise left alone.
+    """
+
+    code = getattr(error, "code", "")
+    if not isinstance(code, str) or not code:
+        return {}
+    fields: dict[str, str] = {}
+    message = str(error)
+    if message and message != code:
+        fields["message"] = message
+    remediation = getattr(error, "remediation", None)
+    if isinstance(remediation, str) and remediation:
+        fields["remediation"] = remediation
+    return fields
 
 
 @dataclass(frozen=True)
@@ -132,6 +189,7 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
         raise PackageAdaptationError(
             "source_secure_snapshot_unavailable",
             "this platform cannot safely snapshot a mutable local package",
+            "This OS/Python build lacks the directory-handle APIs the safe snapshot needs, so no local root can be registered here. Use a host where they are available, or borrow the package from Cloud/Hub instead of registering it locally.",
         )
     absolute_root = Path(os.path.abspath(os.fspath(root.expanduser())))
     root_fd = _open_absolute_directory(absolute_root)
@@ -176,24 +234,45 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
         # each child directory recursively.
         for name in regular_files:
             parts = (*relative_parts, name)
+            relative_path = "/".join(parts)
             lowered = name.lower()
-            if (
+            suffix = Path(name).suffix
+            # The Output Contract orders the packager to emit these; refusing
+            # them refuses the OS's own build product. They stay under the
+            # SECRET_PATTERNS content scan below, which is the check that
+            # actually reads values.
+            contract_template = is_value_free_credential_template(relative_path)
+            if not contract_template and (
                 lowered in _SENSITIVE_NAMES
                 or lowered.startswith(".env.")
-                or _SENSITIVE_NAME_RE.search(lowered)
+                # A name rule cannot tell a credential store from prose about
+                # one. Markdown in this OS is documentation by construction —
+                # ARCHITECTURE.md lists `docs/local-credential-store.md` in the
+                # canonical core — so for Markdown the content scan decides.
+                or (_SENSITIVE_NAME_RE.search(lowered) and suffix.lower() != ".md")
             ):
                 raise PackageAdaptationError(
                     "source_sensitive_file_forbidden",
                     "package contains a credential-like file",
+                    "Refused at "
+                    + relative_path
+                    + ". Move credential files out of the package root (or under an ignored directory) and register again."
+                    + " The value-free templates the Output Contract asks for — .env.example, signing/README.md,"
+                    + " credentials/README.md — are accepted as-is.",
                 )
-            suffix = Path(name).suffix
-            if (not suffix and name not in _ALLOWED_EXTENSIONLESS) or (
-                suffix and suffix not in TEXT_FILE_ALLOW
+            # A contract template keeps a suffix the text allowlist does not
+            # know (`.example`). Dropping it here would register a package
+            # silently missing the file that tells a borrower which keys to set.
+            if not contract_template and (
+                (not suffix and name not in _ALLOWED_EXTENSIONLESS)
+                or (suffix and suffix not in TEXT_FILE_ALLOW)
             ):
                 continue
             if read_files >= _MAX_SOURCE_FILES:
                 raise PackageAdaptationError(
-                    "source_too_large", "package exceeds local import limits"
+                    "source_too_large",
+                    "package exceeds local import limits",
+                    _SOURCE_LIMIT_REMEDIATION,
                 )
             read_files += 1
             raw = _bounded_regular_file_bytes_at(
@@ -212,6 +291,9 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
                 raise PackageAdaptationError(
                     "source_secret_material_forbidden",
                     "package text contains secret-like material",
+                    "Refused at "
+                    + "/".join(parts)
+                    + ". Replace the literal key/token with a placeholder or an env-var reference and register again.",
                 )
             files.append(PackageFile("/".join(parts), text))
 
@@ -271,10 +353,13 @@ def _open_directory_at(parent_fd: int, name: str, *, root_lookup: bool = False) 
             raise PackageAdaptationError(
                 "source_symlink_forbidden",
                 "package root and its path ancestors cannot be symlinks",
+                "Register the real folder this path resolves to instead of a symlinked path.",
             ) from exc
         if root_lookup and exc.errno == errno.ENOENT:
             raise PackageAdaptationError(
-                "source_missing", "local package root does not exist"
+                "source_missing",
+                "local package root does not exist",
+                "Check the path for a typo and register a folder that exists on this machine.",
             ) from exc
         raise PackageAdaptationError(
             "source_changed_during_snapshot",
@@ -283,7 +368,11 @@ def _open_directory_at(parent_fd: int, name: str, *, root_lookup: bool = False) 
     metadata = os.fstat(descriptor)
     if not stat.S_ISDIR(metadata.st_mode):
         os.close(descriptor)
-        raise PackageAdaptationError("source_read_failed", "package path is not a directory")
+        raise PackageAdaptationError(
+            "source_read_failed",
+            "package path is not a directory",
+            "Register the folder that contains the agent or team, not a file inside it.",
+        )
     return descriptor
 
 
@@ -291,7 +380,11 @@ def _bounded_regular_file_bytes_at(directory_fd: int, name: str, *, remaining: i
     """Read one regular file through a no-follow openat within the budget."""
 
     if remaining < 0:
-        raise PackageAdaptationError("source_too_large", "package exceeds local import limits")
+        raise PackageAdaptationError(
+            "source_too_large",
+            "package exceeds local import limits",
+            _SOURCE_LIMIT_REMEDIATION,
+        )
     flags = (
         os.O_RDONLY
         | getattr(os, "O_CLOEXEC", 0)
@@ -310,7 +403,11 @@ def _bounded_regular_file_bytes_at(directory_fd: int, name: str, *, remaining: i
         if not stat.S_ISREG(metadata.st_mode):
             raise PackageAdaptationError("source_read_failed", "package file is not regular")
         if metadata.st_size > remaining:
-            raise PackageAdaptationError("source_too_large", "package exceeds local import limits")
+            raise PackageAdaptationError(
+                "source_too_large",
+                "package exceeds local import limits",
+                _SOURCE_LIMIT_REMEDIATION,
+            )
         chunks: list[bytes] = []
         observed = 0
         while True:
@@ -319,7 +416,11 @@ def _bounded_regular_file_bytes_at(directory_fd: int, name: str, *, remaining: i
                 break
             observed += len(chunk)
             if observed > remaining:
-                raise PackageAdaptationError("source_too_large", "package exceeds local import limits")
+                raise PackageAdaptationError(
+                    "source_too_large",
+                    "package exceeds local import limits",
+                    _SOURCE_LIMIT_REMEDIATION,
+                )
             chunks.append(chunk)
         return b"".join(chunks)
     except OSError as exc:
@@ -428,9 +529,17 @@ def _safe_entrypoint(value: str, files: Mapping[str, str]) -> str:
     entrypoint = value or "AGENTS.md"
     entry_path = Path(entrypoint)
     if entry_path.is_absolute() or ".." in entry_path.parts or "\\" in entrypoint:
-        raise PackageAdaptationError("routing_card_invalid", "agent entrypoint must be root-relative")
+        raise PackageAdaptationError(
+            "routing_card_invalid",
+            "agent entrypoint must be root-relative",
+            f"The entrypoint {entrypoint!r} must be a forward-slash path inside the package root, with no '..' and no absolute prefix.",
+        )
     if entry_path.as_posix() not in files:
-        raise PackageAdaptationError("routing_card_invalid", "agent entrypoint is not in the safe snapshot")
+        raise PackageAdaptationError(
+            "routing_card_invalid",
+            "agent entrypoint is not in the safe snapshot",
+            f"No readable file {entry_path.as_posix()!r} exists in the package root. Point the entrypoint at a committed text file, not a generated or ignored one.",
+        )
     return entry_path.as_posix()
 
 
@@ -445,6 +554,70 @@ def _snapshot_worker_names(files: Mapping[str, str]) -> tuple[str, ...]:
     return tuple(sorted(name for name in workers if name))
 
 
+ROUTING_CARD_SCHEMA_VERSION = "routing-card/2.0"
+
+
+def _routing_card_problem(
+    card: Mapping[str, Any], report: Mapping[str, Any]
+) -> tuple[str, str] | None:
+    """Name the failing field, or None when the card is acceptable.
+
+    WHY: these checks used to be one `or`-chain raising a single
+    "routing card failed structural validation", so `workforce local-register`
+    answered a wrong schemaVersion with the bare code `routing_card_invalid` —
+    no field, no expected value, nothing the user could act on. The value the
+    check compares against is the only place that knows what would make the card
+    acceptable, so each branch states it here (same contract _safe_entrypoint
+    below already honors).
+    """
+    schema_version = card.get("schemaVersion")
+    if schema_version != ROUTING_CARD_SCHEMA_VERSION:
+        return (
+            f"routing card schemaVersion must be {ROUTING_CARD_SCHEMA_VERSION!r} "
+            f"(found {schema_version!r})",
+            f"Set \"schemaVersion\": \"{ROUTING_CARD_SCHEMA_VERSION}\" in "
+            ".agentlas/routing-card.json, or rebuild an older card with "
+            "`hephaestus cards migrate <package> --tier local --overwrite`.",
+        )
+    if card.get("type") not in {"agent", "team", "plugin"}:
+        return (
+            f"routing card type must be agent, team, or plugin (found {card.get('type')!r})",
+            'Set "type" in .agentlas/routing-card.json to the entity this package ships.',
+        )
+    if card.get("routing_status") not in VALID_STATUSES:
+        return (
+            f"routing card routing_status must be one of {', '.join(VALID_STATUSES)} "
+            f"(found {card.get('routing_status')!r})",
+            'Set "routing_status" in .agentlas/routing-card.json — a new package starts at "draft".',
+        )
+    capabilities = card.get("capabilities")
+    if not isinstance(capabilities, list) or not capabilities:
+        return (
+            "routing card capabilities must be a non-empty array",
+            'List what the package does as verb_object entries, e.g. "capabilities": '
+            '["summarize_release_notes"].',
+        )
+    malformed = [
+        item
+        for item in capabilities
+        if not isinstance(item, str) or not VERB_CAPABILITY_RE.fullmatch(item)
+    ]
+    if malformed:
+        return (
+            f"routing card capabilities must be verb_object snake_case: {malformed[:3]}",
+            "Rewrite each capability as lowercase verb_object with at least two words, "
+            'e.g. "draft_team_digest".',
+        )
+    lint_errors = list(report.get("errors") or [])
+    if lint_errors:
+        return (
+            "routing card failed lint: " + "; ".join(str(err) for err in lint_errors[:3]),
+            "Fix the listed fields in .agentlas/routing-card.json, then run "
+            "`hephaestus cards lint <package>` until it reports no errors.",
+        )
+    return None
+
+
 def inspect_package(source_root: Path | str) -> PackageInspection:
     # Do not resolve again here. LocalWorkforceRegistry already canonicalizes
     # the explicit root for its scope check; a second resolve would follow a
@@ -457,17 +630,9 @@ def inspect_package(source_root: Path | str) -> PackageInspection:
     if ".agentlas/routing-card.json" in snapshot:
         card = _snapshot_json(snapshot, ".agentlas/routing-card.json")
         report = lint_card(card)
-        capabilities = card.get("capabilities")
-        if (
-            card.get("schemaVersion") != "routing-card/2.0"
-            or card.get("type") not in {"agent", "team", "plugin"}
-            or card.get("routing_status") not in VALID_STATUSES
-            or not isinstance(capabilities, list)
-            or not capabilities
-            or any(not isinstance(item, str) or not VERB_CAPABILITY_RE.fullmatch(item) for item in capabilities)
-            or report["errors"]
-        ):
-            raise PackageAdaptationError("routing_card_invalid", "routing card failed structural validation")
+        problem = _routing_card_problem(card, report)
+        if problem:
+            raise PackageAdaptationError("routing_card_invalid", problem[0], problem[1])
         name = str(card.get("name") or root.name)
         manifest = _snapshot_json(snapshot, "agentlas.json") or _snapshot_json(snapshot, "manifest.json")
         if not manifest:
@@ -505,9 +670,26 @@ def inspect_package(source_root: Path | str) -> PackageInspection:
         if Path(relative_path).name == "SKILL.md"
     )
     if len(root_agents) > 1:
-        raise PackageAdaptationError("source_ambiguous", "multiple root agent entrypoints require a routing card")
+        raise PackageAdaptationError(
+            "source_ambiguous",
+            "multiple root agent entrypoints require a routing card",
+            "This root has "
+            + ", ".join(root_agents)
+            + ". Add .agentlas/routing-card.json naming the one entrypoint, or keep a single root agent file.",
+        )
     if not root_agents and not root_teams and not skill_files:
-        raise PackageAdaptationError("source_ineligible", "no agent, team, or skill marker exists")
+        # Name the exact markers this check looks for, derived from the same
+        # tuples it tests, so the eligibility rule cannot drift from the words
+        # the user is given.
+        raise PackageAdaptationError(
+            "source_ineligible",
+            "no agent, team, or skill marker exists",
+            "A registrable root needs one of: "
+            + ", ".join(_AGENT_MARKERS)
+            + " (agent), "
+            + ", ".join(_TEAM_MARKERS)
+            + " (team), or any SKILL.md (skill). Point at the package folder that holds one of these.",
+        )
     marker = (root_teams or root_agents or skill_files)[0]
     text = snapshot[marker]
     name, summary = _markdown_identity(text, root.name)
@@ -539,7 +721,11 @@ def _snapshot(files: tuple[PackageFile, ...], destination: Path) -> None:
     seen: set[str] = set()
     total = 0
     if len(files) > _MAX_SOURCE_FILES:
-        raise PackageAdaptationError("source_too_large", "package exceeds local import limits")
+        raise PackageAdaptationError(
+            "source_too_large",
+            "package exceeds local import limits",
+            _SOURCE_LIMIT_REMEDIATION,
+        )
     for item in files:
         if not isinstance(item.path, str) or not isinstance(item.content, str):
             raise PackageAdaptationError(
@@ -567,7 +753,11 @@ def _snapshot(files: tuple[PackageFile, ...], destination: Path) -> None:
         seen.add(portable_identity)
         total += len(item.content.encode("utf-8"))
         if total > _MAX_SOURCE_BYTES:
-            raise PackageAdaptationError("source_too_large", "package exceeds local import limits")
+            raise PackageAdaptationError(
+                "source_too_large",
+                "package exceeds local import limits",
+                _SOURCE_LIMIT_REMEDIATION,
+            )
         validated.append((parts, item.content))
 
     destination.mkdir(parents=True, exist_ok=False)

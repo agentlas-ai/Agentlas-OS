@@ -68,6 +68,7 @@ required_files=(
   "hooks/claude/hooks.json"
   "hooks/codex/hooks.json"
   "scripts/verify-team-package.sh"
+  "scripts/verify-contract-templates.sh"
   "scripts/verify-mcp-surface.sh"
   "scripts/verify-builder-quality-contract.sh"
   "scripts/verify-experience-assets-contract.sh"
@@ -620,6 +621,11 @@ scripts/verify-experience-assets-contract.sh
 scripts/verify-gateway-channel-contract.sh
 scripts/verify-ontology-runtime.sh
 scripts/sync-adapters.sh --check
+# The routing-card gate below lints the cards already checked into this repo. It
+# cannot see the templates every built package is scaffolded from, which is how a
+# template pinned to the wrong schemaVersion shipped green here and was rejected
+# at borrow. Check the templates against the schemas the contract binds them to.
+scripts/verify-contract-templates.sh
 scripts/verify-mcp-surface.sh
 examples/ontology-proposal-agent/verify.sh
 

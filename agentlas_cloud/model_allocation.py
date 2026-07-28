@@ -17,7 +17,14 @@ from typing import Any, Mapping
 
 SCHEMA_VERSION = "agentlas.model-allocation-decision.v1"
 TIERS = ("economy", "balanced", "frontier")
+# 알려진 값은 정책 상한과 비교할 "랭크 폴백"으로만 쓴다 — "유효한가" 게이트로 쓰지 않는다.
+# 2026-07-28 라이브 실측: codex debug models가 gpt-5.6-sol에서 "ultra"(자동 위임) 리즌
+# 레벨을 실제로 광고했다. 이 튜플로 게이트를 걸면 provider가 이미 출시한 값을 우리가
+# 스키마 검증 단계에서 조용히 거절한다(전체 decision이 invalid_effort로 폐기됨). 새 값이
+# 나올 때마다 이 튜플을 고치는 대신, 세션 인벤토리가 보고하는 모델 자체 순서(=능력 랭크,
+# provider 계약)를 신뢰하는 쪽으로 옮겼다 — 아래 normalize_effort/_bounded_effort 참고.
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+EFFORT_TOKEN_RE = re.compile(r"^[a-z][a-z0-9-]{0,23}$")
 PHASES = ("plan", "execute", "verify", "synthesize", "route", "clarify")
 MODEL_ROLES = ("orchestrator", "worker")
 ORCHESTRATOR_PHASES = frozenset({"plan", "verify", "synthesize", "route", "clarify"})
@@ -41,6 +48,7 @@ INVOCATION_STAGE_PHASES = {
     "clarify": "clarify",
 }
 TIER_RANK = {tier: index for index, tier in enumerate(TIERS)}
+# 알려진 값의 폴백 랭크만 — 미지의 값을 이 표로 거절하지 않는다(_bounded_effort 참고).
 EFFORT_RANK = {effort: index for index, effort in enumerate(EFFORTS)}
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$")
 HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -118,8 +126,11 @@ def normalize_tier(value: Any) -> str | None:
 
 
 def normalize_effort(value: Any) -> str | None:
+    # 신택스만 검증한다 — 화이트리스트 존재는 게이트로 쓰지 않는다(위 EFFORTS 주석).
+    # 이 함수는 parent-AI가 요청한 값과, 세션 인벤토리가 보고한 모델 자체 지원 목록
+    # 양쪽에 다 쓰인다 — 열어두면 두 경로 모두에서 새 값이 조용히 안 드롭된다.
     normalized = _text(value).lower()
-    return normalized if normalized in EFFORTS else None
+    return normalized if EFFORT_TOKEN_RE.fullmatch(normalized) else None
 
 
 def normalize_model_role(value: Any) -> str | None:
@@ -387,14 +398,70 @@ def _normalize_inventory(raw_inventory: list[Any] | None) -> list[dict[str, Any]
     return inventory
 
 
+def _effort_rank(value: str, supported: list[str]) -> float:
+    """Capability rank for one effort value against one model's own live list.
+
+    The model's own advertised order is the authoritative rank (provider
+    contract: position 0..n-1 is ascending capability — verified live against
+    Codex's `supported_reasoning_levels`, which listed low/medium/high/xhigh/
+    max/ultra in that exact order).
+
+    A value the model didn't advertise but that we still recognize by name
+    (e.g. "medium" requested against a model that only lists low/xhigh/max)
+    is inserted at its correct relative position among supported's own
+    known-rankable entries — a half-step after the last one whose known
+    rank is <= its own. Always ranking it "after everything" (the earlier,
+    buggy scheme) silently escalated a mid-range request past every
+    higher tier the model actually offers, since none of them scored above
+    a threshold that was itself always the highest.
+
+    A value neither advertised nor recognized has no provable rank, so it
+    ranks last of all — it can never look "low enough" to pass a ceiling
+    it wasn't proven to satisfy.
+    """
+    if value in supported:
+        return float(supported.index(value))
+    known = EFFORT_RANK.get(value)
+    if known is None:
+        return float("inf")
+    insert_after = -1
+    for index, item in enumerate(supported):
+        item_known = EFFORT_RANK.get(item)
+        if item_known is not None and item_known <= known:
+            insert_after = index
+    return insert_after + 0.5
+
+
+def _known_effort_rank(value: str) -> int:
+    """Pure global rank, independent of any one model's advertised subset.
+
+    max_effort is an operator-configured policy ceiling in Agentlas's own
+    vocabulary, not a specific model's supported list. Ranking it via
+    _effort_rank(value, supported) breaks when supported is a narrow subset:
+    e.g. supported=["max"], max_effort="high" would rank "high" *after*
+    "max" (len(supported) + known-index offset), inverting the ceiling so it
+    never clamps. Compare both sides against the known table only instead.
+    """
+    return EFFORT_RANK.get(value, len(EFFORT_RANK))
+
+
 def _bounded_effort(requested: str, supported: list[str], max_effort: str) -> tuple[str, bool]:
-    ceiling = EFFORT_RANK[max_effort]
-    requested_rank = min(EFFORT_RANK[requested], ceiling)
-    eligible = [item for item in supported if EFFORT_RANK[item] <= requested_rank]
+    if not supported:
+        return requested, False
+    ceiling_rank = _known_effort_rank(max_effort)
+    requested_rank = _effort_rank(requested, supported)
+    eligible = [
+        item
+        for item in supported
+        if _effort_rank(item, supported) <= requested_rank and _known_effort_rank(item) <= ceiling_rank
+    ]
     if eligible:
-        resolved = max(eligible, key=lambda item: EFFORT_RANK[item])
+        resolved = max(eligible, key=lambda item: _effort_rank(item, supported))
     else:
-        resolved = min(supported, key=lambda item: EFFORT_RANK[item])
+        # 요청/상한 어느 쪽과도 동시에 맞는 값이 없다 — 모델이 제공하는 가장 낮은
+        # 값으로 최대한 보수적으로 내려간다(원래 폴백과 동일, 상한을 우선시해
+        # 요청보다 위로 에스컬레이션하지 않는다).
+        resolved = min(supported, key=lambda item: _effort_rank(item, supported))
     return resolved, resolved != requested
 
 

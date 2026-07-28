@@ -524,6 +524,9 @@ WORKFORCE_COVERAGE_GAP_CODES = (
     # A required term that no live profile declares cannot discriminate — it can
     # only empty the menu. Such a term is demoted to a ranking signal and
     # reported here, so a stated contract is never silently unenforced.
+    # Core must know every code the Hub can emit or it discards the whole
+    # candidate set; community joined the ranked-not-enforced set on 2026-07-28.
+    "gap:requirement-vocabulary-unsupported:community",
     "gap:requirement-vocabulary-unsupported:role",
     "gap:requirement-vocabulary-unsupported:skill",
     "gap:requirement-vocabulary-unsupported:knowledge",

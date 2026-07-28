@@ -125,6 +125,7 @@
         "gap:excluded:missing-required-community",
         "gap:excluded:required-skill-evidence-below-minimum",
         "gap:excluded:required-tool-evidence-below-minimum",
+        "gap:requirement-vocabulary-unsupported:community",
         "gap:requirement-vocabulary-unsupported:role",
         "gap:requirement-vocabulary-unsupported:skill",
         "gap:requirement-vocabulary-unsupported:knowledge",
@@ -139,7 +140,7 @@
     },
     "coverageGaps": {
       "type": "array",
-      "maxItems": 33,
+      "maxItems": 34,
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/coverageGap"

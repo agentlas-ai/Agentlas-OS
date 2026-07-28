@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from ..experience_privacy import scan_public_text, secret_like_kinds
+from ..experience_privacy import personal_identifier_kinds, secret_like_kinds
 from .contracts import (
     WORKFORCE_SELECTION_REASON_CODES,
     canonical_digest,
@@ -43,12 +43,38 @@ def _add_unique(issues: list[dict[str, str]], path: str, code: str) -> None:
         issues.append(issue)
 
 
+# SELF-PROVING FORMS ONLY — must stay identical to the Hub's
+# `agentlas/AgentsAtlas/app/src/lib/workforce/privacy.ts` pattern set.
+#
+# A work order is task text the user wrote about the work they want done, and this
+# boundary is non-repairing: it returns mutation "none" and never names the phrase to
+# change.  So every class that GUESSES from natural-language shape killed real requests
+# that the Hub itself accepts — "token: optional in the retry header" read as
+# credential_assignment, "user id: required on every request" as labeled_identifier, an
+# on-call number as phone, a web route as local_path.  Because index.py runs this as the
+# first operation at the search boundary, such a run dies before a byte leaves the host,
+# with nothing to tell the caller the Hub would have taken it.
+#
+# What stays is what can only be one thing: an issuer-prefixed provider token, a PEM
+# header, a Bearer/JWT blob, credentials embedded in a URL, an email address.  Those hold
+# with no model connected and cannot collide with a sentence about retry contracts.
+# Deliberately gone (single-sourced regexes still live in experience_privacy for the
+# accrual boundary, which has a judge): local-path, labeled-identifier, UUID, IP and phone
+# shape inference, and keyword-adjacency credential matching.
+_SELF_PROVING_IDENTIFIER_KINDS = frozenset({"email"})
+_SELF_PROVING_SECRET_KINDS = frozenset(
+    {"provider_token", "private_key", "bearer_token", "jwt", "credential_url"}
+)
+
+
 def _scan_contract_strings(value: Any, kind: str, issues: list[dict[str, str]]) -> None:
     for path, text in iter_workforce_contract_strings(value, kind):
-        for private_kind in scan_public_text(text):
-            _add_unique(issues, path, f"hub_private_{private_kind}")
+        for private_kind in personal_identifier_kinds(text):
+            if private_kind in _SELF_PROVING_IDENTIFIER_KINDS:
+                _add_unique(issues, path, f"hub_private_{private_kind}")
         for secret_kind in secret_like_kinds(text):
-            _add_unique(issues, path, f"hub_secret_{secret_kind}")
+            if secret_kind in _SELF_PROVING_SECRET_KINDS:
+                _add_unique(issues, path, f"hub_secret_{secret_kind}")
 
 
 def validate_hub_work_order_boundary(work_order: Mapping[str, Any]) -> dict[str, Any]:

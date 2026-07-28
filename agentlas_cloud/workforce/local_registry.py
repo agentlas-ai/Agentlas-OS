@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
 
 from ..networking.bootstrap import atomic_write_json, networking_home, read_json
-from ..networking.card_lint import effective_status
+from ..networking.card_lint import effective_status, routing_ineligibility_reasons
 from .compiler import compile_workforce_profile
 from .contracts import canonical_digest, verify_profile_integrity
 from .execution import WORKFORCE_EXECUTION_GRAPH_SCHEMA
@@ -187,13 +187,21 @@ class LocalWorkforceRegistry:
         root = Path(source_root).expanduser().resolve()
         filesystem_root = Path(root.anchor).resolve()
         if root in {filesystem_root, self.user_home}:
-            raise PackageAdaptationError("source_scope_forbidden", "register a specific package root")
+            raise PackageAdaptationError(
+                "source_scope_forbidden",
+                "register a specific package root",
+                "A filesystem root or your home directory is too broad to import. Register the folder that holds the agent or team itself.",
+            )
         try:
             self.home.relative_to(root)
         except ValueError:
             pass
         else:
-            raise PackageAdaptationError("source_scope_forbidden", "package cannot contain its registry")
+            raise PackageAdaptationError(
+                "source_scope_forbidden",
+                "package cannot contain its registry",
+                f"This root contains the local Workforce registry at {self.home}. Register a folder that does not enclose it.",
+            )
         return root
 
     def _definition_path(self, definition_id: str) -> Path:
@@ -258,6 +266,18 @@ class LocalWorkforceRegistry:
         return event
 
     def _quarantine(self, source: Path | str, error: PackageAdaptationError) -> dict[str, Any]:
+        """Refuse in words the caller can act on, not just a code and a digest.
+
+        Two different surfaces are built here and they have different audiences.
+        The projection event is replicated outward, so it stays digest-only: a
+        local absolute path is the user's private data and must not leak into
+        the outbox. The returned object is the answer to the person who just
+        typed the path, so it echoes that path back and carries the human
+        message the raise site already wrote plus its remediation. Returning
+        only `error.code` dropped both and left a path typo reading as
+        "quarantined / source_missing / sha256:…".
+        """
+
         source_ref = str(source)
         payload = {
             "reasonCode": error.code,
@@ -265,12 +285,71 @@ class LocalWorkforceRegistry:
         }
         event = self._publish_event("quarantine", payload)
         atomic_write_json(self.home / "quarantine" / f"{event['cursor']:020d}.json", event)
-        return {
+        refusal = {
             "schemaVersion": LOCAL_REGISTRATION_SCHEMA,
             "status": "quarantined",
             "reasonCode": error.code,
+            "sourceRoot": source_ref,
+            "message": str(error),
             "projectionEvent": event,
         }
+        if error.remediation:
+            refusal["remediation"] = error.remediation
+        return refusal
+
+    def _routing_verdict(self, release_dir: Path) -> dict[str, Any]:
+        """Read back the routing verdict a stored release was compiled with.
+
+        The verdict lives in the release profile, which is what staffing reads,
+        so every other surface derives it from there instead of keeping a second
+        copy that can drift. Registries written before the demotion was recorded
+        have `routingEligible: false` with nothing beside it; the OS-owned
+        snapshot next to the profile is the exact package that was compiled, so
+        the reason is re-derived from it rather than left blank.
+        """
+
+        profile = read_json(release_dir / "profile.json", default=None)
+        operational = profile.get("operational") if isinstance(profile, Mapping) else None
+        if not isinstance(operational, Mapping):
+            return {}
+        verdict: dict[str, Any] = {"routingEligible": bool(operational.get("routingEligible"))}
+        if verdict["routingEligible"]:
+            return verdict
+        card = read_json(release_dir / "package" / ".agentlas" / "routing-card.json", default=None)
+        reasons = [str(item) for item in operational.get("unavailableReasons") or []]
+        if not reasons and isinstance(card, dict):
+            reasons = routing_ineligibility_reasons(card)
+        if isinstance(card, dict):
+            verdict["routingStatus"] = effective_status(card)
+        if reasons:
+            verdict["routingStatusReason"] = "; ".join(reasons)
+        return verdict
+
+    def _replay(
+        self,
+        release_dir: Path,
+        registration: Mapping[str, Any],
+        source_root: Path,
+    ) -> dict[str, Any]:
+        """Replay a cached registration without replaying a silent demotion.
+
+        Re-registering an unchanged package short-circuits to the stored
+        receipt, so this is the second way a caller reaches "active but never
+        staffed": a registry written before the demotion was recorded carries
+        no routing verdict at all, and replaying it verbatim prints the same
+        bare success the fresh path no longer prints.
+        """
+
+        replay = {**dict(registration), "status": "active", "idempotent": True}
+        if "routingEligible" in replay:
+            return replay
+        replay.update(self._routing_verdict(release_dir))
+        if replay.get("routingStatusReason"):
+            replay["remediation"] = (
+                f"Registered, but /hep-local will not staff it yet. Fix the above in "
+                f"{source_root}/.agentlas/routing-card.json, then run `workforce local-register` again."
+            )
+        return replay
 
     def _identity(
         self,
@@ -391,7 +470,7 @@ class LocalWorkforceRegistry:
                         )
                         current_registration = read_json(current_dir / "registration.json", default={}) or {}
                         if current_registration.get("packageHash") == inspection.package_hash:
-                            return {**dict(current_registration), "status": "active", "idempotent": True}
+                            return self._replay(current_dir, current_registration, root)
                         if verified_identity is None:
                             raise PackageAdaptationError(
                                 "verified_identity_required",
@@ -402,7 +481,11 @@ class LocalWorkforceRegistry:
                         release_version = inspection.package_hash.removeprefix("sha256:")[:12]
                 existing = read_json(self._definition_path(definition_id), default=None)
                 if isinstance(existing, Mapping) and existing.get("sourceRoot") != str(root) and existing.get("status") == "active":
-                    raise PackageAdaptationError("identity_conflict", "another active root claims this definition")
+                    raise PackageAdaptationError(
+                        "identity_conflict",
+                        "another active root claims this definition",
+                        f"Another registered folder already owns this identity: {existing.get('sourceRoot')}. Remove it with `workforce local-remove`, or give this copy its own id in .agentlas/routing-card.json.",
+                    )
 
                 final_dir = self._release_dir(definition_id, release_id)
                 if final_dir.is_dir():
@@ -410,7 +493,7 @@ class LocalWorkforceRegistry:
                     profile = read_json(final_dir / "profile.json", default=None)
                     if isinstance(registration, Mapping) and isinstance(profile, Mapping):
                         verify_profile_integrity(profile)
-                        return {**dict(registration), "status": "active", "idempotent": True}
+                        return self._replay(final_dir, registration, root)
 
                 stage = Path(tempfile.mkdtemp(prefix="import-", dir=str(self.home / "staging")))
                 package_stage = stage / "package"
@@ -427,6 +510,19 @@ class LocalWorkforceRegistry:
                         and materialized.team_graph.get("authoritative")
                         and materialized.team_graph.get("manager")
                     )
+                    # Demote out loud. `effective_status` returns a bare word and
+                    # drops the evidence, so this site used to compute
+                    # routingEligible=False and hand the compiler an empty reason
+                    # list: the receipt still said "active", and the only trace
+                    # left was `gap:excluded:release-not-routing-eligible` at
+                    # staffing time, which names no card and no fix. The lint
+                    # reasons come back from the same decision that demoted the
+                    # card, so the answer to "why is /hep-local not using it"
+                    # ships with the registration instead of being reconstructed.
+                    routing_eligible = status in {"routing_ready", "trusted"} and team_ready
+                    unavailable_reasons = ([] if team_ready else ["team_graph_not_authoritative"]) + (
+                        routing_ineligibility_reasons(materialized.routing_card)
+                    )
                     profile = compile_workforce_profile(
                         agent_definition_id=definition_id,
                         agent_release_id=release_id,
@@ -439,8 +535,8 @@ class LocalWorkforceRegistry:
                         operational={
                             "callable": True,
                             "installable": True,
-                            "routingEligible": status in {"routing_ready", "trusted"} and team_ready,
-                            "unavailableReasons": [] if team_ready else ["team_graph_not_authoritative"],
+                            "routingEligible": routing_eligible,
+                            "unavailableReasons": unavailable_reasons,
                             "sourceRefs": [str(package_stage), inspection.entrypoint],
                         },
                     )
@@ -469,7 +565,21 @@ class LocalWorkforceRegistry:
                         "managedBy": managed_by,
                         "registeredAt": _now(),
                         "supersedesReleaseId": prior_release or None,
+                        "routingEligible": routing_eligible,
+                        "routingStatus": status,
                     }
+                    if not routing_eligible:
+                        # `status: "active"` is the release lifecycle, not a
+                        # promise of staffing, and on its own it reads as
+                        # success. Carry the demotion on the receipt the person
+                        # is looking at, using the routing card's own
+                        # `routing_status_reason` vocabulary, and say which
+                        # command stops working until it is fixed.
+                        registration["routingStatusReason"] = "; ".join(unavailable_reasons)
+                        registration["remediation"] = (
+                            f"Registered, but /hep-local will not staff it yet. Fix the above in "
+                            f"{root}/.agentlas/routing-card.json, then run `workforce local-register` again."
+                        )
                     atomic_write_json(stage / "registration.json", registration)
                     atomic_write_json(stage / "profile.json", profile)
                     final_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -562,13 +672,27 @@ class LocalWorkforceRegistry:
                 outcome = self.unregister(str(record["agentDefinitionId"]))
                 if outcome.get("status") == "removed":
                     removed.append(str(record["agentDefinitionId"]))
+        # Second route to the same silence: reconcile registers each root
+        # through register(), so a rejected root already carries its reason and
+        # remediation — but reporting only the count threw them away and the
+        # user was told "quarantined: 2" with no way to learn which folders or
+        # why. Carry the refusals through instead of counting them.
+        quarantined = [row for row in registrations if row.get("status") == "quarantined"]
         return {
             "status": "reconciled",
             "explicitPackageRoots": len(explicit_roots),
             "active": len(self.active_profiles()),
             "registered": sum(1 for row in registrations if row.get("status") == "active" and not row.get("idempotent")),
             "unchanged": sum(1 for row in registrations if row.get("idempotent")),
-            "quarantined": sum(1 for row in registrations if row.get("status") == "quarantined"),
+            "quarantined": len(quarantined),
+            "quarantinedSources": [
+                {
+                    key: row[key]
+                    for key in ("sourceRoot", "reasonCode", "message", "remediation")
+                    if key in row
+                }
+                for row in quarantined
+            ],
             "removed": removed,
         }
 
@@ -576,7 +700,22 @@ class LocalWorkforceRegistry:
         with self._locked():
             record = self._find(target)
             if record is None or record.get("status") != "active":
-                return {"status": "not_found"}
+                # Second route to the same code-only refusal. `local-remove`
+                # answers the same person who just typed a path, and a typo got
+                # back the bare token "not_found": no echo of what was looked
+                # up, no statement of what a target may be, no way to see what
+                # is registered. Say it in words here for the same reason
+                # `_quarantine` does, and keep `status` unchanged so
+                # `reconcile`'s `== "removed"` test still reads the same.
+                return {
+                    "status": "not_found",
+                    "target": str(target),
+                    "message": "no active local registration matches this target",
+                    "remediation": (
+                        "A target is either a registered source folder or a `definition:` id. "
+                        "Run `workforce local-list` to see what is registered on this machine."
+                    ),
+                }
             record["status"] = "removed"
             record["updatedAt"] = _now()
             atomic_write_json(self._definition_path(str(record["agentDefinitionId"])), record)
@@ -590,7 +729,27 @@ class LocalWorkforceRegistry:
             return {"status": "removed", "projectionEvent": event}
 
     def list_registrations(self) -> list[dict[str, Any]]:
-        return sorted(self._records(), key=lambda row: str(row.get("agentDefinitionId")))
+        """Every registered definition, each carrying its routing verdict.
+
+        A definition record only knows the release lifecycle, so this listing
+        answered "what do I have registered" with `status: "active"` for agents
+        /hep-local will never staff — the same silence the registration receipt
+        used to print, one command later. Attach the verdict from the release
+        profile staffing actually reads.
+        """
+
+        rows: list[dict[str, Any]] = []
+        for record in self._records():
+            row = dict(record)
+            row.update(
+                self._routing_verdict(
+                    self._release_dir(
+                        str(record.get("agentDefinitionId")), str(record.get("currentReleaseId"))
+                    )
+                )
+            )
+            rows.append(row)
+        return sorted(rows, key=lambda row: str(row.get("agentDefinitionId")))
 
     def active_profiles(self) -> list[dict[str, Any]]:
         """Every locally registered release whose stored profile still verifies.
@@ -632,6 +791,27 @@ class LocalWorkforceRegistry:
                 )
         return result
 
+    def _staged_snapshot_hash(self, package_root: Path) -> str:
+        """Re-hash the staged release, refusing in borrow-side words.
+
+        The same hashing code serves import and borrow, so its refusals are
+        written for someone who just typed a path — at borrow time nobody typed
+        anything and "check the path for a typo" is the wrong instruction for a
+        staged copy the registry itself owns. Keep `code` byte-identical so the
+        wire contract and every consumer switching on it are untouched, and
+        replace only the sentence and the remediation. Re-raise rather than
+        absorb: this must stay a refusal, never a silent empty hash.
+        """
+
+        try:
+            return snapshot_package_hash(package_root)
+        except PackageAdaptationError as exc:
+            raise PackageAdaptationError(
+                exc.code,
+                f"this release's staged copy is no longer readable ({exc})",
+                "The imported copy under the local Workforce registry was changed or removed after registration. Re-import the source folder with `workforce local-register <path>`.",
+            ) from exc
+
     def runtime_bundle(self, release_id: str) -> dict[str, Any]:
         record = next(
             (row for row in self._records() if row.get("currentReleaseId") == release_id and row.get("status") == "active"),
@@ -655,7 +835,7 @@ class LocalWorkforceRegistry:
         ):
             raise KeyError("local_runtime_bundle_identity_mismatch")
         package_root = release_dir / "package"
-        if snapshot_package_hash(package_root) != registration.get("snapshotHash"):
+        if self._staged_snapshot_hash(package_root) != registration.get("snapshotHash"):
             raise KeyError("local_runtime_bundle_snapshot_drift")
         entry_value = str(registration.get("entrypoint") or "AGENTS.md")
         entry_relative = Path(entry_value)
@@ -680,7 +860,7 @@ class LocalWorkforceRegistry:
             manifest = dict(manifest_value)
         else:
             manifest = {}
-        if snapshot_package_hash(package_root) != registration.get("snapshotHash"):
+        if self._staged_snapshot_hash(package_root) != registration.get("snapshotHash"):
             raise KeyError("local_runtime_bundle_snapshot_drift")
         bundle: dict[str, Any] = {
             "agentReleaseId": release_id,

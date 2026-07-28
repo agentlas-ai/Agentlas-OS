@@ -13,7 +13,13 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 from .runtime import AgentlasMockStore, compile_runtime_bundle, read_agent_file, run_setup_wizard, scan_agent_folder
-from .update import maybe_auto_update, reconcile_adapters, run_update, write_python_shims
+from .update import (
+    UpdateUnavailableError,
+    maybe_auto_update,
+    reconcile_adapters,
+    run_update,
+    write_python_shims,
+)
 
 
 RESEARCH_SEARCH_PROVIDERS = ("ddg-html", "news-rss", "github", "jina")
@@ -89,6 +95,38 @@ def _emit_blocked_project_bootstrap(receipt: Mapping[str, Any]) -> int:
         }
     )
     return 2
+
+
+def _cli_work_brief(
+    explicit: str | None, project: str | None
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str | None]:
+    """Resolve a command's Work Brief. Returns (brief, warning, error).
+
+    `--brief` is an explicit user instruction, not a discovery hint. When the
+    named path is missing or the JSON fails Work Brief validation, the command
+    must refuse with the exact reason: continuing brief-less returns a normal
+    looking plan that the user's frozen goal, acceptance_criteria and anti_scope
+    never shaped, and nothing in the output says so. A brief merely discovered
+    under --project must not block the run (having no brief is the normal case),
+    but a broken one is still never dropped in silence — its problem rides back
+    on the result so the user can fix the file.
+    """
+    source = explicit or project
+    if not source:
+        return None, None, None
+    from .interview import resolve_work_brief
+
+    resolved = resolve_work_brief(source)
+    if explicit and resolved.brief is None:
+        reason = resolved.problem or "no Work Brief file at this path"
+        return None, None, f"invalid --brief {resolved.path}: {reason}"
+    if resolved.problem:
+        return None, {
+            "path": str(resolved.path),
+            "problem": resolved.problem,
+            "effect": "this run continued without the Work Brief",
+        }, None
+    return resolved.brief, None, None
 
 
 def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
@@ -826,7 +864,17 @@ def main(argv: list[str] | None = None) -> int:
             # `current` runner. Its final action is to remove itself.
             return emit(retire_auto_update_service())
         retire_auto_update_service()
-        return emit(run_update(check_only=args.check))
+        # An unreachable GitHub is the normal state of the machine this command
+        # gets run on. Print the actionable sentence on stderr (same channel as
+        # the update-available notice) and keep stdout the usual JSON payload,
+        # so neither a human nor a caller parsing stdout sees a traceback.
+        try:
+            update_result = run_update(check_only=args.check)
+        except UpdateUnavailableError as exc:
+            configure_utf8_stdio()
+            print(exc.message, file=sys.stderr)
+            return emit(exc.payload) or 1
+        return emit(update_result)
     if args.command == "global":
         from .global_router import global_router_status, install_global_router, remove_global_router
 
@@ -1049,7 +1097,12 @@ def main(argv: list[str] | None = None) -> int:
         from .package_contract import contract_prompt_lines, scaffold, verify
 
         if args.contract_command == "scaffold":
-            return emit(scaffold(args.folder, mode=args.mode, package_id=args.id, name=args.name, command=args.command_slug))
+            report = scaffold(args.folder, mode=args.mode, package_id=args.id, name=args.name, command=args.command_slug)
+            emit(report)
+            # A refused workspace path must not exit 0: callers chain
+            # `scaffold && fill && verify`, and a silent success there means the
+            # fill step writes into a workspace that was never created.
+            return 1 if report.get("error") else 0
         if args.contract_command == "verify":
             report = verify(args.folder, mode=args.mode)
             emit(report)
@@ -1104,6 +1157,7 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.hub_client import call_hub_tool
         from .workforce import validate_hub_selection_boundary, validate_hub_work_order_boundary
         from .workforce.local_registry import LocalWorkforceRegistry
+        from .workforce.package_adapter import refusal_fields
 
         def load_object(path: str) -> dict[str, Any]:
             value = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -1328,11 +1382,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             return emit({**prepared_result, "goalBinding": goal_binding})
         except (OSError, ValueError, json.JSONDecodeError) as exc:
+            # Second route to the code-only refusal `_quarantine` was fixed for.
+            # Anything a `workforce` subcommand raises exits here, and picking
+            # `exc.code` over `str(exc)` threw away the sentence the raise site
+            # wrote: a `PackageAdaptationError` escaping the local registry (for
+            # example `snapshot_package_hash` on a staged release that has since
+            # been deleted) printed `source_missing` and nothing else. `error`
+            # keeps its exact meaning for consumers; the words ride alongside.
             return emit(
                 {
                     "action": "workforce",
                     "status": "error",
                     "error": getattr(exc, "code", str(exc)),
+                    **refusal_fields(exc),
                 }
             ) or 2
     if args.command == "research" and args.research_command == "read":
@@ -1623,12 +1685,12 @@ def main(argv: list[str] | None = None) -> int:
                 emit({"action": "route", "status": "error", "error": f"invalid --session-inventory: {exc}"})
                 return 2
         hub_only = False if args.no_hub else (True if not args.allow_local_routing else args.hub_only)
-        work_brief = None
-        brief_source = getattr(args, "brief", None) or args.project
-        if brief_source:
-            from .interview import load_work_brief
-
-            work_brief = load_work_brief(brief_source)
+        work_brief, brief_warning, brief_error = _cli_work_brief(
+            getattr(args, "brief", None), args.project
+        )
+        if brief_error:
+            emit({"action": "route", "status": "error", "error": brief_error})
+            return 2
         decision = route_request(
             args.query,
             project_dir=args.project,
@@ -1641,11 +1703,15 @@ def main(argv: list[str] | None = None) -> int:
             session_inventory=session_inventory,
             work_brief=work_brief,
         )
+        if brief_warning:
+            decision["work_brief_warning"] = brief_warning
         decision["project_bootstrap"] = bootstrap
         if args.auto_run and not args.plan_only:
             if decision.get("action") == "pipeline" and isinstance(decision.get("execution_fabric"), dict):
                 if args.background:
                     background_result = _start_stormbreaker_background(args, decision=decision)
+                    if brief_warning:
+                        background_result["work_brief_warning"] = brief_warning
                     background_result["project_bootstrap"] = bootstrap
                     return emit(background_result)
                 result = run_stormbreaker_decision(
@@ -1667,6 +1733,8 @@ def main(argv: list[str] | None = None) -> int:
                     "receipt_id": decision.get("receipt_id"),
                     "match_reason": decision.get("match_reason"),
                 }
+                if brief_warning:
+                    result["work_brief_warning"] = brief_warning
                 result["project_bootstrap"] = bootstrap
                 emit(result)
                 return 0 if result.get("status") in {"completed", "materialized"} else 1
@@ -1740,11 +1808,41 @@ def main(argv: list[str] | None = None) -> int:
                 emit({"action": "stormbreaker_run", "status": "error", "error": f"invalid --session-inventory: {exc}"})
                 return 2
 
+        # A decision file already carries the Work Brief that was frozen when it
+        # was routed, so --brief here has nothing to attach to. Say which input
+        # wins nothing rather than accepting the flag and dropping it.
+        if args.decision_file and getattr(args, "brief", None):
+            emit(
+                {
+                    "action": "stormbreaker_run",
+                    "status": "error",
+                    "error": (
+                        "--brief cannot be combined with --decision-file: the decision file already carries "
+                        "the Work Brief it was routed with. Re-route the query with --brief, or run the "
+                        "decision file without --brief."
+                    ),
+                }
+            )
+            return 2
+
         if args.background:
             if not args.query and not args.decision_file:
                 emit({"action": "stormbreaker_run", "status": "error", "error": "query or --decision-file is required"})
                 return 2
+            brief_warning = None
+            if not args.decision_file:
+                # Validate here too: the detached child's refusal would land in a
+                # result file the user is not watching, so the parent must be the
+                # one that reports an unusable --brief.
+                _, brief_warning, brief_error = _cli_work_brief(
+                    getattr(args, "brief", None), args.project
+                )
+                if brief_error:
+                    emit({"action": "stormbreaker_run", "status": "error", "error": brief_error})
+                    return 2
             background_result = _start_stormbreaker_background(args)
+            if brief_warning:
+                background_result["work_brief_warning"] = brief_warning
             background_result["project_bootstrap"] = bootstrap
             return emit(background_result)
 
@@ -1776,9 +1874,12 @@ def main(argv: list[str] | None = None) -> int:
             if not args.query:
                 emit({"action": "stormbreaker_run", "status": "error", "error": "query or --decision-file is required"})
                 return 2
-            from .interview import load_work_brief
-
-            work_brief = load_work_brief(args.brief or args.project)
+            work_brief, brief_warning, brief_error = _cli_work_brief(
+                getattr(args, "brief", None), args.project
+            )
+            if brief_error:
+                emit({"action": "stormbreaker_run", "status": "error", "error": brief_error})
+                return 2
             result = run_stormbreaker_query(
                 args.query,
                 home=home,
@@ -1802,6 +1903,8 @@ def main(argv: list[str] | None = None) -> int:
                 work_brief=work_brief,
                 max_replans=max(0, args.max_replans),
             )
+            if brief_warning:
+                result["work_brief_warning"] = brief_warning
         result["project_bootstrap"] = bootstrap
         emit(result)
         if args.output_file:

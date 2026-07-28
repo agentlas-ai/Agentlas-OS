@@ -7,7 +7,12 @@ import json
 import re
 from typing import Any, Iterable, Mapping
 
-from .contracts import canonical_digest, validate_candidate_set_coverage_gaps
+from ..model_allocation import EFFORT_TOKEN_RE
+from .contracts import (
+    canonical_digest,
+    load_workforce_contract_schema,
+    validate_candidate_set_coverage_gaps,
+)
 from .privacy import WorkOrderHubBoundaryError, assert_hub_work_order_boundary
 
 
@@ -35,7 +40,19 @@ _MCP_TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.$:/@+~-]{0,127}$")
 _UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _MAX_DIGEST_VALUE_DEPTH = 32
 _MAX_DIGEST_VALUE_NODES = 10_000
-_EFFORTS = {None, "none", "low", "medium", "high", "xhigh", "max"}
+def _is_valid_effort(value: Any) -> bool:
+    """Same open vocabulary as model_allocation.normalize_effort.
+
+    2026-07-28 실측 드리프트: 이 파일의 예전 `_EFFORTS` 고정 집합은 "minimal"이 빠져
+    있었다 — model_allocation.py의 정본 튜플·MCP 스키마 어디에도 있는 값인데 여기서만
+    누락돼, 정상 해석된 "minimal" effort가 실행 영수증 검증에서 매번 거절됐다. 손으로
+    다시 베낀 닫힌 집합이 서로 어긋나는 바로 그 실패 양상이라, 값 하나를 추가하는 대신
+    검증 자체를 model_allocation의 단일 신택스 검사기로 옮겼다 — 다음에 provider가 새
+    리즌 레벨을 내놔도(예: "ultra") 이 파일을 다시 고칠 필요가 없다.
+    """
+    return value is None or (isinstance(value, str) and bool(EFFORT_TOKEN_RE.fullmatch(value)))
+
+
 _EFFORT_EVIDENCE = {"runner-reported", "runtime-fixed", "not-observable"}
 
 
@@ -461,6 +478,24 @@ def workforce_runtime_bundle_digest(roster_row: Mapping[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+# The taskBrief / roleSlots[].task length caps live in ONE place: the canonical
+# work-order schema this same function already enforces through
+# assert_hub_work_order_boundary.  They used to be repeated here as the literals
+# 4000 and 2000.  When the schema was raised to 64000/32000 the copy stayed
+# behind, so a long brief passed the outbound Hub gate, survived search and
+# validate_selection, and was then killed at the final step by
+# execution_context_task_brief_invalid — an internal code that never states the
+# limit.  Reading the schema is what makes that drift impossible, not a second
+# pair of numbers kept in sync by hand.
+def _work_order_max_length(node: Mapping[str, Any], field: str) -> int:
+    properties = node.get("properties")
+    limit = properties.get(field) if isinstance(properties, Mapping) else None
+    limit = limit.get("maxLength") if isinstance(limit, Mapping) else None
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError("execution_context_schema_limit_missing")
+    return limit
+
+
 def _context_strings(value: Any, code: str, *, maximum: int = 256) -> list[str]:
     return _string_list(
         value,
@@ -493,8 +528,15 @@ def project_execution_context(
         raise ValueError("execution_context_selection_session_mismatch")
     validate_candidate_set_coverage_gaps(candidate_set)
 
+    work_order_schema = load_workforce_contract_schema("workOrder")
+    slot_schema = work_order_schema.get("$defs", {}).get("slot")
+    if not isinstance(slot_schema, Mapping):
+        raise ValueError("execution_context_schema_limit_missing")
+    task_brief_max = _work_order_max_length(work_order_schema, "taskBrief")
+    slot_task_max = _work_order_max_length(slot_schema, "task")
+
     task_brief = work_order.get("taskBrief")
-    if not isinstance(task_brief, str) or not task_brief.strip() or len(task_brief) > 4000:
+    if not isinstance(task_brief, str) or not task_brief.strip() or len(task_brief) > task_brief_max:
         raise ValueError("execution_context_task_brief_invalid")
     raw_slots = work_order.get("roleSlots")
     if not isinstance(raw_slots, list) or not (1 <= len(raw_slots) <= 32):
@@ -513,7 +555,7 @@ def project_execution_context(
             raise ValueError("execution_context_slot_id_invalid")
         if not isinstance(title, str) or not title.strip() or len(title) > 160:
             raise ValueError("execution_context_slot_title_invalid")
-        if not isinstance(task, str) or not task.strip() or len(task) > 2000:
+        if not isinstance(task, str) or not task.strip() or len(task) > slot_task_max:
             raise ValueError("execution_context_slot_task_invalid")
         if isinstance(cardinality, bool) or not isinstance(cardinality, int) or not (1 <= cardinality <= 16):
             raise ValueError("execution_context_slot_cardinality_invalid")
@@ -1129,7 +1171,7 @@ def _invocation(
     requested = value.get("requestedEffort")
     applied = value.get("appliedEffort")
     evidence = value.get("effortEvidence")
-    if requested not in _EFFORTS or applied not in _EFFORTS or evidence not in _EFFORT_EVIDENCE:
+    if not _is_valid_effort(requested) or not _is_valid_effort(applied) or evidence not in _EFFORT_EVIDENCE:
         issues.append(f"{label}_effort_invalid")
     elif evidence == "not-observable" and applied is not None:
         issues.append(f"{label}_unobservable_effort_claimed")

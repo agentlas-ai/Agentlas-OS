@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from .networking.card_lint import lint_card
 from .runtime import (
     collect_package_files,
     is_local_experience_lineage_path,
+    is_value_free_credential_template,
     package_hash,
     run_setup_wizard,
     standalone_experience_asset_identity,
@@ -29,7 +31,6 @@ MAX_FILE_BYTES = 512 * 1024
 # measured on the files actually uploaded.
 MAX_WALKED_ENTRIES = 20_000
 MAX_FILES = 400
-TEXT_EXTENSIONS = {".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".py", ".js", ".ts", ".tsx", ".cjs", ".mjs", ".sh"}
 AGENT_DEFINITION_FILES = {"AGENT.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md", "agent.md", "manifest.md", "system-prompt.md"}
 SKIP_DIRS = {".git", ".next", "node_modules", "dist", "out", "release", "__pycache__"}
 CLOUD_PACKAGE_HASH_VERSION = "path-sha256-executable-v2"
@@ -151,6 +152,16 @@ def package_agent(
     }
     if routing.get("card"):
         manifest["routingCard"] = routing["card"]
+    # Carry the author's market-page copy onto the delivered manifest.
+    # The upload gate forces every marketplace package to write publicProfile in
+    # agentlas.json, and both `_with_localized_listing` here and the register
+    # endpoint's own derivation read it from `manifest.publicProfile` — but it
+    # was never mapped there, so both silently fell back to the English routing
+    # card and the Hub listing showed English boilerplate in the Korean fields.
+    # Attached before sanitization so the content guard scans this copy too.
+    public_profile = _read_public_profile(base)
+    if public_profile:
+        manifest["publicProfile"] = public_profile
     if public_career_card:
         manifest["careerGraph"] = public_career_card
     manifest, manifest_findings = sanitize_structured_payload(manifest, "manifest")
@@ -286,6 +297,18 @@ def _overwrite_precondition_headers(detail: str) -> dict[str, str] | None:
 
 
 
+def _korean_dominates(value: str) -> bool:
+    """Mirrors the register endpoint's `koreanDominates`
+    (AgentsAtlas/app/src/lib/marketplace/localized-listing.ts): counting script
+    ranges, not a wordlist, so both sides agree on which locale a line is in.
+    """
+
+    hangul = len(re.findall(r"[가-힣]", value))
+    if not hangul:
+        return False
+    return hangul >= 12 or hangul > len(re.findall(r"[A-Za-z]", value))
+
+
 def _with_localized_listing(manifest: dict[str, Any]) -> dict[str, Any]:
     """Attach the bilingual listing block the marketplace register endpoint requires.
 
@@ -314,14 +337,37 @@ def _with_localized_listing(manifest: dict[str, Any]) -> dict[str, Any]:
                 return text
         return ""
 
+    # The gate also accepts locale-neutral `title`/`description`, so packages
+    # exist that carry the author's copy only under those keys. Route it to the
+    # locale it is actually written in: Hangul in the English slot is rejected
+    # by the endpoint (`titleEn_contains_hangul`), and English in the Korean
+    # slot is exactly the substitution this function exists to prevent.
+    def en_only(value: Any) -> str:
+        text = str(value or "").strip()
+        return "" if _korean_dominates(text) else text
+
+    def ko_only(value: Any) -> str:
+        text = str(value or "").strip()
+        return text if _korean_dominates(text) else ""
+
     localized = {
-        "titleEn": pick(profile.get("titleEn"), card.get("name"), manifest.get("name")),
-        "titleKo": pick(profile.get("titleKo"), card.get("name_ko"), card.get("name"), manifest.get("name")),
+        "titleEn": pick(profile.get("titleEn"), en_only(profile.get("title")), card.get("name"), manifest.get("name")),
+        "titleKo": pick(
+            profile.get("titleKo"), ko_only(profile.get("title")), card.get("name_ko"), card.get("name"), manifest.get("name")
+        ),
         "descriptionEn": pick(
-            profile.get("descriptionEn"), card.get("summary"), card.get("description"), manifest.get("tagline")
+            profile.get("descriptionEn"),
+            en_only(profile.get("description")),
+            card.get("summary"),
+            card.get("description"),
+            manifest.get("tagline"),
         ),
         "descriptionKo": pick(
-            profile.get("descriptionKo"), card.get("summary_ko"), card.get("summary"), manifest.get("tagline")
+            profile.get("descriptionKo"),
+            ko_only(profile.get("description")),
+            card.get("summary_ko"),
+            card.get("summary"),
+            manifest.get("tagline"),
         ),
     }
     if not all(localized.values()):
@@ -787,12 +833,67 @@ def _secret_line_reason(line: str) -> tuple[str, str] | None:
     return None
 
 
+# Mirrors Agent Cloud's portableRelativePath contract
+# (AgentsAtlas/app/src/lib/agentlas-cloud/package-contract.ts). The server
+# refuses the whole bundle when any one path breaks these rules, so the same
+# rules have to run here — while we still know which local file produced the
+# path — or `package` says "ready" and only the real upload finds out.
+_UNPORTABLE_SEGMENT_CHARS = re.compile('[<>:"|?*\x00-\x1f]')
+_WINDOWS_RESERVED_SEGMENT = re.compile(r"^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)", re.I)
+
+
+def _quote(value: str) -> str:
+    """Quote like JavaScript's JSON.stringify so both mirrors read identically."""
+
+    return json.dumps(value, ensure_ascii=False)
+
+
+def portable_relative_path_problem(value: str) -> str | None:
+    """Return why ``value`` is not a portable package path, or None when it is."""
+
+    if not isinstance(value, str) or not value:
+        return "path must be a non-empty string"
+    if value != unicodedata.normalize("NFC", value):
+        return "path must be Unicode NFC (macOS commonly stores decomposed NFD filenames)"
+    if "\\" in value:
+        return "path must use '/' separators, not a backslash"
+    if "\0" in value:
+        return "path must not contain a NUL byte"
+    if value.startswith("/"):
+        return "path must be relative, not rooted at '/'"
+    if value.endswith("/"):
+        return "path must not end with '/'"
+    if "//" in value:
+        return "path must not contain an empty '//' segment"
+    if len(value) > 260:
+        return "path must be at most 260 characters"
+    for part in value.split("/"):
+        if not part or part in {".", ".."}:
+            return "path must not contain a '.' or '..' segment"
+        if len(part) > 255 or len(part.encode("utf-8")) > 255:
+            return f"path segment {_quote(part)} must be at most 255 characters and 255 UTF-8 bytes"
+        if _UNPORTABLE_SEGMENT_CHARS.search(part):
+            return (
+                f"path segment {_quote(part)} contains a character no portable filesystem "
+                'accepts (one of <>:"|?* or a control character)'
+            )
+        if part[-1] in " .":
+            return f"path segment {_quote(part)} must not end with a space or '.'"
+        if _WINDOWS_RESERVED_SEGMENT.match(part):
+            return (
+                f"path segment {_quote(part)} is a Windows reserved device name "
+                "(con, prn, aux, nul, com1-9, lpt1-9)"
+            )
+    return None
+
+
 def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[str, Any]]]:
     files: list[UploadFile] = []
     findings: list[dict[str, Any]] = []
     total_bytes = 0
     file_count = 0
     walked = 0
+    shipped_paths: dict[str, str] = {}
     for path in sorted(base.rglob("*")):
         rel = path.relative_to(base).as_posix()
         if any(part in SKIP_DIRS for part in path.relative_to(base).parts):
@@ -811,15 +912,71 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             findings.append(_finding("file-count-limit", "blocker", "size", f"Package has more than {MAX_FILES} files.", None, "Publish a focused agent/team folder."))
             break
         stat = path.stat()
-        if any(pattern.search(path.name) for pattern in BLOCKED_FILE_PATTERNS):
+        # `^\.env(?:\..*)?$` also matches `.env.example`, which the Output
+        # Contract makes mandatory, so the packager's own output was an
+        # unpublishable blocker. Value-free by the OS's own declaration; the
+        # SECRET_PATTERNS content scan further down still reads it.
+        if not is_value_free_credential_template(rel) and any(pattern.search(path.name) for pattern in BLOCKED_FILE_PATTERNS):
             findings.append(_finding("blocked-file", "blocker", "secret", "Secret-bearing file names are not allowed in cloud packages.", rel, "Remove credentials and publish only setup instructions or env key names."))
             continue
-        if not _is_text_package_file(path):
+        # Inclusion is decided by what this artifact can actually carry (UTF-8
+        # text), not by a guessed extension allowlist. The allowlist dropped real
+        # package content — templates/*.html, data/*.csv, an extensionless
+        # `scripts/run` or `LICENSE` — with a bare `continue` and no finding, and
+        # both counts below tally survivors only, so the author saw "Ready" with
+        # matching fileCount/includedFileCount and shipped an agent missing its
+        # own files. Every path that now refuses a file names that file.
+        if stat.st_size > MAX_FILE_BYTES:
+            # Blocker, not "high": the file is dropped from the bundle, and a
+            # "high" finding never fails static_review, so publish_agent went on
+            # to register the truncated package and answered "Registered <slug>."
+            findings.append(_finding("large-file", "blocker", "size", f"File exceeds {MAX_FILE_BYTES} bytes and cannot be shipped in the package.", rel, "Move the large asset out of the package folder, or split it below the limit."))
+            continue
+        # Path portability gate. Agent Cloud refuses the ENTIRE bundle when any
+        # one path breaks its portableRelativePath contract, and its 400 could
+        # not name the file — with up to MAX_FILES paths the author had to guess.
+        # Decide it here, where the offending local file is still in hand.
+        # macOS stores Korean/accented filenames decomposed (NFD) while the
+        # contract requires NFC, so normalize that away instead of blocking a
+        # name that is byte-different but visually identical; everything else
+        # (Windows reserved names, control characters, trailing dot/space) is a
+        # real rename and becomes a named blocker.
+        shipped_rel = unicodedata.normalize("NFC", rel)
+        path_problem = portable_relative_path_problem(shipped_rel)
+        if path_problem:
+            findings.append(
+                _finding(
+                    "unportable-path",
+                    "blocker",
+                    "structure",
+                    f"Agent Cloud rejects this package path: {path_problem}.",
+                    rel,
+                    "Rename the file or folder to a portable relative path and package again.",
+                )
+            )
+            continue
+        if shipped_rel in shipped_paths:
+            # Only reachable through the NFC normalization above, which can make
+            # two distinct on-disk names collide into one bundle path.
+            findings.append(
+                _finding(
+                    "path-collision",
+                    "blocker",
+                    "structure",
+                    f"Two files normalize to the same package path {shipped_rel!r} "
+                    f"(also {shipped_paths[shipped_rel]!r}).",
+                    rel,
+                    "Rename one of the two files so the package paths differ.",
+                )
+            )
             continue
         raw = path.read_bytes()
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
+        text = _decode_package_text(raw)
+        if text is None:
+            # A real binary cannot ride in a UTF-8 text artifact, but silence made
+            # that indistinguishable from "nothing was here". Name the file so the
+            # author learns which asset the borrower will not receive.
+            findings.append(_finding("binary-file", "high", "content", "Binary file cannot be shipped in a text-only cloud package and was left out.", rel, "Host the asset outside the package, or remove it so the package contents match what ships."))
             continue
         asset_identity = standalone_experience_asset_identity(text)
         if asset_identity:
@@ -837,9 +994,6 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             )
             # Never place cross-kind bytes in the returned base-agent bundle,
             # even though the blocker already prevents registration/dry-run.
-            continue
-        if stat.st_size > MAX_FILE_BYTES:
-            findings.append(_finding("large-file", "high", "size", f"File exceeds {MAX_FILE_BYTES} bytes.", rel, "Move large assets out of the package."))
             continue
         text, sanitized_findings = sanitize_upload_file_text(rel, text)
         findings.extend(sanitized_findings)
@@ -863,9 +1017,10 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             findings.append(_finding("package-size-limit", "blocker", "size", f"Package exceeds {MAX_TOTAL_BYTES} bytes at {rel}.", rel, "Publish a smaller package."))
             break
         digest = _sha256_bytes(raw)
+        shipped_paths[shipped_rel] = rel
         files.append(
             UploadFile(
-                path=rel,
+                path=shipped_rel,
                 bytes=len(raw),
                 sha256=digest,
                 contentBase64=base64.b64encode(raw).decode("ascii"),
@@ -1000,10 +1155,24 @@ def _stable_slug_candidate(value: Any) -> str:
     return text.rsplit("/", 1)[-1].strip()
 
 
-def _read_tagline(base: Path) -> str:
+def _read_public_profile(base: Path) -> dict[str, Any]:
+    """The author's market-page copy from agentlas.json, or an empty dict.
+
+    One reader for every consumer of publicProfile: the market-page gate, the
+    manifest tagline, and the manifest field the listing mapper reads.
+    """
+
     manifest = _read_json(base / "agentlas.json")
-    public_profile = manifest.get("publicProfile") if isinstance(manifest, dict) and isinstance(manifest.get("publicProfile"), dict) else {}
-    for key in ("descriptionKo", "descriptionEn"):
+    profile = manifest.get("publicProfile") if isinstance(manifest, dict) else None
+    return profile if isinstance(profile, dict) else {}
+
+
+def _read_tagline(base: Path) -> str:
+    public_profile = _read_public_profile(base)
+    # `description` is locale-neutral copy the market-page gate accepts too;
+    # skipping it here sent the tagline back to the English routing card even
+    # though the author had written a description.
+    for key in ("descriptionKo", "descriptionEn", "description"):
         value = str(public_profile.get(key) or "").strip()
         if value:
             return value[:240]
@@ -1042,8 +1211,20 @@ def _runtime_labels(base: Path) -> list[str]:
     return labels or ["agents-md"]
 
 
-def _is_text_package_file(path: Path) -> bool:
-    return path.suffix.lower() in TEXT_EXTENSIONS or path.name in AGENT_DEFINITION_FILES
+def _decode_package_text(raw: bytes) -> str | None:
+    """Return the shippable text of a package file, or None if it is binary.
+
+    Replaces the old extension allowlist: the cloud artifact carries UTF-8 text,
+    so decodability — not the file's suffix — is the real inclusion rule. A NUL
+    byte marks binary content that happens to survive a lenient decode.
+    """
+
+    if b"\x00" in raw:
+        return None
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -1119,7 +1300,25 @@ def _looks_generic_copy(value: str) -> bool:
 
 
 def _slugify(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")[:64] or "agentlas-cloud-agent"
+    text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", text).strip("-")[:64]
+    if slug:
+        return slug
+    # An identity carrying no ASCII letter or digit (a Korean/Japanese name, an
+    # emoji name, a punctuation-only name) used to collapse to one hard-coded
+    # constant, so EVERY such package published under the same slug — and the
+    # 428 precondition retry in `register_agent` then overwrote the agent that
+    # already owned that slug without ever asking. The fallback must therefore
+    # be a function of the identity, not a shared literal: republishing the same
+    # package still lands on the same slug (an intentional overwrite keeps
+    # working) while two different non-ASCII names can no longer claim one Hub
+    # identity. Reached by every caller path — derived package name, folder
+    # name, routing-card `agent_card_ref.slug`, and an explicit `--slug`.
+    if not text:
+        raise UploadError(
+            "cannot derive an upload slug: the package has no name, slug, or folder name. Pass an explicit --slug."
+        )
+    return f"agentlas-cloud-agent-{_sha256_text(text)[:12]}"
 
 
 def _sha256_bytes(value: bytes) -> str:

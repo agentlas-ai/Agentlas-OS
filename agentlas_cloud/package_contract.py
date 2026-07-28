@@ -73,6 +73,39 @@ def _default_substitutions(package_id: str, name: str, command: str, mode: str) 
     }
 
 
+def _workspace_path_error(workspace: Path, *, must_exist: bool) -> dict[str, str] | None:
+    """Say why a user-supplied workspace path is unusable, or None if it is fine.
+
+    WHY: verify() used to resolve the path and go straight to the per-artifact
+    checks, so a typo'd or wrong-cwd path produced a confident report with every
+    required artifact marked "missing" — byte-identical in shape to a real
+    half-written package. The user then starts writing AGENTS.md/agent.md into
+    the wrong place, or concludes the package lost every file. scaffold() had
+    the mirror hole: its mkdir() raised a raw FileExistsError traceback at the
+    user when the path was an existing file. Both surfaces now name the path
+    instead, the same gate upload.package_agent already enforces
+    ("agent folder not found"). Report the path, never diagnose a package that
+    was never looked at.
+    """
+    if not workspace.exists():
+        if not must_exist:
+            return None  # scaffold creates the workspace; absence is expected
+        return {
+            "error": "workspace_not_found",
+            "message": (
+                f"folder not found: {workspace} — check the path (typo or wrong working "
+                f"directory), or run `hephaestus contract scaffold {workspace}` to create "
+                "the package there"
+            ),
+        }
+    if not workspace.is_dir():
+        return {
+            "error": "workspace_not_a_folder",
+            "message": f"not a folder: {workspace} — a package workspace must be a directory",
+        }
+    return None
+
+
 def scaffold(
     folder: str | Path,
     mode: str = "single",
@@ -86,6 +119,17 @@ def scaffold(
     placeholders ({{TRIGGER_KO_1}}...) stay for the fill step."""
     base = root or engine_root()
     workspace = Path(folder).expanduser().resolve()
+    path_error = _workspace_path_error(workspace, must_exist=False)
+    if path_error:
+        return {
+            "workspace": str(workspace),
+            "mode": mode,
+            "package_id": package_id,
+            "created": [],
+            "skipped_existing": [],
+            "missing_templates": [],
+            **path_error,
+        }
     workspace.mkdir(parents=True, exist_ok=True)
     package_id = package_id or workspace.name.lower().replace(" ", "-")
     name = name or package_id
@@ -96,6 +140,12 @@ def scaffold(
     skipped: list[str] = []
     missing_templates: list[str] = []
     for artifact in artifacts_for_mode(load_contract(base), mode):
+        if "*" in artifact["path"]:
+            # A roster row (agents/*/agent.md) names a variable-count set the
+            # builder must author, not one skeleton to copy. It still appears in
+            # the prompt lines and in verify, so it can never be silently
+            # dropped — there is just nothing to scaffold.
+            continue
         target = workspace / artifact["path"]
         if target.exists():
             skipped.append(artifact["path"])
@@ -123,7 +173,26 @@ def scaffold(
     }
 
 
-def _schema_required_errors(doc: Any, schema_path: Path) -> list[str]:
+def _schema_shape_errors(doc: Any, schema_path: Path) -> list[str]:
+    """Check the artifact against the shape its schema already declares.
+
+    WHY (both halves matter):
+
+    Presence: an explicit empty list/string is a declared value (e.g.
+    skills: []), not an omission, so required-key checking stays presence-only.
+    Deep quality checks belong to per-artifact lints (routing-card), not here.
+
+    Declared values: this gate used to check presence ONLY, which left every
+    ``const``/``enum`` in the schema unenforced anywhere in the build path. A
+    routing card carrying ``schemaVersion: "1.0"`` (what the scaffold template
+    itself wrote) passed ``contract verify`` with ok=true and lint
+    routing_ready, and was then hard-rejected at borrow
+    (workforce/package_adapter.inspect_package) and at upload
+    (upload._server_routing_problem) — a package the build gate certified could
+    not be registered or published. A const/enum is a value the contract has
+    already fixed, so reading it here invents nothing; it just puts build,
+    borrow and upload back on one source of truth.
+    """
     try:
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -132,15 +201,52 @@ def _schema_required_errors(doc: Any, schema_path: Path) -> list[str]:
     if not isinstance(doc, dict):
         return ["document must be a JSON object"]
     for field in schema.get("required", []):
-        # Presence-only: an explicit empty list/string is a declared value
-        # (e.g. skills: []), not an omission. Deep quality checks belong to
-        # per-artifact lints (routing-card), not this shape gate.
         if field not in doc or doc.get(field) is None:
             errors.append(f"missing required field: {field}")
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        for field, spec in properties.items():
+            if not isinstance(spec, dict) or field not in doc:
+                continue
+            value = doc[field]
+            if "const" in spec:
+                if value != spec["const"]:
+                    errors.append(f"{field} must be {spec['const']!r} (found {value!r})")
+            elif isinstance(spec.get("enum"), list) and value not in spec["enum"]:
+                allowed = ", ".join(repr(option) for option in spec["enum"])
+                errors.append(f"{field} must be one of [{allowed}] (found {value!r})")
     return errors
 
 
+def _verify_team_shape(workspace: Path, artifact: dict[str, Any]) -> dict[str, Any]:
+    """Verify a variable-count roster artifact (path contains ``*``).
+
+    WHY this exists: every other row in the contract is one literal file, so a
+    team's actual substance — a roster of worker agents, an orchestrator/HQ, a
+    declared topology — could not be expressed here at all. The result was that
+    ``contract verify --mode team`` reported ok=True for a package with zero
+    workers while ``scripts/verify-team-package.sh``, mandatory in the very same
+    documented flow, rejected it. A fill/repair loop that trusts this gate then
+    ships a degenerate team and hits a shell failure that maps back to no
+    contract artifact to repair. Delegate to the one shared rule so both gates
+    agree, and report its findings against this contract row so every blocker
+    still names an artifact.
+    """
+    from .team_shape import check_team_shape
+
+    shape = check_team_shape(workspace)
+    return {
+        "path": artifact["path"],
+        "required": artifact.get("required", True),
+        "team_shape": shape,
+        "problems": list(shape["errors"]),
+    }
+
+
 def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> dict[str, Any]:
+    if artifact.get("lint") == "team-shape":
+        return _verify_team_shape(workspace, artifact)
+
     path = workspace / artifact["path"]
     report: dict[str, Any] = {"path": artifact["path"], "required": artifact.get("required", True)}
     problems: list[str] = []
@@ -184,7 +290,7 @@ def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> d
 
     schema_ref = artifact.get("schema")
     if schema_ref and doc is not None:
-        problems.extend(_schema_required_errors(doc, base / schema_ref))
+        problems.extend(_schema_shape_errors(doc, base / schema_ref))
 
     if artifact.get("lint") == "routing-card" and isinstance(doc, dict):
         from .networking.card_lint import lint_card
@@ -215,6 +321,20 @@ def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -
     consumes for targeted self-repair; ``ok`` means routing-ready package."""
     base = root or engine_root()
     workspace = Path(folder).expanduser().resolve()
+    path_error = _workspace_path_error(workspace, must_exist=True)
+    if path_error:
+        return {
+            "workspace": str(workspace),
+            "mode": mode,
+            "ok": False,
+            # No artifact rows: the gate never looked at a package, so it must
+            # not report on one. ``blockers`` still carries exactly one
+            # actionable line so every self-repair consumer keeps working.
+            "artifacts": [],
+            "blockers": [path_error["message"]],
+            "warnings": [],
+            **path_error,
+        }
     reports = [
         _verify_artifact(workspace, artifact, base)
         for artifact in artifacts_for_mode(load_contract(base), mode)

@@ -7,9 +7,11 @@ from .lenses import LENS_GROUPS, question_budget, render_lens_table, surface_pro
 from .schema import (
     WORK_BRIEF_RELPATH,
     WORK_BRIEF_SCHEMA_VERSION,
+    WorkBriefResolution,
     brief_packet_context,
     brief_scope_text,
     load_work_brief,
+    resolve_work_brief,
     work_brief_problem,
 )
 from .scorer import (
@@ -25,6 +27,7 @@ __all__ = [
     "LENS_GROUPS",
     "WORK_BRIEF_RELPATH",
     "WORK_BRIEF_SCHEMA_VERSION",
+    "WorkBriefResolution",
     "brief_packet_context",
     "brief_scope_text",
     "build_scoring_prompt",
@@ -35,6 +38,7 @@ __all__ = [
     "milestone_of",
     "question_budget",
     "render_lens_table",
+    "resolve_work_brief",
     "surface_profile",
     "work_brief_problem",
 ]

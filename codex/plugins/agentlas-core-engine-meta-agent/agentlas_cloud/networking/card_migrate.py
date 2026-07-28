@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .bootstrap import read_json, utc_now
-from ..interview.schema import load_work_brief
+from ..interview.schema import resolve_work_brief
 from .card_store import save_card
 from .domains import DOMAIN_IDS, classify_domains
 from ..runtime import collect_package_files, package_hash
@@ -242,7 +242,22 @@ def migrate_package(
     # own words about what the agent must NOT do become anti_triggers verbatim
     # (always better than a generated guess), and the confirmed goal/acceptance
     # criteria replace the name/description trigger stubs.
-    work_brief = load_work_brief(pkg_dir)
+    # A package that HAS a work-brief.json the loader rejects is not the same as
+    # a package with none: the card silently falls back to name/description
+    # trigger stubs and ships without the user-confirmed anti_triggers, which is
+    # only visible at borrow time. Migration still succeeds, but the receipt
+    # carries the exact reason so the brief can be fixed and the card re-derived.
+    brief_resolution = resolve_work_brief(pkg_dir)
+    work_brief = brief_resolution.brief
+    brief_warning = (
+        {
+            "path": str(brief_resolution.path),
+            "problem": brief_resolution.problem,
+            "effect": "routing card was derived without the Work Brief (no user-confirmed anti_triggers)",
+        }
+        if brief_resolution.problem
+        else None
+    )
     if work_brief:
         anti_scope = [str(item).strip() for item in work_brief.get("anti_scope") or [] if str(item).strip()]
         if anti_scope:
@@ -275,7 +290,12 @@ def migrate_package(
                     global_copy.setdefault("source", {})
                     global_copy["source"] = {**global_copy["source"], "kind": "local_path", "ref": str(pkg_dir)}
                     save_card(Path(home), global_copy)
-                return {"id": existing.get("id"), "status": "kept_existing", "path": str(local_path)}
+                return {
+                    "id": existing.get("id"),
+                    "status": "kept_existing",
+                    "path": str(local_path),
+                    **({"work_brief_warning": brief_warning} if brief_warning else {}),
+                }
             # overwrite=True: refresh infra/derived metadata but preserve the
             # human-authored content already on the card, so a re-migrate never
             # downgrades a rich routing-card to agent-card-derived stubs.
@@ -289,7 +309,13 @@ def migrate_package(
         global_copy = dict(card)
         global_copy["source"] = {**card["source"], "ref": str(pkg_dir)}
         save_card(Path(home), global_copy)
-    return {"id": card_id, "status": "migrated", "type": card_type, "path": str(local_path)}
+    return {
+        "id": card_id,
+        "status": "migrated",
+        "type": card_type,
+        "path": str(local_path),
+        **({"work_brief_warning": brief_warning} if brief_warning else {}),
+    }
 
 
 def migrate_tree(

@@ -15,7 +15,7 @@
         "type": "object",
         "required": ["path", "modes", "fill", "format"],
         "properties": {
-          "path": { "type": "string", "description": "Package-relative artifact path" },
+          "path": { "type": "string", "description": "Package-relative artifact path. A path containing '*' is a variable-count roster (e.g. agents/*/agent.md): the scaffolder skips it and verification is delegated to its 'lint' rule, because a team's substance is a roster, not one file." },
           "modes": {
             "type": "array",
             "items": { "enum": ["single", "team", "package"] },
@@ -29,7 +29,7 @@
           },
           "template": { "type": ["string", "null"], "description": "templates/*.tpl path or null" },
           "schema": { "type": ["string", "null"], "description": "schemas/*.schema.json used by verify for top-level required-field checks" },
-          "lint": { "type": ["string", "null"], "enum": ["routing-card", null], "description": "Deep content lint to run beyond schema shape" },
+          "lint": { "type": ["string", "null"], "enum": ["routing-card", "team-shape", null], "description": "Deep content lint to run beyond schema shape. 'team-shape' runs agentlas_cloud.team_shape — the same rule scripts/verify-team-package.sh runs — so the contract gate and the shell gate cannot disagree about what a team is." },
           "minLines": { "type": "integer", "minimum": 0 },
           "description": { "type": "string", "description": "One line injected into builder prompts" }
         }

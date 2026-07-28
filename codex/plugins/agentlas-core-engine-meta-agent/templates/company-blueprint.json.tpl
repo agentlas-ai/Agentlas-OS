@@ -3,6 +3,7 @@
   "teamId": "{{PACKAGE_ID}}",
   "name": "{{NAME_KO}}",
   "orchestrator": "{{ORCHESTRATOR_AGENT_ID}}",
+  "topology": "{{TOPOLOGY}}",
   "nodes": [
     {
       "id": "{{ORCHESTRATOR_AGENT_ID}}",

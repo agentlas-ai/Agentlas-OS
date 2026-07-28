@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 WORK_BRIEF_SCHEMA_VERSION = "work-brief/1.0"
 WORK_BRIEF_RELPATH = ".agentlas/work-brief.json"
@@ -77,24 +77,56 @@ def work_brief_problem(record: dict[str, Any]) -> str | None:
     return None
 
 
-def load_work_brief(source: str | Path) -> dict[str, Any] | None:
-    """Load a Work Brief from a file path or a project dir (.agentlas/work-brief.json).
+class WorkBriefResolution(NamedTuple):
+    """Outcome of resolving a Work Brief source, with the reason kept.
 
-    Returns None when the file is missing or invalid — callers always fall back
-    to brief-less behaviour, a brief can improve a run but never break one.
+    `problem` is set only when a Work Brief file exists but cannot be used;
+    `exists` False with `problem` None is simply "no brief here".
+    """
+
+    path: Path
+    brief: dict[str, Any] | None
+    problem: str | None
+    exists: bool
+
+
+def resolve_work_brief(source: str | Path) -> WorkBriefResolution:
+    """Resolve a Work Brief from a file path or a project dir, keeping the reason.
+
+    `work_brief_problem` already computes a precise human-readable diagnosis, and
+    `load_work_brief` used to throw it away. That is fine for discovery (no brief
+    in a project dir is the normal case) but wrong for an explicit `--brief`: the
+    caller could not tell "no brief was asked for" from "the brief you named is
+    unreadable", so routing continued brief-less and returned a normal-looking
+    plan the user's frozen goal/acceptance_criteria/anti_scope never shaped.
+    Callers now decide: explicit request -> refuse with `problem`; discovery ->
+    surface `problem` without blocking the run.
     """
     path = Path(source)
     if path.is_dir():
         path = path / WORK_BRIEF_RELPATH
     if not path.is_file():
-        return None
+        return WorkBriefResolution(path=path, brief=None, problem=None, exists=False)
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if work_brief_problem(record):
-        return None
-    return record
+    except OSError as exc:
+        return WorkBriefResolution(path, None, f"cannot read Work Brief file ({exc})", True)
+    except ValueError as exc:
+        return WorkBriefResolution(path, None, f"Work Brief is not valid JSON ({exc})", True)
+    problem = work_brief_problem(record)
+    if problem:
+        return WorkBriefResolution(path, None, problem, True)
+    return WorkBriefResolution(path, record, None, True)
+
+
+def load_work_brief(source: str | Path) -> dict[str, Any] | None:
+    """Load a Work Brief from a file path or a project dir (.agentlas/work-brief.json).
+
+    Returns None when the file is missing or invalid. Use `resolve_work_brief`
+    when the source came from an explicit user request — this wrapper cannot
+    tell "absent" from "broken" and must not be used to decide either.
+    """
+    return resolve_work_brief(source).brief
 
 
 def brief_scope_text(brief: dict[str, Any]) -> str:

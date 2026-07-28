@@ -21,6 +21,7 @@ import tarfile
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
@@ -258,10 +259,84 @@ def current_release(root: Path | None = None) -> str | None:
     return value or None
 
 
+class UpdateUnavailableError(RuntimeError):
+    """A user-invoked update could not complete for an environmental reason.
+
+    ``maybe_auto_update``/``maybe_print_update_notice`` may swallow an offline
+    GitHub because nobody asked them to run. The explicit ``hep-update`` command
+    is the opposite case: the user asked, so the failure must come back as a
+    sentence they can act on plus a machine-readable payload — never as a
+    traceback. Carrying the payload on the exception keeps the CLI free of a
+    second copy of the wording.
+    """
+
+    def __init__(self, payload: dict[str, Any], message: str) -> None:
+        super().__init__(message)
+        self.payload = payload
+        self.message = message
+
+
+def _release_source_host() -> str:
+    """Name the release host in user-facing text; never invent a default."""
+
+    return urllib.parse.urlsplit(LATEST_RELEASE_URL).netloc or LATEST_RELEASE_URL
+
+
+def _current_release_phrase(current: str | None) -> str:
+    return f"You are still on {current}" if current else "This runtime has no RELEASE marker"
+
+
+def _install_or_report(release: dict[str, Any], current: str | None) -> dict[str, Any]:
+    """Install ``release``, converting environmental failures into user text.
+
+    The download is a second network stage: a reachable GitHub that dies
+    mid-transfer (or a full disk, or a digest mismatch) used to raise straight
+    through ``run_update`` and print the same raw traceback as the offline
+    check. Both stages are reported the same way. ``detail`` carries the real
+    error text verbatim so nothing is hidden, only unwrapped from the stack.
+    """
+
+    try:
+        return install_latest_runtime(release)
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError, tarfile.TarError, RuntimeError) as exc:
+        tag = str(release.get("tag_name") or "the latest release")
+        raise UpdateUnavailableError(
+            {
+                "status": "install_failed",
+                "current": current,
+                "latest": release.get("tag_name"),
+                "error": f"could not install {tag}",
+                "detail": str(exc),
+                "install_command": "hephaestus hep-update",
+            },
+            f"Could not install {tag}: {exc}. "
+            f"{_current_release_phrase(current)}. "
+            "Check your network connection and free disk space, then run: hephaestus hep-update",
+        ) from exc
+
+
 def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, Any]:
     runtime_root = root or Path(__file__).resolve().parent.parent
     current = current_release(runtime_root)
-    latest = fetch_latest_release(force=True)
+    try:
+        latest = fetch_latest_release(force=True)
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        # force=True deliberately bypasses the TTL cache, so there is no cached
+        # answer to fall back to and inventing one would be a silent fallback.
+        # Report the failure in words instead of raising into the CLI.
+        host = _release_source_host()
+        raise UpdateUnavailableError(
+            {
+                "status": "check_failed",
+                "current": current,
+                "error": f"could not reach {host} to check for a newer runtime",
+                "detail": str(exc),
+                "install_command": "hephaestus hep-update",
+            },
+            f"Could not reach {host} to check for a newer Hephaestus runtime. "
+            f"{_current_release_phrase(current)}; nothing was changed. "
+            "Check your network or proxy settings, then run: hephaestus hep-update",
+        ) from exc
     status = _release_status(current, latest.get("tag_name"))
     result: dict[str, Any] = {
         "status": status,
@@ -280,12 +355,12 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
         reconciliation = reconcile_current_installation(runtime_root)
         result["reconciliation"] = reconciliation
         if _requires_current_release_rehydrate(current, latest.get("tag_name"), reconciliation):
-            installed = install_latest_runtime(latest)
+            installed = _install_or_report(latest, current)
             result.update(installed)
             result["status"] = "repaired_current"
         return result
 
-    installed = install_latest_runtime(latest)
+    installed = _install_or_report(latest, current)
     result.update(installed)
     result["status"] = "updated" if status == "update_available" else "recovered_missing_release_marker"
     return result

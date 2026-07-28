@@ -401,6 +401,16 @@ def compile_workforce_profile(
         unavailable_reasons = normalized_strings(
             [*unavailable_reasons, "authoritative team execution graph unavailable"]
         )
+    if not routing_eligible and not unavailable_reasons:
+        # A profile that says "not routable" and lists nothing is unreadable at
+        # every downstream surface: staffing drops it as
+        # gap:excluded:release-not-routing-eligible, which names neither the
+        # package nor the fix. The demotion above (and the default derived from
+        # structuralStatus) both come from the routing card, so re-read the same
+        # card for the reason instead of shipping the verdict without it.
+        from ..networking.card_lint import routing_ineligibility_reasons
+
+        unavailable_reasons = normalized_strings(routing_ineligibility_reasons(dict(routing_card)))
     semantic = {
         "names": normalized_strings([routing_card.get("name"), routing_card.get("name_ko"), *(routing_card.get("aliases") or [])]),
         "summaries": normalized_strings([routing_card.get("summary"), routing_card.get("summary_ko"), routing_card.get("description")]),

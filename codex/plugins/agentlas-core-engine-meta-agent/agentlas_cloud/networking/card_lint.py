@@ -267,3 +267,31 @@ def effective_status(card: dict[str, Any]) -> str:
     ):
         return "searchable"
     return claimed if claimed in VALID_STATUSES else "draft"
+
+
+def routing_ineligibility_reasons(card: dict[str, Any]) -> list[str]:
+    """Why the router will not staff this card, in words the owner can act on.
+
+    ``effective_status`` answers only *what* status is honored and throws the
+    evidence away, so every caller that demoted a package on its answer had
+    nothing left to show the person who just registered it.  The demotion and
+    its reason must travel together: this returns the same decision's reasons,
+    and an empty list means the card is routable.  A card that never claimed
+    ``routing_ready`` is not a defect but it is still a reason — the owner has
+    to be told the template default is what is holding the agent back.
+    """
+
+    status = effective_status(card)
+    if status in ("routing_ready", "trusted"):
+        return []
+    if status == "stale":
+        return ["source folder no longer exists"]
+    report = lint_card(card)
+    if report["errors"]:
+        return list(report["errors"])
+    if report["ready_blockers"]:
+        return list(report["ready_blockers"])
+    return [
+        f'routing_card.routing_status is "{report["claimed_status"]}"; '
+        'only "routing_ready" or "trusted" are staffed'
+    ]

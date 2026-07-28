@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "routing-card/2.0",
   "id": "local/{{PACKAGE_ID}}",
   "type": "{{ENTITY_TYPE}}",
   "name": "{{NAME_KO}}",

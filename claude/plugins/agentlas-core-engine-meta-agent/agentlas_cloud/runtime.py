@@ -32,6 +32,45 @@ EXFIL = re.compile(r"(curl|wget|fetch|requests\.(?:post|put))[^\n]{0,240}(\.env|
 UNICODE_OBFUSCATION = re.compile(r"[\u200b\u200c\u200d\ufeff\u202a-\u202e\u2066-\u2069]")
 TEXT_FILE_ALLOW = {".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".py", ".js", ".ts", ".tsx", ".cjs", ".mjs", ".sh"}
 
+# The three value-free files the OS orders its own packager to produce.
+# AGENTS.md Output Contract: ship `.agentlas/local-credentials.map.json` plus
+# `.env.example`, `signing/README.md` and `credentials/README.md` "when local
+# credentials are required", and project_bootstrap.PRIVACY_PATTERNS writes the
+# generated .gitignore with exactly these three negated ("!.env.example",
+# "!signing/README.md", "!credentials/README.md") while ignoring `.env`,
+# `.env.*`, `signing/*` and `credentials/*`. That negation IS the OS's own
+# statement of which credential-shaped paths hold no values.
+#
+# Every credential rule that matches on a *name* or *path* is a proxy for "this
+# file holds real values". For these three the proxy is known-wrong, and it was
+# firing in three separate places at once: local-register quarantined the whole
+# package, cloud upload raised a blocked-file blocker, and the security scan
+# emitted an unclearable BLOCK credential-path finding. A package built exactly
+# to the Output Contract could therefore be neither registered, published, nor
+# scanned clean. Content rules are untouched: a real key pasted into
+# `.env.example` is still refused by SECRET_PATTERNS, which is the check that
+# actually looks at values.
+VALUE_FREE_CREDENTIAL_TEMPLATES = (
+    ".env.example",
+    "signing/README.md",
+    "credentials/README.md",
+)
+
+
+def is_value_free_credential_template(relative_path: str) -> bool:
+    """True for an Output-Contract value-free credential template.
+
+    Matched at any depth, the way the generated .gitignore matches them: those
+    negations carry no leading slash, so a package that keeps its agent under a
+    subfolder gets the same answer as one that does not.
+    """
+
+    candidate = (relative_path or "").replace("\\", "/").lstrip("/")
+    return any(
+        candidate == pattern or candidate.endswith("/" + pattern)
+        for pattern in VALUE_FREE_CREDENTIAL_TEMPLATES
+    )
+
 # 2-stage security scan (plan \u00a76.2: static rules + user-LLM judgment, BYOK only).
 # The server never calls an LLM; the user's own session writes this judgment file.
 LLM_JUDGMENT_RELATIVE_PATH = ".agentlas/security-llm-judgment.json"
@@ -49,6 +88,40 @@ VERDICT_RANK = {"PASS": 0, "WARN": 1, "BLOCK": 2}
 MCP_POLICY_RELATIVE_PATH = ".agentlas/mcp-policy.json"
 PACKAGE_HASH_VERSION = "agentlas-package-hash/v2"
 LOCAL_EXPERIENCE_LINEAGE_PATH = ".agentlas/experience-relations.jsonl"
+
+# The default read allowlist a package ships with must cover the package's OWN
+# required material, because `compile_runtime_bundle` publishes it verbatim as
+# `lazyRead.allowedPatterns` and `read_agent_file` refuses everything else.
+# Every pattern below is required by a contract this repo already ships:
+#   agents/**, .agents/**  - the roster `scripts/verify-team-package.sh` demands
+#                            (`agents/*/agent.md`, with `.agents/*/agent.md` as
+#                            the accepted fallback layout) and the portable core
+#                            in `.agents/` named by AGENTS.md.
+#   docs/**                - `docs/builder-interview.md` and
+#                            `docs/research-sources.md` in package-contract.json,
+#                            plus the tool-selection / domain-expert-synthesis /
+#                            prompt-performance docs that templates/AGENTS.md.tpl
+#                            tells the host govern the agent's behavior.
+#   benchmarks/**          - `benchmarks/routing-benchmark.jsonl` in
+#                            package-contract.json.
+#   .agentlas/*.jsonl      - `.agentlas/memory-tickets.jsonl`, the durable-memory
+#                            handoff AGENTS.md.tpl points the host at; `*.json`
+#                            does not match a `.jsonl` suffix.
+# Keep this list and `templates/agentlas.json.tpl` identical — they are the same
+# contract, and `tests/test_package_contract.py` fails when they drift or when a
+# new contract artifact lands outside the allowlist.
+DEFAULT_ALLOW_READ = [
+    "README.md",
+    "AGENTS.md",
+    "agent.md",
+    "skills/**",
+    "agents/**",
+    ".agents/**",
+    "docs/**",
+    "benchmarks/**",
+    ".agentlas/*.json",
+    ".agentlas/*.jsonl",
+]
 PACKAGE_HASH_EXCLUDED_PATHS = frozenset(
     {
         "agentlas.json",
@@ -280,7 +353,7 @@ def build_manifest(files: list[PackageFile], name: str) -> AgentlasManifest:
         toolPermissions={"network": "ask", "shell": "deny", "fileRead": "manifest-allowlist"},
         memoryPolicy={"writeBack": "ask", "publicCopy": "reset"},
         memory=[file.path for file in files if file.path in {".agentlas/memory-map.json", ".agentlas/agent-card.json"}],
-        allowRead=["README.md", "AGENTS.md", "agent.md", "skills/**", ".agentlas/*.json"],
+        allowRead=list(DEFAULT_ALLOW_READ),
         denyRead=[".env", ".env.*", "**/secrets/**", "**/credentials/**", "**/cookies/**", "**/*token*", "**/*secret*"],
         publicExportPolicy="clean-copy",
         requiredRuntime=["mcp-client"],
@@ -320,7 +393,11 @@ def scan_files(files: list[PackageFile]) -> SecurityReport:
                     f"({asset_identity}). Keep only exact release IDs or value-free loadout references.",
                 )
             )
-        if any(matches(file.path, pattern) for pattern in [".env", ".env.*", "**/secrets/**", "**/credentials/**", "**/cookies/**", "**/*token*", "**/*secret*"]):
+        # `**/credentials/**` and `.env.*` also cover `credentials/README.md`
+        # and `.env.example`, which the Output Contract makes mandatory. This
+        # verdict is closed-form and can never be cleared by the judgment
+        # runner, so without the exemption the OS BLOCKs its own output forever.
+        if not is_value_free_credential_template(file.path) and any(matches(file.path, pattern) for pattern in [".env", ".env.*", "**/secrets/**", "**/credentials/**", "**/cookies/**", "**/*token*", "**/*secret*"]):
             findings.append(SecurityFinding("BLOCK", "credential-path", file.path, "Credential-like file path is excluded from Cloud package and public publish."))
         for number, line in enumerate(file.content.splitlines(), start=1):
             if any(pattern.search(line) for pattern in SECRET_PATTERNS):
@@ -502,16 +579,12 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
     )
     manifest_payload = manifest.to_json()
     existing_manifest = _read_existing_manifest(base)
+    kept_contract: list[str] = []
+    replaced_contract: list[str] = []
     if existing_manifest:
-        # Preserve uploader-authored display metadata such as publicProfile while
-        # refreshing the runtime contract fields that Hephaestus owns.
-        manifest_payload = {**existing_manifest, **manifest_payload}
-        # Asset identity is assigned by the local owner or registration service.
-        # The setup wizard advertises the contract but must never replace an
-        # existing definition/release reference with a generic projection.
-        for key in ("assetContract", "mcpPolicy"):
-            if isinstance(existing_manifest.get(key), dict):
-                manifest_payload[key] = existing_manifest[key]
+        manifest_payload, kept_contract, replaced_contract = _merge_existing_manifest(
+            existing_manifest, manifest_payload, files
+        )
     if write:
         (base / "agentlas.json").write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         agentlas_dir = base / ".agentlas"
@@ -525,6 +598,19 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
             "Started setup wizard",
             *(["Seeded missing .agentlas/mcp-policy.json"] if mcp_policy_seeded else []),
             "Generated agentlas.json",
+            *(
+                [f"Kept authored runtime contract: {', '.join(kept_contract)}"]
+                if kept_contract
+                else []
+            ),
+            *(
+                [
+                    "Replaced malformed authored manifest fields with generated defaults: "
+                    + ", ".join(replaced_contract)
+                ]
+                if replaced_contract
+                else []
+            ),
             f"Security scan: {scan.verdict}",
             f"MCP policy: {mcp_policy_validation['status']}",
             state,
@@ -568,6 +654,84 @@ def _validate_mcp_policy_path(base: Path) -> dict[str, str]:
     except (OSError, UnicodeError, json.JSONDecodeError, ContractValidationError):
         return {"status": "invalid", "reason": "schema-or-policy-violation"}
     return {"status": "valid", "reason": "package-policy"}
+
+
+# Only these manifest fields are FACTS the wizard re-derives from the package on
+# every run. Everything else in agentlas.json — entry, allowRead, denyRead,
+# toolPermissions, memoryPolicy, requiredRuntime, license, publicExportPolicy,
+# assetContract, mcpPolicy, publicProfile — is a publisher DECISION. The wizard
+# only advertises defaults for a package that has not decided yet.
+_WIZARD_DERIVED_MANIFEST_KEYS = frozenset(
+    {
+        "schemaVersion",
+        "name",
+        "packageHash",
+        "packageHashVersion",
+        "runtimeBundleVersion",
+        "skills",
+        "memory",
+        "createdBy",
+    }
+)
+
+
+def _authored_contract_is_valid(key: str, value: Any, file_paths: set[str]) -> bool:
+    """Accept an authored value only when it is still a usable runtime contract.
+
+    A malformed or escaping value must fall back to the generated default —
+    otherwise a broken agentlas.json would survive every re-package.
+    """
+
+    if key == "entry":
+        # The Hub resolves entry inside the package; a path that is not part of
+        # the packaged file set (traversal, typo, deleted file) is not honoured.
+        return isinstance(value, str) and value in file_paths
+    if key in {"allowRead", "denyRead", "requiredRuntime"}:
+        return isinstance(value, list) and all(isinstance(item, str) for item in value)
+    if key in {"toolPermissions", "memoryPolicy"}:
+        return isinstance(value, dict) and all(
+            isinstance(item_key, str) and isinstance(item_value, str)
+            for item_key, item_value in value.items()
+        )
+    if key in {"publicExportPolicy", "license"}:
+        return isinstance(value, str) and bool(value)
+    if key in {"assetContract", "mcpPolicy"}:
+        # Asset identity is assigned by the local owner or registration service.
+        # The setup wizard advertises the contract but must never replace an
+        # existing definition/release reference with a generic projection.
+        return isinstance(value, dict)
+    return value is not None
+
+
+def _merge_existing_manifest(
+    existing_manifest: dict[str, Any],
+    generated: dict[str, Any],
+    files: list[PackageFile],
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """Refresh derived facts; never silently revert an authored runtime contract.
+
+    `{**existing, **generated}` let the generated defaults win for every key, so
+    a publisher who had authored entry/allowRead/denyRead/toolPermissions saw
+    them reset to the wizard defaults on every publish, with no finding. The Hub
+    enforces exactly those fields, so the reverted contract broke real borrower
+    reads. Only `_WIZARD_DERIVED_MANIFEST_KEYS` may overwrite an authored value.
+    """
+
+    merged = dict(existing_manifest)
+    file_paths = {file.path for file in files}
+    kept: list[str] = []
+    replaced: list[str] = []
+    for key, default in generated.items():
+        if key in _WIZARD_DERIVED_MANIFEST_KEYS or key not in existing_manifest:
+            merged[key] = default
+            continue
+        if _authored_contract_is_valid(key, existing_manifest[key], file_paths):
+            if existing_manifest[key] != default:
+                kept.append(key)
+            continue
+        merged[key] = default
+        replaced.append(key)
+    return merged, kept, replaced
 
 
 def _read_existing_manifest(base: Path) -> dict[str, Any] | None:

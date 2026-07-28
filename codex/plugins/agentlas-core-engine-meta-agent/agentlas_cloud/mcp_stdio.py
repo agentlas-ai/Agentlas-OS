@@ -20,6 +20,7 @@ from copy import deepcopy
 from typing import Any, Mapping
 
 from .model_allocation import (
+    EFFORT_TOKEN_RE,
     INVOCATION_STAGE_PHASES,
     canonical_phase_for_stage,
     model_role_for_stage,
@@ -161,7 +162,10 @@ def _host_model_allocation_policy() -> dict[str, Any]:
             raise ValueError(f"host {label} pinnedProvider is invalid")
         if scoped.get("maxTier") not in {None, "economy", "balanced", "frontier"}:
             raise ValueError(f"host {label} maxTier is invalid")
-        if scoped.get("maxEffort") not in {None, "none", "minimal", "low", "medium", "high", "xhigh", "max"}:
+        scoped_max_effort = scoped.get("maxEffort")
+        if scoped_max_effort is not None and (
+            not isinstance(scoped_max_effort, str) or not EFFORT_TOKEN_RE.fullmatch(scoped_max_effort)
+        ):
             raise ValueError(f"host {label} maxEffort is invalid")
         capabilities = scoped.get("requiredCapabilities")
         if capabilities is not None and (
@@ -194,7 +198,10 @@ def _host_model_allocation_policy() -> dict[str, Any]:
         raise ValueError("host pinnedProvider is invalid")
     if policy.get("maxTier") not in {None, "economy", "balanced", "frontier"}:
         raise ValueError("host maxTier is invalid")
-    if policy.get("maxEffort") not in {None, "none", "minimal", "low", "medium", "high", "xhigh", "max"}:
+    top_level_max_effort = policy.get("maxEffort")
+    if top_level_max_effort is not None and (
+        not isinstance(top_level_max_effort, str) or not EFFORT_TOKEN_RE.fullmatch(top_level_max_effort)
+    ):
         raise ValueError("host maxEffort is invalid")
     capabilities = policy.get("requiredCapabilities")
     if capabilities is not None and (
@@ -873,6 +880,46 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
+class UnknownToolError(LookupError):
+    """Raised only when this server implements no tool with the given name.
+
+    The unknown-tool signal used to be a bare ``KeyError(name)``, and the
+    dispatcher caught bare ``KeyError``. Every other KeyError in the call —
+    a missing required argument (``arguments["request"]``) or any KeyError
+    raised deep inside route_request/search/hub_invoke, where the workforce
+    layers use KeyError as an internal error code — was therefore reported to
+    the host as "unknown tool: <name>". A host LLM told a tool does not exist
+    stops calling it instead of repairing the call, so a one-argument mistake
+    or a real internal failure permanently removed a working tool. A dedicated
+    exception keeps "this tool does not exist" distinguishable from "this call
+    failed".
+    """
+
+
+_DECLARED_TOOL_REQUIRED_ARGUMENTS: dict[str, tuple[str, ...]] = {
+    str(tool["name"]): tuple(
+        str(field)
+        for field in (tool.get("inputSchema") or {}).get("required") or []
+    )
+    for tool in TOOLS
+}
+
+
+def _missing_required_arguments(name: str, arguments: Mapping[str, Any]) -> list[str]:
+    """Required arguments the caller omitted, per this server's own tools/list.
+
+    The contract is read back from TOOLS instead of being restated per handler,
+    so a tool cannot advertise a required argument in tools/list and then fail
+    on it with an unrelated error.
+    """
+
+    return [
+        field
+        for field in _DECLARED_TOOL_REQUIRED_ARGUMENTS.get(name, ())
+        if arguments.get(field) is None
+    ]
+
+
 def _workforce_preparation_ready(result: Any) -> bool:
     """Whether a preparation actually pinned an executable roster.
 
@@ -917,9 +964,48 @@ def _workforce_preparation_refusal(name: str, result: Any) -> dict[str, Any]:
     }
 
 
+def _project_work_brief(project_dir: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Discover a project's Work Brief for an MCP route. Returns (brief, warning).
+
+    Discovery only, so a project with no brief is the normal case and never
+    blocks the call. A brief that IS there but fails validation is a different
+    thing: the host asked for a routed plan and would get one shaped by nothing
+    it wrote, so the exact `work_brief_problem` reason rides back on the result.
+    Same warning shape the CLI emits, so a host does not have to learn two.
+    """
+    from .interview import resolve_work_brief
+
+    resolved = resolve_work_brief(project_dir or ".")
+    if resolved.problem:
+        return None, {
+            "path": str(resolved.path),
+            "problem": resolved.problem,
+            "effect": "this route ran without the Work Brief",
+        }
+    return resolved.brief, None
+
+
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
+
+    missing_arguments = _missing_required_arguments(name, arguments)
+    if missing_arguments:
+        # Refuse the call in words the caller can act on, before any handler
+        # indexes the argument. Naming the omitted arguments is the whole
+        # repair: the host adds them and retries the same tool.
+        return {
+            "action": name,
+            "status": "rejected",
+            "error": "missing_required_argument",
+            "missingArguments": missing_arguments,
+            "detail": (
+                f"{name} was called without required argument(s): "
+                f"{', '.join(missing_arguments)}. Call {name} again with "
+                "those argument(s) set."
+            ),
+            "repairable": True,
+        }
 
     host_model_policy: dict[str, Any] = {}
     if name in {"hephaestus_route", "model.resolve_allocation"}:
@@ -1475,10 +1561,20 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         }
                     return {**prepared_result, "goalBinding": goal_binding}
                 except (FederatedProvenanceError, WorkforceSourceError, ValueError) as exc:
+                    # Third route to the same code-only refusal, this one on the
+                    # borrow side: `local_registry.runtime_bundle` re-hashes the
+                    # staged package, so a `PackageAdaptationError` reaches this
+                    # generic `ValueError` arm and the host was handed a bare
+                    # `source_missing`/`source_secret_material_forbidden` token
+                    # with the sentence explaining it discarded. Wire codes still
+                    # answer as codes; only errors that wrote extra words add any.
+                    from .workforce.package_adapter import refusal_fields
+
                     failure = {
                         "action": name,
                         "status": "error",
                         "error": getattr(exc, "code", "federated_workforce_invalid"),
+                        **refusal_fields(exc),
                     }
                     retry_after_ms = getattr(exc, "retry_after_ms", None)
                     receipt_expires_at = getattr(exc, "receipt_expires_at", None)
@@ -1538,7 +1634,14 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             )
             if shortcut.get("action") != "no_local_gui_shortcut":
                 return with_bootstrap(shortcut)
-        return with_bootstrap(route_request(
+        # `route --project X` reads X/.agentlas/work-brief.json; this tool takes
+        # the same project_dir and used to ignore it, so the identical project
+        # routed brief-shaped on the CLI and brief-less over MCP, with nothing
+        # in either result saying which one the host got. One router, one
+        # contract: discover the brief here too, and when the file exists but
+        # cannot be used, ride the reason back instead of dropping it.
+        work_brief, brief_warning = _project_work_brief(arguments.get("project_dir", "."))
+        decision = route_request(
             arguments["request"],
             project_dir=arguments.get("project_dir", "."),
             runtime="mcp",
@@ -1551,18 +1654,30 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             # Cost ceilings and pins are host policy, never caller-controlled
             # MCP arguments. Unknown legacy arguments are intentionally ignored.
             model_allocation_policy=host_model_policy or None,
-        ))
+            work_brief=work_brief,
+        )
+        if brief_warning:
+            decision["work_brief_warning"] = brief_warning
+        return with_bootstrap(decision)
     if name == "hephaestus_cloud_search":
         # Owner-scoped: scope="cloud" implies hub_only inside route_request and
         # queries only the signed-in user's OWN cloud packages (보관함).
-        return with_bootstrap(route_request(
+        # This routes, so it owes the same Work Brief contract as
+        # hephaestus_route / `route --scope cloud`: same project_dir, same
+        # brief, same reason on the way back when the brief cannot be used.
+        work_brief, brief_warning = _project_work_brief(arguments.get("project_dir", "."))
+        decision = route_request(
             arguments["request"],
             project_dir=arguments.get("project_dir", "."),
             runtime="mcp",
             use_hub=True,
             hub_approved=False,
             scope="cloud",
-        ))
+            work_brief=work_brief,
+        )
+        if brief_warning:
+            decision["work_brief_warning"] = brief_warning
+        return with_bootstrap(decision)
     if name == "hephaestus_search":
         from .networking import search_agents
 
@@ -1586,6 +1701,12 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if name == "hephaestus_hub_invoke":
         from .networking.hub_invocation import invoke_hub_agent
 
+        # Hub invocation picks its agent from a real route, so the brief that
+        # shapes hephaestus_route must shape this one too — otherwise the same
+        # project yields brief-shaped candidates through one tool and
+        # brief-less candidates through the other, and the agent that actually
+        # runs is the one chosen without the user's anti_scope.
+        work_brief, brief_warning = _project_work_brief(arguments.get("project_dir", "."))
         decision = route_request(
             arguments["request"],
             project_dir=arguments.get("project_dir", "."),
@@ -1593,6 +1714,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             use_hub=True,
             hub_approved=bool(arguments.get("approve_hub", False)),
             hub_only=True,
+            work_brief=work_brief,
         )
         if decision.get("action") != "hub_candidates" and not arguments.get("slug"):
             return with_bootstrap({
@@ -1600,8 +1722,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "status": "routing_not_ready",
                 "routing_decision": decision,
                 "detail": "Hub invocation requires a Hub-approved hub_only route that returns hub_candidates.",
+                **({"work_brief_warning": brief_warning} if brief_warning else {}),
             })
-        return with_bootstrap(invoke_hub_agent(
+        invocation = invoke_hub_agent(
             arguments["request"],
             slug=arguments.get("slug"),
             hub_decision=decision,
@@ -1609,7 +1732,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             memory_root=arguments.get("memory_root"),
             version=str(arguments.get("version") or "latest"),
             local_inventory=arguments.get("local_inventory") or [],
-        ))
+        )
+        if brief_warning:
+            invocation["work_brief_warning"] = brief_warning
+        return with_bootstrap(invocation)
     if name == "hephaestus_network_status":
         return network_status()
     if name == "agentlas_auth_status":
@@ -1639,7 +1765,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             "status": "authenticated" if token else "signed_out",
             "token_path": str(token_path(str(base_url) if base_url else None)),
         }
-    raise KeyError(name)
+    raise UnknownToolError(name)
 
 
 def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
@@ -1682,12 +1808,24 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
         arguments = params.get("arguments") or {}
         try:
             payload = _call_tool(name, arguments)
-        except KeyError:
+        except UnknownToolError:
             return _error(msg_id, -32602, f"unknown tool: {name}")
         except Exception as exc:  # surfaced as a tool error, not a protocol error
+            # Name the exception type: a KeyError stringifies to the bare key
+            # ("'request'"), which reads like nothing at all and used to be
+            # mislabeled as an unknown tool. The tool exists and the call
+            # failed — say that.
             return _result(
                 msg_id,
-                {"content": [{"type": "text", "text": f"hephaestus tool failed: {exc}"}], "isError": True},
+                {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"hephaestus tool {name} failed: {type(exc).__name__}: {exc}",
+                        }
+                    ],
+                    "isError": True,
+                },
             )
         tool_result = {
             "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, sort_keys=True)}]

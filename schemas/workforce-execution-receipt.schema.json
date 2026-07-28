@@ -48,7 +48,7 @@
     },
     "effort": {
       "type": ["string", "null"],
-      "enum": [null, "none", "low", "medium", "high", "xhigh", "max"]
+      "pattern": "^[a-z][a-z0-9-]{0,23}$"
     },
     "usage": {
       "type": "object",
