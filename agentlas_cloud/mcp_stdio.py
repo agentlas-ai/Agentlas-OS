@@ -41,7 +41,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.73"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.74"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -109,6 +109,105 @@ def _contract_property(kind: str, description: str) -> dict[str, Any]:
 
 def _workforce_tool_contracts(*kinds: str) -> dict[str, dict[str, Any]]:
     return {kind: workforce_contract_metadata(kind) for kind in kinds}
+
+
+def _selection_property_with_ordinal(description: str) -> dict[str, Any]:
+    """검증 도구 전용 selection 스키마 — 순번 지정(candidateOrdinal)을 허용한다.
+
+    canonical schemas/workforce-selection.schema.json 은 건드리지 않는다(허브·터미널
+    계약). 이 완화는 MCP 도구 입력에서만 유효하고, 핸들러가 순번을 저장된 명부로
+    정확한 agentReleaseId 로 해석한 뒤 canonical 형태로 심층 검증에 넘긴다.
+    48-hex ID 수기 복사는 실측된 오사 표면이다(2026-07-28 qwen 12회 중 1회 ID 절단).
+    """
+    schema = _contract_property("selection", description)
+    try:
+        items = schema["properties"]["assignments"]["items"]
+        items["required"] = ["slotId", "reasonCodes"]
+        items["properties"]["candidateOrdinal"] = {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "명부에 부여된 후보 순번. agentReleaseId 대신 지정 가능 — 서버가 저장된 세션 명부에서 정확한 릴리스로 해석한다.",
+        }
+    except (KeyError, TypeError):
+        pass
+    return schema
+
+
+_MENU_AUDIT_FIELDS = ("qualificationEvidence", "packageHash", "contentDigest")
+
+
+def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
+    """검색 응답을 결정용 요약 명부로 투영 — 드롭리스트 방식.
+
+    "남길 것"을 열거하지 않고 감사 중량 필드만 뺀다: 에이전트 속성(카드 스키마)이
+    추가·개명돼도 새 필드는 자동 통과한다. 원본 전문은 Core 세션 저장소가 보유하며
+    검증·준비의 핀 대조는 저장소 원본으로 수행되므로 통제 손실이 없다.
+    실측(1슬롯 10후보): 41,216B → 약 22KB, 판단 실효 정보 손실 0.
+    """
+    projected = {key: value for key, value in result.items() if key != "candidateProvenance"}
+    candidate_set = projected.get("candidateSet")
+    if isinstance(candidate_set, dict):
+        candidate_set = dict(candidate_set)
+        slots = []
+        for slot in candidate_set.get("slots", []):
+            slot = dict(slot)
+            candidates = []
+            for ordinal, candidate in enumerate(slot.get("candidates", []), start=1):
+                candidate = {
+                    key: value
+                    for key, value in candidate.items()
+                    if key not in _MENU_AUDIT_FIELDS
+                }
+                candidate["candidateOrdinal"] = ordinal
+                evidence = (slot.get("candidates", [])[ordinal - 1] or {}).get("qualificationEvidence")
+                if isinstance(evidence, list):
+                    candidate["qualificationEvidenceCount"] = len(evidence)
+                candidates.append(candidate)
+            slot["candidates"] = candidates
+            slots.append(slot)
+        candidate_set["slots"] = slots
+        candidate_set["projection"] = "menu.v1"
+        projected["candidateSet"] = candidate_set
+    return projected
+
+
+def _resolve_ordinal_assignments(
+    selection: Mapping[str, Any],
+    candidate_set: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, str | None]:
+    """assignments의 candidateOrdinal을 저장된 명부로 정확한 릴리스 ID로 해석한다.
+
+    반환: (canonical 형태로 정규화된 selection, None) 또는 (None, 거절 코드).
+    순번과 릴리스 ID를 동시에 줬는데 서로 다르면 조용히 한쪽을 고르지 않고 거절한다.
+    """
+    slots_by_id: dict[str, list[Mapping[str, Any]]] = {}
+    for slot in candidate_set.get("slots", []) or []:
+        if isinstance(slot, Mapping):
+            slots_by_id[str(slot.get("slotId"))] = list(slot.get("candidates", []) or [])
+    resolved = dict(selection)
+    assignments = []
+    for assignment in selection.get("assignments", []) or []:
+        if not isinstance(assignment, Mapping):
+            return None, "selection_assignment_invalid"
+        assignment = dict(assignment)
+        ordinal = assignment.pop("candidateOrdinal", None)
+        if ordinal is not None:
+            candidates = slots_by_id.get(str(assignment.get("slotId")))
+            if candidates is None:
+                return None, "ordinal_slot_not_in_menu"
+            if not isinstance(ordinal, int) or not 1 <= ordinal <= len(candidates):
+                return None, "ordinal_out_of_range"
+            release_id = (candidates[ordinal - 1] or {}).get("agentReleaseId")
+            if not isinstance(release_id, str) or not release_id:
+                return None, "ordinal_candidate_unresolvable"
+            existing = assignment.get("agentReleaseId")
+            if isinstance(existing, str) and existing and existing != release_id:
+                return None, "ordinal_release_conflict"
+            assignment["agentReleaseId"] = release_id
+        assignments.append(assignment)
+    resolved["assignments"] = assignments
+    return resolved, None
 
 
 def _host_model_allocation_policy() -> dict[str, Any]:
@@ -523,6 +622,15 @@ TOOLS: list[dict[str, Any]] = [
                         "Required typed source scope. network=Local+Cloud+Hub; exact scopes never widen and there is no implicit fallback."
                     ),
                 },
+                "fullDossier": {
+                    "type": "boolean",
+                    "description": (
+                        "Default false: the response is a decision menu — audit-weight fields "
+                        "(qualificationEvidence, packageHash, contentDigest, candidateProvenance) stay in "
+                        "Core's session store and each candidate carries a candidateOrdinal for "
+                        "ordinal selection. Set true only for a legacy full-echo flow."
+                    ),
+                },
             },
             "required": ["workOrder", "sourceScope"],
         },
@@ -563,9 +671,8 @@ TOOLS: list[dict[str, Any]] = [
                         "pick gets cut. Core never sends the merged menu to a remote source."
                     ),
                 },
-                "selection": _contract_property(
-                    "selection",
-                    "Complete agentlas.workforce-selection.v1 authored by the host LLM; use the exact canonical schema declared in x-agentlas-contract.",
+                "selection": _selection_property_with_ordinal(
+                    "Complete agentlas.workforce-selection.v1 authored by the host LLM; use the exact canonical schema declared in x-agentlas-contract. Each assignment may name the candidate by candidateOrdinal from the menu instead of copying the 48-hex agentReleaseId — Core resolves the ordinal against its pinned menu.",
                 ),
             },
             "required": ["workOrder", "selection"],
@@ -1409,7 +1516,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             expand_slot_ids = list(raw_expand_slot_ids)
         if name == "workforce.search_candidates":
             try:
-                return WorkforceSourceService().search(
+                search_result = WorkforceSourceService().search(
                     work_order,
                     source_scope=str(source_scope),
                     expand_slot_ids=list(expand_slot_ids),
@@ -1420,6 +1527,12 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "status": "error",
                     "error": getattr(exc, "code", "workforce_source_search_failed"),
                 }
+            # 기본은 결정용 요약 명부(투영). 원본 전문은 세션 저장소가 보유하므로
+            # 검증·준비의 핀 대조는 손실 없다. 레거시 전량-에코 흐름이 필요한
+            # 호출자만 fullDossier=true 로 원형을 받는다.
+            if arguments.get("fullDossier") is True:
+                return search_result
+            return _menu_projection(search_result)
         if name != "workforce.search_candidates":
             candidate_set = arguments.get("candidateSet")
             selection = arguments.get("selection")
@@ -1445,7 +1558,18 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 ) or arguments.get("selectionSessionId")
                 if isinstance(pinned_session, str) and pinned_session.strip():
                     try:
-                        federation_result = store.get(pinned_session.strip())
+                        # Build the store here rather than reading the enclosing
+                        # `store` name. `_call_tool` binds `store` twice — a
+                        # WorkforceGoalStore on the goal branch above, and the
+                        # FederationSessionStore further down — which makes it a
+                        # function-local that is UNBOUND on this path, so every
+                        # resolve-by-session attempt raised UnboundLocalError.
+                        # That is not a FederationSessionError, so the except
+                        # below never caught it and the whole call crashed: this
+                        # entire branch has never once succeeded. It is the only
+                        # escape from echoing a ~461KB candidate set back, so the
+                        # size problem it was written to solve stayed unsolved.
+                        federation_result = FederationSessionStore().get(pinned_session.strip())
                     except FederationSessionError as exc:
                         return {
                             "action": name,
@@ -1458,6 +1582,29 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 stored_set = federation_result.get("candidateSet")
                 if isinstance(stored_set, Mapping):
                     candidate_set = stored_set
+            # 순번 지정 해석 — 48-hex ID 수기 복사 대신 명부 순번으로 후보를 지정할 수
+            # 있다. 여기서 저장된(또는 제출된) 명부로 정확한 릴리스 ID로 해석해
+            # canonical 형태로 만든 뒤에만 심층 검증에 넘긴다. 해석 실패는 조용한
+            # 대체 없이 거절한다.
+            if (
+                name == "workforce.validate_selection"
+                and isinstance(selection, Mapping)
+                and isinstance(candidate_set, Mapping)
+                and any(
+                    isinstance(row, Mapping) and "candidateOrdinal" in row
+                    for row in selection.get("assignments", []) or []
+                )
+            ):
+                resolved_selection, ordinal_error = _resolve_ordinal_assignments(selection, candidate_set)
+                if ordinal_error is not None:
+                    return {
+                        "action": name,
+                        "status": "rejected",
+                        "error": ordinal_error,
+                        "repairable": True,
+                        "hubCalls": 0,
+                    }
+                selection = resolved_selection
             if not isinstance(candidate_set, Mapping) or not isinstance(selection, Mapping):
                 return {
                     "action": name,

@@ -4,7 +4,11 @@
   "artifacts": [
     {
       "path": "AGENTS.md",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "markdown",
       "fill": "generate",
@@ -15,7 +19,11 @@
     },
     {
       "path": "agent.md",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "markdown",
       "fill": "generate",
@@ -26,7 +34,11 @@
     },
     {
       "path": "agentlas.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -36,7 +48,11 @@
     },
     {
       "path": ".agentlas/agent-card.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -46,7 +62,11 @@
     },
     {
       "path": ".agentlas/routing-card.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -57,7 +77,11 @@
     },
     {
       "path": ".agentlas/memory-map.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -67,7 +91,11 @@
     },
     {
       "path": ".agentlas/global-commands.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -77,7 +105,11 @@
     },
     {
       "path": ".agentlas/mcp-policy.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -87,7 +119,11 @@
     },
     {
       "path": ".agentlas/skill-registry.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -97,7 +133,11 @@
     },
     {
       "path": ".agentlas/memory-tickets.jsonl",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "jsonl",
       "fill": "static",
@@ -107,7 +147,11 @@
     },
     {
       "path": ".agentlas/capability-eval-plan.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -117,7 +161,11 @@
     },
     {
       "path": ".agentlas/work-brief.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "json",
       "fill": "generate",
@@ -126,19 +174,27 @@
       "description": "Interview-derived work brief: goal, constraints, decisions"
     },
     {
-      "path": "benchmarks/routing-benchmark.jsonl",
-      "modes": ["single", "team", "package"],
+      "path": ".agentlas/routing-benchmarks.jsonl",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "jsonl",
       "fill": "fill",
       "template": "templates/routing-benchmark.jsonl.tpl",
       "schema": null,
       "minLines": 10,
-      "description": ">=10 routing benchmark cases (route + reject, ko + en)"
+      "description": ">=10 routing benchmark cases (route + reject, ko + en). Canonical path is the plural `.agentlas/routing-benchmarks.jsonl`, which is what 140 of 144 forge packages and 183 live Hub releases actually ship. The contract previously said `benchmarks/`, which no generation ever wrote, so every package failed this required artifact on the path alone while the file sat on disk. The spelling carries no meaning; only agreement does."
     },
     {
       "path": "docs/builder-interview.md",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "markdown",
       "fill": "generate",
@@ -149,7 +205,11 @@
     },
     {
       "path": "docs/research-sources.md",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": true,
       "format": "markdown",
       "fill": "generate",
@@ -160,7 +220,9 @@
     },
     {
       "path": "agents/*/agent.md",
-      "modes": ["team"],
+      "modes": [
+        "team"
+      ],
       "required": true,
       "format": "markdown",
       "fill": "generate",
@@ -171,7 +233,9 @@
     },
     {
       "path": ".agentlas/company-blueprint.json",
-      "modes": ["team"],
+      "modes": [
+        "team"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -181,7 +245,9 @@
     },
     {
       "path": ".agentlas/sitemap.json",
-      "modes": ["team"],
+      "modes": [
+        "team"
+      ],
       "required": true,
       "format": "json",
       "fill": "fill",
@@ -191,13 +257,73 @@
     },
     {
       "path": ".agentlas/super-ontology-contract.json",
-      "modes": ["single", "team", "package"],
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
       "required": false,
       "format": "json",
       "fill": "static",
       "template": "templates/super-ontology-contract.json.tpl",
       "schema": null,
       "description": "Governance contract seed (copied verbatim; export_only)"
+    },
+    {
+      "path": "contracts/intake.schema.json",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "fill",
+      "template": "templates/intake.schema.json.tpl",
+      "schema": null,
+      "description": "INPUT contract: the JSON Schema for what a requester must hand over before this method can start. Direction is carried by the filename because no package ever marked it any other way, and a schema whose direction has to be guessed from its title cannot be matched against a request. Every stated need becomes a property; `required` names the ones without which the work does not begin. Any enum reachable from matching MUST carry an escape member (\"other\", \"unknown\") - a closed list is how one stated requirement took a 3-candidate inventory to 0."
+    },
+    {
+      "path": "contracts/output.schema.json",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "fill",
+      "template": "templates/output.schema.json.tpl",
+      "schema": null,
+      "description": "OUTPUT contract: the JSON Schema for what the requester ends up holding. The brief compiler reads only this file's TOPOLOGY - arity and value spaces - to derive shape, rowVerdict and verdictValues, so nothing here depends on the words the author chose. Extra domain schemas may sit beside it; this is the one the matcher reads."
+    },
+    {
+      "path": "contracts/output.example.json",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "fill",
+      "template": "templates/output.example.json.tpl",
+      "schema": null,
+      "description": "One real instance of output.schema.json. The publish gate validates it with a JSON Schema validator, never with a model - under BYOM the only honest defence against marking your own homework is that the marker is not a model."
+    },
+    {
+      "path": ".agentlas/brief.json",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "fill",
+      "template": "templates/brief.json.tpl",
+      "schema": "schemas/agentlas-brief.schema.json",
+      "description": "The package's side of the match, compiled - never hand-written. side=offer. Sentences stay sentences; every field records in `provenance` whether it was extracted, read, graded or absent, and `absent` scores zero rather than being filled with something plausible."
     }
   ]
 }
