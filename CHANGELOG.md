@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.1.78 - 2026-07-29
+
+A machine that only ever runs inside host sandboxes now heals itself.
+
+- **The SessionStart hook starts the runtime auto-update worker.** v1.1.77
+  repaired the update path, but a machine whose every tool command runs inside
+  a host sandbox could never execute the repair: the in-command trigger cannot
+  write `~/.agentlas` from inside the sandbox, so the runtime stayed pinned to
+  a stale release forever while the plugin itself kept updating through the
+  host marketplace. Host hooks run outside tool sandboxes, so the memory hook
+  now starts the same TTL-gated, digest-verified, fail-silent worker on
+  SessionStart only — after recall output is flushed, reusing the existing 24h
+  marker/lock gating, never raising into the hook contract. Verified end to
+  end: with an empty HOME and no installed runtime, one SessionStart hook
+  invocation bootstrapped a digest-verified runtime with no terminal and no
+  human step. Fleet effect: any machine running Claude Code or Codex with the
+  marketplace plugin converges on the latest runtime at its next session
+  start; Desktop and plain-terminal use remain the other unsandboxed triggers.
+
 ## v1.1.77 - 2026-07-29
 
 The update check survives the sandbox every hosted runtime puts it in, and a
