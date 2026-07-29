@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.1.79 - 2026-07-29
+
+A recalled memory now confesses its age instead of impersonating the present.
+
+- **Stale recall sources are labeled, and deleted ones are named.** Measured
+  2026-07-29: a recall capsule served 12-day-old project facts (a project
+  index frozen since Jul 17 — its only producer is Desktop's working-folder
+  ontology materialization) with no freshness signal, and a session asserted
+  them as current state. The consumer cannot infer a source's age, so the
+  producer must label it: each cited project chunk now resolves its source
+  document's mtime; sources older than 7 days carry an inline age tag
+  (`| stale 2026-07-17, 12d old`) and inject a staleness directive —
+  "historical snapshot, not current state; verify versions, statuses, and
+  paths against the live system before asserting". A deleted source is named
+  as missing outright. Fail-open: an unresolvable source stays unannotated
+  rather than risking a false warning. This guards every stalled-producer
+  case (frozen index, frozen PM documents, dead emission loops) at the one
+  place all of them converge: the capsule consumers actually read.
+
 ## v1.1.78 - 2026-07-29
 
 A machine that only ever runs inside host sandboxes now heals itself.

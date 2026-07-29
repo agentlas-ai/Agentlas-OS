@@ -41,7 +41,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.78"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.79"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -136,6 +136,13 @@ def _selection_property_with_ordinal(description: str) -> dict[str, Any]:
 
 _MENU_AUDIT_FIELDS = ("qualificationEvidence", "packageHash", "contentDigest")
 
+# semanticSnapshot 안의 중량 칸. 카드가 문장을 통째로 artifact ID로 슬러그화해 담는
+# 자리라 후보 1명이 수십 개를 싣는데, 후보끼리 겹치지 않아 대조 자체가 불가능하다
+# (라이브 1슬롯 10후보 실측: produces 고유 365개 중 2명 이상 공유 1개=0%, consumes
+# 149개 중 0개). 같은 내용은 summaries가 한 문장으로 이미 갖고 있고, 실제 매칭은
+# Core가 세션 저장소 원본으로 수행한다. 따라서 명부에서는 개수만 남긴다.
+_MENU_SNAPSHOT_HEAVY_FIELDS = ("produces", "consumes")
+
 
 def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
     """검색 응답을 결정용 요약 명부로 투영 — 드롭리스트 방식.
@@ -144,6 +151,10 @@ def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
     추가·개명돼도 새 필드는 자동 통과한다. 원본 전문은 Core 세션 저장소가 보유하며
     검증·준비의 핀 대조는 저장소 원본으로 수행되므로 통제 손실이 없다.
     실측(1슬롯 10후보): 41,216B → 약 22KB, 판단 실효 정보 손실 0.
+
+    이 투영은 MCP 표면 전용이다. 터미널 러너는 semanticSnapshot 키 집합을 정확히
+    9개로 단언하므로(agentlas-workforce.cjs assertExactKeys), 같은 접기를 Core
+    공용 경로에 넣으면 그쪽이 candidate_set_invalid로 죽는다.
     """
     projected = {key: value for key, value in result.items() if key != "candidateProvenance"}
     candidate_set = projected.get("candidateSet")
@@ -163,6 +174,15 @@ def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
                 evidence = (slot.get("candidates", [])[ordinal - 1] or {}).get("qualificationEvidence")
                 if isinstance(evidence, list):
                     candidate["qualificationEvidenceCount"] = len(evidence)
+                snapshot = candidate.get("semanticSnapshot")
+                if isinstance(snapshot, dict):
+                    snapshot = dict(snapshot)
+                    for field in _MENU_SNAPSHOT_HEAVY_FIELDS:
+                        value = snapshot.get(field)
+                        if isinstance(value, list):
+                            snapshot.pop(field)
+                            snapshot[f"{field}Count"] = len(value)
+                    candidate["semanticSnapshot"] = snapshot
                 candidates.append(candidate)
             slot["candidates"] = candidates
             slots.append(slot)
@@ -628,7 +648,11 @@ TOOLS: list[dict[str, Any]] = [
                         "Default false: the response is a decision menu — audit-weight fields "
                         "(qualificationEvidence, packageHash, contentDigest, candidateProvenance) stay in "
                         "Core's session store and each candidate carries a candidateOrdinal for "
-                        "ordinal selection. Set true only for a legacy full-echo flow."
+                        "ordinal selection. semanticSnapshot.produces/consumes collapse to "
+                        "producesCount/consumesCount: those entries do not repeat across candidates, so "
+                        "they cannot rank one against another, and Core still matches on the stored "
+                        "originals — read summaries, skills, communities and fitEvidence instead. "
+                        "Set true only for a legacy full-echo flow."
                     ),
                 },
             },
