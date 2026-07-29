@@ -604,6 +604,27 @@ def _format_output(host: str, event: str, capsule: str | None, workspace: Path |
     return capsule
 
 
+def _maybe_start_runtime_auto_update() -> None:
+    """Start the TTL-gated, fail-silent runtime auto-update from hook context.
+
+    Host hooks run OUTSIDE tool sandboxes, so this is the escape hatch for
+    machines whose every tool command is sandboxed: there the in-command
+    trigger can never write ``~/.agentlas`` and the runtime stays pinned to a
+    stale release forever, while the plugin itself keeps updating through the
+    host marketplace. Runs only after recall output is already flushed, reuses
+    the same 24h marker/lock gating as the CLI trigger, and never raises.
+    """
+
+    try:
+        from .update import maybe_auto_update
+
+        current = Path.home() / ".agentlas" / "runtime" / "current"
+        root = current if (current / "RELEASE").is_file() else None
+        maybe_auto_update(root)
+    except Exception:
+        return
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fail-open, local-only Agentlas memory recall hook")
     parser.add_argument(
@@ -618,6 +639,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     payload = _read_payload()
     locale = args.locale or ("ko" if os.environ.get("AGENTLAS_LOCALE", "").lower().startswith("ko") else "en")
+    event = ""
     try:
         event = _event_name(payload, args.event)
         if event == "PreToolUse":
@@ -637,6 +659,9 @@ def main(argv: list[str] | None = None) -> int:
         output = _empty_output(args.host)
     if output:
         sys.stdout.write(output + "\n")
+        sys.stdout.flush()
+    if event == "SessionStart":
+        _maybe_start_runtime_auto_update()
     return 0
 
 
