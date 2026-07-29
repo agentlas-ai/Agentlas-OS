@@ -22,6 +22,15 @@ single point of failure.
   the file, and any fresh file disables the backstop for the TTL window.
   Verified live on the real frozen corpus: one SessionStart regenerated the
   Jul 17 index and the next capsule cited it with no staleness labels.
+- **MCP workforce staffing goes reference-first and menu-light.** Measured on
+  the live MCP host path (1 slot × 10 candidates), the search → validate →
+  prepare round trip cost ~360KB of host context, and reference-style prepare
+  could not finish because it still demanded full-echo attachments plus a hash
+  no LLM can compute. The search menu now also folds
+  `semanticSnapshot.produces/consumes` (unique-per-candidate slugs with zero
+  cross-candidate overlap, so they never supported comparison), attachments
+  are optional in reference mode, prepare accepts menu ordinals, and
+  `prepareAttempt` is server-derived.
 
 ## v1.1.79 - 2026-07-29
 
