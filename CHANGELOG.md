@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.1.76 - 2026-07-29
+
+A credential is identified by where it lives, not by a word in its filename.
+
+- **Credential detection matches a path SEGMENT, never a filename substring.**
+  `**/*token*` and `**/*secret*` matched ordinary vocabulary: measured on the
+  live `web-master` bundle, they gave a flagship paid package
+  `securityVerdict: BLOCK` for shipping its own `token-architecture.md` and
+  `reference-token-db.json`, and the matching `denyRead` entry then hid those
+  files from the runtime, so a worker card could name them as Required Context
+  and never receive them. Dropping the substring rule costs no coverage —
+  `collect_package_files` skips every non-text suffix and every file that fails
+  to decode, so anything reaching the scan is text whose content is matched
+  against SECRET_PATTERNS, the check that actually looks at values. Matching by
+  segment also closes a hole the globs had: `matches` is fnmatch, so
+  `**/secrets/**` required a parent directory and a store at the package ROOT
+  matched nothing at all. Both the publish scan and the runtime read policy now
+  cover rooted and nested stores.
+- **Upload widens `allowRead` to the context its own agent cards demand.** A
+  worker card naming `webmaster_frontend/knowledge/stack-and-standards.md` as
+  Required Context is a promise the runtime has to keep. Measured across 143 live
+  packages, `allowRead` came in 15 different shapes, 128 of them a 5-entry list
+  written before `agents/**`, `docs/**` and `contracts/**` joined the default,
+  and 82 card-declared files were unreachable. Re-uploading now unions the
+  current default with every path the cards actually reference, minus credential
+  stores.
+
 ## v1.1.75 - 2026-07-29
 
 A package is priced and staffed as what it actually ships, and Codex can publish
