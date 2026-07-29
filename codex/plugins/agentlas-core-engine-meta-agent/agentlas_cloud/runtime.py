@@ -32,6 +32,53 @@ EXFIL = re.compile(r"(curl|wget|fetch|requests\.(?:post|put))[^\n]{0,240}(\.env|
 UNICODE_OBFUSCATION = re.compile(r"[\u200b\u200c\u200d\ufeff\u202a-\u202e\u2066-\u2069]")
 TEXT_FILE_ALLOW = {".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".py", ".js", ".ts", ".tsx", ".cjs", ".mjs", ".sh"}
 
+# Paths that exist only to hold credentials, so the NAME is the verdict: shipping
+# one is wrong even when it is empty.
+#
+# The list deliberately stops there. It used to also carry `**/*token*` and
+# `**/*secret*`, which match on a filename substring — and "token" and "secret"
+# are ordinary vocabulary. Measured 2026-07-29 on the live `web-master` bundle,
+# that rule BLOCKed the package's own design system: `token-architecture.md`,
+# `layout-composition-tokens.md`, `reference-token-db.json`, and
+# `token-package.example.json` were all reported as `credential-path`, giving a
+# flagship paid package `securityVerdict: BLOCK` and hiding its entire token
+# contract from the runtime.
+#
+# Removing them costs no coverage, and that is provable here rather than a
+# judgement call: `collect_package_files` skips every suffix outside
+# TEXT_FILE_ALLOW and every file that fails to decode, so ANY file that reaches
+# this scan is readable text whose content is matched against SECRET_PATTERNS
+# below. A real credential in a file named `design-tokens.css` is caught by
+# `secret-like-value` no matter what the path says. As the note on the
+# value-free templates already puts it, SECRET_PATTERNS "is the check that
+# actually looks at values" — the filename is a hint, not the finding.
+CREDENTIAL_STORE_DIRS = ("secrets", "credentials", "cookies")
+
+
+def is_credential_store_path(relative_path: str) -> bool:
+    """True when a path SEGMENT is a credential store, or the file is a dotenv.
+
+    Segment equality, never substring. That distinction is the whole rule:
+    `secrets/keys.json` and `app/credentials/aws.json` are stores, while
+    `design-tokens.css` or `secret-santa-planner.md` merely contain the word.
+
+    Matching by segment also closes a hole the old globs had. They were written
+    as `**/secrets/**`, and `matches` is `fnmatch`, so the leading `**/` needed a
+    parent directory: a store at the package ROOT (`secrets/keys.json`) never
+    matched. It only looked covered because the removed `**/*secret*` substring
+    happened to catch that one name — `credentials/` at the root matched nothing
+    at all, before or after.
+    """
+
+    candidate = (relative_path or "").replace("\\", "/").lstrip("/")
+    segments = [segment for segment in candidate.split("/") if segment]
+    if not segments:
+        return False
+    if any(segment in CREDENTIAL_STORE_DIRS for segment in segments):
+        return True
+    name = segments[-1]
+    return name == ".env" or name.startswith(".env.")
+
 # The three value-free files the OS orders its own packager to produce.
 # AGENTS.md Output Contract: ship `.agentlas/local-credentials.map.json` plus
 # `.env.example`, `signing/README.md` and `credentials/README.md` "when local
@@ -130,6 +177,27 @@ DEFAULT_ALLOW_READ = [
     "contracts/**",
     ".agentlas/*.json",
     ".agentlas/*.jsonl",
+]
+# The runtime read policy, kept on the same principle as the publish scan: a
+# credential store is a path SEGMENT, never a filename substring. The old list
+# carried `**/*token*` and `**/*secret*`, and on the live `web-master` bundle
+# that denied the package its own design system — `token-architecture.md` and
+# `reference-token-db.json` were unreadable at runtime, so the worker card could
+# name them as Required Context and never get them.
+#
+# Both the rooted and the `**/`-prefixed form are listed because `matches` is
+# fnmatch: `**/secrets/**` needs a parent directory, so a store at the package
+# root would otherwise slip through the runtime policy exactly as it slipped
+# through the publish scan.
+DEFAULT_DENY_READ = [
+    ".env",
+    ".env.*",
+    "secrets/**",
+    "**/secrets/**",
+    "credentials/**",
+    "**/credentials/**",
+    "cookies/**",
+    "**/cookies/**",
 ]
 PACKAGE_HASH_EXCLUDED_PATHS = frozenset(
     {
@@ -369,7 +437,7 @@ def build_manifest(files: list[PackageFile], name: str) -> AgentlasManifest:
         memoryPolicy={"writeBack": "ask", "publicCopy": "reset"},
         memory=[file.path for file in files if file.path in {".agentlas/memory-map.json", ".agentlas/agent-card.json"}],
         allowRead=list(DEFAULT_ALLOW_READ),
-        denyRead=[".env", ".env.*", "**/secrets/**", "**/credentials/**", "**/cookies/**", "**/*token*", "**/*secret*"],
+        denyRead=list(DEFAULT_DENY_READ),
         publicExportPolicy="clean-copy",
         requiredRuntime=["mcp-client"],
         license="call-only-default",
@@ -412,7 +480,7 @@ def scan_files(files: list[PackageFile]) -> SecurityReport:
         # and `.env.example`, which the Output Contract makes mandatory. This
         # verdict is closed-form and can never be cleared by the judgment
         # runner, so without the exemption the OS BLOCKs its own output forever.
-        if not is_value_free_credential_template(file.path) and any(matches(file.path, pattern) for pattern in [".env", ".env.*", "**/secrets/**", "**/credentials/**", "**/cookies/**", "**/*token*", "**/*secret*"]):
+        if not is_value_free_credential_template(file.path) and is_credential_store_path(file.path):
             findings.append(SecurityFinding("BLOCK", "credential-path", file.path, "Credential-like file path is excluded from Cloud package and public publish."))
         for number, line in enumerate(file.content.splitlines(), start=1):
             if any(pattern.search(line) for pattern in SECRET_PATTERNS):

@@ -27,8 +27,11 @@ stripped.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
+
+from .runtime import DEFAULT_ALLOW_READ, is_credential_store_path
 
 __all__ = ["REPAIRABLE_BLOCKERS", "repair_package", "classify_findings"]
 
@@ -123,6 +126,69 @@ def _derived_entity_type(base: Path) -> tuple[str | None, str]:
     if definitions:
         return "agent", "the package ships one agent definition under agents/"
     return None, "the package declares no roster"
+
+
+def _widen_allow_read_to_declared_context(base: Path, manifest: dict[str, Any]) -> list[str]:
+    """Let the runtime read the files the package's own agent cards require.
+
+    A worker card that says "Required Context: webmaster_frontend/knowledge/
+    stack-and-standards.md" is making a promise the runtime has to be able to
+    keep. Nothing tied the two together, and the drift is not theoretical:
+    measured 2026-07-29 across 143 live packages, `allowRead` came in 15
+    different shapes, 128 of them a 5-entry list narrower than the current
+    default, and 82 files that cards named as required were unreachable — the
+    live `web-master` bundle could not open its own token architecture.
+
+    So the reference is the authority, the same way package structure is the
+    authority for entity type. Only paths that (a) a card actually names,
+    (b) exist in the package, and (c) are not credential stores are added.
+    """
+
+    import fnmatch
+
+    allow = manifest.get("allowRead")
+    if not isinstance(allow, list) or not all(isinstance(item, str) for item in allow):
+        return []
+
+    referenced: set[str] = set()
+    cards = sorted(base.glob("agents/*/agent.md"))
+    for entry in ("AGENTS.md", "agent.md"):
+        candidate = base / entry
+        if candidate.is_file():
+            cards.append(candidate)
+    for card in cards:
+        try:
+            text = card.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for match in re.finditer(r"`([A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:md|json|jsonl|css))`", text):
+            referenced.add(match.group(1))
+
+    additions: list[str] = []
+    # The house default moved and published packages did not follow it: 128 of
+    # the 143 measured still carry a 5-entry list written before `agents/**`,
+    # `docs/**`, `contracts/**` and `benchmarks/**` were part of it. Re-uploading
+    # brings a package up to the current floor rather than freezing whichever
+    # default happened to exist the day it was first built.
+    for pattern in DEFAULT_ALLOW_READ:
+        if pattern not in allow and pattern not in additions:
+            additions.append(pattern)
+
+    for path in sorted(referenced):
+        if not (base / path).is_file():
+            continue
+        if is_credential_store_path(path):
+            continue
+        if any(fnmatch.fnmatch(path, pattern) for pattern in allow):
+            continue
+        parent = str(Path(path).parent).replace("\\", "/")
+        pattern = f"{parent}/**" if parent not in {"", "."} else path
+        if pattern not in allow and pattern not in additions:
+            additions.append(pattern)
+
+    if additions:
+        manifest["allowRead"] = allow + additions
+    return additions
 
 
 def _first_sentence(text: str, limit: int = 300) -> str:
@@ -548,6 +614,14 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
                     derived["careful-with"] = limits
             if derived:
                 profile["guide"] = derived
+        widened = _widen_allow_read_to_declared_context(base, manifest)
+        if widened:
+            repairs.append({
+                "file": "agentlas.json",
+                "action": "widened",
+                "why": "agent cards name these files as required context but allowRead did not reach them: "
+                       + ", ".join(widened),
+            })
         if json.dumps(manifest, sort_keys=True, ensure_ascii=False) != before:
             manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             repairs.append({
