@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.1.81 - 2026-07-29
+
+Session learnings now feed every host's recall — the memory loop's supply side
+is closed.
+
+- **The recall capsule carries a standing emission contract.** Evidence first
+  (central DB + Desktop logs, 2026-07-29): the curation pipeline was alive
+  (468 episodes) but admission starved — most discards were CORRECT (episodes
+  were QA noise), and valid candidates were admitted by policy fallback even
+  with the semantic judge blocked by Codex CLI isolation limits. The real
+  defect was supply: the work worth remembering happens in Claude Code /
+  Codex / Cursor / Antigravity sessions, which had no path into the loop.
+  Judgment stays with the session LLM; delivery is now the system's job:
+  every capsule tells sessions that durable project learnings
+  (fact/decision/procedure with evidence; never secrets or transcripts)
+  belong in `.agentlas/pm/learnings/`.
+- **A learning written today is recallable at the next session start.** The
+  index backstop also regenerates when any pm document is newer than the
+  index (not only after the 7-day TTL), embeds pm documents learnings-first
+  and newest-first (measured live: name-ordered traversal let mid-July
+  handoff notes exhaust the 48K budget and a fresh learning never made it
+  in), and stamps every embedded document heading with its own last-written
+  date so a freshly regenerated index cannot launder an old note as current.
+  Verified end to end: one recorded learning → SessionStart → regenerated
+  index → ingest → rank-2 recall for a targeted query.
+
 ## v1.1.80 - 2026-07-29
 
 The recall corpus regenerates from any surface — Desktop is no longer its
