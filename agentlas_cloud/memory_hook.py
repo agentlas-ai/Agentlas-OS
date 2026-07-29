@@ -195,7 +195,7 @@ def _source_label(item: dict[str, Any]) -> str:
     return _compact_text(label or "project", 80)
 
 
-STALE_SOURCE_AFTER_SECONDS = 7 * 24 * 60 * 60
+from .project_index_backstop import STALE_AFTER_SECONDS as STALE_SOURCE_AFTER_SECONDS
 
 
 def _source_path(item: dict[str, Any]) -> Path | None:
@@ -714,6 +714,12 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.flush()
     if event == "SessionStart":
         _maybe_start_runtime_auto_update()
+        try:
+            from .project_index_backstop import maybe_refresh_project_index
+
+            maybe_refresh_project_index(_resolve_cwd(payload, args.cwd))
+        except Exception:
+            pass
     return 0
 
 

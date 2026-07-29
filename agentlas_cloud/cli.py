@@ -804,6 +804,17 @@ def main(argv: list[str] | None = None) -> int:
     # synchronous check below, so skip the duplicate spawn for it.
     if args.command not in {"hep-update", "update"}:
         maybe_auto_update()
+    # Same fail-silent pattern for the recall corpus: any command run inside a
+    # .agentlas project regenerates a stale project index, so recall freshness
+    # never depends on which product (Desktop, terminal, plugin host) the
+    # machine happens to use. Project .agentlas writes live in the workspace,
+    # so this also works inside host sandboxes.
+    try:
+        from .project_index_backstop import maybe_refresh_project_index
+
+        maybe_refresh_project_index(Path.cwd())
+    except Exception:
+        pass
     if args.command == "wizard":
         return emit(run_setup_wizard(args.folder, args.name, write=not args.no_write))
     if args.command == "security" and args.security_command == "scan":
