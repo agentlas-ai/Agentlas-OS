@@ -41,7 +41,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.76"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.77"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",

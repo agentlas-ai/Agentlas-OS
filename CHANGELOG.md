@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1.77 - 2026-07-29
+
+The update check survives the sandbox every hosted runtime puts it in, and a
+permission denial is named as one.
+
+- **A denied cache write no longer kills a successful release check.**
+  Reproduced under a deny-home-write sandbox — the state Claude Code, Codex,
+  Cursor and Antigravity run commands in: after a successful GitHub release
+  fetch, writing the `update-check.json` TTL cache raised `EPERM` and discarded
+  the answer, so even `hep-update --check` died with a raw traceback and
+  auto-update silently never ran on sandboxed machines. The cache is an
+  optimization, never part of the answer; its write is now best-effort and the
+  check path completes inside sandboxes.
+- **EPERM/EACCES reports as a sandbox boundary, not as network or disk.** The
+  previous wording blamed connectivity ("could not reach github.com") or free
+  disk space precisely when neither was at fault. A permission denial anywhere
+  in the failure chain now returns `check_blocked_sandboxed` /
+  `install_blocked_sandboxed`, names the denied path, and tells the user to run
+  `hephaestus hep-update` from a regular unsandboxed terminal once.
+
 ## v1.1.76 - 2026-07-29
 
 A credential is identified by where it lives, not by a word in its filename.
