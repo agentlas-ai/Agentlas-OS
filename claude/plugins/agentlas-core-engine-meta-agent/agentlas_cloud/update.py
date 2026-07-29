@@ -8,6 +8,7 @@ TTL window so the user's command does not wait on network or install work.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -276,6 +277,24 @@ class UpdateUnavailableError(RuntimeError):
         self.message = message
 
 
+def _denied_write_path(exc: BaseException) -> str | None:
+    """Return the denied path when ``exc`` chains down to a permission denial.
+
+    Host sandboxes surface as ``EPERM``/``EACCES`` on ordinary local writes, a
+    failure class the network/disk wording must never claim. ``None`` means
+    "not a permission problem"; an empty string is a denial without a filename.
+    """
+
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, OSError) and current.errno in (errno.EPERM, errno.EACCES):
+            return str(current.filename or "")
+        current = current.__cause__ or current.__context__
+    return None
+
+
 def _release_source_host() -> str:
     """Name the release host in user-facing text; never invent a default."""
 
@@ -300,6 +319,25 @@ def _install_or_report(release: dict[str, Any], current: str | None) -> dict[str
         return install_latest_runtime(release)
     except (urllib.error.URLError, TimeoutError, OSError, ValueError, tarfile.TarError, RuntimeError) as exc:
         tag = str(release.get("tag_name") or "the latest release")
+        denied = _denied_write_path(exc)
+        if denied is not None:
+            where = f" to {denied}" if denied else ""
+            raise UpdateUnavailableError(
+                {
+                    "status": "install_blocked_sandboxed",
+                    "current": current,
+                    "latest": release.get("tag_name"),
+                    "error": f"a sandbox denied a local write needed to install {tag}",
+                    "denied_path": denied,
+                    "detail": str(exc),
+                    "install_command": "hephaestus hep-update",
+                },
+                f"Could not install {tag}: this process was denied write access{where}. "
+                "A host sandbox (Claude Code, Codex, Cursor, ...) is blocking writes outside "
+                "the workspace — this is not a network or disk problem. "
+                f"{_current_release_phrase(current)}. "
+                "Run this from a regular unsandboxed terminal: hephaestus hep-update",
+            ) from exc
         raise UpdateUnavailableError(
             {
                 "status": "install_failed",
@@ -324,6 +362,26 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
         # force=True deliberately bypasses the TTL cache, so there is no cached
         # answer to fall back to and inventing one would be a silent fallback.
         # Report the failure in words instead of raising into the CLI.
+        denied = _denied_write_path(exc)
+        if denied is not None:
+            # A permission denial is a local sandbox boundary, not connectivity;
+            # blaming the network here would misdirect the user.
+            where = f" to {denied}" if denied else ""
+            raise UpdateUnavailableError(
+                {
+                    "status": "check_blocked_sandboxed",
+                    "current": current,
+                    "error": "a sandbox denied a local write during the update check",
+                    "denied_path": denied,
+                    "detail": str(exc),
+                    "install_command": "hephaestus hep-update",
+                },
+                f"Could not finish the update check: this process was denied write access{where}. "
+                "A host sandbox (Claude Code, Codex, Cursor, ...) is blocking writes outside "
+                "the workspace — this is not a network problem. "
+                f"{_current_release_phrase(current)}; nothing was changed. "
+                "Run this from a regular unsandboxed terminal: hephaestus hep-update",
+            ) from exc
         host = _release_source_host()
         raise UpdateUnavailableError(
             {
@@ -467,7 +525,15 @@ def fetch_latest_release(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SEC
         release = json.loads(response.read().decode("utf-8"))
     if not isinstance(release, dict) or not release.get("tag_name"):
         raise ValueError("latest release response missing tag_name")
-    _write_json(cache_path, {"epoch": int(time.time()), "release": release})
+    try:
+        _write_json(cache_path, {"epoch": int(time.time()), "release": release})
+    except OSError:
+        # The TTL cache is an optimization, never part of the answer. Host
+        # sandboxes (Claude Code, Codex, Cursor, ...) deny writes outside the
+        # workspace, and a denied cache write must not discard a release fetch
+        # that already succeeded — 2026-07-29 실측: 이 쓰기가 샌드박스에서
+        # hep-update --check까지 통째로 죽이고 있었다.
+        pass
     return release
 
 
