@@ -49,13 +49,11 @@ done
 3. From content and qualification evidence, author
    `agentlas.workforce-selection.v1` yourself. Call
    `workforce.validate_selection` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult}` and keep its response as `federatedSelection`. Revise on
+   `{workOrder, selection}` and keep its response as `federatedSelection`. Revise on
    rejection. Deterministic code may
    enforce governance but may not pick, rerank, or silently substitute.
 4. Call `workforce.prepare_execution` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult, federatedSelection, projectDir, goalId?}` and require
+   `{workOrder, selection, federatedSelection, projectDir, goalId?}` and require
    exact source, release, package/content, runtime-bundle, permission, and
    context pins for every selected row. `projectDir` is mandatory; pass the
    incumbent `goalId` when continuing. Otherwise Core derives it from the

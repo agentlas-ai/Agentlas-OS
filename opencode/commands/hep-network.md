@@ -16,11 +16,9 @@ buries the right agent, measured 1st vs 144th for one query), while keeping
 `sourceScope: "network"` (registered Local + owner Cloud + public Hub), keeping
 the response as `federationResult`. Author the final Selection yourself, call
 `workforce.validate_selection` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult}`, keep `federatedSelection`, then call
+`{workOrder, selection}`, keep `federatedSelection`, then call
 `workforce.prepare_execution` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult, federatedSelection, projectDir, goalId?}`. `projectDir` is
+`{workOrder, selection, federatedSelection, projectDir, goalId?}`. `projectDir` is
 mandatory; pass the incumbent `goalId` when continuing. Otherwise Core derives
 one from the WorkOrder id and automatically binds the successful plan. Preserve
 source receipts/provenance and all

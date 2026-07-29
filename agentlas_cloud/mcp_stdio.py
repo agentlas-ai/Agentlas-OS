@@ -719,13 +719,29 @@ TOOLS: list[dict[str, Any]] = [
                     "workOrder",
                     "The exact complete WorkOrder used to create candidateSet.",
                 ),
-                "candidateSet": {"type": "object"},
+                "candidateSet": {
+                    "type": "object",
+                    "description": (
+                        "Optional. Omit it: Core resolves the exact pinned set from "
+                        "selection.selectionSessionId and re-verifies its digest and expiry. Send it "
+                        "only to prepare a set this process did not issue."
+                    ),
+                },
                 "selection": _contract_property(
                     "selection",
                     "The exact complete host-LLM Selection accepted by validationReceipt or federatedSelection.",
                 ),
                 "validationReceipt": {"type": "object"},
-                "federationResult": {"type": "object"},
+                "federationResult": {
+                    "type": "object",
+                    "description": (
+                        "Optional. Omit it: Core loads the locally pinned federation result for "
+                        "selection.selectionSessionId. The default search answer is a decision menu "
+                        "with candidateProvenance dropped, so echoing that back is rejected outright "
+                        "— resolve by session instead of re-fetching the full dossier to have "
+                        "something to echo."
+                    ),
+                },
                 "federatedSelection": {
                     "type": "object",
                     "description": "Exact accepted result returned by federated workforce.validate_selection.",
@@ -734,8 +750,12 @@ TOOLS: list[dict[str, Any]] = [
                     "type": "object",
                     "additionalProperties": False,
                     "description": (
-                        "Caller-authored agentlas.workforce-prepare-attempt.v1. Its digest binds the "
-                        "logical occurrence, exact WorkOrder/Selection, federated selection, and every source pin."
+                        "Optional caller-authored agentlas.workforce-prepare-attempt.v1. Its digest binds the "
+                        "logical occurrence, exact WorkOrder/Selection, federated selection, and every source pin. "
+                        "Omit it: the idempotencyKey is a canonical sha256 no host LLM can hand-compute, so Core "
+                        "derives the attempt from the accepted federatedSelection (occurrenceId from its "
+                        "selectionSessionId, so a same-session retry stays idempotent). Send it only from callers "
+                        "that compute digests programmatically."
                     ),
                     "properties": {
                         "schemaVersion": {"const": "agentlas.workforce-prepare-attempt.v1"},
@@ -772,8 +792,8 @@ TOOLS: list[dict[str, Any]] = [
                 },
             },
             "required": [
-                "workOrder", "candidateSet", "selection",
-                "federationResult", "federatedSelection", "prepareAttempt", "projectDir",
+                "workOrder", "selection",
+                "federatedSelection", "projectDir",
             ],
         },
         "x-agentlas-contracts": _workforce_tool_contracts("workOrder", "selection"),
@@ -1610,8 +1630,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             # 있다. 여기서 저장된(또는 제출된) 명부로 정확한 릴리스 ID로 해석해
             # canonical 형태로 만든 뒤에만 심층 검증에 넘긴다. 해석 실패는 조용한
             # 대체 없이 거절한다.
+            #
+            # prepare에도 같이 건다. validate 전용이던 동안, 순번으로 결재해 accepted를
+            # 받은 호출자가 같은 selection을 prepare에 넘기면 assignments[0].agentReleaseId
+            # 누락 + candidateOrdinal additionalProperties로 거절당했다(실측). validate는
+            # canonical 형태를 돌려주지 않으므로 호출자에게는 되돌릴 방법이 없었다.
             if (
-                name == "workforce.validate_selection"
+                name in ("workforce.validate_selection", "workforce.prepare_execution")
                 and isinstance(selection, Mapping)
                 and isinstance(candidate_set, Mapping)
                 and any(
@@ -1742,12 +1767,46 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             "repairable": True,
                             "hubCalls": 0,
                         }
+                    # prepareAttempt의 idempotencyKey는 payload 전체의 canonical
+                    # sha256이라 호스트 LLM이 손으로 만들 수 없는 값이다(터미널
+                    # 러너는 코드로 계산한다). MCP 호스트 경로에서는 미제공 시
+                    # Core가 같은 재료 — 정확한 WorkOrder/해석된 Selection의
+                    # canonical digest, federatedSelection의 수령 digest·소스 핀 —
+                    # 로 파생한다. occurrenceId를 selectionSessionId에서 파생하므로
+                    # 같은 세션의 재시도는 같은 키로 떨어져 멱등성이 유지된다.
+                    # 제공된 prepareAttempt는 그대로 대조 검증한다(약화 없음).
+                    prepare_attempt = arguments.get("prepareAttempt")
+                    if prepare_attempt is None:
+                        from .workforce.prepare_cache import prepare_attempt_payload
+
+                        pinned_rows = federated_selection.get("selectedSourcePins")
+                        session_ref = federated_selection.get("selectionSessionId")
+                        if isinstance(pinned_rows, list) and isinstance(session_ref, str):
+                            try:
+                                prepare_attempt = prepare_attempt_payload(
+                                    f"occurrence:{session_ref.strip()}",
+                                    work_order_digest=canonical_digest(work_order),
+                                    selection_digest=canonical_digest(selection),
+                                    federated_selection_digest=str(
+                                        federated_selection.get("federatedSelectionDigest") or ""
+                                    ),
+                                    selected_source_pin_digests=[
+                                        str(row.get("sourcePinDigest") or "")
+                                        if isinstance(row, Mapping)
+                                        else ""
+                                        for row in pinned_rows
+                                    ],
+                                )
+                            except Exception:
+                                # 파생 실패는 조용한 대체 없이 기존 필수-인자
+                                # 검증 경로가 정직하게 거절하도록 남겨 둔다.
+                                prepare_attempt = None
                     service = WorkforceSourceService(session_store=store)
                     source_bundles = service.fetch_selected_runtime_bundles(
                         federated_selection,
                         work_order=work_order,
                         selection=selection,
-                        prepare_attempt=arguments.get("prepareAttempt"),
+                        prepare_attempt=prepare_attempt,
                     )
                     prepared_result = prepare_federated_execution_plan(
                         work_order=work_order,

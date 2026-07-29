@@ -57,14 +57,12 @@ done
 3. As the active host LLM, author `agentlas.workforce-selection.v1` from the
    returned content and qualification evidence. Call
    `workforce.validate_selection` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult}` and keep its accepted response as `federatedSelection`.
+   `{workOrder, selection}` and keep its accepted response as `federatedSelection`.
    Revise on rejection. Deterministic code may
    enforce governance but must not choose, rerank, or silently substitute the
    roster.
 4. Call `workforce.prepare_execution` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult, federatedSelection, projectDir, goalId?}`. `projectDir` is
+   `{workOrder, selection, federatedSelection, projectDir, goalId?}`. `projectDir` is
    mandatory. Pass the incumbent `goalId` when continuing; otherwise Core
    derives one from the WorkOrder id. Core must automatically bind a successful
    preparation before execution, so continuity cannot be skipped because no

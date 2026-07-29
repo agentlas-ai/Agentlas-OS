@@ -17,11 +17,9 @@ query), while keeping `languages` as the required delivery language — and call
 `sourceScope: "network"` (registered Local + owner Cloud + public Hub), keeping
 the response as `federationResult`. Author the final Selection yourself from
 content/qualification evidence, call `workforce.validate_selection` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult}`, keep `federatedSelection`, then call
+`{workOrder, selection}`, keep `federatedSelection`, then call
 `workforce.prepare_execution` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult, federatedSelection, projectDir, goalId?}`. `projectDir` is
+`{workOrder, selection, federatedSelection, projectDir, goalId?}`. `projectDir` is
 mandatory; pass the incumbent `goalId` when continuing. Otherwise Core derives
 one from the WorkOrder id and automatically binds the successful plan. Preserve
 source receipts, provenance, immutable source/release/package/content/runtime/

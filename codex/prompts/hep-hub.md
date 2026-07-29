@@ -14,11 +14,9 @@ redacted `agentlas.workforce-work-order.v1`, call
 the response as `federationResult`. Author the final
 `agentlas.workforce-selection.v1` yourself, call
 `workforce.validate_selection` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult}`, keep its response as `federatedSelection`, then call
+`{workOrder, selection}`, keep its response as `federatedSelection`, then call
 `workforce.prepare_execution` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult, federatedSelection}`. Require every row to retain source `hub` plus
+`{workOrder, selection, federatedSelection, projectDir}`. Require every row to retain source `hub` plus
 its exact release/package/content/runtime/permission/context identity.
 
 Run planner/manager, selected workers, synthesis, and verifier as distinct

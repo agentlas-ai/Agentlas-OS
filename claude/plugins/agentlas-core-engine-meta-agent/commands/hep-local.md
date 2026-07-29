@@ -20,13 +20,11 @@ Local inventory; it must not add owner Cloud or public Hub candidates.
    `federationResult`, including its local registry receipt.
 3. Author the final `agentlas.workforce-selection.v1` as the active host LLM,
    then call `workforce.validate_selection` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult}` and keep the response as `federatedSelection`. Revise on
+   `{workOrder, selection}` and keep the response as `federatedSelection`. Revise on
    rejection; do not accept a
    deterministic picker or unrelated fallback.
 4. Call `workforce.prepare_execution` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult, federatedSelection}`. Require every
+   `{workOrder, selection, federatedSelection, projectDir}`. Require every
    selected row to remain pinned to source `local`, exact package/content
    identity, runtime bundle, permission policy, and context digest.
 5. Execute distinct planner/manager, worker, synthesis, and verifier calls with

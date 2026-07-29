@@ -24,12 +24,10 @@ ongoing work before considering recruitment.
    `federationResult`, preserving every source receipt and provenance row.
 3. Author `agentlas.workforce-selection.v1` yourself from content and
    qualification evidence, then call `workforce.validate_selection` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult}` and keep the response as `federatedSelection`. Revise on rejection;
+   `{workOrder, selection}` and keep the response as `federatedSelection`. Revise on rejection;
    deterministic code may govern but may not choose, rerank, or substitute.
 4. Call `workforce.prepare_execution` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult, federatedSelection, projectDir, goalId?}` and require
+   `{workOrder, selection, federatedSelection, projectDir, goalId?}` and require
    exact source/release/package/content/runtime/permission/context pins.
    `projectDir` is mandatory; pass an incumbent `goalId` when continuing.
    Otherwise Core derives one from the WorkOrder id and automatically binds the

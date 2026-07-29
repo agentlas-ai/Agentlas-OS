@@ -7,11 +7,9 @@ Use local MCP server `hephaestus-network` with exact `sourceScope: "hub"`.
 Author a redacted WorkOrder; call `workforce.search_candidates` with
 `{workOrder, sourceScope: "hub"}` and keep `federationResult`; author the
 host-LLM Selection; call `workforce.validate_selection` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult}`; keep `federatedSelection`; call
+`{workOrder, selection}`; keep `federatedSelection`; call
 `workforce.prepare_execution` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult, federatedSelection}`; and execute distinct planner/manager, workers,
+`{workOrder, selection, federatedSelection, projectDir}`; and execute distinct planner/manager, workers,
 synthesis, and verifier while retaining source `hub` and all immutable pins.
 If Hub refuses or is unavailable, report its exact source receipt. Never search
 Local or Cloud, bypass Core, accept deterministic staffing, or claim execution

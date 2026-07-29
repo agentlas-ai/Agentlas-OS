@@ -10,11 +10,9 @@ the request after `/hep-hub`. Author a redacted WorkOrder, call
 `workforce.search_candidates` with `{workOrder, sourceScope: "hub"}` and keep
 `federationResult`; author the final host-LLM Selection; call
 `workforce.validate_selection` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult}` and keep `federatedSelection`; then call
+`{workOrder, selection}` and keep `federatedSelection`; then call
 `workforce.prepare_execution` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult, federatedSelection}`. Retain
+`{workOrder, selection, federatedSelection, projectDir}`. Retain
 source `hub` and every immutable pin; execute planner/manager, workers,
 synthesis, and verifier as distinct invocations.
 

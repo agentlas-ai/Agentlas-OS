@@ -10,11 +10,9 @@ Use local MCP server `hephaestus-network` with exact
 `workforce.search_candidates` with `{workOrder, sourceScope: "cloud"}` and keep
 `federationResult`; author the host-LLM Selection; call
 `workforce.validate_selection` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult}` and keep `federatedSelection`; then call
+`{workOrder, selection}` and keep `federatedSelection`; then call
 `workforce.prepare_execution` with
-`{workOrder, candidateSet: federationResult.candidateSet, selection,
-federationResult, federatedSelection}`. Retain source `cloud` and every exact immutable
+`{workOrder, selection, federatedSelection, projectDir}`. Retain source `cloud` and every exact immutable
 pin. Execute planner/manager, workers, synthesis, and verifier distinctly.
 
 If owner auth or Cloud is unavailable, report `source_unavailable` with the

@@ -24,11 +24,9 @@ ongoing work before considering recruitment.
    `federationResult`, retaining all source receipts and provenance.
 3. Author `agentlas.workforce-selection.v1` yourself from content and
    qualification evidence; call `workforce.validate_selection` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult}` and keep `federatedSelection`. Revise on rejection.
+   `{workOrder, selection}` and keep `federatedSelection`. Revise on rejection.
 4. Call `workforce.prepare_execution` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult, federatedSelection, projectDir, goalId?}` and require exact source, release,
+   `{workOrder, selection, federatedSelection, projectDir, goalId?}` and require exact source, release,
    package/content, runtime, permission, and context pins.
    `projectDir` is mandatory; pass an incumbent `goalId` when continuing.
    Otherwise Core derives one from the WorkOrder id and automatically binds the

@@ -21,11 +21,9 @@ does not need to say `goal`.
    `{workOrder, sourceScope: "network"}` and keep `federationResult`.
 3. Author the host-LLM Selection from content/qualification evidence. Call
    `workforce.validate_selection` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult}` and keep `federatedSelection`.
+   `{workOrder, selection}` and keep `federatedSelection`.
 4. Call `workforce.prepare_execution` with
-   `{workOrder, candidateSet: federationResult.candidateSet, selection,
-   federationResult, federatedSelection, projectDir, goalId?}`. Core requires
+   `{workOrder, selection, federatedSelection, projectDir, goalId?}`. Core requires
    `projectDir`, derives a goal id when needed, and automatically binds every
    successful preparation before execution.
 5. Run planner/manager, workers, synthesis, and verifier as distinct calls with
