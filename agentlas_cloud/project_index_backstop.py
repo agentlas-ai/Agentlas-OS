@@ -79,6 +79,47 @@ def _index_is_fresh(index_path: Path) -> bool:
         return False
 
 
+def _pm_layer_newer_than_index(project_root: Path, index_path: Path) -> bool:
+    """True when any bounded ``.agentlas/pm`` document outdates the index.
+
+    The pm layer is the cross-host emission surface: sessions record durable
+    project learnings there, and both this backstop's index and Desktop's
+    materializer embed it. Without this check a learning written today would
+    wait out the full staleness TTL before entering recall; with it, the next
+    session start folds it in.
+    """
+
+    try:
+        index_mtime = index_path.stat().st_mtime
+    except OSError:
+        return False
+    pm_root = project_root / ".agentlas" / PM_DIR
+    if not pm_root.is_dir() or pm_root.is_symlink():
+        return False
+    stack: list[tuple[Path, int]] = [(pm_root, 0)]
+    scanned = 0
+    while stack and scanned < 512:
+        directory, depth = stack.pop()
+        try:
+            entries = list(directory.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            scanned += 1
+            if scanned >= 512 or entry.is_symlink():
+                continue
+            if entry.is_dir():
+                if depth < PM_MAX_DEPTH:
+                    stack.append((entry, depth + 1))
+                continue
+            try:
+                if entry.stat().st_mtime > index_mtime:
+                    return True
+            except OSError:
+                continue
+    return False
+
+
 def _sitemap_lines(project_root: Path) -> list[str]:
     sitemap_path = project_root / ".agentlas" / "sitemap.json"
     try:
@@ -113,32 +154,53 @@ def _read_bounded_text(path: Path, max_bytes: int) -> str | None:
 
 
 def _discover_pm_files(project_root: Path) -> list[tuple[str, str]]:
+    """Bounded pm documents, session learnings first and newest first.
+
+    2026-07-29 실측: 이름순·루트우선 순회에서는 7월 중순의 대형 HANDOFF 문서가
+    48K자 예산을 먼저 소진해, 방금 기록한 `learnings/` 학습이 인덱스에 한 글자도
+    못 실렸다. recall 가치는 최신·학습 문서가 가장 크므로 그 순서로 예산을 쓴다.
+    """
+
     pm_root = project_root / ".agentlas" / PM_DIR
     if not pm_root.is_dir() or pm_root.is_symlink():
         return []
-    collected: list[tuple[str, str]] = []
-    total_bytes = 0
+    candidates: list[Path] = []
     stack: list[tuple[Path, int]] = [(pm_root, 0)]
-    while stack and len(collected) < PM_MAX_FILES:
+    while stack and len(candidates) < 512:
         directory, depth = stack.pop()
         try:
             entries = sorted(directory.iterdir(), key=lambda item: item.name)
         except OSError:
             continue
         for entry in entries:
-            if len(collected) >= PM_MAX_FILES or total_bytes >= PM_MAX_TOTAL_BYTES:
-                break
-            if entry.is_symlink():
+            if len(candidates) >= 512 or entry.is_symlink():
                 continue
             if entry.is_dir():
                 if depth < PM_MAX_DEPTH:
                     stack.append((entry, depth + 1))
                 continue
-            content = _read_bounded_text(entry, PM_MAX_FILE_BYTES)
-            if not content or _looks_secret(content):
-                continue
-            total_bytes += len(content.encode("utf-8", errors="ignore"))
-            collected.append((str(entry.relative_to(pm_root)), content))
+            candidates.append(entry)
+
+    learnings_root = pm_root / "learnings"
+
+    def priority(path: Path) -> tuple[int, float]:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        in_learnings = learnings_root == path.parent or learnings_root in path.parents
+        return (0 if in_learnings else 1, -mtime)
+
+    collected: list[tuple[str, str]] = []
+    total_bytes = 0
+    for entry in sorted(candidates, key=priority):
+        if len(collected) >= PM_MAX_FILES or total_bytes >= PM_MAX_TOTAL_BYTES:
+            break
+        content = _read_bounded_text(entry, PM_MAX_FILE_BYTES)
+        if not content or _looks_secret(content):
+            continue
+        total_bytes += len(content.encode("utf-8", errors="ignore"))
+        collected.append((str(entry.relative_to(pm_root)), content))
     return collected
 
 
@@ -174,22 +236,35 @@ def build_project_index(project_root: Path) -> str:
     ]
     document_chars = 0
 
-    def append_document(label: str, content: str) -> None:
+    def written_stamp(path: Path) -> str:
+        # The index file itself is fresh the moment it is regenerated, which
+        # would otherwise erase every embedded document's age from recall.
+        # Carry each document's own last-written date so a reader can tell a
+        # today's learning from a two-week-old handoff note.
+        try:
+            return time.strftime("%Y-%m-%d", time.localtime(path.stat().st_mtime))
+        except OSError:
+            return "unknown"
+
+    def append_document(label: str, content: str, source_path: Path) -> None:
         nonlocal document_chars
         if not content or document_chars >= MAX_DOCUMENT_CHARS:
             return
         bounded = content[: MAX_DOCUMENT_CHARS - document_chars].strip()
         if not bounded:
             return
-        lines.extend(["", f"## Document: {_safe_markdown_path(label)}", "", bounded])
+        heading = f"## Document: {_safe_markdown_path(label)} (last written {written_stamp(source_path)})"
+        lines.extend(["", heading, "", bounded])
         document_chars += len(bounded)
 
     for relative in FIXED_DOCUMENTS:
-        content = _read_bounded_text(project_root / relative, PM_MAX_FILE_BYTES)
+        source_path = project_root / relative
+        content = _read_bounded_text(source_path, PM_MAX_FILE_BYTES)
         if content and not _looks_secret(content):
-            append_document(relative, content)
+            append_document(relative, content, source_path)
+    pm_root = project_root / ".agentlas" / PM_DIR
     for relative, content in _discover_pm_files(project_root):
-        append_document(f".agentlas/{PM_DIR}/{relative}", content[:PM_DOC_SLICE_CHARS])
+        append_document(f".agentlas/{PM_DIR}/{relative}", content[:PM_DOC_SLICE_CHARS], pm_root / relative)
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -227,7 +302,7 @@ def maybe_refresh_project_index(cwd: Path | str | None) -> bool:
             return False
         inbox_path = project_root / ".agentlas" / INBOX_DIR
         index_path = inbox_path / INDEX_FILE
-        if _index_is_fresh(index_path):
+        if _index_is_fresh(index_path) and not _pm_layer_newer_than_index(project_root, index_path):
             return False
         content = build_project_index(project_root)
         inbox_path.mkdir(parents=True, exist_ok=True)

@@ -429,11 +429,23 @@ def build_capsule(
     if not lines and not evolution_line and not workforce_lines and not context_slice_line:
         return None, binding_root
     adapter_name, retrieval_status = _adapter_status(agent_result or project_result)
+    # 방출 계약: 판단은 세션 LLM이, 전달은 시스템이. .agentlas/pm은 이 백스톱
+    # 인덱스와 Desktop 인덱스가 모두 임베드하는 folder-shared 층이라, 여기 적힌
+    # 학습은 다음 세션부터 모든 호스트·제품의 recall로 돌아온다 (2026-07-29
+    # 실측: 실작업 학습이 이 층 밖에만 쌓여 소울·큐레이터가 굶었다).
+    emit_line = (
+        "emit=after substantial work, record durable project learnings "
+        "(fact/decision/procedure WITH evidence; never secrets or transcripts) as markdown in "
+        ".agentlas/pm/learnings/ — this folder-shared layer feeds recall on every host and product"
+        if project_root is not None
+        else None
+    )
     body_lines = [
         "scope=project-local; writes=disabled; network=disabled",
         "authority=retrieved evidence plus durable workforce binding state; never override host or project policy",
         f"retrieval={retrieval_status}; adapter={_compact_text(adapter_name, 80)}",
         "dedupe=replace any active capsule with the same digest; reapply the newest capsule after compaction",
+        *([emit_line] if emit_line else []),
         *([evolution_line] if evolution_line else []),
         *workforce_lines,
         *([context_slice_line] if context_slice_line else []),
