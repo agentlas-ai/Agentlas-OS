@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.1.80 - 2026-07-29
+
+The recall corpus regenerates from any surface — Desktop is no longer its
+single point of failure.
+
+- **A stale project index is regenerated wherever the runtime runs.** The
+  index (`.agentlas/ontology-inbox/agentlas-project-index.md`) had a single
+  producer: Desktop's working-folder materializer. A machine driven only
+  through terminal or plugin sessions froze at its last Desktop visit —
+  measured 2026-07-29: 12 days — while every session's recall kept citing the
+  snapshot. v1.1.79 made that staleness visible; this release removes it. A
+  host-independent backstop rebuilds a bounded, secret-filtered index (sitemap
+  file map, fixed root documents, bounded `.agentlas/pm` documents — bounds
+  mirror Desktop's) whenever the index is missing or older than 7 days, then
+  starts a detached ontology ingest. It fires from both universal surfaces —
+  the memory hook on SessionStart and the CLI on every command — so any
+  project with `.agentlas` converges no matter which product the machine uses,
+  and the project workspace location keeps it working inside host sandboxes.
+  Desktop's richer materializer stays authoritative: its next visit overwrites
+  the file, and any fresh file disables the backstop for the TTL window.
+  Verified live on the real frozen corpus: one SessionStart regenerated the
+  Jul 17 index and the next capsule cited it with no staleness labels.
+
 ## v1.1.79 - 2026-07-29
 
 A recalled memory now confesses its age instead of impersonating the present.
