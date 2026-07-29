@@ -479,7 +479,7 @@ write_codex_prompts() {
   ensure_downloaded_source || return 1
   if ! codex_custom_prompts_supported; then
     prune_managed_codex_prompts
-    log 'Codex 0.117+ skill entrypoints: $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-storm'
+    log 'Codex 0.117+ skill entrypoints: $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm'
     return 0
   fi
   local prompts_src="$source_dir/codex/prompts"

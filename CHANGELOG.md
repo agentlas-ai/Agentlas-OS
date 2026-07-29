@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.1.75 - 2026-07-29
+
+A package is priced and staffed as what it actually ships, and Codex can publish
+again.
+
+- **A contradicted entity type is corrected, not trusted.** Upload only derived
+  `agent` vs `team` when the routing card was silent, so an older package that
+  hardcoded `type: "agent"` stayed one no matter what it shipped — measured on
+  the live `analyst-team`, an HQ-routed roster listed as `entityKind: agent`
+  with `agentCount: 1` and billed 3 credits instead of the team's 10. Structure
+  is now the authority: a declaration the package's own files contradict is
+  overwritten and the correction is recorded, while a package whose structure is
+  silent keeps the author's declaration. `topology` is read in every shape the
+  live corpus actually uses — a bare string, a whole `{nodes, edges}` graph, or
+  absent — and a roster of `agents/*/agent.md` counts as the same evidence.
+  Plugins are never retyped.
+- **Codex gets an upload entrypoint back.** Codex 0.117+ replaced custom prompts
+  with plugin skills, and only build/network/cloud/storm ever had a skill, so the
+  installer pruned the `hep-upload` prompt and advertised nothing in its place —
+  publishing simply disappeared from that host. Adds the `hephaestus-upload`
+  skill across every adapter mirror. Upload stays a separate surface from
+  `/hep-network` deliberately: staffing is a read, publishing is a write that is
+  hard to take back.
+
 ## v1.1.74 - 2026-07-29
 
 Staffing over MCP stops shipping the filing cabinet. A host LLM now reads a

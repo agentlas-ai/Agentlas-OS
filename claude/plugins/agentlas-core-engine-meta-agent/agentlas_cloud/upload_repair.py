@@ -87,6 +87,44 @@ def _read_json(path: Path) -> Any:
         return None
 
 
+def _derived_entity_type(base: Path) -> tuple[str | None, str]:
+    """What the package's own files say it is: "team", "agent", or None if silent.
+
+    The declaration is not trusted over the structure. A package that ships a
+    multi-node roster while its card says `agent` is sold at the single-agent
+    price (3 credits instead of 10) and loses its execution graph downstream —
+    measured 2026-07-29 on the live `analyst-team`, an HQ-routed roster listed
+    as `entityKind: agent` with `agentCount: 1`.
+
+    `topology` is not one shape across the corpus. Measured on live packages it
+    is a bare string ("hub-and-spoke", "single-agent"), a whole {nodes, edges}
+    graph, or absent entirely, so each form is read rather than assumed.
+    """
+    blueprint = _read_json(base / ".agentlas" / "company-blueprint.json") or {}
+    topology = blueprint.get("topology")
+
+    nodes: Any = None
+    if isinstance(topology, dict):
+        nodes = topology.get("nodes")
+    elif isinstance(blueprint.get("nodes"), list):
+        nodes = blueprint["nodes"]
+    if isinstance(nodes, list) and len(nodes) >= 2:
+        return "team", f"company-blueprint.json declares a {len(nodes)}-node roster"
+
+    if isinstance(topology, str) and topology.strip():
+        if topology.strip() == "single-agent":
+            return "agent", "company-blueprint.json topology is single-agent"
+        return "team", f"company-blueprint.json topology is {topology.strip()}"
+
+    # No usable blueprint. A directory of agent definitions is the same evidence.
+    definitions = sorted(path for path in base.glob("agents/*/agent.md"))
+    if len(definitions) >= 2:
+        return "team", f"the package ships {len(definitions)} agent definitions under agents/"
+    if definitions:
+        return "agent", "the package ships one agent definition under agents/"
+    return None, "the package declares no roster"
+
+
 def _first_sentence(text: str, limit: int = 300) -> str:
     body = " ".join(str(text).split())
     if len(body) <= limit:
@@ -268,9 +306,20 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
         card.setdefault("schemaVersion", "routing-card/2.0")
         if not str(card.get("id") or "").strip():
             card["id"] = str(manifest.get("slug") or base.name)
-        if card.get("type") not in {"agent", "team", "plugin"}:
-            blueprint = _read_json(base / ".agentlas" / "company-blueprint.json") or {}
-            card["type"] = "team" if blueprint.get("topology") not in (None, "single-agent") else "agent"
+        derived_type, type_evidence = _derived_entity_type(base)
+        declared_type = card.get("type")
+        if declared_type not in {"agent", "team", "plugin"}:
+            card["type"] = derived_type or "agent"
+        elif declared_type != "plugin" and derived_type and derived_type != declared_type:
+            # Only a declaration the files actively contradict is overwritten. A
+            # package whose structure is silent keeps whatever its author wrote:
+            # filling a gap is derivation, but guessing against silence is not.
+            card["type"] = derived_type
+            repairs.append({
+                "file": ".agentlas/routing-card.json",
+                "action": "corrected",
+                "why": f"the card said type={declared_type} but {type_evidence}",
+            })
         if not str(card.get("name") or "").strip():
             card["name"] = str(public.get("titleEn") or public.get("titleKo") or manifest.get("name") or base.name)
         if not str(card.get("summary") or "").strip():
