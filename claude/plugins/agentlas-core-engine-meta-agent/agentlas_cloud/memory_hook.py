@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -194,6 +195,50 @@ def _source_label(item: dict[str, Any]) -> str:
     return _compact_text(label or "project", 80)
 
 
+STALE_SOURCE_AFTER_SECONDS = 7 * 24 * 60 * 60
+
+
+def _source_path(item: dict[str, Any]) -> Path | None:
+    raw = str(item.get("source_uri") or "")
+    if not raw.startswith("file://"):
+        return None
+    try:
+        path = Path(raw.removeprefix("file://"))
+    except (OSError, ValueError):
+        return None
+    return path if path.is_absolute() else None
+
+
+def _source_staleness(item: dict[str, Any]) -> tuple[str | None, str | None]:
+    """(inline age tag, staleness directive) for one cited source document.
+
+    2026-07-29 사고: 인덱스 문서가 12일 전에 동결됐는데 캡슐이 그 사실을 어디에도
+    표기하지 않아, 세션이 7/17 시점 사실을 현재로 단정했다. 나이는 캡슐 소비자가
+    추론할 수 없는 정보이므로 반드시 생산자가 라벨로 실어야 한다. Fail-open:
+    판별 불가능한 소스는 조용히 무표기(경고 오발보다 낫다).
+    """
+
+    path = _source_path(item)
+    if path is None:
+        return None, None
+    label = _source_label(item)
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return "source missing", (
+            f"{label}: the source file no longer exists — do not assert its contents as current"
+        )
+    age = time.time() - mtime
+    if age < STALE_SOURCE_AFTER_SECONDS:
+        return None, None
+    days = int(age // 86400)
+    stamp = time.strftime("%Y-%m-%d", time.localtime(mtime))
+    return f"stale {stamp}, {days}d old", (
+        f"{label}: last written {stamp} ({days} days ago) — a historical snapshot, not current state; "
+        "verify versions, statuses, and paths against the live system before asserting any fact from it"
+    )
+
+
 def _is_host_policy_chunk(item: dict[str, Any]) -> bool:
     raw = str(item.get("source_uri") or "")
     try:
@@ -205,6 +250,7 @@ def _is_host_policy_chunk(item: dict[str, Any]) -> bool:
 
 def _context_lines(project_result: dict[str, Any], agent_result: dict[str, Any] | None) -> list[str]:
     lines: list[str] = []
+    stale_directives: list[str] = []
     project_count = 0
     for chunk in project_result.get("chunks", []):
         if not isinstance(chunk, dict):
@@ -217,10 +263,16 @@ def _context_lines(project_result: dict[str, Any], agent_result: dict[str, Any] 
             continue
         text = _compact_text(chunk.get("text"), 720)
         if text:
-            lines.append(f"project[{_source_label(chunk)}]: {text}")
+            age_tag, directive = _source_staleness(chunk)
+            if directive:
+                stale_directives.append(directive)
+            suffix = f" | {age_tag}" if age_tag else ""
+            lines.append(f"project[{_source_label(chunk)}{suffix}]: {text}")
             project_count += 1
             if project_count >= 4:
                 break
+    if stale_directives:
+        lines = [f"staleness={directive}" for directive in dict.fromkeys(stale_directives)] + lines
     experience = (agent_result or {}).get("experience_memory", {})
     if isinstance(experience, dict):
         for item in experience.get("items", [])[:6]:
