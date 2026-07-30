@@ -177,6 +177,7 @@ run_upload_gate() {
 usage() {
   cat <<'EOF' | sed "s|bin/hephaestus|$self|g"
 Usage:
+  bin/hephaestus --version
   bin/hephaestus career-graph status|ingest|verify|trace|public-card [--project <dir>]
   bin/hephaestus career-graph query "<question>" [--project <dir>]
   bin/hephaestus ontology [--gui] [--no-open] [project-dir]
@@ -238,6 +239,21 @@ Examples:
   bin/hephaestus runtime bundle ./some-agent
 EOF
 }
+
+if [[ "${1:-}" == "--version" || "${1:-}" == "-V" || "${1:-}" == "version" ]]; then
+  release=""
+  if [[ -f "$root/RELEASE" ]]; then
+    release="$(tr -d '\r\n' < "$root/RELEASE")"
+  elif [[ -f "$root/scripts/install-all-runtimes.sh" ]]; then
+    release="$(sed -n 's/.*HEPHAESTUS_REF:-\(v[0-9.]*\)}.*/\1/p' "$root/scripts/install-all-runtimes.sh" | head -1)"
+  fi
+  if [[ -z "$release" ]]; then
+    echo "$self: release metadata is missing." >&2
+    exit 1
+  fi
+  printf '%s %s\n' "$self" "${release#v}"
+  exit 0
+fi
 
 if [[ "${1:-}" == "" || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage

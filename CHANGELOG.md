@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.88 - 2026-07-31
+
+- **The main CLI now reports its exact installed release.** `hephaestus
+  --version`, `hephaestus -V`, and `hephaestus version` return the runtime's
+  `RELEASE` value, while a source checkout reports the version pinned by its
+  installer. Missing release metadata fails clearly instead of falling through
+  to an unrelated command or the full usage screen.
+
 ## v1.1.87 - 2026-07-31
 
 - **Agentlas Terminal keeps the `agentlas` command.** The Core installer no
