@@ -399,7 +399,7 @@ Current installs remove that retired scheduler automatically.
 
 ### Optional Global Router
 ```bash
-agentlas global install
+hephaestus global install
 ```
 This appends a managed marker block to `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md`. After that, Codex, Claude Code, and Antigravity/Gemini can treat ordinary prompts more like Agentlas-native sessions. For substantial work the router order is: Hephaestus Network first, Hephaestus Cloud second, local agents third, and local skills last. If Network or Cloud is blocked by credits, entitlement, or a poor match, the runtime reports that boundary and continues down the fallback order. The command is idempotent and keeps a timestamped backup before editing.
 
@@ -415,18 +415,22 @@ Global router command reference:
 
 | Command | What it does |
 | --- | --- |
-| `agentlas global install` | Install or refresh the managed router block for Codex, Claude Code, and Antigravity/Gemini. |
-| `agentlas global status` | Show whether each runtime file has the managed router block. |
-| `agentlas global remove` | Remove only the managed Hephaestus router block. Existing user content stays in place. |
-| `agentlas global install --target codex` | Install only `~/.codex/AGENTS.md`. |
-| `agentlas global install --target claude` | Install only `~/.claude/CLAUDE.md`. |
-| `agentlas global install --target antigravity` | Install only `~/.gemini/GEMINI.md`, which Antigravity shares with Gemini CLI. |
-| `agentlas global install --target codex --target claude --target antigravity` | Explicitly install all supported targets. |
-| `agentlas global install --dry-run` | Preview what would change without writing files. |
-| `agentlas global install --no-backup` | Edit without writing a timestamped `.bak.*` file. |
-| `agentlas global install --home /tmp/test-home` | Test against another home directory. Useful for installer QA. |
+| `hephaestus global install` | Install or refresh the managed router block for Codex, Claude Code, and Antigravity/Gemini. |
+| `hephaestus global status` | Show whether each runtime file has the managed router block. |
+| `hephaestus global remove` | Remove only the managed Hephaestus router block. Existing user content stays in place. |
+| `hephaestus global install --target codex` | Install only `~/.codex/AGENTS.md`. |
+| `hephaestus global install --target claude` | Install only `~/.claude/CLAUDE.md`. |
+| `hephaestus global install --target antigravity` | Install only `~/.gemini/GEMINI.md`, which Antigravity shares with Gemini CLI. |
+| `hephaestus global install --target codex --target claude --target antigravity` | Explicitly install all supported targets. |
+| `hephaestus global install --dry-run` | Preview what would change without writing files. |
+| `hephaestus global install --no-backup` | Edit without writing a timestamped `.bak.*` file. |
+| `hephaestus global install --home /tmp/test-home` | Test against another home directory. Useful for installer QA. |
 | `hep-global install` | The original spelling of the same command. Still supported. |
-| `~/.agentlas/runtime/current/bin/agentlas global status` | Use the installed runtime directly when shell shims are not on `PATH`. |
+| `~/.agentlas/runtime/current/bin/hephaestus global status` | Use the installed runtime directly when shell shims are not on `PATH`. |
+
+The independent Agentlas Terminal owns the `agentlas` shell command. The Core
+installer intentionally leaves that command untouched and removes only the
+exact legacy Core alias it created in older releases.
 
 ### Per-Runtime Plugin Drivers
 
@@ -452,7 +456,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.86
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.87
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*

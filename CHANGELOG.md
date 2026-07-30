@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.87 - 2026-07-31
+
+- **Agentlas Terminal keeps the `agentlas` command.** The Core installer no
+  longer creates an `agentlas` alias for Hephaestus, so the independently
+  released Terminal cannot be shadowed by `~/.local/bin`.
+- **Existing Terminal installs are preserved during upgrade.** The installer
+  removes only the exact legacy Core-owned shim and leaves npm, Homebrew, local
+  source, and user-owned `agentlas` launchers untouched.
+- **Core command documentation now names the correct executable.** Global
+  router management uses `hephaestus global` or `hep-global`; it no longer
+  teaches a command owned by the independent Terminal product.
+
 ## v1.1.86 - 2026-07-31
 
 - **Local verification files stay visible without becoming public artifacts.**

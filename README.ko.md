@@ -262,16 +262,20 @@ hep-global install
 
 | 명령 | 역할 |
 | --- | --- |
-| `agentlas global install` | Codex, Claude Code, Antigravity/Gemini에 관리용 router block을 설치하거나 갱신합니다. |
-| `agentlas global status` | 각 런타임 파일에 router block이 설치되어 있는지 확인합니다. |
-| `agentlas global remove` | Hephaestus가 관리하는 router block만 제거합니다. 기존 사용자 내용은 유지합니다. |
-| `agentlas global install --target codex` | `~/.codex/AGENTS.md`에만 설치합니다. |
-| `agentlas global install --target claude` | `~/.claude/CLAUDE.md`에만 설치합니다. |
-| `agentlas global install --target antigravity` | Antigravity가 Gemini CLI와 공유하는 `~/.gemini/GEMINI.md`에만 설치합니다. |
-| `agentlas global install --target codex --target claude --target antigravity` | 지원되는 모든 타깃을 명시적으로 설치합니다. |
-| `agentlas global install --dry-run` | 파일을 쓰지 않고 변경 예정 내용만 확인합니다. |
-| `agentlas global install --no-backup` | timestamp `.bak.*` 백업 없이 수정합니다. |
-| `agentlas global install --home /tmp/test-home` | 다른 home 디렉터리를 대상으로 테스트합니다. 설치기 QA에 유용합니다. |
+| `hephaestus global install` | Codex, Claude Code, Antigravity/Gemini에 관리용 router block을 설치하거나 갱신합니다. |
+| `hephaestus global status` | 각 런타임 파일에 router block이 설치되어 있는지 확인합니다. |
+| `hephaestus global remove` | Hephaestus가 관리하는 router block만 제거합니다. 기존 사용자 내용은 유지합니다. |
+| `hephaestus global install --target codex` | `~/.codex/AGENTS.md`에만 설치합니다. |
+| `hephaestus global install --target claude` | `~/.claude/CLAUDE.md`에만 설치합니다. |
+| `hephaestus global install --target antigravity` | Antigravity가 Gemini CLI와 공유하는 `~/.gemini/GEMINI.md`에만 설치합니다. |
+| `hephaestus global install --target codex --target claude --target antigravity` | 지원되는 모든 타깃을 명시적으로 설치합니다. |
+| `hephaestus global install --dry-run` | 파일을 쓰지 않고 변경 예정 내용만 확인합니다. |
+| `hephaestus global install --no-backup` | timestamp `.bak.*` 백업 없이 수정합니다. |
+| `hephaestus global install --home /tmp/test-home` | 다른 home 디렉터리를 대상으로 테스트합니다. 설치기 QA에 유용합니다. |
+
+독립 Agentlas Terminal이 `agentlas` 셸 명령을 소유합니다. Core 설치기는
+이 명령을 건드리지 않으며, 과거 Core가 만든 정확한 레거시 별칭만
+제거합니다.
 | `hephaestus global install` | 메인 Hephaestus runner를 통한 동일 명령입니다. |
 | `~/.agentlas/runtime/current/bin/hephaestus global status` | shell shim이 `PATH`에 없을 때 설치된 runtime을 직접 호출합니다. |
 
@@ -299,7 +303,7 @@ Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README�
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.86
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.87
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. Codex 0.117+에서는 custom `/prompts:*` 명령이 제거됐으므로, 설치 후에는 `$hephaestus-network <요청>` 스킬을 호출하세요.*
