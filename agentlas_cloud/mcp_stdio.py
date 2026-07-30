@@ -31,6 +31,7 @@ from .workforce.contracts import (
     WORKFORCE_ONTOLOGY_VERSION,
     canonical_digest,
     load_workforce_contract_schema,
+    normalize_work_order,
     workforce_contract_metadata,
 )
 from .workforce.execution import WORKFORCE_EXECUTION_PLAN_SCHEMA
@@ -1462,7 +1463,11 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         # federation plus deterministic governance/provenance validation; the
         # active host LLM alone authors the staffing decision. Privacy checks
         # are local, non-mutating, and complete before the first outbound byte.
-        work_order = arguments.get("workOrder")
+        # Normalize at extraction (absent slot list fields -> []) so every
+        # downstream digest, validation and match sees one canonical form —
+        # an author that omits an empty field and one that spells [] are
+        # byte-identical from here on.
+        work_order = normalize_work_order(arguments.get("workOrder"))
         if not isinstance(work_order, Mapping):
             return {
                 "action": name,

@@ -9,6 +9,7 @@ from .contracts import (
     WORKFORCE_SELECTION_REASON_CODES,
     canonical_digest,
     iter_workforce_contract_strings,
+    normalize_work_order,
     validate_work_order_semantics,
     validate_workforce_json_schema,
     workforce_contract_metadata,
@@ -85,6 +86,10 @@ def validate_hub_work_order_boundary(work_order: Mapping[str, Any]) -> dict[str,
     mutates or reflects a rejected value.
     """
 
+    # Absent slot list fields mean [] — normalize before validation and before
+    # the digest below, so omitted-form and full-form work orders produce the
+    # same canonical bytes. Full forms pass through untouched.
+    work_order = normalize_work_order(work_order)
     issues = validate_workforce_json_schema(work_order, "workOrder")
     semantic_issues = validate_work_order_semantics(work_order)
     if any(issue["code"] == "ontology_version_mismatch" for issue in semantic_issues):

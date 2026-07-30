@@ -34,8 +34,7 @@ done
 ```
 
 1. Author a redacted `agentlas.workforce-work-order.v1` with substantive role
-   slots, skills/knowledge/MCP capabilities, artifacts, runtimes, languages,
-   authorities, cardinality, and collaboration edges. Private grounding stays
+   slots. Fill a slot with task/cardinality/criticality plus only the communities/skills/knowledge, runtimes, and languages that genuinely constrain the hire; omit every other list field (absent = empty — the wire normalizes) and never fill requiredToolCapabilities, requiredAuthorities, forbiddenAuthorities, consumes, produces, requiredRoles, or modalities: tools, authorities, and modalities attach to the executing runtime, not the agent card, so those gates only exclude real candidates — put ordinary inputs/outputs in the task text and handoffs in edges. Private grounding stays
    local. Write every discovery-facing field in English, faithfully translating
    a non-English request (the candidate corpus is English and cross-lingual
    matching buries the correct agent — measured 1st vs 144th for one query);

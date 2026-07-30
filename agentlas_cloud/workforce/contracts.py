@@ -580,6 +580,61 @@ def validate_candidate_set_coverage_gaps(candidate_set: Mapping[str, Any]) -> No
         validate_coverage_gap_codes(slot.get("coverageGaps"))
 
 
+# Every list-valued roleSlot field. An absent field and an empty array mean the
+# same thing — "no constraint" — so the form no longer demands empty arrays be
+# spelled out. Normalization (absent -> []) runs at every ingestion point
+# BEFORE validation and BEFORE any canonical_digest over the work order, so an
+# author that omits a field and an author that sends [] produce byte-identical
+# canonical forms and therefore identical digests. Full forms pass through
+# unchanged, which is why deploying this is behavior-neutral for every
+# existing caller (2026-07-30, owner decision: tools/authorities/modalities
+# attach to the executing runtime, not the agent card, and the seven dead slot
+# fields leave the authoring form entirely).
+WORK_ORDER_SLOT_LIST_FIELDS = (
+    "requiredCommunities",
+    "optionalCommunities",
+    "excludedCommunities",
+    "requiredRoles",
+    "requiredSkills",
+    "optionalSkills",
+    "requiredKnowledge",
+    "requiredToolCapabilities",
+    "consumes",
+    "produces",
+    "requiredAuthorities",
+    "forbiddenAuthorities",
+    "runtimes",
+    "languages",
+    "modalities",
+)
+
+
+def normalize_work_order(work_order: Any) -> Any:
+    """Fill absent list-valued slot fields with [] — the digest-stable form.
+
+    Returns non-mapping input unchanged so callers can normalize before they
+    type-check. Never removes or rewrites anything the author stated.
+    """
+
+    if not isinstance(work_order, Mapping):
+        return work_order
+    slots = work_order.get("roleSlots")
+    if not isinstance(slots, list):
+        return work_order
+    normalized_slots = []
+    changed = False
+    for slot in slots:
+        if isinstance(slot, Mapping):
+            missing = [field for field in WORK_ORDER_SLOT_LIST_FIELDS if field not in slot]
+            if missing:
+                slot = {**slot, **{field: [] for field in missing}}
+                changed = True
+        normalized_slots.append(slot)
+    if not changed:
+        return work_order
+    return {**work_order, "roleSlots": normalized_slots}
+
+
 def canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 

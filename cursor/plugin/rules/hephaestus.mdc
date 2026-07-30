@@ -15,7 +15,7 @@ At the start of every nontrivial project turn, call
 work, reuse that exact roster plus local skills before recruiting. The user
 does not need to say `goal`.
 
-1. Author a redacted `agentlas.workforce-work-order.v1`; keep private files,
+1. Author a redacted `agentlas.workforce-work-order.v1`; keep private files, Fill a slot with task/cardinality/criticality plus only the communities/skills/knowledge, runtimes, and languages that genuinely constrain the hire; omit every other list field (absent = empty) and never fill requiredToolCapabilities, requiredAuthorities, forbiddenAuthorities, consumes, produces, requiredRoles, or modalities — tools, authorities, and modalities attach to the executing runtime, not the agent card.
    memory, secrets, and raw project grounding local.
 2. Call `workforce.search_candidates` with
    `{workOrder, sourceScope: "network"}` and keep `federationResult`.

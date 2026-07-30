@@ -8,7 +8,7 @@ Act as the active top-level workforce orchestrator. Use local MCP server
 Cloud/Hub upstream calls. The user does not need to say `goal`: first read
 `workforce.goal_context(projectDir)` and reuse any active binding for the same
 ongoing work. Author a redacted
-WorkOrder — write its discovery-facing fields in English, faithfully translating
+WorkOrder — Fill a slot with task/cardinality/criticality plus only the communities/skills/knowledge, runtimes, and languages that genuinely constrain the hire; omit every other list field (absent = empty — the wire normalizes) and never fill requiredToolCapabilities, requiredAuthorities, forbiddenAuthorities, consumes, produces, requiredRoles, or modalities: tools, authorities, and modalities attach to the executing runtime, not the agent card, so those gates only exclude real candidates — put ordinary inputs/outputs in the task text and handoffs in edges. Write its discovery-facing fields in English, faithfully translating
 a non-English request (the candidate corpus is English; cross-lingual matching
 buries the right agent, measured 1st vs 144th for one query), while keeping
 `languages` as the required delivery language — and call

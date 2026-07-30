@@ -36,8 +36,15 @@ done
 ```
 
 1. Author a redacted `agentlas.workforce-work-order.v1` with distinct role
-   slots, required skills/knowledge/MCP capabilities, artifacts, runtimes,
-   languages, authorities, cardinality, and collaboration edges. Keep private
+   slots: a specific `task`, `cardinality`, `criticality`, and — only when they
+   genuinely constrain the hire — required communities/skills/knowledge,
+   runtimes, and `languages`. Leave every other slot field out entirely: an
+   absent list field IS the empty constraint (the wire normalizes absent to
+   []). Do not fill requiredToolCapabilities, requiredAuthorities,
+   forbiddenAuthorities, consumes, produces, requiredRoles, or modalities —
+   tools, authorities, and modalities attach to the executing runtime, not the
+   agent card, so those gates only exclude real candidates; describe ordinary
+   inputs/outputs in the task text and inter-slot handoffs in `edges`. Keep private
    files, memory, secrets, direct identifiers, and raw local context on-host.
    Write every discovery-facing field (statement, role descriptions, required
    skills/knowledge, artifacts) in English, faithfully translating a

@@ -1167,6 +1167,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "workforce":
         from .networking.hub_client import call_hub_tool
         from .workforce import validate_hub_selection_boundary, validate_hub_work_order_boundary
+        from .workforce.contracts import normalize_work_order
         from .workforce.local_registry import LocalWorkforceRegistry
         from .workforce.package_adapter import refusal_fields
 
@@ -1247,7 +1248,10 @@ def main(argv: list[str] | None = None) -> int:
                         reason=args.reason,
                     )
                 )
-            work_order = load_object(args.work_order)
+            # Absent slot list fields mean [] — normalize at load so every
+            # downstream digest and match sees the same canonical form the
+            # boundary validated.
+            work_order = normalize_work_order(load_object(args.work_order))
             boundary = validate_hub_work_order_boundary(work_order)
             if boundary["status"] != "accepted":
                 return emit({

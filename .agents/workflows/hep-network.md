@@ -15,7 +15,7 @@ The user does not need to say `goal`. First read
 ongoing work before considering recruitment.
 
 1. Author a redacted `agentlas.workforce-work-order.v1`; keep private project
-   grounding on-host. Write its discovery-facing fields in English, faithfully
+   grounding on-host. Fill a slot with task/cardinality/criticality plus only the communities/skills/knowledge, runtimes, and languages that genuinely constrain the hire; omit every other list field (absent = empty — the wire normalizes) and never fill requiredToolCapabilities, requiredAuthorities, forbiddenAuthorities, consumes, produces, requiredRoles, or modalities: tools, authorities, and modalities attach to the executing runtime, not the agent card, so those gates only exclude real candidates — put ordinary inputs/outputs in the task text and handoffs in edges. Write its discovery-facing fields in English, faithfully
    translating a non-English request (the candidate corpus is English;
    cross-lingual matching buries the right agent, measured 1st vs 144th for one
    query), while keeping `languages` as the required delivery language.
