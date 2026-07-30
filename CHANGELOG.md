@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.1.82 - 2026-07-30
+
+The work-order form now describes what the catalogue can actually answer.
+
+- **Authority requirements demote instead of exclude.** The last dimension
+  exempt from the rank-and-report demotion ("authority is a security
+  contract") was measured inverted on the live network: capability attaches
+  to the executing runtime, not the BYOM bundle, so almost no card declares
+  authorities — a slot requiring `authority:file-read` staffed four
+  engineering slots with the same two domain-irrelevant auditors and
+  excluded every relevant engineer (2 → 6 candidates the moment the gate
+  lifted, all other hard fields bisected innocent). Real authority
+  enforcement lives in the prepare-time permission policy pins. Local
+  demotes by the same population rule as every other dimension; the Hub
+  relaxes only for callers that declare
+  `gap:requirement-vocabulary-unsupported:authority` (35th code), so
+  non-declaring runtimes keep their exact old behavior.
+- **An absent list-valued slot field IS the empty constraint.** Authoring a
+  slot no longer requires spelling out fifteen empty arrays: only slotId,
+  title, task, cardinality, criticality, and allowedEntityKinds stay
+  required, and every ingestion point normalizes absent → [] BEFORE
+  validation and BEFORE any canonical digest — so a lean-form author and a
+  full-form author produce byte-identical orders and the fail-closed digest
+  chain cannot fork. Full forms pass through by identity (live A/B across
+  fixed queries: zero change). Proven live end to end: a 775-byte lean order
+  ran search → ordinal validate accepted → prepare prepared with the digest
+  chain intact.
+- **Authoring guidance drops the dead fields.** The hep-network command (all
+  host variants) now constrains a hire only through communities, skills,
+  knowledge, runtimes, and languages, and never fills
+  requiredToolCapabilities, requiredAuthorities, forbiddenAuthorities,
+  consumes, produces, requiredRoles, or modalities — tools, authorities,
+  and modalities attach to the executing runtime; ordinary inputs/outputs
+  belong in the task text and inter-slot handoffs in edges.
+
 ## v1.1.81 - 2026-07-29
 
 Session learnings now feed every host's recall — the memory loop's supply side
