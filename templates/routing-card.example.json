@@ -46,7 +46,6 @@
     "stack_constraints: runtime, database, and hosting the design must stay inside (for example Node on Railway with MongoDB)."
   ],
   "required_plugins": [],
-  "supported_runtimes": ["claude-code", "codex", "gemini-cli", "terminal"],
   "entrypoints": {
     "canonical_command": "/backend-architect",
     "agent": "agent.md",
@@ -101,8 +100,8 @@
     "roles": ["role:backend-engineer", "role:software-architect"],
     "skills": ["skill:api-design", "skill:software-architecture", "skill:data-modeling"],
     "knowledge": ["knowledge:api-contract-checklist", "knowledge:database-schema-patterns"],
-    "languages": ["en", "ko"],
-    "modalities": ["text"]
+    "languages": [],
+    "modalities": []
   },
   "routing_status": "routing_ready",
   "routing_status_reason": null,

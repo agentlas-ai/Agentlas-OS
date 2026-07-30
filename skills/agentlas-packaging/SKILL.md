@@ -37,14 +37,17 @@ description: "Use when converting, repairing, or packaging an existing local or 
    `.agentlas/agent-card.json` / the marketplace routing card). The hub
    Workforce search matches on exactly these fields; a card without them is
    invisible to every WorkOrder that uses them, and `card lint` blocks
-   `routing_ready` without the block. Use ONLY the pinned ontology
-   (`agentlas_cloud/workforce/ontology_v1.json`, awo:2026-07-15.2):
-   - `roles`: 0-2 `role:*` ids, only when the agent genuinely performs that
-     professional role — most niche agents fit none, and `[]` is honest;
-   - `communities`: 1-3 `community:*` ids the work belongs to;
-   - `modalities`: what it consumes/produces (`text` alone for text-only);
-   - `languages`: languages it actually works in (public v1 language ids).
-   Never invent ids outside the pinned vocabulary; the lint rejects them.
+   `routing_ready` without the block. Use the versioned ontology graph contract
+   (`agentlas_cloud/workforce/ontology_v1.json`, awo:2026-07-15.2) for seed
+   aliases and relation semantics, never as an allowlist:
+   - `roles`: 0-4 open `role:*` professional-responsibility ids;
+   - `communities`: 1-5 open `community:*` professional-domain ids;
+   - `skills`: 3-12 open `skill:*` verb-object capability ids;
+   - `knowledge`: open `knowledge:*` domain/method ids backed by the package;
+   - `modalities`: optional non-text input/output metadata;
+   - `languages`: optional genuine delivery languages, never listing locales.
+   New well-formed semantic IDs are valid graph concepts and must not be
+   rejected merely because the seed snapshot has not seen them before.
 6. Add or repair the global command across Claude Code, Codex, Gemini CLI,
    generic AGENTS.md tools, and terminal adapters.
 7. Remove secrets, raw logs, private local notes, and unsafe public paths.

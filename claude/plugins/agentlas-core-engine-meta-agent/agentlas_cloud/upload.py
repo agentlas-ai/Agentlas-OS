@@ -16,6 +16,7 @@ from typing import Any
 from . import content_guard
 from .auth import ensure_access_token, normalize_base_url
 from .networking.card_lint import lint_card
+from .package_contract import verify as verify_package_contract
 from .brief.write import write_offer_brief
 from .upload_repair import classify_findings, repair_package
 from .runtime import (
@@ -140,6 +141,29 @@ def package_agent(
         brief_findings = write_offer_brief(base)
         findings.extend(brief_findings)
         files, file_count, _ = collect_upload_files(base)
+
+    # Build, package, and upload must enforce the same artifact contract. The
+    # standalone build verifier already rejects missing memory maps, I/O
+    # schemas, malformed identity cards, and incomplete routing résumés; upload
+    # previously skipped that verifier entirely, so every one of those broken
+    # shapes could still become the active Cloud release. Run the shared
+    # machine-readable contract after deterministic repair and brief
+    # compilation. Remaining gaps need author/model facts, so they are exact
+    # blockers rather than invented auto-fills.
+    contract_mode = "team" if _infer_kind(base) == "team" else "single"
+    contract_report = verify_package_contract(base, mode=contract_mode)
+    for blocker in contract_report["blockers"]:
+        artifact_path = blocker.split(":", 1)[0] if ":" in blocker else None
+        findings.append(
+            _finding(
+                "package-contract-incomplete",
+                "blocker",
+                "structure",
+                blocker,
+                artifact_path,
+                "Repair the named artifact with the package's own facts, then rerun the upload.",
+            )
+        )
 
     if setup_wizard.get("mcpPolicyValidation", {}).get("status") != "valid":
         findings.append(
@@ -499,18 +523,24 @@ def register_package(
                 guide = body.get("repairGuide") or {}
                 menus = guide.get("menus") or {}
                 lines = [
-                    "Agentlas Cloud registration refused: the workforce résumé block does not match the hub standard.",
-                    "Repair the routing card's `workforce` block with YOUR OWN model using ONLY the pinned menus below, then rerun this upload. Repeat until registered.",
+                    "Agentlas Cloud found an incomplete agent description and did not upload the broken copy.",
+                    "The same hep-build model that made the package should repair it from the package's own capabilities and knowledge files, then retry automatically.",
                     "",
-                    "Mismatches:",
+                    "Missing information:",
                     *[f"  - {issue}" for issue in issues],
                     "",
                     str(guide.get("howToRepair") or ""),
                     f"ontologyVersion: {guide.get('ontologyVersion')}",
                 ]
-                for key in ("roles", "communities", "modalities", "languages"):
-                    values = menus.get(key) or []
-                    lines.append(f"{key} menu: {', '.join(str(value) for value in values)}")
+                seed_examples = guide.get("seedExamples") or {}
+                for key in ("roles", "communities", "skills"):
+                    values = seed_examples.get(key) or menus.get(key) or []
+                    lines.append(f"{key} examples: {', '.join(str(value) for value in values)}")
+                lines.extend([
+                    "",
+                    "If the package truly does not say what work it performs, ask the user one plain question:",
+                    '"What concrete work should this agent complete, and what should the finished result look like?"',
+                ])
                 raise UploadError("\n".join(lines)) from exc
         raise UploadError(f"Agentlas Cloud registration failed HTTP {exc.code}: {detail[:800]}") from exc
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:

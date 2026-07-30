@@ -526,6 +526,25 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
                 "exports_to_cloud": bool(policy.get("publicCopy") not in (None, "reset")),
             }
 
+        # Build agents and upload use the same résumé projector. This runs after
+        # capability repair so an old or partial card is completed instead of
+        # being rejected for fields the package already proves.
+        from .networking.card_lint import ensure_workforce_block
+
+        ensure_workforce_block(card)
+        workforce = card["workforce"]
+        declared_knowledge = list(workforce.get("knowledge") or [])
+        for knowledge_file in sorted(base.glob("**/knowledge/*")):
+            if not knowledge_file.is_file() or knowledge_file.suffix.lower() not in {".md", ".markdown", ".txt"}:
+                continue
+            slug = re.sub(r"[^a-z0-9-]+", "-", knowledge_file.stem.lower().replace("_", "-")).strip("-")
+            concept = f"knowledge:{slug}" if slug else ""
+            if concept and concept not in declared_knowledge:
+                declared_knowledge.append(concept)
+            if len(declared_knowledge) >= 12:
+                break
+        workforce["knowledge"] = declared_knowledge[:12]
+
         if json.dumps(card, sort_keys=True, ensure_ascii=False) != before:
             card_path.parent.mkdir(parents=True, exist_ok=True)
             card_path.write_text(json.dumps(card, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

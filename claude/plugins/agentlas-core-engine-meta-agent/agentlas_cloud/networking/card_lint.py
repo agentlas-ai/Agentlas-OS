@@ -34,34 +34,51 @@ WORKFORCE_LANGUAGE_IDS = {"ar", "de", "en", "es", "fr", "hi", "it", "ja", "ko", 
 def ensure_workforce_block(card: dict[str, Any]) -> dict[str, Any]:
     """Deterministically fill a missing workforce résumé block in place.
 
-    Auto-built agents (storm workers, packaged conversions) cannot hand-author
-    the block, and the pipeline must not call a model during packaging. The
-    honest deterministic floor: roles [] (no canonical role claimed),
-    communities [] (the hub infers them from card text — measured 249/250),
-    modalities ["text"], languages detected from the card's own scripts.
-    An existing block is never overwritten.
+    Build agents 10/20/30 author this contract, but older packages may predate
+    it. Repair only facts already declared by the card: capabilities become
+    open skill IDs and domain tags become open community IDs. Listing language,
+    runtime and text-only transport are not agent identity, so they are never
+    invented here.
     """
-    if isinstance(card.get("workforce"), dict):
-        return card
-    texts: list[str] = [str(card.get("name") or ""), str(card.get("summary") or "")]
-    for field in ("trigger_examples", "anti_triggers"):
-        for entry in card.get(field) or []:
-            if isinstance(entry, dict):
-                texts.append(str(entry.get("text") or ""))
-    joined = " ".join(texts)
-    languages = ["en"]
-    if re.search(r"[가-힣]", joined):
-        languages.append("ko")
-    if re.search(r"[぀-ヿ]", joined):
-        languages.append("ja")
-    if re.search(r"[一-鿿]", joined) and "ja" not in languages:
-        languages.append("zh")
+    workforce = card.get("workforce") if isinstance(card.get("workforce"), dict) else {}
+
+    def semantic(values: Any, prefix: str, cap: int) -> list[str]:
+        out: list[str] = []
+        for value in values if isinstance(values, list) else []:
+            raw = str(value).strip().lower()
+            body = raw.split(":", 1)[1] if raw.startswith(f"{prefix}:") else raw
+            slug = re.sub(r"[^a-z0-9-]+", "-", body.replace("_", "-")).strip("-")
+            concept = f"{prefix}:{slug}" if slug else ""
+            if concept and concept not in out:
+                out.append(concept)
+            if len(out) >= cap:
+                break
+        return out
+
+    roles = semantic(workforce.get("roles"), "role", 4)
+    communities = semantic(workforce.get("communities"), "community", 5)
+    if not communities:
+        communities = semantic(card.get("domains"), "community", 5)
+    skills = semantic(workforce.get("skills"), "skill", 12)
+    if not skills:
+        skills = semantic(card.get("capabilities"), "skill", 12)
+    knowledge = semantic(workforce.get("knowledge"), "knowledge", 12)
+    modalities = [
+        str(value)
+        for value in workforce.get("modalities") or []
+        if str(value) in WORKFORCE_MODALITY_IDS
+    ][:3]
+    languages = [
+        str(value)
+        for value in workforce.get("languages") or []
+        if str(value) in WORKFORCE_LANGUAGE_IDS
+    ][:4]
     card["workforce"] = {
-        "roles": [],
-        "communities": [],
-        "skills": [],
-        "knowledge": [],
-        "modalities": ["text"],
+        "roles": roles,
+        "communities": communities,
+        "skills": skills,
+        "knowledge": knowledge,
+        "modalities": modalities,
         "languages": languages,
     }
     return card
@@ -184,7 +201,8 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     # roles/modalities on 0 of 250 cards, so every WorkOrder using those fields
     # excluded the whole catalog. Built packages must ship the block filled;
     # roles may honestly be [] when no canonical role fits, but the block and
-    # its modality/language coverage must exist and use the pinned vocabulary.
+    # its semantic fields must exist and use stable namespaced IDs. The
+    # ontology snapshot supplies aliases/relations, not a profession allowlist.
     workforce = card.get("workforce")
     if not isinstance(workforce, dict):
         # 자동 빌드 파이프라인(스톰 워커, 변환 패키징)은 블록을 손으로 못 쓴다 —
@@ -196,28 +214,41 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
             "workforce block missing — deterministically derivable (roles [], languages by script); declare it explicitly for better ranking"
         )
     if True:
-        ontology = _workforce_ontology()
-        role_ids = {str(item.get("id")) for item in ontology.get("roles") or []}
-        community_ids = {str(item.get("id")) for item in ontology.get("communities") or []}
-        skill_ids = {str(value) for value in (ontology.get("skillAliases") or {}).values()}
         if not isinstance(workforce.get("roles"), list):
-            ready_blockers.append("workforce.roles must be a list (empty is allowed when no canonical role fits)")
-        elif role_ids:
-            unknown_roles = [str(r) for r in workforce["roles"] if str(r) not in role_ids]
-            if unknown_roles:
-                errors.append(f"workforce.roles outside the pinned ontology: {unknown_roles[:3]}")
-        if not workforce.get("communities"):
-            ready_blockers.append("workforce.communities must declare 1-3 semantic job-family ids")
-        elif community_ids:
-            unknown_communities = [str(c) for c in workforce.get("communities") or [] if str(c) not in community_ids]
-            if unknown_communities:
-                errors.append(f"workforce.communities outside the pinned ontology: {unknown_communities[:3]}")
+            ready_blockers.append("workforce.roles must be a list (empty is allowed)")
+        else:
+            malformed_roles = [
+                str(r)
+                for r in workforce.get("roles") or []
+                if not re.fullmatch(r"role:[a-z0-9][a-z0-9-]*", str(r))
+            ]
+            if malformed_roles:
+                errors.append(f"workforce.roles must use open role:* ids: {malformed_roles[:3]}")
+        if not isinstance(workforce.get("communities"), list):
+            ready_blockers.append("workforce.communities must be a list (empty is allowed)")
+        else:
+            malformed_communities = [
+                str(c)
+                for c in workforce.get("communities") or []
+                if not re.fullmatch(r"community:[a-z0-9][a-z0-9-]*", str(c))
+            ]
+            if malformed_communities:
+                errors.append(f"workforce.communities must use open community:* ids: {malformed_communities[:3]}")
         if not isinstance(workforce.get("skills"), list) or not workforce.get("skills"):
             ready_blockers.append("workforce.skills must declare at least one concrete capability")
-        elif skill_ids:
-            unknown_skills = [str(s) for s in workforce.get("skills") or [] if str(s) not in skill_ids]
-            if unknown_skills:
-                errors.append(f"workforce.skills outside the pinned ontology: {unknown_skills[:3]}")
+        else:
+            # Skills are the agent's concrete verb-object capabilities, not a
+            # closed job-family vocabulary. `skillAliases` normalizes common
+            # synonyms; treating its small alias target set as an allowlist
+            # rejected ordinary-domain agents (event planning, writing, care,
+            # operations) even when their identifiers were well formed.
+            malformed_skills = [
+                str(s)
+                for s in workforce.get("skills") or []
+                if not re.fullmatch(r"skill:[a-z0-9][a-z0-9-]*", str(s))
+            ]
+            if malformed_skills:
+                errors.append(f"workforce.skills must use skill:* verb-object ids: {malformed_skills[:3]}")
         if not isinstance(workforce.get("knowledge"), list):
             ready_blockers.append(
                 "workforce.knowledge must be a list (empty is allowed when no durable knowledge asset ships)"
@@ -231,14 +262,10 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
             if malformed_knowledge:
                 errors.append(f"workforce.knowledge must use knowledge:* ids: {malformed_knowledge[:3]}")
         bad_modalities = [str(m) for m in workforce.get("modalities") or [] if str(m) not in WORKFORCE_MODALITY_IDS]
-        if not workforce.get("modalities"):
-            ready_blockers.append('workforce.modalities must be declared (text-only agents: ["text"])')
-        elif bad_modalities:
+        if bad_modalities:
             errors.append(f"workforce.modalities outside the public vocabulary: {bad_modalities[:3]}")
         bad_languages = [str(l) for l in workforce.get("languages") or [] if str(l) not in WORKFORCE_LANGUAGE_IDS]
-        if not workforce.get("languages"):
-            ready_blockers.append("workforce.languages must declare the languages the agent actually works in")
-        elif bad_languages:
+        if bad_languages:
             errors.append(f"workforce.languages outside the public vocabulary: {bad_languages[:3]}")
 
     score += min(trigger_total, 8) * 0.06

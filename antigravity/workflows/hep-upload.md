@@ -86,9 +86,10 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 ## Workforce résumé repair loop
 
 If registration returns `workforce_resume_incomplete`, the server refused the
-card because its `workforce` block (roles/communities/modalities/languages)
+card because its `workforce` block
 does not match the hub standard résumé. The error carries the exact
-mismatches and the pinned ontology menus. YOU repair it — the platform never
-edits the card for you: update the routing card's `workforce` block using ONLY
-ids from the returned menus (roles may honestly stay `[]`), rerun the upload,
-and repeat until registration succeeds.
+mismatches and seed ontology examples. YOU repair it — the platform never
+edits the card for you: use stable English `role:*`, `community:*`, `skill:*`,
+and `knowledge:*` IDs that actually describe the agent. Returned examples are
+aliases, not an allowlist. Rerun the upload and repeat until registration
+succeeds.

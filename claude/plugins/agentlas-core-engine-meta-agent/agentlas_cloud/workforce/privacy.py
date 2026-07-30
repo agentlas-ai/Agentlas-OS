@@ -81,8 +81,9 @@ def _scan_contract_strings(value: Any, kind: str, issues: list[dict[str, str]]) 
 def validate_hub_work_order_boundary(work_order: Mapping[str, Any]) -> dict[str, Any]:
     """Validate the complete typed WorkOrder before the first outbound byte.
 
-    The boundary applies the canonical JSON Schema, pinned ontology concepts,
-    finite IDs, and privacy scanning to every schema-declared string. It never
+    The boundary applies the canonical JSON Schema, versioned graph semantics,
+    bounded wire IDs, and privacy scanning to every schema-declared string.
+    Semantic role/community/skill/knowledge IDs remain open-world. It never
     mutates or reflects a rejected value.
     """
 

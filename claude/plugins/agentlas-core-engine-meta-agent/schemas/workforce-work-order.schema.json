@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agentlas.ai/schemas/workforce-work-order.schema.json",
   "title": "Agentlas Workforce Work Order",
-  "$comment": "The host boundary additionally requires pinned ontology/public-v1 structured IDs. Novel non-semantic IDs use <namespace>:opaque-<64 lowercase hex> or <namespace>:ordinal-N.",
+  "$comment": "The host boundary pins graph semantics and finite wire enums, not semantic vocabulary. Role, community, skill, and knowledge IDs are open-world English namespaced concepts. Novel non-semantic transaction IDs use <namespace>:opaque-<64 lowercase hex> or <namespace>:ordinal-N.",
   "type": "object",
   "additionalProperties": false,
   "required": [

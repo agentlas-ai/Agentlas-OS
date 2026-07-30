@@ -178,22 +178,16 @@ _REQUIREMENT_VOCABULARY_KINDS = (
     "modalities",
     "authorities",
 )
-# Dimensions that can never hard-filter, however full they look. Publishers
-# describe what they emit in their own words, so the compiler mints one
-# identifier per asset: 660 distinct `produces` values across 188 live listings,
-# 2.3% of them shared by more than one asset; `consumes` is 1291 values at 4.2%.
-# A vocabulary that is 97% singletons cannot separate candidates, it can only
-# empty the slot — and the published catalogue advertises seven artifact ids no
-# live asset produces, so a caller who follows the documentation exactly gets
-# zero results from every source. Measured: a work order asking for
-# `artifact:worker-result` matched nothing anywhere.
-#
-# They stay in the slot search text, so they still rank, and the demotion is
-# reported. Skills are deliberately not here: their terms come from a published
-# closed vocabulary, and quietly dropping `skill:security-review` would hand
-# back agents that never claimed to do security review.
+# Word-valued semantic dimensions never hard-filter, however full they look.
+# Roles, skills, knowledge and artifacts are open-world claims authored by
+# different publishers. Exact ID equality is evidence when it occurs, not proof
+# that differently phrased agents are incapable. These dimensions stay in the
+# slot search text and semantic ranking, and every demotion is reported.
 _RANKING_ONLY_KINDS = frozenset(
     {
+        "roles",
+        "skills",
+        "knowledge",
         "tools",
         "consumes",
         "produces",
@@ -366,13 +360,8 @@ def _hard_eligibility(
     if enforced["modalities"] and not enforced["modalities"] & have["modalities"]:
         reasons.append("modality-mismatch")
 
-    # Community edges are a broad-recall hint when a slot already names direct
-    # role/skill/tool requirements. Without any direct requirement, the
-    # community itself remains the explicit hard contract.
-    missing_communities = req["communities"] - have["communities"]
-    has_direct_evidence = bool(req["roles"] or req["skills"] or req["knowledge"])
-    if missing_communities and not has_direct_evidence:
-        reasons.append("missing-required-community")
+    # Positive communities are open-world semantic scope and rank through the
+    # graph. Only explicit negative exclusions remain a discovery-time gate.
     return not reasons, reasons
 
 

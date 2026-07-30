@@ -523,18 +523,24 @@ def register_package(
                 guide = body.get("repairGuide") or {}
                 menus = guide.get("menus") or {}
                 lines = [
-                    "Agentlas Cloud registration refused: the workforce résumé block does not match the hub standard.",
-                    "Repair the routing card's `workforce` block with YOUR OWN model using ONLY the pinned menus below, then rerun this upload. Repeat until registered.",
+                    "Agentlas Cloud found an incomplete agent description and did not upload the broken copy.",
+                    "The same hep-build model that made the package should repair it from the package's own capabilities and knowledge files, then retry automatically.",
                     "",
-                    "Mismatches:",
+                    "Missing information:",
                     *[f"  - {issue}" for issue in issues],
                     "",
                     str(guide.get("howToRepair") or ""),
                     f"ontologyVersion: {guide.get('ontologyVersion')}",
                 ]
-                for key in ("roles", "communities", "modalities", "languages"):
-                    values = menus.get(key) or []
-                    lines.append(f"{key} menu: {', '.join(str(value) for value in values)}")
+                seed_examples = guide.get("seedExamples") or {}
+                for key in ("roles", "communities", "skills"):
+                    values = seed_examples.get(key) or menus.get(key) or []
+                    lines.append(f"{key} examples: {', '.join(str(value) for value in values)}")
+                lines.extend([
+                    "",
+                    "If the package truly does not say what work it performs, ask the user one plain question:",
+                    '"What concrete work should this agent complete, and what should the finished result look like?"',
+                ])
                 raise UploadError("\n".join(lines)) from exc
         raise UploadError(f"Agentlas Cloud registration failed HTTP {exc.code}: {detail[:800]}") from exc
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:

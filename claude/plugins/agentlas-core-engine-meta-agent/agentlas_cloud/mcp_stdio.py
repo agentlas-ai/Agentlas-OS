@@ -633,7 +633,7 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "workOrder": _contract_property(
                     "workOrder",
-                    "Complete agentlas.workforce-work-order.v1; use the exact canonical schema and pinned ontology declared in x-agentlas-contract.",
+                    "Complete agentlas.workforce-work-order.v1; use the exact schema and graph version declared in x-agentlas-contract. Semantic role/community/skill/knowledge IDs are open-world English concepts; catalog values are seed examples, not an allowlist.",
                 ),
                 "expandSlotIds": {"type": "array", "items": {"type": "string"}},
                 "sourceScope": {

@@ -197,9 +197,9 @@
       "additionalProperties": false,
       "required": ["communities", "roles", "skills", "knowledge", "languages", "modalities"],
       "properties": {
-        "communities": { "type": "array", "items": { "type": "string", "pattern": "^community:[a-z0-9][a-z0-9-]*$" }, "minItems": 1, "maxItems": 3, "uniqueItems": true },
-        "roles": { "type": "array", "items": { "type": "string", "pattern": "^role:[a-z0-9][a-z0-9-]*$" }, "maxItems": 2, "uniqueItems": true },
-        "skills": { "type": "array", "items": { "type": "string", "pattern": "^skill:[a-z0-9][a-z0-9-]*$" }, "minItems": 1, "maxItems": 8, "uniqueItems": true },
+        "communities": { "type": "array", "items": { "type": "string", "pattern": "^community:[a-z0-9][a-z0-9-]*$" }, "minItems": 1, "maxItems": 5, "uniqueItems": true },
+        "roles": { "type": "array", "items": { "type": "string", "pattern": "^role:[a-z0-9][a-z0-9-]*$" }, "maxItems": 4, "uniqueItems": true },
+        "skills": { "type": "array", "items": { "type": "string", "pattern": "^skill:[a-z0-9][a-z0-9-]*$" }, "minItems": 1, "maxItems": 12, "uniqueItems": true },
         "knowledge": { "type": "array", "items": { "type": "string", "pattern": "^knowledge:[a-z0-9][a-z0-9-]*$" }, "uniqueItems": true },
         "tools": { "type": "array", "items": { "type": "string", "pattern": "^tool:[a-z0-9][a-z0-9-]*$" }, "uniqueItems": true },
         "authorities": { "type": "array", "items": { "type": "string", "pattern": "^authority:[a-z0-9][a-z0-9-]*$" }, "uniqueItems": true },

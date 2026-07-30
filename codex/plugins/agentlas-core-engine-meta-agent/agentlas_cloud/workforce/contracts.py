@@ -334,7 +334,7 @@ def iter_workforce_contract_strings(value: Any, kind: str) -> Iterable[tuple[str
 
 @lru_cache(maxsize=1)
 def workforce_finite_concepts() -> dict[str, frozenset[str]]:
-    """Return the finite concepts defined by the pinned ontology snapshot."""
+    """Return seed aliases and graph anchors from the versioned snapshot."""
 
     ontology = load_ontology()
     communities = frozenset(
@@ -366,7 +366,7 @@ def workforce_finite_concepts() -> dict[str, frozenset[str]]:
 
 
 def workforce_ontology_catalog() -> dict[str, Any]:
-    """Return the bounded vocabulary a remote host needs to author v1 IDs."""
+    """Return seed examples a remote host may reuse when authoring open IDs."""
 
     concepts = workforce_finite_concepts()
     return {
@@ -569,7 +569,7 @@ def validate_coverage_gap_codes(value: Any) -> list[str]:
 
 
 def validate_candidate_set_coverage_gaps(candidate_set: Mapping[str, Any]) -> None:
-    """Validate every candidate-set slot against the public finite vocabulary."""
+    """Validate every candidate-set slot against the finite wire gap-code enum."""
 
     slots = candidate_set.get("slots") if isinstance(candidate_set, Mapping) else None
     if not isinstance(slots, list) or not slots:
