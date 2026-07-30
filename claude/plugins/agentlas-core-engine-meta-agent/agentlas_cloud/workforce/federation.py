@@ -102,6 +102,7 @@ _SEMANTIC_FIELDS = frozenset(
         "consumes",
         "produces",
         "authorities",
+        "forbiddenAuthorities",
         "runtimes",
         "languages",
         "modalities",
@@ -296,11 +297,11 @@ def _validate_candidate(value: Any) -> dict[str, Any]:
     semantic = value.get("semanticSnapshot")
     if not isinstance(semantic, Mapping) or set(semantic) - _SEMANTIC_FIELDS:
         raise _SourceError("source_invalid_candidate_set")
-    required_semantic = _SEMANTIC_FIELDS - {"knowledge", "modalities"}
+    required_semantic = _SEMANTIC_FIELDS - {"knowledge", "modalities", "forbiddenAuthorities"}
     if not required_semantic <= set(semantic):
         raise _SourceError("source_invalid_candidate_set")
-    for key in ("roles", "consumes", "produces", "authorities"):
-        if not _valid_string_list(semantic.get(key), ids=True):
+    for key in ("roles", "consumes", "produces", "authorities", "forbiddenAuthorities"):
+        if not _valid_string_list(semantic.get(key, []), ids=True):
             raise _SourceError("source_invalid_candidate_set")
     for key in ("summaries", "runtimes", "languages", "modalities"):
         if not _valid_string_list(semantic.get(key, []), ids=False):
