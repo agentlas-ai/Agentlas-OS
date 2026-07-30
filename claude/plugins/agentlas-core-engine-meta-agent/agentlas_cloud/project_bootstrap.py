@@ -30,6 +30,7 @@ BOOTSTRAP_SCHEMA = "agentlas.project-bootstrap.v1"
 MANAGED_GITIGNORE_START = "# >>> agentlas local project state >>>"
 MANAGED_GITIGNORE_END = "# <<< agentlas local project state <<<"
 MAX_CODE_FILES = 12_000
+MAX_LOCAL_TEST_FILES = 4_000
 MAX_CODE_FILE_BYTES = 1_500_000
 MAX_CODE_TOTAL_READ_BYTES = 32 * 1024 * 1024
 MAX_CODE_SCAN_SECONDS = 12.0
@@ -158,7 +159,7 @@ VERSION_CONTRACT_NAMES = {
 }
 MAX_VERIFICATION_FILE_BYTES = 512 * 1024
 MAX_VERIFICATION_NODES = 2_000
-MAX_VERIFICATION_EDGES = 12_000
+MAX_VERIFICATION_EDGES = 50_000
 TEST_PATH_REFERENCE_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.-])"
     r"((?:test|tests|scripts)/[A-Za-z0-9_./@+-]+"
@@ -1152,6 +1153,42 @@ def _walk_file_list(root: Path, deadline: float) -> tuple[list[Path], str | None
     return files, stop, skipped_unsafe
 
 
+def _walk_local_test_files(
+    root: Path,
+    deadline: float,
+) -> tuple[list[Path], str | None, int]:
+    """Discover local test code even when Git intentionally ignores it.
+
+    Public release policy may exclude tests while a developer still runs those
+    files locally. The local Context Map must see that execution channel; Git's
+    tracked/untracked listing alone cannot represent it.
+    """
+
+    files: list[Path] = []
+    skipped_unsafe = 0
+    for current, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
+        current_path = Path(current)
+        for name in filenames:
+            path = current_path / name
+            try:
+                relative = path.relative_to(root).as_posix()
+            except ValueError:
+                skipped_unsafe += 1
+                continue
+            if not _is_test_path(relative):
+                continue
+            if _safe_file(root, path):
+                files.append(path)
+            else:
+                skipped_unsafe += 1
+            if len(files) >= MAX_LOCAL_TEST_FILES:
+                return files, "local_test_file_count", skipped_unsafe
+            if time.monotonic() >= deadline:
+                return files, "local_test_scan_time", skipped_unsafe
+    return files, None, skipped_unsafe
+
+
 def _extract_symbols(text: str, limit: int) -> tuple[list[dict[str, Any]], bool]:
     effective_limit = min(MAX_SYMBOLS_PER_FILE, max(0, limit))
     if effective_limit <= 0:
@@ -1260,6 +1297,8 @@ def _code_map_incomplete_reasons(stats: dict[str, Any]) -> list[str]:
         reasons.append("reference_index_truncated")
     if stats.get("outputTruncated") is True:
         reasons.append("output_truncated")
+    if stats.get("verificationGraphTruncated") is True:
+        reasons.append("verification_graph_truncated")
     return sorted(set(reasons))
 
 
@@ -1581,18 +1620,22 @@ def _verification_graph(
 
     for test in test_files:
         test_name = Path(test).name
+        conventional_test_dirs = {
+            part
+            for part in Path(test).parts[:-1]
+            if part.lower() in TEST_DIRECTORY_NAMES
+        }
         for command in commands:
             command_text = command["command"]
             if (
                 test in command_text
                 or test_name in command_text
-                or (
-                    Path(test).suffix.lower() == ".py"
-                    and re.search(r"\bpytest\b", command_text)
-                )
-                or (
-                    Path(test).suffix.lower() in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}
-                    and re.search(r"\b(?:node\s+--test|jest|vitest|mocha)\b", command_text)
+                or any(
+                    re.search(
+                        rf"(?<![A-Za-z0-9_.-]){re.escape(directory)}(?:/|\b)",
+                        command_text,
+                    )
+                    for directory in conventional_test_dirs
                 )
             ):
                 add_edge(f"test:{test}", command["id"], "invoked_by")
@@ -1725,20 +1768,51 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         # Once that fallback completes, its own stop state is authoritative.
         list_stop = fallback_stop
         skipped_unsafe += fallback_unsafe
-    relative_files = sorted(
-        {path.relative_to(project).as_posix()
+    listed_relative_files = {
+        path.relative_to(project).as_posix()
         for path in all_files
-        if _safe_file(project, path)}
+        if _safe_file(project, path)
+    }
+    local_test_files, local_test_stop, local_test_skipped_unsafe = (
+        _walk_local_test_files(project, deadline)
     )
-    code_files = [relative for relative in relative_files if Path(relative).suffix.lower() in CODE_EXTENSIONS][
-        :MAX_CODE_FILES
+    skipped_unsafe += local_test_skipped_unsafe
+    if local_test_stop:
+        list_stop = list_stop or local_test_stop
+    local_test_relative_files = {
+        path.relative_to(project).as_posix()
+        for path in local_test_files
+        if _safe_file(project, path)
+    }
+    local_test_code_files = {
+        relative
+        for relative in local_test_relative_files
+        if Path(relative).suffix.lower() in CODE_EXTENSIONS
+    }
+    relative_files = sorted(listed_relative_files | local_test_relative_files)
+    verification_test_code_files = sorted(
+        relative
+        for relative in relative_files
+        if Path(relative).suffix.lower() in CODE_EXTENSIONS
+        and _is_test_path(relative)
+    )
+    source_code_candidates = [
+        relative
+        for relative in relative_files
+        if Path(relative).suffix.lower() in CODE_EXTENSIONS
+        and not _is_test_path(relative)
     ]
-    if len([relative for relative in relative_files if Path(relative).suffix.lower() in CODE_EXTENSIONS]) > MAX_CODE_FILES:
+    code_files = source_code_candidates[:MAX_CODE_FILES]
+    if len(source_code_candidates) > MAX_CODE_FILES:
         list_stop = list_stop or "code_file_count"
     verification_files = [
         relative
         for relative in relative_files
-        if _is_ci_workflow_path(relative) or _is_version_contract_path(relative)
+        if (
+            _is_ci_workflow_path(relative)
+            or _is_version_contract_path(relative)
+            or relative in local_test_relative_files
+        )
     ]
     fingerprint_files = sorted(set(code_files + verification_files))
     fingerprints: dict[str, dict[str, int]] = {}
@@ -1894,6 +1968,36 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             if source_module != target_module:
                 module_dependencies[(source_module, target_module)] += 1
 
+    scanned_verification_test_files: list[str] = []
+    verification_test_bytes = 0
+    for relative in verification_test_code_files:
+        path = project / relative
+        try:
+            file_stat = os.stat(path, follow_symlinks=False)
+            if (
+                not _safe_file(project, path)
+                or file_stat.st_size > MAX_VERIFICATION_FILE_BYTES
+            ):
+                continue
+            if time.monotonic() >= deadline:
+                budget_stop = budget_stop or "local_test_scan_time"
+                break
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        verification_test_bytes += file_stat.st_size
+        scanned_verification_test_files.append(relative)
+        tokens = {
+            match.group(0).lower()
+            for match in TOKEN_PATTERN.finditer(text)
+        }
+        for normalized in tokens.intersection(definition_keys):
+            ref_count[normalized] += 1
+            if len(ref_index[normalized]) < MAX_REF_FILES_PER_SYMBOL:
+                ref_index[normalized].append(relative)
+            else:
+                truncated_ref_symbols.add(normalized)
+
     top_symbols: list[dict[str, Any]] = []
     for normalized, refs in ref_count.most_common():
         first = definitions[normalized][0]
@@ -1914,7 +2018,9 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     verification_graph = _verification_graph(
         project,
         relative_files=relative_files,
-        scanned_files=scanned_files,
+        scanned_files=sorted(
+            set(scanned_files + scanned_verification_test_files)
+        ),
         definitions=definitions,
         ref_index=ref_index,
     )
@@ -1926,6 +2032,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         and skipped_unreadable == 0
         and fingerprint_failures == 0
         and len(scanned_files) == len(code_files)
+        and len(scanned_verification_test_files) == len(verification_test_code_files)
     )
     ref_files_omitted = sum(
         max(0, int(ref_count.get(key) or 0) - len(ref_index.get(key) or []))
@@ -1964,6 +2071,10 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "coverageComplete": False,
             "incompleteReasons": [],
             "listingSource": source,
+            "localTestFiles": len(local_test_code_files),
+            "localVerificationFiles": len(local_test_relative_files),
+            "verificationTestBytes": verification_test_bytes,
+            "verificationGraphTruncated": verification_graph["stats"]["truncated"],
             "fallbackReason": fallback_reason,
             "genMs": int((time.monotonic() - started) * 1000),
         },

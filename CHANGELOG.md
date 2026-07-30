@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.86 - 2026-07-31
+
+- **Local verification files stay visible without becoming public artifacts.**
+  Code Map now discovers bounded local test and fixture paths even when Git
+  intentionally ignores them, fingerprints those files, and links their symbol
+  references into the verification graph.
+- **Local and CI remain selectable execution channels.** A project may prove a
+  change with local tests, GitHub workflows, or both; ignored local tests no
+  longer appear missing merely because the public repository excludes them.
+- **Large product repositories fail closed on graph truncation.** Verification
+  edges have a larger bounded budget, and a truncated verification graph makes
+  the map incomplete instead of silently passing.
+
 ## v1.1.85 - 2026-07-31
 
 - **Code, tests, CI, and release versions now share one impact graph.** Code

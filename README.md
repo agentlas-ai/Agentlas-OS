@@ -452,7 +452,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.85
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.86
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -737,7 +737,10 @@ or reviewed and one linked execution channel is satisfied: run the local tests,
 run the CI workflow, or run both. Local and CI are alternatives, not duplicate
 requirements. Version contracts remain a separate release responsibility, and
 a missing test reference blocks the CI channel that owns it until the workflow
-is fixed or explicitly waived.
+is fixed or explicitly waived. Local test files and fixtures may remain
+Git-ignored and excluded from public runtime archives; the project-local map
+still fingerprints and links them so local execution is a real selectable
+channel rather than invisible state.
 
 ```sh
 hephaestus context refresh --project .
