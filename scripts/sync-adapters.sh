@@ -69,6 +69,8 @@ code_files=(
 # metadata frontmatter line); keep its body in sync manually.
 skill_mirrors=(
   "skills/mode-classification/SKILL.md:.agents/skills/mode-classification/SKILL.md"
+  "skills/routing-card-authoring/SKILL.md:.agents/skills/routing-card-authoring/SKILL.md"
+  "skills/routing-card-authoring/SKILL.md:codex/plugins/agentlas-core-engine-meta-agent/skills/routing-card-authoring/SKILL.md"
   "skills/clarify-question-loop/SKILL.md:.agents/skills/clarify-question-loop/SKILL.md"
   "skills/agentlas-auto-activation/SKILL.md:.agents/skills/agentlas-auto-activation/SKILL.md"
   "skills/skill-lifecycle-promotion/SKILL.md:.agents/skills/skill-lifecycle-promotion/SKILL.md"

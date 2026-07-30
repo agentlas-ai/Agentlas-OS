@@ -21,13 +21,13 @@
   ],
   "anti_triggers": [
     { "locale": "ko", "text": "{{ANTI_TRIGGER_KO_1}}" },
+    { "locale": "ko", "text": "{{ANTI_TRIGGER_KO_2}}" },
     { "locale": "en", "text": "{{ANTI_TRIGGER_EN_1}}" },
     { "locale": "en", "text": "{{ANTI_TRIGGER_EN_2}}" }
   ],
   "required_inputs": [],
   "optional_inputs": [],
   "required_plugins": [],
-  "supported_runtimes": ["claude-code", "codex", "gemini-cli", "ollama"],
   "entrypoints": {
     "canonical_command": "/{{COMMAND_SLUG}}",
     "agent": "agent.md"
@@ -36,9 +36,29 @@
     "tier": "{{RISK_TIER}}",
     "notes": "{{RISK_NOTES}}"
   },
-  "memory_behavior": "{{MEMORY_BEHAVIOR}}",
+  "memory_behavior": {
+    "reads": "project",
+    "writes": "project",
+    "exports_to_cloud": false
+  },
+  "workforce": {
+    "communities": ["{{COMMUNITY_ID_1}}"],
+    "roles": ["{{ROLE_ID_1}}"],
+    "skills": ["{{SKILL_ID_1}}", "{{SKILL_ID_2}}"],
+    "knowledge": ["{{KNOWLEDGE_ID_1}}"],
+    "languages": ["ko", "en"],
+    "modalities": ["text"]
+  },
   "benchmark_fixtures": ".agentlas/routing-benchmarks.jsonl",
-  "locale_coverage": ["ko", "en"],
+  "locale_coverage": {
+    "primary": "ko",
+    "ready": ["ko", "en"],
+    "partial": []
+  },
   "routing_status": "draft",
-  "agent_card_ref": ".agentlas/agent-card.json"
+  "agent_card_ref": {
+    "path": ".agentlas/agent-card.json",
+    "slug": "{{COMMAND_SLUG}}",
+    "content_hash": null
+  }
 }

@@ -198,23 +198,57 @@ def _schema_shape_errors(doc: Any, schema_path: Path) -> list[str]:
     except (OSError, ValueError):
         return [f"schema unreadable: {schema_path.name}"]
     errors: list[str] = []
-    if not isinstance(doc, dict):
-        return ["document must be a JSON object"]
-    for field in schema.get("required", []):
-        if field not in doc or doc.get(field) is None:
-            errors.append(f"missing required field: {field}")
-    properties = schema.get("properties")
-    if isinstance(properties, dict):
-        for field, spec in properties.items():
-            if not isinstance(spec, dict) or field not in doc:
-                continue
-            value = doc[field]
-            if "const" in spec:
-                if value != spec["const"]:
-                    errors.append(f"{field} must be {spec['const']!r} (found {value!r})")
-            elif isinstance(spec.get("enum"), list) and value not in spec["enum"]:
-                allowed = ", ".join(repr(option) for option in spec["enum"])
-                errors.append(f"{field} must be one of [{allowed}] (found {value!r})")
+
+    def walk(value: Any, spec: Any, path: str) -> None:
+        if not isinstance(spec, dict):
+            return
+        placeholder = isinstance(value, str) and PLACEHOLDER_RE.search(value)
+        if placeholder:
+            return
+        expected = spec.get("type")
+        allowed_types = expected if isinstance(expected, list) else [expected] if expected else []
+        type_ok = (
+            not allowed_types
+            or ("object" in allowed_types and isinstance(value, dict))
+            or ("array" in allowed_types and isinstance(value, list))
+            or ("string" in allowed_types and isinstance(value, str))
+            or ("integer" in allowed_types and isinstance(value, int) and not isinstance(value, bool))
+            or ("number" in allowed_types and isinstance(value, (int, float)) and not isinstance(value, bool))
+            or ("boolean" in allowed_types and isinstance(value, bool))
+            or ("null" in allowed_types and value is None)
+        )
+        if not type_ok:
+            errors.append(f"{path} has invalid type")
+            return
+        if "const" in spec and value != spec["const"]:
+            errors.append(f"{path} must be {spec['const']!r} (found {value!r})")
+        if isinstance(spec.get("enum"), list) and value not in spec["enum"]:
+            errors.append(f"{path} must be one of {spec['enum']!r} (found {value!r})")
+        if isinstance(value, str) and isinstance(spec.get("pattern"), str):
+            if re.fullmatch(spec["pattern"], value) is None:
+                errors.append(f"{path} does not match required pattern")
+        if isinstance(value, list):
+            if isinstance(spec.get("minItems"), int) and len(value) < spec["minItems"]:
+                errors.append(f"{path} needs at least {spec['minItems']} items")
+            if isinstance(spec.get("maxItems"), int) and len(value) > spec["maxItems"]:
+                errors.append(f"{path} allows at most {spec['maxItems']} items")
+            for index, item in enumerate(value):
+                walk(item, spec.get("items"), f"{path}[{index}]")
+        if isinstance(value, dict):
+            required = spec.get("required") if isinstance(spec.get("required"), list) else []
+            for field in required:
+                if field not in value or value.get(field) is None:
+                    errors.append(f"missing required field: {path}.{field}")
+            properties = spec.get("properties") if isinstance(spec.get("properties"), dict) else {}
+            if spec.get("additionalProperties") is False:
+                for field in value:
+                    if field not in properties:
+                        errors.append(f"{path}.{field} is not allowed")
+            for field, child in properties.items():
+                if field in value:
+                    walk(value[field], child, f"{path}.{field}")
+
+    walk(doc, schema, "$")
     return errors
 
 

@@ -73,7 +73,7 @@
       "template": "templates/routing-card.json.tpl",
       "schema": "schemas/routing-card.schema.json",
       "lint": "routing-card",
-      "description": "Routing card: >=5 triggers (>=2 ko, >=2 en), >=3 anti-triggers, risk profile, entrypoints, memory behavior — no card, no auto-routing"
+      "description": "Routing card: >=6 triggers (>=3 ko, >=3 en), >=4 anti-triggers (>=2 ko, >=2 en), semantic workforce block, risk profile, entrypoints, memory behavior — no card, no auto-routing"
     },
     {
       "path": ".agentlas/memory-map.json",

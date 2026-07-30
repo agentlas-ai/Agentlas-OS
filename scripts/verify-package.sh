@@ -451,7 +451,14 @@ python3 - <<'PY'
 import json
 from pathlib import Path
 
-public_skill_names = {"hephaestus-build", "hephaestus-network", "hephaestus-cloud", "hephaestus-upload", "hephaestus-storm"}
+public_skill_names = {
+    "hephaestus-build",
+    "hephaestus-network",
+    "hephaestus-cloud",
+    "hephaestus-upload",
+    "hephaestus-storm",
+    "routing-card-authoring",
+}
 codex_skill_root = Path("codex/plugins/agentlas-core-engine-meta-agent/skills")
 actual = {path.parent.name for path in codex_skill_root.glob("*/SKILL.md")}
 if actual != public_skill_names:

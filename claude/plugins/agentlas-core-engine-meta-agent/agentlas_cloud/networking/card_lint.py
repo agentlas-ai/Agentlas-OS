@@ -56,7 +56,14 @@ def ensure_workforce_block(card: dict[str, Any]) -> dict[str, Any]:
         languages.append("ja")
     if re.search(r"[一-鿿]", joined) and "ja" not in languages:
         languages.append("zh")
-    card["workforce"] = {"roles": [], "communities": [], "modalities": ["text"], "languages": languages}
+    card["workforce"] = {
+        "roles": [],
+        "communities": [],
+        "skills": [],
+        "knowledge": [],
+        "modalities": ["text"],
+        "languages": languages,
+    }
     return card
 
 VERB_CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)+$")
@@ -138,19 +145,16 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     bench_cases = _benchmark_case_count(card)
 
     ready_blockers: list[str] = []
-    if trigger_total < 5:
-        ready_blockers.append(f"needs >=5 trigger_examples (has {trigger_total})")
-    # No per-language minimum. Demanding >=2 Korean and >=2 English examples
-    # excluded every monolingual publisher, and it did not even buy routing
-    # quality: measured live on 2026-07-27, a Korean work order ranked an
-    # accessibility auditor first precisely BECAUSE it was one of the few cards
-    # carrying Korean triggers — the requirement rewarded having the sentences,
-    # not fitting the work. Cross-language recall is the multilingual embedding's
-    # job (see semantic-ranking-adapter.ts), which is why writing one set of
-    # sentences per language was abandoned there. The total count below still
-    # stands: a card with no examples has said nothing about when to call it.
-    if anti_total < 3:
-        ready_blockers.append(f"needs >=3 anti_triggers (has {anti_total})")
+    trigger_locales = {locale: trigger_counts.get(locale, 0) for locale in ("ko", "en")}
+    anti_locales = {locale: anti_counts.get(locale, 0) for locale in ("ko", "en")}
+    if trigger_total < 6 or any(trigger_locales[locale] < 3 for locale in ("ko", "en")):
+        ready_blockers.append(
+            f"needs >=6 trigger_examples (>=3 ko, >=3 en; has {trigger_total}, ko={trigger_locales['ko']}, en={trigger_locales['en']})"
+        )
+    if anti_total < 4 or any(anti_locales[locale] < 2 for locale in ("ko", "en")):
+        ready_blockers.append(
+            f"needs >=4 anti_triggers (>=2 ko, >=2 en; has {anti_total}, ko={anti_locales['ko']}, en={anti_locales['en']})"
+        )
     if non_verb:
         ready_blockers.append(f"capabilities must be verb_object snake_case: {non_verb[:3]}")
     if broad:
@@ -195,6 +199,7 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
         ontology = _workforce_ontology()
         role_ids = {str(item.get("id")) for item in ontology.get("roles") or []}
         community_ids = {str(item.get("id")) for item in ontology.get("communities") or []}
+        skill_ids = {str(value) for value in (ontology.get("skillAliases") or {}).values()}
         if not isinstance(workforce.get("roles"), list):
             ready_blockers.append("workforce.roles must be a list (empty is allowed when no canonical role fits)")
         elif role_ids:
@@ -202,13 +207,29 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
             if unknown_roles:
                 errors.append(f"workforce.roles outside the pinned ontology: {unknown_roles[:3]}")
         if not workforce.get("communities"):
-            # 서버 투영이 카드 텍스트에서 커뮤니티를 추론한다(라이브 249/250 실측) —
-            # 빌드에서 비어 있어도 막지 않고 품질 경고만 남긴다.
-            warnings.append("workforce.communities empty — the hub will infer from card text; declaring 1-3 ids ranks better")
+            ready_blockers.append("workforce.communities must declare 1-3 semantic job-family ids")
         elif community_ids:
             unknown_communities = [str(c) for c in workforce.get("communities") or [] if str(c) not in community_ids]
             if unknown_communities:
                 errors.append(f"workforce.communities outside the pinned ontology: {unknown_communities[:3]}")
+        if not isinstance(workforce.get("skills"), list) or not workforce.get("skills"):
+            ready_blockers.append("workforce.skills must declare at least one concrete capability")
+        elif skill_ids:
+            unknown_skills = [str(s) for s in workforce.get("skills") or [] if str(s) not in skill_ids]
+            if unknown_skills:
+                errors.append(f"workforce.skills outside the pinned ontology: {unknown_skills[:3]}")
+        if not isinstance(workforce.get("knowledge"), list):
+            ready_blockers.append(
+                "workforce.knowledge must be a list (empty is allowed when no durable knowledge asset ships)"
+            )
+        else:
+            malformed_knowledge = [
+                str(k)
+                for k in workforce.get("knowledge") or []
+                if not re.fullmatch(r"knowledge:[a-z0-9][a-z0-9-]*", str(k))
+            ]
+            if malformed_knowledge:
+                errors.append(f"workforce.knowledge must use knowledge:* ids: {malformed_knowledge[:3]}")
         bad_modalities = [str(m) for m in workforce.get("modalities") or [] if str(m) not in WORKFORCE_MODALITY_IDS]
         if not workforce.get("modalities"):
             ready_blockers.append('workforce.modalities must be declared (text-only agents: ["text"])')

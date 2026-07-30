@@ -162,6 +162,13 @@ def compile_offer(root: Path) -> dict[str, Any]:
          "author sentence carried through whole; never tokenised")
 
     locale = card.get("locale_coverage")
+    if isinstance(locale, Mapping):
+        locale = [
+            locale.get("primary"),
+            *(locale.get("ready") or []),
+            *(locale.get("partial") or []),
+        ]
+        locale = sorted({str(item) for item in locale if item})
     if not isinstance(locale, list) or not locale:
         locale = sorted({str(item.get("locale")) for item in (card.get("trigger_examples") or [])
                          if isinstance(item, Mapping) and item.get("locale")}) or ["en"]
@@ -206,9 +213,10 @@ def compile_offer(root: Path) -> dict[str, Any]:
 
     # Artefacts the card advertises but no schema backs. Label only: a claimed
     # output with no contract can be shown and ranked, never structurally matched.
-    for sentence in _texts(card.get("produces")):
-        deliverables.append({"label": sentence, "effect": _effect_of(sentence)})
-        note(f"/deliverables/{len(deliverables) - 1}", "read", ".agentlas/routing-card.json")
+    if not deliverables:
+        for sentence in _texts(card.get("produces")):
+            deliverables.append({"label": sentence, "effect": _effect_of(sentence)})
+            note(f"/deliverables/{len(deliverables) - 1}", "read", ".agentlas/routing-card.json")
 
     if not deliverables:
         note("/deliverables", "absent", None, "no output schema and no declared artefacts")
@@ -237,11 +245,10 @@ def compile_offer(root: Path) -> dict[str, Any]:
                 })
                 note(f"/obligations/{len(obligations) - 1}", "extracted", "contracts/intake.schema.json")
 
-    for sentence in _texts(card.get("required_inputs")):
-        if any(item["about"] == sentence for item in obligations):
-            continue
-        obligations.append({"about": sentence, "stage": "intake", "required": True})
-        note(f"/obligations/{len(obligations) - 1}", "read", ".agentlas/routing-card.json")
+    if not obligations:
+        for sentence in _texts(card.get("required_inputs")):
+            obligations.append({"about": sentence, "stage": "intake", "required": True})
+            note(f"/obligations/{len(obligations) - 1}", "read", ".agentlas/routing-card.json")
 
     if not obligations:
         note("/obligations", "absent")

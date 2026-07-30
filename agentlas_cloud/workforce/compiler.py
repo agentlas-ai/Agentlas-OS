@@ -112,17 +112,6 @@ def _infer_roles_and_communities(
     for capability in capabilities:
         role_ids.update(ontology.get("capabilityRoleHints", {}).get(capability, []))
 
-    text_values = [
-        routing_card.get("name"), routing_card.get("name_ko"), routing_card.get("summary"),
-        routing_card.get("summary_ko"), routing_card.get("description"), capabilities,
-        manifest.get("skills"),
-    ]
-    fragments = _text_fragments(text_values)
-    for community_id, community in communities.items():
-        labels = [community.get("label"), *(community.get("aliases") or [])]
-        if any(_affirmed_alias(label, fragments) for label in labels):
-            community_ids.add(community_id)
-
     for role_id in list(role_ids):
         role = roles.get(role_id)
         if role:
@@ -154,6 +143,10 @@ def _skill_assertions(
     for capability in normalized_strings(routing_card.get("capabilities")):
         capability_rows.append(_assertion(stable_id("capability", capability), "routing_card"))
         skill_rows.append(_assertion(str(skill_aliases.get(capability) or stable_id("skill", capability)), "routing_card"))
+    workforce = routing_card.get("workforce") if isinstance(routing_card.get("workforce"), Mapping) else {}
+    for skill in normalized_strings(workforce.get("skills")):
+        normalized = str(skill_aliases.get(skill) or skill_aliases.get(skill.lower()) or stable_id("skill", skill))
+        skill_rows.append(_assertion(normalized, "routing_card"))
     for skill in normalized_strings(manifest.get("skills")):
         normalized = str(skill_aliases.get(skill) or skill_aliases.get(skill.lower()) or stable_id("skill", skill))
         skill_rows.append(_assertion(normalized, "manifest"))
@@ -270,19 +263,14 @@ def _artifacts(rows: Any, *, produced: bool) -> list[str]:
 
 
 def _authorities(routing_card: Mapping[str, Any], manifest: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    """Return only explicit workforce declarations.
+
+    Risk warnings and runtime tool permissions are execution policy, not
+    semantic characteristics of an agent. Projecting them into the résumé made
+    identical agents look different depending on the host that packaged them.
+    """
     allowed: set[str] = set()
     forbidden: set[str] = set()
-    risk = routing_card.get("risk_profile") if isinstance(routing_card.get("risk_profile"), Mapping) else {}
-    allowed.update(stable_id("authority", item) for item in normalized_strings(risk.get("capabilities_at_risk")))
-    tool_permissions = manifest.get("toolPermissions") if isinstance(manifest.get("toolPermissions"), Mapping) else {}
-    mapping = {"network": "network", "shell": "shell", "fileRead": "file-read"}
-    for key, label in mapping.items():
-        decision = str(tool_permissions.get(key) or "").lower()
-        target = stable_id("authority", label)
-        if decision == "deny":
-            forbidden.add(target)
-        elif decision in {"allow", "ask", "manifest-allowlist"}:
-            allowed.add(target)
     workforce = routing_card.get("workforce") if isinstance(routing_card.get("workforce"), Mapping) else {}
     allowed.update(concept_ids(workforce.get("authorities"), "authority"))
     forbidden.update(concept_ids(workforce.get("forbiddenAuthorities"), "authority"))
@@ -365,9 +353,13 @@ def compile_workforce_profile(
     tools = _tool_assertions(routing_card, manifest, requirements, evals, ontology)
     authorities, forbidden_authorities = _authorities(routing_card, manifest)
     locale = routing_card.get("locale_coverage") if isinstance(routing_card.get("locale_coverage"), Mapping) else {}
-    languages = normalized_strings([locale.get("primary"), *(locale.get("ready") or []), *(locale.get("partial") or [])])
+    workforce = routing_card.get("workforce") if isinstance(routing_card.get("workforce"), Mapping) else {}
+    languages = normalized_strings(
+        workforce.get("languages")
+        or [locale.get("primary"), *(locale.get("ready") or []), *(locale.get("partial") or [])]
+    )
     runtimes = normalized_strings(routing_card.get("supported_runtimes") or manifest.get("requiredRuntime"))
-    modalities = normalized_strings((routing_card.get("workforce") or {}).get("modalities") if isinstance(routing_card.get("workforce"), Mapping) else [])
+    modalities = normalized_strings(workforce.get("modalities"))
     team_pattern = None
     if team_graph:
         team_pattern = {

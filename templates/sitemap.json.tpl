@@ -12,5 +12,5 @@
   ],
   "edges": [],
   "taskBiases": [],
-  "conceptCoverage": []
+  "conceptCoverage": {}
 }

@@ -1,0 +1,133 @@
+{
+  "schemaVersion": "routing-card/2.0",
+  "card_version": "2.0.0",
+  "id": "local/backend-architect",
+  "canonical_id": "agentlas/backend-architect",
+  "type": "agent",
+  "name": "Backend Architect",
+  "name_ko": "백엔드 아키텍트",
+  "aliases": ["api architect", "service designer", "백엔드 설계자"],
+  "summary": "Designs or reviews a backend service and returns component boundaries, the exact API contract, and a data model with indexes and transaction boundaries, each choice naming the failure mode it accepts.",
+  "summary_ko": "백엔드 서비스를 설계하거나 리뷰해 아키텍처 패키지를 돌려준다: 컴포넌트 경계, 정확한 API 계약, 인덱스와 트랜잭션 경계를 포함한 데이터 모델, 그리고 각 선택이 감수하는 실패 양태. 기존 저장소에서도, 글로 쓴 요구사항에서도 시작할 수 있다.",
+  "description": "Use for service decomposition, API contract authoring, schema and index design, and read/write path review under a stated load. The deliverable is a decision record with the rejected alternatives named, not a diagram. Does not implement the service and does not run migrations.",
+  "capabilities": [
+    "design_backend_services",
+    "author_api_contracts",
+    "design_data_models",
+    "review_transaction_boundaries",
+    "plan_service_decomposition",
+    "assess_failure_modes"
+  ],
+  "domains": ["backend", "api", "database", "distributed-systems"],
+  "trigger_examples": [
+    { "locale": "ko", "text": "주문 서비스를 결제와 분리하려는데 API 계약이랑 트랜잭션 경계를 잡아줘" },
+    { "locale": "ko", "text": "MongoDB 스키마랑 인덱스를 지금 조회 패턴에 맞게 다시 설계해줘" },
+    { "locale": "ko", "text": "이 백엔드 저장소 읽고 병목이랑 실패 지점 정리해줘" },
+    { "locale": "en", "text": "Split this monolith into services and give me the exact API contract between them" },
+    { "locale": "en", "text": "Review my Postgres schema and index plan for a write-heavy workload" },
+    { "locale": "en", "text": "Design the data model and transaction boundaries for a native auth backend" }
+  ],
+  "anti_triggers": [
+    { "locale": "ko", "text": "이 API 실제로 구현해서 배포까지 해줘" },
+    { "locale": "ko", "text": "프로덕션 DB에 마이그레이션 실행해줘" },
+    { "locale": "en", "text": "Build the React frontend for this service" },
+    { "locale": "en", "text": "Pick a payment provider and wire live checkout" }
+  ],
+  "required_inputs": [
+    { "name": "service_context", "type": "text" }
+  ],
+  "optional_inputs": [
+    { "name": "load_profile", "type": "text" },
+    { "name": "stack_constraints", "type": "text" }
+  ],
+  "input_notes": [
+    "service_context: what the service must do, plus the repository path or existing schema when one already exists.",
+    "load_profile: expected read/write volume, latency budget, and consistency requirement. Absent means a single-region moderate-load default is assumed and stated in the output.",
+    "stack_constraints: runtime, database, and hosting the design must stay inside (for example Node on Railway with MongoDB)."
+  ],
+  "required_plugins": [],
+  "supported_runtimes": ["claude-code", "codex", "gemini-cli", "terminal"],
+  "entrypoints": {
+    "canonical_command": "/backend-architect",
+    "agent": "agent.md",
+    "terminal": "agentlas run backend-architect"
+  },
+  "risk_profile": {
+    "tier": "low",
+    "capabilities_at_risk": ["file_write"],
+    "notes": "Writes design documents into the project only. Never migrates data, never calls a production endpoint."
+  },
+  "approval_requirements": ["file_write"],
+  "approval_scope": {
+    "grant": "session",
+    "ttl_seconds": 3600
+  },
+  "memory_behavior": {
+    "reads": "project",
+    "writes": "project",
+    "exports_to_cloud": false
+  },
+  "data_access": {
+    "reads": ["project_files", "project_memory"],
+    "writes": ["project_files"],
+    "exports": []
+  },
+  "cloud_delegation_policy": "ask",
+  "cost_hints": {
+    "model_calls": "medium",
+    "paid_api": false
+  },
+  "consumes": [
+    { "kind": "requirement_brief", "required": true },
+    { "kind": "load_profile", "required": false }
+  ],
+  "produces": [
+    { "kind": "decision_record", "path_hint": "docs/architecture/" },
+    { "kind": "api_contract", "path_hint": "contracts/" },
+    { "kind": "data_model", "path_hint": "docs/architecture/data-model.md" }
+  ],
+  "known_failure_cases": [
+    "A requirement that never states its consistency need gets a single-region design; cross-region correctness is out of scope unless asked.",
+    "Reviewing a repository larger than the read budget returns a partial map with the unread paths named, rather than a confident whole-system claim."
+  ],
+  "benchmark_fixtures": ".agentlas/routing-benchmarks.jsonl",
+  "locale_coverage": {
+    "primary": "en",
+    "ready": ["en", "ko"],
+    "partial": []
+  },
+  "workforce": {
+    "communities": ["community:backend-engineering", "community:database-engineering"],
+    "roles": ["role:backend-engineer", "role:software-architect"],
+    "skills": ["skill:api-design", "skill:software-architecture", "skill:data-modeling"],
+    "knowledge": ["knowledge:api-contract-checklist", "knowledge:database-schema-patterns"],
+    "languages": ["en", "ko"],
+    "modalities": ["text"]
+  },
+  "routing_status": "routing_ready",
+  "routing_status_reason": null,
+  "agent_card_ref": {
+    "path": ".agentlas/agent-card.json",
+    "slug": "backend-architect",
+    "content_hash": null
+  },
+  "source": {
+    "kind": "local_path",
+    "ref": ".",
+    "package_hash": null,
+    "package_version": null
+  },
+  "quality": {
+    "score": 0,
+    "lint_version": "card-lint/2.0",
+    "evaluated_at": "1970-01-01T00:00:00Z",
+    "benchmark_suites": []
+  },
+  "integrity": {
+    "content_hash": "",
+    "signature": null,
+    "signing_key_id": null
+  },
+  "stale": false,
+  "updated_at": "1970-01-01T00:00:00Z"
+}

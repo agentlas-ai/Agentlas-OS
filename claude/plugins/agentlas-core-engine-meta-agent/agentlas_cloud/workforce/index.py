@@ -192,7 +192,17 @@ _REQUIREMENT_VOCABULARY_KINDS = (
 # reported. Skills are deliberately not here: their terms come from a published
 # closed vocabulary, and quietly dropping `skill:security-review` would hand
 # back agents that never claimed to do security review.
-_RANKING_ONLY_KINDS = frozenset({"consumes", "produces"})
+_RANKING_ONLY_KINDS = frozenset(
+    {
+        "tools",
+        "consumes",
+        "produces",
+        "runtimes",
+        "languages",
+        "modalities",
+        "authorities",
+    }
+)
 
 _REQUIREMENT_GAP_KIND = {
     "roles": "role",
@@ -341,10 +351,12 @@ def _hard_eligibility(
     # that matters, and set difference let a prohibition pass straight through.
     if any(not _family_any(have["authorities"], item) for item in enforced["authorities"]):
         reasons.append("missing-required-authority")
-    if any(_family_any(have["authorities"], item) for item in req["forbidden_authorities"]):
-        reasons.append("forbidden-authority-conflict")
-    if any(_family_any(req["authorities"], item) for item in have["forbidden_authorities"]):
-        reasons.append("candidate-prohibits-required-authority")
+    # Runtime/tool/authority declarations describe the execution environment,
+    # not the agent's semantic identity. They remain visible for ranking and
+    # prepare-time permission negotiation, but discovery must never erase an
+    # otherwise relevant candidate because a publisher omitted or phrased one
+    # differently. Forbidden authority conflicts are enforced by the pinned
+    # permission policy during preparation.
     if enforced["runtimes"] and not any(
         _family_any(have["runtimes"], item) for item in enforced["runtimes"]
     ):
@@ -358,7 +370,7 @@ def _hard_eligibility(
     # role/skill/tool requirements. Without any direct requirement, the
     # community itself remains the explicit hard contract.
     missing_communities = req["communities"] - have["communities"]
-    has_direct_evidence = bool(req["roles"] or req["skills"] or req["tools"])
+    has_direct_evidence = bool(req["roles"] or req["skills"] or req["knowledge"])
     if missing_communities and not has_direct_evidence:
         reasons.append("missing-required-community")
     return not reasons, reasons
