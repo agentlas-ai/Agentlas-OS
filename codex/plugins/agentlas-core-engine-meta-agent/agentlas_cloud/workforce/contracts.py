@@ -539,6 +539,14 @@ WORKFORCE_COVERAGE_GAP_CODES = (
     "gap:requirement-vocabulary-unsupported:runtime",
     "gap:requirement-vocabulary-unsupported:language",
     "gap:requirement-vocabulary-unsupported:modality",
+    # Authority joined the demotion set on 2026-07-30. Capability attaches to
+    # the executing runtime, not the BYOM bundle, so almost no card declares
+    # authorities; the Hub's old always-hard gate excluded every relevant
+    # candidate and kept only the newest metadata-complete uploads (measured:
+    # 2 irrelevant -> 6 relevant candidates on the same slot when lifted).
+    # Real authority enforcement lives in prepare-time permission policy pins.
+    # Declaring this code opts Core into the Hub's rank-and-report demotion.
+    "gap:requirement-vocabulary-unsupported:authority",
 )
 _WORKFORCE_COVERAGE_GAP_CODE_SET = frozenset(WORKFORCE_COVERAGE_GAP_CODES)
 

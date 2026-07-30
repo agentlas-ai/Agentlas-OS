@@ -156,9 +156,16 @@ def _profile_sets(profile: Mapping[str, Any]) -> dict[str, Any]:
 # Every dimension a slot may require and the inventory may leave empty. The
 # demotion below applies to all of them: a work order that names the language it
 # needs must not empty every slot merely because no profile declares a language.
-# `authorities` is deliberately absent — it is a security contract, not an
-# inventory-coverage question, and must keep full hard-filter force even when no
-# profile declares one.
+# `authorities` joined on 2026-07-30. The old exemption ("a security contract
+# must keep full hard-filter force even when no profile declares one") was
+# measured inverted on the live network: capability attaches to the executing
+# runtime, not the BYOM bundle, so almost no card declares authorities, and the
+# gate excluded every relevant candidate while keeping the newest
+# metadata-complete uploads regardless of domain (2 irrelevant -> 6 relevant on
+# the same slot when lifted). Real authority enforcement lives in prepare-time
+# permission policy pins. The Hub applies the same demotion behind its gap-code
+# disclosure rule; Local is in-process and version-locked with its caller, so
+# the population test alone gates it here, like every other dimension.
 _REQUIREMENT_VOCABULARY_KINDS = (
     "roles",
     "skills",
@@ -169,6 +176,7 @@ _REQUIREMENT_VOCABULARY_KINDS = (
     "runtimes",
     "languages",
     "modalities",
+    "authorities",
 )
 # Dimensions that can never hard-filter, however full they look. Publishers
 # describe what they emit in their own words, so the compiler mints one
@@ -196,6 +204,7 @@ _REQUIREMENT_GAP_KIND = {
     "runtimes": "runtime",
     "languages": "language",
     "modalities": "modality",
+    "authorities": "authority",
 }
 
 
@@ -326,10 +335,11 @@ def _hard_eligibility(
         reasons.append("missing-consumed-artifact")
     if enforced["produces"] - have["produces"]:
         reasons.append("missing-produced-artifact")
-    # Authorities are never demoted, but they are matched by concept family:
+    # Authorities demote like every other dimension since 2026-07-30 (see
+    # _REQUIREMENT_VOCABULARY_KINDS), and stay matched by concept family:
     # the advertised spelling and the declared one differ for every authority
     # that matters, and set difference let a prohibition pass straight through.
-    if any(not _family_any(have["authorities"], item) for item in req["authorities"]):
+    if any(not _family_any(have["authorities"], item) for item in enforced["authorities"]):
         reasons.append("missing-required-authority")
     if any(_family_any(have["authorities"], item) for item in req["forbidden_authorities"]):
         reasons.append("forbidden-authority-conflict")

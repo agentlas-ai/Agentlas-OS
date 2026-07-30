@@ -135,12 +135,13 @@
         "gap:requirement-vocabulary-unsupported:produced-artifact",
         "gap:requirement-vocabulary-unsupported:runtime",
         "gap:requirement-vocabulary-unsupported:language",
-        "gap:requirement-vocabulary-unsupported:modality"
+        "gap:requirement-vocabulary-unsupported:modality",
+        "gap:requirement-vocabulary-unsupported:authority"
       ]
     },
     "coverageGaps": {
       "type": "array",
-      "maxItems": 34,
+      "maxItems": 35,
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/coverageGap"
