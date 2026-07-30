@@ -1482,7 +1482,14 @@ def _verification_graph(
 
     nodes: list[dict[str, Any]] = []
     for relative in test_files:
-        nodes.append({"id": f"test:{relative}", "kind": "test", "path": relative})
+        nodes.append(
+            {
+                "id": f"test:{relative}",
+                "kind": "test",
+                "path": relative,
+                "verificationChannel": "local",
+            }
+        )
     for command in commands:
         nodes.append(
             {
@@ -1490,6 +1497,7 @@ def _verification_graph(
                 "kind": "test_command",
                 "path": command["path"],
                 "name": command["name"],
+                "verificationChannel": "local",
             }
         )
     for relative in workflow_files:
@@ -1498,6 +1506,7 @@ def _verification_graph(
                 "id": f"ci:{relative}",
                 "kind": "ci_workflow",
                 "path": relative,
+                "verificationChannel": "ci",
             }
         )
     version_contracts: list[dict[str, Any]] = []
@@ -1508,6 +1517,7 @@ def _verification_graph(
             "kind": "version_contract",
             "path": relative,
             "value": value,
+            "verificationChannel": "release",
         }
         nodes.append(row)
         version_contracts.append(row)

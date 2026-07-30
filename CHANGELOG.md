@@ -10,8 +10,10 @@
   check.
 - **Completion verification follows verification responsibilities.**
   `context impact` now returns affected test, CI, and version files, while
-  `context verify` requires each one to change with the code or carry an
-  explicit waiver.
+  `context verify` accepts one valid execution channel per change: local
+  tests/test commands, CI workflows, or both. The selected channel must carry
+  reviewed execution evidence; version contracts remain a separate release
+  responsibility instead of being mistaken for test evidence.
 - **The functional AI Sitemap exposes verification nodes and edges.** Product
   surfaces can show which test and release gate owns a code path instead of
   presenting source modules alone.

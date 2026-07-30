@@ -572,7 +572,8 @@ def context_slice(
         },
         "completionContract": {
             "beforeMutation": "Run context impact for every changed file or symbol and review all returned backlinks.",
-            "beforeCompletion": "Verify impacted source dependents are changed or reviewed; impacted tests, CI workflows, and version contracts must be changed or explicitly waived with a reason.",
+            "beforeCompletion": "Verify impacted source dependents, then satisfy one linked execution channel: local tests/test commands or CI workflows. Version contracts remain a separate release responsibility.",
+            "verificationChannelPolicy": "any-valid-channel",
             "localOnly": True,
         },
         "receipt": receipt_base,
@@ -714,13 +715,24 @@ def impact(
         if not isinstance(issue, dict):
             continue
         source = str(issue.get("source") or "")
-        source_path = str((verification_nodes.get(source) or {}).get("path") or source)
+        source_node = verification_nodes.get(source) or {}
+        source_path = str(source_node.get("path") or source)
+        source_kind = str(source_node.get("kind") or "")
+        issue_channel = (
+            "ci"
+            if source_kind == "ci_workflow"
+            else "local"
+            if source_kind in {"test", "test_command"}
+            else ""
+        )
         missing_path = str(issue.get("missingPath") or "")
         if source_path and missing_path:
             verification_issues.append(
                 {
                     "code": str(issue.get("code") or "verification_graph_issue"),
+                    "sourceId": source,
                     "source": source_path,
+                    "channel": issue_channel,
                     "missingPath": missing_path,
                 }
             )
@@ -769,6 +781,48 @@ def impact(
                 "from": node_id,
             },
         )
+    verification_issues = [
+        issue
+        for issue in verification_issues
+        if str(issue.get("sourceId") or "") in seen_entities
+        or str(issue.get("source") or "") in impacted
+    ]
+    target_rows = [
+        verification_targets[key]
+        for key in sorted(verification_targets)
+    ]
+    local_commands = sorted(
+        {
+            str(target.get("path") or "")
+            for target in target_rows
+            if str(target.get("kind") or "") == "test_command"
+            and str(target.get("path") or "")
+        }
+    )
+    local_tests = sorted(
+        {
+            str(target.get("path") or "")
+            for target in target_rows
+            if str(target.get("kind") or "") == "test"
+            and str(target.get("path") or "")
+        }
+    )
+    verification_channels = {
+        # Prefer concrete test files as the local execution evidence. Package
+        # manifests can be both a test-command container and a version contract;
+        # treating the shared path alone as proof would let a version bump
+        # masquerade as a test run. Command paths are the fallback only for
+        # projects whose executable test command has no discoverable test file.
+        "local": local_tests or local_commands,
+        "ci": sorted(
+            {
+                str(target.get("path") or "")
+                for target in target_rows
+                if str(target.get("kind") or "") == "ci_workflow"
+                and str(target.get("path") or "")
+            }
+        ),
+    }
     impacted_files = sorted(impacted)[:MAX_IMPACT_FILES]
     map_stats = code_map.get("stats") if isinstance(code_map.get("stats"), dict) else {}
     map_budget_stop = str(map_stats.get("budgetStop") or "")
@@ -792,10 +846,12 @@ def impact(
         "changedSymbols": sorted(set(changed_symbols)),
         "impactedFiles": impacted_files,
         "verificationTargets": [
-            verification_targets[key]
-            for key in sorted(verification_targets)
-            if key[0] in impacted_files
+            target
+            for target in target_rows
+            if str(target.get("path") or "") in impacted_files
         ],
+        "verificationChannelPolicy": "any-valid-channel",
+        "verificationChannels": verification_channels,
         "verificationGraphDigest": str(verification_graph.get("graphDigest") or ""),
         "verificationIssues": verification_issues,
         "truncated": len(impacted) > MAX_IMPACT_FILES,
@@ -843,18 +899,60 @@ def verify_impact(
         for target in impact_receipt.get("verificationTargets", [])
         if isinstance(target, Mapping)
         and str(target.get("kind") or "")
-        in {"test", "test_command", "ci_workflow", "version_contract"}
+        == "version_contract"
         and str(target.get("path") or "")
     }
+    channel_rows = impact_receipt.get("verificationChannels")
+    verification_channels = (
+        {
+            str(name): {
+                str(path)
+                for path in paths
+                if isinstance(path, str) and path
+            }
+            for name, paths in channel_rows.items()
+            if isinstance(name, str) and isinstance(paths, list)
+        }
+        if isinstance(channel_rows, Mapping)
+        else {}
+    )
+    accounted_files = changed_files | reviewed_files | waived_files
+    eligible_channels = sorted(
+        name for name, paths in verification_channels.items() if paths
+    )
+    satisfied_channels = sorted(
+        name
+        for name, paths in verification_channels.items()
+        if paths and paths <= accounted_files
+    )
+    selected_channel = satisfied_channels[0] if satisfied_channels else None
+    verification_channel_paths = set().union(*verification_channels.values()) if verification_channels else set()
+    unresolved_channel_files = (
+        set()
+        if selected_channel
+        else verification_channel_paths - accounted_files
+    )
     unresolved = sorted(
-        (required - verification_required_changes - changed_files - reviewed_files - waived_files)
+        (
+            required
+            - verification_channel_paths
+            - verification_required_changes
+            - changed_files
+            - reviewed_files
+            - waived_files
+        )
         | (verification_required_changes - changed_files - waived_files)
+        | unresolved_channel_files
     )
     unresolved_verification_issues = [
         issue
         for issue in impact_receipt.get("verificationIssues", [])
         if isinstance(issue, Mapping)
         and str(issue.get("source") or "") not in waived_files
+        and (
+            not selected_channel
+            or str(issue.get("channel") or "") in {"", selected_channel}
+        )
     ]
     receipt = {
         "schemaVersion": CONTEXT_VERIFICATION_RECEIPT_SCHEMA,
@@ -862,6 +960,14 @@ def verify_impact(
         "mapFingerprint": impact_receipt["mapFingerprint"],
         "verificationGraphDigest": impact_receipt.get("verificationGraphDigest"),
         "verificationTargets": impact_receipt.get("verificationTargets", []),
+        "verificationChannelPolicy": "any-valid-channel",
+        "verificationChannels": {
+            name: sorted(paths)
+            for name, paths in sorted(verification_channels.items())
+        },
+        "eligibleVerificationChannels": eligible_channels,
+        "satisfiedVerificationChannels": satisfied_channels,
+        "selectedVerificationChannel": selected_channel,
         "verificationRequiredChanges": sorted(verification_required_changes),
         "verificationIssues": unresolved_verification_issues,
         "changedFiles": sorted(changed_files),
@@ -938,7 +1044,7 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
     lines.extend(
         [
             "Before mutation: run context impact for each changed file/symbol and inspect every backlink.",
-            "Before completion: account for impacted source dependents; tests, CI, and version contracts must change with the code or carry an explicit waiver.",
+            "Before completion: account for impacted source dependents and satisfy one linked execution channel (local tests/test commands or CI workflows). Version contracts remain a separate release responsibility.",
         ]
     )
     return "\n".join(lines)[:max_chars].rstrip()

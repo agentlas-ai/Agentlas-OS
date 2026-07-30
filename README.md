@@ -733,10 +733,11 @@ and product-version contracts. Those non-source files participate in the map
 fingerprint, so changing a workflow or version manifest invalidates the same
 snapshot as changing code. `context impact` follows these links, and
 `context verify` blocks completion until affected source dependents are changed
-or reviewed and every affected test, CI, and version-contract file is changed
-with the code or explicitly waived. A CI command that names a missing test file
-is recorded as a verification-graph issue and blocks completion until the
-workflow is fixed or explicitly waived.
+or reviewed and one linked execution channel is satisfied: run the local tests,
+run the CI workflow, or run both. Local and CI are alternatives, not duplicate
+requirements. Version contracts remain a separate release responsibility, and
+a missing test reference blocks the CI channel that owns it until the workflow
+is fixed or explicitly waived.
 
 ```sh
 hephaestus context refresh --project .
