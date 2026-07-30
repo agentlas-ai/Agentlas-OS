@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.1.83 - 2026-07-30
+
+Builder, Hub, Cloud, Network, and WorkOrder now share one open routing-resume
+contract.
+
+- **Builders 01, 02, and 03 emit the same card and package shape.** Single
+  agents, teams, and packaged agents use one English semantic resume with
+  communities, skills, knowledge, roles, inputs, outputs, title, and summary.
+  Desktop and Terminal ask creators for an ordinary-language purpose; the
+  connected model authors the English routing card.
+- **Semantic IDs are open-world ontology concepts, not an official
+  dictionary.** Stable English `community:*`, `skill:*`, `knowledge:*`, and
+  `role:*` IDs are embedded and connected to the graph. The bundled ontology
+  snapshot supplies aliases and relations but never rejects a faithful new
+  concept.
+- **Execution context cannot erase a relevant agent during discovery.**
+  Runtime, language, modality, authority, forbidden-authority, and MCP
+  availability remain visible for ranking and prepare-time enforcement but do
+  not make an agent undiscoverable.
+- **Lean and expanded WorkOrders keep one canonical digest.** The source
+  service now freezes the normalized order used by the privacy boundary, so
+  search, selection validation, and exact-release preparation agree even when
+  optional list fields were omitted.
+
 ## v1.1.82 - 2026-07-30
 
 The work-order form now describes what the catalogue can actually answer.

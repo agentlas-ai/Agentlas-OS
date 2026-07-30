@@ -5,7 +5,7 @@ single producer: Desktop's working-folder materializer
 (``electron/ontology/project-runtime.ts``). A machine driven only through
 terminal or plugin sessions froze at its last Desktop visit — measured
 2026-07-29: 12 days — while every session's recall kept citing the snapshot as
-if it were current. The consumer-side guard (staleness labels, v1.1.82) makes
+if it were current. The consumer-side guard (staleness labels, v1.1.83) makes
 the lie visible; this module removes the lie: whenever the index is missing or
 older than :data:`STALE_AFTER_SECONDS`, any surface that touches the runtime
 with a project cwd regenerates a bounded, secret-filtered index and starts a
