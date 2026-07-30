@@ -22,7 +22,7 @@ from .card_lint import effective_status, lint_card
 from .card_store import load_global_cards
 from .domains import classify_domains
 from .hub_fallback import search_hub
-from .memory import load_profile, profile_adjustment, redact_tokens
+from .memory import load_profile, profile_adjustment, redact_tokens, unsafe_route_refusal
 from .pipeline import detect_stages, plan_pipeline
 from ..interview.schema import brief_scope_text
 from .playbooks import build_memory_playbook_context
@@ -987,6 +987,10 @@ def route_request(
     model_allocation_policy: dict[str, Any] | None = None,
     work_brief: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    unsafe = unsafe_route_refusal(query)
+    if unsafe is not None:
+        return unsafe
+
     # Three-scope command model (docs/hephaestus-network-2.0.md):
     #   scope="cloud"   -> /hep-cloud: search ONLY the signed-in user's
     #                     OWN cloud packages (보관함). Owner-scoped Hub query,

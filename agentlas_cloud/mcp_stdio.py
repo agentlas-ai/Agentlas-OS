@@ -42,7 +42,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.83"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.84"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -1170,6 +1170,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             ),
             "repairable": True,
         }
+
+    if name in {"hephaestus_route", "hephaestus_cloud_search", "hephaestus_hub_invoke"}:
+        from .networking.memory import unsafe_route_refusal
+
+        unsafe = unsafe_route_refusal(str(arguments.get("request") or ""))
+        if unsafe is not None:
+            return unsafe
 
     host_model_policy: dict[str, Any] = {}
     if name in {"hephaestus_route", "model.resolve_allocation"}:

@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.1.84 - 2026-07-31
+
+Route discovery now refuses sensitive input before any remote request or
+rebuildable cache write.
+
+- **Secrets and private paths stop at the local boundary.** Network, Cloud,
+  Hub, and route MCP entry points reject credential-like values, `file://`
+  references, and private local paths with a bounded remediation message.
+  Rejections report zero remote calls and zero project writes without echoing
+  the unsafe input.
+- **Hub search caches no longer retain query material.** New cache rows store
+  only a schema version, keyed digest, bounded result rows, and public slugs.
+  Legacy cache files that may contain a query field are purged before lookup,
+  and offline responses expose only cache availability and entry count.
+- **Empty optional JSONL ledgers are valid package artifacts.** A required
+  append-only ledger may begin with zero rows unless its contract declares a
+  positive `minLines`; non-JSONL artifacts and explicitly populated ledgers
+  keep the existing non-empty gate.
+- **Single-agent packages stay on the single-agent contract.** The generated
+  package verifier no longer mistakes the explicit `single-agent` topology for
+  a team merely because worker metadata is present.
+
 ## v1.1.83 - 2026-07-30
 
 Builder, Hub, Cloud, Network, and WorkOrder now share one open routing-resume

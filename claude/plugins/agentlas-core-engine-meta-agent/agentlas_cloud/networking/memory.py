@@ -18,10 +18,21 @@ from .bootstrap import append_jsonl, atomic_write_json, networking_home, read_js
 SECRET_PATTERNS = [
     re.compile(r"sk-[a-z0-9]{8,}", re.IGNORECASE),
     re.compile(r"akia[0-9a-z]{12,}", re.IGNORECASE),
-    re.compile(r"ghp_[a-z0-9]{20,}", re.IGNORECASE),
+    re.compile(r"ghp_[a-z0-9_-]{20,}", re.IGNORECASE),
     re.compile(r"xox[baprs]-[a-z0-9-]{8,}", re.IGNORECASE),
     re.compile(r"-----begin", re.IGNORECASE),
     re.compile(r"(api[_-]?key|password|passwd|secret|token)\s*[:=]", re.IGNORECASE),
+    re.compile(
+        r"\b(api[_-]?key|password|passwd|secret|token|credential)\b"
+        r"\s+(?!budget\b|limit\b|usage\b)\S{8,}",
+        re.IGNORECASE,
+    ),
+]
+PRIVATE_PATH_PATTERNS = [
+    re.compile(r"(?<![a-z0-9])/(?:Users|home|private|Volumes|var|tmp|etc|opt)/[^\s]+", re.IGNORECASE),
+    re.compile(r"(?<![a-z0-9])~/(?:[^\s]+)", re.IGNORECASE),
+    re.compile(r"\bfile://[^\s]+", re.IGNORECASE),
+    re.compile(r"\b[a-z]:\\(?:[^\\\s]+\\)*[^\\\s]+", re.IGNORECASE),
 ]
 
 BOOST_LIMIT = 3.0
@@ -40,6 +51,44 @@ def redact_tokens(tokens: list[str]) -> list[str]:
 
 def contains_secret(text: str) -> bool:
     return any(pattern.search(text or "") for pattern in SECRET_PATTERNS)
+
+
+def route_input_issues(text: str) -> list[str]:
+    """Classify unsafe route input without retaining or returning its value."""
+    issues: list[str] = []
+    if contains_secret(text):
+        issues.append("route_secret_like_input")
+    if any(pattern.search(text or "") for pattern in PRIVATE_PATH_PATTERNS):
+        issues.append("route_private_path")
+    return issues
+
+
+def unsafe_route_refusal(text: str) -> dict[str, Any] | None:
+    """Return a bounded local-only refusal before tokenization, cache, or I/O."""
+    issues = route_input_issues(text)
+    if not issues:
+        return None
+    ko = bool(re.search(r"[가-힣]", text or ""))
+    return {
+        "action": "refuse",
+        "status": "rejected",
+        "error": "unsafe_route_input",
+        "reasons": issues,
+        "boundary": {
+            "issues": [{"path": "request", "code": code} for code in issues],
+            "remoteCalls": 0,
+            "projectWrites": 0,
+        },
+        "executionAllowed": False,
+        "detail": (
+            "credential·비밀값·로컬 경로를 빼고, 필요한 에이전트의 역할만 설명해 주세요."
+            if ko
+            else (
+                "Remove credentials, secret-like values, and private local paths, "
+                "then describe only the capability you want the agent to have."
+            )
+        ),
+    }
 
 
 def load_profile(home: Path | str | None = None) -> dict[str, Any]:

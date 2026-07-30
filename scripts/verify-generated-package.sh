@@ -83,7 +83,11 @@ def check_body(path: Path, artifact: dict) -> None:
         errors.append(f"{relative}: unreadable ({exc})")
         return
 
-    if not text.strip():
+    fmt = artifact.get("format")
+    # An append-only JSONL ledger can be required as a contract surface while
+    # correctly carrying zero rows at export time. Row requirements stay
+    # explicit through minLines (for example, routing benchmarks require 10).
+    if not text.strip() and not (fmt == "jsonl" and not artifact.get("minLines")):
         errors.append(f"{relative}: present but empty")
         return
 
@@ -94,7 +98,6 @@ def check_body(path: Path, artifact: dict) -> None:
         errors.append(f"{relative}: template placeholder was never filled ({marker})")
         return
 
-    fmt = artifact.get("format")
     parsed = None
     if fmt == "json":
         try:

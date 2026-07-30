@@ -21,7 +21,7 @@ from typing import Any
 from ..auth import ensure_access_token
 from .bootstrap import append_jsonl, networking_home, read_json, read_jsonl, utc_now
 from .card_store import load_global_cards
-from .memory import redact_tokens
+from .memory import redact_tokens, unsafe_route_refusal
 from .tokenize import token_set
 
 _HUB_TIMEOUT_SECONDS = int(os.environ.get("HEPHAESTUS_HUB_TIMEOUT_SECONDS", "12") or "12")
@@ -34,6 +34,7 @@ _HUB_RESULT_LIMIT = int(os.environ.get("HEPHAESTUS_HUB_RESULT_LIMIT", "30") or "
 _HUB_CACHE_TTL_SECONDS = int(os.environ.get("HEPHAESTUS_HUB_CACHE_TTL_SECONDS", "600") or "600")
 HUB_TARGET = "agentlas-hub"
 _HUB_CACHE_FILE = "hub-search.jsonl"
+_HUB_CACHE_SCHEMA = "agentlas.hub-search-cache.v2"
 _RESULT_FIELDS = (
     "slug",
     "name",
@@ -97,6 +98,15 @@ def search_hub(
     used solely to re-rank the returned candidates locally, recovering the
     intent that tokenization destroys."""
     base = Path(home) if home else networking_home()
+    unsafe = unsafe_route_refusal(str(query_text or ""))
+    if unsafe is not None:
+        return {
+            "status": "rejected",
+            "scope": scope,
+            "error": unsafe["error"],
+            "boundary": unsafe["boundary"],
+            "results": [],
+        }
     _ = approved  # Kept for backwards-compatible callers; routing no longer gates Hub lookup.
     scope = scope if scope in _SCOPE_TOOL else SCOPE_NETWORK
     owner_scoped = scope in {SCOPE_CLOUD, SCOPE_BOOKMARK}
@@ -118,6 +128,7 @@ def search_hub(
     sentence_key = _cache_key(str(query_text or ""))[:16]
     query_key = _cache_key(f"{scope}|{redacted_query}|sent:{sentence_key}|local:{local_fingerprint}")
     cache_path = base / "cache" / _HUB_CACHE_FILE
+    _purge_legacy_query_cache(cache_path)
     cached_hit = _cached_success(cache_path, query_key)
     if cached_hit is not None:
         cached_hit["scope"] = scope
@@ -161,13 +172,21 @@ def search_hub(
         with urllib.request.urlopen(request, timeout=_HUB_TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
-        cached = [entry for entry in read_jsonl(cache_path, limit=20)]
+        cached_count = sum(
+            1
+            for entry in read_jsonl(cache_path)
+            if entry.get("schemaVersion") == _HUB_CACHE_SCHEMA
+            and isinstance(entry.get("results"), list)
+        )
         return {
             "status": "offline",
             "scope": scope,
             "detail": str(exc),
-            "cached": cached,
-            "note": "Hub unreachable — falling back to cached results, then local-only routing.",
+            "cache": {
+                "available": cached_count > 0,
+                "entryCount": cached_count,
+            },
+            "note": "Hub unreachable. Retry the same search when the connection is restored.",
         }
 
     result_object = _extract_result_object(payload)
@@ -176,10 +195,10 @@ def search_hub(
         append_jsonl(
             cache_path,
             {
+                "schemaVersion": _HUB_CACHE_SCHEMA,
                 "ts": utc_now(),
                 "epoch": int(time.time()),
                 "key": query_key,
-                "q": redacted_query,
                 "action": "clarify",
                 "count": 0,
             },
@@ -197,10 +216,10 @@ def search_hub(
     append_jsonl(
         cache_path,
         {
+            "schemaVersion": _HUB_CACHE_SCHEMA,
             "ts": utc_now(),
             "epoch": int(time.time()),
             "key": query_key,
-            "q": redacted_query,
             "count": len(results),
             "results": results,
             "slugs": [item.get("slug") for item in results[:_HUB_RESULT_LIMIT]],
@@ -325,6 +344,27 @@ def _cache_key(redacted_query: str) -> str:
     return sha256(redacted_query.encode("utf-8")).hexdigest()[:16]
 
 
+def _purge_legacy_query_cache(path: Path) -> None:
+    """Drop v1 cache rows that persisted query material.
+
+    Hub search cache is rebuildable. Removing the whole legacy file avoids
+    leaving sensitive derived tokens in old rows that a later offline response
+    could expose.
+    """
+    if not path.exists():
+        return
+    entries = read_jsonl(path)
+    if any(
+        entry.get("schemaVersion") != _HUB_CACHE_SCHEMA or "q" in entry
+        for entry in entries
+    ):
+        try:
+            path.unlink()
+        except OSError:
+            # A cache cleanup failure must never make the unsafe rows readable.
+            pass
+
+
 def _hub_query_tokens(query_tokens: list[str]) -> list[str]:
     redacted = [token for token in redact_tokens(query_tokens) if token != "[redacted]"]
     hangul_words = [token for token in redacted if re.fullmatch(r"[가-힣]{3,}", token)]
@@ -339,6 +379,8 @@ def _hub_query_tokens(query_tokens: list[str]) -> list[str]:
 def _cached_success(path: Path, key: str) -> dict[str, Any] | None:
     now = time.time()
     for entry in reversed(read_jsonl(path, limit=100)):
+        if entry.get("schemaVersion") != _HUB_CACHE_SCHEMA or "q" in entry:
+            continue
         if entry.get("key") != key:
             continue
         epoch = entry.get("epoch")
@@ -349,9 +391,9 @@ def _cached_success(path: Path, key: str) -> dict[str, Any] | None:
             return None
         return {
             "status": "ok",
-            "query": entry.get("q") or "",
             "results": [item for item in results if isinstance(item, dict)],
             "cached": True,
+            "cacheRef": str(entry.get("key") or ""),
             "limit": _HUB_RESULT_LIMIT,
         }
     return None
