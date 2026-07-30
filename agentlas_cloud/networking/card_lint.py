@@ -199,7 +199,6 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
         ontology = _workforce_ontology()
         role_ids = {str(item.get("id")) for item in ontology.get("roles") or []}
         community_ids = {str(item.get("id")) for item in ontology.get("communities") or []}
-        skill_ids = {str(value) for value in (ontology.get("skillAliases") or {}).values()}
         if not isinstance(workforce.get("roles"), list):
             ready_blockers.append("workforce.roles must be a list (empty is allowed when no canonical role fits)")
         elif role_ids:
@@ -214,10 +213,19 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
                 errors.append(f"workforce.communities outside the pinned ontology: {unknown_communities[:3]}")
         if not isinstance(workforce.get("skills"), list) or not workforce.get("skills"):
             ready_blockers.append("workforce.skills must declare at least one concrete capability")
-        elif skill_ids:
-            unknown_skills = [str(s) for s in workforce.get("skills") or [] if str(s) not in skill_ids]
-            if unknown_skills:
-                errors.append(f"workforce.skills outside the pinned ontology: {unknown_skills[:3]}")
+        else:
+            # Skills are the agent's concrete verb-object capabilities, not a
+            # closed job-family vocabulary. `skillAliases` normalizes common
+            # synonyms; treating its small alias target set as an allowlist
+            # rejected ordinary-domain agents (event planning, writing, care,
+            # operations) even when their identifiers were well formed.
+            malformed_skills = [
+                str(s)
+                for s in workforce.get("skills") or []
+                if not re.fullmatch(r"skill:[a-z0-9][a-z0-9-]*", str(s))
+            ]
+            if malformed_skills:
+                errors.append(f"workforce.skills must use skill:* verb-object ids: {malformed_skills[:3]}")
         if not isinstance(workforce.get("knowledge"), list):
             ready_blockers.append(
                 "workforce.knowledge must be a list (empty is allowed when no durable knowledge asset ships)"

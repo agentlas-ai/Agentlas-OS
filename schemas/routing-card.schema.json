@@ -257,7 +257,7 @@
       "type": "object",
       "properties": {
         "kind": { "enum": ["local_path", "hub"] },
-        "ref": { "type": "string" },
+        "ref": { "type": ["string", "null"] },
         "package_hash": { "type": ["string", "null"] },
         "package_version": { "type": ["string", "null"] }
       }
