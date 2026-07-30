@@ -221,6 +221,7 @@ install_runtime_home() {
   cp -R "$source_dir/bin" "$source_dir/agentlas_cloud" "$source_dir/career_graph" \
     "$source_dir/ontology" "$source_dir/schemas" "$source_dir/templates" \
     "$home_dir/" || return 1
+  cp "$source_dir/package-contract.json" "$home_dir/package-contract.json" || return 1
   mkdir -p "$(dirname "$model_dest")"
   cp -R "$model_source" "$model_dest" || return 1
   if ! PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$home_dir${PYTHONPATH:+:$PYTHONPATH}" \
