@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.1.85 - 2026-07-31
+
+- **Code, tests, CI, and release versions now share one impact graph.** Code
+  Map v2 embeds `agentlas.verification-map.v1`, linking source files to tests,
+  package test commands, CI workflows, and version contracts.
+- **CI and manifest edits invalidate the canonical map.** Workflow and version
+  files participate in the fingerprint instead of sitting outside the stale-map
+  check.
+- **Completion verification follows verification responsibilities.**
+  `context impact` now returns affected test, CI, and version files, while
+  `context verify` requires each one to change with the code or carry an
+  explicit waiver.
+- **The functional AI Sitemap exposes verification nodes and edges.** Product
+  surfaces can show which test and release gate owns a code path instead of
+  presenting source modules alone.
+- **Stale CI references are visible failures.** A workflow or package test
+  command that names a missing test file becomes a verification-graph issue and
+  blocks completion until fixed or explicitly waived.
+
 ## v1.1.84 - 2026-07-31
 
 Route discovery now refuses sensitive input before any remote request or

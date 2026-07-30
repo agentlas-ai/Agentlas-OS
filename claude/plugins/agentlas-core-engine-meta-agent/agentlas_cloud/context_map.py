@@ -28,13 +28,14 @@ CONTEXT_SLICE_SCHEMA = "agentlas.context-slice.v1"
 CONTEXT_QUERY_RECEIPT_SCHEMA = "agentlas.context-query-receipt.v1"
 CONTEXT_IMPACT_RECEIPT_SCHEMA = "agentlas.context-impact-receipt.v1"
 CONTEXT_VERIFICATION_RECEIPT_SCHEMA = "agentlas.context-verification-receipt.v1"
+VERIFICATION_MAP_SCHEMA = "agentlas.verification-map.v1"
 
 MAX_MAP_BYTES = 24 * 1024 * 1024
 MAX_TASK_CHARS = 12_000
 MAX_QUERY_TERMS = 96
 MAX_SELECTED_SYMBOLS = 12
 MAX_SELECTED_FILES = 64
-MAX_IMPACT_FILES = 256
+MAX_IMPACT_FILES = 2_048
 MAX_CONTEXT_NODES = 48
 MAX_CONTEXT_EDGES = 128
 MAX_RENDER_CHARS = 9_000
@@ -208,6 +209,20 @@ def load_code_map(
         or not isinstance(payload.get("refCount"), dict)
         or not isinstance(payload.get("fileSymbols"), dict)
         or not isinstance(payload.get("indexedFiles"), list)
+        or not isinstance(payload.get("mappedFiles"), list)
+    ):
+        raise ContextMapError("context_map_upgrade_required")
+    verification_graph = payload.get("verificationGraph")
+    if (
+        not isinstance(verification_graph, dict)
+        or verification_graph.get("schemaVersion") != VERIFICATION_MAP_SCHEMA
+        or not isinstance(verification_graph.get("nodes"), list)
+        or not isinstance(verification_graph.get("edges"), list)
+        or not isinstance(verification_graph.get("issues"), list)
+        or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(verification_graph.get("graphDigest") or ""),
+        )
     ):
         raise ContextMapError("context_map_upgrade_required")
     cache = _regular_json(
@@ -233,6 +248,8 @@ def load_code_map(
         or cache.get("projectRootHash") != expected_root_hash
         or cache.get("fingerprintHash") != fingerprint
         or cache.get("mapPayloadDigest") != _canonical_digest(payload)
+        or int(cache.get("candidateMappedFiles") or -1)
+        != int(stats.get("candidateMappedFiles") or -2)
         or (
             not coherent_references
             and stats.get("outputTruncated") is not True
@@ -438,6 +455,45 @@ def context_slice(
         )
     selected_files = _bounded_strings(related_files, MAX_SELECTED_FILES)
     selected_modules = _bounded_strings((_module_of(value) for value in selected_files), 24)
+    verification_graph = (
+        code_map.get("verificationGraph")
+        if isinstance(code_map.get("verificationGraph"), dict)
+        else {}
+    )
+    verification_nodes = {
+        str(node.get("id") or ""): node
+        for node in verification_graph.get("nodes", [])
+        if isinstance(node, dict) and str(node.get("id") or "")
+    }
+    verification_entities = set(selected_files)
+    verification_entities.update(
+        node_id
+        for node_id, node in verification_nodes.items()
+        if str(node.get("path") or "") in selected_files
+    )
+    selected_verification_edges: list[dict[str, Any]] = []
+    selected_verification_ids: set[str] = set()
+    for _ in range(4):
+        next_entities: set[str] = set()
+        for edge in verification_graph.get("edges", []):
+            if not isinstance(edge, dict):
+                continue
+            source = str(edge.get("from") or "")
+            target = str(edge.get("to") or "")
+            if source not in verification_entities or not target:
+                continue
+            selected_verification_edges.append(dict(edge))
+            if target in verification_nodes:
+                selected_verification_ids.add(target)
+            next_entities.add(target)
+        if not next_entities - verification_entities:
+            break
+        verification_entities.update(next_entities)
+    selected_verification_nodes = [
+        verification_nodes[node_id]
+        for node_id in sorted(selected_verification_ids)
+    ][:128]
+    selected_verification_edges = selected_verification_edges[:256]
 
     module_edges = []
     for edge in code_map.get("moduleEdges", []):
@@ -481,6 +537,7 @@ def context_slice(
             "file_scope",
             "module_dependency",
             "declared_context_inheritance",
+            "verification_dependency",
         ],
         "selectedSymbols": symbols,
         "selectedFiles": selected_files,
@@ -502,9 +559,20 @@ def context_slice(
         "files": selected_files,
         "modules": selected_modules,
         "moduleEdges": module_edges,
+        "verification": {
+            "schemaVersion": VERIFICATION_MAP_SCHEMA,
+            "graphDigest": str(verification_graph.get("graphDigest") or ""),
+            "nodes": selected_verification_nodes,
+            "edges": selected_verification_edges,
+            "issues": [
+                issue
+                for issue in verification_graph.get("issues", [])
+                if isinstance(issue, dict)
+            ][:64],
+        },
         "completionContract": {
             "beforeMutation": "Run context impact for every changed file or symbol and review all returned backlinks.",
-            "beforeCompletion": "Verify every impacted file is changed, reviewed, or explicitly waived with a reason.",
+            "beforeCompletion": "Verify impacted source dependents are changed or reviewed; impacted tests, CI workflows, and version contracts must be changed or explicitly waived with a reason.",
             "localOnly": True,
         },
         "receipt": receipt_base,
@@ -581,7 +649,7 @@ def impact(
     file_symbols = code_map.get("fileSymbols", {})
     indexed_files = {
         str(value)
-        for value in code_map.get("indexedFiles", [])
+        for value in code_map.get("mappedFiles", code_map.get("indexedFiles", []))
         if isinstance(value, str)
     }
     changed_files: list[str] = []
@@ -623,6 +691,84 @@ def impact(
                 "affectedFiles": refs,
             }
         )
+    verification_graph = (
+        code_map.get("verificationGraph")
+        if isinstance(code_map.get("verificationGraph"), dict)
+        else {}
+    )
+    verification_nodes = {
+        str(node.get("id") or ""): {
+            "path": str(node.get("path") or ""),
+            "kind": str(node.get("kind") or "verification"),
+        }
+        for node in verification_graph.get("nodes", [])
+        if isinstance(node, dict) and str(node.get("id") or "")
+    }
+    verification_edges = [
+        edge
+        for edge in verification_graph.get("edges", [])
+        if isinstance(edge, dict)
+    ]
+    verification_issues: list[dict[str, str]] = []
+    for issue in verification_graph.get("issues", []):
+        if not isinstance(issue, dict):
+            continue
+        source = str(issue.get("source") or "")
+        source_path = str((verification_nodes.get(source) or {}).get("path") or source)
+        missing_path = str(issue.get("missingPath") or "")
+        if source_path and missing_path:
+            verification_issues.append(
+                {
+                    "code": str(issue.get("code") or "verification_graph_issue"),
+                    "source": source_path,
+                    "missingPath": missing_path,
+                }
+            )
+    frontier = set(impacted)
+    frontier.update(
+        node_id
+        for node_id, node in verification_nodes.items()
+        if node["path"] in impacted
+    )
+    seen_entities = set(frontier)
+    verification_targets: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for _ in range(4):
+        next_frontier: set[str] = set()
+        for edge in verification_edges:
+            source = str(edge.get("from") or "")
+            target = str(edge.get("to") or "")
+            relation = str(edge.get("relation") or "verifies")
+            if source not in frontier or not target:
+                continue
+            node = verification_nodes.get(target)
+            if node and node["path"]:
+                impacted.add(node["path"])
+                target_key = (node["path"], node["kind"], relation)
+                verification_targets[target_key] = {
+                    "path": node["path"],
+                    "kind": node["kind"],
+                    "relation": relation,
+                    "from": source,
+                }
+            if target not in seen_entities:
+                seen_entities.add(target)
+                next_frontier.add(target)
+        if not next_frontier:
+            break
+        frontier = next_frontier
+    for node_id, node in verification_nodes.items():
+        if not node["path"] or node["path"] not in impacted:
+            continue
+        target_key = (node["path"], node["kind"], "structural_impact")
+        verification_targets.setdefault(
+            target_key,
+            {
+                "path": node["path"],
+                "kind": node["kind"],
+                "relation": "structural_impact",
+                "from": node_id,
+            },
+        )
     impacted_files = sorted(impacted)[:MAX_IMPACT_FILES]
     map_stats = code_map.get("stats") if isinstance(code_map.get("stats"), dict) else {}
     map_budget_stop = str(map_stats.get("budgetStop") or "")
@@ -645,6 +791,13 @@ def impact(
         "changedFiles": sorted(set(changed_files)),
         "changedSymbols": sorted(set(changed_symbols)),
         "impactedFiles": impacted_files,
+        "verificationTargets": [
+            verification_targets[key]
+            for key in sorted(verification_targets)
+            if key[0] in impacted_files
+        ],
+        "verificationGraphDigest": str(verification_graph.get("graphDigest") or ""),
+        "verificationIssues": verification_issues,
         "truncated": len(impacted) > MAX_IMPACT_FILES,
         "refreshStatus": _refresh_status(refresh_receipt),
         "issuedAt": _utc_now(),
@@ -656,6 +809,7 @@ def impact(
         "project": root.name,
         "paths": paths,
         "impactedFiles": impacted_files,
+        "verificationTargets": receipt["verificationTargets"],
         "impactedModules": _bounded_strings((_module_of(value) for value in impacted_files), 48),
         "receipt": receipt,
     }
@@ -684,16 +838,37 @@ def verify_impact(
     }
     changed_files = set(impact_receipt["changedFiles"])
     required = set(impact_result["impactedFiles"])
-    unresolved = sorted(required - changed_files - reviewed_files - waived_files)
+    verification_required_changes = {
+        str(target.get("path") or "")
+        for target in impact_receipt.get("verificationTargets", [])
+        if isinstance(target, Mapping)
+        and str(target.get("kind") or "")
+        in {"test", "test_command", "ci_workflow", "version_contract"}
+        and str(target.get("path") or "")
+    }
+    unresolved = sorted(
+        (required - verification_required_changes - changed_files - reviewed_files - waived_files)
+        | (verification_required_changes - changed_files - waived_files)
+    )
+    unresolved_verification_issues = [
+        issue
+        for issue in impact_receipt.get("verificationIssues", [])
+        if isinstance(issue, Mapping)
+        and str(issue.get("source") or "") not in waived_files
+    ]
     receipt = {
         "schemaVersion": CONTEXT_VERIFICATION_RECEIPT_SCHEMA,
         "impactReceiptDigest": impact_receipt["receiptDigest"],
         "mapFingerprint": impact_receipt["mapFingerprint"],
+        "verificationGraphDigest": impact_receipt.get("verificationGraphDigest"),
+        "verificationTargets": impact_receipt.get("verificationTargets", []),
+        "verificationRequiredChanges": sorted(verification_required_changes),
+        "verificationIssues": unresolved_verification_issues,
         "changedFiles": sorted(changed_files),
         "reviewedFiles": sorted(reviewed_files),
         "waivedFiles": sorted(waived_files),
         "unresolvedFiles": unresolved,
-        "status": "passed" if not unresolved else "blocked",
+        "status": "passed" if not unresolved and not unresolved_verification_issues else "blocked",
         "issuedAt": _utc_now(),
     }
     receipt["receiptDigest"] = _canonical_digest(receipt)
@@ -745,10 +920,25 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
             for edge in module_edges[:20]
             if isinstance(edge, Mapping)
         )
+    verification = value.get("verification")
+    if isinstance(verification, Mapping) and verification.get("nodes"):
+        lines.append("Verification responsibilities:")
+        for node in list(verification.get("nodes") or [])[:30]:
+            if isinstance(node, Mapping):
+                lines.append(
+                    f"- {node.get('kind', 'verification')}: {node.get('path', '-')}"
+                )
+    if isinstance(verification, Mapping) and verification.get("issues"):
+        lines.append("Verification graph issues:")
+        for issue in list(verification.get("issues") or [])[:20]:
+            if isinstance(issue, Mapping):
+                lines.append(
+                    f"- {issue.get('code', 'issue')}: {issue.get('source', '-')} -> {issue.get('missingPath', '-')}"
+                )
     lines.extend(
         [
             "Before mutation: run context impact for each changed file/symbol and inspect every backlink.",
-            "Before completion: produce a passing context verification receipt or explicitly report unresolved impact.",
+            "Before completion: account for impacted source dependents; tests, CI, and version contracts must change with the code or carry an explicit waiver.",
         ]
     )
     return "\n".join(lines)[:max_chars].rstrip()

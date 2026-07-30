@@ -23,7 +23,7 @@ from collections import Counter, defaultdict
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping, Sequence
 
 
 BOOTSTRAP_SCHEMA = "agentlas.project-bootstrap.v1"
@@ -51,7 +51,8 @@ AUTO_BOOTSTRAP_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_AUTO"
 MCP_AUTO_BOOTSTRAP_ENV = "AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO"
 AUTO_ALLOWED_ROOTS_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_ALLOWED_ROOTS"
 CODE_MAP_CACHE_SCHEMA = "agentlas.code-map-cache.v4"
-CODE_MAP_POLICY_VERSION = "dependency-index.v2"
+CODE_MAP_POLICY_VERSION = "dependency-verification-index.v2"
+VERIFICATION_MAP_SCHEMA = "agentlas.verification-map.v1"
 
 PRIVACY_PATTERNS = (
     ".agentlas/",
@@ -141,8 +142,32 @@ ENTRY_NAMES = {
     "go.mod",
 }
 
+TEST_DIRECTORY_NAMES = {"test", "tests", "__tests__", "spec", "specs"}
+TEST_NAME_PATTERN = re.compile(
+    r"(^test[_-]|[_-](?:test|spec)\.|[.-](?:test|spec)\.|^(?:test|verify|check|smoke)[_-])",
+    re.IGNORECASE,
+)
+CI_WORKFLOW_SUFFIXES = {".yml", ".yaml"}
+VERSION_CONTRACT_NAMES = {
+    "package.json",
+    "package-lock.json",
+    "manifest.json",
+    "pyproject.toml",
+    "cargo.toml",
+    "gemini-extension.json",
+}
+MAX_VERIFICATION_FILE_BYTES = 512 * 1024
+MAX_VERIFICATION_NODES = 2_000
+MAX_VERIFICATION_EDGES = 12_000
+TEST_PATH_REFERENCE_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_.-])"
+    r"((?:test|tests|scripts)/[A-Za-z0-9_./@+-]+"
+    r"\.(?:cjs|mjs|js|jsx|ts|tsx|py|sh|json))(?![A-Za-z0-9])"
+)
+
 SKIP_DIRS = {
     ".agentlas",
+    ".data",
     ".git",
     ".hg",
     ".svn",
@@ -151,6 +176,7 @@ SKIP_DIRS = {
     ".pytest_cache",
     ".turbo",
     ".venv",
+    ".vercel",
     "__pycache__",
     "build",
     "coverage",
@@ -734,6 +760,70 @@ def _merge_managed_sitemap_context(
                     "weight": int(dependency.get("weight") or 0),
                 }
             )
+        verification_graph = code_map.get("verificationGraph")
+        verification_node_ids: dict[str, str] = {}
+        if isinstance(verification_graph, dict):
+            for verification_node in verification_graph.get("nodes") or []:
+                if not isinstance(verification_node, dict):
+                    continue
+                raw_id = str(verification_node.get("id") or "").strip()
+                relative = str(verification_node.get("path") or "").strip()
+                kind = str(verification_node.get("kind") or "verification").strip()
+                if not raw_id or not relative:
+                    continue
+                node_id = f"verification:{raw_id}"
+                verification_node_ids[raw_id] = node_id
+                managed_nodes.append(
+                    {
+                        "id": node_id,
+                        "type": "verification",
+                        "kind": kind,
+                        "title": (
+                            str(verification_node.get("name") or "").strip()
+                            or relative
+                        ),
+                        "path": relative,
+                        "status": "active",
+                        "source": "code-map",
+                        "generated": True,
+                        **(
+                            {"version": verification_node.get("value")}
+                            if kind == "version_contract" and verification_node.get("value")
+                            else {}
+                        ),
+                    }
+                )
+                module_path = Path(relative).parts[0] if len(Path(relative).parts) > 1 else "."
+                managed_edges.append(
+                    {
+                        "from": node_id,
+                        "to": module_ids.get(module_path, f"project:{project_id}"),
+                        "type": "verifies",
+                        "source": "code-map",
+                        "generated": True,
+                    }
+                )
+            for verification_edge in verification_graph.get("edges") or []:
+                if not isinstance(verification_edge, dict):
+                    continue
+                source = str(verification_edge.get("from") or "").strip()
+                target = str(verification_edge.get("to") or "").strip()
+                relation = str(verification_edge.get("relation") or "verifies").strip()
+                source_id = verification_node_ids.get(source)
+                if source_id is None and source:
+                    source_module = Path(source).parts[0] if len(Path(source).parts) > 1 else "."
+                    source_id = module_ids.get(source_module, f"project:{project_id}")
+                target_id = verification_node_ids.get(target)
+                if source_id and target_id:
+                    managed_edges.append(
+                        {
+                            "from": source_id,
+                            "to": target_id,
+                            "type": relation,
+                            "source": "code-map",
+                            "generated": True,
+                        }
+                    )
     nodes = payload.get("nodes")
     edges = payload.get("edges")
     if not isinstance(nodes, list):
@@ -807,6 +897,24 @@ def _merge_managed_sitemap_context(
                 1
                 for edge in managed_edges
                 if isinstance(edge, dict) and edge.get("type") == "depends_on"
+            ),
+            "verificationNodes": sum(
+                1
+                for node in managed_nodes
+                if isinstance(node, dict) and node.get("type") == "verification"
+            ),
+            "verificationEdges": sum(
+                1
+                for edge in managed_edges
+                if isinstance(edge, dict)
+                and edge.get("type") in {
+                    "verified_by",
+                    "verified_by_name",
+                    "invoked_by",
+                    "executed_by",
+                    "versioned_by",
+                    "released_by",
+                }
             ),
         }
         if payload.get("functionalProjection") != next_projection:
@@ -1258,6 +1366,336 @@ def _bounded_project_map(project_map: dict[str, Any]) -> tuple[str, int]:
     return raw, len(raw.encode("utf-8"))
 
 
+def _is_test_path(relative: str) -> bool:
+    path = Path(relative)
+    lowered_parts = {part.lower() for part in path.parts[:-1]}
+    name = path.name.lower()
+    return (
+        bool(lowered_parts.intersection(TEST_DIRECTORY_NAMES))
+        or bool(TEST_NAME_PATTERN.search(name))
+    )
+
+
+def _is_ci_workflow_path(relative: str) -> bool:
+    path = Path(relative)
+    return (
+        len(path.parts) >= 3
+        and path.parts[0] == ".github"
+        and path.parts[1] == "workflows"
+        and path.suffix.lower() in CI_WORKFLOW_SUFFIXES
+    )
+
+
+def _is_version_contract_path(relative: str) -> bool:
+    path = Path(relative)
+    return (
+        path.name.lower() in VERSION_CONTRACT_NAMES
+        or path.name.lower() in {"build.gradle", "build.gradle.kts"}
+    )
+
+
+def _read_verification_text(root: Path, relative: str) -> str:
+    path = root / relative
+    try:
+        metadata = os.stat(path, follow_symlinks=False)
+        if metadata.st_size <= 0 or metadata.st_size > MAX_VERIFICATION_FILE_BYTES:
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _version_value(relative: str, text: str) -> str | None:
+    name = Path(relative).name.lower()
+    if name.endswith(".json"):
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(payload, dict):
+            value = payload.get("version")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            packages = payload.get("packages")
+            if isinstance(packages, dict):
+                root_package = packages.get("")
+                if isinstance(root_package, dict):
+                    value = root_package.get("version")
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+        return None
+    if name in {"pyproject.toml", "cargo.toml"}:
+        match = re.search(r'(?m)^\s*version\s*=\s*["\']([^"\']+)["\']', text)
+        return match.group(1).strip() if match else None
+    if name in {"build.gradle", "build.gradle.kts"}:
+        match = re.search(r'(?m)^\s*version\s*=\s*["\']([^"\']+)["\']', text)
+        return match.group(1).strip() if match else None
+    return None
+
+
+def _package_test_commands(relative: str, text: str) -> list[dict[str, str]]:
+    if Path(relative).name.lower() != "package.json":
+        return []
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    scripts = payload.get("scripts") if isinstance(payload, dict) else None
+    if not isinstance(scripts, dict):
+        return []
+    rows: list[dict[str, str]] = []
+    for name, command in sorted(scripts.items()):
+        if not isinstance(name, str) or not isinstance(command, str):
+            continue
+        lowered = name.lower()
+        if not any(marker in lowered for marker in ("test", "verify", "check", "smoke", "audit", "gate")):
+            continue
+        rows.append(
+            {
+                "id": f"command:{relative}#{name}",
+                "path": relative,
+                "name": name,
+                "command": command[:1_000],
+            }
+        )
+    return rows[:256]
+
+
+def _verification_graph(
+    root: Path,
+    *,
+    relative_files: Sequence[str],
+    scanned_files: Sequence[str],
+    definitions: Mapping[str, Sequence[Mapping[str, Any]]],
+    ref_index: Mapping[str, Sequence[str]],
+) -> dict[str, Any]:
+    test_files = sorted(relative for relative in scanned_files if _is_test_path(relative))
+    workflow_files = sorted(relative for relative in relative_files if _is_ci_workflow_path(relative))
+    version_files = sorted(relative for relative in relative_files if _is_version_contract_path(relative))
+    texts = {
+        relative: _read_verification_text(root, relative)
+        for relative in sorted(set(workflow_files + version_files))
+    }
+    commands: list[dict[str, str]] = []
+    for relative in version_files:
+        commands.extend(_package_test_commands(relative, texts.get(relative, "")))
+
+    nodes: list[dict[str, Any]] = []
+    for relative in test_files:
+        nodes.append({"id": f"test:{relative}", "kind": "test", "path": relative})
+    for command in commands:
+        nodes.append(
+            {
+                "id": command["id"],
+                "kind": "test_command",
+                "path": command["path"],
+                "name": command["name"],
+            }
+        )
+    for relative in workflow_files:
+        nodes.append(
+            {
+                "id": f"ci:{relative}",
+                "kind": "ci_workflow",
+                "path": relative,
+            }
+        )
+    version_contracts: list[dict[str, Any]] = []
+    for relative in version_files:
+        value = _version_value(relative, texts.get(relative, ""))
+        row = {
+            "id": f"version:{relative}",
+            "kind": "version_contract",
+            "path": relative,
+            "value": value,
+        }
+        nodes.append(row)
+        version_contracts.append(row)
+    nodes = nodes[:MAX_VERIFICATION_NODES]
+    allowed_node_ids = {str(node["id"]) for node in nodes}
+
+    edges: list[dict[str, str]] = []
+    edge_keys: set[tuple[str, str, str]] = set()
+
+    def add_edge(source: str, target: str, relation: str) -> None:
+        key = (source, target, relation)
+        if (
+            key in edge_keys
+            or len(edges) >= MAX_VERIFICATION_EDGES
+            or (
+                (source.startswith(("test:", "command:", "ci:", "version:")) and source not in allowed_node_ids)
+                or (target.startswith(("test:", "command:", "ci:", "version:")) and target not in allowed_node_ids)
+            )
+        ):
+            return
+        edge_keys.add(key)
+        edges.append({"from": source, "to": target, "relation": relation})
+
+    test_set = set(test_files)
+    source_files = [relative for relative in scanned_files if relative not in test_set]
+    for symbol, definition_rows in definitions.items():
+        tests = sorted(
+            {
+                str(relative)
+                for relative in ref_index.get(symbol, ())
+                if isinstance(relative, str) and relative in test_set
+            }
+        )
+        if not tests:
+            continue
+        sources = sorted(
+            {
+                str(row.get("f") or "")
+                for row in definition_rows
+                if isinstance(row, Mapping)
+                and str(row.get("f") or "") in source_files
+            }
+        )
+        for source in sources:
+            for test in tests:
+                add_edge(source, f"test:{test}", "verified_by")
+
+    source_by_stem: dict[str, list[str]] = defaultdict(list)
+    for relative in source_files:
+        source_by_stem[Path(relative).stem.lower()].append(relative)
+    for test in test_files:
+        stem = Path(test).stem.lower()
+        normalized_stems = {
+            re.sub(r"^(?:test|spec)[_-]", "", stem),
+            re.sub(r"[_-](?:test|spec)$", "", stem),
+            re.sub(r"[.-](?:test|spec)$", "", stem),
+        }
+        for normalized in sorted(normalized_stems):
+            for source in source_by_stem.get(normalized, ()):
+                add_edge(source, f"test:{test}", "verified_by_name")
+
+    for test in test_files:
+        test_name = Path(test).name
+        for command in commands:
+            command_text = command["command"]
+            if (
+                test in command_text
+                or test_name in command_text
+                or (
+                    Path(test).suffix.lower() == ".py"
+                    and re.search(r"\bpytest\b", command_text)
+                )
+                or (
+                    Path(test).suffix.lower() in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}
+                    and re.search(r"\b(?:node\s+--test|jest|vitest|mocha)\b", command_text)
+                )
+            ):
+                add_edge(f"test:{test}", command["id"], "invoked_by")
+
+    for command in commands:
+        invocations = {
+            f"npm run {command['name']}",
+            f"pnpm run {command['name']}",
+            f"yarn {command['name']}",
+            f"bun run {command['name']}",
+        }
+        for workflow in workflow_files:
+            workflow_text = texts.get(workflow, "")
+            if any(invocation in workflow_text for invocation in invocations):
+                add_edge(command["id"], f"ci:{workflow}", "executed_by")
+
+    for test in test_files:
+        test_name = Path(test).name
+        for workflow in workflow_files:
+            workflow_text = texts.get(workflow, "")
+            if test in workflow_text or test_name in workflow_text:
+                add_edge(f"test:{test}", f"ci:{workflow}", "executed_by")
+
+    contracts_by_scope: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for contract in version_contracts:
+        parent = Path(str(contract["path"])).parent.as_posix()
+        contracts_by_scope[parent].append(contract)
+    for source in source_files:
+        source_parts = Path(source).parts
+        matching_scopes = [
+            scope
+            for scope in contracts_by_scope
+            if scope == "."
+            or Path(scope).parts == source_parts[: len(Path(scope).parts)]
+        ]
+        if not matching_scopes:
+            continue
+        nearest_scope = max(matching_scopes, key=lambda scope: len(Path(scope).parts))
+        for contract in contracts_by_scope[nearest_scope]:
+            add_edge(source, str(contract["id"]), "versioned_by")
+    for workflow in workflow_files:
+        lowered = texts.get(workflow, "").lower()
+        if any(marker in lowered for marker in ("release", "publish", "deploy", "tag")):
+            for contract in version_contracts:
+                add_edge(str(contract["id"]), f"ci:{workflow}", "released_by")
+
+    node_paths = sorted(
+        {
+            str(node.get("path") or "")
+            for node in nodes
+            if str(node.get("path") or "")
+        }
+    )
+    existing_files = set(relative_files)
+    issues: list[dict[str, str]] = []
+    for source, text, base in [
+        *((workflow, texts.get(workflow, ""), Path(".")) for workflow in workflow_files),
+        *(
+            (command["id"], command["command"], Path(command["path"]).parent)
+            for command in commands
+        ),
+    ]:
+        for match in TEST_PATH_REFERENCE_PATTERN.finditer(text):
+            referenced = match.group(1).rstrip(".,:;)")
+            candidates = {
+                Path(base, referenced).as_posix(),
+                referenced,
+                *(
+                    relative
+                    for relative in existing_files
+                    if relative.endswith("/" + referenced)
+                ),
+            }
+            resolved = sorted(candidate for candidate in candidates if candidate in existing_files)
+            if resolved:
+                continue
+            missing_path = Path(base, referenced).as_posix()
+            issue = {
+                "code": "missing_verification_target",
+                "source": source,
+                "missingPath": missing_path,
+            }
+            if issue not in issues:
+                issues.append(issue)
+            if len(issues) >= 256:
+                break
+        if len(issues) >= 256:
+            break
+    payload = {
+        "schemaVersion": VERIFICATION_MAP_SCHEMA,
+        "nodes": nodes,
+        "edges": edges,
+        "mappedFiles": node_paths,
+        "versionContracts": version_contracts,
+        "issues": issues,
+        "stats": {
+            "tests": len(test_files),
+            "testCommands": len(commands),
+            "ciWorkflows": len(workflow_files),
+            "versionContracts": len(version_contracts),
+            "edges": len(edges),
+            "issues": len(issues),
+            "truncated": (
+                len(nodes) >= MAX_VERIFICATION_NODES
+                or len(edges) >= MAX_VERIFICATION_EDGES
+                or len(issues) >= 256
+            ),
+        },
+    }
+    payload["graphDigest"] = _canonical_json_digest(payload)
+    return payload
+
+
 def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any]:
     project = _project_root(root)
     out_dir = project / ".agentlas" / "code-map"
@@ -1287,9 +1725,15 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     ]
     if len([relative for relative in relative_files if Path(relative).suffix.lower() in CODE_EXTENSIONS]) > MAX_CODE_FILES:
         list_stop = list_stop or "code_file_count"
+    verification_files = [
+        relative
+        for relative in relative_files
+        if _is_ci_workflow_path(relative) or _is_version_contract_path(relative)
+    ]
+    fingerprint_files = sorted(set(code_files + verification_files))
     fingerprints: dict[str, dict[str, int]] = {}
     fingerprint_failures = 0
-    for relative in code_files:
+    for relative in fingerprint_files:
         try:
             file_stat = os.stat(project / relative, follow_symlinks=False)
         except OSError:
@@ -1308,7 +1752,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     cache_current = (
         _code_map_binding_complete(project, existing_map, cache)
         and cache.get("fingerprintHash") == fingerprint
-        and int(cache.get("candidateCodeFiles") or -1) == len(fingerprints)
+        and int(cache.get("candidateCodeFiles") or -1) == len(code_files)
+        and int(cache.get("candidateMappedFiles") or -1) == len(fingerprints)
         and cache.get("completeListing") is True
         and cache.get("listingSource") == source
         and complete_listing
@@ -1456,6 +1901,13 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         {"from": source_module, "to": target_module, "weight": weight}
         for (source_module, target_module), weight in module_dependencies.most_common(100)
     ]
+    verification_graph = _verification_graph(
+        project,
+        relative_files=relative_files,
+        scanned_files=scanned_files,
+        definitions=definitions,
+        ref_index=ref_index,
+    )
 
     generated_at = utc_now()
     scan_complete = (
@@ -1480,6 +1932,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         "stats": {
             "totalFiles": len(relative_files),
             "candidateCodeFiles": len(code_files),
+            "candidateMappedFiles": len(fingerprint_files),
             "codeFiles": len(scanned_files),
             "symbols": len(definitions),
             "refIndexSymbols": len(ref_index),
@@ -1510,10 +1963,14 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         "topSymbols": top_symbols,
         "byExt": dict(by_extension.most_common(30)),
         "indexedFiles": scanned_files,
+        "mappedFiles": sorted(
+            set(scanned_files + list(verification_graph.get("mappedFiles") or []))
+        ),
         "fileSymbols": file_symbols,
         "defIndex": dict(definitions),
         "refIndex": dict(ref_index),
         "refCount": dict(ref_count),
+        "verificationGraph": verification_graph,
     }
     markdown = "\n".join(
         [
@@ -1566,6 +2023,12 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
                 "moduleEdges": module_edges[:50],
                 "entryPoints": entry_points,
                 "topSymbols": top_symbols,
+                "verificationGraph": {
+                    "schemaVersion": verification_graph["schemaVersion"],
+                    "graphDigest": verification_graph["graphDigest"],
+                    "stats": verification_graph["stats"],
+                    "versionContracts": verification_graph["versionContracts"][:20],
+                },
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -1580,7 +2043,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
                 "policyVersion": CODE_MAP_POLICY_VERSION,
                 "generatedAt": generated_at,
                 "fingerprintHash": fingerprint,
-                "candidateCodeFiles": len(fingerprints),
+                "candidateCodeFiles": len(code_files),
+                "candidateMappedFiles": len(fingerprints),
                 "completeListing": complete_listing,
                 "completeMap": coverage_complete,
                 "listingSource": source,

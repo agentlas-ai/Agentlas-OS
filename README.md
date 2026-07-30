@@ -452,7 +452,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.84
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.85
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -726,6 +726,17 @@ runtime adapters, verification ledgers, and release gates together.
 Hephaestus keeps the project map local, refreshes it by source fingerprint, and
 hands each concrete task only the goals, constraints, definitions, backlinks,
 interfaces, and related files it structurally depends on.
+
+Code Map v2 also carries an `agentlas.verification-map.v1` graph. It links
+source files to the tests that verify them, package test commands, CI workflows,
+and product-version contracts. Those non-source files participate in the map
+fingerprint, so changing a workflow or version manifest invalidates the same
+snapshot as changing code. `context impact` follows these links, and
+`context verify` blocks completion until affected source dependents are changed
+or reviewed and every affected test, CI, and version-contract file is changed
+with the code or explicitly waived. A CI command that names a missing test file
+is recorded as a verification-graph issue and blocks completion until the
+workflow is fixed or explicitly waived.
 
 ```sh
 hephaestus context refresh --project .
