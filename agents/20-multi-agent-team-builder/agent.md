@@ -93,6 +93,18 @@ knowledge layer:
 
 ## Routing Contract — Non-Negotiable
 
+The routing card is the same artifact in all three builders. Author or repair it
+with `skills/routing-card-authoring/SKILL.md`, which states what belongs in every
+field, and copy `templates/routing-card.example.json` as the starting shape.
+Two rules from that spec decide whether the card is findable at all:
+`workforce.communities` (1-3 pinned `community:*` ids) plus a `summary` that
+names the deliverable in the requester's words are the only things the hub can
+really match on; and NEVER write a `description` inside `required_inputs`,
+`optional_inputs`, `consumes` or `produces` — the compiler turns every string in
+those objects into a concept id, so one sentence becomes one slug nothing can
+ever match (measured: sentences produced inputs[10]/outputs[6] of dead slugs
+where the spec'd form produced inputs[5]/outputs[3] of real concepts).
+
 `package-contract.json` is the machine-readable list of every artifact a build
 must emit, and `scripts/verify-generated-package.sh <folder>` enforces it. A
 build missing a required artifact FAILS. Do not treat that list as advice: it
