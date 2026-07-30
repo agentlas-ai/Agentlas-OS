@@ -57,7 +57,11 @@ except ImportError:
 from agentlas_cloud.team_shape import check_team_shape
 
 shape = check_team_shape(str(root))
-mode = "team" if shape.get("topology") and shape.get("workers") else "single"
+mode = (
+    "team"
+    if shape.get("topology") not in (None, "", "single-agent") and shape.get("workers")
+    else "single"
+)
 
 errors: list[str] = []
 checked = 0
