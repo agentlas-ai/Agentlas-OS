@@ -17,7 +17,12 @@ from ..networking.hub_client import (
     hub_url,
     list_hub_tools,
 )
-from .contracts import WORKFORCE_COVERAGE_GAP_CODES, canonical_digest, canonical_json
+from .contracts import (
+    WORKFORCE_COVERAGE_GAP_CODES,
+    canonical_digest,
+    canonical_json,
+    normalize_work_order,
+)
 from .federation import (
     LineageVerifier,
     WORKFORCE_SOURCE_FAILURE_CODES,
@@ -602,7 +607,10 @@ class WorkforceSourceService:
         assert_hub_work_order_boundary(work_order)
         # Freeze the exact accepted object once. The same canonical bytes drive
         # every source query, federation identity, and durable session pin.
-        accepted_work_order = json.loads(canonical_json(work_order))
+        # The privacy boundary defines absent slot lists as []; freeze that
+        # normalized form too, otherwise search succeeds remotely but the
+        # durable session rejects the same WorkOrder under a different digest.
+        accepted_work_order = json.loads(canonical_json(normalize_work_order(work_order)))
         slot_ids = [
             str(slot.get("slotId"))
             for slot in accepted_work_order.get("roleSlots") or []
