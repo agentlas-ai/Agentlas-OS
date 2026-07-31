@@ -42,7 +42,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.89"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.90"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -1239,7 +1239,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 host_model_policy.setdefault("currentModelId", current_model_id)
         raw_decision = arguments.get("decision")
         receipt = resolve_model_allocation(
-            raw_decision if isinstance(raw_decision, Mapping) else None,
+            raw_decision,
             inventory,
             policy=host_model_policy,
             role=model_role_for_stage(stage),
@@ -1293,8 +1293,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             }
 
     def with_bootstrap(result: dict[str, Any]) -> dict[str, Any]:
+        result = compact_routing_result(result)
         if bootstrap is not None:
-            result["project_bootstrap"] = bootstrap
+            result["project_bootstrap"] = compact_project_receipt(bootstrap)
         return result
 
     def compact_project_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
@@ -1326,6 +1327,127 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "mapFingerprint": functional.get("mapFingerprint"),
             },
         }
+
+    def compact_context_result(tool_name: str, result: Mapping[str, Any]) -> dict[str, Any]:
+        """Bound relationship receipts at the host-visible MCP boundary.
+
+        Core keeps the complete graph for deterministic verification. Codex and
+        other chat hosts need a readable working set plus explicit omission
+        counts, not tens of kilobytes of duplicated graph internals.
+        """
+
+        payload = dict(result)
+        omissions: dict[str, int] = {}
+
+        def trim_list(
+            container: dict[str, Any],
+            field: str,
+            limit: int,
+            *,
+            label: str | None = None,
+            transform=None,
+        ) -> None:
+            value = container.get(field)
+            if not isinstance(value, list):
+                return
+            items = value[:limit]
+            if transform is not None:
+                items = [transform(item) for item in items]
+            container[field] = items
+            omitted = max(0, len(value) - limit)
+            if omitted:
+                omissions[label or field] = omitted
+
+        def compact_path(item: Any) -> Any:
+            if not isinstance(item, Mapping):
+                return item
+            affected = item.get("affectedFiles")
+            affected_files = affected[:8] if isinstance(affected, list) else []
+            compact = {
+                "changedSymbol": item.get("changedSymbol"),
+                "definitions": (item.get("definitions") or [])[:3],
+                "affectedFiles": affected_files,
+            }
+            if isinstance(affected, list) and len(affected) > len(affected_files):
+                compact["affectedFilesOmitted"] = len(affected) - len(affected_files)
+            return compact
+
+        def compact_symbol(item: Any) -> Any:
+            if not isinstance(item, Mapping):
+                return item
+            referenced = item.get("referencedBy")
+            referenced_by = referenced[:4] if isinstance(referenced, list) else []
+            compact = {
+                "symbol": item.get("symbol"),
+                "definitions": (item.get("definitions") or [])[:3],
+                "referenceCount": item.get("referenceCount"),
+                "referencedBy": referenced_by,
+            }
+            if isinstance(referenced, list) and len(referenced) > len(referenced_by):
+                compact["referencedByOmitted"] = len(referenced) - len(referenced_by)
+            return compact
+
+        if tool_name == "context.impact":
+            trim_list(payload, "impactedFiles", 20)
+            trim_list(payload, "paths", 8, transform=compact_path)
+            trim_list(payload, "verificationTargets", 16)
+            receipt = dict(payload.get("receipt") or {})
+            trim_list(receipt, "changedSymbols", 20, label="receipt.changedSymbols")
+            trim_list(receipt, "impactedFiles", 20, label="receipt.impactedFiles")
+            trim_list(receipt, "verificationTargets", 8, label="receipt.verificationTargets")
+            payload["receipt"] = receipt
+        elif tool_name == "context.slice":
+            payload.setdefault("action", tool_name)
+            payload.setdefault("status", "ok")
+            trim_list(payload, "contextEdges", 12)
+            trim_list(payload, "moduleEdges", 12)
+            trim_list(payload, "relatedContextNodes", 8)
+            trim_list(payload, "symbols", 6, transform=compact_symbol)
+            receipt = dict(payload.get("receipt") or {})
+            trim_list(receipt, "selectedContextNodeIds", 16, label="receipt.selectedContextNodeIds")
+            trim_list(receipt, "selectedFiles", 20, label="receipt.selectedFiles")
+            trim_list(receipt, "selectedSymbols", 16, label="receipt.selectedSymbols")
+            payload["receipt"] = receipt
+            verification = dict(payload.get("verification") or {})
+            trim_list(verification, "edges", 8, label="verification.edges")
+            trim_list(verification, "nodes", 6, label="verification.nodes")
+            trim_list(verification, "issues", 20, label="verification.issues")
+            payload["verification"] = verification
+        elif tool_name == "context.verify":
+            receipt = dict(payload.get("receipt") or {})
+            trim_list(receipt, "unresolvedFiles", 20, label="receipt.unresolvedFiles")
+            trim_list(receipt, "verificationTargets", 16, label="receipt.verificationTargets")
+            trim_list(receipt, "verificationIssues", 20, label="receipt.verificationIssues")
+            payload["receipt"] = receipt
+
+        if omissions:
+            payload["omissions"] = omissions
+        return payload
+
+    def compact_routing_result(result: Mapping[str, Any]) -> dict[str, Any]:
+        """Keep discovery menus bounded while preserving exact candidate rows."""
+
+        payload = dict(result)
+        omissions = dict(payload.get("omissions") or {})
+
+        def trim(container: dict[str, Any], field: str, limit: int, label: str) -> None:
+            value = container.get(field)
+            if not isinstance(value, list):
+                return
+            container[field] = value[:limit]
+            if len(value) > limit:
+                omissions[label] = len(value) - limit
+
+        trim(payload, "candidates", 10, "candidates")
+        trim(payload, "suggestions", 10, "suggestions")
+        hub = payload.get("hub")
+        if isinstance(hub, Mapping):
+            compact_hub = dict(hub)
+            trim(compact_hub, "results", 10, "hub.results")
+            payload["hub"] = compact_hub
+        if omissions:
+            payload["omissions"] = omissions
+        return payload
 
     if name in {
         "context.locate",
@@ -1398,7 +1520,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     refresh=refresh,
                 )
             result["project_bootstrap"] = compact_project_receipt(project_receipt)
-            return result
+            return compact_context_result(name, result)
         except ContextMapError as exc:
             if exc.code == "context_verification_refresh_required":
                 return {

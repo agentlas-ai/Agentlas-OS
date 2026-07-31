@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.1.90 - 2026-07-31
+
+- **Context relationship tools stay readable in chat hosts.** MCP
+  `context.impact`, `context.slice`, and refreshed `context.verify` now return a
+  bounded working set with explicit omission counts while Core retains the
+  complete graph and verification receipts locally.
+- **Natural-language routing no longer repeats the full discovery menu.** Hub
+  candidate results are capped at ten exact rows with an omitted-row count, and
+  routing uses the same compact project-readiness summary as Context Map tools.
+- **An optional model-allocation decision is truly optional.** Omitting
+  `decision` now falls back to the active host session without the misleading
+  `decision_not_object` validation issue; a supplied non-object still reports
+  that contract error.
+
 ## v1.1.89 - 2026-07-31
 
 - **Context Map results prioritize the requested answer.** Codex and other MCP

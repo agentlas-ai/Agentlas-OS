@@ -204,6 +204,8 @@ def validate_allocation_decision(raw: Mapping[str, Any] | None) -> tuple[dict[st
     reported so hosts can reject strict-contract violations.
     """
 
+    if raw is None:
+        return None, []
     if not isinstance(raw, Mapping):
         return None, ["decision_not_object"]
 
