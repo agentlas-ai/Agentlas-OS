@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.91 - 2026-07-31
+
+- **Context relationship receipts keep a stable readability margin.** Real
+  installed-plugin testing found that a current project map could put
+  `context.slice` 167 bytes over the 16 KB host UX limit even after v1.1.90's
+  first compaction pass. Impact and slice now retain a smaller prioritized
+  working set, report exact omission counts, and leave the complete graph local.
+
 ## v1.1.90 - 2026-07-31
 
 - **Context relationship tools stay readable in chat hosts.** MCP

@@ -42,7 +42,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.90"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.91"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -1388,30 +1388,31 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             return compact
 
         if tool_name == "context.impact":
-            trim_list(payload, "impactedFiles", 20)
-            trim_list(payload, "paths", 8, transform=compact_path)
-            trim_list(payload, "verificationTargets", 16)
+            trim_list(payload, "impactedFiles", 16)
+            trim_list(payload, "paths", 6, transform=compact_path)
+            trim_list(payload, "verificationTargets", 12)
             receipt = dict(payload.get("receipt") or {})
-            trim_list(receipt, "changedSymbols", 20, label="receipt.changedSymbols")
-            trim_list(receipt, "impactedFiles", 20, label="receipt.impactedFiles")
+            trim_list(receipt, "changedSymbols", 16, label="receipt.changedSymbols")
+            trim_list(receipt, "impactedFiles", 16, label="receipt.impactedFiles")
             trim_list(receipt, "verificationTargets", 8, label="receipt.verificationTargets")
             payload["receipt"] = receipt
         elif tool_name == "context.slice":
             payload.setdefault("action", tool_name)
             payload.setdefault("status", "ok")
-            trim_list(payload, "contextEdges", 12)
-            trim_list(payload, "moduleEdges", 12)
-            trim_list(payload, "relatedContextNodes", 8)
-            trim_list(payload, "symbols", 6, transform=compact_symbol)
+            trim_list(payload, "contextEdges", 10)
+            trim_list(payload, "files", 16)
+            trim_list(payload, "moduleEdges", 10)
+            trim_list(payload, "relatedContextNodes", 6)
+            trim_list(payload, "symbols", 5, transform=compact_symbol)
             receipt = dict(payload.get("receipt") or {})
-            trim_list(receipt, "selectedContextNodeIds", 16, label="receipt.selectedContextNodeIds")
-            trim_list(receipt, "selectedFiles", 20, label="receipt.selectedFiles")
-            trim_list(receipt, "selectedSymbols", 16, label="receipt.selectedSymbols")
+            trim_list(receipt, "selectedContextNodeIds", 12, label="receipt.selectedContextNodeIds")
+            trim_list(receipt, "selectedFiles", 16, label="receipt.selectedFiles")
+            trim_list(receipt, "selectedSymbols", 12, label="receipt.selectedSymbols")
             payload["receipt"] = receipt
             verification = dict(payload.get("verification") or {})
-            trim_list(verification, "edges", 8, label="verification.edges")
-            trim_list(verification, "nodes", 6, label="verification.nodes")
-            trim_list(verification, "issues", 20, label="verification.issues")
+            trim_list(verification, "edges", 6, label="verification.edges")
+            trim_list(verification, "nodes", 5, label="verification.nodes")
+            trim_list(verification, "issues", 16, label="verification.issues")
             payload["verification"] = verification
         elif tool_name == "context.verify":
             receipt = dict(payload.get("receipt") or {})
