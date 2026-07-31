@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.1.89 - 2026-07-31
+
+- **Context Map results prioritize the requested answer.** Codex and other MCP
+  hosts now receive a compact project-readiness summary instead of repeated
+  bootstrap internals, local path inventories, and long warning arrays on every
+  `context.locate`, `context.refs`, `context.slice`, `context.impact`, and
+  `context.verify` call.
+- **A stale verification map explains its recovery.** `context.verify` now marks
+  the refusal as repairable and returns the exact `refresh=true` retry argument
+  instead of only the internal error code.
+
 ## v1.1.88 - 2026-07-31
 
 - **The main CLI now reports its exact installed release.** `hephaestus

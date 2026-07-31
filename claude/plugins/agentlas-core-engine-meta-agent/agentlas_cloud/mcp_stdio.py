@@ -42,7 +42,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.88"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.1.89"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -1297,6 +1297,36 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             result["project_bootstrap"] = bootstrap
         return result
 
+    def compact_project_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
+        """Keep MCP context results actionable without echoing local diagnostics."""
+
+        code_map = receipt.get("codeMap") if isinstance(receipt.get("codeMap"), Mapping) else {}
+        functional = (
+            code_map.get("functionalSitemap")
+            if isinstance(code_map.get("functionalSitemap"), Mapping)
+            else {}
+        )
+        return {
+            "action": "project_bootstrap",
+            "status": receipt.get("status"),
+            "privateModeCompliant": receipt.get("privateModeCompliant"),
+            "privacyBlockInstalled": receipt.get("privacyBlockInstalled"),
+            "missingCount": int(receipt.get("missingCount") or len(receipt.get("missing") or [])),
+            "permissionIssueCount": int(
+                receipt.get("permissionIssueCount") or len(receipt.get("permissionIssues") or [])
+            ),
+            "warningCount": len(receipt.get("warnings") or []),
+            "trackedSensitivePathCount": int(
+                receipt.get("trackedSensitivePathCount")
+                or len(receipt.get("trackedSensitivePaths") or [])
+            ),
+            "codeMap": {
+                "coverageComplete": code_map.get("coverageComplete"),
+                "refresh": code_map.get("refresh"),
+                "mapFingerprint": functional.get("mapFingerprint"),
+            },
+        }
+
     if name in {
         "context.locate",
         "context.refs",
@@ -1335,13 +1365,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         "action": name,
                         "status": "error",
                         "error": "context_refresh_incomplete",
-                        "project_bootstrap": project_receipt,
+                        "project_bootstrap": compact_project_receipt(project_receipt),
                     }
                 return {
                     "action": name,
                     "status": "blocked",
                     "error": "project_bootstrap_incomplete",
-                    "project_bootstrap": project_receipt,
+                    "project_bootstrap": compact_project_receipt(project_receipt),
                 }
             refresh = arguments.get("refresh") is not False
             if name == "context.locate":
@@ -1367,9 +1397,21 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     waived=arguments.get("waived") or [],
                     refresh=refresh,
                 )
-            result["project_bootstrap"] = project_receipt
+            result["project_bootstrap"] = compact_project_receipt(project_receipt)
             return result
         except ContextMapError as exc:
+            if exc.code == "context_verification_refresh_required":
+                return {
+                    "action": name,
+                    "status": "error",
+                    "error": exc.code,
+                    "detail": (
+                        "context.verify requires a fresh dependency map. "
+                        "Call context.verify again with refresh=true."
+                    ),
+                    "repairable": True,
+                    "retryArguments": {"refresh": True},
+                }
             return {"action": name, "status": "error", "error": exc.code}
         except (OSError, TimeoutError, ValueError):
             return {"action": name, "status": "error", "error": "context_operation_failed"}
