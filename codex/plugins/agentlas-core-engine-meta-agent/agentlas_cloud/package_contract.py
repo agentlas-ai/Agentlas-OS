@@ -26,6 +26,11 @@ from typing import Any
 
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Za-z0-9_]+\}\}")
 CONTRACT_FILENAME = "package-contract.json"
+HOST_PATH_RE = re.compile(
+    r"(?:file://)?/(?:Users|home)/[^/\s\"'<>]+(?:/[^\s\"'<>]+)*"
+    r"|[A-Za-z]:\\+Users\\+[^\\\s\"'<>]+(?:\\+[^\\\s\"'<>]+)*"
+)
+TEXT_SCAN_LIMIT_BYTES = 2 * 1024 * 1024
 
 
 def engine_root() -> Path:
@@ -350,6 +355,44 @@ def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> d
     return report
 
 
+def _portable_path_blockers(workspace: Path) -> list[str]:
+    """Reject host-specific paths that make an exported package non-portable.
+
+    The Build prompt already forbids serializing the current working directory,
+    but a prompt is not a gate. Project bootstrap metadata can otherwise leave
+    ``/Users/<name>/...`` (or the Windows equivalent) in an apparently clean
+    package. Static security scanning correctly treats those strings as
+    non-malicious, so the package contract owns this portability invariant.
+
+    Only small UTF-8 text files are inspected. Databases and other binary
+    runtime state are never parsed or executed by this verifier.
+    """
+    blockers: list[str] = []
+    for path in sorted(workspace.rglob("*")):
+        if not path.is_file() or ".git" in path.parts:
+            continue
+        try:
+            if path.stat().st_size > TEXT_SCAN_LIMIT_BYTES:
+                continue
+            raw = path.read_bytes()
+        except OSError:
+            continue
+        if b"\x00" in raw:
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        match = HOST_PATH_RE.search(text)
+        if match is None:
+            continue
+        relative = path.relative_to(workspace).as_posix()
+        blockers.append(
+            f"{relative}: contains an absolute host path; replace it with a package-relative path or remove generated runtime state"
+        )
+    return blockers
+
+
 def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -> dict[str, Any]:
     """Machine-readable completeness gate. ``blockers`` is the list a model
     consumes for targeted self-repair; ``ok`` means routing-ready package."""
@@ -379,6 +422,7 @@ def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -
         if report.get("required", True)
         for problem in report.get("problems", [])
     ]
+    blockers.extend(_portable_path_blockers(workspace))
     warnings = [
         f"{report['path']}: {problem}"
         for report in reports

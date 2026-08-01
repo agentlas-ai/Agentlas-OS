@@ -661,7 +661,7 @@ install_antigravity() {
     return 0
   fi
 
-  log "== Antigravity workflow =="
+  log "== Antigravity workflow & plugins =="
   ensure_downloaded_source || return 1
 
   # 두 데이터 디렉토리 변형 모두에 설치한다 — 어느 앱을 쓰든 같은 명령 집합이 보이게.
@@ -685,6 +685,26 @@ install_antigravity() {
       installed=$((installed + 1))
     fi
   done
+
+  # Install Agentlas OS plugin & skills into ~/.gemini/config/plugins/agentlas-os
+  local plugin_target="$HOME/.gemini/config/plugins/agentlas-os"
+  mkdir -p "$plugin_target/skills"
+  cat > "$plugin_target/plugin.json" <<EOF
+{
+  "name": "agentlas-os",
+  "version": "${version#v}",
+  "description": "Agentlas OS & Hephaestus global agent workforce runtime for Antigravity",
+  "author": {
+    "name": "Agentlas Team"
+  },
+  "license": "Apache-2.0"
+}
+EOF
+  if [[ -d "$source_dir/skills" ]]; then
+    cp -R "$source_dir/skills"/* "$plugin_target/skills/" 2>/dev/null || true
+    log "Installed Antigravity plugin and skills into $plugin_target"
+  fi
+
   [[ "$installed" -gt 0 ]] || return 1
   register_antigravity_mcp || warn "Antigravity MCP registration failed; add it manually to ~/.gemini/config/mcp_config.json."
   ok=$((ok + 1))
