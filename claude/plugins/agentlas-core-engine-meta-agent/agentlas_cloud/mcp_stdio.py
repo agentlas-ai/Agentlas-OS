@@ -1222,21 +1222,31 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             for item in inventory
             if isinstance(item, Mapping) and item.get("active") is True
         ]
-        if len(active) > 1:
-            return {
-                "action": name,
-                "status": "ambiguous_active_session",
-                "executionAllowed": False,
-            }
+        active_session_ids = [
+            str(
+                item.get("session_id")
+                or item.get("id")
+                or item.get("model")
+                or item.get("model_id")
+                or "unknown-session"
+            ).strip()[:160]
+            for item in active[:20]
+        ]
         if active:
-            current_model_id = str(
-                active[0].get("model")
-                or active[0].get("model_id")
-                or active[0].get("id")
-                or ""
-            ).strip()
-            if current_model_id:
-                host_model_policy.setdefault("currentModelId", current_model_id)
+            # One active row is a safe current-session fallback. Multiple active
+            # rows are normal in hosts that keep orchestrator and worker sessions
+            # live together, but they are not authority to guess which model the
+            # operator intended. Let an exact role policy/parent decision resolve
+            # first; only return ambiguity if the resolver still has no model.
+            if len(active) == 1:
+                current_model_id = str(
+                    active[0].get("model")
+                    or active[0].get("model_id")
+                    or active[0].get("id")
+                    or ""
+                ).strip()
+                if current_model_id:
+                    host_model_policy.setdefault("currentModelId", current_model_id)
         raw_decision = arguments.get("decision")
         receipt = resolve_model_allocation(
             raw_decision,
@@ -1246,7 +1256,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             expected_phase=phase,
             escalation=arguments.get("escalation"),
         )
-        return {
+        response = {
             "action": name,
             "status": receipt["status"],
             "stage": stage,
@@ -1256,6 +1266,21 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             "usageStatus": "not-observed-before-invocation",
             "executionAllowed": bool(receipt["resolved"].get("modelId")),
         }
+        if len(active) > 1 and not response["executionAllowed"]:
+            response.update(
+                {
+                    "status": "ambiguous_active_session",
+                    "activeSessionIds": active_session_ids,
+                    "repairable": True,
+                    "detail": (
+                        "Multiple host sessions are marked active and no exact role policy "
+                        "or parent allocation decision selected one. Mark exactly one session "
+                        f"active, or configure orchestrator/worker pinnedModelId in {MODEL_ALLOCATION_POLICY_ENV}, "
+                        "then retry the same stage."
+                    ),
+                }
+            )
+        return response
 
     bootstrap: dict[str, Any] | None = None
     if name in {
