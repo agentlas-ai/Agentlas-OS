@@ -1,6 +1,6 @@
 <svg width="1600" height="1150" viewBox="0 0 1600 1150" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">Hephaestus Network 2.0 — Local-first A2A Networking</title>
-  <desc id="desc">Three bands: AI runtimes on top, the global local-first Hephaestus orchestrator in the middle (router, routing cards, local agents, approval gates, local memory, receipts), and the Agentlas Hub at the bottom connected only through approval-gated A2A/MCP discovery. Raw prompts and local memory never leave the machine.</desc>
+  <desc id="desc">Three bands: explicit host runtime commands on top, model-owned exact-release selection and local execution in the middle, and federated Agentlas Hub discovery at the bottom. This host adapter never owns Agentlas One sessions or Desktop Work projects. Raw prompts and local memory never leave the machine.</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L10,5 L0,10 Z" fill="#1f4e79"/>
@@ -39,7 +39,7 @@
 
   <rect class="bg" width="1600" height="1150"/>
   <text class="title" x="60" y="56">Hephaestus Network 2.0 — Local-first A2A Networking</text>
-  <text class="subtitle" x="60" y="84">Any runtime → one global orchestrator → routing cards → local agents. The Hub is an approved fallback, never a requirement.</text>
+  <text class="subtitle" x="60" y="84">Explicit host command → model judgment → exact release validation → local execution. No semantic fallback.</text>
 
   <!-- ───────────── Band 1 · Runtimes ───────────── -->
   <rect class="layer" x="60" y="108" width="1480" height="138" rx="10"/>
@@ -60,25 +60,25 @@
   <text class="tc" x="1060" y="207">Terminal · CLI</text>
   <rect class="boxBlue" x="1278" y="176" width="238" height="50" rx="8"/>
   <text class="tc" x="1296" y="200">AGENTS.md runtimes</text>
-  <text class="ts" x="1296" y="218">Gemma · Hermes-like (fallback)</text>
+  <text class="ts" x="1296" y="218">Gemma · Hermes-like host adapters</text>
 
   <line class="edge" x1="800" y1="246" x2="800" y2="288"/>
   <text class="lbl" x="818" y="274">one shared local entry point — no per-runtime copies</text>
 
   <!-- ───────────── Band 2 · Global orchestrator ───────────── -->
   <rect class="layer2" x="60" y="292" width="1480" height="470" rx="10"/>
-  <text class="h" x="84" y="322">Global Hephaestus Orchestrator — your machine</text>
+  <text class="h" x="84" y="322">Host-scoped Hephaestus execution — your machine</text>
   <text class="mono" x="640" y="322">~/.agentlas/networking/ — first runtime initializes, every runtime reuses</text>
 
   <!-- Row 1 -->
   <rect class="boxBlue" x="90" y="346" width="440" height="178" rx="8"/>
-  <text class="h2" x="110" y="374">Deterministic Router — no LLM</text>
-  <text class="t" x="110" y="400">1. explicit commands &amp; aliases</text>
-  <text class="t" x="110" y="422">2. project routing-overrides.json</text>
-  <text class="t" x="110" y="444">3. score routing cards — ko/en tokens,</text>
-  <text class="t" x="126" y="464">anti-triggers, breadth &amp; locale gates</text>
-  <text class="t" x="110" y="488">4. route · clarify · hub fallback · propose new</text>
-  <text class="ts" x="110" y="510">loop guard · stale &amp; malformed cards excluded</text>
+  <text class="h2" x="110" y="374">Model-owned selection</text>
+  <text class="t" x="110" y="400">1. explicit command and source scope</text>
+  <text class="t" x="110" y="422">2. redacted structured WorkOrder</text>
+  <text class="t" x="110" y="444">3. complete candidate content menu</text>
+  <text class="t" x="126" y="464">with exact immutable releases</text>
+  <text class="t" x="110" y="488">4. select · validate · prepare · execute</text>
+  <text class="ts" x="110" y="510">no regex, keyword list, glossary, or substitute agent</text>
 
   <rect class="boxWhite" x="560" y="346" width="460" height="178" rx="8"/>
   <text class="h2" x="580" y="374">Routing Cards — source of truth</text>
@@ -127,8 +127,8 @@
 
   <!-- ───────────── Gap · Hub connection (approval-gated) ───────────── -->
   <line class="edgeGold" x1="360" y1="762" x2="360" y2="836"/>
-  <text class="lblGold" x="382" y="792">approved fallback — only redacted keywords,</text>
-  <text class="lblGold" x="382" y="810">never your raw prompt</text>
+  <text class="lblGold" x="382" y="792">explicit federated discovery — redacted structured</text>
+  <text class="lblGold" x="382" y="810">requirements only, never your raw prompt</text>
 
   <rect class="boxRed" x="640" y="770" width="430" height="58" rx="10"/>
   <text class="lblRed" x="664" y="794">✗ raw prompts · local memory · secrets — blocked</text>
@@ -161,6 +161,6 @@
   <text class="t" x="1070" y="968">Hub down ≠ routing down</text>
   <text class="ts" x="1070" y="992">local cards keep working with zero network</text>
 
-  <text class="ts" x="60" y="1100">Every decision writes a receipt. Low confidence asks a clarifying question. No match anywhere proposes building a new agent with /hephaestus.</text>
-  <text class="ts" x="60" y="1122">Korean + English benchmark suites gate auto-routing: top-3 recall ≥ 90%, zero unsafe routes, malformed cards quarantined individually.</text>
+  <text class="ts" x="60" y="1100">Every selected exact release is validated and leaves a receipt. The host model asks only when uncertainty materially changes the action.</text>
+  <text class="ts" x="60" y="1122">Agentlas One remains the sole controller of One sessions; Desktop Work remains project-bound. This host adapter owns neither.</text>
 </svg>

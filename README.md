@@ -401,12 +401,12 @@ Current installs remove that retired scheduler automatically.
 ```bash
 hephaestus global install
 ```
-This appends a managed marker block to `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md`. After that, Codex, Claude Code, and Antigravity/Gemini can treat ordinary prompts more like Agentlas-native sessions. For substantial work the router order is: Hephaestus Network first, Hephaestus Cloud second, local agents third, and local skills last. If Network or Cloud is blocked by credits, entitlement, or a poor match, the runtime reports that boundary and continues down the fallback order. The command is idempotent and keeps a timestamped backup before editing.
+This appends a managed marker block to `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md`. It is an optional host adapter, not the owner of an Agentlas One session or a Desktop Work project. For substantial work, Network is one explicit federated source scope (`local + cloud + hub`): the host model selects exact releases from the returned menu and validates them. It never routes by keyword, silently substitutes a different agent, or treats Cloud, Hub, Local, and skills as semantic fallback tiers. The command is idempotent and keeps a timestamped backup before editing.
 
 The installed router prompt names final workers, not router commands. It carries
 an explicit status-line contract for English and Korean sessions:
 
-| Session language | Agent route example | Skill fallback example |
+| Session language | Agent route example | Host-skill adapter example |
 | --- | --- | --- |
 | English | `Agents used: <agent names>. Reason: <short reason>.` | `Skills used: <skill names>. Reason: <short reason>.` |
 | Korean | `사용 에이전트: <agent names>. 이유: <short reason>.` | `사용 스킬: <skill names>. 이유: <short reason>.` |
@@ -456,7 +456,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.92
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.93
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -545,7 +545,7 @@ A unified compilation factory using three builders. Every generated package regi
   <img src="assets/hephaestus-network-architecture.svg" alt="Figure 2. Hephaestus Network 2.0 A2A networking architecture">
 </p>
 
-<sub>Figure 2. A2A scheduling: LLM runtimes, local-first orchestrator, routing cards, local memory, and the Agentlas Hub A2A/MCP fallback.</sub>
+<sub>Figure 2. A2A scheduling: explicit host commands, model-selected exact releases, local memory, and federated Agentlas Network discovery.</sub>
 
 *   **Typed Job Analysis:** The active host LLM turns the request into a redacted `WorkOrder` with explicit roles, skills, tools, artifacts, authority, cardinality, and handoffs. Core does not infer staffing intent from a substring list.
 *   **Exact Source Federation:** `local`, `cloud`, and `hub` are exact scopes; `network` is their sealed union. Each source returns a bounded, content-only menu, and Core records unavailable sources instead of silently widening scope.

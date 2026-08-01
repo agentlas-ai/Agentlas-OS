@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.1.93 - 2026-08-02
+
+- **One and project Work share one portable authority contract.** One remains
+  the sole controller of One sessions, the first ordered project agent controls
+  Work tasks, and additional agents remain turn- or task-scoped rather than
+  silently taking over a session.
+- **Model judgment owns semantic routing and recovery.** Host adapters expose
+  explicit source scopes and typed evidence, while keyword routing, silent
+  agent substitution, static recovery copy, and raw operational errors remain
+  outside the customer-facing contract.
+- **External host adapters no longer impersonate product ownership.** The
+  Hephaestus global adapter is optional, and Network discovery returns exact
+  releases for the active model to select, validate, and execute locally.
+
 ## v1.1.92 - 2026-08-01
 
 - **Portable packages reject generated local state.** Package validation and

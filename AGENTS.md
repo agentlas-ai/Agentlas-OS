@@ -138,6 +138,27 @@ behavior into English before writing runtime instructions.
 
 ## Operating Loop
 
+Before applying the package-building loop below, preserve the product runtime
+authority model:
+
+- Agentlas One is the sole controller of every One session. Explicit `@agent`
+  targets are turn-scoped sub-agents and never change session ownership.
+- Desktop and Mobile Work create only project-bound tasks. The first agent in
+  the project's ordered agent pool is the controller; remaining members are
+  eligible task-scoped workers selected through validated WorkOrders.
+- Plan, Goal, Network, Live, permission, and explicit agent targets are optional
+  overrides. Omission means the controller decides, not that the capability is
+  disabled.
+- Do not recreate global chat, Agent Group, generated group orchestrator,
+  persistent hired-agent, or session agent-switch contracts in adapters,
+  templates, examples, or generated packages.
+- Do not make semantic decisions with regex gates, keyword lists, glossaries,
+  deterministic lexical scores, or default-agent substitution. Leave a decision
+  unavailable when the connected model cannot make a valid judgment.
+- Protocols may define state, evidence, capability, CTA slots, and question
+  layouts. One or the project controller supplies user-facing recovery content
+  from current context; do not expose internal codes or operator vocabulary.
+
 1. Run the public mode classifier (`skills/mode-classification/SKILL.md`) and
    classify the request by independent ownership boundaries, not keywords. If
    existing material is being converted, repaired, cleaned, imported, or

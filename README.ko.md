@@ -248,12 +248,12 @@ v1.1.68까지 잠시 설치됐던 별도 6시간 OS 예약 서비스는 현재 �
 ```bash
 hep-global install
 ```
-이 명령은 `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`에 관리용 marker block을 추가합니다. 이후 Codex, Claude Code, Antigravity/Gemini는 네이티브 Agentlas 세션처럼 일반 프롬프트를 처리합니다. 실질 작업의 라우팅 순서는 Hephaestus Network 먼저, Hephaestus Cloud 두 번째, 로컬 에이전트 세 번째, 로컬 스킬 마지막입니다. Network나 Cloud가 크레딧, 권한, 적합도 문제로 막히면 그 경계를 알리고 다음 fallback으로 내려갑니다. 명령은 여러 번 실행해도 같은 block만 갱신하며, 수정 전 timestamp 백업을 남깁니다.
+이 명령은 `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`에 관리용 marker block을 추가합니다. 이것은 선택형 호스트 어댑터이며 Agentlas One 세션이나 Desktop Work 프로젝트의 주인이 아닙니다. 실질 작업에서 Network는 `local + cloud + hub`를 합친 하나의 명시적 탐색 범위입니다. 호스트 모델이 후보의 전체 의미를 보고 exact release를 선택·검증하며, 키워드 라우팅·다른 에이전트의 조용한 대체·Cloud/Hub/Local/스킬의 의미적 fallback 사다리는 사용하지 않습니다. 명령은 여러 번 실행해도 같은 block만 갱신하며, 수정 전 timestamp 백업을 남깁니다.
 
 설치된 router prompt는 상태 줄에 라우터 명령이 아니라 최종 작업자를 표시하도록
 지시합니다. 영어/한국어 세션용 status-line 계약을 명시적으로 포함합니다:
 
-| 세션 언어 | 에이전트 라우팅 예시 | 스킬 fallback 예시 |
+| 세션 언어 | 에이전트 라우팅 예시 | 호스트 스킬 어댑터 예시 |
 | --- | --- | --- |
 | 한국어 | `사용 에이전트: <agent names>. 이유: <short reason>.` | `사용 스킬: <skill names>. 이유: <short reason>.` |
 | 영어 | `Agents used: <agent names>. Reason: <short reason>.` | `Skills used: <skill names>. Reason: <short reason>.` |
@@ -303,7 +303,7 @@ Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README�
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.92
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.93
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. Codex 0.117+에서는 custom `/prompts:*` 명령이 제거됐으므로, 설치 후에는 `$hephaestus-network <요청>` 스킬을 호출하세요.*
