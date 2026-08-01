@@ -31,6 +31,18 @@ HOST_PATH_RE = re.compile(
     r"|[A-Za-z]:\\+Users\\+[^\\\s\"'<>]+(?:\\+[^\\\s\"'<>]+)*"
 )
 TEXT_SCAN_LIMIT_BYTES = 2 * 1024 * 1024
+GENERATED_RUNTIME_PATHS = (
+    ".agentlas/ontology-runtime.json",
+    ".agentlas/ontology-sources.json",
+    ".agentlas/ontology-inbox",
+    ".agentlas/career-graph.json",
+    ".agentlas/career-graph-sources.json",
+    ".agentlas/career-graph-inbox",
+)
+GENERATED_RUNTIME_FILE_PREFIXES = (
+    "ontology-runtime.sqlite",
+    "career-graph.sqlite",
+)
 
 
 def engine_root() -> Path:
@@ -393,6 +405,28 @@ def _portable_path_blockers(workspace: Path) -> list[str]:
     return blockers
 
 
+def _generated_runtime_blockers(workspace: Path) -> list[str]:
+    """Keep bootstrap indexes and databases out of portable agent packages."""
+    blockers: list[str] = []
+    for relative in GENERATED_RUNTIME_PATHS:
+        if (workspace / relative).exists():
+            blockers.append(
+                f"{relative}: generated local runtime state must not ship; remove it before delivery"
+            )
+
+    agentlas_dir = workspace / ".agentlas"
+    if agentlas_dir.is_dir():
+        for path in sorted(agentlas_dir.iterdir()):
+            if not path.is_file():
+                continue
+            if any(path.name.startswith(prefix) for prefix in GENERATED_RUNTIME_FILE_PREFIXES):
+                relative = path.relative_to(workspace).as_posix()
+                blockers.append(
+                    f"{relative}: generated local runtime state must not ship; remove it before delivery"
+                )
+    return blockers
+
+
 def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -> dict[str, Any]:
     """Machine-readable completeness gate. ``blockers`` is the list a model
     consumes for targeted self-repair; ``ok`` means routing-ready package."""
@@ -423,6 +457,7 @@ def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -
         for problem in report.get("problems", [])
     ]
     blockers.extend(_portable_path_blockers(workspace))
+    blockers.extend(_generated_runtime_blockers(workspace))
     warnings = [
         f"{report['path']}: {problem}"
         for report in reports
