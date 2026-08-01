@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.1.92 - 2026-08-01
+
+- **Portable packages reject generated local state.** Package validation and
+  upload filtering now keep rebuildable Code Map, graph, and local runtime
+  artifacts out of shared bundles instead of treating machine-specific output
+  as authored package content.
+- **Installation updates stay recoverable.** Runtime delivery verifies the
+  staged install before switching the active runtime and retains the previous
+  known-good release when validation fails.
+- **Ambiguous model sessions fail with a useful explanation.** When more than
+  one active capable session could own a stage, allocation remains unresolved
+  and describes the user choice required without leaking candidate or receipt
+  internals.
+
 ## v1.1.91 - 2026-07-31
 
 - **Context relationship receipts keep a stable readability margin.** Real
