@@ -16,7 +16,7 @@ from typing import Any
 from . import content_guard
 from .auth import ensure_access_token, normalize_base_url
 from .networking.card_lint import lint_card
-from .package_contract import verify as verify_package_contract
+from .package_contract import is_generated_runtime_path, verify as verify_package_contract
 from .brief.write import write_offer_brief
 from .upload_repair import classify_findings, repair_package
 from .runtime import (
@@ -154,6 +154,14 @@ def package_agent(
     contract_report = verify_package_contract(base, mode=contract_mode)
     for blocker in contract_report["blockers"]:
         artifact_path = blocker.split(":", 1)[0] if ":" in blocker else None
+        # Upload packages the collected file set, not the mutable source tree.
+        # Career/Ontology indexing may materialize rebuildable state while
+        # generating a public card. collect_upload_files excludes that state,
+        # so do not turn an already-removed path into a false upload blocker.
+        # The standalone contract verifier still blocks the same path when a
+        # Build folder itself is the delivered artifact.
+        if artifact_path and is_generated_runtime_path(artifact_path):
+            continue
         findings.append(
             _finding(
                 "package-contract-incomplete",
@@ -978,7 +986,11 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
         rel = path.relative_to(base).as_posix()
         if any(part in SKIP_DIRS for part in path.relative_to(base).parts):
             continue
-        if rel in UPLOAD_DERIVED_EVIDENCE_PATHS or is_local_experience_lineage_path(rel):
+        if (
+            rel in UPLOAD_DERIVED_EVIDENCE_PATHS
+            or is_local_experience_lineage_path(rel)
+            or is_generated_runtime_path(rel)
+        ):
             continue
         if path.is_symlink():
             findings.append(_finding("symlink", "blocker", "policy", "Symbolic links are not allowed in cloud agent packages.", rel, "Replace the symlink with an ordinary file or remove it."))

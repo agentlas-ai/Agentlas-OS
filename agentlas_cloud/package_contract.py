@@ -35,7 +35,6 @@ GENERATED_RUNTIME_PATHS = (
     ".agentlas/ontology-runtime.json",
     ".agentlas/ontology-sources.json",
     ".agentlas/ontology-inbox",
-    ".agentlas/career-graph.json",
     ".agentlas/career-graph-sources.json",
     ".agentlas/career-graph-inbox",
 )
@@ -43,6 +42,21 @@ GENERATED_RUNTIME_FILE_PREFIXES = (
     "ontology-runtime.sqlite",
     "career-graph.sqlite",
 )
+
+
+def is_generated_runtime_path(relative_path: str) -> bool:
+    """Return whether a package path is rebuildable host-local runtime state."""
+
+    normalized = relative_path.replace("\\", "/").strip("/")
+    if any(
+        normalized == candidate or normalized.startswith(f"{candidate}/")
+        for candidate in GENERATED_RUNTIME_PATHS
+    ):
+        return True
+    if not normalized.startswith(".agentlas/"):
+        return False
+    name = normalized.rsplit("/", 1)[-1]
+    return any(name.startswith(prefix) for prefix in GENERATED_RUNTIME_FILE_PREFIXES)
 
 
 def engine_root() -> Path:
