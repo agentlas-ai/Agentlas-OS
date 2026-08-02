@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.95 - 2026-08-02
+
+- **Installed runtimes remain immutable during project-memory refresh.** The
+  recall backstop now distinguishes the packaged Hephaestus runtime from a
+  user's active project, preventing generated ontology state from being written
+  into signed application resources.
+
 ## v1.1.94 - 2026-08-02
 
 - **Signed owners and free-plan runtimes remain callable through Workforce.**

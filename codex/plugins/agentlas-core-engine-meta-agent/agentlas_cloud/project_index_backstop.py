@@ -300,6 +300,12 @@ def maybe_refresh_project_index(cwd: Path | str | None) -> bool:
         project_root = find_project_root(Path(cwd).resolve())
         if project_root is None:
             return False
+        runtime_root = os.environ.get("HEPHAESTUS_RUNTIME_ROOT")
+        if runtime_root and project_root == Path(runtime_root).expanduser().resolve():
+            # A packaged runtime may contain its own .agentlas metadata, but it
+            # is immutable product code rather than the user's active project.
+            # Never generate project memory inside an installed/signed runtime.
+            return False
         inbox_path = project_root / ".agentlas" / INBOX_DIR
         index_path = inbox_path / INDEX_FILE
         if _index_is_fresh(index_path) and not _pm_layer_newer_than_index(project_root, index_path):
