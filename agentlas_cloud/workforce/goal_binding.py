@@ -433,6 +433,42 @@ class WorkforceGoalStore:
                 pending.extend((child, container_key) for child in current)
         return expirations
 
+    @classmethod
+    def _remote_execution_authorized(cls, preparation: Mapping[str, Any], instant: datetime) -> bool:
+        """Accept exactly the authority each signed runtime row proves.
+
+        Paid borrowed Hub/Cloud rows still require a live server lease. Owner
+        and free rows do not mint rental leases, so their digest-bound
+        ``charge.basis`` is the authoritative zero-credit execution proof.
+        """
+        execution_plan = preparation.get("executionPlan")
+        if not isinstance(execution_plan, Mapping):
+            return False
+        roster = execution_plan.get("executionRoster")
+        if not isinstance(roster, list) or not roster:
+            return False
+        for row in roster:
+            if not isinstance(row, Mapping):
+                return False
+            directive = row.get("directiveBundle")
+            envelope = directive.get("runtimeEnvelope") if isinstance(directive, Mapping) else None
+            if not isinstance(envelope, Mapping):
+                return False
+            charge = envelope.get("charge")
+            basis = charge.get("basis") if isinstance(charge, Mapping) else None
+            if basis in {"owned", "free"}:
+                continue
+            expirations = cls._lease_expirations(envelope)
+            if not expirations:
+                return False
+            try:
+                parsed = [datetime.fromisoformat(value.replace("Z", "+00:00")) for value in expirations]
+            except ValueError:
+                return False
+            if not parsed or not all(value > instant for value in parsed):
+                return False
+        return True
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.path, timeout=5)
@@ -679,6 +715,7 @@ class WorkforceGoalStore:
                     lease_expires_at = min(parsed_expirations).isoformat().replace("+00:00", "Z") if parsed_expirations else None
                     lease_active = (
                         not remote
+                        or self._remote_execution_authorized(payload["preparation"], instant)
                         or bool(parsed_expirations and all(value > instant for value in parsed_expirations))
                     )
                     plans.append(
