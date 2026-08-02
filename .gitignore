@@ -79,6 +79,7 @@ docs/three-level-orchestration-runtime.md
 # patterns intentionally affect new files only; already tracked history must be
 # removed through an explicit, reviewed release-tree change rather than a
 # misleading ignore rule.
+/.internal/
 tests/
 test/
 **/tests/
