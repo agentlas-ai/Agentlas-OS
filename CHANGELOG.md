@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.94 - 2026-08-02
+
+- **Signed owners and free-plan runtimes remain callable through Workforce.**
+  Runtime preparation now preserves the validated entitlement and zero-cost
+  authority needed to execute exact releases without silently refusing an
+  otherwise authorized task.
+- **Local internal work stays outside the public runtime artifact.** Generated
+  operator-only state is ignored while the release workflow continues to build
+  from its explicit end-user runtime allowlist.
+
 ## v1.1.93 - 2026-08-02
 
 - **One and project Work share one portable authority contract.** One remains
