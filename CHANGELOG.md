@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.97 - 2026-08-03
+
+- **The version a build reports is the version it is.** v1.1.96 shipped with
+  `1.1.95` hardcoded in the MCP server's SERVER_INFO handshake and in the CLI's
+  own report, so every client saw the previous version from a build that called
+  itself 1.1.96. Only manifest.json had been bumped. Desktop's pinned Core
+  Workforce MCP contract probe caught the mismatch; both strings now follow the
+  manifest, and the Claude and Codex adapter mirrors carry the same value.
+
 ## v1.1.96 - 2026-08-03
 
 - **A command typo stops being a Hub search.** Any unrecognised top-level token
