@@ -86,6 +86,27 @@ active plugin, command surface और global routing status confirm करें
 
 ---
 
+## एक और engine नहीं, standard
+
+> **Agentlas एक और graph engine नहीं बना रहा है।**
+> यह वह agent standard design कर रहा है — और उसे ले जाने वाला distribution network —
+> जिसे कई graph engines और runtimes साझा कर सकें।
+
+Engines बदलते रहते हैं। इस बदलाव के पार जो बचना चाहिए, वह है वह contract जो agent अपने साथ
+लेकर चलता है: वह क्या है, कैसे invoke होता है, किसे छू सकता है, क्या याद रखता है, और उसका
+परिणाम कैसे सिद्ध होता है। यह contract जानबूझकर engine-neutral है।
+
+- **एक definition, कई runtimes.** Manifest, routing card, permissions और memory rules
+  vendor के नहीं, agent के साथ चलते हैं — इसलिए वही package Claude Code, Codex, Gemini,
+  Antigravity, Cursor या किसी local model पर चलता है।
+- **Chat के बाहर जीवन.** Package contracts, receipts और verification gates उस session से
+  अधिक समय तक बने रहते हैं जिसने उन्हें बनाया।
+- **दूसरों तक पहुँचने का रास्ता.** सार्वजनिक Hub पर publish करें, या अपने owner-scoped Cloud
+  में रखें। दोनों ही स्थिति में यह copied prompt नहीं, एक package की तरह चलता है।
+
+Hephaestus इस standard को implement करने वाला एक engine है। इसे open source इसलिए रखा गया है
+ताकि standard को जाँचा, fork और फिर से implement किया जा सके।
+
 ## Agent OS का युग
 
 इंडस्ट्री अब stateless, ad-hoc "tools वाले chatbots" से आगे निकल चुकी है। Google और प्रमुख AI labs द्वारा developer रणनीतियों को **Agent Operating Systems** (जैसे Antigravity orchestration platform और Gemini Spark daemon processes) के इर्द-गिर्द पुनर्परिभाषित करने के साथ, AI agents आधिकारिक रूप से first-class operating-system primitives बन चुके हैं — विशिष्ट पहचान, relational memory systems, security permissions और native tool-calling environments वाली long-lived, stateful processes।

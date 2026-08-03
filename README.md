@@ -286,6 +286,31 @@ fits the work.
 
 ---
 
+## The Standard, Not Another Engine
+
+> **Agentlas is not building another graph engine.**
+> It is designing the agent standard — and the distribution network that carries it —
+> that many graph engines and runtimes can share.
+
+Engines keep changing. A model workspace, a CLI, an orchestration framework, a graph
+runner: each arrives, wins for a while, and is replaced. What has to survive that churn
+is the contract an agent carries with it — what it is, how it is invoked, what it may
+touch, what it remembers, and how its result is proven.
+
+That contract is the product, and it is deliberately engine-neutral:
+
+- **One definition, many runtimes.** The same package runs through Claude Code, Codex,
+  Gemini, Antigravity, Cursor, or a local model, because the manifest, routing card,
+  permissions, and memory rules travel with the agent instead of with the vendor.
+- **A life outside the chat.** Package contracts, receipts, and verification gates
+  outlive the session that produced them.
+- **A way to reach other people.** Publish to the public Hub, or keep it in your
+  owner-scoped Cloud. Either way it moves as a package, not as a copied prompt.
+
+Hephaestus is one engine that implements this standard. It is open source precisely so
+the standard can be inspected, forked, and re-implemented — including by engines we did
+not write.
+
 ## Why Agentlas OS
 
 Most AI products help you create another agent. Agentlas OS is for the harder
