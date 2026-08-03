@@ -827,7 +827,29 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
         return 0
     if args.command == "bundle":
-        return emit(compile_runtime_bundle(args.folder))
+        # A folder with no agentlas.json used to raise an uncaught FileNotFoundError
+        # straight at the user, printing a Python stack trace that also disclosed the
+        # absolute install path under /Applications/Agentlas.app/Contents/Resources/.
+        # The exit code was honest; the surface was not, and nothing could pattern
+        # match a friendly message out of it.
+        try:
+            return emit(compile_runtime_bundle(args.folder))
+        except FileNotFoundError:
+            return emit({
+                "action": "runtime_bundle",
+                "status": "error",
+                "error": "agent_manifest_not_found",
+                "folder": str(args.folder),
+                "hint": "No agentlas.json was found in this folder. Point at an agent folder, or run `hephaestus wizard <folder>` to create one.",
+            }) or 1
+        except OSError as exc:
+            return emit({
+                "action": "runtime_bundle",
+                "status": "error",
+                "error": "agent_folder_unreadable",
+                "folder": str(args.folder),
+                "hint": f"The agent folder could not be read ({exc.strerror or 'unreadable'}).",
+            }) or 1
     if args.command == "package":
         from .upload import UploadError, package_agent
 
