@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.1.96 - 2026-08-03
+
+- **A command typo stops being a Hub search.** Any unrecognised top-level token
+  used to fall through the natural-language shorthand: `hephaestus login`,
+  `status`, `doctorr` and `init` each spent seconds on a Hub routing query and
+  then exited 0, reporting success for something the user never asked for and
+  leaving scripts unable to detect a renamed or mistyped command. A bare single
+  word is now rejected the way second-level typos already were — a named
+  boundary and a non-zero exit — while multi-word requests keep routing, in
+  English and Korean alike, and the message names how to run the token as a
+  request on purpose.
+- **`context` refreshes a project instead of conjuring one.** Running
+  `context refresh` in a directory with no state created 48 files, including
+  ontology and career-graph databases, credentials and signing scaffolding, and
+  a rewritten .gitignore — with no consent, and directly against the product's
+  own promise that `project init` is explicit. Terminal already refused to do
+  this; Core was overriding that boundary from underneath. An uninitialized
+  directory is now left untouched and told to run `project init`.
+- **Errors name their boundary.** `runtime bundle` on a folder with no
+  agentlas.json raised a raw Python traceback that also disclosed the internal
+  install path; it now reports a missing manifest and points at `wizard`. Every
+  reachable context-map error carries a next action instead of a bare code.
+
 ## v1.1.95 - 2026-08-02
 
 - **Installed runtimes remain immutable during project-memory refresh.** The
