@@ -428,6 +428,31 @@ EOF
     ;;
 	  *)
 	    # Natural-language shorthand: hephaestus "<request>" routes through the network router.
+	    #
+	    # A bare single word is a typo, not a request. This branch used to swallow
+	    # every unrecognised token — `hephaestus login`, `status`, `doctorr`, `init`
+	    # — turning it into a Hub search that exited 0 after 1-4s with no notice
+	    # that the command did not exist. Two things broke: the surface reported
+	    # success for something the user never asked for, and any script gating on
+	    # the exit code could not detect a typo or a renamed subcommand. Measured
+	    # 2026-08-03 on 1.1.95: 21 of 28 probed tokens exited 0 this way, and every
+	    # one of them was a single word with no whitespace. Real natural-language
+	    # requests are phrases, so require one.
+	    #
+	    # Sub-command typos under a real command are already rejected correctly by
+	    # that command's own parser (`auth statuss` -> exit 2). This makes the
+	    # top-level dispatcher agree with the level below it.
+	    if [[ $# -eq 0 && "$command" != *[[:space:]]* ]]; then
+	      echo "$self: '$command' is not a hephaestus command." >&2
+	      echo "See: $self --help  ·  to route it as a request: $self \"$command …\"" >&2
+	      exit 2
+	    fi
+	    # Whitespace-only input is not a request either.
+	    if [[ -z "${command// /}" && $# -eq 0 ]]; then
+	      echo "$self: no command given." >&2
+	      usage >&2
+	      exit 2
+	    fi
 	    run_python_module agentlas_cloud route "$command $*" --allow-local-routing
 	    ;;
 esac

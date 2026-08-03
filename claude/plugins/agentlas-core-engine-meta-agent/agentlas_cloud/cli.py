@@ -827,7 +827,29 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
         return 0
     if args.command == "bundle":
-        return emit(compile_runtime_bundle(args.folder))
+        # A folder with no agentlas.json used to raise an uncaught FileNotFoundError
+        # straight at the user, printing a Python stack trace that also disclosed the
+        # absolute install path under /Applications/Agentlas.app/Contents/Resources/.
+        # The exit code was honest; the surface was not, and nothing could pattern
+        # match a friendly message out of it.
+        try:
+            return emit(compile_runtime_bundle(args.folder))
+        except FileNotFoundError:
+            return emit({
+                "action": "runtime_bundle",
+                "status": "error",
+                "error": "agent_manifest_not_found",
+                "folder": str(args.folder),
+                "hint": "No agentlas.json was found in this folder. Point at an agent folder, or run `hephaestus wizard <folder>` to create one.",
+            }) or 1
+        except OSError as exc:
+            return emit({
+                "action": "runtime_bundle",
+                "status": "error",
+                "error": "agent_folder_unreadable",
+                "folder": str(args.folder),
+                "hint": f"The agent folder could not be read ({exc.strerror or 'unreadable'}).",
+            }) or 1
     if args.command == "package":
         from .upload import UploadError, package_agent
 
@@ -984,7 +1006,30 @@ def main(argv: list[str] | None = None) -> int:
         from .project_bootstrap import ensure_project
 
         try:
-            should_bootstrap = args.context_command == "refresh" or not getattr(args, "no_refresh", False)
+            # `agentlas help` states "project [status|init] — init is explicit", and a
+            # project with no state tells the user in as many words to run
+            # `project init`. Bootstrapping here broke both promises: a plain
+            # `context refresh` in an uninitialized directory created 48 files —
+            # ontology and career-graph SQLite databases, 20+ super-ontology
+            # contracts, project-soul-memory.md, credentials/ and signing/
+            # scaffolding — and rewrote .gitignore, with no consent and no notice.
+            # Terminal already refuses to do this (it calls its own boundary with
+            # "read" permission and comments "context 명령은 프로젝트를 초기화하지
+            # 않는다"); Core was overriding that boundary from underneath.
+            # Refresh an existing project, never conjure a new one.
+            already_initialized = bool(
+                (Path(args.project).expanduser().resolve() / ".agentlas").is_dir()
+            )
+            requested_bootstrap = args.context_command == "refresh" or not getattr(args, "no_refresh", False)
+            if requested_bootstrap and not already_initialized:
+                return emit({
+                    "action": "context",
+                    "status": "error",
+                    "error": "project_not_initialized",
+                    "project": str(args.project),
+                    "hint": "Run `agentlas project init` first. The context map is project state, and creating it is an explicit step.",
+                }) or 2
+            should_bootstrap = requested_bootstrap
             if should_bootstrap:
                 project_receipt = ensure_project(
                     args.project,
@@ -1069,7 +1114,26 @@ def main(argv: list[str] | None = None) -> int:
             emit(verification)
             return 0 if verification.get("status") == "passed" else 3
         except ContextMapError as exc:
-            return emit({"action": "context", "status": "error", "error": exc.code}) or 2
+            # Emitting the bare code left `context slice` dead-ending on
+            # {"error":"context_map_integrity_failed"} with nothing naming the
+            # boundary or a next step — while its own siblings (`locate`,
+            # `impact`, `verify`) say plainly which argument is missing. Every
+            # code a user can actually reach carries an action here.
+            hints = {
+                "context_map_integrity_failed":
+                    "The stored context map no longer matches this project. Run `agentlas context refresh` to rebuild it, then retry.",
+                "context_task_too_large":
+                    "The task text is over 12,000 characters. Shorten it, or pass a file path instead of pasting the whole content.",
+                "context_map_missing":
+                    "This project has no context map yet. Run `agentlas context refresh` first.",
+                "context_map_incomplete":
+                    "The context map was built from a partial scan. Run `agentlas context refresh --force` to rebuild it completely.",
+            }
+            payload: dict[str, Any] = {"action": "context", "status": "error", "error": exc.code}
+            hint = hints.get(exc.code)
+            if hint:
+                payload["hint"] = hint
+            return emit(payload) or 2
         except (OSError, TimeoutError, ValueError):
             return emit({"action": "context", "status": "error", "error": "context_operation_failed"}) or 2
     if args.command == "network":
