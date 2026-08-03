@@ -984,7 +984,30 @@ def main(argv: list[str] | None = None) -> int:
         from .project_bootstrap import ensure_project
 
         try:
-            should_bootstrap = args.context_command == "refresh" or not getattr(args, "no_refresh", False)
+            # `agentlas help` states "project [status|init] — init is explicit", and a
+            # project with no state tells the user in as many words to run
+            # `project init`. Bootstrapping here broke both promises: a plain
+            # `context refresh` in an uninitialized directory created 48 files —
+            # ontology and career-graph SQLite databases, 20+ super-ontology
+            # contracts, project-soul-memory.md, credentials/ and signing/
+            # scaffolding — and rewrote .gitignore, with no consent and no notice.
+            # Terminal already refuses to do this (it calls its own boundary with
+            # "read" permission and comments "context 명령은 프로젝트를 초기화하지
+            # 않는다"); Core was overriding that boundary from underneath.
+            # Refresh an existing project, never conjure a new one.
+            already_initialized = bool(
+                (Path(args.project).expanduser().resolve() / ".agentlas").is_dir()
+            )
+            requested_bootstrap = args.context_command == "refresh" or not getattr(args, "no_refresh", False)
+            if requested_bootstrap and not already_initialized:
+                return emit({
+                    "action": "context",
+                    "status": "error",
+                    "error": "project_not_initialized",
+                    "project": str(args.project),
+                    "hint": "Run `agentlas project init` first. The context map is project state, and creating it is an explicit step.",
+                }) or 2
+            should_bootstrap = requested_bootstrap
             if should_bootstrap:
                 project_receipt = ensure_project(
                     args.project,
