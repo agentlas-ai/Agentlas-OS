@@ -1114,7 +1114,26 @@ def main(argv: list[str] | None = None) -> int:
             emit(verification)
             return 0 if verification.get("status") == "passed" else 3
         except ContextMapError as exc:
-            return emit({"action": "context", "status": "error", "error": exc.code}) or 2
+            # Emitting the bare code left `context slice` dead-ending on
+            # {"error":"context_map_integrity_failed"} with nothing naming the
+            # boundary or a next step — while its own siblings (`locate`,
+            # `impact`, `verify`) say plainly which argument is missing. Every
+            # code a user can actually reach carries an action here.
+            hints = {
+                "context_map_integrity_failed":
+                    "The stored context map no longer matches this project. Run `agentlas context refresh` to rebuild it, then retry.",
+                "context_task_too_large":
+                    "The task text is over 12,000 characters. Shorten it, or pass a file path instead of pasting the whole content.",
+                "context_map_missing":
+                    "This project has no context map yet. Run `agentlas context refresh` first.",
+                "context_map_incomplete":
+                    "The context map was built from a partial scan. Run `agentlas context refresh --force` to rebuild it completely.",
+            }
+            payload: dict[str, Any] = {"action": "context", "status": "error", "error": exc.code}
+            hint = hints.get(exc.code)
+            if hint:
+                payload["hint"] = hint
+            return emit(payload) or 2
         except (OSError, TimeoutError, ValueError):
             return emit({"action": "context", "status": "error", "error": "context_operation_failed"}) or 2
     if args.command == "network":
