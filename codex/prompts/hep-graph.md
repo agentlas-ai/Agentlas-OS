@@ -50,8 +50,13 @@ With `show <name>`:
 "$CLI" graph show "<name>"
 ```
 
-Relay the step list. Two marks matter and must survive into your summary:
-a step that **changes something outside**, and a step that **asks first**.
+The output is a tree, not a list — indentation is the wiring. Relay it as
+wiring, because on a surface with no canvas this is the only way the user can
+see where a graph branches. Four marks must survive into your summary:
+a step that **changes something outside**, a step that **asks first**,
+a branch's `[yes]`/`[no]` sides, and a `↩ back to …` line (a repeat).
+If the graph starts from a value the user provides, the output says so —
+carry that into the summary too.
 
 ## Run
 
@@ -59,13 +64,24 @@ With `run <name>`:
 
 1. Run `"$CLI" graph show "<name>"` first and show the user what the graph
    does, including any step that changes something outside.
-2. Ask the user to confirm. A scheduled graph asks "run it now?"; an
-   input-triggered graph needs its input. Never skip this — requesting a run is
-   an outward-facing action on the user's behalf.
+2. Ask the user to confirm. Never skip this — requesting a run is an
+   outward-facing action on the user's behalf.
+   - A scheduled graph: ask "run it now?".
+   - A graph that starts from a value (`graph show` says so): ask the user for
+     that value in their own words. Do not invent one, and do not reuse an
+     example from the graph — an automation started from a value you made up
+     produces work the user never asked for.
 3. Only after an explicit yes:
 
 ```bash
 "$CLI" graph run "<name>" -y
+```
+
+If the graph starts from a value, pass it — without it the CLI refuses,
+because a graph run with a blank value silently produces something else:
+
+```bash
+"$CLI" graph run "<name>" -y --input "<the value the user gave>"
 ```
 
 Report exactly what the CLI reported: the run was **requested**, the desktop app
