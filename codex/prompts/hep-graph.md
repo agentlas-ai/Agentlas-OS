@@ -1,5 +1,5 @@
 ---
-description: List saved Agentlas automation graphs and request one to run.
+description: Build an Agentlas automation by describing it, list saved ones, or request a run.
 argument-hint: [list | show <name> | run <name>]
 ---
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
@@ -29,6 +29,34 @@ do
 done
 [ -n "$CLI" ] || { echo "Agentlas CLI not found. Install it with: npm i -g agentlas" >&2; exit 1; }
 ```
+
+## New — build one by talking it through
+
+With `new <what they want>` (or when the user describes an automation they want and no
+saved graph matches), run the CLI's interview. **It asks the user things it must not decide
+for them** — when it runs, whether a step goes outside, how many times a repeat may run.
+
+The CLI reads answers from stdin, one per line. So: run it once with no answers to see the
+first questions, relay them to the user **in their own words**, get their answers, then run
+it again with every answer so far:
+
+```bash
+printf '%s\n' "<answer 1>" "<answer 2>" "y" | "$CLI" graph new "<what they want>"
+```
+
+Rules that matter here:
+
+- **Never invent an answer.** If the user has not said when it runs, ask them — do not pick
+  a time. The whole point of the interview is that these come from the person.
+- If the user does not know or says you decide, pass that through verbatim
+  (`알아서 해주세요` / `you decide`). The CLI then takes the most conservative option and
+  says what it chose. Do not decide on their behalf yourself.
+- The last line must be `y` to save. Until then nothing is written.
+- It is created **switched off**. Say so, and relay the two commands the CLI prints
+  (`graph show` to look it over, `automation on` to turn it on).
+- If the CLI stops with "answer 를 받지 못해 멈췄습니다" / "Stopped without an answer to",
+  it needed one more answer. Relay that exact question to the user and run again with the
+  fuller list. Do not retry with a guess.
 
 ## List
 
