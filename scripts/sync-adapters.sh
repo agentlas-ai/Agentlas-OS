@@ -105,6 +105,7 @@ skill_mirrors=(
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-upload.md:.claude/commands/hep-upload.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-connect.md:.claude/commands/hep-connect.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-storm.md:.claude/commands/hep-storm.md"
+  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-graph.md:.claude/commands/hep-graph.md"
   "gemini/extension/commands/hep-build.toml:.gemini/commands/hep-build.toml"
   "gemini/extension/commands/hep-network.toml:.gemini/commands/hep-network.toml"
   "gemini/extension/commands/hep-cloud.toml:.gemini/commands/hep-cloud.toml"
