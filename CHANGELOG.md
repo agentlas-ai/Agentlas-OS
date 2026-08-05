@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.1.98 - 2026-08-05
+
+- **A tool description stops paying for a value the host cannot author.** The
+  local stdio surface advertised 91,897 bytes of tools/list for 22 tools, while
+  the same-named remote surface spent 28,488 for 11 — three times heavier with
+  half the tools, on a payload that rides every request. Two causes, both
+  measured. `workOrder` and the accepted `selection` are echoed back
+  unchanged from an earlier call, so a host cannot invent them and re-publishing
+  their 8,144-byte contract schema a second and third time only spends context;
+  those arguments now carry a description and nothing else, and the handler
+  still revalidates them against the canonical contract. Separately,
+  `x-agentlas-contracts` shipped 20,292 bytes that no code anywhere reads —
+  a repository-wide sweep found all six occurrences were producers. The values a
+  host actually writes keep their full schema, `_meta` stays because Desktop
+  reads it, and the surface is 49,125 bytes with the same 22 tools and identical
+  argument lists. Schema duplication fell from 51,831 to 3,280 bytes, so no
+  `$ref` rewrite was needed.
+- **The install pin catches up with the release.** `install-all-runtimes.sh`
+  still pointed at v1.1.95 through two releases, so a fresh one-touch install
+  landed two versions behind what the manifest advertised. The bump script moves
+  one baseline value, which silently skips every file already sitting on a
+  different version — the six README install lines were on v1.1.97 and
+  manifest.json is not in its file list at all. All of them now move together.
+
 ## v1.1.97 - 2026-08-03
 
 - **The version a build reports is the version it is.** v1.1.96 shipped with
