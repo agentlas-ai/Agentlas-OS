@@ -108,8 +108,29 @@ def _contract_property(kind: str, description: str) -> dict[str, Any]:
     return schema
 
 
-def _workforce_tool_contracts(*kinds: str) -> dict[str, dict[str, Any]]:
-    return {kind: workforce_contract_metadata(kind) for kind in kinds}
+def _contract_echo_property(kind: str, description: str) -> dict[str, Any]:
+    """A value the host received from an earlier Workforce call and returns unchanged.
+
+    Inlining the full contract schema here advertises a shape the host is not
+    allowed to author: the value must be echoed byte-for-byte or the pinned
+    candidate set stops matching. The schema is still enforced — the handler
+    revalidates against the canonical contract — so publishing it a second and
+    third time only spends the host's context. Measured on the live surface:
+    the workOrder schema alone is 8,144 bytes and appeared three times.
+
+    Only the value the host actually authors (the first call's workOrder, and
+    the selection it writes) keeps its full schema via _contract_property.
+
+    The contract metadata is dropped here for the same reason as the schema:
+    it tells the host which shape to author, and an echoed value is not
+    authored. `kind` stays in the signature so the call site still names the
+    contract this argument carries.
+    """
+    del kind
+    return {
+        "type": "object",
+        "description": description,
+    }
 
 
 def _selection_property_with_ordinal(description: str) -> dict[str, Any]:
@@ -671,7 +692,6 @@ TOOLS: list[dict[str, Any]] = [
             },
             "required": ["workOrder", "sourceScope"],
         },
-        "x-agentlas-contracts": _workforce_tool_contracts("workOrder"),
         "_meta": workforce_tool_meta(),
     },
     {
@@ -686,9 +706,9 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "workOrder": _contract_property(
+                "workOrder": _contract_echo_property(
                     "workOrder",
-                    "The exact complete WorkOrder used to create candidateSet.",
+                    "The exact WorkOrder already accepted by workforce.search_candidates. Send it back unchanged — Core revalidates it against the full contract, and any edit invalidates the pinned candidate set.",
                 ),
                 "candidateSet": {
                     "type": "object",
@@ -714,7 +734,6 @@ TOOLS: list[dict[str, Any]] = [
             },
             "required": ["workOrder", "selection"],
         },
-        "x-agentlas-contracts": _workforce_tool_contracts("workOrder", "selection"),
         "_meta": workforce_tool_meta(),
     },
     {
@@ -728,9 +747,9 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "workOrder": _contract_property(
+                "workOrder": _contract_echo_property(
                     "workOrder",
-                    "The exact complete WorkOrder used to create candidateSet.",
+                    "The exact WorkOrder already accepted by workforce.search_candidates. Send it back unchanged — Core revalidates it against the full contract, and any edit invalidates the pinned candidate set.",
                 ),
                 "candidateSet": {
                     "type": "object",
@@ -740,9 +759,9 @@ TOOLS: list[dict[str, Any]] = [
                         "only to prepare a set this process did not issue."
                     ),
                 },
-                "selection": _contract_property(
+                "selection": _contract_echo_property(
                     "selection",
-                    "The exact complete host-LLM Selection accepted by validationReceipt or federatedSelection.",
+                    "The exact Selection already accepted by workforce.validate_selection. Send it back unchanged — Core revalidates it and fails closed on any drift from the accepted roster.",
                 ),
                 "validationReceipt": {"type": "object"},
                 "federationResult": {
@@ -809,7 +828,6 @@ TOOLS: list[dict[str, Any]] = [
                 "federatedSelection", "projectDir",
             ],
         },
-        "x-agentlas-contracts": _workforce_tool_contracts("workOrder", "selection"),
         "_meta": workforce_tool_meta(),
     },
     {
