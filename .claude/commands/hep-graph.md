@@ -49,6 +49,9 @@ Rules that matter here:
 
 - **Never invent an answer.** If the user has not said when it runs, ask them — do not pick
   a time. The whole point of the interview is that these come from the person.
+- The interview **proposes a grading checklist** for steps that repeat until good enough
+  (what must exist / what must not appear). Relay those items so the user can confirm or
+  edit them — they are the pass/fail criteria, and the person should see them before saving.
 - If the user does not know or says you decide, pass that through verbatim
   (`알아서 해주세요` / `you decide`). The CLI then takes the most conservative option and
   says what it chose. Do not decide on their behalf yourself.
@@ -81,9 +84,12 @@ With `show <name>`:
 
 The output is a tree, not a list — indentation is the wiring. Relay it as
 wiring, because on a surface with no canvas this is the only way the user can
-see where a graph branches. Four marks must survive into your summary:
+see where a graph branches. These marks must survive into your summary:
 a step that **changes something outside**, a step that **asks first**,
-a branch's `[yes]`/`[no]` sides, and a `↩ back to …` line (a repeat).
+a branch's `[yes]`/`[no]` sides, a `↩ back to …` line (a repeat),
+a **checklist** under a verification step (the `· [must] / [must not]` lines —
+those items are exactly what the result is graded on), and a **code** step
+(a script the AI wrote runs there, not a model prompt).
 If the graph starts from a value the user provides, the output says so —
 carry that into the summary too.
 
