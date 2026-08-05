@@ -44,8 +44,9 @@ def save_card(home: Path, card: dict[str, Any]) -> Path:
     card["updated_at"] = card.get("updated_at") or utc_now()
     target = card_path(home, card)
     atomic_write_json(target, card)
-    # 데스크탑 핸드오프 — trusted local 등록은 수동 임포트 없이 Agentlas Desktop
-    # 라이브러리에 도달해야 한다(자격 미달/실패는 조용히 무시, 등록을 깨지 않음).
+    # Desktop handoff — a trusted local registration must reach the Agentlas
+    # Desktop library without a manual import (a failure or unmet requirement
+    # is silently ignored here rather than breaking the registration).
     enqueue_desktop_sync(home, card)
     return target
 

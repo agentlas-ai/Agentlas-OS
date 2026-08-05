@@ -2,7 +2,7 @@
 memory rework, so the three surfaces (Desktop TS, Terminal CJS, hep Python) do
 not silently drift.
 
-Background: the memory logic lives in three places (CLAUDE.md "3제품 싱크" pattern,
+Background: the memory logic lives in three places (CLAUDE.md "3-product sync" pattern,
 extended here to the memory contract). The hep plugin is a lighter, per-slug
 implementation, but the *contracts* it produces on disk — the
 ``.agentlas/evolution-proposals.json`` shape, the ``context_source`` marker

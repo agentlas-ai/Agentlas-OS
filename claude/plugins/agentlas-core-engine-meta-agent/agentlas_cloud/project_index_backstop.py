@@ -156,9 +156,11 @@ def _read_bounded_text(path: Path, max_bytes: int) -> str | None:
 def _discover_pm_files(project_root: Path) -> list[tuple[str, str]]:
     """Bounded pm documents, session learnings first and newest first.
 
-    2026-07-29 실측: 이름순·루트우선 순회에서는 7월 중순의 대형 HANDOFF 문서가
-    48K자 예산을 먼저 소진해, 방금 기록한 `learnings/` 학습이 인덱스에 한 글자도
-    못 실렸다. recall 가치는 최신·학습 문서가 가장 크므로 그 순서로 예산을 쓴다.
+    Measured 2026-07-29: a name-ordered, root-first traversal let a large
+    mid-July HANDOFF document exhaust the 48K-character budget first, so a
+    learning recorded moments earlier never made it into the index at all.
+    Recall value is highest for the newest and the learnings documents, so
+    the budget is spent in that order.
     """
 
     pm_root = project_root / ".agentlas" / PM_DIR

@@ -17,12 +17,15 @@ from typing import Any, Mapping
 
 SCHEMA_VERSION = "agentlas.model-allocation-decision.v1"
 TIERS = ("economy", "balanced", "frontier")
-# 알려진 값은 정책 상한과 비교할 "랭크 폴백"으로만 쓴다 — "유효한가" 게이트로 쓰지 않는다.
-# 2026-07-28 라이브 실측: codex debug models가 gpt-5.6-sol에서 "ultra"(자동 위임) 리즌
-# 레벨을 실제로 광고했다. 이 튜플로 게이트를 걸면 provider가 이미 출시한 값을 우리가
-# 스키마 검증 단계에서 조용히 거절한다(전체 decision이 invalid_effort로 폐기됨). 새 값이
-# 나올 때마다 이 튜플을 고치는 대신, 세션 인벤토리가 보고하는 모델 자체 순서(=능력 랭크,
-# provider 계약)를 신뢰하는 쪽으로 옮겼다 — 아래 normalize_effort/_bounded_effort 참고.
+# The known values are used only as a "rank fallback" to compare against a
+# policy ceiling — never as a validity gate. Measured live 2026-07-28: codex
+# debug models actually advertised an "ultra" (auto-delegate) reason level on
+# gpt-5.6-sol. Gating on this tuple would have us silently reject a value the
+# provider already shipped, at the schema-validation step (discarding the
+# whole decision as invalid_effort). Instead of patching this tuple every time
+# a new value appears, validation moved to trusting the model's own ordering
+# as reported by the session inventory (= capability rank, a provider
+# contract) — see normalize_effort/_bounded_effort below.
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 EFFORT_TOKEN_RE = re.compile(r"^[a-z][a-z0-9-]{0,23}$")
 PHASES = ("plan", "execute", "verify", "synthesize", "route", "clarify")
@@ -48,7 +51,7 @@ INVOCATION_STAGE_PHASES = {
     "clarify": "clarify",
 }
 TIER_RANK = {tier: index for index, tier in enumerate(TIERS)}
-# 알려진 값의 폴백 랭크만 — 미지의 값을 이 표로 거절하지 않는다(_bounded_effort 참고).
+# Fallback rank for known values only — an unknown value is never rejected by this table (see _bounded_effort).
 EFFORT_RANK = {effort: index for index, effort in enumerate(EFFORTS)}
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{2,255}$")
 HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -126,9 +129,11 @@ def normalize_tier(value: Any) -> str | None:
 
 
 def normalize_effort(value: Any) -> str | None:
-    # 신택스만 검증한다 — 화이트리스트 존재는 게이트로 쓰지 않는다(위 EFFORTS 주석).
-    # 이 함수는 parent-AI가 요청한 값과, 세션 인벤토리가 보고한 모델 자체 지원 목록
-    # 양쪽에 다 쓰인다 — 열어두면 두 경로 모두에서 새 값이 조용히 안 드롭된다.
+    # Validates syntax only — the existence of a whitelist is not used as a
+    # gate (see the EFFORTS comment above). This function is used both for a
+    # value the parent AI requested and for the model's own supported-value
+    # list as reported by the session inventory — keeping it open means a new
+    # value never gets silently dropped on either path.
     normalized = _text(value).lower()
     return normalized if EFFORT_TOKEN_RE.fullmatch(normalized) else None
 
@@ -460,9 +465,10 @@ def _bounded_effort(requested: str, supported: list[str], max_effort: str) -> tu
     if eligible:
         resolved = max(eligible, key=lambda item: _effort_rank(item, supported))
     else:
-        # 요청/상한 어느 쪽과도 동시에 맞는 값이 없다 — 모델이 제공하는 가장 낮은
-        # 값으로 최대한 보수적으로 내려간다(원래 폴백과 동일, 상한을 우선시해
-        # 요청보다 위로 에스컬레이션하지 않는다).
+        # Nothing matches both the request and the ceiling at once — fall
+        # back as conservatively as possible, to the lowest value the model
+        # offers (same as the original fallback; the ceiling takes priority,
+        # so this never escalates above what was requested).
         resolved = min(supported, key=lambda item: _effort_rank(item, supported))
     return resolved, resolved != requested
 
@@ -523,12 +529,15 @@ def resolve_model_allocation(
     inventory = _normalize_inventory(raw_inventory)
     policy = dict(policy or {})
     escalation_request, escalation_issues = _validate_escalation(escalation)
-    # maxEscalations는 부모가 선언한 비용 상한이다. 상한은 "권한을 주는 값"이 아니라
-    # "권한을 제한하는 값"이므로, 관계없는 검증 이슈(unknown_fields 등)가 하나만 섞여도
-    # 상한 검사를 통째로 건너뛰면 안 된다. 예전에는 `and not issues` 때문에 무관한
-    # 필드 하나가 상한을 무력화해 maxEscalations=0인 결정도 frontier/xhigh로 승격됐다.
-    # decision이 존재하면 selection.maxEscalations는 항상 정규화되어 있고(불량/누락은
-    # 기본값 0) 따라서 이슈가 있는 결정일수록 더 보수적으로 막힌다 — fail-closed.
+    # maxEscalations is a cost ceiling the parent declared. A ceiling is a
+    # value that restricts authority, not one that grants it, so a single
+    # unrelated validation issue (unknown_fields, etc.) mixed in must never
+    # skip the ceiling check entirely. Previously, `and not issues` let one
+    # irrelevant field disable the ceiling, so even a maxEscalations=0
+    # decision could be escalated to frontier/xhigh. Whenever a decision
+    # exists, selection.maxEscalations is always normalized (a bad or missing
+    # value defaults to 0), so a decision with issues is blocked more
+    # conservatively, not less — fail-closed.
     if (
         escalation_request is not None
         and decision is not None
@@ -554,8 +563,9 @@ def resolve_model_allocation(
         or "orchestrator"
     )
     if escalation_request is not None:
-        # 승격은 단계→역할 기본 매핑에 대한 유일한 허용 예외다. worker 단계의
-        # 마지막 재시도 한 번만 orchestrator 역할 정책으로 해석한다.
+        # Escalation is the one allowed exception to the default stage->role
+        # mapping. Only the last retry of a worker stage is interpreted under
+        # the orchestrator role policy.
         resolved_role = "orchestrator"
     role_policy, inherited_role_policy = _policy_for_role(policy, resolved_role)
     current_model_id = _text(role_policy.get("currentModelId"))
@@ -613,8 +623,9 @@ def resolve_model_allocation(
         else:
             reasons.append("pinned_model_unavailable_or_incompatible")
 
-    # 승격된 재시도는 worker 단계용 parent decision이 아니라 orchestrator 역할
-    # 정책이 지배한다 — decision은 맥락으로만 남고 모델 선택에는 쓰지 않는다.
+    # An escalated retry is governed by the orchestrator role policy, not the
+    # worker stage's parent decision — the decision stays only as context and
+    # is not used for model selection.
     if selected is None and decision is not None and not issues and escalation_request is None:
         requested_tier = decision["selection"]["tier"]
         if TIER_RANK[requested_tier] > TIER_RANK[max_tier]:
@@ -666,14 +677,17 @@ def resolve_model_allocation(
                 reasons.append("parent_exact_model_required_for_ambiguous_inventory")
 
     if selected is None and escalation_request is not None:
-        # 승격 재시도는 위 블록에서 parent decision을 의도적으로 건너뛴다. 그래서
-        # 운영자 핀(pinnedModelId)이 없으면 여기까지 어떤 분기도 selected를 채우지
-        # 못했고, 유일하게 허용된 재시도가 항상 unresolved로 죽었다 — 핀은 선택
-        # 사항이므로 핀을 두지 않은 모든 운영자에게 승격 계약 자체가 사문화된다.
-        # 핀이 없을 때도 orchestrator 역할 정책만으로 결정적으로 고른다: maxTier
-        # 이하 후보 중 최상위 tier를 쓰고("약모델 실패 → 강모델 승격"), 동률이면
-        # 역할의 현재 모델로 가른다. 정책 상한을 넘기지 않으므로 승격이 비용
-        # 가드레일을 뚫는 경로가 되지는 않는다.
+        # An escalation retry deliberately skips the parent decision in the
+        # block above. So without an operator pin (pinnedModelId), no branch
+        # up to this point had filled `selected`, and the one allowed retry
+        # always died as unresolved — since a pin is optional, this silently
+        # voided the escalation contract for every operator who didn't set
+        # one. Even with no pin, choose deterministically from the
+        # orchestrator role policy alone: use the highest tier among
+        # candidates at or below maxTier ("weak model failed -> escalate to a
+        # strong one"), breaking ties with the role's current model. This
+        # never exceeds the policy ceiling, so escalation is never a path
+        # around the cost guardrail.
         allowed = [
             item
             for item in compatible_inventory
@@ -702,9 +716,10 @@ def resolve_model_allocation(
         if decision is None or issues:
             reasons.append("parent_decision_missing_or_invalid")
         elif escalation_request is not None:
-            # 승격 경로는 parent decision의 모델을 요청하지 않는다. 여기서
-            # no_compatible_requested_model을 남기면 살아 있는 호환 모델을 두고도
-            # "요청 모델이 비호환"이라는 거짓 사유를 보고하게 된다.
+            # The escalation path never requests the parent decision's model.
+            # Recording no_compatible_requested_model here would report a
+            # false "the requested model is incompatible" reason even though
+            # a compatible model was actually available.
             reasons.append("escalation_target_unavailable")
         else:
             reasons.append("no_compatible_requested_model")
@@ -719,8 +734,10 @@ def resolve_model_allocation(
     risk = decision["features"]["risk"] if decision else "unknown"
     parent_reason_codes = list(decision["reasonCodes"]) if decision else []
     if escalation_request is None and "escalated-after-failure" in parent_reason_codes:
-        # 승격 없이 승격 사유코드만 오는 것은 계약 위반이다 — 조용히 통과시키면
-        # 소비자가 승격 필드 없는 승격을 믿게 된다. 사유코드를 떼고 이슈로 남긴다.
+        # An escalation reason code arriving with no actual escalation is a
+        # contract violation — passing it through silently would let a
+        # consumer believe an escalation happened with no escalation field.
+        # Strip the reason code and record it as an issue instead.
         escalation_issues.append("escalation_reason_code_without_escalation")
         parent_reason_codes = [code for code in parent_reason_codes if code != "escalated-after-failure"]
     if escalation_request is not None:

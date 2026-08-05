@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Agentlas Browser (CDP) — 범용 엔진. 실제 로그인 Chrome 전용 프로필을 원격 디버깅 포트로 띄우고
-// @playwright/mcp 를 CDP 로 붙여 MCP 브라우저 도구를 제공한다. 이 프로세스가 client ↔ @playwright/mcp
-// 사이를 stdio 로 프록시하며 (1) 되돌릴 수 없는 행동 승인 게이트, (2) learn-and-replay 스킬 레이어를 얹는다.
-// 의존성 0(순수 node). 개인 데이터는 로컬에서만 사용, 어디로도 전송하지 않는다.
+// Agentlas Browser (CDP) — general-purpose engine. Launches the real, already
+// logged-in Chrome profile with a remote debugging port, then attaches
+// @playwright/mcp over CDP to provide MCP browser tools. This process proxies
+// stdio between the client and @playwright/mcp, layering on (1) an approval
+// gate for irreversible actions, and (2) a learn-and-replay skill layer.
+// Zero dependencies (pure node). Personal data is used locally only and never sent anywhere.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -86,7 +88,7 @@ async function ensureChrome() {
   throw new Error('Chrome CDP port did not open: ' + PORT);
 }
 
-// ── 승인 게이트 ──────────────────────────────────────────────────
+// ── approval gate ──────────────────────────────────────────────────
 // CONTRACT (fail-closed): the regexes below only LABEL the approval kind —
 // they never make the final "no gate needed" decision for a commit-like
 // action. A click/keypress/upload that submits, pays, sends, or deletes but
@@ -146,8 +148,8 @@ function requestApproval(site, actionType, summary) {
   });
 }
 
-// ── learn-and-replay 스킬 레이어 ─────────────────────────────────
-// 재생/기록 대상 액션 툴(읽기 전용 snapshot/screenshot 등은 제외).
+// ── learn-and-replay skill layer ─────────────────────────────────
+// Action tools eligible for recording/replay (excludes read-only ones like snapshot/screenshot).
 const RECORDABLE = new Set(['browser_navigate', 'browser_navigate_back', 'browser_click', 'browser_type', 'browser_fill', 'browser_fill_form', 'browser_select_option', 'browser_press_key', 'browser_hover', 'browser_file_upload', 'browser_drag']);
 const SKILL_TOOLS = [
   { name: 'browser_skill_list', description: 'List saved Agentlas browser skills (learned action sequences).', inputSchema: { type: 'object', properties: {} } },
@@ -171,15 +173,15 @@ async function main() {
   child.on('error', (e) => { log('failed to start @playwright/mcp', String(e)); process.exit(1); });
   child.on('exit', (code) => process.exit(code == null ? 0 : code));
 
-  const recording = [];            // 이 세션에서 성공한 액션 시퀀스
-  const pending = new Map();       // client 원본 tools/call: id -> {name, args}
-  const waiters = new Map();       // 내부(replay) tools/call: id -> resolve
+  const recording = [];            // sequence of actions that succeeded in this session
+  const pending = new Map();       // client's original tools/call: id -> {name, args}
+  const waiters = new Map();       // internal (replay) tools/call: id -> resolve
   let currentUrl = '';
   let internalSeq = 0;
   const writeClient = (obj) => { try { process.stdout.write(JSON.stringify(obj) + '\n'); } catch (e) {} };
   const forwardRaw = (line) => { try { child.stdin.write(line + '\n'); } catch (e) {} };
 
-  // 승인 게이트 통과 여부 판정(공유). 통과=null, 거부=사유문자열.
+  // Shared approval-gate verdict. Pass = null, refuse = reason string.
   const gate = async (name, args, preJudgedKind) => {
     const actionType = classifyAction(name, args, preJudgedKind);
     if (!actionType) return null;
@@ -191,7 +193,7 @@ async function main() {
     return decision === 'approved' ? null : actionType;
   };
 
-  // 내부에서 child 에 tools/call 을 보내고 응답을 받는다(replay 용).
+  // Internally sends a tools/call to the child and gets the response (for replay).
   const callChild = (name, args) => new Promise((resolve) => {
     const id = 'agx-' + (++internalSeq);
     waiters.set(id, resolve);
@@ -214,14 +216,14 @@ async function main() {
     writeClient({ jsonrpc: '2.0', id: replyId, result: { content: [{ type: 'text', text: 'Replayed skill "' + name + '" (' + (skill.steps || []).length + ' steps):\n' + results.join('\n') }] } });
   };
 
-  // client → child 방향
+  // client -> child direction
   const handleClientLine = (line) => {
     if (!line.trim()) { forwardRaw(line); return; }
     let msg; try { msg = JSON.parse(line); } catch (e) { forwardRaw(line); return; }
     if (msg && msg.method === 'tools/call' && msg.params) {
       const name = msg.params.name || '';
       const args = msg.params.arguments || {};
-      // 스킬 툴은 로컬 처리(child 로 안 보냄).
+      // Skill tools are handled locally (not sent to the child).
       if (name === 'browser_skill_list') { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: JSON.stringify(listSkills()) }] } }); return; }
       if (name === 'browser_skill_save') {
         try { const doc = saveSkill(args.name, recording.slice(), args.description); writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'Saved skill "' + doc.name + '" with ' + doc.steps.length + ' steps → ' + skillPath(doc.name) }] } }); }
@@ -229,7 +231,7 @@ async function main() {
         return;
       }
       if (name === 'browser_skill_replay') { doReplay(args.name, msg.id); return; }
-      // 일반 액션: 승인 게이트 + 기록. 부모가 _meta 로 사전판정을 보냈으면 그 판정이 우선.
+      // Ordinary action: approval gate + record. If the parent sent a pre-judged verdict via _meta, that verdict wins.
       if (name === 'browser_navigate' && args.url) currentUrl = String(args.url);
       const preJudgedKind = (msg.params._meta || {})['agentlas/actionKind'];
       const actionType = classifyAction(name, args, preJudgedKind);
@@ -246,19 +248,19 @@ async function main() {
     forwardRaw(line);
   };
 
-  // child → client 방향 (응답 가로채기: replay waiter / 기록 / tools/list 주입)
+  // child -> client direction (intercepts responses: replay waiter / recording / tools/list injection)
   const handleChildLine = (line) => {
     if (!line.trim()) { process.stdout.write(line + '\n'); return; }
     let msg; try { msg = JSON.parse(line); } catch (e) { process.stdout.write(line + '\n'); return; }
-    // 내부 replay 응답 → waiter 로, client 로는 안 보냄.
+    // An internal replay response goes to the waiter, never to the client.
     if (msg && typeof msg.id === 'string' && waiters.has(msg.id)) { const r = waiters.get(msg.id); waiters.delete(msg.id); r(msg); return; }
-    // client 원본 액션 응답 → 성공 시 기록.
+    // Response to the client's original action -> record it on success.
     if (msg && msg.id != null && pending.has(msg.id)) {
       const call = pending.get(msg.id); pending.delete(msg.id);
       const isErr = msg.result && msg.result.isError;
       if (!isErr && !msg.error) recording.push(call);
     }
-    // tools/list 응답 → 스킬 툴 주입.
+    // tools/list response -> inject skill tools.
     if (msg && msg.result && Array.isArray(msg.result.tools)) {
       const have = new Set(msg.result.tools.map((t) => t.name));
       for (const st of SKILL_TOOLS) if (!have.has(st.name)) msg.result.tools.push(st);

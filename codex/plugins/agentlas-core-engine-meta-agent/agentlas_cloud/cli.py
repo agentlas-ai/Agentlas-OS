@@ -445,7 +445,7 @@ def main(argv: list[str] | None = None) -> int:
         "--scope",
         choices=["network", "cloud"],
         default="network",
-        help="network = public Hub marketplace; cloud = the signed-in owner's OWN cloud packages (보관함). cloud implies --hub-only (/hep-cloud).",
+        help="network = public Hub marketplace; cloud = the signed-in owner's OWN cloud packages. cloud implies --hub-only (/hep-cloud).",
     )
     route.add_argument(
         "--caller",
@@ -1014,8 +1014,8 @@ def main(argv: list[str] | None = None) -> int:
             # contracts, project-soul-memory.md, credentials/ and signing/
             # scaffolding — and rewrote .gitignore, with no consent and no notice.
             # Terminal already refuses to do this (it calls its own boundary with
-            # "read" permission and comments "context 명령은 프로젝트를 초기화하지
-            # 않는다"); Core was overriding that boundary from underneath.
+            # "read" permission and comments "the context command does not
+            # initialize a project"); Core was overriding that boundary from underneath.
             # Refresh an existing project, never conjure a new one.
             already_initialized = bool(
                 (Path(args.project).expanduser().resolve() / ".agentlas").is_dir()

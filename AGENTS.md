@@ -136,6 +136,22 @@ localized marketplace fields, trigger examples, and sample user inputs. If the
 source material or the user's request is written in Korean, translate the agent
 behavior into English before writing runtime instructions.
 
+## Source Code & Commit Language
+
+This is a public, open-source repository. Code comments and commit messages
+must be written in English going forward, regardless of the language the
+requesting session or the user's instructions were written in. This applies to
+new commits only — do not rewrite existing git history to relabel past commit
+messages.
+
+Exempt from this rule (leave as-is, do not force-translate): localized
+marketplace/product copy, Korean sample inputs used as routing or i18n test
+fixtures (e.g. `"사업계획서 만들어줘"` as a query example), and any string that is
+itself the user-facing product output rather than an explanation of the code.
+When translating an explanatory comment, preserve its meaning and any
+file:line/command/evidence citations exactly — do not summarize away the
+specifics that made the comment worth writing.
+
 ## Operating Loop
 
 Before applying the package-building loop below, preserve the product runtime

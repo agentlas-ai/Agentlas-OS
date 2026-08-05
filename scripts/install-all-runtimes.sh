@@ -553,7 +553,7 @@ stamp_plugin_cache_releases() {
   fi
 }
 
-# Codex 플러그인은 MCP 번들을 지원하지 않으므로 config.toml에 직접 등록한다.
+# The Codex plugin doesn't support MCP bundles, so register directly in config.toml.
 # Workforce must have one canonical MCP entrypoint. Remove the old direct
 # `agentlas` table (which bypassed Core) and replace the owned local table while
 # preserving every unrelated user table. The obsolete remote-MCP feature flag
@@ -644,7 +644,7 @@ install_gemini() {
 
 antigravity_present() {
   [[ -d "$HOME/.gemini/antigravity" ]] && return 0
-  # "Antigravity IDE" 변형은 별도 데이터 디렉토리(~/.gemini/antigravity-ide)를 쓴다.
+  # The "Antigravity IDE" variant uses a separate data directory (~/.gemini/antigravity-ide).
   [[ -d "$HOME/.gemini/antigravity-ide" ]] && return 0
   # Current Antigravity installs leave this CLI state directory even before a
   # global_workflows directory exists. Treat it as a presence marker, but keep
@@ -664,11 +664,11 @@ install_antigravity() {
   log "== Antigravity workflow & plugins =="
   ensure_downloaded_source || return 1
 
-  # 두 데이터 디렉토리 변형 모두에 설치한다 — 어느 앱을 쓰든 같은 명령 집합이 보이게.
+  # Install into both data directory variants — so the same command set shows up whichever app you use.
   local installed=0
   local data_dir
   for data_dir in "$HOME/.gemini/antigravity" "$HOME/.gemini/antigravity-ide"; do
-    # 존재하는 데이터 디렉토리에만 설치하되, 둘 다 없으면 기본 경로를 생성한다.
+    # Install only into a data directory that exists, but create the default path if neither exists.
     if [[ -d "$data_dir" || ( "$installed" -eq 0 && "$data_dir" == "$HOME/.gemini/antigravity" ) ]]; then
       local global_dir="$data_dir/global_workflows"
       mkdir -p "$global_dir"
@@ -710,7 +710,7 @@ EOF
   ok=$((ok + 1))
 }
 
-# Antigravity는 ~/.gemini/config/mcp_config.json에서 MCP 서버를 읽는다 (serverUrl 키).
+# Antigravity reads MCP servers from ~/.gemini/config/mcp_config.json (the serverUrl key).
 register_antigravity_mcp() {
   local cfg_dir="$HOME/.gemini/config"
   local cfg="$cfg_dir/mcp_config.json"

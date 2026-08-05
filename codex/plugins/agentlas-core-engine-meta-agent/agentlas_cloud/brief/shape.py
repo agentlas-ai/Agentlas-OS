@@ -31,7 +31,7 @@ __all__ = ["classify_shape", "find_row_verdict", "SHAPES"]
 SHAPES = ("ledger", "verdict", "dossier", "computation", "blueprint", "rendition", "other")
 
 # A judgement property is one whose value space is a small closed set. The name is
-# irrelevant - `severity`, `status`, `verdict`, `등급` and `risk_tier` all qualify by
+# irrelevant - `severity`, `status`, `verdict`, `grade` and `risk_tier` all qualify by
 # having few allowed values, and a free-text field never does however it is named.
 _MAX_VERDICT_VALUES = 12
 

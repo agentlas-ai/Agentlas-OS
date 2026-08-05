@@ -371,7 +371,7 @@ def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> d
             source["ref"] = str(workspace)
         try:
             lint = lint_card({**doc, "source": source})
-        except Exception as err:  # 카드가 어떤 모양이든 게이트는 크래시하지 않는다
+        except Exception as err:  # the gate must not crash no matter what shape the card is
             lint = {"errors": [f"lint crashed on malformed card: {err}"], "ready_blockers": []}
         report["routing_lint"] = lint
         problems.extend(f"routing-card: {err}" for err in lint.get("errors", []))

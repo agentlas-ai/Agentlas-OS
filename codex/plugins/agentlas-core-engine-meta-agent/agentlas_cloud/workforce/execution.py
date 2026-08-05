@@ -43,12 +43,14 @@ _MAX_DIGEST_VALUE_NODES = 10_000
 def _is_valid_effort(value: Any) -> bool:
     """Same open vocabulary as model_allocation.normalize_effort.
 
-    2026-07-28 실측 드리프트: 이 파일의 예전 `_EFFORTS` 고정 집합은 "minimal"이 빠져
-    있었다 — model_allocation.py의 정본 튜플·MCP 스키마 어디에도 있는 값인데 여기서만
-    누락돼, 정상 해석된 "minimal" effort가 실행 영수증 검증에서 매번 거절됐다. 손으로
-    다시 베낀 닫힌 집합이 서로 어긋나는 바로 그 실패 양상이라, 값 하나를 추가하는 대신
-    검증 자체를 model_allocation의 단일 신택스 검사기로 옮겼다 — 다음에 provider가 새
-    리즌 레벨을 내놔도(예: "ultra") 이 파일을 다시 고칠 필요가 없다.
+    Measured drift, 2026-07-28: this file's old fixed `_EFFORTS` set was
+    missing "minimal" — a value present in model_allocation.py's canonical
+    tuple and in the MCP schema, but nowhere here, so a correctly resolved
+    "minimal" effort was rejected on every execution-receipt validation. That
+    is exactly the failure mode of a hand-copied closed set drifting out of
+    sync, so instead of adding one more value, validation itself moved onto
+    model_allocation's single syntax checker — the next time a provider ships
+    a new reason level (say, "ultra"), this file never needs touching again.
     """
     return value is None or (isinstance(value, str) and bool(EFFORT_TOKEN_RE.fullmatch(value)))
 

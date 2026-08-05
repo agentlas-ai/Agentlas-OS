@@ -1,22 +1,23 @@
 #!/bin/bash
 # ══════════════════════════════════════════════════════════════════════════════
-# 메모리 계약 3표면 싱크 게이트 (Runtime Doctor 싱크와 동형).
+# Memory contract three-surface sync gate (isomorphic to the Runtime Doctor sync).
 #
-# 메모리 로직은 세 곳에 산다:
-#   1) 데스크탑  : agentlas_desktop/electron/agents/evolution-hep.ts + memory/context.ts
-#                  + store/run-events.ts (풀 아키텍처, TS)
-#   2) 터미널    : agentlas_terminal/engine/agentlas-memory-import.cjs 등 (공유 스토어)
-#   3) hep 플러그인: agentlas_cloud/{memory_contract,evolution_proposals,context_markers,
-#                  memory_import,memory_hook}.py (별도·경량, per-slug)
+# Memory logic lives in three places:
+#   1) Desktop:   agentlas_desktop/electron/agents/evolution-hep.ts + memory/context.ts
+#                 + store/run-events.ts (full architecture, TS)
+#   2) Terminal:  agentlas_terminal/engine/agentlas-memory-import.cjs and others (shared store)
+#   3) hep plugin: agentlas_cloud/{memory_contract,evolution_proposals,context_markers,
+#                 memory_import,memory_hook}.py (separate, lightweight, per-slug)
 #
-# 계약(셋이 같아야 하는 것):
-#   - .agentlas/evolution-proposals.json 모양 = agentlas.evolution-proposals.v1
-#   - context_source 마커 이름 = {pm_soul, code_map, sitemap, experience, memory}
-#   - 멤버 세포 키 규칙 = slug 를 그대로 cell id 로 (키보존)
+# Contract (what must match across all three):
+#   - .agentlas/evolution-proposals.json shape = agentlas.evolution-proposals.v1
+#   - context_source marker names = {pm_soul, code_map, sitemap, experience, memory}
+#   - member cell key rule = the slug itself as the cell id (key preserved)
 #
-# 방식: hep(Python)의 계약 상수/모양을 parity 테스트로 검증하고, 데스크탑 체크아웃이
-#   로컬에 있으면 TS 계약 문자열을 교차대조한다(공개 체크아웃/CI 에선 자동 스킵).
-#   메모리 계약을 바꾸면 세 곳 중 하나라도 어긋날 때 exit 1.
+# Method: verifies hep's (Python) contract constants/shapes via a parity test,
+#   and cross-checks TS contract strings if a Desktop checkout is present
+#   locally (auto-skipped on a public checkout/CI). exit 1 if the memory
+#   contract changes and any of the three surfaces disagrees.
 # ══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
