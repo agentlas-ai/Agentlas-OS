@@ -517,10 +517,12 @@ def register_package(
                     raise UploadError(
                         f"Agentlas Cloud registration failed HTTP {retry_exc.code} after precondition retry: {retry_detail}"
                     ) from retry_exc
-        # BYOM 반복 교정 루프의 CLI 절반: 서버는 업로드 중 플랫폼 LLM을 부르지 않고
-        # 불일치 목록 + 핀 온톨로지 메뉴를 돌려준다. 이 메시지를 읽는 것은 업로드를
-        # 실행 중인 제출자의 자기 모델이므로, 800자 캡에 가이드가 잘리면 루프가
-        # 죽는다 — 전문을 구조화해 그대로 전달한다.
+        # The CLI half of the BYOM repair-retry loop: the server never calls a
+        # platform LLM during upload, it returns a mismatch list plus the
+        # pinned ontology menu. The one reading this message is the
+        # submitter's own model driving the upload, so truncating the
+        # guidance at an 800-char cap would kill the loop — pass the full,
+        # structured message through untouched.
         if exc.code == 422:
             try:
                 body = json.loads(detail)
@@ -567,8 +569,9 @@ def refresh_routing_card_metadata(base: Path) -> dict[str, Any]:
         return {"updated": False, "reason": "invalid_routing_card"}
 
     before = json.dumps(card, sort_keys=True, ensure_ascii=False)
-    # 이력서(workforce) 블록이 없는 카드는 결정적 최소 블록으로 채운다 — 자동 빌드
-    # 에이전트가 새 표준 게이트에서 죽지 않게 하는 관문(모델 호출 없음, 기존 블록 보존).
+    # A card with no résumé (workforce) block gets filled with a deterministic
+    # minimal block — a gate that keeps an auto-built agent from dying at the
+    # new standard gate (no model call, preserves any existing block).
     from .networking.card_lint import ensure_workforce_block
 
     ensure_workforce_block(card)

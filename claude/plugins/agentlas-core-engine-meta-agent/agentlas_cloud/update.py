@@ -37,8 +37,9 @@ HEALTHCHECK_TIMEOUT_SECONDS = 15
 MEMORY_HOOK_SYNC_TIMEOUT_SECONDS = 30
 MAX_RUNTIME_ARCHIVE_BYTES = 256 * 1024 * 1024
 # schemas/ carries the Workforce/Network contract files (workforce-work-order
-# 등). 2026-07-16 실측: 릴리스 아카이브에는 포함·강제되는데 이 목록에 없어서
-# 설치본에서만 통째로 유실 → 관리형 런타임의 hep-network가 스키마 결손으로 정지.
+# and others). Measured 2026-07-16: the release archive includes and enforces
+# this, but it was missing from this list, so it was lost entirely from
+# installs — a managed runtime's hep-network then stopped on a missing schema.
 RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "ontology", "templates")
 RUNTIME_OPTIONAL_DIRS = ("schemas",)
 RUNTIME_FILES = ("package-contract.json",)
@@ -531,8 +532,8 @@ def fetch_latest_release(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SEC
         # The TTL cache is an optimization, never part of the answer. Host
         # sandboxes (Claude Code, Codex, Cursor, ...) deny writes outside the
         # workspace, and a denied cache write must not discard a release fetch
-        # that already succeeded — 2026-07-29 실측: 이 쓰기가 샌드박스에서
-        # hep-update --check까지 통째로 죽이고 있었다.
+        # that already succeeded — measured 2026-07-29: this write was killing
+        # hep-update --check entirely inside a sandbox.
         pass
     return release
 

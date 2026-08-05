@@ -29,7 +29,8 @@ from .bootstrap import atomic_write_json, read_json, utc_now
 PENDING_DIR = "desktop-sync/pending"
 DONE_DIR = "desktop-sync/done"
 
-# 패키지 실체 확인용 마커 — 이 중 하나는 있어야 임포트 가능한 폴더로 본다.
+# Markers that confirm a real package — a folder must have at least one of
+# these to be treated as importable.
 _PACKAGE_MARKERS = ("agentlas.json", "AGENT.md", "AGENTS.md", "TEAM.md", "CLAUDE.md")
 
 
@@ -45,7 +46,8 @@ def _package_ref(card: dict[str, Any]) -> Path | None:
     if not raw:
         return None
     ref = Path(raw)
-    # reindex가 상대경로('.')를 남긴 이력이 있다 — 절대경로 + 실존 + 패키지 마커까지 요구.
+    # reindex has a history of leaving a relative path ('.') behind — require
+    # an absolute path, that it actually exists, and a package marker too.
     if not ref.is_absolute() or not ref.is_dir():
         return None
     if not any((ref / marker).is_file() for marker in _PACKAGE_MARKERS):

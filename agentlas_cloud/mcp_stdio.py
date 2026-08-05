@@ -113,12 +113,15 @@ def _workforce_tool_contracts(*kinds: str) -> dict[str, dict[str, Any]]:
 
 
 def _selection_property_with_ordinal(description: str) -> dict[str, Any]:
-    """검증 도구 전용 selection 스키마 — 순번 지정(candidateOrdinal)을 허용한다.
+    """Selection schema for verification tools only — allows specifying an
+    ordinal (candidateOrdinal) instead of a release ID.
 
-    canonical schemas/workforce-selection.schema.json 은 건드리지 않는다(허브·터미널
-    계약). 이 완화는 MCP 도구 입력에서만 유효하고, 핸들러가 순번을 저장된 명부로
-    정확한 agentReleaseId 로 해석한 뒤 canonical 형태로 심층 검증에 넘긴다.
-    48-hex ID 수기 복사는 실측된 오사 표면이다(2026-07-28 qwen 12회 중 1회 ID 절단).
+    Does not touch the canonical schemas/workforce-selection.schema.json (the
+    Hub/Terminal contract). This relaxation is valid only for MCP tool input;
+    the handler resolves the ordinal against the stored menu into the exact
+    agentReleaseId, then passes the canonical shape on to deep validation.
+    Hand-copying a 48-hex ID is a measured error surface (2026-07-28: 1 of 12
+    qwen attempts truncated the ID).
     """
     schema = _contract_property("selection", description)
     try:
@@ -128,7 +131,7 @@ def _selection_property_with_ordinal(description: str) -> dict[str, Any]:
             "type": "integer",
             "minimum": 1,
             "maximum": 100,
-            "description": "명부에 부여된 후보 순번. agentReleaseId 대신 지정 가능 — 서버가 저장된 세션 명부에서 정확한 릴리스로 해석한다.",
+            "description": "The candidate's ordinal in the menu. May be given instead of agentReleaseId — the server resolves it to the exact release from the stored session menu.",
         }
     except (KeyError, TypeError):
         pass
@@ -137,25 +140,33 @@ def _selection_property_with_ordinal(description: str) -> dict[str, Any]:
 
 _MENU_AUDIT_FIELDS = ("qualificationEvidence", "packageHash", "contentDigest")
 
-# semanticSnapshot 안의 중량 칸. 카드가 문장을 통째로 artifact ID로 슬러그화해 담는
-# 자리라 후보 1명이 수십 개를 싣는데, 후보끼리 겹치지 않아 대조 자체가 불가능하다
-# (라이브 1슬롯 10후보 실측: produces 고유 365개 중 2명 이상 공유 1개=0%, consumes
-# 149개 중 0개). 같은 내용은 summaries가 한 문장으로 이미 갖고 있고, 실제 매칭은
-# Core가 세션 저장소 원본으로 수행한다. 따라서 명부에서는 개수만 남긴다.
+# Heavyweight fields inside semanticSnapshot. This is where a card stuffs a
+# whole sentence slugified into an artifact ID, so a single candidate can
+# carry dozens of them — and since candidates never overlap, comparing them is
+# not even possible in the first place (measured live, 1 slot with 10
+# candidates: 0% of 365 unique `produces` values shared by 2+ candidates, 0 of
+# 149 for `consumes`). The same content is already in the summaries as one
+# sentence, and actual matching is done by Core against the session store's
+# original data. So the menu keeps only the count.
 _MENU_SNAPSHOT_HEAVY_FIELDS = ("produces", "consumes")
 
 
 def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
-    """검색 응답을 결정용 요약 명부로 투영 — 드롭리스트 방식.
+    """Projects a search response into a decision-ready summary menu — a
+    drop-list approach.
 
-    "남길 것"을 열거하지 않고 감사 중량 필드만 뺀다: 에이전트 속성(카드 스키마)이
-    추가·개명돼도 새 필드는 자동 통과한다. 원본 전문은 Core 세션 저장소가 보유하며
-    검증·준비의 핀 대조는 저장소 원본으로 수행되므로 통제 손실이 없다.
-    실측(1슬롯 10후보): 41,216B → 약 22KB, 판단 실효 정보 손실 0.
+    Instead of enumerating what to keep, it drops only the audit-weight
+    fields: if an agent attribute (card schema) is added or renamed, the new
+    field passes through automatically. Core's session store holds the full
+    original text, and validation/preparation pin-matching is performed
+    against that original data, so no control is lost.
+    Measured (1 slot, 10 candidates): 41,216B -> about 22KB, zero loss of
+    decision-relevant information.
 
-    이 투영은 MCP 표면 전용이다. 터미널 러너는 semanticSnapshot 키 집합을 정확히
-    9개로 단언하므로(agentlas-workforce.cjs assertExactKeys), 같은 접기를 Core
-    공용 경로에 넣으면 그쪽이 candidate_set_invalid로 죽는다.
+    This projection is MCP-surface only. The Terminal runner asserts the
+    semanticSnapshot key set at exactly 9 keys
+    (agentlas-workforce.cjs assertExactKeys), so applying the same folding on
+    Core's shared path would make that side die with candidate_set_invalid.
     """
     projected = {key: value for key, value in result.items() if key != "candidateProvenance"}
     candidate_set = projected.get("candidateSet")
@@ -197,10 +208,11 @@ def _resolve_ordinal_assignments(
     selection: Mapping[str, Any],
     candidate_set: Mapping[str, Any],
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """assignments의 candidateOrdinal을 저장된 명부로 정확한 릴리스 ID로 해석한다.
+    """Resolves each assignment's candidateOrdinal against the stored menu into an exact release ID.
 
-    반환: (canonical 형태로 정규화된 selection, None) 또는 (None, 거절 코드).
-    순번과 릴리스 ID를 동시에 줬는데 서로 다르면 조용히 한쪽을 고르지 않고 거절한다.
+    Returns: (selection normalized to canonical shape, None) or (None, a
+    refusal code). If both an ordinal and a release ID were given and they
+    disagree, this refuses rather than silently picking one.
     """
     slots_by_id: dict[str, list[Mapping[str, Any]]] = {}
     for slot in candidate_set.get("slots", []) or []:
@@ -490,7 +502,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "hephaestus_cloud_search",
         "description": (
-            "Search ONLY the signed-in user's OWN Agentlas cloud packages (보관함) "
+            "Search ONLY the signed-in user's OWN Agentlas cloud packages "
             "and return a JSON decision with a receipt_id. This is the owner-scoped "
             "leg of the three-scope model: it skips local cards and the public "
             "marketplace, querying the Hub with the owner filter (cargo.*). The "
@@ -517,7 +529,7 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "request": {"type": "string", "description": "Search request, for example: 시장 리포트 쓸 에이전트 찾아줘."},
+                "request": {"type": "string", "description": "Search request, for example: find an agent that can write a market report."},
                 "project_dir": {"type": "string", "description": "Project directory for context (default: cwd)."},
                 "limit": {"type": "integer", "description": "Candidates per section. Default 10."},
             },
@@ -1773,9 +1785,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "status": "error",
                     "error": getattr(exc, "code", "workforce_source_search_failed"),
                 }
-            # 기본은 결정용 요약 명부(투영). 원본 전문은 세션 저장소가 보유하므로
-            # 검증·준비의 핀 대조는 손실 없다. 레거시 전량-에코 흐름이 필요한
-            # 호출자만 fullDossier=true 로 원형을 받는다.
+            # Default is the decision-ready summary menu (projection). The
+            # session store holds the full original text, so validation/
+            # preparation pin-matching loses nothing. Only a caller that needs
+            # the legacy full-echo flow gets the original shape via fullDossier=true.
             if arguments.get("fullDossier") is True:
                 return search_result
             return _menu_projection(search_result)
@@ -1828,15 +1841,18 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 stored_set = federation_result.get("candidateSet")
                 if isinstance(stored_set, Mapping):
                     candidate_set = stored_set
-            # 순번 지정 해석 — 48-hex ID 수기 복사 대신 명부 순번으로 후보를 지정할 수
-            # 있다. 여기서 저장된(또는 제출된) 명부로 정확한 릴리스 ID로 해석해
-            # canonical 형태로 만든 뒤에만 심층 검증에 넘긴다. 해석 실패는 조용한
-            # 대체 없이 거절한다.
+            # Ordinal resolution — lets a candidate be specified by its menu
+            # ordinal instead of hand-copying a 48-hex ID. Resolves it against
+            # the stored (or submitted) menu into the exact release ID, into
+            # canonical shape, and only then passes it on to deep validation.
+            # A resolution failure is refused, with no silent substitute.
             #
-            # prepare에도 같이 건다. validate 전용이던 동안, 순번으로 결재해 accepted를
-            # 받은 호출자가 같은 selection을 prepare에 넘기면 assignments[0].agentReleaseId
-            # 누락 + candidateOrdinal additionalProperties로 거절당했다(실측). validate는
-            # canonical 형태를 돌려주지 않으므로 호출자에게는 되돌릴 방법이 없었다.
+            # This is applied to prepare too. While it was validate-only, a
+            # caller who got an "accepted" verdict by ordinal, then passed the
+            # same selection to prepare, was refused with a missing
+            # assignments[0].agentReleaseId plus a candidateOrdinal
+            # additionalProperties error (measured). validate does not return
+            # the canonical shape, so the caller had no way to recover.
             if (
                 name in ("workforce.validate_selection", "workforce.prepare_execution")
                 and isinstance(selection, Mapping)
@@ -1969,14 +1985,17 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             "repairable": True,
                             "hubCalls": 0,
                         }
-                    # prepareAttempt의 idempotencyKey는 payload 전체의 canonical
-                    # sha256이라 호스트 LLM이 손으로 만들 수 없는 값이다(터미널
-                    # 러너는 코드로 계산한다). MCP 호스트 경로에서는 미제공 시
-                    # Core가 같은 재료 — 정확한 WorkOrder/해석된 Selection의
-                    # canonical digest, federatedSelection의 수령 digest·소스 핀 —
-                    # 로 파생한다. occurrenceId를 selectionSessionId에서 파생하므로
-                    # 같은 세션의 재시도는 같은 키로 떨어져 멱등성이 유지된다.
-                    # 제공된 prepareAttempt는 그대로 대조 검증한다(약화 없음).
+                    # prepareAttempt's idempotencyKey is the canonical sha256
+                    # of the entire payload — a value a host LLM cannot
+                    # compute by hand (the Terminal runner computes it in
+                    # code). On the MCP host path, when it's not supplied,
+                    # Core derives it from the same material — the exact
+                    # WorkOrder / resolved Selection's canonical digest, plus
+                    # federatedSelection's received digest and source pins.
+                    # occurrenceId is derived from selectionSessionId, so a
+                    # retry within the same session lands on the same key and
+                    # idempotency is preserved. A supplied prepareAttempt is
+                    # matched and validated as-is (no weakening).
                     prepare_attempt = arguments.get("prepareAttempt")
                     if prepare_attempt is None:
                         from .workforce.prepare_cache import prepare_attempt_payload
@@ -2000,8 +2019,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                                     ],
                                 )
                             except Exception:
-                                # 파생 실패는 조용한 대체 없이 기존 필수-인자
-                                # 검증 경로가 정직하게 거절하도록 남겨 둔다.
+                                # A derivation failure is left for the
+                                # existing required-argument validation path
+                                # to refuse honestly, with no silent substitute.
                                 prepare_attempt = None
                     service = WorkforceSourceService(session_store=store)
                     source_bundles = service.fetch_selected_runtime_bundles(
@@ -2162,7 +2182,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return with_bootstrap(decision)
     if name == "hephaestus_cloud_search":
         # Owner-scoped: scope="cloud" implies hub_only inside route_request and
-        # queries only the signed-in user's OWN cloud packages (보관함).
+        # queries only the signed-in user's OWN cloud packages.
         # This routes, so it owes the same Work Brief contract as
         # hephaestus_route / `route --scope cloud`: same project_dir, same
         # brief, same reason on the way back when the brief cannot be used.

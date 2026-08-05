@@ -196,7 +196,7 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     if bench_cases < 10:
         ready_blockers.append(f"needs >=10 benchmark cases (has {bench_cases})")
 
-    # 이력서(workforce) block — the hub standard résumé the Workforce search
+    # résumé (workforce) block — the hub standard résumé the Workforce search
     # matches on. Measured over the live catalog (2026-07-27) sellers declared
     # roles/modalities on 0 of 250 cards, so every WorkOrder using those fields
     # excluded the whole catalog. Built packages must ship the block filled;
@@ -205,9 +205,11 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     # ontology snapshot supplies aliases/relations, not a profession allowlist.
     workforce = card.get("workforce")
     if not isinstance(workforce, dict):
-        # 자동 빌드 파이프라인(스톰 워커, 변환 패키징)은 블록을 손으로 못 쓴다 —
-        # 결정적 파생이 가능하므로 린트는 경고만 남기고, 하드 게이트는 서버
-        # 등록 경계(workforce_resume_incomplete)와 업로드 관문의 자동 채움이 맡는다.
+        # An automated build pipeline (Stormbreaker workers, conversion
+        # packaging) cannot hand-write this block. Since a deterministic
+        # derivation is possible, lint only warns — the hard gate is left to
+        # the server registration boundary (workforce_resume_incomplete) and
+        # the upload gate's auto-fill.
         derived = ensure_workforce_block(dict(card))
         workforce = derived["workforce"]
         warnings.append(

@@ -9,13 +9,13 @@ repetition is the point, not a defect.
 This module adds the missing half: a controller that auto-constructs a loop for a
 task and drives it **until the goal verifies**, while staying stable —
 
-- **don't break (안 끊기게):** a transient iteration failure does not kill the loop.
+- **don't break:** a transient iteration failure does not kill the loop.
   It is journaled and retried with backoff, up to `max_consecutive_failures` in a
   row. Only a genuine streak of hard failures stops the run.
 - **don't run away:** a hard `max_iterations` ceiling, plus stall detection —
   if `stall_window` consecutive iterations make no new progress, the loop stops as
   `stalled` instead of spinning forever. Progress is measured, not assumed.
-- **keep the goal until done (될때까지 목표 유지):** the loop only reports
+- **keep the goal until done:** the loop only reports
   `reached_goal` when the goal predicate verifies; it never claims success on a
   bare "it ran."
 - **survive a hard stop:** every iteration is a Run Journal step, so a killed loop

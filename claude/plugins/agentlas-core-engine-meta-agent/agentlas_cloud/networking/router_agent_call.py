@@ -53,9 +53,11 @@ def router_escalation(
         return None
     action = str(result.get("action") or "")
     hub_results = ((result.get("hub") or {}).get("results")) if isinstance(result.get("hub"), dict) else None
-    # hub_candidates 는 "후보를 찾았다"는 이유로 렉시컬 top-1 을 그대로 primary 로 밀지만,
-    # 렉시컬 점수는 브랜드/주제어에 쉽게 휘둘려 오선택한다("쓰레드 글 써줘"→PRD 메이커). 후보가 2개 이상이면
-    # 호스트 LLM 라우터에 넘겨 '의도 적합도'로 재정렬하게 한다(키워드 나열이 아니라 의미 기반 선택).
+    # hub_candidates pushes the lexical top-1 straight through as primary just
+    # because "a candidate was found," but a lexical score is easily thrown off
+    # by a brand name or topic word and mis-selects (e.g. "write a Threads
+    # post" -> a PRD maker). With two or more candidates, hand off to the host
+    # LLM router to re-rank by actual intent fit instead of keyword overlap.
     hub_multi = (
         action == "hub_candidates"
         and isinstance(hub_results, list)

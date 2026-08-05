@@ -1358,10 +1358,12 @@ def _bounded_project_map(project_map: dict[str, Any]) -> tuple[str, int]:
             key=lambda key: (-int(ref_counts.get(key) or 0), key),
         )
         original_refs = len(ordered)
-        # 바이트 예산이 계약이고 "최소 1,000개 유지"는 휴리스틱이다. 파일당 심볼
-        # 상한을 올린 뒤로는 이 바닥이 작은 예산과 교착해 맵 전체를 잃게 했다
-        # (예산 초과 = OSError = 맵 없음). ordered는 참조 빈도순이므로 바닥을
-        # 1로 내려도 가장 뜨거운 심볼부터 예산이 허락하는 만큼 남는다.
+        # The byte budget is the contract; "keep at least 1,000" is only a
+        # heuristic. Since the per-file symbol cap was raised, that floor has
+        # deadlocked against a small budget and lost the whole map (budget
+        # exceeded = OSError = no map). ordered is sorted by reference
+        # frequency, so lowering the floor to 1 still keeps as many of the
+        # hottest symbols as the budget allows.
         while len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and len(ordered) > 1:
             ordered = ordered[: max(1, len(ordered) // 2)]
             allowed = set(ordered)
@@ -1374,9 +1376,10 @@ def _bounded_project_map(project_map: dict[str, Any]) -> tuple[str, int]:
             project_map["stats"]["outputTruncated"] = True
             project_map["stats"]["refIndexSymbolsOmitted"] = original_refs - len(allowed)
             raw = json.dumps(project_map, ensure_ascii=False, separators=(",", ":")) + "\n"
-    # 파일당 심볼 상한을 올린 뒤로는 defIndex/topSymbols 단독으로도 작은 예산을
-    # 넘을 수 있다. 사다리 뒤쪽에 두어 정의 색인이 가장 오래 살아남게 하되,
-    # 바이트 예산이 최종 계약이므로 여기서도 수렴할 때까지 절반씩 줄인다.
+    # Since the per-file symbol cap was raised, defIndex/topSymbols alone can
+    # now exceed a small budget too. This step comes last in the ladder so the
+    # definition index survives longest, but the byte budget is still the
+    # final contract, so keep halving until it converges here too.
     if len(raw.encode("utf-8")) > MAX_CODE_MAP_BYTES and isinstance(project_map.get("defIndex"), dict) and project_map["defIndex"]:
         def_counts = project_map.get("refCount") if isinstance(project_map.get("refCount"), dict) else {}
         ordered_defs = sorted(

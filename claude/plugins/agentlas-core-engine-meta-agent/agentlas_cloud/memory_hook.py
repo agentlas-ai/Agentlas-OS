@@ -212,10 +212,12 @@ def _source_path(item: dict[str, Any]) -> Path | None:
 def _source_staleness(item: dict[str, Any]) -> tuple[str | None, str | None]:
     """(inline age tag, staleness directive) for one cited source document.
 
-    2026-07-29 사고: 인덱스 문서가 12일 전에 동결됐는데 캡슐이 그 사실을 어디에도
-    표기하지 않아, 세션이 7/17 시점 사실을 현재로 단정했다. 나이는 캡슐 소비자가
-    추론할 수 없는 정보이므로 반드시 생산자가 라벨로 실어야 한다. Fail-open:
-    판별 불가능한 소스는 조용히 무표기(경고 오발보다 낫다).
+    2026-07-29 incident: the index document had been frozen for 12 days, but
+    the capsule carried no signal of that anywhere, so a session asserted
+    facts from 7/17 as current. Age is not something a capsule consumer can
+    infer, so the producer must always attach it as a label. Fail-open: a
+    source whose age can't be determined stays silently unlabeled rather than
+    risking a false staleness warning.
     """
 
     path = _source_path(item)
@@ -429,10 +431,12 @@ def build_capsule(
     if not lines and not evolution_line and not workforce_lines and not context_slice_line:
         return None, binding_root
     adapter_name, retrieval_status = _adapter_status(agent_result or project_result)
-    # 방출 계약: 판단은 세션 LLM이, 전달은 시스템이. .agentlas/pm은 이 백스톱
-    # 인덱스와 Desktop 인덱스가 모두 임베드하는 folder-shared 층이라, 여기 적힌
-    # 학습은 다음 세션부터 모든 호스트·제품의 recall로 돌아온다 (2026-07-29
-    # 실측: 실작업 학습이 이 층 밖에만 쌓여 소울·큐레이터가 굶었다).
+    # Emission contract: judgment is the session LLM's job, delivery is the
+    # system's. .agentlas/pm is a folder-shared layer that both this backstop
+    # index and the Desktop index embed, so a learning written here flows back
+    # into recall for every host and product starting the next session
+    # (measured 2026-07-29: real task learnings that only piled up outside
+    # this layer starved the Soul and Curator).
     emit_line = (
         "emit=after substantial work, record durable project learnings "
         "(fact/decision/procedure WITH evidence; never secrets or transcripts) as markdown in "

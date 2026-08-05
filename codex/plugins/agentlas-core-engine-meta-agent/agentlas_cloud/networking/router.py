@@ -636,14 +636,17 @@ def _hub_query_has_fitting_borrowable(query_tokens: list[str], results: list[dic
     )
 
 
-# 일반적인 빌드/기획 동사는 "이 에이전트를 지목했다"고 볼 만큼 특이하지 않으므로 제외 —
-# 진짜 역할 단어("웹마스터", "카피라이터")로만 매칭한다.
+# Generic build/planning verbs are excluded — they aren't distinctive enough
+# to count as "this agent was explicitly named." Only real role words
+# ("webmaster", "copywriter") count as a match.
 _GENERIC_ROLE_TOKENS = {
     "기획", "제작", "개발", "구현", "빌드", "만들", "작업", "불러", "불러서", "해줘", "해",
     "팀", "웹", "앱", "사이트", "페이지", "랜딩", "랜딩페이지", "에이전트", "등",
     "agent", "team", "build", "make", "plan", "create", "page", "landing", "web", "app", "site",
-    # 제품/브랜드 주제어 — 요청의 '주제'이지 에이전트 '지목'이 아니다. 이게 없으면 "Agentlas에
-    # 대해서 글 써줘"에서 이름에 agentlas가 든 후보(PRD 메이커 등)를 "지목됨"으로 오판해 다 빌려온다.
+    # Product/brand topic words — these are the request's "topic," not an
+    # agent being "named." Without this, "write something about Agentlas"
+    # would misjudge any candidate with "agentlas" in its name (a PRD maker,
+    # etc.) as "named" and borrow all of them.
     "agentlas", "hephaestus", "oberon", "대해서", "대한", "관련",
 }
 
@@ -719,9 +722,11 @@ def _byom_execution_plan(
                 )
     else:
         borrowable = [item for item in (results or []) if _is_borrowable(item)]
-        # 사용자가 에이전트를 명시적으로 지목했으면("웹마스터 카피라이터 불러서") 전부 빌려온다 —
-        # 다중 역할 요청을 최상위 후보 1개로 축소하지 않는다(Hub가 오프도메인 에이전트를 명시된
-        # 에이전트보다 높게 랭크할 수 있으므로 명시 지목을 우선).
+        # If the user explicitly named agents (e.g. "call the webmaster and
+        # the copywriter"), borrow all of them — a multi-role request is never
+        # reduced to a single top candidate (the Hub can rank an off-domain
+        # agent above one that was explicitly named, so an explicit name
+        # takes priority).
         named = _explicitly_named_borrowables(query, borrowable)
         if named:
             for cand in named[:5]:
@@ -741,10 +746,12 @@ def _byom_execution_plan(
     # returning a task_force with execution=null.
     if not recommended and not stages:
         return None
-    # 명시 지목이 2개+면 이건 "여러 전문가가 협업하는 하나의 산출물" — 실행 모델이 임시
-    # 오케스트레이터 역할(plan→dispatch→synthesize)을 맡도록 directive를 전환한다. CLI에는
-    # 별도 오케스트레이터 세션이 없으므로(hep-storm --executor-command 없이는) 베이스 모델이
-    # 매니저가 되는 게 현실적 경로다.
+    # Two or more explicit names means this is "one deliverable from several
+    # specialists collaborating" — switch the directive so the execution
+    # model takes on a temporary orchestrator role (plan -> dispatch ->
+    # synthesize). The CLI has no separate orchestrator session (short of
+    # hep-storm --executor-command), so the base model becoming the manager
+    # is the realistic path.
     core_stages = [
         str(stage.get("stage"))
         for stage in (stages or [])
@@ -792,7 +799,7 @@ def _byom_execution_plan(
         )
     return {
         "mode": "byom_local_grounded",
-        # 다중 명시 지목이면 실행 모델이 매니저 역할을 맡는다는 신호.
+        # Multiple explicit names is the signal for the execution model to take on the manager role.
         "formation": "temporary_orchestrator" if multi else "single_specialist",
         "primary_agent": primary,
         "recommended_agents": recommended,
@@ -993,7 +1000,7 @@ def route_request(
 
     # Three-scope command model (docs/hephaestus-network-2.0.md):
     #   scope="cloud"   -> /hep-cloud: search ONLY the signed-in user's
-    #                     OWN cloud packages (보관함). Owner-scoped Hub query,
+    #                     OWN cloud packages. Owner-scoped Hub query,
     #                     implies hub_only (skip local + public marketplace).
     #   scope="network" -> /hep-network: search Cloud > Bookmark > public Hub
     #                     in that order. Used with hub_only by the network command.
@@ -1164,7 +1171,7 @@ def route_request(
         )
 
     if hub_only:
-        # The owner cloud (보관함) and the public marketplace share this
+        # The owner cloud and the public marketplace share this
         # Hub-only flow; the only difference is the scope passed to the Hub and
         # the receipt/reason tag, so /hep-cloud and /hep-network
         # stay one code path with two scopes.
