@@ -120,6 +120,8 @@ test-results/
 # self-enforce the runtime allowlist (no tests/credentials enter the download).
 scripts/ao-gate.sh
 scripts/bump-version.sh
+scripts/changelog-sync.mjs
+.changelog-sync-cursor.json
 scripts/install-main-only-git-guard.sh
 scripts/run-one-touch-terminal.command
 scripts/score-robustness-eval.py
