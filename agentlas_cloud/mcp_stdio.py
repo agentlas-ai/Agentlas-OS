@@ -2334,7 +2334,19 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
                     "task is resolved, call context.slice; before mutating a path call context.impact; "
                     "before declaring completion call context.verify and account for every affected "
                     "file. Context Map source paths and contents stay project-local and must never be "
-                    "sent in Network or Cloud discovery requests."
+                    "sent in Network or Cloud discovery requests. "
+                    # 도구 접근 고지 — Desktop shared/tool-access-notice.ts, 터미널
+                    # engine/tools/access-notice.cjs와 **같은 규칙**이다. 이 세 표면이 다른
+                    # 말을 하면 사용자는 어느 쪽이 맞는지 알 수 없다. 문구를 여기서만
+                    # 바꾸지 말 것 — 세 벌을 함께 옮긴다.
+                    "Before telling the user a capability is unavailable, call "
+                    "agentlas_resolve_plugins with the capability you need: the Agentlas Hub "
+                    "catalog covers integrations that are not installed on this machine yet, "
+                    "and a tool missing from this session is not the same as a tool that does "
+                    "not exist. Never install or enable a tool on your own — show the slug, "
+                    "what it will be allowed to do, and whether it needs credentials, then let "
+                    "the user decide. If nothing covers the need, say so plainly; do not "
+                    "describe a tool call you did not make."
                 ),
             },
         )
