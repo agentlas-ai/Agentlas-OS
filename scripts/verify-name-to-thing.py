@@ -41,6 +41,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+ENGINE_ROOT = ROOT
 
 # The adapters that a user actually installs. Anything a command file here names
 # has to be present here too — that is the whole point of the check.
@@ -121,6 +122,15 @@ def check_named_paths_exist(engine: Path, label: str) -> None:
             checked += 1
             if (engine / named).exists():
                 continue
+            # `docs/` is engine-repo material and deliberately absent from an
+            # adapter bundle: the release archive check refuses any docs path
+            # inside a plugin, because a bundle is end-user install material and
+            # internal design notes are not. A mirror citing `$ENGINE/docs/...`
+            # points at the engine the user installed, not at its own folder, so
+            # the name is answered — just not here.
+            if label != "core" and named.startswith("docs/"):
+                if (ENGINE_ROOT / named).exists():
+                    continue
             # A per-package artifact the engine DERIVES rather than ships: it
             # cannot exist in the engine tree, because it is written into each
             # user's package from that package's own declarations. The name is
