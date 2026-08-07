@@ -37,33 +37,6 @@ docs/agent-os-redesign.md
 
 # >>> agentlas local project state >>>
 .agentlas/
-
-# A runtime adapter's own .agentlas/ is product surface, not local state: it is
-# this package's settings folder, rendered by scripts/sync-adapters.sh, and it
-# has to reach the user's machine for /hep-build to read its own contracts.
-# These were force-added one at a time before, which is how a new file quietly
-# stopped shipping. Declare the boundary instead: a user's .agentlas is ignored,
-# an adapter mirror's .agentlas is tracked.
-!claude/plugins/*/.agentlas/
-!claude/plugins/*/.agentlas/**
-!codex/plugins/*/.agentlas/
-!codex/plugins/*/.agentlas/**
-!gemini/extension/.agentlas/
-!gemini/extension/.agentlas/**
-
-# ...but generated RUNTIME STATE inside a mirror is still local state. An
-# ontology database, its inbox, and the JSON that records absolute paths are
-# this machine's accumulated memory: personal data that must never reach a
-# public repo. Re-ignoring them here is narrower than dropping the negations,
-# which would stop shipping the declarative files again.
-*/plugins/*/.agentlas/ontology-runtime.sqlite*
-*/plugins/*/.agentlas/ontology-inbox/
-*/plugins/*/.agentlas/ontology-runtime.json
-*/plugins/*/.agentlas/ontology-sources.json
-*/extension/.agentlas/ontology-runtime.sqlite*
-*/extension/.agentlas/ontology-inbox/
-*/extension/.agentlas/ontology-runtime.json
-*/extension/.agentlas/ontology-sources.json
 .agentlas/project-soul-memory.md
 .agentlas/sitemap.json
 .agentlas/memory-map.json

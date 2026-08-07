@@ -119,8 +119,27 @@ def check_named_paths_exist(engine: Path, label: str) -> None:
             if named in NAME_ALLOWLIST and named != "AGENTS.md":
                 continue
             checked += 1
-            if not (engine / named).exists():
-                fail("C1", f"{label}: {path.name} names `{named}` but the engine does not ship it")
+            if (engine / named).exists():
+                continue
+            # A per-package artifact the engine DERIVES rather than ships: it
+            # cannot exist in the engine tree, because it is written into each
+            # user's package from that package's own declarations. The name is
+            # still checked — against the producer instead of against a file —
+            # so `contract complete` dropping one is caught exactly as a missing
+            # shipped file would be.
+            producer = engine / "agentlas_cloud" / "repackage.py"
+            try:
+                derived = producer.read_text(encoding="utf-8")
+            except OSError:
+                derived = ""
+            # LIMITATION: this matches the path anywhere in repackage.py, so a
+            # docstring mention satisfies it. It proves the engine KNOWS the
+            # name, not that it writes it. Tighten to the write call itself
+            # (`_write_json(<var>, ...)` targets) when the derivations settle.
+            if named.split("/")[-1] in derived:
+                continue
+            fail("C1", f"{label}: {path.name} names `{named}` but neither the engine "
+                       f"nor repackage.py produces it")
     notes.append(f"C1 {label}: {len(files)} command file(s), {checked} engine-owned path reference(s)")
 
 
