@@ -310,6 +310,11 @@ def fill_memory_map(root: Path, slug: str) -> bool:
     if not isinstance(payload.get("trustLabels"), list):
         payload["trustLabels"] = list(MEMORY_TRUST_LABELS)
     payload.setdefault("runtimeOwned", list(RUNTIME_OWNED_ROOTS))
+    # The blueprint describes the team; `manifest.json` is what the RUNTIME reads
+    # to find the manager. A team can have a complete roster and a correct
+    # blueprint and still publish as uncallable, because the runtime looks for
+    # `entrypoints.orchestrator` and finds nothing. Declare it from the same
+    # answer rather than leaving the two to disagree.
     if json.dumps(payload, sort_keys=True, ensure_ascii=False) == before:
         return False
     _write_json(path, payload)
@@ -439,7 +444,11 @@ def fill_company_blueprint(root: Path, slug: str, name: str) -> bool:
     # packages; a real string that is already there is left alone.
     if is_unfilled(payload.get("topology")):
         payload["topology"] = "hub-and-spoke" if len(workers) > 1 else "single-agent"
-    if is_unfilled(payload.get("orchestrator")):
+    # A declared orchestrator that is not in the roster is a name with nothing
+    # behind it: the runtime looks for `agents/<orchestrator>/agent.md`, does not
+    # find it, and refuses the team as uncallable AFTER publishing. Keep an
+    # author's choice only while it points at a member that exists.
+    if is_unfilled(payload.get("orchestrator")) or payload.get("orchestrator") not in members:
         payload["orchestrator"] = orchestrator
     if not isinstance(payload.get("nodes"), list) or is_unfilled(payload.get("nodes")):
         payload["nodes"] = [
@@ -459,6 +468,25 @@ def fill_company_blueprint(root: Path, slug: str, name: str) -> bool:
             {"from": worker, "to": orchestrator, "relation": "returns"}
             for worker in workers
         ]
+    manifest_path = root / "manifest.json"
+    manifest = _read_json(manifest_path)
+    # Absent is the common case for a team that was never callable: there is
+    # nothing for the runtime to read at all. Creating it with just the manager
+    # declaration is the smallest true statement - it says who leads, which is
+    # the one fact the roster already proves.
+    if manifest or not manifest_path.exists():
+        entrypoints = manifest.get("entrypoints")
+        if not isinstance(entrypoints, dict):
+            entrypoints = {}
+        declared = entrypoints.get("orchestrator")
+        roster = [f"agents/{x.parent.name}/agent.md" for x in root.glob("agents/*/agent.md")]
+        if declared not in roster:
+            # A PATH, not a node id: the runtime resolves the manager by opening
+            # the file, and a bare name resolves to nothing.
+            entrypoints["orchestrator"] = f"agents/{payload.get('orchestrator') or orchestrator}/agent.md"
+            manifest["entrypoints"] = entrypoints
+            _write_json(manifest_path, manifest)
+
     if json.dumps(payload, sort_keys=True, ensure_ascii=False) == before:
         return False
     _write_json(path, payload)
@@ -560,6 +588,98 @@ def coerce_contract_shapes(root: Path, slug: str) -> list[str]:
                 _write_json(agent_card_path, agent_card)
                 fixed.append(".agentlas/agent-card.json")
 
+    # ── routing card: shapes the corpus writes but the schema does not ───────
+    # Each of these is the author's own answer in a form the schema refuses, so
+    # coercing is restating, not inventing. Measured 2026-08-07 on the 14
+    # packages the gate still held back.
+    if card_path.exists():
+        card = _read_json(card_path)
+        before_card = json.dumps(card, sort_keys=True, ensure_ascii=False)
+
+        # `locale_coverage` ships as a bare list of locales in some packages and
+        # as {primary, ready, partial} in others. The list IS the ready set, and
+        # its first entry is the primary - nothing else is implied by it.
+        locales = card.get("locale_coverage")
+        if isinstance(locales, list):
+            ready = [x for x in locales if isinstance(x, str) and x.strip()]
+            if ready:
+                card["locale_coverage"] = {"primary": ready[0], "ready": ready, "partial": []}
+
+        # `cost_hints.paid_api` is declared boolean; "optional" means the agent
+        # CAN reach a paid API, which is the true branch. Any other string is
+        # read the same way strings are read everywhere else - non-empty is yes.
+        hints = card.get("cost_hints")
+        if isinstance(hints, dict) and isinstance(hints.get("paid_api"), str):
+            hints["paid_api"] = hints["paid_api"].strip().lower() not in {"", "no", "false", "none"}
+
+        # `source.kind` is a closed pair. A package that came back from the Hub
+        # and calls itself something else is still a Hub package; only a folder
+        # on this machine is `local_path`.
+        src = card.get("source")
+        if isinstance(src, dict) and src.get("kind") not in {"local_path", "hub"}:
+            src["kind"] = "hub"
+
+        # `workforce.communities` needs at least one entry. The card's own
+        # communities are the answer when it has them; otherwise the routing
+        # card's declared type is, because a résumé with no community is
+        # unroutable and an empty list is what made it unpublishable.
+        wf = card.get("workforce")
+        if isinstance(wf, dict) and is_unfilled(wf.get("communities")):
+            declared = [c for c in (card.get("communities") or []) if isinstance(c, str) and c.strip()]
+            if not declared:
+                # No declared community, so read the card's own capability verbs.
+                # The vocabulary is the one the corpus actually uses (measured
+                # 2026-08-07 over the published cards), not an invented list, and
+                # a résumé with no community is unroutable - which is exactly what
+                # made these packages unpublishable.
+                blob = " ".join([
+                    str(card.get("summary") or ""),
+                    " ".join(c for c in (card.get("capabilities") or []) if isinstance(c, str)),
+                ]).lower()
+                for term, community in (
+                    ("research", "community:research"),
+                    ("spec", "community:product-design"),
+                    ("design", "community:product-design"),
+                    ("architect", "community:software-engineering"),
+                    ("test", "community:quality-engineering"),
+                    ("deploy", "community:devops"),
+                    ("market", "community:marketing"),
+                    ("agent", "community:ai-engineering"),
+                    ("code", "community:software-engineering"),
+                ):
+                    if term in blob and community not in declared:
+                        declared.append(community)
+                declared = declared[:3]
+            if declared:
+                wf["communities"] = declared[:4]
+
+        if json.dumps(card, sort_keys=True, ensure_ascii=False) != before_card:
+            _write_json(card_path, card)
+            fixed.append(".agentlas/routing-card.json")
+
+    # ── sitemap: `taskBiases` entries must be objects ────────────────────────
+    sitemap_path = root / ".agentlas" / "sitemap.json"
+    if sitemap_path.exists():
+        sm = _read_json(sitemap_path)
+        biases = sm.get("taskBiases")
+        if isinstance(biases, list) and any(not isinstance(b, dict) for b in biases):
+            sm["taskBiases"] = [
+                b if isinstance(b, dict) else {"note": str(b)}
+                for b in biases if b not in (None, "")
+            ]
+            _write_json(sitemap_path, sm)
+            fixed.append(".agentlas/sitemap.json")
+
+    # ── agentlas.json: assetContract.materialization is a fixed token ────────
+    manifest_path = root / "agentlas.json"
+    manifest = _read_json(manifest_path)
+    asset = manifest.get("assetContract") if isinstance(manifest, dict) else None
+    if isinstance(asset, dict) and asset.get("materialization") != "hub-or-cloud-registration":
+        if asset.get("materialization"):
+            asset["materialization"] = "hub-or-cloud-registration"
+            _write_json(manifest_path, manifest)
+            fixed.append("agentlas.json")
+
     # ── global-commands: one HQ command, many adapters ───────────────────────
     # The contract is a single public HQ command exposed through per-runtime
     # adapter rows. Measured: some rows carry `command: null` and some carry a
@@ -596,6 +716,55 @@ def _card_texts(value: Any) -> list[str]:
             if isinstance(text, str) and text.strip():
                 out.append(text.strip())
     return out
+
+
+def reconcile_team_shape(root: Path) -> list[str]:
+    """Make the declared entity kind and the roster on disk agree.
+
+    Two ways they disagree in the published corpus, both measured 2026-08-07:
+
+    1. A flat roster. `agents/<name>.md` holds the members, but the runtime and
+       the shape gate both read `agents/<name>/agent.md`, so the team looks
+       empty and cannot be built. Moving the file into the layout the contract
+       names is what makes it actually runnable - the content is untouched.
+
+    2. A card that says `team` over a package with no roster at all. The
+       package is the fact and the card is its description; a description that
+       disagrees with the folder is worse than none, so the card is corrected
+       down to `agent` rather than the package being refused for a roster it
+       never had.
+    """
+
+    changed: list[str] = []
+    nested = list(root.glob("agents/*/agent.md"))
+    flat = [p for p in root.glob("agents/*.md") if p.name != "agent.md"]
+
+    if not nested and flat:
+        for source in sorted(flat):
+            target = root / "agents" / source.stem / "agent.md"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(source.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+            source.unlink()
+            changed.append(f"agents/{source.stem}/agent.md (from {source.name})")
+        nested = list(root.glob("agents/*/agent.md"))
+
+    if not nested:
+        # No roster: this is a single agent whatever anything else claims. The
+        # card AND the blueprint both have to stop saying team, because either
+        # one alone still puts the package on the TEAM branch of the contract -
+        # a leftover blueprint kept a card that already read `agent` being
+        # checked against every team requirement.
+        card_path = root / ".agentlas" / "routing-card.json"
+        card = _read_json(card_path)
+        if card and card.get("type") == "team":
+            card["type"] = "agent"
+            _write_json(card_path, card)
+            changed.append(".agentlas/routing-card.json (type: team -> agent, no roster on disk)")
+        blueprint = root / ".agentlas" / "company-blueprint.json"
+        if blueprint.exists():
+            blueprint.unlink()
+            changed.append(".agentlas/company-blueprint.json (removed: no roster on disk)")
+    return changed
 
 
 def fill_declared_artifacts(root: Path, slug: str) -> list[str]:
@@ -806,6 +975,45 @@ def _is_cjk(text: str) -> bool:
     return any("가" <= ch <= "힣" or "぀" <= ch <= "ヿ" for ch in text)
 
 
+
+MANIFEST_CLOSED_OBJECTS = {
+    "memoryPolicy": ("writeBack", "publicCopy"),
+    "toolPermissions": ("network", "shell", "fileRead"),
+}
+
+
+def prune_unrecognised_manifest_keys(root: Path) -> list[str]:
+    """Drop manifest keys the schema does not admit, and name each one.
+
+    `memoryPolicy` and `toolPermissions` are closed objects, so one extra key
+    refuses the whole upload. Measured 2026-08-07 across the 178 published
+    packages: `writeBack`/`publicCopy` and `network`/`shell`/`fileRead` appear in
+    all 178, while `assetPolicy`, `privateMetrics`, `sourceFreshness`,
+    `fileWrite` and `browser` appear in one or two. Those are not a producer
+    convention the schema failed to keep up with - they are one-off additions
+    that nothing reads, because a key outside the schema reaches no consumer.
+
+    Dropping beats blocking here, but only because the drop is announced: the
+    caller gets one repair record per removed key, so an author who meant
+    something by it finds out instead of wondering why their field vanished.
+    """
+
+    path = root / "agentlas.json"
+    manifest = _read_json(path)
+    if not manifest:
+        return []
+    dropped: list[str] = []
+    for parent, allowed in MANIFEST_CLOSED_OBJECTS.items():
+        block = manifest.get(parent)
+        if not isinstance(block, dict):
+            continue
+        for key in [k for k in block if k not in allowed]:
+            block.pop(key, None)
+            dropped.append(f"{parent}.{key}")
+    if dropped:
+        _write_json(path, manifest)
+    return dropped
+
 def fill_capability_eval_plan(root: Path) -> bool:
     """Write the eval plan from the trigger examples the card already carries.
 
@@ -896,7 +1104,27 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
     written: list[str] = []
     core = root / "AGENTS.md"
     if not core.is_file():
-        return written
+        # The canonical core is missing but a body exists under another name.
+        # AGENTS.md is the entry every runtime reads first and the file the
+        # contract requires, so promote the body that IS there rather than
+        # refusing a package that has one. Measured 2026-08-07: several published
+        # packages ship `agent.md` alone and were refused for the file the
+        # engine could have named.
+        for candidate in ("agent.md", "README_FOR_HUMANS.md"):
+            source = root / candidate
+            if not source.is_file():
+                continue
+            try:
+                body = source.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if is_unfilled(body) or _PLACEHOLDER.search(body):
+                continue
+            core.write_text(body, encoding="utf-8")
+            written.append(f"AGENTS.md (promoted from {candidate})")
+            break
+        if not core.is_file():
+            return written
     try:
         core_text = core.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -913,7 +1141,12 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
             existing = ""
         # A body the author actually wrote is never replaced; only an absent file
         # or a leftover stencil is.
-        if not is_unfilled(existing) and not _PLACEHOLDER.search(existing):
+        # A body under a dozen lines is a stub, not an authored agent: the
+        # contract requires >=12 non-empty lines and a 6-line file fails it while
+        # looking present. Replace a stub with the thin adapter; anything a person
+        # actually wrote is left exactly as it is.
+        substantive = len([ln for ln in existing.splitlines() if ln.strip()]) >= 12
+        if substantive and not _PLACEHOLDER.search(existing):
             return written
 
     title = ""

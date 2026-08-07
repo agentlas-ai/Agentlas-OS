@@ -172,13 +172,30 @@ def package_agent(
         # 2026-08-07 across the 178 published packages, that one line produced 262
         # of the 264 standing blockers on 65 packages, every one of them a team
         # whose `agents/*/agent.md` roster was complete.
+        # FIRST: make the roster on disk and the declared kind agree. Everything
+        # after this reads the package as the fact, so a flat roster or a card
+        # claiming `team` over an empty folder has to be settled before the
+        # scaffold decides what to lay down - otherwise the mode is derived from
+        # a shape that is about to change.
+        from .repackage import reconcile_team_shape
+
+        reconciled = reconcile_team_shape(base)
+        if reconciled:
+            contract_scaffold["teamShapeReconciled"] = reconciled
         from .upload_repair import _derived_entity_type
 
         derived_kind, _ = _derived_entity_type(base)
         mode_hint = "team" if derived_kind == "team" else "single"
-        contract_scaffold = scaffold_contract(
-            base, mode=mode_hint, package_id=slug_hint, name=slug_hint, command=slug_hint
-        )
+        # Merge, never replace. This was a bare assignment, so everything the
+        # passes above recorded — the team-shape reconciliation in particular —
+        # was thrown away before the caller ever saw it, and a receipt nobody
+        # receives is the same as a repair nobody made.
+        contract_scaffold = {
+            **contract_scaffold,
+            **scaffold_contract(
+                base, mode=mode_hint, package_id=slug_hint, name=slug_hint, command=slug_hint
+            ),
+        }
         derive_contract(base, slug=slug_hint, entity_kind=mode_hint)
         # Shape mismatches last, after derive has written whatever it could: an
         # answer in the wrong shape is not a missing answer, and blocking on one
@@ -195,6 +212,11 @@ def package_agent(
             redact_host_paths,
         )
 
+        from .repackage import prune_unrecognised_manifest_keys
+
+        pruned = prune_unrecognised_manifest_keys(base)
+        if pruned:
+            contract_scaffold["manifestKeysDropped"] = pruned
         declared = fill_declared_artifacts(base, slug_hint)
         if declared:
             contract_scaffold["declaredArtifacts"] = declared
@@ -388,6 +410,17 @@ def package_agent(
     }
     if public_career_card:
         bundle["careerGraph"] = public_career_card
+    # The completion pass leaves a receipt. Without it the caller cannot tell a
+    # package that needed eight artifacts derived from one that needed none,
+    # and a repair nobody can see is indistinguishable from one that never ran.
+    if contract_scaffold:
+        # Never the workspace path. The receipt is useful to the author, but it
+        # rides inside the published bundle, and `workspace` is an absolute path
+        # on whoever ran the upload — the exact leak the career-card test guards.
+        # What repaired is the fact worth shipping; where it ran is not.
+        bundle["contractScaffold"] = {
+            key: value for key, value in contract_scaffold.items() if key != "workspace"
+        }
     if repairs:
         # What shipped is not what the author wrote. Say so where the author will
         # see it, not only in a findings list nobody reads.
