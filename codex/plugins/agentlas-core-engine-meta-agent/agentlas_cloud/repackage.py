@@ -1,0 +1,1002 @@
+"""Fill what a package already knows about itself, without asking a model.
+
+Measured on the live corpus (2026-08-07): of 372 published definitions, 295 have
+a runtime artifact and 3 satisfy the package contract. Running `contract
+scaffold` over all 295 adds 8.2 files each and moves the pass count by zero —
+because scaffold writes stencils, and a stencil with `{{ROLE}}` in it is still a
+blocker. Repackaging is therefore not a mechanical migration, and treating it as
+one produces 295 packages that look complete and verify worse.
+
+The work splits in two, and only the first half belongs here:
+
+  derivable   the answer is already inside the package or its definition —
+              a slug, a schema version, a summary, an empty ledger, a command
+              table that follows from the entry point. No judgement involved.
+
+  authored    the answer is the author's — what this agent does, what it
+              refuses, what a good output looks like. A model can draft it from
+              the package's own text, but it is drafting, not deriving.
+
+This module does the derivable half and reports what is left, so the authored
+half can be priced honestly instead of hidden inside a migration that silently
+writes placeholders into production.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any, Mapping
+
+from .routing_vocabulary import (
+    RISK_CAPABILITY_ALIASES,
+    normalise_memory_reads,
+    normalise_memory_writes,
+    normalise_risk_capabilities,
+    normalise_runtimes,
+)
+
+
+def normalise_risk_capability_known(value: str) -> bool:
+    """True when the token is a spelling we own — canonical or a known alias."""
+    return bool(normalise_risk_capabilities([value])) or value in RISK_CAPABILITY_ALIASES
+
+AGENT_CARD_SCHEMA = "agentlas.agent-card/1"
+MEMORY_MAP_SCHEMA = "agentlas.memory-map/1"
+SKILL_REGISTRY_SCHEMA = "agentlas.skill-registry/1"
+GLOBAL_COMMANDS_SCHEMA = "agentlas.global-commands/1"
+
+_PLACEHOLDER = re.compile(r"\{\{[A-Z0-9_]+\}\}")
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _has_placeholders(path: Path) -> bool:
+    try:
+        return bool(_PLACEHOLDER.search(path.read_text(encoding="utf-8")))
+    except OSError:
+        return False
+
+
+def _first_paragraph(text: str, limit: int = 300) -> str:
+    for block in re.split(r"\n\s*\n", text):
+        line = " ".join(block.split())
+        if line.startswith("#") or not line:
+            continue
+        return line[:limit]
+    return ""
+
+
+def derive(
+    package_root: str | Path,
+    *,
+    slug: str,
+    entity_kind: str = "agent",
+    definition_id: str = "",
+) -> dict[str, Any]:
+    """Fill what the package already answers. Composes on top of `contract scaffold`.
+
+    An earlier version of this wrote its own JSON for agent-card, memory-map,
+    skill-registry and global-commands. Every shape was wrong — `canonicalMemoryRoots`
+    is an object, not a list; a command entry is `{command, adapterPath, scope}`,
+    not `{invocation}` — and the corpus blocker count went from 4,804 to 8,874,
+    because a file that exists and violates its schema fails harder than a file
+    that is absent. The canonical shapes are `templates/*.tpl`; the only correct
+    move is to let scaffold write them and then answer the placeholders we can.
+    """
+
+    root = Path(package_root)
+    card = _read_json(root / ".agentlas" / "routing-card.json")
+    manifest = _read_json(root / "agentlas.json")
+    filled: list[str] = []
+
+    name = str(card.get("name") or manifest.get("name") or slug)
+    summary = str(card.get("summary") or card.get("summary_en") or "").strip()
+    if not summary:
+        for candidate in ("agent.md", "AGENTS.md", "README_FOR_HUMANS.md"):
+            path = root / candidate
+            if path.exists() and not _has_placeholders(path):
+                summary = _first_paragraph(path.read_text(encoding="utf-8", errors="replace"))
+                if summary:
+                    break
+
+    capabilities = [c for c in (card.get("capabilities") or []) if isinstance(c, str) and c.strip()]
+    substitutions = {
+        "{{PACKAGE_ID}}": slug,
+        "{{COMMAND_SLUG}}": slug,
+        "{{project_id}}": slug,
+        "{{draft_id}}": f"{slug}-export",
+        "{{NAME}}": name,
+        "{{NAME_KO}}": name,
+        "{{TEAM_NAME}}": name,
+    }
+    if summary:
+        substitutions["{{SUMMARY_EN}}"] = summary
+    if definition_id:
+        substitutions["{{AGENT_DEFINITION_ID}}"] = definition_id
+    for index, capability in enumerate(capabilities[:4], start=1):
+        substitutions[f"{{{{CAPABILITY_VERB_OBJECT_{index}}}}}"] = capability
+
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix not in {".json", ".jsonl", ".md"}:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "{{" not in text:
+            continue
+        replaced = text
+        for token, value in substitutions.items():
+            replaced = replaced.replace(token, value)
+        if replaced != text:
+            path.write_text(replaced, encoding="utf-8")
+            filled.append(str(path.relative_to(root)))
+
+    # ── agent-card: identity fields the definition already answers ─────────
+    # Only when the file already exists (scaffold covers the absent case) and
+    # only for fields whose value is not a judgement: the slug is the
+    # definition's slug, the schema version is the template's, the summary is
+    # the card's own sentence. `"1.0"` is taken from templates/agent-card.json.tpl
+    # rather than invented — an earlier version of this module made up
+    # `agentlas.agent-card/1` and every package it touched failed harder.
+    card_path = root / ".agentlas" / "agent-card.json"
+    if card_path.exists():
+        agent_card = _read_json(card_path)
+        changed = False
+        for key, value in (
+            ("schemaVersion", "1.0"),
+            ("slug", slug),
+            ("name", name),
+            ("summary", summary),
+        ):
+            if value and not str(agent_card.get(key) or "").strip():
+                agent_card[key] = value
+                changed = True
+        if changed:
+            _write_json(card_path, agent_card)
+            filled.append(".agentlas/agent-card.json")
+
+    # ── routing card: normalise the vocabulary that is already there ───────
+    if card:
+        card_file = root / ".agentlas" / "routing-card.json"
+        before = json.dumps(card, sort_keys=True, ensure_ascii=False)
+        runtimes = normalise_runtimes(card.get("supported_runtimes"))
+        if runtimes:
+            card["supported_runtimes"] = runtimes
+        risk = card.get("risk_profile")
+        if isinstance(risk, dict):
+            declared = [c for c in (risk.get("capabilities_at_risk") or []) if isinstance(c, str)]
+            if declared:
+                canonical = normalise_risk_capabilities(declared)
+                # An author's own risk name survives; only known aliases collapse.
+                own = [c for c in declared if not normalise_risk_capability_known(c)]
+                risk["capabilities_at_risk"] = canonical + [c for c in own if c not in canonical]
+        if json.dumps(card, sort_keys=True, ensure_ascii=False) != before:
+            _write_json(card_file, card)
+            filled.append(".agentlas/routing-card.json")
+
+    # ── infrastructure declarations ────────────────────────────────────────
+    # Where this package's memory lives, how it is reached, and what it admits
+    # to reading. All three are properties of the runtime the package sits in,
+    # not claims about the agent, so the server can state them without inventing
+    # anything. 63 packages were unpublishable for a projectId that is the slug.
+    if fill_memory_map(root, slug):
+        filled.append(".agentlas/memory-map.json")
+    if fill_global_commands(root, slug, name):
+        filled.append(".agentlas/global-commands.json")
+    if fill_memory_behavior(root):
+        filled.append(".agentlas/routing-card.json (memory_behavior)")
+    if entity_kind == "team" and fill_company_blueprint(root, slug, name):
+        filled.append(".agentlas/company-blueprint.json")
+
+    return {"slug": slug, "entityKind": entity_kind, "derived": sorted(set(filled))}
+
+
+
+# ── infrastructure declarations the package can answer for itself ───────────
+# These are not the author's words; they are the shape of the runtime the
+# package sits in. Measured on the live corpus before this existed: 63 packages
+# were unpublishable for a missing `projectId` that is just the slug, and 61 for
+# a `packageId` that is the same slug again. Refusing an upload over a value the
+# server already knows is the failure mode, not the safeguard.
+
+MEMORY_MAP_SCHEMA_VERSION = "1.1"
+GLOBAL_COMMANDS_SCHEMA_VERSION = "1.0"
+
+# Every root below has a real consumer — verified by source before being named
+# here (python 3-8 files each, TypeScript 1-5 each). A root nobody reads is the
+# phantom-skill defect wearing a different hat.
+CANONICAL_MEMORY_ROOTS = {
+    "project": [".agentlas/project-soul-memory.md"],
+    "agent_repo": ["memory.md"],
+    "team_memory": [],
+    "session": [".agentlas/memory-tickets.jsonl"],
+    "curator_decisions": [".agentlas/curator-decisions.jsonl"],
+    "sitemap": [".agentlas/sitemap.json", ".agentlas/validation-ledger.jsonl"],
+    "code_map": [".agentlas/code-map/project-map.json"],
+    "context_map": [".agentlas/context-map.json"],
+    "recall_index": [".agentlas/ontology-runtime.sqlite"],
+    "experience": [".agentlas/experience-relations.jsonl"],
+}
+MEMORY_WRITE_OWNERS = {
+    "project": "pm-soul",
+    "agent_repo": "memory-curator",
+    "team_memory": "orchestrator",
+    "session": "memory-curator",
+    "curator_decisions": "memory-curator",
+    "sitemap": "project bootstrap",
+    "code_map": "project bootstrap",
+    "context_map": "context map authoring (derived)",
+    "recall_index": "ontology runtime",
+    "experience": "experience intake",
+}
+# The runtime fills these; a package declares them so a reader knows where its
+# memory comes from, and never ships their contents.
+RUNTIME_OWNED_ROOTS = ["code_map", "context_map", "recall_index", "experience"]
+MEMORY_PROMOTION_PATH = [
+    "session ticket",
+    "curator decision",
+    "durable memory entry",
+    "experience candidate",
+    "experience pack",
+]
+MEMORY_TRUST_LABELS = ["verified", "memory_derived", "inferred", "stale_check_needed"]
+
+
+
+CANONICAL_COMMAND_RE = re.compile(r"^/[a-z0-9][a-z0-9-]*(?::[a-z0-9][a-z0-9-]*)?$")
+
+
+def command_slug(slug: str) -> str:
+    """A slug reshaped to the command pattern the schema enforces.
+
+    Published slugs carry underscores and capitals (`Web_master`); the command
+    grammar accepts neither, so 16 packages declared a canonical command their
+    own schema rejected. Reshaping is not renaming: the package keeps its slug,
+    and only the command string is made legal.
+    """
+
+    lowered = re.sub(r"[^a-z0-9]+", "-", str(slug).lower()).strip("-")
+    return lowered or "agent"
+
+
+def fill_memory_map(root: Path, slug: str) -> bool:
+    """Declare where this package's memory lives. Never invents an author fact."""
+    path = root / ".agentlas" / "memory-map.json"
+    current = _read_json(path)
+    payload = dict(current) if isinstance(current, dict) else {}
+    before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    if is_unfilled(payload.get("schemaVersion")):
+        payload["schemaVersion"] = MEMORY_MAP_SCHEMA_VERSION
+    if is_unfilled(payload.get("projectId")):
+        payload["projectId"] = slug
+    # Merge, do not replace and do not skip. A package that already declared
+    # roots keeps every one of them — those may be the author's. But the
+    # infrastructure roots are not the author's to know about: code map, context
+    # map, recall index and experience are filled by the runtime, and a map that
+    # omits them tells a reader the package's memory is smaller than it is.
+    # Measured: the old five-root template predates all four, so every published
+    # package understates where its own memory comes from.
+    roots = payload.get("canonicalMemoryRoots")
+    roots = dict(roots) if isinstance(roots, dict) else {}
+    for key, value in CANONICAL_MEMORY_ROOTS.items():
+        if key not in roots:
+            roots[key] = list(value)
+    payload["canonicalMemoryRoots"] = roots
+
+    owners = payload.get("writeOwners")
+    owners = dict(owners) if isinstance(owners, dict) else {}
+    for key, value in MEMORY_WRITE_OWNERS.items():
+        if key not in owners:
+            owners[key] = value
+    payload["writeOwners"] = owners
+    # promotionPath ships as a list; one published package had it as an object
+    # and failed its own schema, so a wrong-typed value is replaced, not merged.
+    if not isinstance(payload.get("promotionPath"), list):
+        payload["promotionPath"] = list(MEMORY_PROMOTION_PATH)
+    if not isinstance(payload.get("trustLabels"), list):
+        payload["trustLabels"] = list(MEMORY_TRUST_LABELS)
+    payload.setdefault("runtimeOwned", list(RUNTIME_OWNED_ROOTS))
+    if json.dumps(payload, sort_keys=True, ensure_ascii=False) == before:
+        return False
+    _write_json(path, payload)
+    return True
+
+
+def fill_global_commands(root: Path, slug: str, name: str) -> bool:
+    """Fill the command table's envelope. Entries the author wrote are kept."""
+    path = root / ".agentlas" / "global-commands.json"
+    current = _read_json(path)
+    payload = dict(current) if isinstance(current, dict) else {}
+    before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    if is_unfilled(payload.get("schemaVersion")):
+        payload["schemaVersion"] = GLOBAL_COMMANDS_SCHEMA_VERSION
+    if is_unfilled(payload.get("packageId")):
+        payload["packageId"] = slug
+    slug_command = command_slug(slug)
+    if not CANONICAL_COMMAND_RE.match(str(payload.get("canonicalCommand") or "")):
+        payload["canonicalCommand"] = f"/{slug_command}"
+    # The schema's shape, not a sentence: {required, template}. Writing a bare
+    # string here is what 61 packages were rejected for.
+    message = payload.get("postCreationUserMessage")
+    if not isinstance(message, dict) or not str(message.get("template") or "").strip():
+        payload["postCreationUserMessage"] = {
+            "required": False,
+            "template": f"{name} is installed. Run /{command_slug(slug)} to start it.",
+        }
+    if not isinstance(payload.get("commands"), list) or is_unfilled(payload.get("commands")):
+        payload["commands"] = [{
+            "runtime": "claude-code",
+            "command": f"/{slug_command}",
+            "adapterPath": f".claude/commands/{slug_command}.md",
+            "globalInstallPath": f"~/.claude/commands/{slug_command}.md",
+            "scope": "global",
+            "status": "native-slash-command",
+        }]
+    if json.dumps(payload, sort_keys=True, ensure_ascii=False) == before:
+        return False
+    _write_json(path, payload)
+    return True
+
+
+def fill_memory_behavior(root: Path) -> bool:
+    """A card must say what it reads and writes. Absent means the narrowest."""
+    path = root / ".agentlas" / "routing-card.json"
+    card = _read_json(path)
+    if not card:
+        return False
+    behaviour = card.get("memory_behavior")
+    payload = dict(behaviour) if isinstance(behaviour, Mapping) else {}
+    before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    # Defaulting to the narrowest true claim: a package that never said it reads
+    # project memory is not thereby granted it.
+    if not normalise_memory_reads(payload.get("reads")):
+        payload["reads"] = "task"
+    if not normalise_memory_writes(payload.get("writes")):
+        payload["writes"] = "none"
+    # Required, and the honest default is the narrowest: a package that never
+    # said it exports memory to the cloud has not claimed the right to.
+    if not isinstance(payload.get("exports_to_cloud"), bool):
+        payload["exports_to_cloud"] = False
+    if json.dumps(payload, sort_keys=True, ensure_ascii=False) == before:
+        return False
+    card["memory_behavior"] = payload
+    _write_json(path, card)
+    return True
+
+
+
+def is_unfilled(value: Any) -> bool:
+    """True when a value is absent OR is still a scaffold stencil.
+
+    `{{TOPOLOGY}}` is a truthy string and `[{"id": "{{ROLE}}"}]` is a non-empty
+    list, so `if not payload.get(...)` and `setdefault` both read a stencil as an
+    answer and decline to fill it. The file then keeps one `{{` token, the upload
+    path withdraws the whole artifact for shipping placeholder text, and the
+    package blocks on a field the server could have derived. Measured 2026-08-07:
+    that single confusion held 65 of 178 published packages out of the corpus.
+    """
+
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip() or ("{{" in value and "}}" in value)
+    if isinstance(value, (list, tuple)):
+        return not value or all(is_unfilled(item) for item in value)
+    if isinstance(value, dict):
+        return not value or all(is_unfilled(item) for item in value.values())
+    return False
+
+
+def fill_company_blueprint(root: Path, slug: str, name: str) -> bool:
+    """Describe the team that is on disk. Never invents a member.
+
+    topology/nodes/edges are read from `agents/*/agent.md` — the roster is the
+    fact, the blueprint is its description, and a description that disagrees
+    with the folder is worse than none. Measured: 54 published teams had a
+    blueprint with no topology and no edges while carrying a complete roster,
+    so the shape gate refused a team that was structurally fine.
+    """
+
+    members = sorted(
+        path.parent.name for path in root.glob("agents/*/agent.md") if path.is_file()
+    )
+    if not members:
+        return False
+
+    def role_of(folder: str) -> str:
+        return folder.split("-", 1)[1] if folder[:1].isdigit() and "-" in folder else folder
+
+    orchestrators = [m for m in members if "orchestrator" in role_of(m) or role_of(m) in {"hq", "router"}]
+    orchestrator = orchestrators[0] if orchestrators else members[0]
+    workers = [m for m in members if m != orchestrator]
+
+    path = root / ".agentlas" / "company-blueprint.json"
+    payload = _read_json(path)
+    payload = dict(payload) if isinstance(payload, dict) else {}
+    before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+
+    if is_unfilled(payload.get("schemaVersion")):
+        payload["schemaVersion"] = "1.0"
+    if is_unfilled(payload.get("name")):
+        payload["name"] = name
+    if is_unfilled(payload.get("teamId")):
+        payload["teamId"] = slug
+    # `topology` ships as a bare string in the corpus and as an object in 15
+    # packages; a real string that is already there is left alone.
+    if is_unfilled(payload.get("topology")):
+        payload["topology"] = "hub-and-spoke" if len(workers) > 1 else "single-agent"
+    if is_unfilled(payload.get("orchestrator")):
+        payload["orchestrator"] = orchestrator
+    if not isinstance(payload.get("nodes"), list) or is_unfilled(payload.get("nodes")):
+        payload["nodes"] = [
+            {"id": member, "role": role_of(member),
+             "kind": "orchestrator" if member == orchestrator else "worker",
+             "agent": f"agents/{member}/agent.md"}
+            for member in members
+        ]
+    if not isinstance(payload.get("edges"), list) or is_unfilled(payload.get("edges")):
+        # Every worker is reached by the orchestrator and returns to it. That is
+        # the contract in orchestrator-protocol.md: HQ routes, workers never
+        # call each other. The edges state the protocol, they do not guess it.
+        payload["edges"] = [
+            {"from": orchestrator, "to": worker, "relation": "delegates"}
+            for worker in workers
+        ] + [
+            {"from": worker, "to": orchestrator, "relation": "returns"}
+            for worker in workers
+        ]
+    if json.dumps(payload, sort_keys=True, ensure_ascii=False) == before:
+        return False
+    _write_json(path, payload)
+    return True
+
+
+def coerce_contract_shapes(root: Path, slug: str) -> list[str]:
+    """Move already-present answers into the shape their schema declares.
+
+    Nothing here invents a fact. Every value written is one the package already
+    states somewhere else in the same file - an orchestrator object's own `id`, a
+    skill entry's own `id`, an input's own name. These are shape mismatches, not
+    missing content, and refusing an upload over one asks the author to retype
+    what they already wrote.
+
+    Measured 2026-08-07 on the 178 published packages: 46 were held back and every
+    remaining blocker was one of the five below.
+    """
+
+    fixed: list[str] = []
+
+    # ── company-blueprint: `topology` and `orchestrator` are strings ──────────
+    # 15 packages nest the whole graph under `topology` as an object, and others
+    # give `orchestrator` as `{id, role, job}`. The gate reads both with
+    # `isinstance(..., str)` and treats anything else as absent, so a fully
+    # described team reads as an empty one.
+    blueprint_path = root / ".agentlas" / "company-blueprint.json"
+    if blueprint_path.exists():
+        payload = _read_json(blueprint_path)
+        before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        topology = payload.get("topology")
+        if isinstance(topology, dict):
+            for key in ("nodes", "edges"):
+                nested = topology.get(key)
+                if isinstance(nested, list) and nested and is_unfilled(payload.get(key)):
+                    payload[key] = nested
+            shape = topology.get("shape") or topology.get("type") or topology.get("name")
+            payload["topology"] = (
+                str(shape).strip() if isinstance(shape, str) and shape.strip()
+                else ("hub-and-spoke" if len(payload.get("nodes") or []) > 2 else "single-agent")
+            )
+        orchestrator = payload.get("orchestrator")
+        if isinstance(orchestrator, dict):
+            identifier = orchestrator.get("id") or orchestrator.get("slug") or orchestrator.get("name")
+            if isinstance(identifier, str) and identifier.strip():
+                payload["orchestrator"] = identifier.strip()
+        if is_unfilled(payload.get("teamId")):
+            payload["teamId"] = slug
+        if json.dumps(payload, sort_keys=True, ensure_ascii=False) != before:
+            _write_json(blueprint_path, payload)
+            fixed.append(".agentlas/company-blueprint.json")
+
+    # ── skill-registry: each entry needs `slug`, which it already carries as `id`
+    registry_path = root / ".agentlas" / "skill-registry.json"
+    if registry_path.exists():
+        payload = _read_json(registry_path)
+        skills = payload.get("skills")
+        if isinstance(skills, list):
+            changed = False
+            for entry in skills:
+                if not isinstance(entry, dict) or not is_unfilled(entry.get("slug")):
+                    continue
+                candidate = entry.get("id") or entry.get("name")
+                if not (isinstance(candidate, str) and candidate.strip()):
+                    path_value = str(entry.get("path") or "")
+                    candidate = Path(path_value).parent.name if path_value else ""
+                if isinstance(candidate, str) and candidate.strip():
+                    entry["slug"] = candidate.strip()
+                    changed = True
+            if changed:
+                _write_json(registry_path, payload)
+                fixed.append(".agentlas/skill-registry.json")
+
+    # ── routing-card: optional_inputs entries are objects with a `name` ───────
+    card_path = root / ".agentlas" / "routing-card.json"
+    if card_path.exists():
+        card = _read_json(card_path)
+        inputs = card.get("optional_inputs")
+        if isinstance(inputs, list) and any(isinstance(item, str) for item in inputs):
+            card["optional_inputs"] = [
+                {"name": item.strip()} if isinstance(item, str) and item.strip() else item
+                for item in inputs
+                if not (isinstance(item, str) and not item.strip())
+            ]
+            _write_json(card_path, card)
+            fixed.append(".agentlas/routing-card.json")
+
+    # ── agent-card: capabilities the routing card already lists ──────────────
+    # The schema admits either a list of ids or a profile object; a card that has
+    # neither takes the routing card's own capability list rather than a guess.
+    agent_card_path = root / ".agentlas" / "agent-card.json"
+    if agent_card_path.exists():
+        agent_card = _read_json(agent_card_path)
+        if is_unfilled(agent_card.get("capabilities")):
+            card = _read_json(card_path)
+            declared = [c for c in (card.get("capabilities") or []) if isinstance(c, str) and c.strip()]
+            if declared:
+                agent_card["capabilities"] = declared
+                _write_json(agent_card_path, agent_card)
+                fixed.append(".agentlas/agent-card.json")
+
+    # ── global-commands: one HQ command, many adapters ───────────────────────
+    # The contract is a single public HQ command exposed through per-runtime
+    # adapter rows. Measured: some rows carry `command: null` and some carry a
+    # drifted spelling, so the shape gate sees either no canonical command or
+    # several. `canonicalCommand` in the same file is the declared answer; the
+    # rows are adapters, not competing names.
+    commands_path = root / ".agentlas" / "global-commands.json"
+    if commands_path.exists():
+        payload = _read_json(commands_path)
+        canonical = str(payload.get("canonicalCommand") or "").strip()
+        rows = payload.get("commands")
+        if canonical and isinstance(rows, list) and rows:
+            changed = False
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                if str(row.get("command") or "").strip() != canonical:
+                    row["command"] = canonical
+                    changed = True
+            if changed:
+                _write_json(commands_path, payload)
+                fixed.append(".agentlas/global-commands.json")
+
+    return fixed
+
+
+def _card_texts(value: Any) -> list[str]:
+    out: list[str] = []
+    for item in value or []:
+        if isinstance(item, str) and item.strip():
+            out.append(item.strip())
+        elif isinstance(item, Mapping):
+            text = item.get("text") or item.get("example") or item.get("prompt") or item.get("name")
+            if isinstance(text, str) and text.strip():
+                out.append(text.strip())
+    return out
+
+
+def fill_declared_artifacts(root: Path, slug: str) -> list[str]:
+    """Write the contract artifacts the routing card already answers.
+
+    Same failure shape as the eval plan and `agent.md`: scaffold lays a stencil,
+    derive cannot answer it, the upload pass withdraws it rather than ship
+    `{{...}}`, and the server refuses the package for the file being missing. The
+    routing card is the package's own declaration and already carries every field
+    these three need, so restating it in their shapes invents nothing.
+
+    Keys are the ones the consumers actually read, not a shape guessed from the
+    name - `context_map_authoring` reads goal/requirements/constraints/done_signal
+    off the work brief, and the benchmark rows follow templates/routing-benchmark.jsonl.tpl.
+    """
+
+    written: list[str] = []
+    card = _read_json(root / ".agentlas" / "routing-card.json")
+    if not card:
+        return written
+
+    triggers = _card_texts(card.get("trigger_examples"))
+    anti = _card_texts(card.get("anti_triggers"))
+    inputs = _card_texts(card.get("required_inputs"))
+    produces = _card_texts(card.get("produces"))
+    summary = str(card.get("summary") or card.get("summary_en") or "").strip()
+
+    def stale(path: Path) -> bool:
+        """True when the file is absent or still a stencil."""
+        if not path.is_file():
+            return True
+        try:
+            body = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return True
+        return not body.strip() or bool(_PLACEHOLDER.search(body))
+
+    brief_path = root / ".agentlas" / "work-brief.json"
+    if (summary or inputs) and stale(brief_path):
+        _write_json(brief_path, {
+            "schemaVersion": "agentlas.work-brief/1",
+            "goal": summary or f"deliver what {slug} declares in its routing card",
+            "requirements": inputs,
+            "constraints": anti,
+            "done_signal": produces,
+            "derivedFrom": ".agentlas/routing-card.json",
+        })
+        written.append(".agentlas/work-brief.json")
+
+    bench_path = root / ".agentlas" / "routing-benchmarks.jsonl"
+    if (triggers or anti) and stale(bench_path):
+        rows: list[str] = []
+        case = 0
+        for prompt, expect in [(t, "route") for t in triggers[:6]] + [(a, "refuse") for a in anti[:4]]:
+            case += 1
+            locale = "ko" if _is_cjk(prompt) else "en"
+            rows.append(json.dumps(
+                {"case": case, "locale": locale, "prompt": prompt, "expect": expect},
+                ensure_ascii=False))
+        bench_path.parent.mkdir(parents=True, exist_ok=True)
+        bench_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        written.append(".agentlas/routing-benchmarks.jsonl")
+
+    interview_path = root / "docs" / "builder-interview.md"
+    if summary and stale(interview_path):
+        interview_path.parent.mkdir(parents=True, exist_ok=True)
+        def block(title: str, items: list[str]) -> str:
+            if not items:
+                return ""
+            body = "\n".join(f"- {item}" for item in items)
+            return f"\n## {title}\n\n{body}\n"
+        interview_path.write_text(
+            f"# Builder Interview - {slug}\n\n"
+            f"Reconstructed from this package's own routing card, because the original\n"
+            f"interview transcript was not shipped. Every line below is the package's\n"
+            f"declaration, not a new answer.\n\n"
+            f"## Request\n\n{summary}\n"
+            + block("Inputs it asks for", inputs)
+            + block("What it produces", produces)
+            + block("When it should be chosen", triggers)
+            + block("When it should NOT be chosen", anti)
+            + f"\n## Source\n\n`.agentlas/routing-card.json`\n",
+            encoding="utf-8")
+        written.append("docs/builder-interview.md")
+
+    # ── .agentlas/sitemap.json: the AI Sitemap Task Bias governs ──────────────
+    # One node per surface that exists on disk: the roster for a team, the
+    # skills for a single agent. Every node starts `provisional` with an unknown
+    # status and a zero completion score, which is the honest starting state -
+    # the sitemap contract says a completion score must be evidence-backed, and
+    # there is no evidence yet. Task Bias promotes them as evidence arrives.
+    sitemap_path = root / ".agentlas" / "sitemap.json"
+    if stale(sitemap_path):
+        surfaces = [p.parent.name for p in sorted(root.glob("agents/*/agent.md"))]
+        kind = "team-member"
+        if not surfaces:
+            surfaces = [p.parent.name for p in sorted(root.glob("skills/*/SKILL.md"))]
+            kind = "skill"
+        if surfaces:
+            lead = surfaces[0]
+            _write_json(sitemap_path, {
+                "schemaVersion": "agentlas.sitemap/1",
+                "projectId": slug,
+                "nodes": [
+                    {
+                        "id": name,
+                        "kind": kind,
+                        "title": name.split("-", 1)[1] if name[:1].isdigit() and "-" in name else name,
+                        "relative_path": (f"agents/{name}/agent.md" if kind == "team-member"
+                                          else f"skills/{name}/SKILL.md"),
+                        "status": "unknown",
+                        "generated": True,
+                        "dependencies": [],
+                    }
+                    for name in surfaces
+                ],
+                # A single agent's skills do not call each other, and a team's
+                # members answer to the lead - the same shape orchestrator-protocol
+                # states. No edge is guessed beyond that.
+                "edges": ([] if kind == "skill" else [
+                    {"from": lead, "to": name, "relation": "delegates", "generated": True}
+                    for name in surfaces[1:]
+                ]),
+                "derivedFrom": "agents/*/agent.md" if kind == "team-member" else "skills/*/SKILL.md",
+            })
+            written.append(".agentlas/sitemap.json")
+
+    # ── docs/research-sources.md: the sources that are actually in the package ──
+    sources_path = root / "docs" / "research-sources.md"
+    if stale(sources_path):
+        found: list[str] = []
+        for pattern in ("skills/*/knowledge/*.md", "knowledge/*.md", "docs/*.md", "THIRD_PARTY_NOTICES.md"):
+            for hit in sorted(root.glob(pattern)):
+                rel = hit.relative_to(root).as_posix()
+                if rel not in found and not rel.startswith("docs/research-sources"):
+                    found.append(rel)
+        sources_path.parent.mkdir(parents=True, exist_ok=True)
+        listing = "\n".join(f"- `{rel}`" for rel in found[:40]) if found else (
+            "- No reference material is shipped inside this package. Its behaviour is\n"
+            "  defined entirely by `AGENTS.md` and the routing card."
+        )
+        sources_path.write_text(
+            f"# Research Sources - {slug}\n\n"
+            f"What this package's answers are grounded in. Listed from the files that\n"
+            f"actually ship with it, not from a bibliography written after the fact -\n"
+            f"a source that is not in the package cannot be checked by whoever runs it.\n\n"
+            f"## Shipped reference material\n\n{listing}\n",
+            encoding="utf-8")
+        written.append("docs/research-sources.md")
+
+    # ── contracts/output.example.json: one instance of the declared schema ─────
+    example_path = root / "contracts" / "output.example.json"
+    schema_path = root / "contracts" / "output.schema.json"
+    if stale(example_path) and schema_path.is_file():
+        schema = _read_json(schema_path)
+        example = _example_from_schema(schema, produces)
+        if example is not None:
+            _write_json(example_path, example)
+            written.append("contracts/output.example.json")
+
+    return written
+
+
+def _example_from_schema(schema: Mapping[str, Any], produces: list[str]) -> Any:
+    """A minimal instance of a JSON Schema, built from what the schema declares.
+
+    Prefers the schema's own `example`/`default`/`const`/first `enum` value, so
+    the instance is the author's where they gave one. Strings with no declared
+    value fall back to the package's own `produces` phrasing rather than lorem,
+    because an example nobody can read teaches a buyer nothing.
+    """
+
+    if not isinstance(schema, Mapping):
+        return None
+    for key in ("example", "default", "const"):
+        if key in schema:
+            return schema[key]
+    enum = schema.get("enum")
+    if isinstance(enum, list) and enum:
+        return enum[0]
+
+    kind = schema.get("type")
+    if isinstance(kind, list):
+        kind = next((k for k in kind if k != "null"), None)
+    if kind == "object" or (kind is None and "properties" in schema):
+        props = schema.get("properties")
+        if not isinstance(props, Mapping):
+            return {}
+        required = schema.get("required")
+        keys = [k for k in (required if isinstance(required, list) else list(props)) if k in props]
+        return {k: _example_from_schema(props[k], produces) for k in keys}
+    if kind == "array":
+        item = _example_from_schema(schema.get("items") or {}, produces)
+        return [item] if item is not None else []
+    if kind == "integer":
+        return 0
+    if kind == "number":
+        return 0
+    if kind == "boolean":
+        return False
+    if kind == "null":
+        return None
+    title = str(schema.get("description") or schema.get("title") or "").strip()
+    return title or (produces[0] if produces else "see contracts/output.schema.json")
+
+
+def _is_cjk(text: str) -> bool:
+    return any("가" <= ch <= "힣" or "぀" <= ch <= "ヿ" for ch in text)
+
+
+def fill_capability_eval_plan(root: Path) -> bool:
+    """Write the eval plan from the trigger examples the card already carries.
+
+    The scaffold lays down a stencil with `{{POSITIVE_PROMPT}}`, derive cannot
+    answer it, and the upload pass withdraws the file rather than ship the
+    placeholder - so the server refuses the package for the artifact being
+    missing. Nothing here is invented: a routing card is required to carry at
+    least six trigger examples and four anti-triggers, and those ARE the positive
+    and negative cases. The card already states them; this only restates them in
+    the shape the eval plan declares.
+    """
+
+    card = _read_json(root / ".agentlas" / "routing-card.json")
+    if not card:
+        return False
+
+    def phrases(value: Any) -> list[str]:
+        out: list[str] = []
+        for item in value or []:
+            if isinstance(item, str) and item.strip():
+                out.append(item.strip())
+            elif isinstance(item, Mapping):
+                text = item.get("text") or item.get("example") or item.get("prompt")
+                if isinstance(text, str) and text.strip():
+                    out.append(text.strip())
+        return out
+
+    positive = phrases(card.get("trigger_examples"))
+    negative = phrases(card.get("anti_triggers"))
+    if not positive and not negative:
+        return False
+
+    path = root / ".agentlas" / "capability-eval-plan.json"
+    existing = _read_json(path)
+    if existing and not _PLACEHOLDER.search(json.dumps(existing, ensure_ascii=False)):
+        return False
+
+    produces = [p for p in (card.get("produces") or []) if isinstance(p, str) and p.strip()]
+    payload = {
+        "schemaVersion": "agentlas-capability-eval-plan/1.0",
+        "positive_cases": [
+            {
+                "id": f"cap-{index:03d}",
+                "prompt": prompt,
+                "expected_artifacts": produces[:2] or ["the deliverable named in the routing card"],
+                "pass_criteria": [
+                    "the request is accepted and handled by this agent",
+                    "the deliverable follows the package's own return contract",
+                ],
+            }
+            for index, prompt in enumerate(positive[:6], start=1)
+        ],
+        "negative_cases": [
+            {
+                "id": f"anti-{index:03d}",
+                "prompt": prompt,
+                "expected_behavior": "declines or reroutes; this is outside the declared scope",
+            }
+            for index, prompt in enumerate(negative[:4], start=1)
+        ],
+        "tool_smoke_checks": [],
+        "derivedFrom": ".agentlas/routing-card.json (trigger_examples, anti_triggers, produces)",
+    }
+    _write_json(path, payload)
+    return True
+
+
+RUNTIME_ADAPTER_FILES = ("CLAUDE.md", "GEMINI.md", "AGENTS.md")
+
+
+def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
+    """Write the adapter files the contract requires, from the package's own core.
+
+    `agent.md` is required by the contract and refused by the server when absent,
+    but `contract scaffold` can only lay down a `{{ROLE}}` stencil for it, and the
+    upload pass then withdraws that stencil rather than ship placeholder text to a
+    buyer. Net effect: the engine created the file, deleted it, and the server
+    rejected the upload for the file being missing - measured 2026-08-07 as an
+    HTTP 403 `security_blocked` on a package whose local gate said ready.
+
+    Nothing is invented here. Every published package in this corpus already
+    declares one canonical core (`AGENTS.md`) and treats `CLAUDE.md`/`GEMINI.md`
+    as thin adapters that point at it; this writes `agent.md` as the same kind of
+    thin adapter, in the package's own words, so the required file exists and
+    still has exactly one source of truth.
+    """
+
+    written: list[str] = []
+    core = root / "AGENTS.md"
+    if not core.is_file():
+        return written
+    try:
+        core_text = core.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return written
+    if is_unfilled(core_text) or _has_placeholders(core):
+        return written
+
+    target = root / "agent.md"
+    existing = ""
+    if target.is_file():
+        try:
+            existing = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            existing = ""
+        # A body the author actually wrote is never replaced; only an absent file
+        # or a leftover stencil is.
+        if not is_unfilled(existing) and not _PLACEHOLDER.search(existing):
+            return written
+
+    title = ""
+    for line in core_text.splitlines():
+        if line.startswith("# "):
+            title = line[2:].strip()
+            break
+    target.write_text(
+        f"# {title or slug}\n\n"
+        f"> Thin adapter. **Source of truth is [`AGENTS.md`](AGENTS.md)** - read it first.\n"
+        f"> This file exists so a runtime that looks for `agent.md` finds the same\n"
+        f"> core, never a second copy that can drift away from it.\n\n"
+        f"## How to run {slug}\n\n"
+        f"1. Read [`AGENTS.md`](AGENTS.md) for the principles, rules, workflow, and\n"
+        f"   return contract. Everything binding lives there.\n"
+        f"2. Follow the runtime adapter for your host if one is present:\n"
+        f"   [`CLAUDE.md`](CLAUDE.md), [`GEMINI.md`](GEMINI.md).\n\n"
+        f"## Do not\n\n"
+        f"- Treat this file as the source of truth. That is always `AGENTS.md`.\n"
+        f"- Copy rules out of `AGENTS.md` into here; a second copy is a second\n"
+        f"  answer, and the two will disagree.\n",
+        encoding="utf-8",
+    )
+    written.append("agent.md")
+    return written
+
+
+def redact_host_paths(root: Path) -> list[str]:
+    """Replace absolute host paths with package-relative ones, in place.
+
+    A path like `/Users/<person>/Documents/...` is someone's home directory
+    leaking into a published package. Blocking the upload leaves the leak in the
+    author's working tree and the package unpublished; redacting removes the
+    private part and ships the rest. A path that points inside this package
+    becomes the relative path it should always have been; anything else becomes a
+    neutral marker, because the absolute location is not portable information.
+    """
+
+    from .package_contract import HOST_PATH_RE, TEXT_SCAN_LIMIT_BYTES, _looks_like_a_pattern_not_a_path
+
+    workspace = str(root.resolve())
+    redacted: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            if path.stat().st_size > TEXT_SCAN_LIMIT_BYTES:
+                continue
+            raw = path.read_bytes()
+        except OSError:
+            continue
+        if b"\x00" in raw:
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+
+        def replace(match: re.Match[str]) -> str:
+            found = match.group(0)
+            if _looks_like_a_pattern_not_a_path(text, match):
+                return found
+            if found.startswith(workspace):
+                relative = found[len(workspace):].lstrip("/")
+                return relative or "."
+            return "<host-path-removed>"
+
+        rewritten = HOST_PATH_RE.sub(replace, text)
+        if rewritten != text:
+            try:
+                path.write_text(rewritten, encoding="utf-8")
+            except OSError:
+                continue
+            redacted.append(path.relative_to(root).as_posix())
+    return redacted
+
+
+def authored_gaps(blockers: list[Any]) -> list[str]:
+    """The blockers a model has to answer, separated from the mechanical ones."""
+
+    gaps: list[str] = []
+    for blocker in blockers:
+        text = str(blocker)
+        if "unfilled placeholders" in text or text.endswith(": missing"):
+            gaps.append(text.split(":")[0])
+    return sorted(set(gaps))

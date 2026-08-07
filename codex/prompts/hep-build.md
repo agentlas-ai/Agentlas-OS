@@ -39,13 +39,26 @@ Expose `/prompts:hep-build` as the public Codex build prompt next to
   behavior. Localized marketplace copy, routing trigger examples, and sample
   user inputs may use the target user language.
 - After creating or repairing a package, run
-  `scripts/verify-team-package.sh <package-root>`. If it fails, do not report
+Before writing any package file, lay the contract down:
+`"$ENGINE/bin/hephaestus" contract scaffold "$PACKAGE_ROOT" --mode single|team|package`.
+Then, as soon as the routing card exists, run
+`"$ENGINE/bin/hephaestus" contract complete "$PACKAGE_ROOT"` — the engine fills every
+artifact the package already answers (`agent.md`, work brief, sitemap, routing
+benchmarks, capability eval plan, builder interview, research sources, output
+example) from the routing card, the roster, and the schemas on disk. It never
+overwrites an authored body and never invents a fact. Run it BEFORE
+`contract verify`, so verify reports only the genuinely authored half.
+It copies every required artifact into place with named `{{PLACEHOLDER}}` holes and
+never overwrites. Skipping it is how a build ends with 5 of 18 required artifacts
+and still reports success. `contract prompt --mode <mode>` lists what each one is for.
+
+  `"$ENGINE/bin/hephaestus" contract verify "$PACKAGE_ROOT" --mode single|team|package` (this runs the team-shape rule too). If it fails, do not report
   `completed`; correct the shape by collapsing to a valid single-agent package
   or adding orchestrator/HQ plus company-blueprint topology.
 - Include `global_commands` for the created agent or team in the final
   response, plus `interview_research` evidence.
 - If a package was created/repaired in the current workspace, register it to
-  local discovery immediately: run `./bin/hephaestus cards migrate . --tier local
+  local discovery immediately: run `./bin/hephaestus cards migrate "$PACKAGE_ROOT" --tier local
   --overwrite` (or the same `hephaestus` runner in cache if local binary is
   unavailable), and include migration result in `evidence`.
 

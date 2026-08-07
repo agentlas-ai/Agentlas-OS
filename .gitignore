@@ -37,6 +37,34 @@ docs/agent-os-redesign.md
 
 # >>> agentlas local project state >>>
 .agentlas/
+
+# A runtime adapter's own .agentlas/ is product surface, not local state: it is
+# this package's settings folder, rendered by scripts/sync-adapters.sh, and it
+# has to reach the user's machine for /hep-build to read its own contracts.
+# These were force-added one at a time before, which is how a new file quietly
+# stopped shipping. Declare the boundary instead: a user's .agentlas is ignored,
+# an adapter mirror's .agentlas is tracked.
+!claude/plugins/*/.agentlas/
+!claude/plugins/*/.agentlas/**
+!codex/plugins/*/.agentlas/
+!codex/plugins/*/.agentlas/**
+!gemini/extension/.agentlas/
+!gemini/extension/.agentlas/**
+
+# ...but generated RUNTIME STATE inside a mirror is still local state, not
+# product surface. The negations above are for declarative files a user needs
+# (mode-map, sources). An ontology database and its inbox are this machine's
+# accumulated memory: personal data that must never reach a public repo, and
+# re-ignoring them here is narrower than dropping the negation, which would
+# stop shipping the declarative files again.
+*/plugins/*/.agentlas/ontology-runtime.sqlite*
+*/plugins/*/.agentlas/ontology-inbox/
+*/plugins/*/.agentlas/ontology-runtime.json
+*/plugins/*/.agentlas/ontology-sources.json
+*/extension/.agentlas/ontology-runtime.sqlite*
+*/extension/.agentlas/ontology-inbox/
+*/extension/.agentlas/ontology-runtime.json
+*/extension/.agentlas/ontology-sources.json
 .agentlas/project-soul-memory.md
 .agentlas/sitemap.json
 .agentlas/memory-map.json
@@ -89,6 +117,12 @@ benchmarks/
 fixtures/
 **/fixtures/
 docs/
+# Same boundary as .agentlas above: repository docs stay internal, but a doc the
+# shipped build command actually reads at runtime travels with the adapter.
+!claude/plugins/*/docs/
+!claude/plugins/*/docs/**
+!codex/plugins/*/docs/
+!codex/plugins/*/docs/**
 findings/
 /research/
 plans/

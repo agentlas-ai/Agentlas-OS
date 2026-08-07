@@ -2,16 +2,54 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Agentlas Memory Map",
   "type": "object",
-  "required": ["schemaVersion", "projectId", "canonicalMemoryRoots", "writeOwners"],
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "canonicalMemoryRoots",
+    "writeOwners"
+  ],
   "properties": {
-    "schemaVersion": { "type": "string" },
-    "projectId": { "type": "string" },
-    "surface": { "type": "string" },
-    "canonicalMemoryRoots": { "type": "object" },
-    "writeOwners": { "type": "object" },
-    "promotionPath": { "type": "array", "items": { "type": "string" } },
-    "trustLabels": { "type": "array", "items": { "type": "string" } },
-    "exclude": { "type": "array", "items": { "type": "string" } }
+    "schemaVersion": {
+      "type": "string"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "surface": {
+      "type": "string"
+    },
+    "canonicalMemoryRoots": {
+      "type": "object"
+    },
+    "writeOwners": {
+      "type": "object"
+    },
+    "promotionPath": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Ordered path a candidate travels from session ticket to durable experience."
+    },
+    "trustLabels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "runtimeOwned": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Roots the runtime owns and fills; a package declares them so a reader knows where its memory comes from, and never ships their contents."
+    }
   },
   "additionalProperties": true
 }

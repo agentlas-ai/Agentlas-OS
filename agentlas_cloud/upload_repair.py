@@ -29,9 +29,26 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
+# The gate owns how much a card must say; this pass fills to exactly that. Two
+# copies of the same number is how a card sitting at 5 triggers was declared
+# repaired here and refused there.
+from .routing_vocabulary import normalise_memory_reads, normalise_memory_writes
+from .networking.card_lint import (
+    ANTI_TRIGGER_MINIMUM_PER_LOCALE,
+    ANTI_TRIGGER_MINIMUM_TOTAL,
+    TRIGGER_MINIMUM_PER_LOCALE,
+    TRIGGER_MINIMUM_TOTAL,
+)
+
 from .runtime import DEFAULT_ALLOW_READ, is_credential_store_path
+# One definition of "is this actually answered", shared with the derive pass.
+# A scaffold stencil is truthy and non-empty, so every plain `if not x` below
+# reads `{{CAPABILITY_VERB_OBJECT_1}}` as a real capability and declines to fill
+# it. Measured 2026-08-07: a freshly built package failed upload on exactly that.
+from .repackage import is_unfilled
 
 __all__ = ["REPAIRABLE_BLOCKERS", "repair_package", "classify_findings"]
 
@@ -227,7 +244,13 @@ def _agent_summary(base: Path) -> str:
             if len(" ".join(body)) > 240:
                 break
         if body:
-            return _first_sentence(" ".join(body))
+            candidate = _first_sentence(" ".join(body))
+            # Keep looking. `contract scaffold` writes a stencil `agent.md`, and
+            # taking the first file that exists meant reading `{{ROLE}}` and never
+            # reaching the AGENTS.md the author actually wrote - so the listing
+            # description became the placeholder itself.
+            if not is_unfilled(candidate):
+                return candidate
     return ""
 
 
@@ -262,15 +285,139 @@ def _section_text(base: Path, headings: tuple[str, ...], limit: int = 300) -> st
 
 
 def _sentences(text: str) -> list[str]:
-    """Split prose into whole sentences. Sentences, never terms."""
+    """Split prose into whole sentences. Sentences, never terms.
+
+    A line still holding a `{{PLACEHOLDER}}` is a stencil, not something the
+    author wrote, and harvesting one is how a card that carried five real trigger
+    examples came back carrying twenty-five, twenty of them `{{BENCH_EN_REJECT_1}}`.
+    Repair may only carry across content that already exists.
+    """
     import re
 
     parts = re.split(r"(?<=[.!?。])\s+|\n+", str(text))
-    return [part.strip() for part in parts if len(part.strip()) >= 12]
+    return [
+        part.strip()
+        for part in parts
+        if len(part.strip()) >= 12 and "{{" not in part
+    ]
 
 
 def _is_korean(text: str) -> bool:
     return any("가" <= ch <= "힣" for ch in text)
+
+
+def _entry_text(entry: Any) -> str:
+    if isinstance(entry, Mapping):
+        return str(entry.get("text") or "").strip()
+    return str(entry or "").strip()
+
+
+def _locale_counts(card: Mapping[str, Any], field: str) -> dict[str, int]:
+    counts = {"ko": 0, "en": 0}
+    for entry in card.get(field) or []:
+        if isinstance(entry, Mapping) and _entry_text(entry):
+            locale = str(entry.get("locale") or "en")
+            counts[locale] = counts.get(locale, 0) + 1
+    return counts
+
+
+def _needs_locale_topup(card: Mapping[str, Any], field: str, total: int, per_locale: int) -> bool:
+    counts = _locale_counts(card, field)
+    return sum(counts.values()) < total or any(counts.get(loc, 0) < per_locale for loc in ("ko", "en"))
+
+
+def _korean_sentences(base: Path, limit: int = 12) -> list[str]:
+    """Korean sentences the package already contains. Never a translation.
+
+    Topping a card up to a Korean quota by translating its English is inventing
+    a fact about how a Korean user would ask for this agent, and a routing card
+    is matched against exactly that. So the only Korean allowed here is Korean
+    the author already wrote: the public profile's Korean copy, a Korean summary,
+    the human README, and Korean benchmark inputs.
+    """
+
+    found: list[str] = []
+    manifest = _read_json(base / "agentlas.json") or {}
+    profile = manifest.get("publicProfile") if isinstance(manifest.get("publicProfile"), Mapping) else {}
+    guide = profile.get("guide") if isinstance(profile.get("guide"), Mapping) else {}
+    card = _read_json(base / ".agentlas" / "routing-card.json") or {}
+
+    pools: list[str] = []
+    for value in (profile.get("descriptionKo"), profile.get("titleKo"), card.get("summary_ko")):
+        if isinstance(value, str):
+            pools.append(value)
+    for value in guide.values():
+        if isinstance(value, str):
+            pools.append(value)
+    for name in ("README_FOR_HUMANS.md", "README.ko.md", "agent.md", "AGENTS.md"):
+        path = base / name
+        if path.is_file():
+            try:
+                pools.append(path.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+    pools.extend(_benchmark_inputs(base, limit=24))
+
+    for pool in pools:
+        for sentence in _sentences(pool):
+            if _is_korean(sentence) and sentence not in found:
+                found.append(sentence)
+            if len(found) >= limit:
+                return found
+    return found
+
+
+def _balance_locales(entries: list[Any], total: int, per_locale: int, base: Path) -> list[Any]:
+    """Fill a trigger list toward the gate's shape using the package's own words.
+
+    What cannot be filled honestly is left short on purpose. The gate downgrades
+    a locale shortfall to a warning precisely so that this function never has to
+    fabricate a sentence in a language the package does not speak.
+    """
+
+    normalised = [entry for entry in entries if _entry_text(entry)]
+    counts = {"ko": 0, "en": 0}
+    seen: set[str] = set()
+    for entry in normalised:
+        text = _entry_text(entry)
+        seen.add(text)
+        locale = str(entry.get("locale") or "en") if isinstance(entry, Mapping) else "en"
+        counts[locale] = counts.get(locale, 0) + 1
+
+    if counts.get("ko", 0) < per_locale:
+        for sentence in _korean_sentences(base):
+            if sentence in seen:
+                continue
+            normalised.append({"locale": "ko", "text": sentence})
+            seen.add(sentence)
+            counts["ko"] += 1
+            if counts["ko"] >= per_locale and len(normalised) >= total:
+                break
+    return normalised
+
+
+def _card_phrases(value: Any) -> list[str]:
+    """Read a routing-card list whose entries may be objects OR plain strings.
+
+    Both shapes are real and both ship. The schema's own examples use objects
+    with `description`/`text`, and a freshly scaffolded card carries strings —
+    which is why deriving a market guide crashed with AttributeError on exactly
+    the packages that needed one: a new build has no `publicProfile.guide`, so it
+    entered this repair path, and its `required_inputs` were strings, so
+    `item.get` did not exist. `cards lint` never caught it because linting a card
+    and reading a card are different code.
+    """
+
+    phrases: list[str] = []
+    for item in value or []:
+        if isinstance(item, Mapping):
+            text = item.get("description") or item.get("text") or item.get("label") or ""
+        else:
+            text = item
+        text = str(text or "").strip()
+        if text:
+            phrases.append(text)
+    return phrases
 
 
 def _benchmark_inputs(base: Path, limit: int = 8) -> list[str]:
@@ -298,12 +445,32 @@ def _benchmark_inputs(base: Path, limit: int = 8) -> list[str]:
                 continue
             for key in ("input", "query", "request", "prompt"):
                 value = row.get(key) if isinstance(row, dict) else None
-                if isinstance(value, str) and len(value.strip()) >= 8:
+                # A scaffolded benchmark file is full of `{{BENCH_EN_REJECT_1}}`
+                # until an author fills it. Carrying those across as trigger
+                # examples turns a card with five real examples into one with
+                # twenty-five, twenty of them stencil text.
+                if isinstance(value, str) and len(value.strip()) >= 8 and "{{" not in value:
                     out.append(value.strip())
                     break
             if len(out) >= limit:
                 return out
     return out
+
+
+def _first_real(*values: Any) -> str:
+    """First value that is actually answered - not empty, not a scaffold stencil.
+
+    Checking only the TARGET is half the rule. A fill that reads `card["summary"]`
+    while that field still holds `{{SUMMARY_EN}}` copies the stencil into the
+    listing and ships the literal text `{{SUMMARY_EN}}` to a buyer - which is how a
+    freshly built package failed upload on "descriptionKo needs at least 40
+    characters (has 14)": the 14 characters were the placeholder.
+    """
+
+    for value in values:
+        if not is_unfilled(value):
+            return str(value).strip()
+    return ""
 
 
 def _capability_phrases(base: Path, limit: int = 8) -> list[str]:
@@ -370,7 +537,7 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
         before = json.dumps(card, sort_keys=True, ensure_ascii=False)
 
         card.setdefault("schemaVersion", "routing-card/2.0")
-        if not str(card.get("id") or "").strip():
+        if is_unfilled(card.get("id")):
             card["id"] = str(manifest.get("slug") or base.name)
         derived_type, type_evidence = _derived_entity_type(base)
         declared_type = card.get("type")
@@ -386,17 +553,22 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
                 "action": "corrected",
                 "why": f"the card said type={declared_type} but {type_evidence}",
             })
-        if not str(card.get("name") or "").strip():
+        if is_unfilled(card.get("name")):
             card["name"] = str(public.get("titleEn") or public.get("titleKo") or manifest.get("name") or base.name)
-        if not str(card.get("summary") or "").strip():
+        if is_unfilled(card.get("summary")):
             card["summary"] = str(public.get("descriptionEn") or public.get("descriptionKo") or summary or card["name"])
         # `trigger_examples` are requests a user might actually type. The package
         # already carries a file full of them and nobody ever opened it:
         # `.agentlas/routing-benchmarks.jsonl` is present on 183 live releases and
         # its `input` lines are exactly "a real request that should reach me",
         # written by the author. Carrying those across is reading, not inventing.
-        if len(card.get("trigger_examples") or []) < 5:
-            harvested = _benchmark_inputs(base)
+        # Top up to what the gate asks for, per language — not to a number that
+        # merely resembles it. The old condition stopped at "fewer than 5" while
+        # the gate demanded 6 with 3 of each language, so a card sitting at 5
+        # (ko=2, en=3) was declared repaired and then refused at publish. The user
+        # action was blocked by exactly the sentences this pass exists to supply.
+        if _needs_locale_topup(card, "trigger_examples", TRIGGER_MINIMUM_TOTAL, TRIGGER_MINIMUM_PER_LOCALE):
+            harvested = _benchmark_inputs(base, limit=24)
             existing = {
                 str(item.get("text", "")).strip()
                 for item in (card.get("trigger_examples") or [])
@@ -408,16 +580,19 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
                     continue
                 carried.append({"locale": "ko" if _is_korean(sentence) else "en", "text": sentence})
                 existing.add(sentence)
-            if carried:
-                card["trigger_examples"] = carried
+            card["trigger_examples"] = _balance_locales(
+                carried, TRIGGER_MINIMUM_TOTAL, TRIGGER_MINIMUM_PER_LOCALE, base
+            )
 
         # Anti-triggers are the work this method turns down. The package states
         # them in prose - "You do not delete tests" - and the card wants them as
         # sentences, so they are carried whole. They are never tokenised: cutting
         # such a sentence into the bare words `tests` and `ci` is what cut a
         # correct agent's score to a quarter and moved it from rank 2 to rank 24.
-        if len(card.get("anti_triggers") or []) < 3:
-            boundary = _section_text(base, ("boundaries", "do not", "out of scope", "limits", "constraints"), 600)
+        if _needs_locale_topup(
+            card, "anti_triggers", ANTI_TRIGGER_MINIMUM_TOTAL, ANTI_TRIGGER_MINIMUM_PER_LOCALE
+        ):
+            boundary = _section_text(base, ("boundaries", "do not", "out of scope", "limits", "constraints"), 900)
             carried = list(card.get("anti_triggers") or [])
             seen = {str(item.get("text", "")).strip() for item in carried if isinstance(item, dict)}
             for sentence in _sentences(boundary):
@@ -425,15 +600,14 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
                     continue
                 carried.append({"locale": "ko" if _is_korean(sentence) else "en", "text": sentence})
                 seen.add(sentence)
-                if len(carried) >= 3:
-                    break
-            if carried:
-                card["anti_triggers"] = carried
+            card["anti_triggers"] = _balance_locales(
+                carried, ANTI_TRIGGER_MINIMUM_TOTAL, ANTI_TRIGGER_MINIMUM_PER_LOCALE, base
+            )
 
         # `capabilities` must be verb_object snake_case. The verbs are already in
         # the package as its own section headings and bullet leads; nothing here
         # decides what the agent can do, it only re-spells what agent.md says.
-        if not card.get("capabilities"):
+        if is_unfilled(card.get("capabilities")):
             derived = _capability_phrases(base)
             if derived:
                 card["capabilities"] = derived
@@ -444,6 +618,54 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
             # Absent is not "safe". The conservative reading of an unstated risk
             # tier is the one that makes a host ask before acting.
             card["risk_profile"] = {"tier": "medium", "capabilities_at_risk": []}
+        # A declared skill with no body is an advertisement for nothing. The Hub
+        # wizard used to stamp the literal id `agentlas-package` on any package
+        # that shipped no skills; measured on the live corpus, 88 packages
+        # declare it and 0 carry `skills/agentlas-package/SKILL.md`, and no such
+        # skill exists in the engine either. The Workforce index matched work
+        # against a capability nobody has. The producer is fixed; this clears the
+        # packages that already carry it.
+        #
+        # Only ids with no file on disk are dropped, and only from the manifest —
+        # a skill the package really ships is never touched.
+        declared = manifest.get("skills")
+        if isinstance(declared, list) and declared:
+            present = {path.parent.name for path in base.glob("skills/*/SKILL.md")}
+            for host in (".claude", ".codex", ".gemini", ".agents"):
+                present.update(path.parent.name for path in base.glob(f"{host}/skills/*/SKILL.md"))
+            kept = [skill for skill in declared if not isinstance(skill, str) or skill in present]
+            dropped = [skill for skill in declared if isinstance(skill, str) and skill not in present]
+            if dropped:
+                manifest["skills"] = kept
+                # Written here rather than left to the manifest write further
+                # down: that one lives in the public-profile branch and only
+                # fires when the profile itself changed, so this repair was
+                # reported and not applied — a receipt for something that did not
+                # happen, which is worse than either doing it or saying nothing.
+                (base / "agentlas.json").write_text(
+                    json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
+                repairs.append({
+                    "file": "agentlas.json",
+                    "action": "removed",
+                    "why": f"declared skill(s) with no SKILL.md in the package: {', '.join(dropped[:4])}",
+                    "source": "the package's own skills/ folders",
+                })
+
+        # A card that says it reads "task input only" is describing something
+        # narrower than either value the schema used to admit. Normalise the
+        # spelling; never silently widen what the author declared.
+        mb = card.get("memory_behavior")
+        if isinstance(mb, Mapping):
+            fixed = dict(mb)
+            reads = normalise_memory_reads(fixed.get("reads"))
+            writes = normalise_memory_writes(fixed.get("writes"))
+            if reads:
+                fixed["reads"] = reads
+            if writes:
+                fixed["writes"] = writes
+            if fixed != dict(mb):
+                card["memory_behavior"] = fixed
         card.setdefault("required_inputs", [])
         # Point the card at whichever benchmark file is on disk (three spellings
         # shipped), or, when none has >=10 cases, synthesise one from the trigger
@@ -485,7 +707,7 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
                 bench_path.parent.mkdir(parents=True, exist_ok=True)
                 bench_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         if bench_path is not None:
-            if not str(card.get("benchmark_fixtures") or "").strip():
+            if is_unfilled(card.get("benchmark_fixtures")):
                 card["benchmark_fixtures"] = f".agentlas/{bench_path.name}"
             # Record the resolved count on the card so the linter — which runs
             # with no package root and cannot resolve the fixture path — counts
@@ -560,13 +782,13 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
         before = json.dumps(manifest, sort_keys=True, ensure_ascii=False)
         profile = manifest.setdefault("publicProfile", {})
         card = _read_json(card_path) or {}
-        if not str(profile.get("titleEn") or "").strip():
-            profile["titleEn"] = str(card.get("name") or manifest.get("name") or base.name)
-        if not str(profile.get("titleKo") or "").strip():
+        if is_unfilled(profile.get("titleEn")):
+            profile["titleEn"] = _first_real(card.get("name"), manifest.get("name"), base.name)
+        if is_unfilled(profile.get("titleKo")):
             profile["titleKo"] = str(profile.get("titleEn"))
-        if not str(profile.get("descriptionEn") or "").strip():
-            profile["descriptionEn"] = str(card.get("summary") or summary or profile["titleEn"])
-        if not str(profile.get("descriptionKo") or "").strip():
+        if is_unfilled(profile.get("descriptionEn")):
+            profile["descriptionEn"] = _first_real(card.get("summary"), summary, _agent_summary(base), profile["titleEn"])
+        if is_unfilled(profile.get("descriptionKo")):
             profile["descriptionKo"] = str(profile["descriptionEn"])
         guide = profile.get("guide")
         if not isinstance(guide, dict) or not guide:
@@ -576,28 +798,16 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
             # because a generic "best for: various tasks" is exactly the listing
             # copy that made every card read the same.
             derived: dict[str, str] = {}
-            what = str(card.get("summary") or profile.get("descriptionEn") or "").strip()
+            what = _first_real(card.get("summary"), profile.get("descriptionEn"))
             if what:
                 derived["what-it-does"] = what
-            inputs = [
-                str(item.get("description") or item.get("text") or item)
-                for item in (card.get("required_inputs") or [])
-            ]
-            inputs = [item for item in inputs if item and item.strip()]
+            inputs = _card_phrases(card.get("required_inputs"))
             if inputs:
                 derived["prerequisites"] = "; ".join(inputs[:4])
-            produces = [
-                str(item.get("description") or item.get("text") or item)
-                for item in (card.get("produces") or [])
-            ]
-            produces = [item for item in produces if item and item.strip()]
+            produces = _card_phrases(card.get("produces"))
             if produces:
                 derived["expected-outputs"] = "; ".join(produces[:4])
-            refuses = [
-                str(item.get("text") or item)
-                for item in (card.get("anti_triggers") or [])
-            ]
-            refuses = [item for item in refuses if item and item.strip()]
+            refuses = _card_phrases(card.get("anti_triggers"))
             if refuses:
                 derived["careful-with"] = "Not for: " + "; ".join(refuses[:3])
             # The remaining questions get answered from sources that are reliably

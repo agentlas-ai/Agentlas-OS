@@ -634,6 +634,11 @@ scripts/sync-adapters.sh --check
 # at borrow. Check the templates against the schemas the contract binds them to.
 scripts/verify-contract-templates.sh
 scripts/verify-mcp-surface.sh
+# Every name this product writes down must point at something that exists. Five
+# separate defects — a build command naming unshipped files, a CLI subcommand
+# missing from the dispatcher, a seed file with no writer, and two singular/plural
+# artifact names — were all the same shape, found one at a time over months.
+python3 scripts/verify-name-to-thing.py
 examples/ontology-proposal-agent/verify.sh
 
 # Hephaestus Network 2.0 routing-card gate (block stage — the Hub now

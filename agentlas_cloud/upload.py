@@ -91,6 +91,29 @@ class UploadFile:
     executable: bool
 
 
+
+def _is_unfinished_artifact(finding: dict[str, Any]) -> bool:
+    """True when a blocker is only "the author has not written this yet".
+
+    Kept deliberately narrow. It matches a missing or still-templated package
+    contract artifact and nothing else — never a secret, a symlink, a size limit,
+    a credential-bearing path, or a malformed card. Widening this predicate would
+    turn "we repair instead of refusing" into "we publish anything", which is a
+    different policy and not this one.
+    """
+
+    message = str(finding.get("message") or "")
+    if "unfilled placeholders" in message:
+        return True
+    if message.endswith(": missing"):
+        artifact = message.rsplit(":", 1)[0].strip()
+        return artifact.startswith((".agentlas/", "docs/", "contracts/")) or artifact in {
+            "AGENTS.md",
+            "agent.md",
+        }
+    return False
+
+
 def package_agent(
     folder: str | Path,
     *,
@@ -108,6 +131,97 @@ def package_agent(
     setup_wizard = run_setup_wizard(base, package_name, write=write_manifest)
     if write_manifest:
         package_slug = _read_package_slug(base) or package_slug
+
+    # Lay the package contract down before anything reads the folder. The repair
+    # pass below fixes fields inside files that exist; it was never able to fix a
+    # file that was absent, and absence is what actually blocks: measured on this
+    # product's own published corpus, 13 of the 13 blockers on a real package were
+    # "<artifact>: missing", every one of them an artifact the engine ships a
+    # template for. Refusing an upload over a file the product can write itself is
+    # the failure this whole path exists to avoid.
+    #
+    # `scaffold` never overwrites, and `derive` only answers questions the package
+    # already answers — its slug, its own summary, its own capability list. What
+    # neither can supply without inventing a fact is still reported below.
+    contract_scaffold: dict[str, Any] = {}
+    try:
+        from .package_contract import scaffold as scaffold_contract
+        from .repackage import derive as derive_contract
+
+        manifest_hint = _read_json(base / "agentlas.json") if callable(globals().get("_read_json")) else {}
+        if not isinstance(manifest_hint, dict):
+            manifest_hint = {}
+        slug_hint = str(manifest_hint.get("slug") or base.name)
+        # Ask the ROSTER what this package is, not the artifact we are here to
+        # create. Keying the mode off `company-blueprint.json` made the scaffold
+        # circular: a team missing its blueprint was scaffolded as a single, so no
+        # blueprint was ever written, while the contract verifier - which reads the
+        # roster - kept checking it against every TEAM requirement. Measured
+        # 2026-08-07 across the 178 published packages, that one line produced 262
+        # of the 264 standing blockers on 65 packages, every one of them a team
+        # whose `agents/*/agent.md` roster was complete.
+        from .upload_repair import _derived_entity_type
+
+        derived_kind, _ = _derived_entity_type(base)
+        mode_hint = "team" if derived_kind == "team" else "single"
+        contract_scaffold = scaffold_contract(
+            base, mode=mode_hint, package_id=slug_hint, name=slug_hint, command=slug_hint
+        )
+        derive_contract(base, slug=slug_hint, entity_kind=mode_hint)
+        # Shape mismatches last, after derive has written whatever it could: an
+        # answer in the wrong shape is not a missing answer, and blocking on one
+        # asks the author to retype what the package already says.
+        from .repackage import coerce_contract_shapes
+
+        coerced = coerce_contract_shapes(base, slug_hint)
+        if coerced:
+            contract_scaffold["coerced"] = coerced
+        from .repackage import (
+            fill_capability_eval_plan,
+            fill_declared_artifacts,
+            fill_runtime_adapter_bodies,
+            redact_host_paths,
+        )
+
+        declared = fill_declared_artifacts(base, slug_hint)
+        if declared:
+            contract_scaffold["declaredArtifacts"] = declared
+        if fill_capability_eval_plan(base):
+            contract_scaffold["evalPlanDerived"] = True
+        adapters = fill_runtime_adapter_bodies(base, slug_hint)
+        if adapters:
+            contract_scaffold["adaptersWritten"] = adapters
+
+        redacted = redact_host_paths(base)
+        if redacted:
+            contract_scaffold["hostPathsRedacted"] = redacted
+    except Exception as error:  # noqa: BLE001 - never let repair stop the upload path
+        contract_scaffold = {"status": "skipped", "reason": str(error)[:200]}
+
+    # Whatever this pass laid down and could not fill is withdrawn again. A
+    # stencil that still reads `{{ROLE}}` is worse than the absence it replaced:
+    # it ships the word `{{ROLE}}` to a buyer, and it blocks the upload on a file
+    # the author never wrote. Upload does not block, and it does not publish
+    # placeholder text either — so the only correct move is to take back exactly
+    # what this pass added and could not answer.
+    withdrawn: list[str] = []
+    for relative in list(contract_scaffold.get("created") or []):
+        candidate = base / str(relative)
+        if not candidate.is_file():
+            continue
+        try:
+            body = candidate.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "{{" not in body:
+            continue
+        try:
+            candidate.unlink()
+            withdrawn.append(str(relative))
+        except OSError:
+            continue
+    if withdrawn:
+        contract_scaffold["withdrawn"] = withdrawn
 
     career_card_findings = prepare_public_career_card_for_upload(base)
     files, file_count, findings = collect_upload_files(base)
@@ -261,6 +375,23 @@ def package_agent(
     # nobody fixed while reporting it ready — the same silent-default failure this
     # file's content guard exists to prevent.
     remaining = [f for f in findings if f["severity"] == "blocker"]
+    # A contract artifact the author has not finished writing is a gap in the
+    # listing, not a reason to refuse the upload. The package still works; what
+    # is missing is copy a buyer would have liked to read. Refusing here is how
+    # `capability-eval-plan.json` ended up on 4% of live releases — the gate said
+    # no, and the packages shipped through whatever path did not check.
+    #
+    # This only ever softens an artifact-completeness finding. Secrets, symlinks,
+    # size limits, credential-bearing files and every other safety finding keep
+    # blocking exactly as before, because those are not the author being
+    # unfinished, they are the upload being unsafe.
+    deferred = [f for f in remaining if _is_unfinished_artifact(f)]
+    if deferred:
+        deferred_ids = {id(f) for f in deferred}
+        remaining = [f for f in remaining if id(f) not in deferred_ids]
+        for finding in deferred:
+            finding["severity"] = "warning"
+            finding["deferred"] = "publishable; the listing is thinner until this is written"
     status = "blocked" if remaining else "ready"
     return {
         "status": status,

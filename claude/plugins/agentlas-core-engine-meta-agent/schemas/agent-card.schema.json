@@ -2,14 +2,70 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Agentlas Agent Card",
   "type": "object",
-  "required": ["schemaVersion", "name", "slug", "summary", "capabilities"],
+  "required": [
+    "schemaVersion",
+    "name",
+    "slug",
+    "summary",
+    "capabilities"
+  ],
   "properties": {
-    "schemaVersion": { "type": "string" },
-    "name": { "type": "string" },
-    "slug": { "type": "string" },
-    "summary": { "type": "string" },
-    "capabilities": { "type": "array", "items": { "type": "string" } },
-    "entrypoints": { "type": "object" }
+    "schemaVersion": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "capabilities": {
+      "description": "Either a list of verb_object capability ids, or a capability profile object ({tools, mcpServers, skills, runtimeTargets, safety}). Both shapes are in the published corpus — 151 lists and 101 profiles measured 2026-08-07 — so a schema that admits one silently invalidates the other's packages.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mcpServers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "skills": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "runtimeTargets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "safety": {}
+          }
+        }
+      ]
+    },
+    "entrypoints": {
+      "type": "object"
+    }
   },
   "additionalProperties": true
 }

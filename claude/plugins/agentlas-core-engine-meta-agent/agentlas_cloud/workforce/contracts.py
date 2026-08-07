@@ -743,3 +743,68 @@ def verify_profile_integrity(profile: Mapping[str, Any]) -> None:
     package_hash = str(profile.get("packageHash") or "")
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", package_hash):
         raise ValueError("workforce profile package hash is invalid")
+
+
+def work_order_prompt_lines() -> list[str]:
+    """Render the work order's own requirements as prompt bullets.
+
+    Every model that writes one of these gets it wrong on the first attempt, and
+    the reason is measurable rather than mysterious. Of the 15 fields the schema
+    requires, the authoring instructions never name 8 of them — they say
+    "statement" where the schema says `taskBrief` and "roles" where it says
+    `roleSlots` — while the schema sets `additionalProperties: false`, so one
+    wrong name rejects the whole document. Two more traps sit on top: the field
+    called `criticality` takes `required|optional`, not the severity word its
+    name invites, and `minimumCandidatesPerSlot` has a floor of 2 where 1 is the
+    obvious guess.
+
+    So the field list is generated from the schema instead of being retyped in
+    prose. An instruction that is derived cannot drift from what it describes.
+    """
+
+    import json
+    from pathlib import Path
+
+    schema_path = Path(__file__).resolve().parent.parent.parent / "schemas" / "workforce-work-order.schema.json"
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ["work order schema unavailable — do not guess field names"]
+
+    properties = schema.get("properties") or {}
+    definitions = schema.get("$defs") or {}
+    lines: list[str] = [
+        "Top-level fields (all required; the schema rejects any other key):",
+    ]
+
+    def describe(name: str, spec: dict) -> str:
+        if "const" in spec:
+            return f'must be exactly {json.dumps(spec["const"], ensure_ascii=False)}'
+        if "enum" in spec:
+            return f'one of {json.dumps(spec["enum"], ensure_ascii=False)}'
+        kind = spec.get("type", "")
+        bounds = []
+        if "minimum" in spec:
+            bounds.append(f'min {spec["minimum"]}')
+        if "maximum" in spec:
+            bounds.append(f'max {spec["maximum"]}')
+        if "$ref" in spec:
+            target = definitions.get(str(spec["$ref"]).split("/")[-1]) or {}
+            if target.get("pattern"):
+                return f'string matching {target["pattern"]}'
+        return f'{kind}{" (" + ", ".join(bounds) + ")" if bounds else ""}'
+
+    for name in schema.get("required", []):
+        lines.append(f"- {name}: {describe(name, properties.get(name) or {})}")
+
+    slot = definitions.get("slot") or {}
+    slot_props = slot.get("properties") or {}
+    lines.append("Each entry of roleSlots (all required):")
+    for name in slot.get("required", []):
+        lines.append(f"- {name}: {describe(name, slot_props.get(name) or {})}")
+
+    policy = (properties.get("selectionPolicy") or {}).get("properties") or {}
+    lines.append("selectionPolicy (all required):")
+    for name, spec in policy.items():
+        lines.append(f"- {name}: {describe(name, spec)}")
+    return lines

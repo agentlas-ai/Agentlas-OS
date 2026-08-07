@@ -150,7 +150,15 @@
       }
     },
     "conceptCoverage": {
-      "type": "object"
+      "description": "Measured live: 31 packages ship a list, 1 ships an object. Both are real.",
+      "oneOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "array"
+        }
+      ]
     },
     "functionalProjection": {
       "type": "object"

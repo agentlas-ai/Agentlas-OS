@@ -14,27 +14,80 @@
     "routing_status"
   ],
   "properties": {
-    "schemaVersion": { "type": "string", "const": "routing-card/2.0" },
-    "card_version": { "type": "string" },
-    "revision": { "type": "integer", "minimum": 1 },
-    "id": { "type": "string", "minLength": 1 },
-    "canonical_id": { "type": "string" },
-    "type": { "enum": ["agent", "team", "plugin"] },
-    "name": { "type": "string", "minLength": 1 },
-    "name_ko": { "type": ["string", "null"] },
-    "aliases": { "type": "array", "items": { "type": "string" } },
-    "supersedes": { "type": "array", "items": { "type": "string" } },
-    "summary": { "type": "string", "minLength": 1, "maxLength": 240 },
-    "summary_ko": { "type": ["string", "null"] },
-    "description": { "type": "string" },
+    "schemaVersion": {
+      "type": "string",
+      "const": "routing-card/2.0"
+    },
+    "card_version": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canonical_id": {
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "agent",
+        "team",
+        "plugin"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name_ko": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "supersedes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "summary_ko": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
     "capabilities": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)+$" },
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)+$"
+      },
       "minItems": 1
     },
     "domains": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Coarse domain tags (see agentlas_cloud/networking/domains.py) driving the router's domain-coherence guard; populated by card generation/backfill."
     },
     "trigger_examples": {
@@ -42,10 +95,20 @@
       "minItems": 6,
       "items": {
         "type": "object",
-        "required": ["text"],
+        "required": [
+          "text"
+        ],
         "properties": {
-          "text": { "type": "string", "minLength": 2 },
-          "locale": { "enum": ["ko", "en"] }
+          "text": {
+            "type": "string",
+            "minLength": 2
+          },
+          "locale": {
+            "enum": [
+              "ko",
+              "en"
+            ]
+          }
         }
       }
     },
@@ -54,216 +117,572 @@
       "minItems": 4,
       "items": {
         "type": "object",
-        "required": ["text"],
+        "required": [
+          "text"
+        ],
         "properties": {
-          "text": { "type": "string", "minLength": 2 },
-          "locale": { "enum": ["ko", "en"] }
+          "text": {
+            "type": "string",
+            "minLength": 2
+          },
+          "locale": {
+            "enum": [
+              "ko",
+              "en"
+            ]
+          }
         }
       }
     },
     "required_inputs": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["name"],
-        "properties": {
-          "name": { "type": "string" },
-          "type": { "type": "string" },
-          "description": { "type": "string" }
-        }
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        ]
       }
     },
     "optional_inputs": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "type": { "type": "string" },
-          "description": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
         }
       }
     },
     "required_plugins": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id"],
-        "properties": {
-          "id": { "type": "string" },
-          "min_permissions": { "type": "array", "items": { "type": "string" } }
-        }
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "min_permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "supported_runtimes": {
       "type": "array",
       "items": {
         "enum": [
-          "claude-code",
-          "codex",
-          "gemini-cli",
-          "antigravity",
-          "cursor",
-          "terminal",
-          "agents-md",
           "agentlas-desktop",
-          "agentlas-web"
+          "agentlas-hub",
+          "agentlas-terminal",
+          "agentlas-web",
+          "agents-md",
+          "agents.md",
+          "antigravity",
+          "claude-code",
+          "claude-code-cli",
+          "claude_code",
+          "codex",
+          "codex-cli",
+          "cursor",
+          "desktop",
+          "gemini",
+          "gemini-cli",
+          "gemini_cli",
+          "hub",
+          "terminal"
         ]
       }
     },
     "entrypoints": {
       "type": "object",
       "properties": {
-        "canonical_command": { "type": ["string", "null"] },
-        "agent": { "type": ["string", "null"] },
-        "terminal": { "type": ["string", "null"] }
+        "canonical_command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "terminal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
     "risk_profile": {
       "type": "object",
-      "required": ["tier"],
+      "required": [
+        "tier"
+      ],
       "properties": {
-        "tier": { "enum": ["low", "medium", "high"] },
+        "tier": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
         "capabilities_at_risk": {
           "type": "array",
           "items": {
-            "enum": [
-              "file_write",
-              "cloud_call",
-              "payment",
-              "publish",
-              "delete",
-              "private_data_export",
-              "external_tool"
-            ]
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$|^[A-Za-z][A-Za-z0-9_]*$",
+            "description": "Open vocabulary. The closed part the runtime acts on lives in agentlas_cloud/routing_vocabulary.py; anything else is the author's own risk name and is kept verbatim."
           }
         }
       }
     },
-    "approval_requirements": { "type": "array", "items": { "type": "string" } },
-    "memory_behavior": {
-      "type": "object",
-      "required": ["reads", "writes", "exports_to_cloud"],
-      "properties": {
-        "reads": { "enum": ["project", "none"] },
-        "writes": { "enum": ["project", "none"] },
-        "exports_to_cloud": { "type": "boolean" }
+    "approval_requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
     },
-    "cloud_delegation_policy": { "enum": ["never", "ask", "allowed_with_grant"] },
+    "memory_behavior": {
+      "type": "object",
+      "required": [
+        "reads",
+        "writes",
+        "exports_to_cloud"
+      ],
+      "properties": {
+        "reads": {
+          "enum": [
+            "input_only",
+            "none",
+            "package",
+            "package_only",
+            "project",
+            "task",
+            "task_input",
+            "task_input_only"
+          ]
+        },
+        "writes": {
+          "enum": [
+            "local_ledger_only",
+            "local_only",
+            "none",
+            "preferences_only",
+            "project",
+            "project_on_approval",
+            "project_with_approval",
+            "redacted_preferences_only"
+          ]
+        },
+        "exports_to_cloud": {
+          "type": "boolean"
+        }
+      }
+    },
+    "cloud_delegation_policy": {
+      "enum": [
+        "never",
+        "ask",
+        "allowed_with_grant"
+      ]
+    },
     "cost_hints": {
       "type": "object",
       "properties": {
-        "model_calls": { "enum": ["low", "medium", "high"] },
-        "paid_api": { "type": "boolean" }
+        "model_calls": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "paid_api": {
+          "type": "boolean"
+        }
       }
     },
     "produces": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["kind"],
-        "properties": {
-          "kind": { "type": "string" },
-          "path_hint": { "type": "string" },
-          "description": { "type": "string" }
-        }
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "path_hint": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        ]
       }
     },
     "consumes": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["kind"],
-        "properties": {
-          "kind": { "type": "string" },
-          "required": { "type": "boolean" }
-        }
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
       }
     },
-    "benchmark_fixtures": { "type": ["string", "null"] },
-    "known_failure_cases": { "type": "array", "items": { "type": "string" } },
+    "benchmark_fixtures": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "known_failure_cases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "locale_coverage": {
       "type": "object",
       "properties": {
-        "primary": { "type": "string" },
-        "ready": { "type": "array", "items": { "type": "string" } },
-        "partial": { "type": "array", "items": { "type": "string" } }
+        "primary": {
+          "type": "string"
+        },
+        "ready": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "partial": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "workforce": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["communities", "roles", "skills", "knowledge", "languages", "modalities"],
+      "required": [
+        "communities",
+        "roles",
+        "skills",
+        "knowledge",
+        "languages",
+        "modalities"
+      ],
       "properties": {
-        "communities": { "type": "array", "items": { "type": "string", "pattern": "^community:[a-z0-9][a-z0-9-]*$" }, "minItems": 1, "maxItems": 5, "uniqueItems": true },
-        "roles": { "type": "array", "items": { "type": "string", "pattern": "^role:[a-z0-9][a-z0-9-]*$" }, "maxItems": 4, "uniqueItems": true },
-        "skills": { "type": "array", "items": { "type": "string", "pattern": "^skill:[a-z0-9][a-z0-9-]*$" }, "minItems": 1, "maxItems": 12, "uniqueItems": true },
-        "knowledge": { "type": "array", "items": { "type": "string", "pattern": "^knowledge:[a-z0-9][a-z0-9-]*$" }, "uniqueItems": true },
-        "tools": { "type": "array", "items": { "type": "string", "pattern": "^tool:[a-z0-9][a-z0-9-]*$" }, "uniqueItems": true },
-        "authorities": { "type": "array", "items": { "type": "string", "pattern": "^authority:[a-z0-9][a-z0-9-]*$" }, "uniqueItems": true },
-        "forbiddenAuthorities": { "type": "array", "items": { "type": "string", "pattern": "^authority:[a-z0-9][a-z0-9-]*$" }, "uniqueItems": true },
-        "languages": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-        "modalities": { "type": "array", "items": { "enum": ["text", "image", "audio", "video", "multimodal"] }, "uniqueItems": true }
+        "communities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^community:[a-z0-9][a-z0-9-]*$"
+          },
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^role:[a-z0-9][a-z0-9-]*$"
+          },
+          "maxItems": 4,
+          "uniqueItems": true
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^skill:[a-z0-9][a-z0-9-]*$"
+          },
+          "maxItems": 12,
+          "uniqueItems": true
+        },
+        "knowledge": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^knowledge:[a-z0-9][a-z0-9-]*$"
+          },
+          "uniqueItems": true
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^tool:[a-z0-9][a-z0-9-]*$"
+          },
+          "uniqueItems": true
+        },
+        "authorities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^authority:[a-z0-9][a-z0-9-]*$"
+          },
+          "uniqueItems": true
+        },
+        "forbiddenAuthorities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^authority:[a-z0-9][a-z0-9-]*$"
+          },
+          "uniqueItems": true
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "modalities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video",
+              "multimodal"
+            ]
+          },
+          "uniqueItems": true
+        }
       }
     },
-    "card_quality_score": { "type": "number", "minimum": 0, "maximum": 1 },
-    "routing_status": {
-      "enum": ["draft", "searchable", "candidate", "routing_ready", "trusted"]
+    "card_quality_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
     },
-    "routing_status_reason": { "type": ["string", "null"] },
+    "routing_status": {
+      "enum": [
+        "draft",
+        "searchable",
+        "candidate",
+        "routing_ready",
+        "trusted"
+      ]
+    },
+    "routing_status_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "agent_card_ref": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "properties": {
-        "path": { "type": "string" },
-        "slug": { "type": "string" },
-        "content_hash": { "type": ["string", "null"] }
+        "path": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "content_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
     "data_access": {
       "type": "object",
       "properties": {
-        "reads": { "type": "array", "items": { "type": "string" } },
-        "writes": { "type": "array", "items": { "type": "string" } },
-        "exports": { "type": "array", "items": { "type": "string" } }
+        "reads": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "writes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exports": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "approval_scope": {
       "type": "object",
       "properties": {
-        "grant": { "enum": ["per_call", "session", "project", "global"] },
-        "ttl_seconds": { "type": ["integer", "null"] }
+        "grant": {
+          "enum": [
+            "per_call",
+            "session",
+            "project",
+            "global"
+          ]
+        },
+        "ttl_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
       }
     },
     "integrity": {
       "type": "object",
       "properties": {
-        "content_hash": { "type": "string" },
-        "signature": { "type": ["string", "null"] },
-        "signing_key_id": { "type": ["string", "null"] }
+        "content_hash": {
+          "type": "string"
+        },
+        "signature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signing_key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
     "quality": {
       "type": "object",
       "properties": {
-        "score": { "type": "number" },
-        "lint_version": { "type": "string" },
-        "evaluated_at": { "type": "string" },
-        "benchmark_suites": { "type": "array", "items": { "type": "string" } }
+        "score": {
+          "type": "number"
+        },
+        "lint_version": {
+          "type": "string"
+        },
+        "evaluated_at": {
+          "type": "string"
+        },
+        "benchmark_suites": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "source": {
       "type": "object",
       "properties": {
-        "kind": { "enum": ["local_path", "hub"] },
-        "ref": { "type": ["string", "null"] },
-        "package_hash": { "type": ["string", "null"] },
-        "package_version": { "type": ["string", "null"] }
+        "kind": {
+          "enum": [
+            "local_path",
+            "hub"
+          ]
+        },
+        "ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
-    "stale": { "type": "boolean" },
-    "updated_at": { "type": "string" }
+    "stale": {
+      "type": "boolean"
+    },
+    "updated_at": {
+      "type": "string"
+    }
   },
   "additionalProperties": true
 }

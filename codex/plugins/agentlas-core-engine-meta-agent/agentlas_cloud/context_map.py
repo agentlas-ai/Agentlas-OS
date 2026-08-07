@@ -144,25 +144,46 @@ def _query_terms(task: str) -> list[str]:
     return terms
 
 
-def _symbol_terms(task: str) -> list[str]:
+def _symbol_terms(task: str, code_map: Mapping[str, Any] | None = None) -> list[str]:
     """Return symbol-shaped terms, not generic prose words.
 
     This is intentionally stricter than declared-context matching. A task that
     merely says "fix the context" must not select every function named
     ``context``; exact camelCase, snake_case, or long identifiers are eligible.
+
+    The shape rule alone had a hole worth naming: a symbol whose name is a short
+    lowercase word could never be selected, however exactly the user typed it.
+    Measured on a fresh project whose only symbol was ``charge``: the map knew
+    it, ``defIndex`` listed it, and "make the charge path safe to retry" came
+    back with zero files and zero symbols. The user names the thing correctly and
+    the slice answers with nothing.
+
+    Rarity separates the two cases better than length does. A prose token that
+    matches exactly one definition site is naming that thing; a token that
+    matches many is the generic word the shape rule was defending against.
     """
 
     terms: list[str] = []
+    definitions = (code_map or {}).get("defIndex")
+    definitions = definitions if isinstance(definitions, Mapping) else {}
     for match in _TOKEN_RE.finditer(task[:MAX_TASK_CHARS]):
         raw = match.group(0)
-        if "_" not in raw and not re.search(r"[a-z][A-Z]", raw) and len(raw) < 12:
-            continue
         normalized = raw.lower()
+        shaped = "_" in raw or re.search(r"[a-z][A-Z]", raw) or len(raw) >= 12
+        if not shaped:
+            sites = definitions.get(raw) or definitions.get(normalized)
+            if not isinstance(sites, list) or not 0 < len(sites) <= _RARE_SYMBOL_SITES:
+                continue
         if normalized not in terms:
             terms.append(normalized)
         if len(terms) >= MAX_QUERY_TERMS:
             break
     return terms
+
+
+# A name that is defined in one or two places is naming something; a name
+# defined everywhere is a word.
+_RARE_SYMBOL_SITES = 2
 
 
 def _task_path_hints(root: Path, task: str, targets: Sequence[str]) -> list[str]:
@@ -432,7 +453,7 @@ def context_slice(
     root, code_map, refresh_receipt = load_code_map(project, refresh=refresh)
     terms = _query_terms(task)
     selected_files = _task_path_hints(root, task, targets)
-    symbols = _selected_symbols(code_map, terms=_symbol_terms(task), files=selected_files)
+    symbols = _selected_symbols(code_map, terms=_symbol_terms(task, code_map), files=selected_files)
     definitions = code_map.get("defIndex", {})
     references = code_map.get("refIndex", {})
 
@@ -516,6 +537,15 @@ def context_slice(
         if len(module_edges) >= 48:
             break
 
+    # The declared graph is refreshed on the same terms as the code map: this
+    # file had a reader and no writer, so it answered "what are this project's
+    # goals" with an empty list on every machine. Deriving here keeps the answer
+    # as current as the ledger it comes from.
+    declared_receipt: dict[str, Any] | None = None
+    if refresh:
+        from .context_map_authoring import refresh_declared_context
+
+        declared_receipt = refresh_declared_context(root)
     declared_nodes, declared_edges = _load_declared_graph(root)
     selected_nodes, selected_edges = _select_declared_context(
         declared_nodes,

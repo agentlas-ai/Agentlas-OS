@@ -63,10 +63,45 @@ fi
 3. Report the returned `gui_url`, `db_path`, `inbox_path`, and verification status.
 
 If the first argument is not `ontology`, route to the Agentlas Core Engine
-Meta-Agent team:
+Meta-Agent team.
 
-1. Read `AGENTS.md`.
-2. Read `.agentlas/mode-map.json`.
+**Step 0 — resolve the engine root, and read the engine's own contracts from it.**
+Every path in steps 1, 2 and 4 belongs to Hephaestus, not to the user's project.
+Read relatively and in someone else's repository you find nothing — or worse,
+you find their `AGENTS.md` and follow it. Measured 2026-08-07: three packages
+built outside this engine's own repository shipped 5 of 18 required artifacts,
+because these reads silently returned nothing and the model improvised the rest.
+
+The marker is `AGENTS.md` **and** `package-contract.json` together. The installed
+runtime root carries the contract and the code but not the instructions — those
+travel in its `host_adapters/` bundle — so testing for the contract alone selects
+a root where every read in steps 1, 2 and 4 comes back empty.
+
+```bash
+ENGINE=""
+for candidate in \
+  "${CLAUDE_PLUGIN_ROOT:-}" \
+  "${CODEX_PLUGIN_ROOT:-}" \
+  "${PLUGIN_ROOT:-}" \
+  "$HOME/.agentlas/runtime/current/host_adapters/claude/plugins/agentlas-core-engine-meta-agent" \
+  "$HOME/.agentlas/runtime/current/host_adapters/codex/plugins/agentlas-core-engine-meta-agent" \
+  "$HOME/.agentlas/runtime/current" \
+  "."
+do
+  if [ -n "$candidate" ] && [ -f "$candidate/AGENTS.md" ] && [ -f "$candidate/package-contract.json" ]; then
+    ENGINE="$candidate"; break
+  fi
+done
+[ -z "$ENGINE" ] && { echo "Hephaestus engine not found. Run the installer first." >&2; exit 1; }
+echo "ENGINE=$ENGINE"
+```
+
+Report the resolved `ENGINE` in the final `evidence`. If a file below is missing
+from it, say so as a blocker — do not carry on and improvise it.
+
+1. Read `$ENGINE/AGENTS.md`.
+2. Read `$ENGINE/.agentlas/mode-map.json` and the mode contract it names under
+   `$ENGINE/modes/`.
 3. Classify the request as single-agent builder, multi-agent team builder, or
    packager by independent ownership boundaries: one role owning
    memory/context, tools/permissions, and success criteria is single-agent;
@@ -77,8 +112,8 @@ Meta-Agent team:
    마지막에 합쳐야 하나요?" Do not show non-technical users internal labels
    like ownership boundary, memory/context, synthesis, or produces/consumes.
 4. Run the Builder Interview and Research Gate in
-   `docs/builder-interview-research-gate.md` before writing substantial package
-   files. Ask an 8-12 question first batch when the request is vague; continue
+   `$ENGINE/docs/builder-interview-research-gate.md` before writing substantial
+   package files. Ask an 8-12 question first batch when the request is vague; continue
    follow-ups until target user, tasks, inputs, outputs, examples,
    tools/plugins, memory, failure modes, ownership boundaries, execution order,
    and evals are clear. Question selection, ambiguity scoring and the stop
@@ -90,7 +125,41 @@ Meta-Agent team:
    academic/professional theory, and tool/plugin docs. Record selected and
    rejected tools/plugins with permission, secret, fallback, and smoke-test
    notes, then synthesize domain-expert behavior before writing prompts.
-5. Generate `.agentlas/work-brief.json` (Work Brief `work-brief/1.0` — the
+5. **Lay the contract down before writing anything.** Set `PACKAGE_ROOT` to the
+   absolute path of the package folder, then:
+
+   ```bash
+   "$ENGINE/bin/hephaestus" contract scaffold "$PACKAGE_ROOT" --mode single|team|package
+   ```
+
+   Then, as soon as the routing card exists, let the engine answer every hole it
+   can from the package's own declarations:
+
+   ```bash
+   "$ENGINE/bin/hephaestus" contract complete "$PACKAGE_ROOT"
+   ```
+
+   This writes `agent.md`, `.agentlas/work-brief.json`, `.agentlas/sitemap.json`,
+   `.agentlas/routing-benchmarks.jsonl`, `.agentlas/capability-eval-plan.json`,
+   `docs/builder-interview.md`, `docs/research-sources.md`, and
+   `contracts/output.example.json` from the routing card, the roster, and the
+   schemas that are already on disk. It never overwrites a body a person wrote
+   and never invents a fact - every value it writes is one the package already
+   states somewhere else. Run it BEFORE `contract verify`, so what verify still
+   reports is the genuinely authored half, not paperwork the engine could have
+   done. Measured 2026-08-07: the published corpus was missing these eight
+   artifacts almost universally, and every one of them was derivable.
+
+   This copies the engine's templates into place and never overwrites an
+   existing file. It is the step that puts every required artifact on disk with
+   named `{{PLACEHOLDER}}` holes, which is what turns "the model forgot a file"
+   into "the model has a hole to fill". Skipping it is how a build ends with 5
+   of 18 required artifacts and still reports success.
+
+   Then fill the holes. `contract prompt --mode <mode>` prints the artifact list
+   with what each one is for.
+
+6. Generate `.agentlas/work-brief.json` (Work Brief `work-brief/1.0` — the
    machine-readable interview output; `cards migrate` consumes its anti_scope
    and goal/acceptance as routing-card triggers), plus
    `docs/builder-interview.md`, `docs/research-sources.md`,
@@ -98,10 +167,10 @@ Meta-Agent team:
    `docs/prompt-performance-contract.md`, and
    `.agentlas/capability-eval-plan.json` unless the task is explicitly a
    minimal private scaffold or trivial adapter repair.
-6. Load only the matching public skills.
-7. Generate or repair `.agentlas/global-commands.json` and matching runtime
+7. Load only the matching public skills.
+8. Generate or repair `.agentlas/global-commands.json` and matching runtime
    command files or aliases.
-8. Market Page Copy Gate — make the public detail page readable before
+9. Market Page Copy Gate — make the public detail page readable before
    reporting. For any agent/team package created or repaired, write or repair
    `agentlas.json.publicProfile` (`titleKo`, `descriptionKo`, a `guide` with
    `whatItDoesKo` / `bestForKo` / `prerequisitesKo` / `expectedOutputsKo` /
@@ -116,27 +185,32 @@ Meta-Agent team:
    words, what it returns (name ≥ 2 deliverables), what it can access, and where
    a human approves. This is BYOK work — the builder's own model writes the copy.
    Verify with the bundled runtime gate:
-   `bin/hephaestus package <pkg> --visibility marketplace`. Recompute the
-   package hash after writing `agentlas.json`.
-9. If a package was created or repaired in the current workspace, register it to
-   local discovery before reporting:
+   `"$ENGINE/bin/hephaestus" package "$PACKAGE_ROOT" --visibility marketplace`.
+   Recompute the package hash after writing `agentlas.json`.
+10. If a package was created or repaired, register it to local discovery before
+   reporting. Pass `$PACKAGE_ROOT`, never `.`:
+
    ```bash
-   RUNNER="./bin/hephaestus"
-   if [ ! -x "$RUNNER" ] && [ -x "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus" ]; then
-     RUNNER="./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
-   fi
-   if [ -x "$RUNNER" ]; then
-     "$RUNNER" cards migrate . --tier local --overwrite
-   else
-     echo "Hephaestus runner not found for routing-card migration."
-   fi
+   "$ENGINE/bin/hephaestus" cards migrate "$PACKAGE_ROOT" --tier local --overwrite
    ```
-10. Run the package shape gate before reporting completion:
-   `scripts/verify-team-package.sh <generated-package-root>`. If it fails, do
-   not report `completed`; fix the package by collapsing to a valid
-   single-agent shape or adding orchestrator/HQ plus company-blueprint topology,
-   then rerun the gate.
-11. After the verified package has been written and registered locally, ask one
+
+   With `.` this step resolves a different root than step 9 wrote to and
+   overwrites its output — measured: `id` becomes `local/agent`, `workforce`
+   becomes `null`, and `routing_status` promotes itself from draft to trusted.
+   An absolute path does not reproduce any of it.
+
+11. Run the package contract gate before reporting completion:
+
+   ```bash
+   "$ENGINE/bin/hephaestus" contract verify "$PACKAGE_ROOT" --mode single|team|package
+   ```
+
+   This is the same contract step 5 scaffolded from, so its blockers name the
+   exact artifact and the exact unfilled hole, and for a team it runs the
+   team-shape rule as well. Fix every blocker and rerun until the list is empty.
+   **A non-empty blocker list means you may not report `completed`** — report
+   `blocked` and list them verbatim.
+12. After the verified package has been written and registered locally, ask one
     final storage question. Prefer the host's structured two-choice UI when it
     exists, and use these choices without adding a public-Hub option:
     - **Cloud에 올리기** — save the package owner-private in Agent Cloud so it
@@ -151,17 +225,18 @@ Meta-Agent team:
     resolved Hephaestus runner against the exact verified package root:
 
     ```bash
-    "$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link
+    "$ENGINE/bin/hephaestus" upload "$PACKAGE_ROOT" --visibility private-link
     ```
 
-    Resolve `RUNNER` with the same trusted runtime search used above and set
-    `PACKAGE_ROOT` to the exact gate-verified package, never the workspace or a
+    `PACKAGE_ROOT` is the exact gate-verified package, never the workspace or a
     guessed parent folder. Authentication, offline, CAS-conflict, quota, or
     security-scan failure must leave the local package intact; report the
     failure and the exact retry command. Public Hub publication remains a
     separate explicit `/hep-upload ... --visibility marketplace` action.
-12. Return `status`, `evidence`, `output`, `global_commands`, `market_page_copy`,
-   `interview_research`, and `blockers`.
+13. Return `status`, `evidence`, `output`, `global_commands`, `market_page_copy`,
+   `interview_research`, and `blockers`. `evidence` must carry the resolved
+   `ENGINE`, the `contract scaffold` receipt, and the final `contract verify`
+   blocker list — a build that cannot show those three did not run this flow.
    The `global_commands` section must tell the user the exact Claude Code,
    Codex, Gemini CLI, generic AGENTS.md, and terminal commands for the generated
    agent.

@@ -294,8 +294,22 @@ def compile_offer(root: Path) -> dict[str, Any]:
             if isinstance(preferred, str) and preferred.strip():
                 row["preferred"] = preferred.strip()
             host.append(row)
-    note("/host", "extracted" if host else "absent",
-         ".agentlas/mcp-policy.json" if host else None)
+    if not host:
+        # "No external capability required" is an ANSWER, not a gap. Omitting the
+        # key made the brief say nothing about what the machine must be able to
+        # do, and a host reading it could not tell "needs nothing" apart from
+        # "never stated" - which is exactly what the review refuses. A package
+        # that declares no MCP requirement has told us it runs on the model
+        # alone; say so rather than leaving the field out.
+        host = [{
+            "capability": "none",
+            "withoutIt": "runs anywhere; this package declares no external tool or "
+                         "MCP server requirement",
+        }]
+        note("/host", "derived", ".agentlas/mcp-policy.json",
+             "no MCP requirement declared, so the requirement is explicitly none")
+    else:
+        note("/host", "extracted", ".agentlas/mcp-policy.json")
 
     brief: dict[str, Any] = {
         "schemaVersion": BRIEF_VERSION,

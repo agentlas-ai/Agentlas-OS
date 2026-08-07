@@ -60,6 +60,19 @@ choices become concrete specialist behavior.
   Codex, Gemini CLI, Antigravity, generic AGENTS.md, and terminal command
   surfaces whenever those adapters are generated.
 
+## System Agents - Copy, Never Write
+
+Single packages copy NONE of the canonical system-agent bodies (pm-soul,
+memory-curator, policy-gate, eval-qa) and must not author substitutes for
+them. Their functions are covered by the runtime layers declared in
+`$ENGINE/system-agents/folder-rules.md` (resolve `$ENGINE` as in hep-build
+Step 0): the deterministic always-on curator, the Memory Ticket ledger, the
+project soul log, the host PreToolUse hook, and the host judge engine. The
+package declares - via `.agentlas/mcp-policy.json`,
+`.agentlas/memory-map.json`, `.agentlas/memory-tickets.jsonl`, and
+`.agentlas/capability-eval-plan.json` - and never implements policy or judge
+logic.
+
 ## Routing Contract — Non-Negotiable
 
 The routing card is the same artifact in all three builders. Author or repair it

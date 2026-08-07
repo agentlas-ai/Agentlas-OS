@@ -16,6 +16,20 @@ from typing import Any
 from .domains import DOMAIN_IDS
 
 
+
+# One owner for how much a card must say. The repair pass fills to exactly these
+# numbers; before this constant existed the repairer topped up at "fewer than 5
+# triggers" and "fewer than 3 anti-triggers" while this check demanded 6 and 4,
+# so a card holding exactly 5 and 3 fell in the gap: the repair thought it was
+# done and the gate refused to publish. Measured on a live package
+# (webhook-idempotency-doctor): has 5 ko=2 en=3, has 3 ko=1 en=2 — blocked by two
+# sentences nobody was going to write. Blocking a user action that the repair
+# pass was supposed to handle is the failure mode, not the safeguard.
+TRIGGER_MINIMUM_TOTAL = 6
+TRIGGER_MINIMUM_PER_LOCALE = 3
+ANTI_TRIGGER_MINIMUM_TOTAL = 4
+ANTI_TRIGGER_MINIMUM_PER_LOCALE = 2
+
 def _workforce_ontology() -> dict[str, Any]:
     """Pinned Agent Workforce Ontology vocabulary (awo:2026-07-15.2)."""
     import json
@@ -164,13 +178,35 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     ready_blockers: list[str] = []
     trigger_locales = {locale: trigger_counts.get(locale, 0) for locale in ("ko", "en")}
     anti_locales = {locale: anti_counts.get(locale, 0) for locale in ("ko", "en")}
-    if trigger_total < 6 or any(trigger_locales[locale] < 3 for locale in ("ko", "en")):
+    # How many, and in which languages, are two different questions with two
+    # different answers. Too few examples altogether means the card genuinely
+    # cannot route, and that blocks. A shortfall in one language means Korean or
+    # English queries will match this agent less well — a real quality problem,
+    # and not one the author can fix by translating: a trigger is how a user
+    # actually phrases a request, so a machine translation of an English trigger
+    # is a guess about Korean users, not evidence. The repair pass carries over
+    # whatever Korean the package already wrote; when the package has none, the
+    # honest outcome is to publish and say so, not to refuse the upload.
+    if trigger_total < TRIGGER_MINIMUM_TOTAL:
         ready_blockers.append(
-            f"needs >=6 trigger_examples (>=3 ko, >=3 en; has {trigger_total}, ko={trigger_locales['ko']}, en={trigger_locales['en']})"
+            f"needs >={TRIGGER_MINIMUM_TOTAL} trigger_examples (has {trigger_total})"
         )
-    if anti_total < 4 or any(anti_locales[locale] < 2 for locale in ("ko", "en")):
+    elif any(trigger_locales[locale] < TRIGGER_MINIMUM_PER_LOCALE for locale in ("ko", "en")):
+        warnings.append(
+            f"trigger_examples reach {TRIGGER_MINIMUM_TOTAL} but not "
+            f"{TRIGGER_MINIMUM_PER_LOCALE} per language "
+            f"(ko={trigger_locales['ko']}, en={trigger_locales['en']}); "
+            "queries in the thin language will match this agent less often"
+        )
+    if anti_total < ANTI_TRIGGER_MINIMUM_TOTAL:
         ready_blockers.append(
-            f"needs >=4 anti_triggers (>=2 ko, >=2 en; has {anti_total}, ko={anti_locales['ko']}, en={anti_locales['en']})"
+            f"needs >={ANTI_TRIGGER_MINIMUM_TOTAL} anti_triggers (has {anti_total})"
+        )
+    elif any(anti_locales[locale] < ANTI_TRIGGER_MINIMUM_PER_LOCALE for locale in ("ko", "en")):
+        warnings.append(
+            f"anti_triggers reach {ANTI_TRIGGER_MINIMUM_TOTAL} but not "
+            f"{ANTI_TRIGGER_MINIMUM_PER_LOCALE} per language "
+            f"(ko={anti_locales['ko']}, en={anti_locales['en']})"
         )
     if non_verb:
         ready_blockers.append(f"capabilities must be verb_object snake_case: {non_verb[:3]}")

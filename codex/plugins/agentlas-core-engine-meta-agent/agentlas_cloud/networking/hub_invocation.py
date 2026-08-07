@@ -474,6 +474,11 @@ def _touch_agentlas_memory(
     if memory_root is None:
         return {"status": "skipped", "reason": "memory_root not provided"}
     memory_root.mkdir(parents=True, exist_ok=True)
+    # The drop box the `experience_record` command in the grounding directive
+    # ingests from. It has to exist before the agent runs, or the one write in
+    # that contract fails on a missing path and the drawer stays empty for the
+    # same reason it was empty before: nothing could put anything in it.
+    (memory_root / "notes").mkdir(parents=True, exist_ok=True)
     created = _ensure_agentlas_memory_files(memory_root)
     tool_errors: list[str] = []
     status = _optional_hub_memory_tool("agentlas.memory.status", {"memoryRoot": str(memory_root)}, home, tool_errors)
@@ -511,6 +516,45 @@ def _touch_agentlas_memory(
             "mode": "hub_byom_bundle",
         },
     )
+
+    # A candidate memory event for the curator to judge later. Without this the
+    # curator has nothing to judge: measured on 60 borrowed agents on a host that
+    # had been running for months, `memory-tickets.jsonl` and
+    # `curator-decisions.jsonl` were empty in all 60 while the invocation ledger,
+    # the soul and the experience database were written in every one. The Hub
+    # serves `agentlas.memory.ticket` (lib/mcp/memory.ts); this path created the
+    # ledger file and then called three other tools, never that one, so the
+    # promotion pipeline downstream was starved rather than broken.
+    #
+    # The ticket carries the request HASH, never the request: this ledger travels
+    # with the agent folder and a raw prompt is exactly what must not.
+    ticket_payload = {
+        "memoryRoot": str(memory_root),
+        "slug": slug,
+        "kind": "invocation",
+        "status": "candidate",
+        "evidence": {
+            "routingReceiptId": routing_receipt_id,
+            "requestHash": _request_hash(request),
+            "mode": "hub_byom_bundle",
+        },
+    }
+    ticket = _optional_hub_memory_tool("agentlas.memory.ticket", ticket_payload, home, tool_errors)
+    # The local ledger is written either way. A ticket that only exists when the
+    # Hub answers is a ticket that goes missing exactly when a run had trouble.
+    append_jsonl(
+        memory_root / "memory-tickets.jsonl",
+        {
+            "ts": utc_now(),
+            "source": "hephaestus-network",
+            "slug": slug,
+            "kind": "invocation",
+            "status": "candidate",
+            "routing_receipt_id": routing_receipt_id,
+            "request_hash": _request_hash(request),
+            "hub_acknowledged": bool(ticket),
+        },
+    )
     return {
         "status": "updated" if not tool_errors else "updated_with_warnings",
         "memory_root": str(memory_root),
@@ -518,6 +562,7 @@ def _touch_agentlas_memory(
         "status_tool": status,
         "wizard": wizard,
         "soul_update": soul,
+        "memory_ticket": ticket,
         "tool_errors": tool_errors,
     }
 
@@ -661,7 +706,17 @@ def _grounding_directive(
             "experience.sqlite; (2) query project documents separately with "
             "`ontology_query`. Do not inject the legacy markdown file wholesale. If the task is "
             "trivial or self-contained, skip the memory/ontology lookups — but the "
-            "codebase attachment above is not optional."
+            "codebase attachment above is not optional. "
+            "FINALLY, after substantial work — a multi-file change, a debugging "
+            "session, a corrected misdiagnosis, a release, or a non-obvious gotcha, "
+            "but not a conversational turn — record what you learned into THIS "
+            "agent's own drawer: write one learning per file under `notes/` with a "
+            "dated title, what was attempted, what happened, the mechanism that "
+            "explains why, what to do next time, and a reference (file and line, a "
+            "command, or a commit); then run `experience_record` on it. Record the "
+            "why, not the what. Never write secrets, credentials, tokens, "
+            "environment values, raw logs, or transcripts. Without this step the "
+            "drawer stays empty and the next borrower starts from nothing."
         ),
         "commands": {
             "project_overview": f"ls -la {_shell_quote(str(project))}",
@@ -682,6 +737,29 @@ def _grounding_directive(
             "working_memory_read": (
                 f"{ontology_cli} --db {_shell_quote(str(ontology_db))} "
                 f"working-memory read --agent {agent_id}"
+            ),
+            # The one WRITE in this contract. Everything above reads; without this
+            # a borrowed agent could consult its drawer but never put anything in
+            # it, so the drawer stayed empty by construction. Measured 2026-08-07
+            # across all 32 per-slug stores on this machine: sources, chunks,
+            # entities, relations, memory_candidates and every experience table
+            # were 0 rows, while the same machine's Desktop store held 1,026
+            # episodes — the work happened, the agent's own drawer just had no way
+            # to receive it.
+            #
+            # `internal`, NOT `private`, and that is not a privacy choice — it is
+            # the only scope this drawer can be read back from. `OntologyRuntime.
+            # query` resolves document scopes as `["public", "internal"]` with no
+            # private branch (ontology/runtime.py), so a chunk ingested as private
+            # is stored, indexed in FTS, and then filtered out of every recall.
+            # Measured 2026-08-07 on two identical fresh stores: scope=private
+            # returned 0 chunks for a term the FTS index matched, scope=internal
+            # returned 1 for the same term in both English and Korean. The drawer
+            # is already isolated by being per-agent and on-device; writing it
+            # private would only make it write-only.
+            "experience_record": (
+                f"{ontology_cli} --db {_shell_quote(str(experience_db))} "
+                f"ingest {_shell_quote(str(memory_root / 'notes'))} --scope internal"
             ),
         },
     }

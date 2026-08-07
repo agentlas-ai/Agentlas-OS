@@ -383,10 +383,27 @@ def check_team_shape(folder: str | Path) -> dict[str, Any]:
         has_component("PM Soul", ["pm-soul", "pm soul", "project-owner", "project owner"])
         has_component("Memory Curator", ["memory-curator", "memory curator"])
         has_component("Policy Gate", ["policy-gate", "policy gate"])
-        has_component("eval judge", ["eval-judge", "eval judge", "evaluation-judge", "evaluation judge"])
+        # `eval-qa` is what the corpus actually ships and what the canonical
+        # system agent is named; `eval-judge` was the spelling this check asked
+        # for and it exists in 2 packages against 20 for `eval-qa`. The same
+        # role, judged by two names, is how 55 teams failed a requirement they
+        # met. The canonical file is `system-agents/eval-qa.md`; every spelling
+        # below is accepted and none of them is a different role.
+        has_component(
+            "eval judge",
+            ["eval-qa", "eval qa", "eval-judge", "eval judge", "evaluation-judge", "evaluation judge"],
+        )
+        # The QA/evidence gate is the same member as the eval judge in the
+        # canonical shape — one role that judges in a separate context and holds
+        # the evidence bar. Demanding a second, differently-named member split a
+        # single responsibility into two files nobody wrote.
         has_component(
             "QA/evidence gate",
-            ["qa-evidence-gate", "qa evidence gate", "evidence-gate", "evidence gate"],
+            [
+                "eval-qa", "eval qa",
+                "qa-evidence-gate", "qa evidence gate", "evidence-gate", "evidence gate",
+                "qa-gate", "qa gate",
+            ],
         )
         if not (root / ".agentlas" / "memory-map.json").exists():
             fail("missing TEAM requirement: .agentlas/memory-map.json")

@@ -84,11 +84,37 @@ plan before public or marketplace-ready output.
   as value-free catalog requirements. Ambiguous legacy MCP entries default to
   optional; never package executable commands, endpoints, or credential values.
 - `.agentlas/global-commands.json`.
+- Canonical system-agent bodies per `$ENGINE/system-agents/folder-rules.md` -
+  see "System Agents - Copy, Never Write" below.
 - Sitemap/task-bias coverage when packaging complex teams.
 - `manifest.json`, schemas, install scripts, and verification scripts for
   public release.
 - Missing global command files for Claude Code, Codex, Gemini CLI, Antigravity,
   generic AGENTS.md, and terminal use.
+
+## System Agents - Copy, Never Write
+
+When the source is or becomes a team package, resolve the engine root as in
+hep-build Step 0 and follow `$ENGINE/system-agents/folder-rules.md`:
+
+- Replace any package-authored pm-soul, memory-curator, policy-gate, or
+  eval-qa body with a verbatim copy of the matching canonical file in
+  `$ENGINE/system-agents/`, at the destination folder-rules names. This
+  repairs the measured defect of packages carrying private gate/judge logic.
+- Preserve genuinely team-specific content from the old body by moving it
+  into the canonical file's `## Team Context (editable)` section - the only
+  editable region. Everything above that marker must stay byte-identical to
+  the canonical source; the gate compares bytes.
+- Keep the orchestrator body team-authored, but copy
+  `system-agents/orchestrator-protocol.md` verbatim to
+  `docs/orchestrator-protocol.md` and add a header line to the orchestrator
+  stating it follows that protocol.
+- Remove runtime-owned material from packages: policy enforcement logic,
+  judge logic, ontology runtime state, context/code maps.
+- Do not touch per-agent domain assets (skills/knowledge/styles/data/scripts)
+  - they are exempt (I5) and supposed to differ.
+- For single packages, remove any pm-soul/memory-curator/policy-gate/eval-qa
+  member bodies; singles rely on the runtime layers per folder-rules.
 
 ## Routing Contract — Non-Negotiable
 

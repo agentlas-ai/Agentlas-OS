@@ -2,25 +2,57 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Agentlas Company Blueprint",
   "type": "object",
-  "required": ["schemaVersion", "teamId", "name", "orchestrator", "topology", "nodes"],
+  "required": [
+    "schemaVersion",
+    "teamId",
+    "name",
+    "orchestrator",
+    "topology",
+    "nodes"
+  ],
   "properties": {
-    "schemaVersion": { "type": "string" },
-    "teamId": { "type": "string" },
-    "name": { "type": "string" },
-    "orchestrator": { "type": "string" },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "teamId": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "orchestrator": {
+      "type": "string"
+    },
+    "topology": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Team shape as a non-empty string. The runtime gate reads this with `isinstance(topology, str)` and treats anything else as absent (agentlas_cloud/team_shape.py). An object or null therefore passed this schema and then failed the gate — the value was `required` here without ever being defined, so a generator had nothing to conform to. `single-agent` is the one reserved value: it means the package must NOT carry an orchestrator/HQ. Every other non-empty string is a multi-agent team; published teams use `multi-agent-team`, `hub-and-spoke`, `orchestrated-team` and others, and all of them are valid."
+    },
     "nodes": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "role"],
+        "required": [
+          "id",
+          "role"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "role": { "type": "string" },
-          "tier": { "type": "integer" }
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "integer"
+          }
         }
       }
     },
-    "edges": { "type": "array" }
+    "edges": {
+      "type": "array",
+      "description": "Handoff edges. The team gate fails a multi-agent package with an empty or missing `edges`, so a team that declares nodes must declare how work moves between them."
+    }
   },
   "additionalProperties": true
 }

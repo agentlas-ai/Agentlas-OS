@@ -29,6 +29,10 @@ code_dirs=(
   "agentlas_cloud"
   "schemas"
   "templates"
+  # Mode contracts are named by .agentlas/mode-map.json. A build that can read
+  # the map but not the contract it points at falls back to improvising, and
+  # that improvisation is invisible: the package still gets written.
+  "modes"
 )
 
 # Hook commands are host-specific: Claude and Codex expose different plugin
@@ -41,6 +45,15 @@ hook_dir_mirrors=(
 
 code_files=(
   "package-contract.json"
+  # /hep-build opens with "read AGENTS.md, read the mode map, run the interview
+  # gate, run the shape gate". None of those four files shipped, so the command
+  # only ever worked inside this repository — in a user's own project the reads
+  # found nothing (or, worse, the user's own AGENTS.md) and the model improvised
+  # the whole build. Measured on three packages built 2026-07-28/29 outside this
+  # repo: 5 of 18 required artifacts present, contract verify 23 blockers each.
+  "AGENTS.md"
+  ".agentlas/mode-map.json"
+  "docs/builder-interview-research-gate.md"
   "bin/hephaestus"
   "bin/agentlas-python-cache-boundary"
   "bin/ontology"

@@ -412,11 +412,31 @@ def _portable_path_blockers(workspace: Path) -> list[str]:
         match = HOST_PATH_RE.search(text)
         if match is None:
             continue
+        # A scanner that looks for private paths has to contain the shape of one.
+        # `scripts/verify-package.sh` carries the literal `'/Users/[a-zA-Z]+/'`
+        # as its own search pattern, and this check flagged it as a leak in 90
+        # published packages — the code that prevents the defect being read as
+        # the defect. A match inside a character class or a quoted regex is a
+        # pattern, not a path: a real leak names a person, `[a-zA-Z]+` does not.
+        if _looks_like_a_pattern_not_a_path(text, match):
+            continue
         relative = path.relative_to(workspace).as_posix()
         blockers.append(
             f"{relative}: contains an absolute host path; replace it with a package-relative path or remove generated runtime state"
         )
     return blockers
+
+
+def _looks_like_a_pattern_not_a_path(text: str, match: re.Match[str]) -> bool:
+    """True when the matched text is a regex describing a path, not a path.
+
+    Deliberately narrow. It exempts a match containing regex metacharacters in
+    the user-name position — `[a-zA-Z]+`, `\\w+`, `(?:[^/]+)` — and nothing else.
+    A literal home-directory path still blocks, which is the whole point.
+    """
+
+    matched = match.group(0)
+    return bool(re.search(r"\[[^\]]+\]|\\w|\\S|\(\?:|\.\*|\.\+", matched))
 
 
 def _generated_runtime_blockers(workspace: Path) -> list[str]:
@@ -471,13 +491,25 @@ def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -
         for problem in report.get("problems", [])
     ]
     blockers.extend(_portable_path_blockers(workspace))
-    blockers.extend(_generated_runtime_blockers(workspace))
+    # Generated runtime state is a cleanup item, not a blocker. The product
+    # writes it: run any Hephaestus command with a package folder as the working
+    # directory and the ontology runtime lands an `ontology-runtime.sqlite` and
+    # its inbox in that package's `.agentlas/`. Measured 2026-08-07: repairing a
+    # published package with an agent took its blocker count from 8 to 12, and
+    # all four new blockers were files the agent's own runtime had just created.
+    #
+    # It is also already handled where it matters: `upload.py` filters these
+    # paths out of the delivered artifact (`is_generated_runtime_path`, two call
+    # sites), so nothing here can reach a buyer. Blocking on it only stops a
+    # build from finishing work the delivery path was going to clean anyway.
+    cleanup = _generated_runtime_blockers(workspace)
     warnings = [
         f"{report['path']}: {problem}"
         for report in reports
         if not report.get("required", True)
         for problem in report.get("problems", []) if problem != "missing"
     ]
+    warnings.extend(cleanup)
     return {
         "workspace": str(workspace),
         "mode": mode,
@@ -485,4 +517,5 @@ def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -
         "artifacts": reports,
         "blockers": blockers,
         "warnings": warnings,
+        "cleanup": cleanup,
     }

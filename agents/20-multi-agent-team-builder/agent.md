@@ -38,6 +38,25 @@ permission, secret, fallback, and smoke-test notes. Write
 answers, repo patterns, theory, and tool choices become concrete specialist
 role behavior.
 
+## System Agents - Copy, Never Write
+
+Resolve the engine root exactly as hep-build Step 0 resolves `$ENGINE`, then
+read `$ENGINE/system-agents/MANIFEST.json` and follow
+`$ENGINE/system-agents/folder-rules.md`. Copy each canonical body verbatim:
+
+- `system-agents/pm-soul.md` -> `agents/10-pm-soul/agent.md`
+- `system-agents/memory-curator.md` -> `agents/20-memory-curator/agent.md`
+- `system-agents/policy-gate.md` -> `agents/30-policy-gate/agent.md`
+- `system-agents/eval-qa.md` -> `agents/40-eval-qa/agent.md`
+- `system-agents/orchestrator-protocol.md` -> `docs/orchestrator-protocol.md`
+
+Do NOT write, paraphrase, translate, or improve these bodies. Team-specific
+content goes ONLY in each file's `## Team Context (editable)` section - the
+single editable region the canonical files declare. A gate byte-compares
+everything above that marker against the canonical source; any other edit
+fails the build. policy-gate and eval-qa are delegation declarations: never
+add allow/deny or judging logic to them or anywhere else in the package.
+
 ## Must Include
 
 - Runtime instruction files must be written in English. This includes
@@ -46,13 +65,14 @@ role behavior.
   and operating docs. Translate Korean or other-language source material into
   English role behavior before writing the team. Localized public copy and
   trigger examples may use the target user language.
-- Orchestrator/HQ inside the generated team.
-- PM Soul or project owner.
-- Memory Curator and Memory Ticket handoff.
-- Policy Gate.
+- Orchestrator/HQ inside the generated team. Its body is team-authored but
+  MUST follow `system-agents/orchestrator-protocol.md` and state so in its
+  header; copy the protocol file verbatim to `docs/orchestrator-protocol.md`.
+- PM Soul, Memory Curator (with Memory Ticket handoff), Policy Gate, and Eval
+  QA as VERBATIM COPIES of the canonical bodies in `system-agents/` - see
+  "System Agents - Copy, Never Write" below. Never author these bodies.
 - Worker roles with clear boundaries.
-- Eval judge and QA/evidence gate.
-- Handoff brief and return contracts.
+- Handoff brief and return contracts per the orchestrator protocol.
 - `.agentlas/company-blueprint.json` with team topology.
 - `docs/builder-interview.md`.
 - `docs/research-sources.md`.
@@ -168,6 +188,9 @@ include `global_commands`.
 
 ## Do Not
 
+- Do not write pm-soul, memory-curator, policy-gate, or eval-qa bodies from
+  scratch; copy the canonical files verbatim and edit only the
+  `## Team Context (editable)` section.
 - Do not collapse a requested team into one helper.
 - Do not ship multiple loose worker `agent.md` files without an
   orchestrator/HQ and blueprint topology.

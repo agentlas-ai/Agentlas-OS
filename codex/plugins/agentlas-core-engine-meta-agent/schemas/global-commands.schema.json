@@ -22,45 +22,85 @@
     },
     "commands": {
       "type": "array",
-      "minItems": 4,
+      "minItems": 1,
+      "description": "Command adapters this package exposes. Measured on the live corpus: 101 packages declare six, 68 declare exactly one, and the entry shape comes in four forms — the full {runtime, command, adapterPath, scope, status} record (100), {command, description, entry} (52), {name, entrypoint, description} (7), and that plus runtimeAdapters (4). The previous rule required four entries of the first form only, which made a package with one canonical command unpublishable forever. How many runtimes an author adapts to is their decision, not a schema constraint; the first form below stays the canonical one that generation writes.",
       "items": {
-        "type": "object",
-        "required": [
-          "runtime",
-          "command",
-          "adapterPath",
-          "scope",
-          "status"
-        ],
-        "properties": {
-          "runtime": {
-            "type": "string"
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "runtime",
+              "command",
+              "adapterPath",
+              "scope",
+              "status"
+            ],
+            "properties": {
+              "runtime": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "adapterPath": {
+                "type": "string"
+              },
+              "globalInstallPath": {
+                "type": "string"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "project",
+                  "plugin",
+                  "terminal"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              }
+            }
           },
-          "command": {
-            "type": "string"
+          {
+            "type": "object",
+            "required": [
+              "command"
+            ],
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "entry": {
+                "type": "string"
+              }
+            }
           },
-          "adapterPath": {
-            "type": "string"
-          },
-          "globalInstallPath": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "global",
-              "project",
-              "plugin",
-              "terminal"
-            ]
-          },
-          "status": {
-            "type": "string"
-          },
-          "notes": {
-            "type": "string"
+          {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "entrypoint": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "runtimeAdapters": {}
+            }
           }
-        }
+        ]
       }
     },
     "postCreationUserMessage": {

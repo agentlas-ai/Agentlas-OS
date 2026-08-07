@@ -362,6 +362,11 @@ def main(argv: list[str] | None = None) -> int:
     contract_verify = contract_sub.add_parser("verify", help="Verify a workspace against the package contract; JSON blockers for self-repair")
     contract_verify.add_argument("folder")
     contract_verify.add_argument("--mode", choices=["single", "team", "package"], default="single")
+    contract_complete = contract_sub.add_parser(
+        "complete",
+        help="Fill every contract artifact the package's own routing card already answers")
+    contract_complete.add_argument("workspace")
+    contract_complete.add_argument("--slug", default="")
     contract_prompt = contract_sub.add_parser("prompt", help="Render the contract artifact list as prompt bullet lines")
     contract_prompt.add_argument("--mode", choices=["single", "team", "package"], default="single")
 
@@ -709,6 +714,13 @@ def main(argv: list[str] | None = None) -> int:
         help="CandidateSet JSON, or the complete federation result returned by source-scoped search",
     )
     workforce_validate.add_argument("selection")
+    # Generated from the schema, not retyped in prose: of the 15 fields the work
+    # order requires, the authoring instructions never named 8, and the schema
+    # sets additionalProperties:false — so every first attempt failed on names.
+    workforce_sub.add_parser(
+        "work-order-prompt",
+        help="Print the work order's required fields, generated from the schema",
+    )
     workforce_prepare = workforce_sub.add_parser("prepare", help="Pin exact selected releases and fetch BYOM bundles")
     workforce_prepare.add_argument("work_order")
     workforce_prepare.add_argument(
@@ -1178,6 +1190,35 @@ def main(argv: list[str] | None = None) -> int:
             # `scaffold && fill && verify`, and a silent success there means the
             # fill step writes into a workspace that was never created.
             return 1 if report.get("error") else 0
+        if args.contract_command == "complete":
+            # The build's own completion step. `scaffold` writes stencils and
+            # `verify` reports what is still unanswered; this is the piece in
+            # between - it answers, from the package, everything that does not
+            # need a person. Exposed as a command so hep-build calls it at BUILD
+            # time and a new agent is born complete, instead of every package
+            # being repaired years later on its way out the door.
+            from .repackage import (
+                fill_capability_eval_plan,
+                fill_declared_artifacts,
+                fill_runtime_adapter_bodies,
+            )
+
+            workspace = Path(args.workspace).expanduser().resolve()
+            manifest = {}
+            try:
+                manifest = json.loads((workspace / "agentlas.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                manifest = {}
+            slug = args.slug or (manifest.get("slug") if isinstance(manifest, dict) else "") or workspace.name
+            written = fill_declared_artifacts(workspace, str(slug))
+            if fill_capability_eval_plan(workspace):
+                written.append(".agentlas/capability-eval-plan.json")
+            written.extend(fill_runtime_adapter_bodies(workspace, str(slug)))
+            print(json.dumps(
+                {"action": "contract complete", "workspace": str(workspace),
+                 "slug": str(slug), "written": written},
+                ensure_ascii=False, indent=2))
+            return 0
         if args.contract_command == "verify":
             report = verify(args.folder, mode=args.mode)
             emit(report)
@@ -1242,6 +1283,11 @@ def main(argv: list[str] | None = None) -> int:
             return value
 
         try:
+            if args.workforce_command == "work-order-prompt":
+                from .workforce.contracts import work_order_prompt_lines
+
+                return emit({"schemaVersion": "agentlas.workforce-work-order.v1",
+                             "lines": work_order_prompt_lines()})
             if args.workforce_command.startswith("local-"):
                 registry = LocalWorkforceRegistry()
                 if args.workforce_command == "local-register":

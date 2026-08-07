@@ -2321,6 +2321,13 @@ def ensure_project(project: str | Path, *, reason: str = "host-first-contact", f
         code_map = generate_code_map(root, force=force_code_map)
         if code_map.get("warning"):
             seed_warnings.append(str(code_map["warning"]))
+        # The seed above writes context-map.json with an empty node list and a
+        # note asking a human to fill it. Nothing ever did, on any machine, so
+        # the declared half of every context slice was boilerplate. Derive it
+        # from the ledgers this project already keeps, right after the seed.
+        from .context_map_authoring import refresh_declared_context
+
+        declared_context = refresh_declared_context(root)
         permission_warnings = _harden_private_tree(root)
         status = project_status(root)
     created = list(dict.fromkeys(seed_created + graph_created + list(code_map.get("created") or [])))
@@ -2331,6 +2338,7 @@ def ensure_project(project: str | Path, *, reason: str = "host-first-contact", f
         "created": created,
         "gitignore": {"path": gitignore_path, "changed": gitignore_changed},
         "codeMap": code_map,
+        "declaredContext": declared_context,
         "warnings": list(dict.fromkeys(seed_warnings + graph_warnings + permission_warnings)),
         "mergeOnly": True,
         "overwritten": [],

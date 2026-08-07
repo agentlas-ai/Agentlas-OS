@@ -417,12 +417,19 @@ def infer_entry(files: list[PackageFile]) -> str:
 
 
 def infer_skills(files: list[PackageFile]) -> list[str]:
+    """Skills actually present in the package. An empty result stays empty.
+
+    A package with no skills used to be given a literal placeholder skill id.
+    Once skills live outside the core that placeholder fires on every modular
+    agent and fills the Workforce index with a skill nobody has.
+    An absent value is an empty list, never a stand-in.
+    """
     skills: list[str] = []
     for file in files:
         match = re.search(r"(?:^|/)skills/([^/]+)/SKILL\.md$", file.path)
         if match:
             skills.append(match.group(1))
-    return sorted(set(skills)) or ["agentlas-package"]
+    return sorted(set(skills))
 
 
 def build_manifest(files: list[PackageFile], name: str) -> AgentlasManifest:
@@ -825,6 +832,116 @@ def _read_existing_manifest(base: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+# Must equal the Hub emitter's ENTRY_CONTENT_LIMIT. It did not: the Hub allowed 16,000
+# and this side allowed 8,000, so the same published package ran with a different body
+# depending on which surface loaded it. Measured 2026-08-07 over the 170 published
+# packages carrying an entry file (character counts, which is what the limit measures):
+# the Hub truncated 0 of them, this side truncated 117. The tail of an AGENTS.md is
+# usually where the author's safety rules and done-criteria sit, so the local surface
+# was running two thirds of the corpus without them.
+#
+# The Hub's derivation still holds but its headroom is thinning. When 16,000 was chosen
+# the corpus was 159 files with a 13.3k maximum; today it is 170 files, median 9,095,
+# maximum 14,105 - 1,895 characters of slack. Entry bodies are growing, so this is worth
+# re-measuring rather than assuming, and the truncation notice below is what keeps the
+# next overflow visible instead of silent.
+ENTRY_CONTENT_LIMIT = 16_000
+
+# Byte-identical to the fenced block in system-agents/worker-memory-protocol.md.
+# A gate compares the two, because a directive that drifts from its canonical body is
+# worse than none: the spec would describe behaviour nothing actually asks for.
+#
+# This is injected rather than authored into packages on purpose. Recall is delivered
+# by the host capsule, but emission is the agent's job, and an agent borrowed onto a
+# host without the Agentlas hook was never told to emit - it left a request hash and
+# lost the learning. Injecting here reaches every borrowed agent from one place
+# instead of asking 178 packages to each carry the same text.
+WORKER_MEMORY_DIRECTIVE = """## Memory protocol (platform)
+
+Before acting: the injected memory capsule is a starting frame, not proof. Verify any
+stale or high-risk fact, and when a memory names a file, flag, or path, confirm it
+still exists. What you observe now outranks what was recorded.
+
+After substantial work - a multi-file change, a debugging session, a corrected
+misdiagnosis, a release, or a non-obvious gotcha, but not conversational turns -
+record one learning per entry as markdown in `.agentlas/pm/learnings/`. State its kind:
+fact, decision, preference, risk, procedure, hypothesis, evidence, deprecation, or
+conflict. A fact, decision, or procedure needs evidence - a file and line, a command,
+or its output; without evidence, mark it a hypothesis.
+
+Shape every entry the same way so the corpus stays searchable: a dated title
+(YYYY-MM-DD, never a relative date), what was attempted, what happened, the mechanism
+that explains why, what to do next time, and a reference. Record the why, not the what
+- "fixed a null check" teaches nothing; "the sandbox flag flips mid-build, so receipt
+validation returns 21002" teaches the mechanism. Append; never rewrite or compact an
+existing entry, and write one entry per learning rather than one long one.
+
+Never record secrets, credentials, tokens, environment values, raw logs, or
+transcripts. When a finding contradicts an existing entry, record it as a conflict and
+correct that entry; never silently overwrite it."""
+
+
+def _entry_payload(entry: Any) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """The entry body a borrower always loads, capped - but never silently.
+
+    The cap stays: a borrowing host's token budget is not ours to spend. What
+    changes is that the borrower is told. Measured 2026-08-07 across the 170
+    published packages that carry an entry file, 126 of them (74%) exceeded the
+    cap, so three quarters of the corpus was shipping a body that ended
+    mid-sentence with nothing in the bundle saying so. A model cannot compensate
+    for missing instructions it does not know are missing, and the bundle
+    already advertises `agentlas.read_agent_file` for exactly this.
+
+    Truncation now happens on a line boundary and appends a notice naming the
+    tool and path, so the rest is recoverable rather than lost.
+    """
+    content = redact(entry.content)
+    # The limit governs the AUTHOR's body only; the platform directive rides on top of
+    # it. Taking the directive out of the same budget would make platform text evict the
+    # author's tail - where their own safety rules usually sit - and a package that fit
+    # yesterday would start losing content today for a reason its author cannot see.
+    # The directive costs under a kilobyte against a bundle that runs ~18KB inside a 60k
+    # cap, so charging it to the author buys nothing.
+    directive = None if "pm/learnings" in content else WORKER_MEMORY_DIRECTIVE
+    budget = ENTRY_CONTENT_LIMIT
+
+    if len(content) <= budget:
+        body = f"{directive}\n\n{content}" if directive else content
+        return {"path": entry.path, "content": body}, None
+
+    def build_notice(omitted: int) -> str:
+        return (
+            f"\n\n---\n[truncated: {omitted} of {len(content)} characters "
+            f"were not included in this bundle. Read the full file with "
+            f"agentlas.read_agent_file on `{entry.path}` before relying on instructions "
+            f"that may appear below this point.]\n"
+        )
+
+    # The notice is part of what ships, so it comes out of the same budget rather than
+    # being added on top of a limit we just declared. Sized once against the worst case
+    # (the whole body dropped), so the reserve can never be too small.
+    head_budget = max(0, budget - len(build_notice(len(content))))
+    head = content[:head_budget]
+    boundary = head.rfind("\n")
+    if boundary > head_budget // 2:
+        head = head[:boundary]
+    omitted = len(content) - len(head)
+    body = head + build_notice(omitted)
+    # Field names mirror the Hub emitter's `entryTruncated` exactly. Two emitters of
+    # one bundle contract must not grow two vocabularies for the same fact - the
+    # sync gate compares field names, and a second spelling would read as a second
+    # concept.
+    return (
+        {"path": entry.path, "content": f"{directive}\n\n{body}" if directive else body},
+        {
+            "originalChars": len(content),
+            "droppedChars": omitted,
+            "limit": ENTRY_CONTENT_LIMIT,
+            "readFullFileWith": "agentlas.read_agent_file",
+        },
+    )
+
+
 def load_manifest(root: str | Path) -> AgentlasManifest:
     payload = json.loads((Path(root) / "agentlas.json").read_text(encoding="utf-8"))
     allowed = {field.name for field in dataclasses.fields(AgentlasManifest)}
@@ -842,11 +959,13 @@ def compile_runtime_bundle(root: str | Path) -> dict[str, Any]:
         raise FileNotFoundError(f"Entry file not found: {manifest.entry}")
     scan = scan_files(files)
     mcp_policy = _load_validated_mcp_policy(base)
+    entry_payload, entry_truncated = _entry_payload(entry)
     return {
         "schemaVersion": "1.0",
         "agent": manifest.name,
         "packageHash": manifest.packageHash,
-        "entry": {"path": entry.path, "content": redact(entry.content)[:8000]},
+        "entry": entry_payload,
+        **({"entryTruncated": entry_truncated} if entry_truncated else {}),
         "skills": manifest.skills,
         "toolPermissions": manifest.toolPermissions,
         "memoryPolicy": manifest.memoryPolicy,

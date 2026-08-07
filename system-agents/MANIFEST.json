@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "agentlas.system-agents/1",
+  "note": "I1 declaration: the single list of canonical system components. Builds COPY each canonical body verbatim into packages (I3); they never rewrite it. A gate byte-compares every copied body above its '## Team Context (editable)' marker against the file listed here. Canonical changes propagate by rebuild (I4). Per-agent domain assets (skills/knowledge/styles/data/scripts/benchmarks) are exempt (I5).",
+  "editableMarker": "## Team Context (editable)",
+  "components": [
+    {
+      "id": "memory-curator",
+      "role": "curator",
+      "file": "system-agents/memory-curator.md",
+      "packageTypes": "team",
+      "copyMode": "verbatim-copy",
+      "teamDestination": "agents/20-memory-curator/agent.md",
+      "runtimeChokepoint": "deterministic always-on curator (electron/memory/curator.ts) enforces G1-G5 every turn with no extra LLM call; this body is the explicit deep-curation layer"
+    },
+    {
+      "id": "pm-soul",
+      "role": "continuity-owner",
+      "file": "system-agents/pm-soul.md",
+      "packageTypes": "team",
+      "copyMode": "verbatim-copy",
+      "teamDestination": "agents/10-pm-soul/agent.md",
+      "runtimeChokepoint": null
+    },
+    {
+      "id": "policy-gate",
+      "role": "policy-delegation",
+      "file": "system-agents/policy-gate.md",
+      "packageTypes": "team",
+      "copyMode": "verbatim-copy",
+      "teamDestination": "agents/30-policy-gate/agent.md",
+      "runtimeChokepoint": "host PreToolUse hook - the only point that can actually refuse a tool call"
+    },
+    {
+      "id": "eval-qa",
+      "role": "eval-delegation",
+      "file": "system-agents/eval-qa.md",
+      "packageTypes": "team",
+      "copyMode": "verbatim-copy",
+      "teamDestination": "agents/40-eval-qa/agent.md",
+      "runtimeChokepoint": "host graph judge engine (judgeChecklist, EVAL_STUCK, separate-context judging, no self-grading)"
+    },
+    {
+      "id": "orchestrator-protocol",
+      "role": "orchestrator-covenant",
+      "file": "system-agents/orchestrator-protocol.md",
+      "packageTypes": "team",
+      "copyMode": "protocol-only",
+      "teamDestination": "docs/orchestrator-protocol.md",
+      "runtimeChokepoint": null,
+      "notes": "The orchestrator body stays team-authored; its header must declare compliance with this protocol. The protocol file itself is copied verbatim to docs/ so the reference resolves offline."
+    },
+    {
+      "id": "worker-memory-protocol",
+      "role": "worker-memory-contract",
+      "file": "system-agents/worker-memory-protocol.md",
+      "packageTypes": "none",
+      "copyMode": "platform-injected",
+      "teamDestination": null,
+      "runtimeChokepoint": "both runtime bundle emitters prepend the fenced directive to the entry (Agentlas-OS agentlas_cloud/runtime.py WORKER_MEMORY_DIRECTIVE, Hub runtime-bundle.ts WORKER_MEMORY_DIRECTIVE); scripts/sync-worker-memory-directive.sh byte-compares all three",
+      "notes": "Never copied into packages. Recall reaches an agent through the host capsule, but emission is the agent's job, and an agent borrowed onto a host without the Agentlas hook was never told to emit - it left a request hash and lost the learning. Injecting from the emitter reaches every borrowed agent from one place instead of asking 178 packages to each carry the same text."
+    },
+    {
+      "id": "task-bias",
+      "role": "governance",
+      "file": "system-agents/task-bias.md",
+      "packageTypes": "none",
+      "copyMode": "runtime-builtin",
+      "teamDestination": null,
+      "runtimeChokepoint": "built-in agent agentlas-task-bias in agentlas_desktop electron/architecture/manifest.ts (TASK_BIAS_PROMPT); owns <project>/.agentlas/sitemap.json, whose skeleton lives in electron/memory/project-files.ts",
+      "notes": "The fourth runtime built-in, alongside the meta-agent, PM Soul, and the Memory Curator. Not copied into packages: it governs a project folder, not an agent. It is the write owner of the sitemap memory root - the memory map must name it, not project bootstrap."
+    },
+    {
+      "id": "folder-rules",
+      "role": "placement-rules",
+      "file": "system-agents/folder-rules.md",
+      "packageTypes": "none",
+      "copyMode": "builder-instruction",
+      "teamDestination": null,
+      "runtimeChokepoint": null,
+      "notes": "Read by builders and gates; never copied into packages."
+    }
+  ],
+  "runtimeOwned": [
+    "policy enforcement logic (PreToolUse hook)",
+    "judge engine logic (judgeChecklist, EVAL_STUCK)",
+    "ontology runtime state",
+    "context maps and code maps (project-level, not agent-level)"
+  ],
+  "singlePackages": "Single-agent packages copy none of these bodies. The deterministic runtime layers cover the functions: always-on curator every turn, Memory Ticket ledger, project soul log, host PreToolUse hook, host judge engine. See system-agents/folder-rules.md."
+}

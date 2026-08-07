@@ -36,7 +36,13 @@ behavior. Localized marketplace copy, routing trigger examples, and sample user
 inputs may use the target user language.
 
 After creating or repairing a package, run
-`scripts/verify-team-package.sh <package-root>`. If it fails, do not report
+Before writing any package file, lay the contract down:
+`"$ENGINE/bin/hephaestus" contract scaffold "$PACKAGE_ROOT" --mode single|team|package`.
+It copies every required artifact into place with named `{{PLACEHOLDER}}` holes and
+never overwrites. Skipping it is how a build ends with 5 of 18 required artifacts
+and still reports success. `contract prompt --mode <mode>` lists what each one is for.
+
+`"$ENGINE/bin/hephaestus" contract verify "$PACKAGE_ROOT" --mode single|team|package` (this runs the team-shape rule too). If it fails, do not report
 `completed`; correct the shape by collapsing to a valid single-agent package or
 adding orchestrator/HQ plus company-blueprint topology, then rerun the gate.
 
@@ -48,9 +54,9 @@ discovery immediately so it is searchable in local routing:
 
 ```bash
 if [ -x "./bin/hephaestus" ]; then
-  ./bin/hephaestus cards migrate . --tier local --overwrite
+  ./bin/hephaestus cards migrate "$PACKAGE_ROOT" --tier local --overwrite
 fi
 ```
 
-Prefer the preflight-resolved `"$RUNNER" cards migrate . --tier local
+Prefer the preflight-resolved `"$RUNNER" cards migrate "$PACKAGE_ROOT" --tier local
 --overwrite` when available. Include the migration result in `evidence`.
