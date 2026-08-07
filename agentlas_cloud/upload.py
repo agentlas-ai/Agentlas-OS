@@ -24,6 +24,7 @@ from .runtime import (
     is_local_experience_lineage_path,
     is_value_free_credential_template,
     package_hash,
+    package_hash_includes,
     run_setup_wizard,
     standalone_experience_asset_identity,
 )
@@ -125,10 +126,21 @@ def package_agent(
     if not base.is_dir():
         raise UploadError(f"agent folder not found: {folder}")
 
-    routing_meta = refresh_routing_card_metadata(base)
+    # Deferred until after the derivations below. Refreshing here recorded a
+    # `source.package_hash` over a package that had not been completed yet, so
+    # the card lagged one round: the first upload of any package whose content
+    # the engine changed produced a different hash from every later one, which
+    # breaks hash preservation on republish. The card is written last, over the
+    # package as it will actually ship.
+    routing_meta: dict[str, Any] = {"updated": False, "reason": "deferred"}
     package_name = _read_package_name(base)
     package_slug = _read_package_slug(base)
-    setup_wizard = run_setup_wizard(base, package_name, write=write_manifest)
+    # Deferred with the card refresh below, and for the same reason: the wizard
+    # computes the package hash and writes it into `agentlas.json`. Running it
+    # here hashed the package BEFORE the engine completed it, so the first
+    # upload of any package the derivations touched recorded an identity for a
+    # package that no longer existed, and only the second run agreed with the
+    # first. Identity is recorded last, over what actually ships.
     if write_manifest:
         package_slug = _read_package_slug(base) or package_slug
 
@@ -251,10 +263,21 @@ def package_agent(
     # compiler. It is deterministic and reads only files already in the package, so
     # it cannot fail the upload — a package that yields a thin brief gets a thin
     # brief, and `provenance` says which fields were absent rather than guessing.
+    # LAST write before the hash. Every earlier pass - scaffold, derive, coerce,
+    # redact, repair, brief - can still change what ships, so recording the
+    # card's `source.package_hash` before them left it describing a package that
+    # no longer existed, and the first upload of a package the engine touched
+    # disagreed with every upload after it.
+    # Card first, wizard second. The card refresh WRITES the routing card, so a
+    # wizard that ran before it hashed a package whose card was about to change,
+    # and `agentlas.json` ended up describing a state that never shipped. The
+    # wizard is the last writer, so it must also be the last hasher.
+    routing_meta = refresh_routing_card_metadata(base)
+    setup_wizard = run_setup_wizard(base, package_name, write=write_manifest)
     if write_manifest:
         brief_findings = write_offer_brief(base)
         findings.extend(brief_findings)
-        files, file_count, _ = collect_upload_files(base)
+    files, file_count, _ = collect_upload_files(base)
 
     # Build, package, and upload must enforce the same artifact contract. The
     # standalone build verifier already rejects missing memory maps, I/O
@@ -710,11 +733,26 @@ def refresh_routing_card_metadata(base: Path) -> dict[str, Any]:
     if isinstance(card.get("agent_card_ref"), dict) and agent_card_path.is_file():
         card["agent_card_ref"]["content_hash"] = _sha256_bytes(agent_card_path.read_bytes())
     source = card.get("source") if isinstance(card.get("source"), dict) else {}
+    # Use the canonical exclusion rule, not a second hand-written one. This
+    # filter listed only `agentlas.json` and the card itself, so the card's hash
+    # covered `.agentlas/security-scan.json` - a file that carries a fresh
+    # `scannedAt` on every run. The card therefore changed every time it was
+    # refreshed, which changed the package, which changed the upload hash.
+    # Measured 2026-08-07: `package_agent` returned a different packageHash on
+    # its first call and settled only from the second, which breaks the
+    # hash-preservation requirement for republishing the corpus.
+    #
+    # `package_hash_includes` already excludes security-scan.json, brief.json,
+    # field-test-report.json, the LLM judgment, and the experience lineage,
+    # because those are generated evidence rather than package intent. The card
+    # is excluded on top of that: a hash of the package cannot include the file
+    # it is being written into.
     source["package_hash"] = package_hash(
         [
             item
             for item in collect_package_files(base)
-            if item.path != "agentlas.json" and not item.path.endswith(".agentlas/routing-card.json")
+            if package_hash_includes(item.path)
+            and not item.path.endswith(".agentlas/routing-card.json")
         ]
     )
     source["ref"] = None

@@ -433,10 +433,19 @@ def infer_skills(files: list[PackageFile]) -> list[str]:
 
 
 def build_manifest(files: list[PackageFile], name: str) -> AgentlasManifest:
+    # Hash the base-release material only. This value is written into
+    # `agentlas.json`, and `agentlas.json` was in the set being hashed - so
+    # writing the hash changed the file that produced it, and the next run got a
+    # different answer. Measured 2026-08-07: the only field differing between a
+    # first and second `package_agent` on the same folder was `packageHash`
+    # itself, which breaks the hash-preservation requirement for republishing.
+    # `package_hash_includes` already excludes `agentlas.json` along with the
+    # generated evidence files, so using it here is the canonical rule rather
+    # than a second one.
     return AgentlasManifest(
         schemaVersion="1.0",
         name=name,
-        packageHash=package_hash(files),
+        packageHash=package_hash([item for item in files if package_hash_includes(item.path)]),
         runtimeBundleVersion="1.0",
         entry=infer_entry(files),
         skills=infer_skills(files),

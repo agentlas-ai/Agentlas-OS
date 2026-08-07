@@ -51,12 +51,11 @@ docs/agent-os-redesign.md
 !gemini/extension/.agentlas/
 !gemini/extension/.agentlas/**
 
-# ...but generated RUNTIME STATE inside a mirror is still local state, not
-# product surface. The negations above are for declarative files a user needs
-# (mode-map, sources). An ontology database and its inbox are this machine's
-# accumulated memory: personal data that must never reach a public repo, and
-# re-ignoring them here is narrower than dropping the negation, which would
-# stop shipping the declarative files again.
+# ...but generated RUNTIME STATE inside a mirror is still local state. An
+# ontology database, its inbox, and the JSON that records absolute paths are
+# this machine's accumulated memory: personal data that must never reach a
+# public repo. Re-ignoring them here is narrower than dropping the negations,
+# which would stop shipping the declarative files again.
 */plugins/*/.agentlas/ontology-runtime.sqlite*
 */plugins/*/.agentlas/ontology-inbox/
 */plugins/*/.agentlas/ontology-runtime.json
@@ -202,3 +201,4 @@ credentials/
 
 # 로컬 빌드 산출물(런타임 릴리스 tar.gz) — GitHub Release 자산으로만 배포, git 소스로는 안 실음.
 dist/
+scripts/test-package-hash-idempotent.py
