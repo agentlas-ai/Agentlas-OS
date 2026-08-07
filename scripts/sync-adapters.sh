@@ -53,7 +53,11 @@ code_files=(
   # repo: 5 of 18 required artifacts present, contract verify 23 blockers each.
   "AGENTS.md"
   ".agentlas/mode-map.json"
-  "docs/builder-interview-research-gate.md"
+  # NOT shipped into adapter mirrors. The release archive check refuses any
+  # `docs/` path inside a plugin bundle, and it is right to: internal design
+  # and research notes are not end-user install material. Added here earlier
+  # so /hep-build could cite it; the citation has to point at the repo, not
+  # at a copy inside every published bundle.
   "bin/hephaestus"
   "bin/agentlas-python-cache-boundary"
   "bin/ontology"
