@@ -53,17 +53,22 @@ HOST_ADAPTER_DIRS = (
     ".claude",
     ".claude-plugin",
     ".gemini",
+    "amazonq",
+    "amp",
     "antigravity",
     "claude",
     "codex",
+    "copilot-cli",
     "cursor",
     "gemini",
+    "goose",
     "grok",
     "hermes",
     "hooks",
     "openclaw",
     "opencode",
     "skills",
+    "warp",
 )
 MODEL2VEC_ASSET_NAME = "potion-multilingual-128M-int8"
 LEGACY_MODEL2VEC_ASSET_NAME = "potion-base-8M-int8"
