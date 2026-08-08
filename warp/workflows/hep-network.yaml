@@ -1,0 +1,11 @@
+---
+name: hep-network
+command: hep-network "{{request}}"
+tags:
+  - agentlas
+  - hephaestus
+description: Staff a task force from registered Local, owner Cloud, and public Hub agents, then run it.
+arguments:
+  - name: request
+    description: The task to staff, in plain language
+    default_value: ~

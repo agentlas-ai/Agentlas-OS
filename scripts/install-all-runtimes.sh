@@ -926,6 +926,177 @@ install_hermes() {
   ok=$((ok + 1))
 }
 
+# goose (Block) reads the project AGENTS.md natively; its only global surface
+# is the MCP extension table in ~/.config/goose/config.yaml. YAML cannot be
+# merged safely without extra dependencies, so only a missing config is
+# created; an existing config is never rewritten.
+install_goose() {
+  if ! have goose && [[ ! -d "$HOME/.config/goose" ]]; then
+    warn "goose not detected; skipped goose MCP registration."
+    return 0
+  fi
+  log "== goose MCP =="
+  local cfg="$HOME/.config/goose/config.yaml"
+  if [[ -f "$cfg" ]]; then
+    if grep -q 'hephaestus-network' "$cfg"; then
+      log "goose config already references hephaestus-network; left $cfg untouched."
+    else
+      warn "goose config exists; add the hephaestus-network extension manually (see goose/README.md)."
+    fi
+  else
+    mkdir -p "$(dirname "$cfg")"
+    cat > "$cfg" <<EOF
+extensions:
+  hephaestus-network:
+    enabled: true
+    type: stdio
+    cmd: $HOME/.agentlas/runtime/current/bin/hephaestus
+    args: [mcp, serve]
+    timeout: 300
+EOF
+    log "Registered canonical local hephaestus-network MCP in $cfg"
+  fi
+  log "goose reads the project AGENTS.md natively; no goose-specific instruction copy is installed."
+  ok=$((ok + 1))
+}
+
+# Amp (Sourcegraph) reads the project AGENTS.md natively; its only global
+# surface is ~/.config/amp/settings.json. Own only the canonical Workforce MCP
+# key and preserve every unrelated setting.
+install_amp() {
+  if ! have amp && [[ ! -d "$HOME/.config/amp" ]]; then
+    warn "Amp not detected; skipped Amp MCP registration."
+    return 0
+  fi
+  log "== Amp MCP =="
+  local cfg="$HOME/.config/amp/settings.json"
+  local py=""
+  py="$(resolve_python_cmd || true)"
+  [[ -n "$py" ]] || { warn "python3 not found; add local hephaestus-network to $cfg manually."; return 1; }
+  mkdir -p "$(dirname "$cfg")"
+  AGENTLAS_LOCAL_MCP="$HOME/.agentlas/runtime/current/bin/hephaestus" \
+    "$py" - "$cfg" <<'PY' || return 1
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+except FileNotFoundError:
+    data = {}
+except ValueError as exc:
+    raise SystemExit(f"refusing to overwrite invalid Amp settings {path}: {exc}")
+servers = data.setdefault("amp.mcpServers", {})
+servers.pop("agentlas", None)
+servers["hephaestus-network"] = {
+    "command": os.environ["AGENTLAS_LOCAL_MCP"],
+    "args": ["mcp", "serve"],
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+  log "Registered canonical local hephaestus-network MCP in $cfg (Amp reads the project AGENTS.md natively)."
+  ok=$((ok + 1))
+}
+
+# GitHub Copilot CLI reads the project AGENTS.md natively; its only global
+# surface is ~/.copilot/mcp-config.json.
+install_copilot_cli() {
+  if ! have copilot && [[ ! -d "$HOME/.copilot" ]]; then
+    warn "Copilot CLI not detected; skipped Copilot CLI MCP registration."
+    return 0
+  fi
+  log "== Copilot CLI MCP =="
+  local cfg="$HOME/.copilot/mcp-config.json"
+  local py=""
+  py="$(resolve_python_cmd || true)"
+  [[ -n "$py" ]] || { warn "python3 not found; add local hephaestus-network to $cfg manually."; return 1; }
+  mkdir -p "$(dirname "$cfg")"
+  AGENTLAS_LOCAL_MCP="$HOME/.agentlas/runtime/current/bin/hephaestus" \
+    "$py" - "$cfg" <<'PY' || return 1
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+except FileNotFoundError:
+    data = {}
+except ValueError as exc:
+    raise SystemExit(f"refusing to overwrite invalid Copilot MCP config {path}: {exc}")
+servers = data.setdefault("mcpServers", {})
+servers.pop("agentlas", None)
+servers["hephaestus-network"] = {
+    "type": "local",
+    "command": os.environ["AGENTLAS_LOCAL_MCP"],
+    "args": ["mcp", "serve"],
+    "tools": ["*"],
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+  log "Registered canonical local hephaestus-network MCP in $cfg (Copilot CLI reads the project AGENTS.md natively)."
+  ok=$((ok + 1))
+}
+
+# Warp's agent reads the project AGENTS.md natively; the adapter installs only
+# the hep-network workflow. Warp manages MCP servers in-app (see warp/README.md).
+install_warp() {
+  if [[ ! -d "$HOME/.warp" && ! -d "/Applications/Warp.app" ]]; then
+    warn "Warp not detected; skipped Warp workflow install."
+    return 0
+  fi
+  log "== Warp workflow =="
+  ensure_downloaded_source || return 1
+  mkdir -p "$HOME/.warp/workflows"
+  local name
+  for name in hep-network.yaml; do
+    rm -f "$HOME/.warp/workflows/$name"
+    cp "$source_dir/warp/workflows/$name" "$HOME/.warp/workflows/$name" || return 1
+  done
+  log "Installed Warp workflow: hep-network (Warp reads the project AGENTS.md natively)."
+  ok=$((ok + 1))
+}
+
+# Amazon Q Developer CLI reads the project AGENTS.md natively; its only global
+# surface is ~/.aws/amazonq/mcp.json. Its `q` command name collides with other
+# tools, so detection uses the config directory only.
+install_amazonq() {
+  if [[ ! -d "$HOME/.aws/amazonq" ]]; then
+    warn "Amazon Q Developer CLI not detected; skipped Amazon Q MCP registration."
+    return 0
+  fi
+  log "== Amazon Q MCP =="
+  local cfg="$HOME/.aws/amazonq/mcp.json"
+  local py=""
+  py="$(resolve_python_cmd || true)"
+  [[ -n "$py" ]] || { warn "python3 not found; add local hephaestus-network to $cfg manually."; return 1; }
+  mkdir -p "$(dirname "$cfg")"
+  AGENTLAS_LOCAL_MCP="$HOME/.agentlas/runtime/current/bin/hephaestus" \
+    "$py" - "$cfg" <<'PY' || return 1
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+except FileNotFoundError:
+    data = {}
+except ValueError as exc:
+    raise SystemExit(f"refusing to overwrite invalid Amazon Q MCP config {path}: {exc}")
+servers = data.setdefault("mcpServers", {})
+servers.pop("agentlas", None)
+servers["hephaestus-network"] = {
+    "command": os.environ["AGENTLAS_LOCAL_MCP"],
+    "args": ["mcp", "serve"],
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+  log "Registered canonical local hephaestus-network MCP in $cfg (Amazon Q reads the project AGENTS.md natively)."
+  ok=$((ok + 1))
+}
+
 # Hephaestus Network 2.0: create or migrate ~/.agentlas/networking on every
 # install/upgrade (idempotent; indexes only registered paths, never the home
 # folder).
@@ -1012,6 +1183,11 @@ main() {
   install_memory_hooks || { warn "Local ontology memory hook install failed."; failed=$((failed + 1)); }
   install_openclaw || { warn "OpenClaw install failed."; failed=$((failed + 1)); }
 	  install_hermes || { warn "Hermes install failed."; failed=$((failed + 1)); }
+	  install_goose || { warn "goose install failed."; failed=$((failed + 1)); }
+	  install_amp || { warn "Amp install failed."; failed=$((failed + 1)); }
+	  install_copilot_cli || { warn "Copilot CLI install failed."; failed=$((failed + 1)); }
+	  install_warp || { warn "Warp install failed."; failed=$((failed + 1)); }
+	  install_amazonq || { warn "Amazon Q install failed."; failed=$((failed + 1)); }
 	  bootstrap_networking || warn "Hephaestus Network init failed; run 'hephaestus network init' manually."
 	  if [[ "${HEPHAESTUS_INSTALL_GLOBAL_ROUTER:-0}" == "1" ]]; then
 	    "$HOME/.agentlas/runtime/current/bin/hephaestus" global install || warn "Global router prompt install failed; run 'hep-global install' manually."
@@ -1027,7 +1203,7 @@ main() {
   log "Public chat surface: core external commands are installed or refreshed; Claude/Codex also get the Telegram connect helper; Agentlas native surfaces use plain language."
   log "Local memory recall: Claude/Codex hooks, Antigravity PreInvocation, and OpenCode system injection are dynamic; Grok uses passive cache refresh plus its static AGENTS.md pointer."
   log "Automatic updates: Desktop startup and /hep-* commands launch a verified, rate-limited background update without delaying the current task."
-  log "Restart open Claude Code, Codex, Gemini, Antigravity, Cursor, OpenCode, OpenClaw, and Hermes apps."
+  log "Restart open Claude Code, Codex, Gemini, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, goose, Amp, Copilot CLI, Warp, and Amazon Q apps."
   log "Then use:"
   log "  Agentlas:    describe the task in plain language; native tools choose the path"
 	  log "  Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-connect"
@@ -1038,6 +1214,8 @@ main() {
 	  log "  OpenCode:    /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
 	  log "  OpenClaw:    /skill hephaestus-storm <request> or /skill hephaestus-network <request>"
 	  log "  Hermes:      hephaestus-storm/hephaestus-network skills (+ MCP, see hermes/README.md)"
+	  log "  goose/Amp/Copilot CLI/Amazon Q: project AGENTS.md is read natively; use the hephaestus-network MCP tools"
+	  log "  Warp:        hep-network workflow (project AGENTS.md is read natively)"
 	  log "  Shell/debug: ontology <command>, hep-build \"<request>\", hep-network \"<request>\", hep-local \"<request>\", hep-cloud \"<request>\", hep-hub \"<request>\", hep-search \"<request>\", hep-browser <url-or-query>, hep-call \"agent-a,agent-b\" \"<context>\", hep-upload <agent-folder>, hep-global install, or hep-storm \"<request>\" --background"
   log "  Ollama/Gemma/DeepSeek local models: use the local MCP entrypoint 'hephaestus mcp serve'"
   log ""

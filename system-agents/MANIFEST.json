@@ -1,43 +1,47 @@
 {
   "schemaVersion": "agentlas.system-agents/1",
-  "note": "I1 declaration: the single list of canonical system components. Builds COPY each canonical body verbatim into packages (I3); they never rewrite it. A gate byte-compares every copied body above its '## Team Context (editable)' marker against the file listed here. Canonical changes propagate by rebuild (I4). Per-agent domain assets (skills/knowledge/styles/data/scripts/benchmarks) are exempt (I5).",
+  "note": "I1 declaration: the single list of canonical system components. OS-resident model (owner decision 2026-08-08): system member bodies are NEVER copied into packages. The measured copy contract was dead (0 of 32 live teams carried the canonical body), and the runtimes already seed the roles as builtins / enforce them at chokepoints. Packages carry only the outputs (.agentlas/memory-map.json, memory-tickets.jsonl, soul log). Canonical bodies remain the authoring source for the builtin prompts and deep-role invocations; canonical changes propagate by ENGINE RELEASE, not package rebuild. Per-agent domain assets (skills/knowledge/styles/data/scripts/benchmarks) are exempt (I5).",
   "editableMarker": "## Team Context (editable)",
   "components": [
     {
       "id": "memory-curator",
       "role": "curator",
       "file": "system-agents/memory-curator.md",
-      "packageTypes": "team",
-      "copyMode": "verbatim-copy",
-      "teamDestination": "agents/20-memory-curator/agent.md",
-      "runtimeChokepoint": "deterministic always-on curator (electron/memory/curator.ts) enforces G1-G5 every turn with no extra LLM call; this body is the explicit deep-curation layer"
+      "packageTypes": "none",
+      "copyMode": "runtime-builtin",
+      "teamDestination": null,
+      "runtimeChokepoint": "builtin agent agentlas-memory-curator (desktop manifest.ts MEMORY_CURATOR_PROMPT + terminal architecture.data.json) + deterministic always-on curator (electron/memory/curator.ts) enforcing G1-G5 every turn; this body is the authoring source for the deep-curation layer",
+      "notes": "OS-resident since 2026-08-08. Leftover package copies are strip-noted by team_shape and removed on the next repackage; team-specific rules found inside are promoted to the team agentlas.md context section."
     },
     {
       "id": "pm-soul",
       "role": "continuity-owner",
       "file": "system-agents/pm-soul.md",
-      "packageTypes": "team",
-      "copyMode": "verbatim-copy",
-      "teamDestination": "agents/10-pm-soul/agent.md",
-      "runtimeChokepoint": null
+      "packageTypes": "none",
+      "copyMode": "runtime-builtin",
+      "teamDestination": null,
+      "runtimeChokepoint": "builtin agent agentlas-pm-soul (desktop manifest.ts PM_SOUL_PROMPT + terminal architecture.data.json); owns <project>/.agentlas/project-soul-memory.md",
+      "notes": "OS-resident since 2026-08-08. Leftover package copies are strip-noted by team_shape and removed on the next repackage; team-specific rules found inside are promoted to the team agentlas.md context section."
     },
     {
       "id": "policy-gate",
       "role": "policy-delegation",
       "file": "system-agents/policy-gate.md",
-      "packageTypes": "team",
-      "copyMode": "verbatim-copy",
-      "teamDestination": "agents/30-policy-gate/agent.md",
-      "runtimeChokepoint": "host PreToolUse hook - the only point that can actually refuse a tool call"
+      "packageTypes": "none",
+      "copyMode": "runtime-owned",
+      "teamDestination": null,
+      "runtimeChokepoint": "host PreToolUse hook - the only point that can actually refuse a tool call; packages declare needs in .agentlas/mcp-policy.json, never enforcement logic",
+      "notes": "OS-resident since 2026-08-08. Leftover package copies are strip-noted by team_shape and removed on the next repackage; team-specific rules found inside are promoted to the team agentlas.md context section."
     },
     {
       "id": "eval-qa",
       "role": "eval-delegation",
       "file": "system-agents/eval-qa.md",
-      "packageTypes": "team",
-      "copyMode": "verbatim-copy",
-      "teamDestination": "agents/40-eval-qa/agent.md",
-      "runtimeChokepoint": "host graph judge engine (judgeChecklist, EVAL_STUCK, separate-context judging, no self-grading)"
+      "packageTypes": "none",
+      "copyMode": "runtime-owned",
+      "teamDestination": null,
+      "runtimeChokepoint": "host graph judge engine (judgeChecklist, EVAL_STUCK, separate-context judging, no self-grading); packages declare plans in evals/, never judging logic",
+      "notes": "OS-resident since 2026-08-08. Leftover package copies are strip-noted by team_shape and removed on the next repackage; team-specific rules found inside are promoted to the team agentlas.md context section."
     },
     {
       "id": "orchestrator-protocol",

@@ -617,6 +617,107 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
     return created, warnings
 
 
+def _apply_additive_memory_migrations(root: Path) -> tuple[list[str], list[str]]:
+    """Add missing declared fields to known memory-schema files. Never touch values.
+
+    MISSING-ONLY seeds whole files, so a file created at schema 1.0 never
+    received later fields — the live corpus proved it (schemaVersion 1.0 with
+    five canonical roots absent while the template declared 1.1). This is the
+    approved repair (owner, 2026-08-08): a second, field-level layer that ONLY
+    adds keys that are absent, with defaults, and bumps schemaVersion
+    monotonically. An existing value — including a user-customized one — is
+    never rewritten, which is what `activationPolicy.mergeOnly` promised all
+    along. The wizard contract's `merge_not_overwrite` targets (`sources[]`,
+    `activations[]`) become real fields here instead of pointing at keys no
+    file has.
+    """
+
+    migrated: list[str] = []
+    warnings: list[str] = []
+
+    def load(path: Path) -> dict[str, Any] | None:
+        try:
+            payload = json.loads(_read_bounded_regular_text(path, 4 * 1024 * 1024))
+        except (OSError, ValueError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def bump_version(payload: dict[str, Any], floor: str) -> None:
+        current = str(payload.get("schemaVersion") or "0")
+        def parts(value: str) -> tuple[int, ...]:
+            try:
+                return tuple(int(p) for p in value.split("."))
+            except ValueError:
+                return (0,)
+        if parts(current) < parts(floor):
+            payload["schemaVersion"] = floor
+
+    def save(path: Path, payload: dict[str, Any], label: str) -> None:
+        try:
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            migrated.append(label)
+        except OSError as exc:
+            warnings.append(f"memory_migration_write_failed:{label}:{exc}")
+
+    memory_map_path = root / ".agentlas" / "memory-map.json"
+    payload = load(memory_map_path)
+    if payload is not None:
+        changed = False
+        roots = payload.get("canonicalMemoryRoots")
+        owners = payload.get("writeOwners")
+        if isinstance(roots, dict) and isinstance(owners, dict):
+            # 1.0 -> 1.1: the five roots the 1.1 template declares.
+            additions: dict[str, tuple[list[str], str]] = {
+                "curator_decisions": ([".agentlas/curator-decisions.jsonl"], "memory-curator"),
+                "code_map": ([".agentlas/code-map/project-map.json"], "project bootstrap"),
+                "context_map": ([".agentlas/context-map.json"], "context map authoring (derived)"),
+                "recall_index": ([".agentlas/ontology-runtime.sqlite"], "ontology runtime"),
+                "experience": ([".agentlas/experience-relations.jsonl"], "experience intake"),
+            }
+            for key, (paths, owner) in additions.items():
+                if key not in roots:
+                    roots[key] = paths
+                    changed = True
+                if key not in owners:
+                    owners[key] = owner
+                    changed = True
+            if "promotionPath" not in payload:
+                payload["promotionPath"] = [
+                    "session ticket",
+                    "curator decision",
+                    "durable memory entry",
+                    "experience candidate",
+                    "experience pack",
+                ]
+                changed = True
+            if "runtimeOwned" not in payload:
+                payload["runtimeOwned"] = ["code_map", "context_map", "recall_index", "experience"]
+                changed = True
+            # 1.1 -> 1.2: the product-registration list the wizard contract
+            # merges into ({product, scopes} rows, union by product).
+            if "sources" not in payload:
+                payload["sources"] = []
+                changed = True
+            if changed:
+                bump_version(payload, "1.2")
+                save(memory_map_path, payload, "memory-map.json")
+        else:
+            warnings.append("memory_migration_skipped:memory-map.json:unrecognized_shape")
+
+    activation_path = root / ".agentlas" / "activation.json"
+    payload = load(activation_path)
+    if payload is not None:
+        if payload.get("kind") == "agentlas-auto-activation":
+            if "activations" not in payload:
+                payload["activations"] = []
+                bump_version(payload, "1.1")
+                save(activation_path, payload, "activation.json")
+        else:
+            warnings.append("memory_migration_skipped:activation.json:unrecognized_shape")
+
+    return migrated, warnings
+
+
 def _merge_managed_sitemap_context(
     root: Path,
     code_map: dict[str, Any] | None = None,
@@ -2317,6 +2418,10 @@ def ensure_project(project: str | Path, *, reason: str = "host-first-contact", f
     with _project_lock(root):
         gitignore_changed, gitignore_path = _ensure_gitignore(root)
         seed_created, seed_warnings = _seed_project_files(root)
+        migrated, migration_warnings = _apply_additive_memory_migrations(root)
+        if migrated:
+            seed_created.extend(f"migrated:{name}" for name in migrated)
+        seed_warnings.extend(migration_warnings)
         graph_created, graph_warnings = _ensure_graph_runtimes(root)
         code_map = generate_code_map(root, force=force_code_map)
         if code_map.get("warning"):

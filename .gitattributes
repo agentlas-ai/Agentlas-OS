@@ -5,22 +5,13 @@
 # silently rewritten and diverge from its pinned digest with nothing to show for
 # it. `-text` stores and restores the exact bytes in both directions, which is
 # also what the checkout-integrity guard requires. The multilingual payload is
-# kept in the canonical asset only; the plugin rules remain for legacy files.
+# kept in the canonical asset only; plugin mirrors carry NO model payload
+# (dead 8M copies removed 2026-08-08 — no code path ever loaded them).
 /assets/model2vec/**/*.json -text
 /assets/model2vec/**/*.txt -text
 /assets/model2vec/**/*.i8 binary
 /assets/model2vec/**/*.i8.part-* binary
 /assets/model2vec/**/*.f32le binary
-
-/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.json -text
-/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.txt -text
-/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.i8 binary
-/claude/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.f32le binary
-
-/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.json -text
-/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.txt -text
-/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.i8 binary
-/codex/plugins/agentlas-core-engine-meta-agent/assets/model2vec/**/*.f32le binary
 
 # The Workforce Ontology snapshot is pinned by its raw SHA-256 digest. Keep the
 # canonical file and both packaged adapter mirrors byte-identical on Windows.

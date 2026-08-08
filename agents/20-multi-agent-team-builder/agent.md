@@ -38,24 +38,25 @@ permission, secret, fallback, and smoke-test notes. Write
 answers, repo patterns, theory, and tool choices become concrete specialist
 role behavior.
 
-## System Agents - Copy, Never Write
+## System Agents - OS-Resident, Never Packaged (owner decision 2026-08-08)
 
-Resolve the engine root exactly as hep-build Step 0 resolves `$ENGINE`, then
-read `$ENGINE/system-agents/MANIFEST.json` and follow
-`$ENGINE/system-agents/folder-rules.md`. Copy each canonical body verbatim:
+Do NOT create `agents/10-pm-soul/`, `agents/20-memory-curator/`,
+`agents/30-policy-gate/`, or `agents/40-eval-qa/` inside the team. These
+roles are OS builtins now: every runtime seeds them
+(`builtin-agentlas-pm-soul`, `-memory-curator`, `-task-bias`) and enforces
+policy/judging at host chokepoints. The team package carries only their
+OUTPUT files (`.agentlas/memory-map.json`, `.agentlas/memory-tickets.jsonl`),
+never their bodies. Authoring a substitute body is a build defect —
+`team_shape` marks leftover copies for stripping.
 
-- `system-agents/pm-soul.md` -> `agents/10-pm-soul/agent.md`
-- `system-agents/memory-curator.md` -> `agents/20-memory-curator/agent.md`
-- `system-agents/policy-gate.md` -> `agents/30-policy-gate/agent.md`
-- `system-agents/eval-qa.md` -> `agents/40-eval-qa/agent.md`
+The one system file still copied verbatim:
+
 - `system-agents/orchestrator-protocol.md` -> `docs/orchestrator-protocol.md`
 
-Do NOT write, paraphrase, translate, or improve these bodies. Team-specific
-content goes ONLY in each file's `## Team Context (editable)` section - the
-single editable region the canonical files declare. A gate byte-compares
-everything above that marker against the canonical source; any other edit
-fails the build. policy-gate and eval-qa are delegation declarations: never
-add allow/deny or judging logic to them or anywhere else in the package.
+Team-specific coordination rules that the old editable sections used to hold
+go in the team's `agentlas.md` context section instead. policy-gate and
+eval-qa remain delegation concepts: never add allow/deny or judging logic
+anywhere in the package.
 
 ## Must Include
 
@@ -68,9 +69,10 @@ add allow/deny or judging logic to them or anywhere else in the package.
 - Orchestrator/HQ inside the generated team. Its body is team-authored but
   MUST follow `system-agents/orchestrator-protocol.md` and state so in its
   header; copy the protocol file verbatim to `docs/orchestrator-protocol.md`.
-- PM Soul, Memory Curator (with Memory Ticket handoff), Policy Gate, and Eval
-  QA as VERBATIM COPIES of the canonical bodies in `system-agents/` - see
-  "System Agents - Copy, Never Write" below. Never author these bodies.
+- Memory Ticket handoff wiring to the OS-resident Memory Curator (workers emit
+  `## Memory Events`; the runtime queues the ticket). No PM Soul / Memory
+  Curator / Policy Gate / Eval QA member folders - see "System Agents -
+  OS-Resident, Never Packaged" below.
 - Worker roles with clear boundaries.
 - Handoff brief and return contracts per the orchestrator protocol.
 - `.agentlas/company-blueprint.json` with team topology.
@@ -188,9 +190,9 @@ include `global_commands`.
 
 ## Do Not
 
-- Do not write pm-soul, memory-curator, policy-gate, or eval-qa bodies from
-  scratch; copy the canonical files verbatim and edit only the
-  `## Team Context (editable)` section.
+- Do not create pm-soul, memory-curator, policy-gate, or eval-qa member
+  folders at all - these roles are OS-resident builtins (2026-08-08). Wire
+  their outputs, never their bodies.
 - Do not collapse a requested team into one helper.
 - Do not ship multiple loose worker `agent.md` files without an
   orchestrator/HQ and blueprint topology.

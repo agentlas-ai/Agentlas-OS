@@ -174,13 +174,6 @@ def check_team_shape(folder: str | Path) -> dict[str, Any]:
     blueprint_haystack = "\n".join(blueprint_haystack_parts)
     haystack = f"{path_haystack}\n{blueprint_haystack}"
 
-    def has_component(label: str, needles: list[str]) -> bool:
-        for needle in needles:
-            if normalize(needle) in haystack:
-                return True
-        fail(f"missing TEAM requirement: {label} role or contract file")
-        return False
-
     def check_global_command() -> None:
         path = root / ".agentlas" / "global-commands.json"
         if not path.exists():
@@ -380,31 +373,34 @@ def check_team_shape(folder: str | Path) -> dict[str, Any]:
             fail("missing TEAM requirement: company-blueprint nodes")
         if not edges:
             fail("missing TEAM requirement: company-blueprint edges")
-        has_component("PM Soul", ["pm-soul", "pm soul", "project-owner", "project owner"])
-        has_component("Memory Curator", ["memory-curator", "memory curator"])
-        has_component("Policy Gate", ["policy-gate", "policy gate"])
-        # `eval-qa` is what the corpus actually ships and what the canonical
-        # system agent is named; `eval-judge` was the spelling this check asked
-        # for and it exists in 2 packages against 20 for `eval-qa`. The same
-        # role, judged by two names, is how 55 teams failed a requirement they
-        # met. The canonical file is `system-agents/eval-qa.md`; every spelling
-        # below is accepted and none of them is a different role.
-        has_component(
-            "eval judge",
-            ["eval-qa", "eval qa", "eval-judge", "eval judge", "evaluation-judge", "evaluation judge"],
+        # System members (PM Soul / Memory Curator / Policy Gate / eval judge)
+        # are OS-resident builtins now (owner decision 2026-08-08): every
+        # runtime seeds them (`installed_agents` builtin rows) and packages
+        # carry only their OUTPUTS (`.agentlas/memory-map.json`,
+        # `memory-tickets.jsonl`, soul log). This check previously REQUIRED all
+        # four members to exist inside the package — the copy model that 0 of
+        # 32 live teams actually followed, and whose two-names-one-role
+        # judging once failed 55 teams that met the requirement. Requiring the
+        # copies back would re-fail every correctly built new-model team, so
+        # the requirement is deleted, not relaxed. A leftover copy is not an
+        # error either (upload must never bounce to the author): it gets a
+        # note so the next repackage can strip it.
+        legacy_system_needles = (
+            ("PM Soul", "agents/10-pm-soul"),
+            ("Memory Curator", "agents/20-memory-curator"),
+            ("Policy Gate", "agents/30-policy-gate"),
+            ("eval judge", "agents/40-eval-qa"),
         )
-        # The QA/evidence gate is the same member as the eval judge in the
-        # canonical shape — one role that judges in a separate context and holds
-        # the evidence bar. Demanding a second, differently-named member split a
-        # single responsibility into two files nobody wrote.
-        has_component(
-            "QA/evidence gate",
-            [
-                "eval-qa", "eval qa",
-                "qa-evidence-gate", "qa evidence gate", "evidence-gate", "evidence gate",
-                "qa-gate", "qa gate",
-            ],
-        )
+        leftover = [
+            label
+            for label, needle in legacy_system_needles
+            if normalize(needle) in haystack
+        ]
+        if leftover:
+            notes.append(
+                "legacy system-member copies present (OS-resident since 2026-08-08); "
+                f"next repackage should strip: {', '.join(leftover)}"
+            )
         if not (root / ".agentlas" / "memory-map.json").exists():
             fail("missing TEAM requirement: .agentlas/memory-map.json")
         if not (root / ".agentlas" / "memory-tickets.jsonl").exists():

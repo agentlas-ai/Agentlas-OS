@@ -92,19 +92,20 @@ plan before public or marketplace-ready output.
 - Missing global command files for Claude Code, Codex, Gemini CLI, Antigravity,
   generic AGENTS.md, and terminal use.
 
-## System Agents - Copy, Never Write
+## System Agents - OS-Resident, Strip on Repackage (owner decision 2026-08-08)
 
 When the source is or becomes a team package, resolve the engine root as in
 hep-build Step 0 and follow `$ENGINE/system-agents/folder-rules.md`:
 
-- Replace any package-authored pm-soul, memory-curator, policy-gate, or
-  eval-qa body with a verbatim copy of the matching canonical file in
-  `$ENGINE/system-agents/`, at the destination folder-rules names. This
-  repairs the measured defect of packages carrying private gate/judge logic.
-- Preserve genuinely team-specific content from the old body by moving it
-  into the canonical file's `## Team Context (editable)` section - the only
-  editable region. Everything above that marker must stay byte-identical to
-  the canonical source; the gate compares bytes.
+- REMOVE any package-authored pm-soul, memory-curator, policy-gate, or
+  eval-qa member folder. These roles are OS builtins now; a copy inside the
+  package is the defect (it shadows the engine-updated body and carries
+  private gate/judge logic). Do not replace it with a canonical copy - the
+  copy model itself is retired.
+- Preserve genuinely team-specific content from the old body by promoting it
+  into the team's `agentlas.md` context section before deleting the folder.
+  Never silently discard domain rules (measured: live teams carry real
+  brand/acceptance rules inside these folders).
 - Keep the orchestrator body team-authored, but copy
   `system-agents/orchestrator-protocol.md` verbatim to
   `docs/orchestrator-protocol.md` and add a header line to the orchestrator

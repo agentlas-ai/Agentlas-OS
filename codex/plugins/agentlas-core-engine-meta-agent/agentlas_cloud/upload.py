@@ -18,6 +18,7 @@ from .auth import ensure_access_token, normalize_base_url
 from .networking.card_lint import lint_card
 from .package_contract import is_generated_runtime_path, verify as verify_package_contract
 from .brief.write import write_offer_brief
+from .experience_contracts import ContractValidationError, default_mcp_policy, validate_mcp_policy
 from .upload_repair import classify_findings, repair_package
 from .runtime import (
     collect_package_files,
@@ -295,6 +296,7 @@ def package_agent(
     # and `agentlas.json` ended up describing a state that never shipped. The
     # wizard is the last writer, so it must also be the last hasher.
     routing_meta = refresh_routing_card_metadata(base)
+    _repair_mcp_policy_file(base, findings, write=write_manifest)
     setup_wizard = run_setup_wizard(base, package_name, write=write_manifest)
     if write_manifest:
         brief_findings = write_offer_brief(base)
@@ -333,14 +335,19 @@ def package_agent(
         )
 
     if setup_wizard.get("mcpPolicyValidation", {}).get("status") != "valid":
+        # `_repair_mcp_policy_file` ran before the wizard and either stripped the
+        # forbidden fields or replaced the file with the safe default, so this
+        # firing means the deterministic repair itself missed a shape - an engine
+        # defect, not an author task (owner rule 2026-08-08: the author is never
+        # handed a "fix it yourself" refusal).
         findings.append(
             _finding(
                 "mcp-policy-invalid",
-                "blocker",
+                "high",
                 "policy",
-                "The package MCP policy is invalid or contains forbidden server execution fields.",
+                "MCP policy still invalid after deterministic auto-repair - engine defect; upload proceeds and the defect is surfaced for the engine team.",
                 ".agentlas/mcp-policy.json",
-                "Keep only value-free catalog requirements; remove command, args, endpoint, executable, headers, and credential values.",
+                "No author action needed; the engine repair path must learn this shape.",
             )
         )
     routing = validate_routing_card_for_upload(base, visibility=visibility)
@@ -437,10 +444,15 @@ def package_agent(
     # `capability-eval-plan.json` ended up on 4% of live releases — the gate said
     # no, and the packages shipped through whatever path did not check.
     #
-    # This only ever softens an artifact-completeness finding. Secrets, symlinks,
-    # size limits, credential-bearing files and every other safety finding keep
-    # blocking exactly as before, because those are not the author being
-    # unfinished, they are the upload being unsafe.
+    # This only ever softens an artifact-completeness finding. Since 2026-08-08
+    # (owner rule) secrets no longer BLOCK either - they are masked or withheld
+    # in place with receipt findings ("redacted-secret", "redacted-file",
+    # "mcp-policy-auto-repaired"), because "remove the value and try again" hands
+    # the author work the engine can do deterministically. What still blocks is
+    # what cannot be repaired without inventing facts or shipping a broken
+    # artifact: symlinks, size/count limits, cross-kind asset embedding, and
+    # contract gaps that need author/model facts (until the packager re-invoke
+    # loop lands - see docs/2026-08-08-upgrade R7/R12).
     deferred = [f for f in remaining if _is_unfinished_artifact(f)]
     if deferred:
         deferred_ids = {id(f) for f in deferred}
@@ -1047,6 +1059,57 @@ def sanitize_structured_payload(payload: Any, file_label: str) -> tuple[Any, lis
     return _walk(payload, file_label), findings
 
 
+_MCP_POLICY_FORBIDDEN_KEYS = {"command", "args", "endpoint", "executable", "headers", "env", "token", "apiKey", "api_key", "credentials"}
+
+
+def _repair_mcp_policy_file(base: Path, findings: list[dict[str, Any]], *, write: bool) -> None:
+    """Deterministically repair .agentlas/mcp-policy.json before the wizard hashes it.
+
+    Owner rule (2026-08-08): upload never bounces a fixable defect back to the
+    author. An invalid MCP policy is fixable without inventing a fact - the
+    forbidden fields (server execution / credential values) are stripped, and if
+    the remainder still fails the contract, the file becomes the safe default
+    policy. Every repair leaves a receipt finding. This runs BEFORE
+    run_setup_wizard because the wizard is the last writer and the last hasher -
+    repairing after it would ship a hash of a policy that no longer exists.
+    """
+
+    path = base / ".agentlas" / "mcp-policy.json"
+    if not path.is_file():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        payload = None
+    if not isinstance(payload, dict):
+        if write:
+            path.write_text(json.dumps(default_mcp_policy(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        findings.append(_finding("mcp-policy-auto-repaired", "high", "policy", "Unreadable MCP policy replaced with the safe default before upload.", ".agentlas/mcp-policy.json", "Receipt: the previous file was not valid JSON; no author action needed."))
+        return
+    try:
+        validate_mcp_policy(payload)
+        return
+    except ContractValidationError:
+        pass
+
+    def strip(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {k: strip(v) for k, v in value.items() if k not in _MCP_POLICY_FORBIDDEN_KEYS}
+        if isinstance(value, list):
+            return [strip(item) for item in value]
+        return value
+
+    stripped = strip(payload)
+    try:
+        validate_mcp_policy(stripped)
+        repaired, note = stripped, "forbidden execution/credential fields stripped"
+    except ContractValidationError:
+        repaired, note = default_mcp_policy(), "policy replaced with the safe default (stripped shape still failed the contract)"
+    if write:
+        path.write_text(json.dumps(repaired, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    findings.append(_finding("mcp-policy-auto-repaired", "high", "policy", f"MCP policy auto-repaired before upload: {note}.", ".agentlas/mcp-policy.json", "Receipt: value-free catalog requirements kept; no author action needed."))
+
+
 def sanitize_upload_text(file_path: str, text: str) -> tuple[str, list[dict[str, Any]]]:
     """Enterprise upload guard.
 
@@ -1214,7 +1277,10 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
         # unpublishable blocker. Value-free by the OS's own declaration; the
         # SECRET_PATTERNS content scan further down still reads it.
         if not is_value_free_credential_template(rel) and any(pattern.search(path.name) for pattern in BLOCKED_FILE_PATTERNS):
-            findings.append(_finding("blocked-file", "blocker", "secret", "Secret-bearing file names are not allowed in cloud packages.", rel, "Remove credentials and publish only setup instructions or env key names."))
+            # Owner rule (2026-08-08): withholding IS the redaction. The file
+            # never ships (no leak), the upload proceeds (no block), and the
+            # receipt below tells the author exactly what was kept back.
+            findings.append(_finding("redacted-file", "high", "secret", "Credential-named file withheld from the upload (never ships).", rel, "Receipt: publish setup instructions or env key names instead; the package uploaded without this file."))
             continue
         # Inclusion is decided by what this artifact can actually carry (UTF-8
         # text), not by a guessed extension allowlist. The allowlist dropped real
@@ -1294,10 +1360,20 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             continue
         text, sanitized_findings = sanitize_upload_file_text(rel, text)
         findings.extend(sanitized_findings)
-        raw = text.encode("utf-8")
+        # Anything the line sanitizer missed (structured payloads, odd shapes)
+        # is masked in place, not blocked (owner rule 2026-08-08): the shipped
+        # bytes carry [REDACTED:<kind>:<hash8>] where the value was, so the
+        # package uploads, nothing leaks, and the receipt names every masking.
+        # This must run BEFORE the bytes are encoded/hashed below so the
+        # package hash seals what actually ships.
         for finding_id, pattern, label in SECRET_PATTERNS:
-            if pattern.search(text):
-                findings.append(_finding(finding_id, "blocker", "secret", f"Possible {label} found in package content.", rel, "Remove the value and require each user to configure their own key."))
+            def _mask(match: re.Match[str], _kind: str = finding_id) -> str:
+                digest8 = hashlib.sha256(match.group(0).encode("utf-8")).hexdigest()[:8]
+                return f"[REDACTED:{_kind}:{digest8}]"
+            text, masked = pattern.subn(_mask, text)
+            if masked:
+                findings.append(_finding("redacted-secret", "high", "secret", f"Masked {masked} {label} occurrence(s) in place before upload.", rel, "Receipt: the value was replaced with a [REDACTED:kind:hash8] marker; each user configures their own key."))
+        raw = text.encode("utf-8")
         if re.search(r"(?:curl|wget)[^\n|&;]+[|]\s*(?:sh|bash)", text, re.I):
             findings.append(_finding("curl-pipe-shell", "high", "network", "Remote shell install pattern detected.", rel, "Use explicit, reviewable install steps."))
         # Count only what is actually uploaded. These two ran before the

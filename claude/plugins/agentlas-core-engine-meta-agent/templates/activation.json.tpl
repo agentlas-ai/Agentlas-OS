@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "kind": "agentlas-auto-activation",
   "state": "seed",
   "activationPolicy": {
@@ -53,5 +53,6 @@
     "noRawLogs": true,
     "noFullTranscripts": true,
     "vaultReferencesOnly": true
-  }
+  },
+  "activations": []
 }

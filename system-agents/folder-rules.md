@@ -7,20 +7,28 @@ where, what stays runtime-owned, and what is per-agent domain material.
 Resolve `system-agents/` via the engine root - the same `$ENGINE` resolution
 as hep-build Step 0 - never via the user's project folder.
 
-## TEAM Packages
+## TEAM Packages (OS-resident model — owner decision 2026-08-08)
 
-| Canonical source | Copy mode | Destination in package |
-|---|---|---|
-| `system-agents/pm-soul.md` | verbatim copy | `agents/10-pm-soul/agent.md` |
-| `system-agents/memory-curator.md` | verbatim copy | `agents/20-memory-curator/agent.md` |
-| `system-agents/policy-gate.md` | verbatim copy | `agents/30-policy-gate/agent.md` |
-| `system-agents/eval-qa.md` | verbatim copy | `agents/40-eval-qa/agent.md` |
-| `system-agents/orchestrator-protocol.md` | verbatim copy (protocol) | `docs/orchestrator-protocol.md` |
-| Orchestrator body | team-authored | `agents/00-orchestrator/agent.md` (or the team's HQ path); its header must state it follows `docs/orchestrator-protocol.md` |
+System members are NOT copied into team packages anymore. The copy model was
+measured dead: 0 of 32 live teams carried the canonical body, so every copy
+was a divergent rewrite. The runtimes already seed these roles as builtins
+(`installed_agents` rows `builtin-agentlas-pm-soul`, `-memory-curator`,
+`-task-bias` — desktop `architecture/manifest.ts` + terminal
+`architecture.data.json`), and the engine ships the deterministic curator and
+judge chokepoints. A team package therefore contains:
 
-- The gate byte-compares each copied file above its `## Team Context
-  (editable)` marker against the canonical source. Team-specific content goes
-  only in that section.
+| Component | Where it lives |
+|---|---|
+| PM Soul / Memory Curator / Policy Gate / eval judge | **OS builtins — never inside the package** |
+| Their outputs | `.agentlas/memory-map.json`, `.agentlas/memory-tickets.jsonl`, project soul log (package/project-local, never uploaded raw) |
+| `system-agents/orchestrator-protocol.md` | verbatim copy (protocol) → `docs/orchestrator-protocol.md` |
+| Orchestrator body | team-authored — `agents/00-orchestrator/agent.md` (commands HQs); HQ orchestrators (`01-*`) command workers. Header must state it follows `docs/orchestrator-protocol.md` |
+
+- Builders MUST NOT author `agents/10-pm-soul/`, `20-memory-curator/`,
+  `30-policy-gate/`, or `40-eval-qa/` members. `team_shape` no longer requires
+  them; a leftover copy from an old package is reported as a strip note and
+  removed on the next repackage (team-specific domain rules found inside it
+  are promoted into the team's `agentlas.md` context section, not deleted).
 - The orchestrator body is the one system role that stays team-specific; the
   protocol file is the canonical part.
 
