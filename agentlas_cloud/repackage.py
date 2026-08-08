@@ -706,6 +706,12 @@ def coerce_contract_shapes(root: Path, slug: str) -> list[str]:
     return fixed
 
 
+def _slugify_key(value: str) -> str:
+    """A JSON property name from a human phrase, stable across runs."""
+    key = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
+    return key or "value"
+
+
 def _card_texts(value: Any) -> list[str]:
     out: list[str] = []
     for item in value or []:
@@ -891,6 +897,55 @@ def fill_declared_artifacts(root: Path, slug: str) -> list[str]:
                 "derivedFrom": "agents/*/agent.md" if kind == "team-member" else "skills/*/SKILL.md",
             })
             written.append(".agentlas/sitemap.json")
+
+    # ── contracts/{intake,output}.schema.json: the brief compiles from these ──
+    # The routing card already names the inputs (with descriptions) and what the
+    # agent produces; the schemas restate that in JSON Schema so the brief can be
+    # compiled and its deliverables stop reading as absent. Nothing new is
+    # asserted — an input the card does not name does not appear here.
+    def _schema_from(entries: list[Any], title: str) -> dict[str, Any]:
+        props: dict[str, Any] = {}
+        required: list[str] = []
+        for item in entries:
+            if isinstance(item, str) and item.strip():
+                key = _slugify_key(item)
+                props[key] = {"type": "string", "description": item.strip()}
+                required.append(key)
+            elif isinstance(item, Mapping):
+                name = str(item.get("name") or item.get("id") or "").strip()
+                if not name:
+                    continue
+                key = _slugify_key(name)
+                prop: dict[str, Any] = {"type": str(item.get("type") or "string")}
+                description = item.get("description")
+                if isinstance(description, str) and description.strip():
+                    prop["description"] = description.strip()
+                props[key] = prop
+                required.append(key)
+        return {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": title,
+            "type": "object",
+            "properties": props,
+            "required": required,
+            "derivedFrom": ".agentlas/routing-card.json",
+        }
+
+    intake_path = root / "contracts" / "intake.schema.json"
+    if stale(intake_path):
+        entries = card.get("required_inputs") or []
+        if entries:
+            _write_json(intake_path, _schema_from(entries, f"{slug} intake"))
+            written.append("contracts/intake.schema.json")
+
+    output_path = root / "contracts" / "output.schema.json"
+    if stale(output_path):
+        entries = card.get("produces") or []
+        if not entries and summary:
+            entries = [{"name": "result", "type": "string", "description": summary}]
+        if entries:
+            _write_json(output_path, _schema_from(entries, f"{slug} output"))
+            written.append("contracts/output.schema.json")
 
     # ── docs/research-sources.md: the sources that are actually in the package ──
     sources_path = root / "docs" / "research-sources.md"

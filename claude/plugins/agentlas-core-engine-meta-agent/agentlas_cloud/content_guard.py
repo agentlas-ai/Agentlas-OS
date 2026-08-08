@@ -606,8 +606,24 @@ _GUARDABLE = {
 }
 
 
+_CONFIG_LINE_RE = re.compile(
+    # A JSON string-array of glob patterns, e.g. `"**/*secret*",` or
+    # `"**/cookies/**",`. A package's OWN deny list was being read as an
+    # exfiltration instruction — the very config that keeps secrets out of the
+    # bundle. Measured 2026-08-07: `agentlas.json`'s denyRead patterns blocked
+    # the upload of the package they protect. Configuration is not prose: it
+    # issues no instruction to anyone.
+    r"^[\s\[\],]*(?:\"[^\"]*[*/][^\"]*\"\s*,?\s*)+[\s\[\],]*$"
+)
+
+
+def _is_config_patterns(line: str) -> bool:
+    """True when the line is only quoted glob patterns and JSON punctuation."""
+    return bool(_CONFIG_LINE_RE.match(line.strip()))
+
+
 def _guarded(line: str, canon: str, rule: str) -> bool:
-    return rule in _GUARDABLE and (
+    return _is_config_patterns(line) or rule in _GUARDABLE and (
         _is_negated(line, canon) or _is_educational_quote(line) or _is_descriptive(line)
     )
 
