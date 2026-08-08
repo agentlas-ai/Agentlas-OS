@@ -75,3 +75,25 @@ try:
 finally:
     shutil.rmtree(base, ignore_errors=True)
 PY
+
+# agentId immutable-identity axis (R5 engine side): minted once, preserved forever.
+python3 - <<'PY2'
+import sys, json, shutil, tempfile, pathlib
+sys.path.insert(0, ".")
+from agentlas_cloud.runtime import run_setup_wizard
+base = pathlib.Path(tempfile.mkdtemp(prefix="agentid-gate."))
+try:
+    (base / "AGENTS.md").write_text("# T\nAgent body long enough to be substantive.\n" * 6)
+    run_setup_wizard(base, "t", write=True)
+    a1 = json.load(open(base / "agentlas.json"))["agentId"]
+    assert a1.startswith("agt_")
+    run_setup_wizard(base, "t", write=True)
+    assert json.load(open(base / "agentlas.json"))["agentId"] == a1, "agentId changed on rebuild"
+    m = json.load(open(base / "agentlas.json")); m["agentId"] = "agt_owner_custom_000"
+    (base / "agentlas.json").write_text(json.dumps(m))
+    run_setup_wizard(base, "t", write=True)
+    assert json.load(open(base / "agentlas.json"))["agentId"] == "agt_owner_custom_000", "existing agentId rewritten"
+    print("PASS agentId-immutability")
+finally:
+    shutil.rmtree(base, ignore_errors=True)
+PY2

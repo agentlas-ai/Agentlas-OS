@@ -684,6 +684,21 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
         manifest_payload, kept_contract, replaced_contract = _merge_existing_manifest(
             existing_manifest, manifest_payload, files
         )
+    # Immutable identity axis (owner decision 2026-08-08, R5): `agentId` is a
+    # plain opaque id minted ONCE at first build and never changed afterwards -
+    # the iOS-bundle-id analogue. slug/name stay mutable display info and
+    # `packageHash` stays the per-release integrity hash; identity lives here.
+    # agentlas.json is excluded from the package hash on every surface, so
+    # minting the id does not disturb any release digest. An existing value -
+    # whatever generation minted it - is preserved verbatim: rewriting it is the
+    # republish-mints-new-definition incident all over again.
+    existing_agent_id = (existing_manifest or {}).get("agentId")
+    if isinstance(existing_agent_id, str) and existing_agent_id.strip():
+        manifest_payload["agentId"] = existing_agent_id.strip()
+    elif not str(manifest_payload.get("agentId") or "").strip():
+        import uuid
+
+        manifest_payload["agentId"] = f"agt_{uuid.uuid4().hex}"
     if write:
         (base / "agentlas.json").write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         agentlas_dir = base / ".agentlas"
