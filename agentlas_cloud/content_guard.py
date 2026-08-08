@@ -353,8 +353,23 @@ _MULTILINGUAL_RULES: list[tuple[str, re.Pattern[str], str, str, str]] = [
             # between them, so the old 12-char window missed a real attack. The
             # negation guard (declarative 않- endings) keeps "출력하지 않습니다"
             # safe, so widening the window does not reintroduce the false positive.
-            r"(?:api\s*키|비밀|토큰|자격\s*증명|키체인|쿠키|세션).{0,40}(?:공개|전송|유출|보내|전달|업로드|탈취|출력)"
-            r"|(?:공개|전송|유출|보내|전달|업로드|탈취).{0,40}(?:api\s*키|비밀|토큰|자격\s*증명|키체인|쿠키|세션)",
+            # `세션` and `공개` were both too wide, and `_cjk_shadow` strips spaces
+            # so unrelated words become adjacent. Measured 2026-08-07: nine
+            # published packages were refused because "별도 세션" (a separate work
+            # session) landed within 40 characters of "Hub 공개" (publishing to the
+            # Hub) — two ordinary product words, joined by the shadow into what
+            # read as "session ... expose".
+            #
+            # `세션` now needs a credential qualifier (토큰/키/쿠키/id), which is
+            # what an actual session credential is called. `공개` is dropped from
+            # the verb side entirely: in Korean product prose it means "publish",
+            # and genuine exposure is `유출`/`노출`, both of which stay.
+            r"(?:api\s*키|비밀|토큰|자격\s*증명|키체인|쿠키|\.env|시크릿|secret|credential"
+            r"|세션\s*(?:토큰|키|쿠키|id|아이디))"
+            r".{0,40}(?:전송|유출|노출|보내|전달|업로드|탈취|출력)"
+            r"|(?:전송|유출|노출|보내|전달|업로드|탈취)"
+            r".{0,40}(?:api\s*키|비밀|토큰|자격\s*증명|키체인|쿠키|\.env|시크릿|secret|credential"
+            r"|세션\s*(?:토큰|키|쿠키|id|아이디))",
             re.I,
         ),
         "Removed Korean secret-exfiltration instruction before upload.",
@@ -511,6 +526,24 @@ _DESCRIPTIVE_RE = re.compile(
     # list-header framing: "Today's words:", "Glossary:", "Key terms:" — an
     # enumeration of vocabulary, not a directive.
     r"|\b(?:words?|vocabulary|glossary|terms?|keywords?|lexicon)\b\s*[:：]"
+    # The Korean half of the same idea. Every marker above had an English form
+    # and no Korean one, so a security specialist writing in Korean had its own
+    # documentation read as an attack: an attack catalog entry, a test procedure,
+    # a list of what must NOT be persisted. Measured 2026-08-07: one published
+    # security agent produced 21 redactions this way, all of them describing
+    # attacks it exists to detect.
+    #
+    # These are documentation words. An actual injection payload does not
+    # introduce itself as a catalog entry, a checklist, or a mitigation.
+    r"|(?:카탈로그|취약점|취약|점검|탐지|진단|재현|완화|대응|대책|"
+    r"체크리스트|시나리오|공격\s*유형|공격\s*기법|위협\s*모델|"
+    r"테스트|검증|감사|리뷰|보고서|절차|설명|정의|예시|목록|"
+    r"저장하지|기록하지|남기지|포함하지|노출하지|"
+    # Assessment words. "노출 여부 체크" is checking WHETHER something leaked;
+    # "형식 파악" is working out a shape. An instruction to exfiltrate does not
+    # ask whether, it tells you to send — so these read as inspection, and they
+    # are what a security agent's own test procedure is written with.
+    r"여부|파악|식별|분류|판정|확인한다|살펴본다)"
     # Security-hygiene directives: a line telling the agent to PROTECT secrets —
     # rotate them, never expose them, report a found leak — reads as defensive,
     # not as an exfiltration instruction. Without this, "secrets must be rotatable
@@ -691,6 +724,15 @@ def find_multiline_spans(lines: list[str]) -> list[SpanReason]:
 
     for start in range(n):
         if not lines[start].strip():
+            continue
+        # A window may not START on a structural boundary either. The loop
+        # already refuses to join ACROSS a heading or code fence, but starting on
+        # one joined "## Output" to the paragraph beneath it and read the pair as
+        # a split instruction. Measured 2026-08-07: three published packages were
+        # refused that way, each time for ordinary document structure — a heading
+        # followed by its own body is not a sentence someone broke in half to
+        # evade a scanner.
+        if _STRUCTURAL_BOUNDARY_RE.match(lines[start]):
             continue
         acc = lines[start].rstrip("\r\n")
         blank_run = 0
