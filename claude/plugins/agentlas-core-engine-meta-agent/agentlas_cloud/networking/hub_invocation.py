@@ -528,18 +528,33 @@ def _touch_agentlas_memory(
     #
     # The ticket carries the request HASH, never the request: this ledger travels
     # with the agent folder and a raw prompt is exactly what must not.
+    # The Hub tool reads the learning ONLY inside `candidate` ({type, content,
+    # scope, evidence}); it requires that key. This payload sent slug/kind/status/
+    # evidence at the top level instead, so the server dropped them as undeclared
+    # arguments and every ticket came back `reject: 빈 candidate` — the starvation
+    # this block was written to fix survived as a contract mismatch. Measured on
+    # live logs 2026-08-08: four "[mcp] undeclared argument ignored —
+    # agentlas.memory.ticket does not accept evidence, kind, slug, status".
     ticket_payload = {
         "memoryRoot": str(memory_root),
-        "slug": slug,
-        "kind": "invocation",
-        "status": "candidate",
-        "evidence": {
-            "routingReceiptId": routing_receipt_id,
-            "requestHash": _request_hash(request),
-            "mode": "hub_byom_bundle",
+        "candidate": {
+            "type": "fact",
+            "scope": "project",
+            "content": (
+                f"Hephaestus Network invocation: {slug} "
+                f"(mode hub_byom_bundle, routing receipt {routing_receipt_id or 'none'})"
+            ),
+            "evidence": {
+                "routingReceiptId": routing_receipt_id,
+                "requestHash": _request_hash(request),
+                "mode": "hub_byom_bundle",
+            },
         },
     }
     ticket = _optional_hub_memory_tool("agentlas.memory.ticket", ticket_payload, home, tool_errors)
+    # A rejection also comes back as a dict, so bool(ticket) recorded refusals as
+    # acknowledgements. Record the decision the server actually made.
+    ticket_decision = ticket.get("decision") if isinstance(ticket, dict) else None
     # The local ledger is written either way. A ticket that only exists when the
     # Hub answers is a ticket that goes missing exactly when a run had trouble.
     append_jsonl(
@@ -552,7 +567,8 @@ def _touch_agentlas_memory(
             "status": "candidate",
             "routing_receipt_id": routing_receipt_id,
             "request_hash": _request_hash(request),
-            "hub_acknowledged": bool(ticket),
+            "hub_acknowledged": ticket_decision in ("admit", "merge"),
+            "hub_decision": ticket_decision,
         },
     )
     return {
