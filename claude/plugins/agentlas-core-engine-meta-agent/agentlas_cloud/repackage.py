@@ -1103,6 +1103,13 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
 
     written: list[str] = []
     core = root / "AGENTS.md"
+    # A stencil AGENTS.md counts as missing. `contract scaffold` lays one down
+    # before this runs, so checking only `is_file()` made the promotion skip —
+    # and the upload pass then withdrew the stencil for carrying `{{`, leaving
+    # the package with no canonical core at all. Measured 2026-08-07: 15
+    # packages published locally as ready with no AGENTS.md in the bundle.
+    if core.is_file() and _has_placeholders(core):
+        core.unlink()
     if not core.is_file():
         # The canonical core is missing but a body exists under another name.
         # AGENTS.md is the entry every runtime reads first and the file the
