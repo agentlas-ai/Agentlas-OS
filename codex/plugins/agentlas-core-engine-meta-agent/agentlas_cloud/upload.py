@@ -408,7 +408,6 @@ def package_agent(
     manifest["sanitizationApplied"] = sanitized_line_count > 0
     manifest["sanitizedLineCount"] = sanitized_line_count
 
-    review = static_review(findings)
     bundle = {
         "manifest": manifest,
         "files": [item.__dict__ for item in files],
@@ -460,6 +459,13 @@ def package_agent(
         for finding in deferred:
             finding["severity"] = "warning"
             finding["deferred"] = "publishable; the listing is thinner until this is written"
+    # Review verdict/summary must reflect the FINAL severities, computed after
+    # secret redaction and artifact deferral have run. Building it earlier froze
+    # a "9 blocker(s) / fail" string onto a package whose findings had all been
+    # softened to warnings — the summary lied and the fail verdict could gate a
+    # downstream that trusts it. static_review reads the same mutated list, so
+    # calling it here makes the verdict match what actually ships.
+    review = static_review(findings)
     status = "blocked" if remaining else "ready"
     return {
         "status": status,

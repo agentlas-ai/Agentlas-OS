@@ -52,6 +52,17 @@ try:
     repaired = json.load(open(ag / "mcp-policy.json"))
     assert "command" not in repaired and "headers" not in repaired, "forbidden fields survived"
     assert receipts and receipts[0]["id"].startswith("mcp-policy-auto-repaired"), receipts
+    # Review verdict must reflect FINAL severities (computed after redaction/
+    # deferral), not a frozen pre-redaction "N blocker(s)/fail" string.
+    from agentlas_cloud.upload import package_agent
+    (ag / "AGENTS.md").write_text("# Canary\n" + "Body line to be substantive.\n" * 8)
+    result = package_agent(str(base), visibility="private-link")
+    assert result["status"] == "ready", result["status"]
+    review = result["review"]
+    assert review["verdict"] in ("pass", "needs-review"), review["verdict"]
+    assert not any(f["severity"] == "blocker" for f in review["findings"])
+    assert review["summary"].startswith("0 blocker"), review["summary"]
+
     print("PASS verify-upload-redaction")
 finally:
     shutil.rmtree(base, ignore_errors=True)
