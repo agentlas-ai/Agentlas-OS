@@ -470,7 +470,7 @@ def package_agent(
     #   - asset-boundary (교차종 자산 임베딩 — 다른 소유 자산)
     #   - secret 값(이미 마스킹되어 blocker가 아니지만, 못 가린 실키가 남으면 유지)
     HARD_BLOCK_CATEGORIES = {"size", "asset-boundary", "secret"}
-    HARD_BLOCK_IDS_PREFIX = ("career-card-privacy",)
+    HARD_BLOCK_IDS_PREFIX = ("career-card-privacy", "unportable-path")
     def _must_stay_blocked(finding: dict[str, Any]) -> bool:
         if finding.get("category") in HARD_BLOCK_CATEGORIES:
             return True
