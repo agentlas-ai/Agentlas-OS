@@ -175,3 +175,10 @@ credentials/
 # 로컬 빌드 산출물(런타임 릴리스 tar.gz) — GitHub Release 자산으로만 배포, git 소스로는 안 실음.
 dist/
 scripts/test-package-hash-idempotent.py
+
+# private corpus/verify tooling (not for public OS release)
+scripts/publish-corpus.py
+scripts/repackage-corpus.py
+scripts/swap-canonical-corpus.py
+scripts/verify-digest-vector-parity.mjs
+scripts/verify-local-package-hash-parity.mjs
