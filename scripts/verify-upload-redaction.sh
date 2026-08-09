@@ -63,6 +63,29 @@ try:
     assert not any(f["severity"] == "blocker" for f in review["findings"])
     assert review["summary"].startswith("0 blocker"), review["summary"]
 
+    # 7-2 (owner 2026-08-09): 구조/마켓페이지 깨짐도 반려하지 않는다 — 결정론 리패키징
+    # 후에도 남은 구조·마켓 blocker는 경고+engineGap으로 강등해 ready로 출하. 단 size 등
+    # 안전/불가 항목은 계속 차단.
+    from agentlas_cloud.upload import package_agent as _pa
+    import tempfile as _tf, shutil as _sh, pathlib as _pl
+    broken = _pl.Path(_tf.mkdtemp(prefix="broken-gate."))
+    try:
+        (broken / "AGENTS.md").write_text("# Broken\n" + "body line to be substantive.\n" * 10)
+        rb = _pa(str(broken), visibility="marketplace")
+        assert rb["status"] == "ready", f"broken pkg still blocked: {rb['status']}"
+        assert not [f for f in rb["review"]["findings"] if f["severity"] == "blocker"], "structure blocker survived"
+        assert any(f.get("engineGap") for f in rb["review"]["findings"]), "no engine-gap receipt"
+    finally:
+        _sh.rmtree(broken, ignore_errors=True)
+    big = _pl.Path(_tf.mkdtemp(prefix="big-gate."))
+    try:
+        (big / "AGENTS.md").write_text("# Big\n" + "body\n" * 10)
+        (big / "big.md").write_text("A" * (4 * 1024 * 1024))
+        rg = _pa(str(big), visibility="marketplace")
+        assert rg["status"] == "blocked" and any(f["category"] == "size" for f in rg["review"]["findings"] if f["severity"] == "blocker"), "size limit no longer blocks"
+    finally:
+        _sh.rmtree(big, ignore_errors=True)
+
     print("PASS verify-upload-redaction")
 finally:
     shutil.rmtree(base, ignore_errors=True)

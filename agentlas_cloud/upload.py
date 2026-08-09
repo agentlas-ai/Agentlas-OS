@@ -459,6 +459,31 @@ def package_agent(
         for finding in deferred:
             finding["severity"] = "warning"
             finding["deferred"] = "publishable; the listing is thinner until this is written"
+    # 필수개정 7-2 (owner rule 2026-08-09): 유저는 스스로 못 고친다 — 구조/마켓페이지
+    # 결함으로 업로드를 반려하지 않는다. 결정론 리패키징(derive/reconcile/coerce/
+    # refresh/repair)이 여기까지 왔는데도 남은 structure·market-page blocker는 엔진이
+    # 자동 완성하지 못한 지점이므로, 사용자에게 "고쳐오세요"를 넘기지 않고 경고로 강등해
+    # 얇은 리스팅으로라도 출하하며 엔진 결함으로 고지한다("리패키징까지 실패하면 사용자
+    # 잘못이 아니라 엔진 결함"). 단 진짜 안전/불가 항목은 계속 막는다:
+    #   - size (파일 수·용량 한계 — 물리적으로 못 싣는다)
+    #   - privacy (career-card-privacy — 원시 기억/프롬프트 유출)
+    #   - asset-boundary (교차종 자산 임베딩 — 다른 소유 자산)
+    #   - secret 값(이미 마스킹되어 blocker가 아니지만, 못 가린 실키가 남으면 유지)
+    HARD_BLOCK_CATEGORIES = {"size", "asset-boundary", "secret"}
+    HARD_BLOCK_IDS_PREFIX = ("career-card-privacy",)
+    def _must_stay_blocked(finding: dict[str, Any]) -> bool:
+        if finding.get("category") in HARD_BLOCK_CATEGORIES:
+            return True
+        fid = str(finding.get("id") or "")
+        return any(fid.startswith(p) for p in HARD_BLOCK_IDS_PREFIX)
+    engine_gap = [f for f in remaining if not _must_stay_blocked(f)]
+    if engine_gap:
+        gap_ids = {id(f) for f in engine_gap}
+        remaining = [f for f in remaining if id(f) not in gap_ids]
+        for finding in engine_gap:
+            finding["severity"] = "warning"
+            finding["deferred"] = "published with a thinner listing; the engine could not auto-complete this and it is flagged as an engine gap, never handed back to the author to fix"
+            finding["engineGap"] = True
     # Review verdict/summary must reflect the FINAL severities, computed after
     # secret redaction and artifact deferral have run. Building it earlier froze
     # a "9 blocker(s) / fail" string onto a package whose findings had all been
