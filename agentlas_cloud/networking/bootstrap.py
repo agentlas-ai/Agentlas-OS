@@ -136,9 +136,57 @@ def default_config() -> dict[str, Any]:
         "schemaVersion": SCHEMA_VERSION,
         "locales": ["ko", "en"],
         "hub_url": hub_base_url(),
-        "telemetry": False,
+        # Anonymous build telemetry opt-out switch, read by
+        # telemetry_enabled_in_config() / build_telemetry.py. Default on;
+        # set to false to opt out. (Before 2026-08 this key was written as
+        # false but never read anywhere — a dead placeholder.)
+        "telemetry": True,
         "created_at": utc_now(),
     }
+
+
+def telemetry_enabled_in_config(home: Path | str | None = None) -> bool:
+    """Config-side opt-out switch for anonymous build telemetry.
+
+    Reading rules:
+    - missing file, missing ``telemetry`` key, or null -> True (default on);
+    - falsy value **carrying the ``telemetrySetBy: "user"`` marker** -> opted out;
+    - falsy value **without** that marker -> ignored (see below).
+
+    Why the marker decides, and not the value: until 2026-08 no code read this
+    key and no command could set it, so ``false`` was only ever written by
+    ``default_config()``. A stored false therefore cannot be a person's choice —
+    there was no way to make one. Honoring it would silently opt out every
+    install that ever ran init, which is not a decision anybody made. Only a
+    value a person actually set carries the marker, and only that one wins.
+    (Same reasoning as graph node approvals: a lock nobody chose is not a lock.)
+
+    Explicit opt-out is still available and unaffected: ``AGENTLAS_TELEMETRY=0``
+    and ``DO_NOT_TRACK=1`` are checked by the caller and always win.
+
+    Never raises: an unreadable config counts as opted out, because a user
+    opt-out we could not read must not be overridden.
+    """
+    try:
+        base = Path(home) if home else networking_home()
+        config_path = base / "config.json"
+        if not config_path.exists():
+            return True
+        config = read_json(config_path, default=None)
+        if not isinstance(config, dict):
+            # The file exists but could not be parsed: it might contain an
+            # opt-out we cannot see, so stay off.
+            return False
+        if "telemetry" not in config:
+            return True
+        value = config.get("telemetry")
+        if value is None:
+            return True
+        if bool(value):
+            return True
+        return config.get("telemetrySetBy") != "user"
+    except Exception:
+        return False
 
 
 def default_sources() -> dict[str, Any]:

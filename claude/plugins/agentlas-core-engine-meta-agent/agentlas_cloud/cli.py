@@ -22,6 +22,35 @@ from .update import (
 )
 
 
+def _build_telemetry_tracker(event: str, mode: str | None = None) -> Any:
+    """Fail-silent tracker for anonymous hep-build telemetry.
+
+    Never raises and never prints: a telemetry bug or an offline network must
+    never change a build command's output, exit code, or latency. Opt-out is
+    honored inside build_telemetry (config `telemetry` key, AGENTLAS_TELEMETRY,
+    DO_NOT_TRACK).
+    """
+    try:
+        from .build_telemetry import build_event_tracker
+
+        return build_event_tracker(event, mode=mode)
+    except Exception:
+        return None
+
+
+def _finish_build_telemetry(
+    tracker: Any,
+    ok: bool,
+    error_code: str | None = None,
+    blocker_count: int | None = None,
+) -> None:
+    try:
+        if tracker is not None:
+            tracker.finish(ok=ok, error_code=error_code, blocker_count=blocker_count)
+    except Exception:
+        pass
+
+
 RESEARCH_SEARCH_PROVIDERS = ("ddg-html", "news-rss", "github", "jina")
 RESEARCH_SEARCH_PROVIDER_MODULES = {
     "ddg-html": "search.ddg_html",
@@ -809,6 +838,50 @@ def main(argv: list[str] | None = None) -> int:
     )
     workforce_goal_complete.add_argument("--account-subject", default=None, help=argparse.SUPPRESS)
     workforce_goal_complete.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
+    # Persistent-goal ledger (workforce/goal_ledger.py) — the host-owned state
+    # that lets a goal keep running for days without a model-authored marker.
+    # No account partition: the ledger must work signed-out, and its goal_id
+    # axis is already machine-local.
+    workforce_goal_ledger = workforce_sub.add_parser(
+        "goal-ledger",
+        help="Persistent-goal ledger: objective, tasks, cycle accounting, continue decision",
+    )
+    workforce_goal_ledger.add_argument(
+        "ledger_action",
+        choices=[
+            "create",
+            "get",
+            "tasks",
+            "add-task",
+            "complete-task",
+            "record-cycle",
+            "should-continue",
+            "complete",
+        ],
+    )
+    workforce_goal_ledger.add_argument("goal_id")
+    workforce_goal_ledger.add_argument("--objective", default=None)
+    workforce_goal_ledger.add_argument("--criteria", action="append", default=[])
+    workforce_goal_ledger.add_argument("--task", action="append", default=[],
+                                       help="Task summary (repeatable)")
+    workforce_goal_ledger.add_argument("--task-id", default=None)
+    workforce_goal_ledger.add_argument("--evidence", default=None)
+    workforce_goal_ledger.add_argument("--progress-key", default=None)
+    workforce_goal_ledger.add_argument("--cost", type=float, default=0.0)
+    workforce_goal_ledger.add_argument("--outcome", default=None)
+    workforce_goal_ledger.add_argument("--next-cycle-at", default=None)
+    workforce_goal_ledger.add_argument("--deadline", default=None,
+                                       help="Wallclock deadline (ISO-8601); absent = unlimited")
+    workforce_goal_ledger.add_argument("--max-cycles", type=int, default=None)
+    workforce_goal_ledger.add_argument("--max-cost", type=float, default=None)
+    workforce_goal_ledger.add_argument("--stall-window", type=int, default=None)
+    workforce_goal_ledger.add_argument("--project", default=None)
+    workforce_goal_ledger.add_argument(
+        "--terminal-status",
+        choices=["completed", "cancelled", "blocked"],
+        default="completed",
+    )
+    workforce_goal_ledger.add_argument("--reason", default=None)
 
     args = parser.parse_args(argv)
     # Auto-update is the default: every command kicks off a fail-silent,
@@ -865,12 +938,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "package":
         from .upload import UploadError, package_agent
 
+        telemetry = _build_telemetry_tracker("package", mode="package")
         try:
             result = package_agent(args.folder, slug=args.slug, visibility=args.visibility, write_manifest=not args.no_write)
         except UploadError as exc:
-            return emit({"status": "error", "error": str(exc)}) or 1
+            code = emit({"status": "error", "error": str(exc)}) or 1
+            _finish_build_telemetry(telemetry, ok=False, error_code="upload_error")
+            return code
+        blocked = result.get("status") == "blocked"
         emit(result)
-        return 1 if result.get("status") == "blocked" else 0
+        _finish_build_telemetry(telemetry, ok=not blocked, error_code="blocked" if blocked else None)
+        return 1 if blocked else 0
     if args.command == "publish":
         from .upload import UploadError, publish_agent
 
@@ -1184,8 +1262,18 @@ def main(argv: list[str] | None = None) -> int:
         from .package_contract import contract_prompt_lines, scaffold, verify
 
         if args.contract_command == "scaffold":
+            telemetry = _build_telemetry_tracker("scaffold", mode=args.mode)
             report = scaffold(args.folder, mode=args.mode, package_id=args.id, name=args.name, command=args.command_slug)
             emit(report)
+            failed = bool(report.get("error"))
+            # report["error"] is a machine code (workspace_not_found /
+            # workspace_not_a_folder); build_telemetry drops anything that is
+            # not a bare machine code before it can leave the machine.
+            _finish_build_telemetry(
+                telemetry,
+                ok=not failed,
+                error_code=str(report.get("error")) if failed else None,
+            )
             # A refused workspace path must not exit 0: callers chain
             # `scaffold && fill && verify`, and a silent success there means the
             # fill step writes into a workspace that was never created.
@@ -1203,6 +1291,7 @@ def main(argv: list[str] | None = None) -> int:
                 fill_runtime_adapter_bodies,
             )
 
+            telemetry = _build_telemetry_tracker("complete")
             workspace = Path(args.workspace).expanduser().resolve()
             manifest = {}
             try:
@@ -1218,10 +1307,23 @@ def main(argv: list[str] | None = None) -> int:
                 {"action": "contract complete", "workspace": str(workspace),
                  "slug": str(slug), "written": written},
                 ensure_ascii=False, indent=2))
+            _finish_build_telemetry(telemetry, ok=True)
             return 0
         if args.contract_command == "verify":
+            telemetry = _build_telemetry_tracker("verify", mode=args.mode)
             report = verify(args.folder, mode=args.mode)
             emit(report)
+            # Blocker texts carry paths and prose, so only a machine code and
+            # the blocker COUNT are reported — never the blockers themselves.
+            _finish_build_telemetry(
+                telemetry,
+                ok=bool(report["ok"]),
+                error_code=(
+                    str(report.get("error")) if report.get("error")
+                    else ("contract_blockers" if not report["ok"] else None)
+                ),
+                blocker_count=len(report.get("blockers") or []),
+            )
             return 0 if report["ok"] else 1
         if args.contract_command == "prompt":
             emit({"mode": args.mode, "lines": contract_prompt_lines(args.mode)})
@@ -1297,6 +1399,73 @@ def main(argv: list[str] | None = None) -> int:
                 if args.workforce_command == "local-list":
                     return emit({"status": "ok", "registrations": registry.list_registrations()})
                 return emit(registry.reconcile(args.networking_home))
+            # The ledger is handled before the roster-binding block below: its
+            # parser has no --account-subject/--hub-base-url flags, and the
+            # binding block ends in a goal-complete fallthrough that would
+            # otherwise swallow every unknown goal-* command.
+            if args.workforce_command == "goal-ledger":
+                from .workforce.goal_ledger import GoalLedgerStore
+
+                ledger = GoalLedgerStore()
+                action = args.ledger_action
+                if action == "create":
+                    return emit(
+                        ledger.create(
+                            goal_id=args.goal_id,
+                            objective=args.objective or "",
+                            acceptance_criteria=args.criteria,
+                            project_dir=args.project,
+                            wallclock_deadline=args.deadline,
+                            max_cycles=args.max_cycles,
+                            max_cost_usd=args.max_cost,
+                            stall_window=args.stall_window,
+                            tasks=[{"summary": task} for task in args.task],
+                        )
+                    )
+                if action == "get":
+                    found = ledger.get(args.goal_id)
+                    return emit(found or {
+                        "schemaVersion": "agentlas.goal-ledger.v1",
+                        "goalId": args.goal_id,
+                        "status": "not-found",
+                    })
+                if action == "tasks":
+                    return emit({
+                        "schemaVersion": "agentlas.goal-ledger.v1",
+                        "goalId": args.goal_id,
+                        "openTasks": ledger.list_open_tasks(args.goal_id),
+                    })
+                if action == "add-task":
+                    return emit(ledger.add_tasks(args.goal_id, list(args.task)))
+                if action == "complete-task":
+                    if not args.task_id:
+                        raise ValueError("goal_ledger_task_id_required")
+                    return emit(
+                        ledger.complete_task(
+                            args.goal_id,
+                            args.task_id,
+                            evidence_ref=args.evidence,
+                        )
+                    )
+                if action == "record-cycle":
+                    return emit(
+                        ledger.record_cycle(
+                            args.goal_id,
+                            progress_key=args.progress_key,
+                            cost_usd=args.cost,
+                            outcome=args.outcome,
+                            next_cycle_at=args.next_cycle_at,
+                        )
+                    )
+                if action == "should-continue":
+                    return emit(ledger.should_continue(args.goal_id))
+                return emit(
+                    ledger.complete_goal(
+                        goal_id=args.goal_id,
+                        status=args.terminal_status,
+                        reason=args.reason,
+                    )
+                )
             if args.workforce_command.startswith("goal-"):
                 from .workforce.goal_binding import (
                     WorkforceGoalStore,
@@ -2727,7 +2896,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.1.107",
+            "version": "1.1.108",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

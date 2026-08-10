@@ -481,7 +481,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.107
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.1.108
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -824,6 +824,38 @@ or Context Map contents.
 This repository does **not** include Agentlas billing/account logic, production cloud credentials, customer databases, raw private transcripts, native keychain managers, or private deployment scripts.
 
 Public output packages compiled by Hephaestus must exclude local absolute paths, API keys, service-account keys, `.env` secrets, raw transcripts, customer logs, or private developer notes.
+
+### Build telemetry
+
+`hep-build` sends anonymous counters so we can see where builds fail: a random
+install id generated locally, which build step ran, whether it succeeded, a
+machine error code, a duration, and the OS/engine/python versions. Events are
+deleted 180 days after they arrive.
+
+Never sent: file paths, package names, prompts, agent content, error message
+text, usernames, emails, or environment variables. The allowlist is enforced in
+the engine before the request is built and again on the server, which drops
+every field it does not recognize.
+
+Turn it off with either of these — a build behaves identically with telemetry
+disabled, and every failure path (offline, DNS, server error, a bug in the
+telemetry code) is already swallowed silently without touching your build:
+
+```bash
+export AGENTLAS_TELEMETRY=0
+export DO_NOT_TRACK=1     # the cross-vendor convention, honored here
+```
+
+Or permanently, in `~/.agentlas/networking/config.json`:
+
+```json
+{ "telemetry": false, "telemetrySetBy": "user" }
+```
+
+The `telemetrySetBy` marker is what separates a choice you made from the
+`"telemetry": false` that `default_config()` wrote into every install created
+before the key was ever read — that value never represented anyone's decision,
+so it is not treated as one.
 
 ---
 
