@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.1.106 - 2026-08-10
+
+- **Agentlas One now persists as one owner-bound personal agent across supported
+  hosts.** The new `agentlas-one` runtime switch seeds the canonical single-agent
+  memory layout, installs non-blocking Stop checkpoints, and injects the same
+  operating contract into Claude Code, Codex, and Antigravity entrypoints.
+- **Conversation learning crosses the runtime boundary without copying raw
+  transcripts.** Workers emit bounded Memory Events, the runtime converts them
+  into append-only tickets, and a deterministic curator admits only supported
+  durable memory while keeping experience chips as explicit promotion candidates.
+- **Public adapters remain portable.** Runtime instructions and code comments are
+  English, private repository fallbacks are absent, user-owned hook configuration
+  is preserved, and every Stop path fails open instead of blocking a session.
+
 ## v1.1.98 - 2026-08-05
 
 - **A tool description stops paying for a value the host cannot author.** The

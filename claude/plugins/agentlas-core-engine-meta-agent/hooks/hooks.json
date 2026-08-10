@@ -34,6 +34,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -x \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-one\" ]; then \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-one\" stop-hook; else printf '{}\\n'; fi",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

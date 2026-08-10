@@ -1,0 +1,537 @@
+#!/usr/bin/env bash
+# Agentlas One persistent-session switch.
+#
+# Enabling or disabling One only creates or removes a state file. Each runtime's
+# per-turn instruction entrypoint reads that state; the entrypoint provides persistence.
+#
+#   agentlas-one install        Wire the status line and Stop hook once.
+#   agentlas-one on [name]      Enable One and seed its workspace.
+#   agentlas-one off            Disable One.
+#   agentlas-one name <name>    Rename One.
+#   agentlas-one status         Show current state.
+#   agentlas-one memory         Measure memory and experience chips.
+#   agentlas-one remember <text> Emit a memory-candidate ticket.
+#   agentlas-one curate         Curate tickets into durable memory candidates.
+#   agentlas-one seed           Idempotently seed the single-agent workspace.
+#   agentlas-one statusline     Internal status-line renderer.
+#   agentlas-one stop-hook      Internal session-end checkpoint.
+#
+# Workspace implementation: agentlas_cloud/one_workspace.py.
+set -uo pipefail
+
+ONE_DIR="${AGENTLAS_ONE_DIR:-$HOME/.agentlas/one}"
+STATE_FILE="$ONE_DIR/state.json"
+CLAUDE_MD="${AGENTLAS_ONE_CLAUDE_MD:-$HOME/.claude/CLAUDE.md}"
+SETTINGS="${AGENTLAS_ONE_SETTINGS:-$HOME/.claude/settings.json}"
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+BEGIN_MARK="<!-- AGENTLAS-ONE:BEGIN -->"
+END_MARK="<!-- AGENTLAS-ONE:END -->"
+
+PY="${AGENTLAS_PYTHON:-python3}"
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------- state
+
+state_read() {
+  # $1 = key, $2 = default
+  [ -f "$STATE_FILE" ] || { printf '%s' "${2:-}"; return; }
+  "$PY" - "$STATE_FILE" "$1" "${2:-}" <<'PYEOF' 2>/dev/null || printf '%s' "${2:-}"
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    sys.stdout.write(sys.argv[3]); raise SystemExit(0)
+value = data.get(sys.argv[2], sys.argv[3])
+sys.stdout.write("" if value is None else str(value))
+PYEOF
+}
+
+state_write() {
+  # $1 = name
+  mkdir -p "$ONE_DIR" || die "Cannot create the One directory: $ONE_DIR"
+  ONE_NAME="$1" "$PY" - "$STATE_FILE" <<'PYEOF'
+import json, os, sys, time
+path = sys.argv[1]
+prev = {}
+if os.path.exists(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            prev = json.load(fh)
+    except Exception:
+        prev = {}
+state = {
+    "contractVersion": "1.0.0",
+    "on": True,
+    "name": os.environ["ONE_NAME"],
+    "mode": prev.get("mode", "assistant"),
+    "since": prev.get("since") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+}
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(state, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+os.chmod(path, 0o600)
+PYEOF
+}
+
+# ---------------------------------------------------------------- directive block
+
+directive_block() {
+  # Use a quoted heredoc so the shell cannot consume backticks or dollar signs.
+  ONE_NAME="$1" ONE_BEGIN="$BEGIN_MARK" ONE_END="$END_MARK" "$PY" -c '
+import os, sys
+body = sys.stdin.read().replace("__ONE_NAME__", os.environ["ONE_NAME"])
+sys.stdout.write(os.environ["ONE_BEGIN"] + "\n" + body + os.environ["ONE_END"] + "\n")
+' <<'EOF'
+# __ONE_NAME__ — Agentlas One enabled
+
+`agentlas-one on` owns this block and `off` removes it. Do not edit it directly.
+
+## Identity
+You are the owner's persistent personal agent operating the Agentlas engine, not a generic chat assistant.
+Keep the same identity across sessions, projects, and hosts. Do not repeat introductions.
+Begin user-facing answers with `**[__ONE_NAME__]**`; omit the prefix from intermediate tool updates.
+
+## Available capabilities — inspect these before claiming a limitation
+| Need | Capability |
+|---|---|
+| Expertise | `workforce.goal_context` -> reuse -> search only genuine gaps -> validate -> prepare |
+| Public experts | `marketplace.search_agents`, `hephaestus_hub_invoke`, `/hep-hub` |
+| Owner assets | `cargo.*`, `/hep-cloud` |
+| Apparently missing tool | `agentlas_resolve_plugins`; uninstalled does not mean nonexistent, and installation is the user's decision |
+| Repeated work | `/hep-graph` to build and run automation |
+| Browser work | `/hep-browser` |
+| New capability | `/hep-build` -> `/hep-upload` |
+| Code location and impact | `context_locate`, `context_slice`, `context_impact`, `context_verify` |
+| Memory | `agentlas_memory_preflight`, `agentlas_memory_ticket`; never write durable memory directly |
+
+## Operating rules
+1. **Reuse the roster first.** Reuse the bound roster before recruiting; recruitment is additive.
+2. **Prevent dead ends.**
+   1. Use machine-readable markers for causes; never infer a cause by parsing prose.
+   2. Keep terminal actions unconditional; close, stop, and cancel must not depend on another state.
+   3. Re-read state after acting. If evidence is unchanged, say so explicitly.
+3. **Never claim an uncalled tool was called.** Query before claiming that something is absent.
+4. Before irreversible actions such as deletion, sending, payment, or publication, prefer live measurement over memory. Ask when verification is unavailable.
+5. When memories conflict, expose the conflict instead of silently choosing one.
+6. When blocked, exhaust remaining means in order. If all fail, report exactly where and why using machine evidence.
+
+## Memory events
+At the end of any answer that produced a reusable learning, append one envelope for the runtime to turn into a curator ticket.
+Never write durable memory directly. Use an empty `candidates` array when there is no learning.
+
+After `## Memory Events`, emit a fenced JSON block:
+`{"schema_version":"agentlas.memory-ticket.v1","turn_summary":"one safe sentence",`
+`"candidates":[{"content":"one or two sentences","memory_kind":"fact|decision|preference|risk|procedure|hypothesis","suggested_scope":"user_identity|project|agent_repo|session","evidence":["file:line or command"]}]}`
+
+Never include secrets, credentials, raw transcripts, or host-absolute paths. Unsupported facts, decisions, and procedures are downgraded to hypotheses. Imperative instructions are not memories and must not be emitted as candidates.
+
+## Communication
+Lead with the outcome. State what is unknown, and support limitations with evidence. Use plain but precise language without presenting inference as fact.
+EOF
+}
+
+# Runtime-specific instruction entrypoints. Marker-block upserts provide the
+# same contract on hosts without hooks. Create only the canonical Claude entrypoint.
+runtime_entrypoints() {
+  printf '%s\n' "$CLAUDE_MD"
+  local extra
+  for extra in "${AGENTLAS_ONE_CODEX_MD:-$HOME/.codex/AGENTS.md}" \
+               "${AGENTLAS_ONE_GEMINI_MD:-$HOME/.gemini/GEMINI.md}"; do
+    [ -f "$extra" ] && printf '%s\n' "$extra"
+  done
+}
+
+block_install() {
+  local name="$1" target
+  while IFS= read -r target; do
+    block_install_one "$name" "$target"
+  done < <(runtime_entrypoints)
+}
+
+block_install_one() {
+  local name="$1" CLAUDE_MD="$2"
+  mkdir -p "$(dirname "$CLAUDE_MD")"
+  [ -f "$CLAUDE_MD" ] || : > "$CLAUDE_MD"
+  cp "$CLAUDE_MD" "$CLAUDE_MD.one-backup-$(date +%s)" 2>/dev/null || true
+  local block; block="$(directive_block "$name")"
+  ONE_BLOCK="$block" ONE_BEGIN="$BEGIN_MARK" ONE_END="$END_MARK" \
+    "$PY" - "$CLAUDE_MD" <<'PYEOF'
+import os, re, sys
+path = sys.argv[1]
+begin, end = os.environ["ONE_BEGIN"], os.environ["ONE_END"]
+block = os.environ["ONE_BLOCK"]
+with open(path, encoding="utf-8") as fh:
+    text = fh.read()
+pattern = re.compile(re.escape(begin) + r".*?" + re.escape(end), re.S)
+if pattern.search(text):
+    text = pattern.sub(lambda _m: block, text)
+else:
+    text = (text.rstrip("\n") + "\n\n" if text.strip() else "") + block + "\n"
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    fh.write(text)
+os.replace(tmp, path)
+PYEOF
+}
+
+block_remove() {
+  local target
+  while IFS= read -r target; do
+    block_remove_one "$target"
+  done < <(runtime_entrypoints)
+}
+
+block_remove_one() {
+  local CLAUDE_MD="$1"
+  [ -f "$CLAUDE_MD" ] || return 0
+  grep -q "$BEGIN_MARK" "$CLAUDE_MD" 2>/dev/null || return 0
+  cp "$CLAUDE_MD" "$CLAUDE_MD.one-backup-$(date +%s)" 2>/dev/null || true
+  ONE_BEGIN="$BEGIN_MARK" ONE_END="$END_MARK" "$PY" - "$CLAUDE_MD" <<'PYEOF'
+import os, re, sys
+path = sys.argv[1]
+begin, end = os.environ["ONE_BEGIN"], os.environ["ONE_END"]
+with open(path, encoding="utf-8") as fh:
+    text = fh.read()
+pattern = re.compile(r"\n*" + re.escape(begin) + r".*?" + re.escape(end) + r"\n*", re.S)
+text = pattern.sub("\n", text)
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    fh.write(text.rstrip("\n") + "\n" if text.strip() else "")
+os.replace(tmp, path)
+PYEOF
+}
+
+# ---------------------------------------------------------------- status line
+
+cmd_statusline() {
+  # Claude Code supplies session JSON on stdin; otherwise use the current directory.
+  local payload; payload="$(cat 2>/dev/null || true)"
+  [ -f "$STATE_FILE" ] || exit 0
+  local on; on="$(state_read on false)"
+  [ "$on" = "True" ] || [ "$on" = "true" ] || exit 0
+
+  local name since
+  name="$(state_read name One)"
+  since="$(state_read since '')"
+
+  ONE_PAYLOAD="$payload" ONE_NAME="$name" ONE_SINCE="$since" "$PY" <<'PYEOF'
+import json, os, sys, time
+
+payload = os.environ.get("ONE_PAYLOAD", "")
+project = ""
+try:
+    data = json.loads(payload) if payload.strip() else {}
+    ws = data.get("workspace") or {}
+    project = os.path.basename(ws.get("current_dir") or ws.get("project_dir") or "")
+except Exception:
+    project = ""
+if not project:
+    project = os.path.basename(os.getcwd())
+
+parts = ["\033[32m●\033[0m \033[1m%s\033[0m" % os.environ["ONE_NAME"]]
+if project:
+    parts.append("\033[2m%s\033[0m" % project)
+
+since = os.environ.get("ONE_SINCE", "")
+if since:
+    try:
+        # Interpret both values through mktime to cancel local-time bias.
+        started = time.mktime(time.strptime(since, "%Y-%m-%dT%H:%M:%SZ"))
+        days = int((time.mktime(time.gmtime()) - started) // 86400)
+        if days >= 1:
+            parts.append("\033[2menabled for %d days\033[0m" % days)
+    except Exception:
+        pass
+
+sys.stdout.write(" \033[2m·\033[0m ".join(parts))
+PYEOF
+}
+
+# ---------------------------------------------------------------- settings.json
+
+cmd_install() {
+  mkdir -p "$(dirname "$SETTINGS")"
+  [ -f "$SETTINGS" ] || printf '{}\n' > "$SETTINGS"
+  cp "$SETTINGS" "$SETTINGS.one-backup-$(date +%s)" 2>/dev/null || true
+  ONE_CMD="$SELF statusline" ONE_STOP="$SELF stop-hook claude" "$PY" - "$SETTINGS" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as fh:
+        settings = json.load(fh)
+except Exception:
+    settings = {}
+if not isinstance(settings, dict):
+    raise SystemExit("settings.json is not an object; manual review is required")
+
+existing = settings.get("statusLine")
+if isinstance(existing, dict) and existing.get("command") and "agentlas-one" not in existing.get("command", ""):
+    sys.stderr.write("Another statusLine is already configured and was not overwritten:\n  %s\n" % existing.get("command"))
+    raise SystemExit(3)
+settings["statusLine"] = {"type": "command", "command": os.environ["ONE_CMD"], "padding": 0}
+
+# Upsert only the Agentlas One Stop checkpoint; preserve unrelated hooks.
+hooks = settings.setdefault("hooks", {})
+if not isinstance(hooks, dict):
+    raise SystemExit("settings.json hooks is not an object; manual review is required")
+stop_groups = hooks.setdefault("Stop", [])
+if not isinstance(stop_groups, list):
+    raise SystemExit("settings.json hooks.Stop is not an array; manual review is required")
+entry = {"type": "command", "command": os.environ["ONE_STOP"], "timeout": 10}
+for group in stop_groups:
+    if not isinstance(group, dict):
+        continue
+    inner = group.get("hooks")
+    if not isinstance(inner, list):
+        continue
+    for i, hook in enumerate(inner):
+        if isinstance(hook, dict) and "agentlas-one" in str(hook.get("command", "")):
+            inner[i] = entry           # Update only the Agentlas One entry.
+            break
+    else:
+        continue
+    break
+else:
+    stop_groups.append({"hooks": [entry]})   # Add a group only when absent.
+
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(settings, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+PYEOF
+  local rc=$?
+  if [ $rc -eq 0 ]; then
+    printf 'Status line configured -> %s\n' "$SETTINGS"
+    printf 'Non-blocking memory checkpoint Stop hook configured.\n'
+  fi
+  install_codex_stop_hook
+  return $rc
+}
+
+# Install the same session-end checkpoint on runtimes with hook engines.
+# Codex and Antigravity support Stop; Antigravity supplies transcript_path.
+install_codex_stop_hook() {
+  install_json_stop_hook "codex" "${AGENTLAS_ONE_CODEX_HOOKS:-$HOME/.codex/hooks.json}" "false"
+  install_agy_stop_hook
+}
+
+# Antigravity uses ~/.gemini/config/hooks.json, a top-level name map.
+# Stop is a flat handler array without Claude-style matcher and hooks wrappers.
+install_agy_stop_hook() {
+  local hooks="${AGENTLAS_ONE_AGY_HOOKS:-$HOME/.gemini/config/hooks.json}"
+  [ -f "$hooks" ] || { printf 'No agy hooks file; skipped (%s)\n' "$hooks"; return 0; }
+  cp "$hooks" "$hooks.one-backup-$(date +%s)" 2>/dev/null || true
+  ONE_STOP="$SELF stop-hook agy" "$PY" - "$hooks" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception as exc:
+    sys.stderr.write("Could not read agy hooks.json: %s\n" % exc)
+    raise SystemExit(0)              # Preserve an unreadable user-owned file.
+if not isinstance(data, dict):
+    raise SystemExit(0)
+entry = data.setdefault("agentlas-one", {})
+if not isinstance(entry, dict):
+    raise SystemExit(0)
+entry["enabled"] = True
+entry["Stop"] = [{"type": "command", "command": os.environ["ONE_STOP"], "timeout": 15}]
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+print("agy Stop hook configured -> %s" % path)
+PYEOF
+}
+
+# $1=host name, $2=settings file, $3=whether a missing hooks key may be created
+install_json_stop_hook() {
+  local host="$1" hooks="$2" create_missing="$3"
+  [ -f "$hooks" ] || { printf 'No %s hooks file; skipped (%s)\n' "$host" "$hooks"; return 0; }
+  cp "$hooks" "$hooks.one-backup-$(date +%s)" 2>/dev/null || true
+  ONE_STOP="$SELF stop-hook $host" ONE_HOST="$host" ONE_CREATE="$create_missing" \
+    "$PY" - "$hooks" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception as exc:
+    sys.stderr.write("Could not read %s settings: %s\n" % (os.environ["ONE_HOST"], exc))
+    raise SystemExit(0)          # Preserve an unreadable user-owned file.
+if not isinstance(data, dict):
+    raise SystemExit(0)
+if "hooks" not in data and os.environ.get("ONE_CREATE") != "true":
+    raise SystemExit(0)          # Do not introduce hooks into a runtime that did not use them.
+hooks = data.setdefault("hooks", {})
+if not isinstance(hooks, dict):
+    raise SystemExit(0)
+groups = hooks.setdefault("Stop", [])
+if not isinstance(groups, list):
+    raise SystemExit(0)
+entry = {"type": "command", "command": os.environ["ONE_STOP"], "timeout": 10}
+for group in groups:
+    inner = group.get("hooks") if isinstance(group, dict) else None
+    if not isinstance(inner, list):
+        continue
+    for i, hook in enumerate(inner):
+        if isinstance(hook, dict) and "agentlas-one" in str(hook.get("command", "")):
+            inner[i] = entry
+            break
+    else:
+        continue
+    break
+else:
+    groups.append({"hooks": [entry]})
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+print("%s Stop hook configured -> %s" % (os.environ["ONE_HOST"], path))
+PYEOF
+}
+
+# ---------------------------------------------------------------- commands
+
+cmd_on() {
+  local name="${1:-}"
+  [ -n "$name" ] || name="$(state_read name One)"
+  [ -n "$name" ] || name="One"
+  state_write "$name"
+  # Store one canonical directive file. Marker blocks are copies, while runtimes
+  # without hooks can read this file directly.
+  mkdir -p "$ONE_DIR"
+  directive_block "$name" > "$ONE_DIR/directive.md"
+  block_install "$name"
+  # Idempotently seed the same memory structure used by other single agents.
+  local seeded; seeded="$(cmd_workspace seed --name "$name" 2>/dev/null \
+    | "$PY" -c 'import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+c=d.get("created") or []
+print(f"created {len(c)}" if c else "already present")' 2>/dev/null)"
+  printf '%s enabled.\n' "$name"
+  printf '  State file : %s\n' "$STATE_FILE"
+  printf '  Directive  : %s (AGENTLAS-ONE block)\n' "$CLAUDE_MD"
+  printf '  Workspace  : %s/.agentlas (%s)\n' "$ONE_DIR" "${seeded:-verification failed}"
+  printf '  Responses will begin with [%s] starting next session.\n' "$name"
+}
+
+cmd_off() {
+  local name; name="$(state_read name One)"
+  block_remove
+  rm -f "$STATE_FILE" "$ONE_DIR/directive.md"
+  printf '%s disabled. Removed the state file and directive block.\n' "${name:-One}"
+}
+
+cmd_name() {
+  local name="${1:-}"
+  [ -n "$name" ] || die "Provide a name: agentlas-one name <name>"
+  local on; on="$(state_read on false)"
+  state_write "$name"
+  if [ "$on" = "True" ] || [ "$on" = "true" ]; then
+    block_install "$name"
+    printf 'Renamed to %s. The change applies next session.\n' "$name"
+  else
+    printf 'Saved the name %s. One remains disabled; run agentlas-one on.\n' "$name"
+  fi
+}
+
+cmd_status() {
+  if [ ! -f "$STATE_FILE" ]; then
+    printf 'One: disabled\n'
+    printf '  Enable: agentlas-one on [name]\n'
+    return 0
+  fi
+  local name since
+  name="$(state_read name One)"; since="$(state_read since '')"
+  printf 'One: enabled\n'
+  printf '  Name      : %s\n' "$name"
+  printf '  Since     : %s\n' "${since:-unknown}"
+  printf '  State     : %s\n' "$STATE_FILE"
+  if grep -q "$BEGIN_MARK" "$CLAUDE_MD" 2>/dev/null; then
+    printf '  Directive : installed (%s)\n' "$CLAUDE_MD"
+  else
+    printf '  Directive : missing; run agentlas-one on again\n'
+  fi
+  if grep -q 'agentlas-one statusline' "$SETTINGS" 2>/dev/null; then
+    printf '  Status line: configured\n'
+  else
+    printf '  Status line: missing; run agentlas-one install\n'
+  fi
+}
+
+# ---------------------------------------------------------------- workspace delegation
+
+OS_ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+workspace_py() {
+  # Prefer the installed runtime, then the repository source.
+  local mod
+  for mod in "$HOME/.agentlas/runtime/current/agentlas_cloud/one_workspace.py" \
+             "$OS_ROOT/agentlas_cloud/one_workspace.py"; do
+    if [ -f "$mod" ]; then printf '%s' "$mod"; return 0; fi
+  done
+  return 1
+}
+
+cmd_workspace() {
+  local sub="$1"; shift
+  local mod; mod="$(workspace_py)" || die "Cannot find one_workspace.py"
+  "$PY" "$mod" "$sub" --root "$ONE_DIR" "$@"
+}
+
+cmd_memory() {
+  local mod; mod="$(workspace_py)" || die "Cannot find one_workspace.py"
+  # The heredoc owns stdin, so pass status through the environment.
+  local raw; raw="$("$PY" "$mod" status --root "$ONE_DIR")" || die "Workspace status failed"
+  ONE_STATUS="$raw" "$PY" <<'PYEOF'
+import json, os
+
+data = json.loads(os.environ["ONE_STATUS"])
+
+
+def cell(value):
+    return "not seeded" if value == -1 else value
+
+
+rows = [
+    ("Agent identity    ", data["agentId"]),
+    ("Workspace seeded  ", "yes" if data["seeded"] else "no (agentlas-one seed)"),
+    ("Memory tickets    ", cell(data["tickets"])),
+    ("Curator decisions ", cell(data["curatorDecisions"])),
+    ("Session receipts  ", cell(data["invocations"])),
+    ("Evolution events  ", cell(data["evolutionEvents"])),
+    ("Experience chips  ", cell(data["experienceChips"])),
+    ("Experience packs  ", cell(data["experiencePacks"])),
+]
+print("One memory status")
+for label, value in rows:
+    print(f"  {label} : {value}")
+PYEOF
+}
+
+case "${1:-status}" in
+  install)    cmd_install ;;
+  on)         shift; cmd_on "${1:-}" ;;
+  off)        cmd_off ;;
+  name)       shift; cmd_name "${1:-}" ;;
+  status)     cmd_status ;;
+  memory)     cmd_memory ;;
+  seed)       shift; cmd_workspace seed --name "$(state_read name One)" "$@" ;;
+  remember)   shift; [ -n "${1:-}" ] || die "Provide content to remember"; cmd_workspace emit --content "$*" ;;
+  curate)     cmd_workspace curate ;;
+  statusline) cmd_statusline ;;
+  stop-hook)  shift; cmd_workspace stop-hook ${1:+--host "$1"} ;;
+  *)          die "Usage: agentlas-one {install|on [name]|off|name <name>|status|memory|remember <text>|curate|seed}" ;;
+esac
