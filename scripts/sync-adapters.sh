@@ -74,6 +74,7 @@ code_files=(
   "bin/hep-update"
   "bin/hephaestus.cmd"
   "bin/agentlas-memory-hook"
+  "bin/agentlas-one"
 )
 
 # Byte-mirrored skill copies at the repo root (.agents/skills); plugin skill

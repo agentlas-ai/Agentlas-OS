@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.agentlas/runtime/current/bin/agentlas-one stop-hook goose",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

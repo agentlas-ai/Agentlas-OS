@@ -521,9 +521,21 @@ def harvest_memory_events(transcript: str) -> list[dict[str, Any]]:
     """
     if not transcript:
         return []
+    return harvest_memory_events_from_texts(_iter_assistant_text(transcript))
+
+
+def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
+    """Harvest envelopes from assistant text a host supplies directly.
+
+    Not every runtime hands a Stop hook a transcript path. OpenCode plugins
+    receive the assistant text in process, so accept text as well as a file and
+    keep one parser for both. Callers must pass assistant output only.
+    """
     found: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for text in _iter_assistant_text(transcript):
+    for text in texts or []:
+        if not isinstance(text, str):
+            continue
         matches = list(_MEMORY_ENVELOPE_FENCED_RE.finditer(text))
         if not matches:
             matches = list(_MEMORY_ENVELOPE_BARE_RE.finditer(text))
@@ -569,6 +581,36 @@ def resolve_transcript(payload: dict[str, Any], host: str = "") -> str:
     return paths[0] if paths else ""
 
 
+def _goose_transcripts(payload: dict[str, Any]) -> list[str]:
+    """Resolve a goose session file from its SessionEnd payload.
+
+    goose reports ``session_id`` and ``working_dir`` but no transcript path, so
+    prefer the file named after the session and fall back to the recent window.
+    The layout is read at runtime rather than assumed: when nothing matches, the
+    checkpoint harvests nothing instead of guessing.
+    """
+    base = Path(os.path.expanduser("~/.local/share/goose/sessions"))
+    if not base.is_dir():
+        return []
+    session_id = str(payload.get("session_id") or payload.get("sessionId") or "").strip()
+    if session_id:
+        for suffix in (".jsonl", ".json"):
+            candidate = base / f"{session_id}{suffix}"
+            if candidate.is_file():
+                return [str(candidate)]
+    cutoff = time.time() - RECENT_ROLLOUT_WINDOW_SEC
+    found: list[tuple[float, str]] = []
+    for candidate in base.glob("*.jsonl"):
+        try:
+            mtime = candidate.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= cutoff:
+            found.append((mtime, str(candidate)))
+    found.sort(reverse=True)
+    return [path for _mtime, path in found[:MAX_ROLLOUTS_PER_STOP]]
+
+
 def resolve_transcripts(payload: dict[str, Any], host: str = "") -> list[str]:
     """Resolve every transcript eligible for memory-event harvesting.
 
@@ -588,6 +630,8 @@ def resolve_transcripts(payload: dict[str, Any], host: str = "") -> list[str]:
         return [direct]
 
     host = (host or str(payload.get("host") or "")).lower()
+    if host == "goose":
+        return _goose_transcripts(payload)
     if host != "codex":
         return []
 
@@ -665,6 +709,12 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     events: list[dict[str, Any]] = []
     for path in transcripts:
         events.extend(harvest_memory_events(path))
+    # Hosts without a transcript path (OpenCode) supply assistant text instead.
+    supplied = payload.get("assistant_texts") or payload.get("assistantTexts")
+    if isinstance(supplied, str):
+        supplied = [supplied]
+    if isinstance(supplied, list):
+        events.extend(harvest_memory_events_from_texts(supplied))
     for event in events:
         key = _content_hash(event["content"])
         if key in already:

@@ -26,10 +26,41 @@ installer):
 | OpenCode | automatic | commands → `~/.config/opencode/commands/` → `/hep-network`; skill via `~/.agents/skills`; MCP via `opencode.json` (see `opencode/README.md`). A dependency-free global plugin uses `chat.message` plus `experimental.chat.system.transform`, and preserves the capsule through `experimental.session.compacting`. |
 | OpenClaw | automatic | AgentSkills skill → `~/.openclaw/skills` (or `openclaw skills install --global`); invoke `/skill hephaestus-network <request>`; exec-tool gated on `python3` |
 | Hermes Agent | automatic | AgentSkills skill → `~/.hermes/skills/`; MCP server in `~/.hermes/config.yaml` (see `hermes/README.md`) |
+| goose | automatic | MCP extension in `~/.config/goose/config.yaml`; goose reads the project AGENTS.md natively; the One `SessionEnd` plugin lands in `~/.agents/plugins/agentlas-one/` |
 | Agentlas native | automatic | Agentlas Terminal and the Agentlas app route plain language through native Agentlas/Hephaestus tools. Build, network, cloud, call, upload, search, research, and Stormbreaker behavior are inferred from context. |
 | Terminal shell/debug | automatic | `bin/hep-build`, `bin/hep-network`, `bin/hep-cloud`, `bin/hep-search`, `bin/hep-call`, `bin/hep-upload`, `bin/hep-global`, and `bin/hephaestus` — `hep-build "<request>"` builds, `hep-network "<request>"` borrows Hub agents, `hep-cloud "<request>"` uses the signed-in user's cloud packages, `hep-search "<request>"` compares Cloud/Hub candidates, `hep-upload <agent-folder>` asks Cloud-vs-Hub before any upload, `hep-call "agent-a,agent-b" "<context>"` prepares exact agents, and `hep-global install|status|remove` manages the Codex/Claude/Antigravity global prompt router marker block. Lower-level helpers such as `hep-storm` are for automation/debugging or native tool selection, not the visible external command set. |
 | Ollama / Gemma / DeepSeek local models | via harness or MCP | `ollama launch <harness>` then use that harness's surface above; or register `hephaestus mcp serve` (stdio MCP, tools `hephaestus_route` / `hephaestus_network_status`); raw API loops use an OpenAI-`tools` function — see `docs/local-models.md` |
 | Generic AGENTS.md runtimes | manual fallback | the AGENTS.md command alias section; the runtime reads AGENTS.md and treats `/hep-*` or `@Hephaestus` as the routing contract |
+
+## Agentlas One session checkpoints
+
+Recall (what a session is told) and harvest (what a session teaches) are two
+different wirings. A runtime can have one without the other. The checkpoint runs
+when a session ends, reads only the `## Memory Events` envelopes the assistant
+wrote, and never stores raw prompts or transcripts.
+
+Every path fails open: a missing runner, a missing transcript, or an unfamiliar
+event shape harvests nothing and never interrupts the host.
+
+| Runtime | Checkpoint event | Transcript source | Verified |
+|---------|------------------|-------------------|----------|
+| Claude Code | `Stop` in `~/.claude/settings.json` | `transcript_path` in the payload | live round trip |
+| Codex | `Stop` in `~/.codex/hooks.json` | rollouts under `~/.codex/sessions/<Y>/<M>/<D>` scanned in a recent window | live round trip |
+| Antigravity | `Stop` in `~/.gemini/config/hooks.json` | `transcriptPath` in the payload | live round trip |
+| OpenCode | `session.idle` in `~/.config/opencode/plugins/agentlas-memory.js` | none — the plugin supplies assistant text directly as `assistant_texts` | live round trip on 1.18.16 |
+| OpenClaw | `command:new` / `command:reset` hook pack in `~/.openclaw/hooks/agentlas-one` | `context.previousSessionEntry.sessionFile` | hook registered by the CLI; dispatched through OpenClaw's own `triggerInternalHook` |
+| goose | `SessionEnd` plugin in `~/.agents/plugins/agentlas-one/hooks/hooks.json` | resolved from `session_id` under `~/.local/share/goose/sessions/` | path layout confirmed on 1.45.0; the session file format itself is unverified |
+| Cursor | `stop` in `~/.cursor/hooks.json` | `transcript_path` in the payload | wiring verified in isolation only — Cursor was not installed, and its CLI is reported not to deliver every event |
+
+OpenCode is the only host that hands the checkpoint text instead of a file. Its
+role arrives on `message.updated` and the text on `message.part.updated`, linked
+only by `messageID`, so assistant ownership is inherited by message id. A user
+who pastes an envelope is never harvested.
+
+Runtimes with no session-end event, and therefore no checkpoint: Amazon Q
+Developer CLI (context hooks are conversation-start and per-prompt only), Amp,
+Warp, and Hermes Agent. Claiming a checkpoint there would be advertising
+something that cannot run.
 
 Realistic limits, stated plainly:
 

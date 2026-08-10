@@ -45,3 +45,19 @@ mkdir -p ~/.agents/skills
 cp -R skills/hephaestus-network ~/.agents/skills/
 cp -R skills/hephaestus-cloud ~/.agents/skills/
 ```
+
+## Agentlas One session checkpoint
+
+`plugins/agentlas-memory.js` does two jobs: it injects the bounded ontology
+capsule into the system prompt, and it runs the Agentlas One memory checkpoint
+when a session ends.
+
+OpenCode never hands a plugin a transcript path, so the checkpoint passes the
+assistant text it already holds to the runtime as `assistant_texts` instead of
+a file. Collection does not depend on event names: the role arrives on
+`message.updated` and the text on `message.part.updated`, linked only by
+`messageID`, so assistant ownership is inherited by message id. `session.idle`
+is the single event name the plugin relies on.
+
+Only text the assistant wrote is collected — an envelope a user pastes into a
+prompt is never harvested. Measured against OpenCode 1.18.16.

@@ -26,7 +26,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.1.106}"
+version="${HEPHAESTUS_REF:-v1.1.107}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -221,6 +221,14 @@ install_runtime_home() {
   cp -R "$source_dir/bin" "$source_dir/agentlas_cloud" "$source_dir/career_graph" \
     "$source_dir/ontology" "$source_dir/schemas" "$source_dir/templates" \
     "$home_dir/" || return 1
+  # Hook packs must travel with the runner: `agentlas-one on` installs them, and
+  # a user who never re-runs the installer would otherwise never receive them.
+  local pack
+  for pack in goose openclaw; do
+    [[ -d "$source_dir/$pack" ]] || continue
+    rm -rf "${home_dir:?}/$pack"
+    cp -R "$source_dir/$pack" "$home_dir/$pack" || return 1
+  done
   cp "$source_dir/package-contract.json" "$home_dir/package-contract.json" || return 1
   mkdir -p "$(dirname "$model_dest")"
   cp -R "$model_source" "$model_dest" || return 1
@@ -905,7 +913,23 @@ install_openclaw() {
     fi
   done
   log "Installed OpenClaw skills: hephaestus-network, hephaestus-cloud, and hephaestus-storm"
+  install_openclaw_hook || warn "OpenClaw memory hook install failed; skills remain installed."
   ok=$((ok + 1))
+}
+
+# OpenClaw has no session-end event, so the One checkpoint runs on the commands
+# that close a session. Copying is the fallback when the CLI is unavailable.
+install_openclaw_hook() {
+  local hook_src="$source_dir/openclaw/hooks/agentlas-one"
+  [[ -d "$hook_src" ]] || { warn "OpenClaw hook source missing: $hook_src"; return 1; }
+  if have openclaw && openclaw hooks install "$hook_src" >/dev/null 2>&1; then
+    log "Installed OpenClaw hook via: openclaw hooks install (agentlas-one)"
+    return 0
+  fi
+  mkdir -p "$HOME/.openclaw/hooks"
+  rm -rf "$HOME/.openclaw/hooks/agentlas-one"
+  cp -R "$hook_src" "$HOME/.openclaw/hooks/agentlas-one" || return 1
+  log "Installed OpenClaw hook by copy: agentlas-one"
 }
 
 # Hermes Agent (Nous Research) reads AgentSkills from ~/.hermes/skills.
@@ -957,7 +981,21 @@ EOF
     log "Registered canonical local hephaestus-network MCP in $cfg"
   fi
   log "goose reads the project AGENTS.md natively; no goose-specific instruction copy is installed."
+  install_goose_hook || warn "goose SessionEnd hook install failed; MCP registration remains."
   ok=$((ok + 1))
+}
+
+# goose loads user plugins from ~/.agents/plugins/<name>/hooks/hooks.json and
+# uses the same hook manifest shape as Claude Code. Write only our own plugin
+# directory so unrelated plugins stay untouched.
+install_goose_hook() {
+  local src="$source_dir/goose/plugins/agentlas-one"
+  [[ -d "$src" ]] || { warn "goose hook source missing: $src"; return 1; }
+  local dest="$HOME/.agents/plugins/agentlas-one"
+  mkdir -p "$(dirname "$dest")"
+  rm -rf "$dest"
+  cp -R "$src" "$dest" || return 1
+  log "Installed goose SessionEnd hook: ~/.agents/plugins/agentlas-one"
 }
 
 # Amp (Sourcegraph) reads the project AGENTS.md natively; its only global

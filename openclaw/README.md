@@ -29,3 +29,19 @@ The OpenClaw skills include the app-host auto-update preflight. When OpenClaw's
 `exec` tool is available, the skill tries to refresh
 `~/.agentlas/runtime/current` from inside OpenClaw before resolving the runner,
 without asking the user to open a separate terminal.
+
+## Agentlas One session checkpoint
+
+`hooks/agentlas-one/` is a hook pack for the Agentlas One memory checkpoint.
+The installer registers it with `openclaw hooks install`, falling back to a copy
+into `~/.openclaw/hooks/agentlas-one` when the CLI is unavailable.
+
+OpenClaw has no session-end event. `/new` and `/reset` are the points where a
+session stops growing, so the pack listens on `command:new` and
+`command:reset` and reads `context.previousSessionEntry.sessionFile` — the
+transcript of the session that just closed, not the one starting now.
+
+Only `## Memory Events` envelopes written by the assistant are read. Raw
+prompts and transcripts are never stored or sent anywhere. Every failure path
+is silent: a missing runner or transcript harvests nothing and never interrupts
+a session. `agentlas-one off` removes the pack.

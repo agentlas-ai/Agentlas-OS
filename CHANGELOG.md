@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.1.107 - 2026-08-10
+
+- **Switching Agentlas One on now arms every checkpoint by itself.** `on` used
+  to write the identity and nothing else: the memory checkpoint was installed
+  only by a separate `install` step, and a status line owned by someone else
+  aborted that step before the checkpoint was ever reached. Both failures read
+  to a user as an assistant that never learns anything, with no error anywhere.
+  The status line and the checkpoint are now independent, and `off` removes
+  every checkpoint it placed while leaving unrelated hooks, status lines, and
+  settings untouched.
+- **The checkpoint reaches three more runtimes.** OpenCode harvests on
+  `session.idle` by handing the runtime the assistant text it already holds,
+  because no OpenCode plugin ever receives a transcript path. OpenClaw has no
+  session-end event at all, so a hook pack listens on the commands that close a
+  session and reads the previous session entry. goose resolves its session file
+  from the `SessionEnd` payload. Cursor is wired through its `stop` hook, whose
+  payload carries a transcript path. Assistant ownership is tracked by message
+  id, so an envelope a user pastes into a prompt is never harvested.
+- **Runtimes without a session-end event are named rather than implied.**
+  Amazon Q Developer CLI, Amp, Warp, and Hermes Agent expose no such event, so
+  they carry no checkpoint and the runtime matrix says so.
+
 ## v1.1.106 - 2026-08-10
 
 - **Agentlas One now persists as one owner-bound personal agent across supported

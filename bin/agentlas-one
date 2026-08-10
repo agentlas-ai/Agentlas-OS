@@ -137,13 +137,20 @@ EOF
 }
 
 # Runtime-specific instruction entrypoints. Marker-block upserts provide the
-# same contract on hosts without hooks. Create only the canonical Claude entrypoint.
+# same contract on hosts without hooks. A runtime counts as present when its own
+# config directory exists; the entrypoint file is then created if the runtime has
+# not written one yet, because an absent file would silently mean no identity.
+# Never create a file for a runtime that is not installed.
 runtime_entrypoints() {
   printf '%s\n' "$CLAUDE_MD"
   local extra
   for extra in "${AGENTLAS_ONE_CODEX_MD:-$HOME/.codex/AGENTS.md}" \
-               "${AGENTLAS_ONE_GEMINI_MD:-$HOME/.gemini/GEMINI.md}"; do
-    [ -f "$extra" ] && printf '%s\n' "$extra"
+               "${AGENTLAS_ONE_GEMINI_MD:-$HOME/.gemini/GEMINI.md}" \
+               "${AGENTLAS_ONE_OPENCODE_MD:-$HOME/.config/opencode/AGENTS.md}" \
+               "${AGENTLAS_ONE_OPENCLAW_MD:-$HOME/.openclaw/workspace/AGENTS.md}"; do
+    if [ -f "$extra" ] || [ -d "$(dirname "$extra")" ]; then
+      printf '%s\n' "$extra"
+    fi
   done
 }
 
@@ -255,11 +262,13 @@ PYEOF
 
 # ---------------------------------------------------------------- settings.json
 
-cmd_install() {
+# Arm the Claude Code checkpoint on its own. A refused status line must never
+# take the memory checkpoint down with it, so this never depends on that result.
+install_claude_stop_hook() {
   mkdir -p "$(dirname "$SETTINGS")"
   [ -f "$SETTINGS" ] || printf '{}\n' > "$SETTINGS"
   cp "$SETTINGS" "$SETTINGS.one-backup-$(date +%s)" 2>/dev/null || true
-  ONE_CMD="$SELF statusline" ONE_STOP="$SELF stop-hook claude" "$PY" - "$SETTINGS" <<'PYEOF'
+  ONE_STOP="$SELF stop-hook claude" "$PY" - "$SETTINGS" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
 try:
@@ -269,12 +278,6 @@ except Exception:
     settings = {}
 if not isinstance(settings, dict):
     raise SystemExit("settings.json is not an object; manual review is required")
-
-existing = settings.get("statusLine")
-if isinstance(existing, dict) and existing.get("command") and "agentlas-one" not in existing.get("command", ""):
-    sys.stderr.write("Another statusLine is already configured and was not overwritten:\n  %s\n" % existing.get("command"))
-    raise SystemExit(3)
-settings["statusLine"] = {"type": "command", "command": os.environ["ONE_CMD"], "padding": 0}
 
 # Upsert only the Agentlas One Stop checkpoint; preserve unrelated hooks.
 hooks = settings.setdefault("hooks", {})
@@ -306,12 +309,36 @@ with open(tmp, "w", encoding="utf-8") as fh:
     fh.write("\n")
 os.replace(tmp, path)
 PYEOF
-  local rc=$?
-  if [ $rc -eq 0 ]; then
-    printf 'Status line configured -> %s\n' "$SETTINGS"
-    printf 'Non-blocking memory checkpoint Stop hook configured.\n'
-  fi
+}
+
+cmd_install() {
+  # The checkpoint is armed first so a refused status line cannot suppress it.
+  install_claude_stop_hook && printf 'Non-blocking memory checkpoint Stop hook configured.\n'
   install_codex_stop_hook
+  cp "$SETTINGS" "$SETTINGS.one-backup-$(date +%s)" 2>/dev/null || true
+  ONE_CMD="$SELF statusline" "$PY" - "$SETTINGS" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as fh:
+        settings = json.load(fh)
+except Exception:
+    settings = {}
+if not isinstance(settings, dict):
+    raise SystemExit("settings.json is not an object; manual review is required")
+existing = settings.get("statusLine")
+if isinstance(existing, dict) and existing.get("command") and "agentlas-one" not in existing.get("command", ""):
+    sys.stderr.write("Another statusLine is already configured and was not overwritten:\n  %s\n" % existing.get("command"))
+    raise SystemExit(3)
+settings["statusLine"] = {"type": "command", "command": os.environ["ONE_CMD"], "padding": 0}
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(settings, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+PYEOF
+  local rc=$?
+  [ $rc -eq 0 ] && printf 'Status line configured -> %s\n' "$SETTINGS"
   return $rc
 }
 
@@ -320,6 +347,45 @@ PYEOF
 install_codex_stop_hook() {
   install_json_stop_hook "codex" "${AGENTLAS_ONE_CODEX_HOOKS:-$HOME/.codex/hooks.json}" "false"
   install_agy_stop_hook
+  install_cursor_stop_hook
+}
+
+# Cursor uses ~/.cursor/hooks.json with a versioned envelope and a flat handler
+# array per event. Its stop payload carries transcript_path, so no path guessing
+# is needed. Only replace our own entry and leave every other handler in place.
+install_cursor_stop_hook() {
+  local hooks="${AGENTLAS_ONE_CURSOR_HOOKS:-$HOME/.cursor/hooks.json}"
+  [ -f "$hooks" ] || { printf 'No Cursor hooks file; skipped (%s)\n' "$hooks"; return 0; }
+  cp "$hooks" "$hooks.one-backup-$(date +%s)" 2>/dev/null || true
+  ONE_STOP="$SELF stop-hook cursor" "$PY" - "$hooks" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception as exc:
+    sys.stderr.write("Could not read Cursor hooks.json: %s\n" % exc)
+    raise SystemExit(0)              # Preserve an unreadable user-owned file.
+if not isinstance(data, dict):
+    raise SystemExit(0)
+data.setdefault("version", 1)
+hooks = data.setdefault("hooks", {})
+if not isinstance(hooks, dict):
+    raise SystemExit(0)
+group = hooks.setdefault("stop", [])
+if not isinstance(group, list):
+    raise SystemExit(0)
+command = os.environ["ONE_STOP"]
+kept = [h for h in group if not (isinstance(h, dict) and "agentlas-one" in str(h.get("command", "")))]
+kept.append({"type": "command", "command": command, "timeout": 15})
+hooks["stop"] = kept
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+print("Cursor stop hook configured -> %s" % path)
+PYEOF
 }
 
 # Antigravity uses ~/.gemini/config/hooks.json, a top-level name map.
@@ -420,6 +486,12 @@ try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)
 c=d.get("created") or []
 print(f"created {len(c)}" if c else "already present")' 2>/dev/null)"
+  # Turning One on must also arm the checkpoints. Without them the identity
+  # applies but nothing is ever learned, which reads as "One does not work".
+  # The status line stays with `install` because it can refuse an existing one.
+  install_claude_stop_hook >/dev/null 2>&1 || true
+  install_codex_stop_hook >/dev/null 2>&1 || true
+  install_hook_packs >/dev/null 2>&1 || true
   printf '%s enabled.\n' "$name"
   printf '  State file : %s\n' "$STATE_FILE"
   printf '  Directive  : %s (AGENTLAS-ONE block)\n' "$CLAUDE_MD"
@@ -430,8 +502,120 @@ print(f"created {len(c)}" if c else "already present")' 2>/dev/null)"
 cmd_off() {
   local name; name="$(state_read name One)"
   block_remove
+  remove_stop_hooks
   rm -f "$STATE_FILE" "$ONE_DIR/directive.md"
-  printf '%s disabled. Removed the state file and directive block.\n' "${name:-One}"
+  printf '%s disabled. Removed the state file, directive block, and checkpoints.\n' "${name:-One}"
+}
+
+# Runtimes that load a hook from a directory rather than a settings key. These
+# are installed by `on` and removed by `off` so the two stay symmetric: a pack
+# that only the installer can place would stay missing until the next release.
+install_hook_packs() {
+  local assets; assets="$(hook_asset_root)" || return 0
+  local dest
+  dest="${AGENTLAS_ONE_GOOSE_PLUGIN:-$HOME/.agents/plugins/agentlas-one}"
+  if [ -d "$HOME/.config/goose" ] || [ -d "$(dirname "$dest")" ]; then
+    if [ -d "$assets/goose/plugins/agentlas-one" ]; then
+      rm -rf "$dest"
+      mkdir -p "$(dirname "$dest")"
+      cp -R "$assets/goose/plugins/agentlas-one" "$dest" 2>/dev/null || true
+    fi
+  fi
+  dest="${AGENTLAS_ONE_OPENCLAW_HOOK:-$HOME/.openclaw/hooks/agentlas-one}"
+  if [ -d "$HOME/.openclaw" ] || [ -d "$(dirname "$dest")" ]; then
+    if [ -d "$assets/openclaw/hooks/agentlas-one" ]; then
+      rm -rf "$dest"
+      mkdir -p "$(dirname "$dest")"
+      cp -R "$assets/openclaw/hooks/agentlas-one" "$dest" 2>/dev/null || true
+    fi
+  fi
+}
+
+# Hook packs ship beside the runner in the runtime home, and beside this script
+# in a source checkout. Return nothing when neither carries them.
+hook_asset_root() {
+  local root
+  for root in "${AGENTLAS_ONE_ASSETS:-}" \
+              "$HOME/.agentlas/runtime/current" \
+              "$OS_ROOT"; do
+    [ -n "$root" ] || continue
+    if [ -d "$root/openclaw/hooks/agentlas-one" ] || [ -d "$root/goose/plugins/agentlas-one" ]; then
+      printf '%s\n' "$root"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Turning One off must leave no dead command behind in a user-owned config.
+# Each file is rewritten only to drop our own entry; everything else is kept.
+remove_stop_hooks() {
+  local file
+  for file in "$SETTINGS" \
+              "${AGENTLAS_ONE_CURSOR_HOOKS:-$HOME/.cursor/hooks.json}" \
+              "${AGENTLAS_ONE_CODEX_HOOKS:-$HOME/.codex/hooks.json}" \
+              "${AGENTLAS_ONE_AGY_HOOKS:-$HOME/.gemini/config/hooks.json}"; do
+    [ -f "$file" ] || continue
+    cp "$file" "$file.one-backup-$(date +%s)" 2>/dev/null || true
+    "$PY" - "$file" <<'PYEOF'
+import json, os, sys
+
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    raise SystemExit(0)              # Preserve an unreadable user-owned file.
+if not isinstance(data, dict):
+    raise SystemExit(0)
+
+
+def ours(entry):
+    return isinstance(entry, dict) and "agentlas-one" in str(entry.get("command", ""))
+
+
+changed = False
+
+# Antigravity keeps our whole entry under its own top-level name.
+if isinstance(data.get("agentlas-one"), dict):
+    del data["agentlas-one"]
+    changed = True
+
+hooks = data.get("hooks")
+if isinstance(hooks, dict):
+    for event, group in list(hooks.items()):
+        if not isinstance(group, list):
+            continue
+        kept = []
+        for item in group:
+            if ours(item):                       # Cursor: a flat handler array.
+                changed = True
+                continue
+            if isinstance(item, dict) and isinstance(item.get("hooks"), list):
+                inner = [h for h in item["hooks"] if not ours(h)]
+                if len(inner) != len(item["hooks"]):
+                    changed = True
+                if not inner:                    # Drop a group we emptied.
+                    continue
+                item = {**item, "hooks": inner}
+            kept.append(item)
+        if kept:
+            hooks[event] = kept
+        else:
+            del hooks[event]
+            changed = True
+
+if not changed:
+    raise SystemExit(0)
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+PYEOF
+  done
+  rm -rf "${AGENTLAS_ONE_GOOSE_PLUGIN:-$HOME/.agents/plugins/agentlas-one}" 2>/dev/null || true
+  rm -rf "${AGENTLAS_ONE_OPENCLAW_HOOK:-$HOME/.openclaw/hooks/agentlas-one}" 2>/dev/null || true
 }
 
 cmd_name() {
