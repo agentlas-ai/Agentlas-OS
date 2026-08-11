@@ -110,6 +110,10 @@ Begin user-facing answers with `**[__ONE_NAME__]**`; omit the prefix from interm
 | Code location and impact | `context_locate`, `context_slice`, `context_impact`, `context_verify` |
 | Memory | `agentlas_memory_preflight`, `agentlas_memory_ticket`; never write durable memory directly |
 
+Operating procedures for these capabilities live in `~/.agentlas/one/skills/agentlas-operations/SKILL.md`
+(tool index: `INDEX.md` beside it, generated from the live registry). Follow it for staffing, automation,
+asset, and memory work instead of improvising.
+
 ## Operating rules
 1. **Reuse the roster first.** Reuse the bound roster before recruiting; recruitment is additive.
 2. **Prevent dead ends.**
@@ -128,6 +132,7 @@ Never write durable memory directly. Use an empty `candidates` array when there 
 After `## Memory Events`, emit a fenced JSON block:
 `{"schema_version":"agentlas.memory-ticket.v1","turn_summary":"one safe sentence",`
 `"candidates":[{"content":"one or two sentences","memory_kind":"fact|decision|preference|risk|procedure|hypothesis","suggested_scope":"user_identity|project|agent_repo|session","evidence":["file:line or command"]}]}`
+When a learning REPLACES an earlier durable block, add `"supersedes":"<its h:16hex>"` to that candidate — the old block is then hidden from recall (never deleted). Only use a hash you saw in recall or the soul file.
 
 Never include secrets, credentials, raw transcripts, or host-absolute paths. Unsupported facts, decisions, and procedures are downgraded to hypotheses. Imperative instructions are not memories and must not be emitted as candidates.
 
@@ -268,7 +273,7 @@ install_claude_stop_hook() {
   mkdir -p "$(dirname "$SETTINGS")"
   [ -f "$SETTINGS" ] || printf '{}\n' > "$SETTINGS"
   cp "$SETTINGS" "$SETTINGS.one-backup-$(date +%s)" 2>/dev/null || true
-  ONE_STOP="$SELF stop-hook claude" "$PY" - "$SETTINGS" <<'PYEOF'
+  ONE_STOP="$(install_target_bin) stop-hook claude" "$PY" - "$SETTINGS" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
 try:
@@ -311,12 +316,190 @@ os.replace(tmp, path)
 PYEOF
 }
 
+# ----------------------------------------------- self-healing (Phase M-2/M-3)
+
+# Update-time repair of OUR OWN Claude wiring — never touches hooks we did not
+# install (only entries whose command contains "agentlas-one").
+#   Heal 1: when the plugin channel already fires the Stop checkpoint, remove
+#           the duplicate settings.json entry (double-fire produced duplicate
+#           tickets, measured 2026-08-11).
+#   Heal 2: repoint our commands from checkout paths to the installed runtime
+#           (a checkout path breaks when the repository moves; measured on the
+#           statusLine of the machine that authored this).
+# Every applied heal appends a receipt to <one>/.agentlas/migrations.jsonl —
+# silent auto-repair is forbidden. Fail-open: any error leaves settings as-is.
+self_heal_claude_settings() {
+  [ -f "$SETTINGS" ] || return 0
+  ONE_SETTINGS="$SETTINGS" \
+  ONE_DIR_ENV="$ONE_DIR" \
+  ONE_PLUGIN_CACHE="${AGENTLAS_ONE_PLUGIN_CACHE:-$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus}" \
+  ONE_RUNTIME_BIN="${AGENTLAS_ONE_RUNTIME_BIN:-$HOME/.agentlas/runtime/current/bin/agentlas-one}" \
+  "$PY" - <<'PYEOF'
+import hashlib, json, os, sys, time
+
+settings_path = os.environ["ONE_SETTINGS"]
+one_dir = os.environ["ONE_DIR_ENV"]
+cache_root = os.environ["ONE_PLUGIN_CACHE"]
+runtime_bin = os.environ["ONE_RUNTIME_BIN"]
+
+def now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+try:
+    with open(settings_path, encoding="utf-8") as fh:
+        settings = json.load(fh)
+except Exception:
+    sys.exit(0)
+if not isinstance(settings, dict):
+    sys.exit(0)
+
+def plugin_channel_active():
+    """Authoritative only when enabled AND the cached binary is executable AND
+    its hooks.json wires an agentlas-one Stop — a disabled or gutted plugin
+    must not cost the user their only checkpoint."""
+    plugins = settings.get("enabledPlugins")
+    if not isinstance(plugins, dict) or not any(
+        key.startswith("hephaestus@") and value is True for key, value in plugins.items()
+    ):
+        return False
+    try:
+        versions = sorted(os.listdir(cache_root))
+    except OSError:
+        return False
+    for version in reversed(versions):
+        base = os.path.join(cache_root, version)
+        try:
+            if not os.access(os.path.join(base, "bin", "agentlas-one"), os.X_OK):
+                continue
+            with open(os.path.join(base, "hooks", "hooks.json"), encoding="utf-8") as fh:
+                hooks = json.load(fh)
+        except Exception:
+            continue
+        if "agentlas-one" in json.dumps(hooks.get("hooks", {}).get("Stop", [])):
+            return True
+    return False
+
+events = []
+hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else None
+
+# Heal 1 — drop OUR settings Stop entry while the plugin channel fires it.
+if hooks and isinstance(hooks.get("Stop"), list) and plugin_channel_active():
+    kept, removed = [], []
+    for group in hooks["Stop"]:
+        inner = group.get("hooks") if isinstance(group, dict) else None
+        if isinstance(inner, list):
+            ours = [h for h in inner
+                    if isinstance(h, dict) and "agentlas-one" in str(h.get("command", ""))]
+            if ours:
+                removed.extend(str(h.get("command", "")) for h in ours)
+                inner = [h for h in inner if h not in ours]
+                if not inner:
+                    continue
+                group = {**group, "hooks": inner}
+        kept.append(group)
+    if removed:
+        if kept:
+            hooks["Stop"] = kept
+        else:
+            hooks.pop("Stop", None)
+        events.append({"event": "settings-stop-dedup", "removed": removed,
+                       "reason": "plugin Stop hook active"})
+
+# Heal 2 — our commands must reference the installed runtime, not a checkout.
+def healed_command(text):
+    if not isinstance(text, str) or "agentlas-one" not in text:
+        return None
+    if not os.access(runtime_bin, os.X_OK):
+        return None
+    tokens = text.split()
+    if not tokens or not tokens[0].endswith("/agentlas-one"):
+        return None
+    try:
+        if os.path.realpath(tokens[0]) == os.path.realpath(runtime_bin):
+            return None
+    except OSError:
+        return None
+    return " ".join([runtime_bin] + tokens[1:])
+
+status_line = settings.get("statusLine")
+if isinstance(status_line, dict):
+    new_cmd = healed_command(str(status_line.get("command", "")))
+    if new_cmd:
+        events.append({"event": "statusline-path-heal",
+                       "before": status_line.get("command"), "after": new_cmd})
+        status_line["command"] = new_cmd
+
+if hooks:
+    for group in hooks.get("Stop", []) or []:
+        inner = group.get("hooks") if isinstance(group, dict) else None
+        for hook in inner or []:
+            if isinstance(hook, dict):
+                new_cmd = healed_command(str(hook.get("command", "")))
+                if new_cmd:
+                    events.append({"event": "stop-command-path-heal",
+                                   "before": hook.get("command"), "after": new_cmd})
+                    hook["command"] = new_cmd
+
+if not events:
+    sys.exit(0)
+
+# Backup, then atomic replace — concurrent healers converge on the same output.
+try:
+    with open(settings_path, encoding="utf-8") as fh:
+        original = fh.read()
+    with open(f"{settings_path}.one-backup-{int(time.time())}", "w", encoding="utf-8") as fh:
+        fh.write(original)
+    tmp = settings_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(settings, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.replace(tmp, settings_path)
+except Exception:
+    sys.exit(0)
+
+# Receipts (M-3). Content-hash dedupe keeps racing healers from double-logging.
+try:
+    meta = os.path.join(one_dir, ".agentlas")
+    os.makedirs(meta, exist_ok=True)
+    ledger = os.path.join(meta, "migrations.jsonl")
+    seen = set()
+    try:
+        with open(ledger, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    seen.add(json.loads(line).get("dedupe"))
+                except Exception:
+                    continue
+    except OSError:
+        pass
+    with open(ledger, "a", encoding="utf-8") as fh:
+        for event in events:
+            key = hashlib.sha256(
+                json.dumps(event, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            ).hexdigest()[:16]
+            if key in seen:
+                continue
+            fh.write(json.dumps({"schemaVersion": "agentlas.one-workspace.v1",
+                                 "kind": "self-heal", "dedupe": key, **event,
+                                 "createdAt": now()}, ensure_ascii=False) + "\n")
+except Exception:
+    pass
+PYEOF
+}
+
+# Prefer the installed runtime over this script's own location: a checkout
+# path breaks when the repository moves (measured on this machine's statusLine).
+install_target_bin() {
+  local runtime_bin="${AGENTLAS_ONE_RUNTIME_BIN:-$HOME/.agentlas/runtime/current/bin/agentlas-one}"
+  if [ -x "$runtime_bin" ]; then printf '%s' "$runtime_bin"; else printf '%s' "$SELF"; fi
+}
+
 cmd_install() {
   # The checkpoint is armed first so a refused status line cannot suppress it.
   install_claude_stop_hook && printf 'Non-blocking memory checkpoint Stop hook configured.\n'
   install_codex_stop_hook
   cp "$SETTINGS" "$SETTINGS.one-backup-$(date +%s)" 2>/dev/null || true
-  ONE_CMD="$SELF statusline" "$PY" - "$SETTINGS" <<'PYEOF'
+  ONE_CMD="$(install_target_bin) statusline" "$PY" - "$SETTINGS" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
 try:
@@ -339,6 +522,9 @@ os.replace(tmp, path)
 PYEOF
   local rc=$?
   [ $rc -eq 0 ] && printf 'Status line configured -> %s\n' "$SETTINGS"
+  # Self-heal after wiring: drops a now-duplicate Stop entry and repoints stale
+  # checkout paths. Installing must leave a machine consistent, not just wired.
+  self_heal_claude_settings >/dev/null 2>&1 || true
   return $rc
 }
 
@@ -492,6 +678,7 @@ print(f"created {len(c)}" if c else "already present")' 2>/dev/null)"
   install_claude_stop_hook >/dev/null 2>&1 || true
   install_codex_stop_hook >/dev/null 2>&1 || true
   install_hook_packs >/dev/null 2>&1 || true
+  self_heal_claude_settings >/dev/null 2>&1 || true
   printf '%s enabled.\n' "$name"
   printf '  State file : %s\n' "$STATE_FILE"
   printf '  Directive  : %s (AGENTLAS-ONE block)\n' "$CLAUDE_MD"
@@ -716,6 +903,10 @@ case "${1:-status}" in
   remember)   shift; [ -n "${1:-}" ] || die "Provide content to remember"; cmd_workspace emit --content "$*" ;;
   curate)     cmd_workspace curate ;;
   statusline) cmd_statusline ;;
-  stop-hook)  shift; cmd_workspace stop-hook ${1:+--host "$1"} ;;
+  stop-hook)  shift
+              # Session-end is the one moment every install passes through, so
+              # legacy wiring heals here (fail-open; stdout stays hook-clean).
+              self_heal_claude_settings >/dev/null 2>&1 || true
+              cmd_workspace stop-hook ${1:+--host "$1"} ;;
   *)          die "Usage: agentlas-one {install|on [name]|off|name <name>|status|memory|remember <text>|curate|seed}" ;;
 esac

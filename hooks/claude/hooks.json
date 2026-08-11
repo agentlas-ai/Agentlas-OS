@@ -29,6 +29,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 -c \"import json,os,sys\nraw=sys.stdin.read()\ntry: p=json.loads(raw) if raw.strip() else {}\nexcept Exception: p={}\npath=str((p.get('tool_input') or {}).get('file_path') or (p.get('tool_input') or {}).get('notebook_path') or '')\none=os.path.realpath(os.path.expanduser(os.environ.get('AGENTLAS_ONE_DIR') or '~/.agentlas/one'))\ntry: real=os.path.realpath(os.path.expanduser(path)) if path else ''\nexcept Exception: real=''\nif real and (real==one or real.startswith(one+os.sep)):\n    print(json.dumps({'hookSpecificOutput':{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'The One drawer is written only by its own curator pipeline (owner decision D3). Read it freely; to record a learning, emit a Memory Events envelope instead.'}}))\nelse:\n    print('{}')\" 2>/dev/null || printf '{}\\n'",
+            "timeout": 10
+          },
+          {
+            "type": "command",
             "command": "if [ -x \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-memory-hook\" ]; then \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-memory-hook\" --host claude --event PreToolUse; else printf '{}\\n'; fi",
             "timeout": 10
           }

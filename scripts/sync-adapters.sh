@@ -45,6 +45,11 @@ hook_dir_mirrors=(
 
 code_files=(
   "package-contract.json"
+  # Canonical curator judgment data (G1~G8). Every executor loads values from
+  # this file; one_workspace.py resolves it relative to agentlas_cloud/, so the
+  # runtime and every plugin mirror must carry it. curator-fixtures/ stays
+  # repo-only (public bundles never ship test material).
+  "system-agents/curator-ruleset.json"
   # /hep-build opens with "read AGENTS.md, read the mode map, run the interview
   # gate, run the shape gate". None of those four files shipped, so the command
   # only ever worked inside this repository — in a user's own project the reads

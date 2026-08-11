@@ -34,6 +34,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "root=\"${CODEX_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; if [ -x \"${root}/bin/agentlas-one\" ]; then \"${root}/bin/agentlas-one\" stop-hook codex; else printf '{}\\n'; fi",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -427,8 +427,26 @@ def build_capsule(
             # The hook is recall-only and fail-open. First-contact/bootstrap or
             # a task-resolved MCP query upgrades/materializes the map.
             context_slice_line = None
+    # P3 — One personal-agent recall: non-aging craft (procedure/decision/risk)
+    # picked by question overlap with a current-project boost, budgeted by the
+    # curator ruleset. Facts stay with the self-correcting project layer.
+    # Fail-open: personal recall must never break project recall.
+    one_lines: list[str] = []
+    try:
+        from .one_workspace import select_one_recall
+
+        one_lines = select_one_recall(question, workspace=str(binding_root))
+    except Exception:
+        one_lines = []
+    if one_lines:
+        _record_context_markers(
+            project_db,
+            [("one_craft", max(1, sum(len(line) for line in one_lines) // 4))],
+            host,
+        )
+
     lines = _context_lines(project_result, agent_result)
-    if not lines and not evolution_line and not workforce_lines and not context_slice_line:
+    if not lines and not evolution_line and not workforce_lines and not context_slice_line and not one_lines:
         return None, binding_root
     adapter_name, retrieval_status = _adapter_status(agent_result or project_result)
     # Emission contract: judgment is the session LLM's job, delivery is the
@@ -452,6 +470,7 @@ def build_capsule(
         *([emit_line] if emit_line else []),
         *([evolution_line] if evolution_line else []),
         *workforce_lines,
+        *one_lines,
         *([context_slice_line] if context_slice_line else []),
         *lines,
     ]
