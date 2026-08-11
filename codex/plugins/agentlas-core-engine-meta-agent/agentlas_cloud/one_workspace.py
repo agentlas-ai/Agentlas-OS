@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -616,6 +617,11 @@ def emit_ticket(
         downgraded = True
 
     body = content.strip()[: int(_rule("limits.ticketContentMaxChars", 600))]
+    # G6 declares the id scheme in the ruleset, so read it instead of assuming it.
+    # A declaration nothing reads is how a rule quietly stops being one.
+    scheme = str(_rule("concurrency.ticketIdScheme", "content-hash"))
+    if scheme != "content-hash":
+        raise ValueError(f"unsupported ticketIdScheme: {scheme}")
     key = _content_hash(body)
     supersedes_arg = str(supersedes or "")
     ticket = {
@@ -1257,20 +1263,16 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     receipt["harvested"] = harvested
     if borrowed_receipt:
         receipt["borrowedAgents"] = borrowed_receipt
+    # A missing learning capsule is a fact about the session, so it belongs on the
+    # receipt (receipt["gap"], already written above) and nowhere else. It used to
+    # be emitted as a `conflict` ticket, but `conflict` is not a promotable kind:
+    # every one of those tickets was deferred on arrival, and deferred tickets
+    # count as decided, so there was no queue to revisit them from. Measured on
+    # 2026-08-11 that was 124 of 353 tickets and 130 of 134 defer decisions —
+    # a third of the drawer and a third of the curator's work, with no reader.
     if receipt["gap"]:
-        emit_ticket(
-            root,
-            content=(
-                f"The session performed substantial work ({edits} edits, {tool_uses} tool uses), "
-                f"but wrote no learning capsule under .agentlas/pm/learnings/."
-            ),
-            kind="conflict",
-            scope="agent_repo",
-            evidence=[f"invocation-ledger:{receipt['createdAt']}"],
-            source="on_stop",
-            emitter="one-stop-hook",
-            workspace=workspace,
-            project_slug=project_slug,
+        receipt["gapDetail"] = (
+            f"substantial work ({edits} edits, {tool_uses} tool uses) with no learning capsule"
         )
     # Curate once at session end so tickets do not accumulate indefinitely.
     # Curator failure must never block session completion.
@@ -1416,7 +1418,11 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _classify(candidate: dict[str, Any], durable_hashes: set[str]) -> tuple[str, str]:
+def _classify(
+    candidate: dict[str, Any],
+    durable_hashes: set[str],
+    durable_prefixes: set[str] | None = None,
+) -> tuple[str, str]:
     """Apply deterministic admission rules without an LLM; ordering is contractual.
 
     Every judgment value comes from the shared curator ruleset (G1/G3) so the
@@ -1441,6 +1447,25 @@ def _classify(candidate: dict[str, Any], durable_hashes: set[str]) -> tuple[str,
         return ("reject", "too-short")
     if _content_hash(content) in durable_hashes:
         return ("deduped", "already-durable")
+    # Near-duplicate merge. The server judge has always returned `merge` for a
+    # candidate that repeats an existing one, and the ruleset carries the prefix
+    # length, but neither local executor read it — so only byte-identical repeats
+    # were caught. Measured on 2026-08-11 this catches nothing in the current
+    # drawer (no pair scores above 0.4 token overlap); it is here so the contract
+    # is one rule rather than three, and so a future repeat is caught on arrival.
+    prefix = int(_rule("limits.serverMergeSimilarityPrefixChars", 40))
+    if prefix > 0 and durable_prefixes:
+        head = _normalize(content)[:prefix]
+        twin = (durable_prefixes or {}).get(head) if isinstance(durable_prefixes, dict) else None
+        if twin is not None and len(head) >= prefix:
+            # A shared opening is a candidate, not a verdict: two learnings can
+            # start the same way and end somewhere different. Confirm with whole
+            # content overlap so merge can never swallow a distinct learning.
+            a, b = _recall_tokens(content), _recall_tokens(twin)
+            union = a | b
+            overlap = len(a & b) / len(union) if union else 0.0
+            if overlap >= float(_rule("limits.mergeTokenOverlapMin", 0.6)):
+                return ("merge", "near-duplicate-of-durable")
     if kind not in set(_rule("kinds.promotable", list(PROMOTABLE_KINDS))):
         return ("defer", f"kind-not-promotable:{kind}")
     if not evidence:
@@ -1478,6 +1503,26 @@ def _durable_hashes(soul_path: Path) -> set[str]:
     if not soul_path.exists():
         return set()
     return set(re.findall(r"<!--\s*h:([0-9a-f]{16})\s*-->", soul_path.read_text(encoding="utf-8")))
+
+
+def _durable_prefixes(soul_path: Path, prefix_chars: int) -> dict[str, str]:
+    """Map each durable head to its full text, for the near-duplicate merge rule.
+
+    The full text is what lets merge confirm a shared opening is actually the
+    same learning rather than two that begin alike.
+    """
+    if prefix_chars <= 0 or not soul_path.exists():
+        return {}
+    try:
+        blocks = parse_durable_blocks(soul_path.read_text(encoding="utf-8"))
+    except OSError:
+        return {}
+    heads: dict[str, str] = {}
+    for block in blocks:
+        text = _normalize(block["content"])
+        if len(text) >= prefix_chars:
+            heads.setdefault(text[:prefix_chars], block["content"])
+    return heads
 
 
 def _append_durable(
@@ -1573,6 +1618,86 @@ def _make_experience_chip(
         conn.close()
 
 
+def _decide_chip(root: Path, chip_id: str, decision: str, reason: str) -> dict[str, Any]:
+    """Apply a person's decision to one chip candidate.
+
+    Automatic promotion stays banned — measured behaviour showed it is unsafe.
+    But banning it without building this path left the gate unreachable: every
+    chip stayed a candidate forever and nothing could ever be promoted. A ban
+    needs a door, or it is a wall.
+    """
+    root = Path(root).expanduser()
+    db_path = root / META_DIR / EXPERIENCE_DB_FILE
+    if not db_path.exists():
+        return {"ok": False, "error": "no-experience-store"}
+    status_for = {"promote": "promoted", "reject": "rejected"}
+    if decision not in status_for:
+        return {"ok": False, "error": f"unknown-decision:{decision}"}
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT status FROM experience_candidates WHERE id = ?", (chip_id,)
+        ).fetchone()
+        if row is None:
+            # Never report a decision that was not applied to anything.
+            return {"ok": False, "error": "chip-not-found", "chip": chip_id}
+        now = _now()
+        conn.execute(
+            "UPDATE experience_candidates SET status = ?, updated_at = ? WHERE id = ?",
+            (status_for[decision], now, chip_id),
+        )
+        # Sequence the receipt id off the existing count: a wall-clock suffix
+        # collides when the creation and the decision land in the same millisecond.
+        seq = conn.execute(
+            "SELECT COUNT(*) FROM experience_promotion_receipts WHERE candidate_id = ?",
+            (chip_id,),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO experience_promotion_receipts"
+            " (id, candidate_id, decision, reason, evidence, created_at) VALUES (?,?,?,?,?,?)",
+            (f"{chip_id}-d{seq + 1}", chip_id,
+             "admit" if decision == "promote" else "reject",
+             reason or f"owner decision: {decision}", "[]", now),
+        )
+        conn.commit()
+        return {"ok": True, "chip": chip_id, "from": row[0], "to": status_for[decision]}
+    finally:
+        conn.close()
+
+
+def promote_chip(root: Path, chip_id: str, reason: str = "") -> dict[str, Any]:
+    """Promote one chip candidate after a person reviewed it."""
+    return _decide_chip(root, chip_id, "promote", reason)
+
+
+def reject_chip(root: Path, chip_id: str, reason: str = "") -> dict[str, Any]:
+    """Reject one chip candidate after a person reviewed it."""
+    return _decide_chip(root, chip_id, "reject", reason)
+
+
+def list_chips(root: Path, status: str = "", limit: int = 20) -> list[dict[str, Any]]:
+    """List chip candidates so a person can see what is waiting for a decision."""
+    root = Path(root).expanduser()
+    db_path = root / META_DIR / EXPERIENCE_DB_FILE
+    if not db_path.exists():
+        return []
+    conn = sqlite3.connect(db_path)
+    try:
+        sql = "SELECT id, status, scope_key, summary, created_at FROM experience_candidates"
+        args: tuple[Any, ...] = ()
+        if status:
+            sql += " WHERE status = ?"
+            args = (status,)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        rows = conn.execute(sql, (*args, max(1, int(limit)))).fetchall()
+        return [
+            {"id": r[0], "status": r[1], "scope": r[2], "summary": r[3][:160], "createdAt": r[4]}
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
 def curate(root: Path) -> dict[str, Any]:
     """Record ticket decisions and promote only admitted content.
 
@@ -1618,6 +1743,9 @@ def curate(root: Path) -> dict[str, Any]:
         if row.get("ticketId")
     }
     durable = _durable_hashes(soul_path)
+    durable_prefixes = _durable_prefixes(
+        soul_path, int(_rule("limits.serverMergeSimilarityPrefixChars", 40))
+    )
 
     counts = {"admit": 0, "reject": 0, "defer": 0, "deduped": 0}
     chips: list[str] = []
@@ -1652,7 +1780,7 @@ def curate(root: Path) -> dict[str, Any]:
             elif "emitter" not in ticket and not legacy_ok:
                 action, reason = ("reject", str(_rule("emitters.rejectReason", "unauthorized-emitter")))
             else:
-                action, reason = _classify(candidate, durable)
+                action, reason = _classify(candidate, durable, durable_prefixes)
             counts[action] = counts.get(action, 0) + 1
 
             chip_id = None
@@ -1707,6 +1835,14 @@ def curate(root: Path) -> dict[str, Any]:
                 "curatorMode": "deterministic",
                 "rulesetSha256": ruleset_sha,
                 **({"scopeNarrowed": True} if scope_narrowed else {}),
+                # The drawer declares which scopes belong to a cross-project
+                # identity. Recording the boundary keeps it observable without
+                # discarding anything: half the live drawer is project-scope
+                # today, so enforcing silently would drop real learnings.
+                **({"outsideOneBoundary": True}
+                   if str(candidate.get("scope") or "") not in set(
+                       _rule("scopes.oneForwardable", ["agent_repo", "user_identity"]))
+                   else {}),
                 "createdAt": _now(),
             }, ensure_ascii=False) + "\n")
 
@@ -1714,6 +1850,13 @@ def curate(root: Path) -> dict[str, Any]:
     # Failure must never block curation results.
     try:
         rotate_one_ledgers(root)
+    except Exception:
+        pass
+
+    # Keep the semantic projection current. Incremental and idempotent; a failure
+    # only costs semantic rank for the new blocks, never the curation result.
+    try:
+        index_durable_blocks(root)
     except Exception:
         pass
 
@@ -1843,7 +1986,320 @@ def parse_durable_blocks(soul_text: str) -> list[dict[str, str]]:
 
 
 def _recall_tokens(text: str) -> set[str]:
-    return {tok for tok in re.findall(r"[A-Za-z가-힣0-9_./-]{2,}", text.lower())}
+    """Scoring tokens, with attached punctuation removed and stopwords dropped.
+
+    The earlier pattern kept `.` inside the token, so `한다` and `한다.` ranked as
+    different terms and a question rarely matched whichever surface form a block
+    happened to use.
+    """
+    stop = set(_rule("recallBudgets.one.stopwords", []))
+    tokens: set[str] = set()
+    for raw in re.findall(r"[A-Za-z가-힣0-9_./-]{2,}", text.lower()):
+        tok = raw.strip("./-_")
+        if len(tok) >= 2 and tok not in stop:
+            tokens.add(tok)
+    return tokens
+
+
+def _token_matches(block_token: str, q_tokens: set[str]) -> bool:
+    """Korean glues particles onto the stem, so set equality under-matches.
+
+    `캐시` has to reach `캐시가`. Accept a shared prefix while the length gap stays
+    small; a wider gap is a different word rather than an inflection.
+    """
+    if block_token in q_tokens:
+        return True
+    for q in q_tokens:
+        shorter, longer = (q, block_token) if len(q) <= len(block_token) else (block_token, q)
+        if len(shorter) >= 2 and len(longer) - len(shorter) <= 2 and longer.startswith(shorter):
+            return True
+    return False
+
+
+def _idf_table(blocks: list[dict[str, str]]) -> dict[str, float]:
+    """Document frequency over the durable corpus — a common term must weigh less."""
+    total = max(len(blocks), 1)
+    df: dict[str, int] = {}
+    for block in blocks:
+        for tok in _recall_tokens(block["content"]):
+            df[tok] = df.get(tok, 0) + 1
+    return {tok: math.log(1.0 + total / count) for tok, count in df.items()}
+
+
+def _relevance_score(content: str, q_tokens: set[str], idf: dict[str, float]) -> float:
+    """Length-normalised IDF overlap.
+
+    Raw overlap counts let a long block win by accumulating incidental matches,
+    which is how recall degenerated into "whatever happens to be written last".
+    """
+    if not q_tokens:
+        return 0.0
+    block_tokens = _recall_tokens(content)
+    if not block_tokens:
+        return 0.0
+    gained = sum(idf.get(tok, 1.0) for tok in block_tokens if _token_matches(tok, q_tokens))
+    if gained <= 0.0:
+        return 0.0
+    return gained / math.sqrt(len(block_tokens))
+
+
+RECALL_USAGE_FILE = "recall-usage.json"
+# Any engine hit outranks any purely local score, so the two never compete.
+_ENGINE_TIER = 1000.0
+ONE_INDEX_FILE = "ontology-runtime.sqlite"
+
+
+_ONE_RUNTIME_CACHE: dict[str, Any] = {}
+
+
+def _one_runtime(root: Path, create: bool = False):
+    """Open the One drawer's semantic index, or return None when unavailable.
+
+    Every other memory layer — project, borrowed agent, Desktop — is served by
+    this engine, which is what the public LoCoMo/LongMemEval numbers measured.
+    The One drawer was built later on a hand-rolled three-table schema and was
+    the only layer left outside it, so its recall stayed lexical while the rest
+    of the product searched semantically.
+
+    Imported lazily and fail-open: a host without the ontology package keeps the
+    lexical path rather than losing recall entirely.
+    """
+    path = Path(root).expanduser() / META_DIR / ONE_INDEX_FILE
+    if not create and not path.exists():
+        return None
+    key = str(path)
+    cached = _ONE_RUNTIME_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        from ontology import OntologyRuntime, RuntimeConfig  # noqa: PLC0415
+    except Exception:
+        return None
+    try:
+        runtime = OntologyRuntime(RuntimeConfig(db_path=path))
+    except Exception:
+        return None
+    # Constructing the runtime dominates the cost — measured 490ms per call
+    # versus 56ms once the instance is reused. Recall runs once or twice per
+    # session, so paying that on every call was the whole latency story.
+    _ONE_RUNTIME_CACHE[key] = runtime
+    return runtime
+
+
+def index_durable_blocks(root: Path, rebuild: bool = False) -> dict[str, Any]:
+    """Project durable soul blocks into the semantic index.
+
+    The soul file stays authoritative — this is a rebuildable projection, which
+    is exactly what `ingest_experience` is for. Idempotent: the content hash is
+    the source id, so re-running costs nothing and never duplicates.
+    """
+    root = Path(root).expanduser()
+    meta = root / META_DIR
+    soul = meta / PROJECT_SOUL_FILE
+    if not soul.exists():
+        return {"indexed": 0, "skipped": "no-soul"}
+    try:
+        blocks = parse_durable_blocks(soul.read_text(encoding="utf-8"))
+    except OSError:
+        return {"indexed": 0, "skipped": "unreadable-soul"}
+    runtime = _one_runtime(root, create=True)
+    if runtime is None:
+        return {"indexed": 0, "skipped": "no-ontology-runtime"}
+
+    superseded = _superseded_hashes(meta)
+    state_path = meta / "index-state.json"
+    try:
+        seen = set(json.loads(state_path.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        seen = set()
+    if rebuild:
+        seen = set()
+
+    indexed = 0
+    for block in blocks:
+        digest = _content_hash(block["content"])
+        if digest in superseded or digest in seen:
+            continue
+        try:
+            runtime.ingest_experience(
+                agent_id=ONE_AGENT_ID,
+                summary=block["content"],
+                tags=[block["kind"], block["project"]] if block["project"] else [block["kind"]],
+                memory_kind=block["kind"],
+                source_memory_id=digest,
+                suggested_scope="agent_repo",
+                reason="One durable soul projection; the soul file remains authoritative.",
+            )
+        except Exception:
+            continue
+        seen.add(digest)
+        indexed += 1
+    try:
+        _atomic_write(state_path, json.dumps(sorted(seen), ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+    return {"indexed": indexed, "durable": len(blocks), "known": len(seen)}
+
+
+def _semantic_candidates(root: Path, question: str, top_k: int) -> dict[str, float]:
+    """Content hash -> rank score from the semantic index, empty when unavailable."""
+    if not question.strip():
+        return {}
+    runtime = _one_runtime(root)
+    if runtime is None:
+        return {}
+    try:
+        result = runtime.query_experience(
+            question, agent_id=ONE_AGENT_ID, top_k=max(1, top_k), token_budget=200_000
+        )
+    except Exception:
+        return {}
+    scores: dict[str, float] = {}
+    items = result.get("items") if isinstance(result, dict) else None
+    for position, item in enumerate(items or []):
+        if not isinstance(item, dict):
+            continue
+        digest = str(item.get("source_memory_id") or "")
+        if not digest:
+            text = str(item.get("candidate_text") or "")
+            digest = _content_hash(text) if text else ""
+        if digest:
+            # Reciprocal rank: position matters, absolute engine scores do not
+            # have to be commensurable with the lexical score.
+            scores.setdefault(digest, 1.0 / (1.0 + position))
+    return scores
+
+
+def record_recall_receipt(root: Path, block_hashes: list[str]) -> None:
+    """Count which durable blocks recall actually delivered.
+
+    Kept as a bounded counter sidecar rather than a ledger line: the file can
+    never grow past the number of durable blocks, while an append-per-session
+    ledger would grow without limit for a signal that only needs a total.
+
+    Recall itself stays pure — the caller decides to record, so read-only
+    measurement never mutates the drawer.
+    """
+    if not block_hashes:
+        return
+    root = Path(root).expanduser()
+    path = root / META_DIR / RECALL_USAGE_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except (OSError, ValueError):
+        data = {}
+    now = _now()
+    for digest in block_hashes:
+        row = data.get(digest)
+        count = int(row.get("count", 0)) if isinstance(row, dict) else 0
+        data[digest] = {"count": count + 1, "lastAt": now}
+    try:
+        _atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1) + "\n")
+    except OSError:
+        # Observability must never break a session.
+        return
+
+
+def recall_coverage(root: Path) -> dict[str, Any]:
+    """Report how much durable memory recall has ever surfaced.
+
+    Without this number a ranking change cannot be evaluated: the drawer grows
+    while the per-session budget stays fixed, so reach is the thing to watch.
+    """
+    root = Path(root).expanduser()
+    meta = root / META_DIR
+    try:
+        blocks = parse_durable_blocks((meta / PROJECT_SOUL_FILE).read_text(encoding="utf-8"))
+    except OSError:
+        return {"durable": -1, "everRecalled": -1, "neverRecalled": -1, "reachedPct": -1.0}
+    try:
+        data = json.loads((meta / RECALL_USAGE_FILE).read_text(encoding="utf-8"))
+        seen = set(data) if isinstance(data, dict) else set()
+    except (OSError, ValueError):
+        seen = set()
+    digests = {_content_hash(block["content"]) for block in blocks}
+    reached = len(digests & seen)
+    total = len(digests)
+    return {
+        "durable": total,
+        "everRecalled": reached,
+        "neverRecalled": total - reached,
+        "reachedPct": round(reached * 100.0 / total, 1) if total else 0.0,
+    }
+
+
+def rank_one_blocks(
+    eligible: list[tuple[int, dict[str, str]]],
+    question: str,
+    *,
+    root: Path,
+    current_slug: str = "",
+    semantic: dict[str, float] | None = None,
+    idf: dict[str, float] | None = None,
+    q_tokens: set[str] | None = None,
+    min_relevance: float | None = None,
+    boost: float | None = None,
+    semantic_weight: float | None = None,
+) -> list[tuple[float, int, dict[str, str]]]:
+    """Order eligible blocks for a question. The single ranking implementation.
+
+    When the index answers, its order wins: measured on LongMemEval (200 items,
+    recall@10) the engine reached 96.5% while a local score reached 93.5%, so
+    re-ranking the better ranker only loses ground. The local score still decides
+    among blocks the engine did not return, so lexical matches are never dropped.
+
+    Kept separate from `select_one_recall` because recall@k has to see the whole
+    ranking while a session sees only what fits the capsule budget — and because
+    a benchmark that re-implements the ranking measures the copy, not the product.
+    """
+    if q_tokens is None:
+        q_tokens = _recall_tokens(question)
+    if idf is None:
+        idf = _idf_table([block for _index, block in eligible]) if q_tokens else {}
+    if semantic is None:
+        semantic = _semantic_candidates(root, question, max(8, len(eligible)))
+    if min_relevance is None:
+        min_relevance = float(_rule("recallBudgets.one.minRelevanceScore", 0.35))
+    if boost is None:
+        boost = float(_rule("recallBudgets.one.currentSlugBoost", 1.5))
+    if semantic_weight is None:
+        semantic_weight = float(_rule("recallBudgets.one.semanticWeight", 1.0))
+
+    ranked: list[tuple[float, int, dict[str, str]]] = []
+    for index, block in eligible:
+        engine_rank = semantic.get(_content_hash(block["content"]), 0.0)
+        if engine_rank > 0.0:
+            # Above every locally scored block, ordered by the engine's own rank.
+            score = _ENGINE_TIER + semantic_weight * engine_rank
+        else:
+            score = _relevance_score(block["content"], q_tokens, idf)
+            if score < min_relevance:
+                continue
+            # The current project is a weight, not a filter — personal craft has
+            # to stay reachable across projects (owner decision), but it must not
+            # win on its own with zero relevance. The engine tier is left alone so
+            # this can never reorder a better ranker.
+            if current_slug and block["slug"] == current_slug:
+                score *= boost
+        ranked.append((score, index, block))
+    ranked.sort(key=lambda item: (-item[0], -item[1]))
+    return ranked
+
+
+def select_one_recall_detailed(
+    question: str,
+    workspace: str = "",
+    root: Path | None = None,
+) -> tuple[list[str], list[str]]:
+    """Recall lines plus the content hash of each selected block, for receipts."""
+    lines = select_one_recall(question, workspace=workspace, root=root)
+    hashes: list[str] = []
+    for line in lines:
+        body = line.split("]: ", 1)[-1]
+        hashes.append(_content_hash(body))
+    return lines, hashes
 
 
 def select_one_recall(
@@ -1853,11 +2309,15 @@ def select_one_recall(
 ) -> list[str]:
     """P3 — pick the One know-how lines for a session capsule.
 
-    L1 only ships non-aging kinds (ruleset l1Kinds); facts age with code and
-    stay with the self-correcting project layer. Ranking = token overlap with
-    the question, boosted for the current project slug; budgets come from the
-    ruleset. Returns [] when One is off or there is nothing relevant — recall
-    must never invent content.
+    Relevance owns the budget. A question that matches nothing gets the small
+    current-project fallback instead of the whole budget, because the previous
+    rule (every current-project block scores above zero, ties broken by file
+    order) made an unrelated question and an empty question return the same
+    lines — measured identical on 2026-08-11.
+
+    Facts get their own small slot rather than the L1 kinds list: they were
+    excluded outright, and the ruleset's claim that the project layer recalls
+    them instead has no code path for the One drawer.
     """
     root = (root or Path("~/.agentlas/one")).expanduser()
     if not (root / "state.json").exists():
@@ -1880,36 +2340,63 @@ def select_one_recall(
     max_blocks = int(_rule("recallBudgets.one.l1MaxBlocks", 6))
     max_chars = int(_rule("recallBudgets.one.l1MaxChars", 1200))
     boost = float(_rule("recallBudgets.one.currentSlugBoost", 1.5))
+    fact_slots = int(_rule("recallBudgets.one.factSlotMaxBlocks", 1))
+    off_topic_max = int(_rule("recallBudgets.one.offTopicMaxBlocks", 2))
+    min_relevance = float(_rule("recallBudgets.one.minRelevanceScore", 0.35))
     current_slug = resolve_project_slug(workspace)
 
-    q_tokens = _recall_tokens(question)
-    scored: list[tuple[float, int, dict[str, str]]] = []
+    eligible: list[tuple[int, dict[str, str]]] = []
     for index, block in enumerate(blocks):
-        if block["kind"] not in l1_kinds:
+        if block["kind"] not in l1_kinds and block["kind"] != "fact":
             continue
         # G8 — explicitly superseded blocks never resurface in recall.
         if _content_hash(block["content"]) in superseded:
             continue
         slug = block["project"] or str((sidecar.get(block["ticket"]) or {}).get("slug") or "")
-        overlap = len(q_tokens & _recall_tokens(block["content"])) if q_tokens else 0
-        same_project = bool(current_slug and slug == current_slug)
-        # A single shared token is noise, not relevance — require two, unless the
-        # block belongs to the current project (its craft stays eligible).
-        if overlap < 2 and not same_project:
-            continue
-        score = float(overlap)
-        if same_project:
-            score = score * boost + 0.1
-        if score <= 0:
-            continue
-        # Later blocks win ties — recency without timestamps.
-        scored.append((score, index, {**block, "slug": slug}))
+        eligible.append((index, {**block, "slug": slug}))
+    if not eligible:
+        return []
 
-    scored.sort(key=lambda item: (-item[0], -item[1]))
+    q_tokens = _recall_tokens(question)
+    idf = _idf_table([block for _index, block in eligible]) if q_tokens else {}
+
+    # Semantic half of the hybrid. The same engine already serves every other
+    # memory layer; here it contributes rank, and lexical contributes the rest,
+    # so a block phrased differently from the question can still be found.
+    semantic = _semantic_candidates(root, question, max_blocks * 4)
+    semantic_weight = float(_rule("recallBudgets.one.semanticWeight", 1.0))
+
+    relevant = rank_one_blocks(
+        eligible, question, root=root, current_slug=current_slug,
+        semantic=semantic, idf=idf, q_tokens=q_tokens,
+        min_relevance=min_relevance, boost=boost, semantic_weight=semantic_weight,
+    )
+
+    picks: list[dict[str, str]] = []
+    if relevant:
+        facts_taken = 0
+        for _score, _index, block in relevant:
+            if block["kind"] == "fact":
+                if facts_taken >= fact_slots:
+                    continue
+                facts_taken += 1
+            picks.append(block)
+            if len(picks) >= max_blocks:
+                break
+    else:
+        # Nothing matched. Fall back to the newest current-project craft, capped
+        # well below the full budget so an unrelated question cannot spend it.
+        limit = max_blocks if not q_tokens else off_topic_max
+        fallback = [
+            block for _index, block in eligible
+            if block["kind"] in l1_kinds and (not current_slug or block["slug"] == current_slug)
+        ]
+        picks = fallback[-limit:][::-1] if limit else []
+
     lines: list[str] = []
     used = 0
     seen: set[str] = set()
-    for score, _idx, block in scored[: max_blocks * 3]:
+    for block in picks:
         # Pre-G6 double-hook eras left literal duplicate durable blocks;
         # recall must not spend budget saying the same thing twice.
         key = _content_hash(block["content"])
@@ -1955,6 +2442,9 @@ def status(root: Path) -> dict[str, Any]:
 
     exp_db = meta / EXPERIENCE_DB_FILE
     chips = packs = orphan_chips = -1
+    # Promotion has to be countable, or a promotion path that silently never runs
+    # looks exactly like one that works.
+    promoted_chips = pending_chips = -1
     if exp_db.exists():
         conn = sqlite3.connect(f"file:{exp_db}?mode=ro", uri=True)
         try:
@@ -1962,6 +2452,12 @@ def status(root: Path) -> dict[str, Any]:
             packs = conn.execute("SELECT COUNT(*) FROM experience_packs").fetchone()[0]
             orphan_chips = conn.execute(
                 "SELECT COUNT(*) FROM experience_candidates WHERE pack_id IS NULL"
+            ).fetchone()[0]
+            promoted_chips = conn.execute(
+                "SELECT COUNT(*) FROM experience_candidates WHERE status = 'promoted'"
+            ).fetchone()[0]
+            pending_chips = conn.execute(
+                "SELECT COUNT(*) FROM experience_candidates WHERE status = 'candidate'"
             ).fetchone()[0]
         except sqlite3.Error:
             pass
@@ -1979,6 +2475,8 @@ def status(root: Path) -> dict[str, Any]:
         "experienceChips": chips,
         "experiencePacks": packs,
         "chipsWithoutPack": orphan_chips,
+        "promotedChips": promoted_chips,
+        "chipsAwaitingDecision": pending_chips,
         "soulBytes": (meta / PROJECT_SOUL_FILE).stat().st_size if (meta / PROJECT_SOUL_FILE).exists() else -1,
     }
 
@@ -1988,7 +2486,13 @@ def _main(argv: list[str]) -> int:
     import sys
 
     parser = argparse.ArgumentParser(prog="one_workspace")
-    parser.add_argument("command", choices=["seed", "status", "emit", "receipt", "stop-hook", "curate"])
+    parser.add_argument("command", choices=[
+        "seed", "status", "emit", "receipt", "stop-hook", "curate",
+        "chips", "promote", "reject", "recall-coverage",
+    ])
+    parser.add_argument("--chip", default="")
+    parser.add_argument("--reason", default="")
+    parser.add_argument("--status", dest="chip_status", default="")
     parser.add_argument("--root", default=os.path.expanduser("~/.agentlas/one"))
     parser.add_argument("--name", default="One")
     parser.add_argument("--content", default="")
@@ -2018,6 +2522,19 @@ def _main(argv: list[str]) -> int:
         ) or {"skipped": "duplicate-or-locked", "hint": "same content already ticketed, or ledger lock busy — retry"}
     elif args.command == "curate":
         out = curate(root)
+    elif args.command == "chips":
+        out = {"chips": list_chips(root, args.chip_status)}
+    elif args.command in ("promote", "reject"):
+        if not args.chip.strip():
+            print("--chip must name a chip id", flush=True)
+            return 2
+        decide = promote_chip if args.command == "promote" else reject_chip
+        out = decide(root, args.chip.strip(), args.reason)
+        if not out.get("ok"):
+            print(json.dumps(out, ensure_ascii=False), flush=True)
+            return 1
+    elif args.command == "recall-coverage":
+        out = recall_coverage(root)
     elif args.command == "stop-hook":
         raw = sys.stdin.read() if not sys.stdin.isatty() else ""
         try:

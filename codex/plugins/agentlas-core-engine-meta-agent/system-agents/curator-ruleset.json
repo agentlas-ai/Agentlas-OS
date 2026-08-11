@@ -1,6 +1,6 @@
 {
   "schemaVersion": "agentlas.curator-ruleset.v1",
-  "rulesetVersion": "1.1.0",
+  "rulesetVersion": "1.2.0",
   "updatedAt": "2026-08-11",
   "description": "Single canonical rule data for every Memory Curator executor (Desktop curator.ts, OS one_workspace.py, later terminal vendor). Executors load values from here; hard-coding a judgment value in an executor is a defect. memory-curator.md stays the human companion text.",
   "patterns": {
@@ -98,7 +98,8 @@
     "ticketContentMaxChars": 600,
     "evidenceMaxItems": 8,
     "serverMergeSimilarityPrefixChars": 40,
-    "sourceRef": "one_workspace.py _classify/emit_ticket; server memory.ts dup check"
+    "sourceRef": "one_workspace.py _classify/emit_ticket; server memory.ts dup check",
+    "mergeTokenOverlapMin": 0.6
   },
   "projectSpecificsGuard": {
     "minFolderNameChars": 4,
@@ -133,12 +134,10 @@
       "eligible": "decided",
       "targetDir": "archive"
     },
-    "supersedeMarkerFormat": "<!-- superseded-by:{hash} -->",
     "dreaming": {
-      "defaultEnabled": "PENDING_OWNER_DECISION",
       "idleRequiredSec": 600,
       "cooldownMs": 21600000,
-      "note": "Measured 2026-08-11: opt-in default OFF and never enabled on the authoring machine (meta key absent). Auto-enable-on-migrate with a setBy marker is the candidate; owner decides at P4-2."
+      "note": "Desktop consumes idleRequiredSec/cooldownMs; the default-on decision shipped in Desktop 0.9.83 and is no longer pending."
     },
     "sourceRef": "G8 added 2026-08-11; dreaming.ts guards"
   },
@@ -149,12 +148,10 @@
       "memoryMap.projectId",
       "folderName"
     ],
-    "pathHashRole": "alias",
     "sourceRef": "owner decision D4 — a context-based slug survives folder moves; path hashes become aliases"
   },
   "recallBudgets": {
     "one": {
-      "l0IdentityMaxChars": 300,
       "l1MaxBlocks": 6,
       "l1MaxChars": 1200,
       "l1Kinds": [
@@ -163,8 +160,44 @@
         "risk"
       ],
       "currentSlugBoost": 1.5,
-      "factsRecalledByProjectLayer": true,
-      "rationale": "Full durable dump measured ~10.8k tokens on 2026-08-11 — recall is a budget-and-ranking problem. Facts age with code and One durable is append-only, so fact recall stays with the self-correcting project layer."
+      "rationale": "Full durable dump measured ~10.8k tokens on 2026-08-11 — recall is a budget-and-ranking problem. Relevance owns the budget; the current-project fallback is capped so an unrelated question cannot spend it. Facts hold a separate small slot because the One drawer has no other recall path for them.",
+      "factSlotMaxBlocks": 1,
+      "offTopicMaxBlocks": 2,
+      "minRelevanceScore": 0.35,
+      "stopwords": [
+        "그리고",
+        "그러나",
+        "하지만",
+        "때문에",
+        "이것",
+        "저것",
+        "여기",
+        "거기",
+        "우리",
+        "너무",
+        "정말",
+        "오늘",
+        "내일",
+        "어제",
+        "the",
+        "and",
+        "for",
+        "with",
+        "that",
+        "this",
+        "from",
+        "into",
+        "when",
+        "then",
+        "than",
+        "have",
+        "has",
+        "was",
+        "were",
+        "are",
+        "not"
+      ],
+      "semanticWeight": 1.0
     }
   },
   "injection": {

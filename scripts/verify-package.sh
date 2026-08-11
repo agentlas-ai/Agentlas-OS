@@ -629,6 +629,12 @@ scripts/verify-mcp-surface.sh
 # missing from the dispatcher, a seed file with no writer, and two singular/plural
 # artifact names — were all the same shape, found one at a time over months.
 python3 scripts/verify-name-to-thing.py
+# Memory contracts. The curator gate judges shared fixture cases; the R2 gate
+# judges recall reach, capsule budget, chip promotion and ruleset consumption.
+# Both were written and then wired nowhere, which is the same failure as not
+# having them — a gate that never runs cannot hold a contract.
+python3 scripts/verify-curator-fixtures.py
+python3 scripts/verify-memory-r2.py
 examples/ontology-proposal-agent/verify.sh
 
 # Hephaestus Network 2.0 routing-card gate (block stage — the Hub now

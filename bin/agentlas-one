@@ -902,11 +902,20 @@ case "${1:-status}" in
   seed)       shift; cmd_workspace seed --name "$(state_read name One)" "$@" ;;
   remember)   shift; [ -n "${1:-}" ] || die "Provide content to remember"; cmd_workspace emit --content "$*" ;;
   curate)     cmd_workspace curate ;;
+  # Chip candidates are never promoted automatically (measured unsafe), so the
+  # decision has to be reachable by hand — otherwise the ban is a wall and every
+  # candidate waits forever.
+  chips)      shift; cmd_workspace chips ${1:+--status "$1"} ;;
+  promote)    shift; [ -n "${1:-}" ] || die "Provide a chip id to promote"
+              chip="$1"; shift; cmd_workspace promote --chip "$chip" ${1:+--reason "$*"} ;;
+  reject)     shift; [ -n "${1:-}" ] || die "Provide a chip id to reject"
+              chip="$1"; shift; cmd_workspace reject --chip "$chip" ${1:+--reason "$*"} ;;
+  coverage)   cmd_workspace recall-coverage ;;
   statusline) cmd_statusline ;;
   stop-hook)  shift
               # Session-end is the one moment every install passes through, so
               # legacy wiring heals here (fail-open; stdout stays hook-clean).
               self_heal_claude_settings >/dev/null 2>&1 || true
               cmd_workspace stop-hook ${1:+--host "$1"} ;;
-  *)          die "Usage: agentlas-one {install|on [name]|off|name <name>|status|memory|remember <text>|curate|seed}" ;;
+  *)          die "Usage: agentlas-one {install|on [name]|off|name <name>|status|memory|remember <text>|curate|seed|chips [status]|promote <chip> [reason]|reject <chip> [reason]|coverage}" ;;
 esac

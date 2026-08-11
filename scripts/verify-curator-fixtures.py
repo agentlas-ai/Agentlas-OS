@@ -8,6 +8,7 @@ fail, not skip. Exit 0 only when every case matches.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -111,7 +112,17 @@ def main() -> int:
 
     # 4) desktop mirror parity — the shipped copies must be byte-equal to the
     #    canonical files. Field-name comparison misses drift; bytes cannot.
-    desktop = ROOT.parent / "agentlas_desktop"
+    # A standalone clone of this repo has no Desktop beside it, so absence is an
+    # environment fact rather than a defect. A wrong path is a defect, though:
+    # when AGENTLAS_DESKTOP_CHECKOUT names somewhere that is not a checkout, the
+    # gate fails instead of quietly reporting a skip.
+    override = os.environ.get("AGENTLAS_DESKTOP_CHECKOUT", "").strip()
+    if override:
+        desktop = Path(override).expanduser()
+        if not desktop.is_dir():
+            fail(f"AGENTLAS_DESKTOP_CHECKOUT does not exist: {desktop}")
+    else:
+        desktop = ROOT.parent / "agentlas_desktop"
     if desktop.is_dir():
         pairs = [
             (ROOT / "system-agents" / "curator-ruleset.json",

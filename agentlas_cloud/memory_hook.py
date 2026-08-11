@@ -20,7 +20,40 @@ CAPSULE_VERSION = "1"
 MAX_STDIN_BYTES = 256_000
 MAX_PROMPT_CHARS = 12_000
 MAX_CAPSULE_CHARS = 6_000
+# Reserved for the wrapper tag plus the fixed policy and emit lines, which are
+# never dropped.
+CAPSULE_FIXED_OVERHEAD_CHARS = 800
+# Every variable layer gets a declared share, and the shares must fit. Before
+# this, the layers could offer ~10,250 chars into a 6,000 cap and the assembled
+# body was tail-truncated — so the ranked evidence at the end (experience, then
+# the lowest project chunks) died first while unranked prefix text always
+# survived. Order of assembly is not a statement about value.
+LAYER_BUDGETS: dict[str, int] = {
+    "workforce": 700,
+    "one": 1_200,
+    "context_slice": 1_200,
+    "project": 1_400,
+    "experience": 700,
+}
 DEFAULT_SESSION_QUERY = "current project decisions constraints architecture and active work"
+
+
+def _trim_layer(lines: list[str], budget: int) -> list[str]:
+    """Keep a layer inside its own budget by dropping its lowest-ranked entries.
+
+    Callers pass lines in rank order, so dropping from the tail removes the least
+    relevant item. The best line of a layer is never sacrificed for a worse line
+    of an earlier layer.
+    """
+    kept: list[str] = []
+    used = 0
+    for line in lines:
+        cost = len(line) + 1
+        if used + cost > budget:
+            break
+        kept.append(line)
+        used += cost
+    return kept
 TRUSTED_ROUTING_STATUSES = frozenset({"routing_ready", "trusted"})
 HOST_POLICY_BASENAMES = frozenset(
     {"agent.md", "agents.md", "claude.local.md", "claude.md", "gemini.md"}
@@ -250,7 +283,14 @@ def _is_host_policy_chunk(item: dict[str, Any]) -> bool:
     return basename in HOST_POLICY_BASENAMES
 
 
-def _context_lines(project_result: dict[str, Any], agent_result: dict[str, Any] | None) -> list[str]:
+def _context_lines(
+    project_result: dict[str, Any], agent_result: dict[str, Any] | None
+) -> tuple[list[str], list[str]]:
+    """Return the project layer and the experience layer separately.
+
+    They carry different budgets, so merging them into one list is what let the
+    tail-truncation drop all of the experience layer first.
+    """
     lines: list[str] = []
     stale_directives: list[str] = []
     project_count = 0
@@ -275,6 +315,7 @@ def _context_lines(project_result: dict[str, Any], agent_result: dict[str, Any] 
                 break
     if stale_directives:
         lines = [f"staleness={directive}" for directive in dict.fromkeys(stale_directives)] + lines
+    experience_lines: list[str] = []
     experience = (agent_result or {}).get("experience_memory", {})
     if isinstance(experience, dict):
         for item in experience.get("items", [])[:6]:
@@ -285,8 +326,8 @@ def _context_lines(project_result: dict[str, Any], agent_result: dict[str, Any] 
                 continue
             tags = ", ".join(_compact_text(tag, 40) for tag in item.get("tags", [])[:6])
             suffix = f" (tags: {tags})" if tags else ""
-            lines.append(f"experience: {text}{suffix}")
-    return lines
+            experience_lines.append(f"experience: {text}{suffix}")
+    return lines, experience_lines
 
 
 def _context_markers(
@@ -433,20 +474,33 @@ def build_capsule(
     # Fail-open: personal recall must never break project recall.
     one_lines: list[str] = []
     try:
-        from .one_workspace import select_one_recall
+        from .one_workspace import record_recall_receipt, select_one_recall_detailed
 
-        one_lines = select_one_recall(question, workspace=str(binding_root))
+        one_lines, one_hashes = select_one_recall_detailed(question, workspace=str(binding_root))
     except Exception:
         one_lines = []
     if one_lines:
+        # Record what recall actually delivered. Without this the reach of the
+        # drawer is unmeasurable, and a ranking change cannot be shown to help.
+        try:
+            record_recall_receipt(Path("~/.agentlas/one").expanduser(), one_hashes)
+        except Exception:
+            pass
         _record_context_markers(
             project_db,
             [("one_craft", max(1, sum(len(line) for line in one_lines) // 4))],
             host,
         )
 
-    lines = _context_lines(project_result, agent_result)
-    if not lines and not evolution_line and not workforce_lines and not context_slice_line and not one_lines:
+    project_lines, experience_lines = _context_lines(project_result, agent_result)
+    if (
+        not project_lines
+        and not experience_lines
+        and not evolution_line
+        and not workforce_lines
+        and not context_slice_line
+        and not one_lines
+    ):
         return None, binding_root
     adapter_name, retrieval_status = _adapter_status(agent_result or project_result)
     # Emission contract: judgment is the session LLM's job, delivery is the
@@ -473,10 +527,13 @@ def build_capsule(
         "dedupe=replace any active capsule with the same digest; reapply the newest capsule after compaction",
         *([emit_line] if emit_line else []),
         *([evolution_line] if evolution_line else []),
-        *workforce_lines,
-        *one_lines,
-        *([context_slice_line] if context_slice_line else []),
-        *lines,
+        *_trim_layer(workforce_lines, LAYER_BUDGETS["workforce"]),
+        *_trim_layer(one_lines, LAYER_BUDGETS["one"]),
+        *_trim_layer(
+            [context_slice_line] if context_slice_line else [], LAYER_BUDGETS["context_slice"]
+        ),
+        *_trim_layer(project_lines, LAYER_BUDGETS["project"]),
+        *_trim_layer(experience_lines, LAYER_BUDGETS["experience"]),
     ]
     body = "\n".join(body_lines)
     if len(body) > MAX_CAPSULE_CHARS - 180:
