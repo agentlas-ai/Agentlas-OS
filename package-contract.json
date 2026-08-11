@@ -76,6 +76,20 @@
       "description": "Routing card: >=6 triggers (>=3 ko, >=3 en), >=4 anti-triggers (>=2 ko, >=2 en), semantic workforce block, risk profile, entrypoints, memory behavior — no card, no auto-routing"
     },
     {
+      "path": "A2A/agent-card.a2a.json",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "generate",
+      "template": null,
+      "schema": null,
+      "description": "A2A (Agent2Agent v1.0.1) Agent Card, projected from .agentlas/agent-card.json + .agentlas/routing-card.json by package_contract.write_a2a_projection() on every scaffold/verify — never hand-authored (owner decision 2026-08-08, R1: a second identity file drifts from the real one). url anchors on the immutable agentId (R5), not the mutable slug. Team mode projects one card for the whole team (the orchestrator entrypoint), not one per worker."
+    },
+    {
       "path": ".agentlas/memory-map.json",
       "modes": [
         "single",
@@ -310,6 +324,165 @@
       "template": "templates/output.example.json.tpl",
       "schema": null,
       "description": "One real instance of output.schema.json. The publish gate validates it with a JSON Schema validator, never with a model - under BYOM the only honest defence against marking your own homework is that the marker is not a model."
+    },
+    {
+      "path": "tools/requirements.yaml",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "generate",
+      "template": null,
+      "schema": null,
+      "description": "Tool/MCP requirement declaration, projected from .agentlas/mcp-policy.json + agentlas.json by package_contract.project_tools_requirements() on every verify — never hand-authored (edit mcp-policy.json instead). Body is YAML-compatible JSON; PyYAML is not a dependency anywhere in this codebase."
+    },
+    {
+      "path": "permissions/policy.yaml",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "generate",
+      "template": null,
+      "schema": null,
+      "description": "Shell/network/file/payment permission whitelist, projected from agentlas.json's toolPermissions/allowRead/denyRead — never hand-authored (edit agentlas.json instead)."
+    },
+    {
+      "path": "hooks/memory-upgrade.yaml",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "generate",
+      "template": null,
+      "schema": null,
+      "description": "Declares (never implements) the memory-ticket/self-evolution lifecycle this package expects, projected from .agentlas/memory-map.json. Enforcement stays with the OS-resident memory curator (owner decision 2026-08-08, #9) — this file never carries policy or judge logic."
+    },
+    {
+      "path": "hooks/on_stop.yaml",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "generate",
+      "template": null,
+      "schema": null,
+      "description": "Declares (never implements) session-end cleanup/reporting expectations, projected from agentlas.json. The host Stop hook performs the actual flush."
+    },
+    {
+      "path": "provenance.json",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": false,
+      "format": "json",
+      "fill": "generate",
+      "template": null,
+      "schema": null,
+      "description": "Authorship/license/mint-time record. Minted ONCE at first build from agentlas.json + .agentlas/agent-card.json and preserved verbatim afterwards, the same mint-once rule as agentId (R5) — component changes bump the package version, never this file. Optional (not required=true): it depends on agentId, which is minted by the upload wizard, not by a bare scaffold/verify — a package that has never been through run_setup_wizard legitimately has no provenance.json yet."
+    },
+    {
+      "path": "evals/README.md",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "markdown",
+      "fill": "static",
+      "template": "templates/evals-readme.md.tpl",
+      "schema": null,
+      "minLines": 2,
+      "description": "Points to the agent-level eval surface. The actual data stays at .agentlas/capability-eval-plan.json and .agentlas/routing-benchmarks.jsonl — moving it to evals/ was tried once (the contract's own routing-benchmarks.jsonl description records it) and broke every package that generation never followed, so this folder documents the split instead of duplicating the data."
+    },
+    {
+      "path": "experience/README.md",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "markdown",
+      "fill": "static",
+      "template": "templates/experience-readme.md.tpl",
+      "schema": null,
+      "minLines": 2,
+      "description": "Sealed-chip-only rules for this folder (Secret-Free DTO, no raw memory). Actual chips are written here by the experience pipeline at runtime, not by the builder."
+    },
+    {
+      "path": "knowledge/README.md",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": false,
+      "format": "markdown",
+      "fill": "static",
+      "template": "templates/knowledge-readme.md.tpl",
+      "schema": null,
+      "minLines": 2,
+      "description": "RAG source-file drop point (optional per the plan's own [선택] tag). Empty is a valid, common state."
+    },
+    {
+      "path": "schemas/README.md",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": false,
+      "format": "markdown",
+      "fill": "static",
+      "template": "templates/schemas-readme.md.tpl",
+      "schema": null,
+      "minLines": 2,
+      "description": "Optional (plan's own [선택] tag). Points to contracts/intake.schema.json + output.schema.json, which already carry this package's JSON Schemas — this folder exists only for agents with fixed multimodal I/O shapes beyond those two."
+    },
+    {
+      "path": "sandbox/manifest.yaml",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": false,
+      "format": "text",
+      "fill": "static",
+      "template": "templates/sandbox-manifest.yaml.tpl",
+      "schema": null,
+      "description": "Optional (plan's own [선택] tag). Execution-isolation defaults, conservative by default (no network, no shell) — widen explicitly per package if the agent needs more."
+    },
+    {
+      "path": "examples/README.md",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": false,
+      "format": "markdown",
+      "fill": "static",
+      "template": "templates/examples-readme.md.tpl",
+      "schema": null,
+      "minLines": 2,
+      "description": "Optional (plan's own [선택] tag). Points to contracts/output.example.json, this package's one publish-validated example."
     },
     {
       "path": ".agentlas/brief.json",

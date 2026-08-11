@@ -16,7 +16,11 @@ from typing import Any
 from . import content_guard
 from .auth import ensure_access_token, normalize_base_url
 from .networking.card_lint import lint_card
-from .package_contract import is_generated_runtime_path, verify as verify_package_contract
+from .package_contract import (
+    is_generated_runtime_path,
+    refresh_generated_projections,
+    verify as verify_package_contract,
+)
 from .brief.write import write_offer_brief
 from .experience_contracts import ContractValidationError, default_mcp_policy, validate_mcp_policy
 from .upload_repair import classify_findings, repair_package
@@ -210,6 +214,7 @@ def package_agent(
             fill_capability_eval_plan,
             fill_declared_artifacts,
             fill_runtime_adapter_bodies,
+            fill_thin_runtime_adapters,
             redact_host_paths,
         )
 
@@ -226,6 +231,9 @@ def package_agent(
         adapters = fill_runtime_adapter_bodies(base, slug_hint)
         if adapters:
             contract_scaffold["adaptersWritten"] = adapters
+        thin_adapters = fill_thin_runtime_adapters(base, slug_hint)
+        if thin_adapters:
+            contract_scaffold["thinRuntimeAdaptersWritten"] = thin_adapters
 
         redacted = redact_host_paths(base)
         if redacted:
@@ -295,6 +303,18 @@ def package_agent(
     # wizard that ran before it hashed a package whose card was about to change,
     # and `agentlas.json` ended up describing a state that never shipped. The
     # wizard is the last writer, so it must also be the last hasher.
+    # Same ordering rule as the comment above states for scaffold/derive/coerce/
+    # redact/repair: A2A/tools/permissions/hooks/provenance.json must be in
+    # their FINAL form before the routing card is refreshed, because the
+    # routing card embeds `source.package_hash` — a hash of the tree AT THAT
+    # MOMENT. Generating these afterward left that embedded hash (and, one
+    # level up, the wizard's real packageHash) describing a package that was
+    # about to grow five more files, so the bootstrap upload (those files
+    # created here for the first time) disagreed with every upload after it,
+    # once those files already existed. Measured via
+    # test_local_source_hash_and_cloud_artifact_hash_have_explicit_distinct_contracts.
+    if write_manifest:
+        refresh_generated_projections(base)
     routing_meta = refresh_routing_card_metadata(base)
     _repair_mcp_policy_file(base, findings, write=write_manifest)
     setup_wizard = run_setup_wizard(base, package_name, write=write_manifest)

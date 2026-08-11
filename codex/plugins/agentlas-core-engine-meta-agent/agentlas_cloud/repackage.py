@@ -1236,6 +1236,69 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
     return written
 
 
+def fill_thin_runtime_adapters(root: Path, slug: str) -> list[str]:
+    """Write CLAUDE.md / GEMINI.md as thin adapters over AGENTS.md.
+
+    `RUNTIME_ADAPTER_FILES` named these two files as adapters since this
+    module's first version, but nothing ever called it — measured: zero other
+    references anywhere in this codebase. A package's `agent.md` prose already
+    promises "Follow the runtime adapter for your host if one is present:
+    CLAUDE.md, GEMINI.md", so a package with neither file broke its own
+    promise on every build. Same non-destructive rule as
+    `fill_runtime_adapter_bodies`: a stub (<12 non-empty lines) or an absent
+    file gets the thin adapter; anything a person actually wrote is left
+    exactly as it is.
+    """
+
+    core = root / "AGENTS.md"
+    if not core.is_file():
+        return []
+    try:
+        core_text = core.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    if is_unfilled(core_text) or _has_placeholders(core):
+        return []
+
+    title = ""
+    for line in core_text.splitlines():
+        if line.startswith("# "):
+            title = line[2:].strip()
+            break
+
+    written: list[str] = []
+    for filename, runtime_label in (("CLAUDE.md", "Claude Code"), ("GEMINI.md", "Gemini CLI")):
+        target = root / filename
+        existing = ""
+        if target.is_file():
+            try:
+                existing = target.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                existing = ""
+            substantive = len([ln for ln in existing.splitlines() if ln.strip()]) >= 12
+            if substantive and not _PLACEHOLDER.search(existing):
+                continue
+        target.write_text(
+            f"# {title or slug} — {runtime_label} adapter\n\n"
+            f"> Thin adapter. **Source of truth is [`AGENTS.md`](AGENTS.md)** - read it first.\n"
+            f"> This file exists so {runtime_label} finds an entry point in its own\n"
+            f"> expected name, never a second copy of the rules that can drift away\n"
+            f"> from the canonical core.\n\n"
+            f"## Route\n\n"
+            f"1. Read [`AGENTS.md`](AGENTS.md) for the principles, rules, workflow, and\n"
+            f"   return contract. Everything binding lives there.\n"
+            f"2. Use `.agentlas/global-commands.json` for this package's per-runtime\n"
+            f"   slash command.\n\n"
+            f"## Do not\n\n"
+            f"- Treat this file as the source of truth. That is always `AGENTS.md`.\n"
+            f"- Copy rules out of `AGENTS.md` into here; a second copy is a second\n"
+            f"  answer, and the two will disagree.\n",
+            encoding="utf-8",
+        )
+        written.append(filename)
+    return written
+
+
 def redact_host_paths(root: Path) -> list[str]:
     """Replace absolute host paths with package-relative ones, in place.
 

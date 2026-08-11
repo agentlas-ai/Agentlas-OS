@@ -63,8 +63,8 @@ def engine_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def load_contract(root: Path | None = None) -> dict[str, Any]:
-    base = root or engine_root()
+def load_contract(root: str | Path | None = None) -> dict[str, Any]:
+    base = Path(root) if root else engine_root()
     payload = json.loads((base / CONTRACT_FILENAME).read_text(encoding="utf-8"))
     if payload.get("kind") != "agentlas-package-contract":
         raise ValueError("package-contract.json kind mismatch")
@@ -143,12 +143,12 @@ def scaffold(
     package_id: str = "",
     name: str = "",
     command: str = "",
-    root: Path | None = None,
+    root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Copy contract templates into ``folder`` (never overwriting existing
     files) and substitute the identity placeholders we already know. Model
     placeholders ({{TRIGGER_KO_1}}...) stay for the fill step."""
-    base = root or engine_root()
+    base = Path(root) if root else engine_root()
     workspace = Path(folder).expanduser().resolve()
     path_error = _workspace_path_error(workspace, must_exist=False)
     if path_error:
@@ -202,6 +202,299 @@ def scaffold(
         "skipped_existing": skipped,
         "missing_templates": missing_templates,
     }
+
+
+def project_a2a_card(workspace: Path) -> dict[str, Any] | None:
+    """Derive the A2A (Agent2Agent v1.0.1) card from agent-card.json + routing-card.json.
+
+    Owner decision 2026-08-08 (R1): A2A/ never carries a hand-authored primary —
+    a second identity file drifts from the real one exactly like every other
+    duplicated-identity incident in this codebase. Returns None (nothing honest
+    to project yet) until agent-card.json is actually filled, so a fresh
+    scaffold does not ship a card full of ``{{PLACEHOLDER}}`` tokens.
+    """
+    agent_card_path = workspace / ".agentlas" / "agent-card.json"
+    if not agent_card_path.is_file():
+        return None
+    try:
+        raw = agent_card_path.read_text(encoding="utf-8")
+        agent_card = json.loads(raw)
+    except (OSError, ValueError):
+        return None
+    if PLACEHOLDER_RE.search(raw):
+        return None
+
+    routing_card: dict[str, Any] = {}
+    routing_card_path = workspace / ".agentlas" / "routing-card.json"
+    if routing_card_path.is_file():
+        try:
+            routing_card = json.loads(routing_card_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            routing_card = {}
+
+    # R5: the identity anchor is the immutable agentId, never the mutable slug —
+    # a rename must not orphan an external A2A reference. agentlas.json mints
+    # agentId at first local build (runtime.run_setup_wizard), so it is usually
+    # present; when it is not yet, say so explicitly instead of guessing a URL.
+    agent_id = ""
+    manifest_path = workspace / "agentlas.json"
+    if manifest_path.is_file():
+        try:
+            agent_id = str(json.loads(manifest_path.read_text(encoding="utf-8")).get("agentId") or "").strip()
+        except (OSError, ValueError):
+            agent_id = ""
+    url = f"https://agentlas.cloud/a2a/{agent_id}" if agent_id else "agentlas:pending-agent-id"
+
+    capabilities = agent_card.get("capabilities")
+    skills: list[dict[str, str]] = []
+    seen_skill_ids: set[str] = set()
+
+    def add_skill(skill_id: Any) -> None:
+        if isinstance(skill_id, str) and skill_id and skill_id not in seen_skill_ids:
+            seen_skill_ids.add(skill_id)
+            skills.append({"id": skill_id, "name": skill_id.split(":")[-1].replace("_", " ").replace("-", " ")})
+
+    if isinstance(capabilities, list):
+        for item in capabilities:
+            add_skill(item)
+    elif isinstance(capabilities, dict):
+        for item in capabilities.get("skills") or []:
+            add_skill(item)
+    workforce = routing_card.get("workforce")
+    if isinstance(workforce, dict):
+        for item in workforce.get("skills") or []:
+            add_skill(item)
+
+    card: dict[str, Any] = {
+        "protocolVersion": "1.0.1",
+        "name": agent_card.get("name") or agent_card.get("slug") or workspace.name,
+        "description": agent_card.get("summary") or routing_card.get("summary") or "",
+        "url": url,
+        "provider": {"organization": "Agentlas", "url": "https://agentlas.cloud"},
+        "capabilities": {"streaming": False, "pushNotifications": False},
+        "skills": skills,
+        "securitySchemes": {},
+        "extensions": [],
+        "_generated": {
+            "note": "projected from .agentlas/agent-card.json + .agentlas/routing-card.json at build/verify time — never hand-author this file (R1, 2026-08-08)",
+            "agentIdPending": not bool(agent_id),
+        },
+    }
+    entrypoints = agent_card.get("entrypoints")
+    if isinstance(entrypoints, dict) and entrypoints.get("agent"):
+        card["_generated"]["entrypoint"] = entrypoints["agent"]
+    return card
+
+
+def write_a2a_projection(workspace: Path) -> str | None:
+    """Write the A2A projection into the workspace; return its relative path, or
+    None when agent-card.json is not filled yet (nothing to project)."""
+    card = project_a2a_card(workspace)
+    if card is None:
+        return None
+    target = workspace / "A2A" / "agent-card.a2a.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(card, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return target.relative_to(workspace).as_posix()
+
+
+def _read_json(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _unfilled(*docs: dict[str, Any] | None) -> bool:
+    return any(doc is not None and PLACEHOLDER_RE.search(json.dumps(doc)) for doc in docs)
+
+
+def project_tools_requirements(workspace: Path) -> str | None:
+    """tools/requirements.yaml — projected from .agentlas/mcp-policy.json +
+    agentlas.json. Never hand-authored: mcp-policy.json is already the one
+    place a build declares required tools/MCP servers (owner decision
+    2026-08-08, #9 System Agents - Copy, Never Write: a package declares via
+    its .agentlas/*.json, it never keeps a second copy of the same fact).
+    Body is YAML-compatible JSON — PyYAML is not a dependency anywhere in this
+    codebase, and valid JSON is valid YAML, so no new dependency is needed.
+    """
+    mcp_policy = _read_json(workspace / ".agentlas" / "mcp-policy.json")
+    manifest = _read_json(workspace / "agentlas.json")
+    if mcp_policy is None or manifest is None or _unfilled(mcp_policy, manifest):
+        return None
+    payload = {
+        "_generated": "projected from .agentlas/mcp-policy.json + agentlas.json — edit those, not this",
+        "requiredRuntime": manifest.get("requiredRuntime") or [],
+        "mcpRequirements": mcp_policy.get("requirements") or [],
+        "resolutionOrder": mcp_policy.get("registryResolutionOrder") or [],
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
+def project_permissions_policy(workspace: Path) -> str | None:
+    """permissions/policy.yaml — projected from agentlas.json's toolPermissions
+    / allowRead / denyRead. Same never-hand-authored reasoning as tools/: those
+    fields are already the live-enforced permission surface
+    (upload._server_routing_problem and the host PreToolUse hook both read
+    agentlas.json, not a second permissions file)."""
+    manifest = _read_json(workspace / "agentlas.json")
+    if manifest is None or _unfilled(manifest):
+        return None
+    tool_permissions = manifest.get("toolPermissions") or {}
+    payload = {
+        "_generated": "projected from agentlas.json — edit that, not this",
+        "shell": tool_permissions.get("shell", "deny"),
+        "network": tool_permissions.get("network", "ask"),
+        "fileRead": tool_permissions.get("fileRead", "manifest-allowlist"),
+        "payment": "deny",
+        "allowRead": manifest.get("allowRead") or [],
+        "denyRead": manifest.get("denyRead") or [],
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
+def project_memory_upgrade_hook(workspace: Path) -> str | None:
+    """hooks/memory-upgrade.yaml — declares (never implements) the memory
+    lifecycle this package expects. Owner decision 2026-08-08 (#9): policy and
+    judge logic belong only to the OS-resident system agents (the always-on
+    curator, the host PreToolUse hook); a team/single package that authored its
+    own enforcement here would duplicate that layer — the exact mistake #9 was
+    written to stop (0/32 teams honoured the old verbatim-copy contract)."""
+    memory_map = _read_json(workspace / ".agentlas" / "memory-map.json")
+    if memory_map is None or _unfilled(memory_map):
+        return None
+    payload = {
+        "_generated": "projected from .agentlas/memory-map.json — edit that, not this",
+        "_enforcement": (
+            "declarative only — the OS-resident memory curator enforces this "
+            "(owner decision 2026-08-08, #9); this package never implements "
+            "memory policy or judge logic itself"
+        ),
+        "writeOwners": memory_map.get("writeOwners") or {},
+        "promotionPath": memory_map.get("promotionPath") or [],
+        "trustLabels": memory_map.get("trustLabels") or [],
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
+def project_on_stop_hook(workspace: Path) -> str | None:
+    """hooks/on_stop.yaml — declares (never implements) session-end behavior.
+    The host Stop hook per runtime performs the actual flush; this file only
+    states what this package expects of it, same declare-not-implement rule as
+    memory-upgrade.yaml above."""
+    manifest = _read_json(workspace / "agentlas.json")
+    if manifest is None or _unfilled(manifest):
+        return None
+    memory_policy = manifest.get("memoryPolicy") or {}
+    payload = {
+        "_generated": "projected from agentlas.json — edit that, not this",
+        "_enforcement": "declarative only — the host Stop hook performs the actual flush/report",
+        "onStop": {
+            "flushMemoryTickets": True,
+            "appendSoulLog": memory_policy.get("writeBack") != "deny",
+            "reportPath": ".agentlas/memory-tickets.jsonl",
+        },
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
+def project_provenance(workspace: Path) -> dict[str, Any] | None:
+    """provenance.json — minted ONCE at first build, then preserved verbatim
+    forever (same rule as agentId, R5 owner decision: a value that must survive
+    every future rebuild cannot be recomputed on every build). Returns None
+    when the file already exists (nothing to do) or the sources are not ready.
+
+    Deliberately carries no wall-clock timestamp: `packageHash` must depend
+    only on content that does not change between two builds of the same
+    inputs (measured — test_local_source_hash_and_cloud_artifact_hash_have_
+    explicit_distinct_contracts asserts re-scanning mutable evidence must not
+    mint a different release; a `mintedAt` field here broke that on the very
+    first run, because some callers re-derive this file from a fresh copy of
+    the same source rather than reusing one written earlier). Creation order
+    is already recorded outside the hashed artifact — git history, the Hub
+    registration record — and does not need a second, hash-breaking copy here.
+    """
+    if (workspace / "provenance.json").is_file():
+        return None
+    manifest = _read_json(workspace / "agentlas.json")
+    agent_card = _read_json(workspace / ".agentlas" / "agent-card.json")
+    if manifest is None or agent_card is None or _unfilled(manifest, agent_card):
+        return None
+    agent_id = str(manifest.get("agentId") or "").strip()
+    if not agent_id:
+        return None
+    return {
+        "schemaVersion": "1.0",
+        "agentId": agent_id,
+        "name": agent_card.get("name") or agent_card.get("slug") or workspace.name,
+        "license": manifest.get("license") or "call-only-default",
+        "createdBy": manifest.get("createdBy") or "hephaestus-setup-wizard",
+        "_generated": (
+            "minted once at first build from agentlas.json + "
+            ".agentlas/agent-card.json, then preserved verbatim — component "
+            "changes must bump the package version, never this file"
+        ),
+    }
+
+
+def _write_text_projection(workspace: Path, relative_path: str, generator: Any) -> str | None:
+    content = generator(workspace)
+    if content is None:
+        return None
+    target = workspace / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return target.relative_to(workspace).as_posix()
+
+
+def refresh_generated_projections(workspace: Path) -> list[str]:
+    """Refresh every derived (never-hand-authored) artifact this package
+    contract now owns. Called from verify() — never from scaffold(), whose
+    sources are still unfilled ``{{PLACEHOLDER}}`` templates at that point —
+    so the same verify() call always sees its own freshly written output."""
+    written: list[str] = []
+    a2a = write_a2a_projection(workspace)
+    if a2a:
+        written.append(a2a)
+    for relative_path, generator in (
+        ("tools/requirements.yaml", project_tools_requirements),
+        ("permissions/policy.yaml", project_permissions_policy),
+        ("hooks/memory-upgrade.yaml", project_memory_upgrade_hook),
+        ("hooks/on_stop.yaml", project_on_stop_hook),
+    ):
+        result = _write_text_projection(workspace, relative_path, generator)
+        if result:
+            written.append(result)
+    provenance = project_provenance(workspace)
+    if provenance is not None:
+        target = workspace / "provenance.json"
+        target.write_text(json.dumps(provenance, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        written.append("provenance.json")
+    return written
+
+
+def _verify_skills_consistency(workspace: Path) -> list[str]:
+    """Cross-check .agentlas/skill-registry.json against skills/*/SKILL.md on
+    disk. Warning-only (never a blocker): a skill can legitimately be
+    registered ahead of authoring it, or authored as a local draft before
+    registration, so divergence is a thing to flag, not to fail a build over.
+    repackage.py already globs skills/*/SKILL.md for sitemap/sources
+    generation; this reads the same shape so the two never disagree."""
+    registry = _read_json(workspace / ".agentlas" / "skill-registry.json")
+    on_disk = {p.parent.name for p in sorted(workspace.glob("skills/*/SKILL.md"))}
+    registered = set()
+    if isinstance(registry, dict):
+        for entry in registry.get("skills") or []:
+            if isinstance(entry, dict) and isinstance(entry.get("slug"), str):
+                registered.add(entry["slug"])
+    warnings: list[str] = []
+    for slug in sorted(on_disk - registered):
+        warnings.append(f"skills/{slug}/SKILL.md: not listed in .agentlas/skill-registry.json skills[]")
+    for slug in sorted(registered - on_disk):
+        warnings.append(f".agentlas/skill-registry.json: registers '{slug}' but skills/{slug}/SKILL.md does not exist")
+    return warnings
 
 
 def _schema_shape_errors(doc: Any, schema_path: Path) -> list[str]:
@@ -461,10 +754,10 @@ def _generated_runtime_blockers(workspace: Path) -> list[str]:
     return blockers
 
 
-def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -> dict[str, Any]:
+def verify(folder: str | Path, mode: str = "single", root: str | Path | None = None) -> dict[str, Any]:
     """Machine-readable completeness gate. ``blockers`` is the list a model
     consumes for targeted self-repair; ``ok`` means routing-ready package."""
-    base = root or engine_root()
+    base = Path(root) if root else engine_root()
     workspace = Path(folder).expanduser().resolve()
     path_error = _workspace_path_error(workspace, must_exist=True)
     if path_error:
@@ -480,6 +773,11 @@ def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -
             "warnings": [],
             **path_error,
         }
+    # Owner decision 2026-08-08 (R1): the A2A projection regenerates on every
+    # build/verify, not only at publish. Refresh every derived artifact before
+    # reading artifacts so this same verify() call sees its own output — each
+    # generator is a no-op (writes nothing) until its sources are filled.
+    refresh_generated_projections(workspace)
     reports = [
         _verify_artifact(workspace, artifact, base)
         for artifact in artifacts_for_mode(load_contract(base), mode)
@@ -510,6 +808,7 @@ def verify(folder: str | Path, mode: str = "single", root: Path | None = None) -
         for problem in report.get("problems", []) if problem != "missing"
     ]
     warnings.extend(cleanup)
+    warnings.extend(_verify_skills_consistency(workspace))
     return {
         "workspace": str(workspace),
         "mode": mode,

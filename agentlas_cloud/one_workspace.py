@@ -82,6 +82,16 @@ _RULESET_DEFAULTS: dict[str, Any] = {
             "regex": r"(?:해라|하세요|하십시오|해줘|해 줘|하도록\s*해|할\s*것)\s*[.!]?\s*$|^(?:always|never|you\s+must|ignore\s+previous|disregard)\b",
             "flags": "i",
         },
+        # R21 W2a — mirror of the canonical ruleset entry; keep byte-identical.
+        "evidenceShapeAccept": {
+            "regex": r"[\w./~-]+\.[A-Za-z0-9]{1,6}(?::\d+)?|:\d+\b|https?://|`[^`]+`|\b[a-f0-9]{7,40}\b|\btest[_-][\w-]+|\bverify[-_][\w-]+|\bpytest\b|arXiv:\d{4}\.\d{4,5}|\$ |^\s*(?:bash|node|python3?|npm|git)\b",
+            "flags": "im",
+        },
+        # R21 W2b — mirror of the canonical ruleset entry; keep byte-identical.
+        "capabilityWidening": {
+            "regex": r"(?:skip|bypass|disable|without)\s+(?:the\s+)?(?:approval|permission|confirmation|consent|review)|(?:approval|permission|confirmation)[^.\n]{0,40}(?:can|may|should)\s+be\s+(?:skipped|bypassed|disabled)|승인\s*(?:없이|을?\s*(?:건너뛰|생략|무시))|확인\s*없이\s*(?:실행|진행)|자동으로\s*허용",
+            "flags": "i",
+        },
     },
     "kinds": {
         "promotable": ["fact", "decision", "procedure", "preference", "risk", "deprecation"],
@@ -784,6 +794,13 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
                 seen.add(key)
                 evidence = candidate.get("evidence")
                 supersedes = str(candidate.get("supersedes") or "")
+                # R21 W1a — optional borrowed-agent attribution axis. A learning
+                # made while acting as a hired Hub agent names that agent's slug
+                # so the stop hook can route it into the per-slug drawer. Absent
+                # or malformed → empty string → the One path, exactly as before.
+                agent_slug = str(candidate.get("agent_slug") or "").strip().lower()
+                if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", agent_slug):
+                    agent_slug = ""
                 found.append({
                     "content": content,
                     "kind": str(candidate.get("memory_kind") or "hypothesis"),
@@ -792,6 +809,7 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
                     # G4/G8 — a worker may explicitly name the durable block this
                     # replaces (its h:16hex). Anything else is ignored, never guessed.
                     "supersedes": supersedes if re.fullmatch(r"[0-9a-f]{16}", supersedes) else "",
+                    "agent_slug": agent_slug,
                 })
     return found
 
@@ -952,6 +970,209 @@ def _record_state_transition(root: Path, enabled: bool) -> None:
         return
 
 
+HUB_AGENTS_DIR_ENV = "AGENTLAS_HUB_AGENTS_DIR"
+ONTOLOGY_BIN_ENV = "AGENTLAS_ONTOLOGY_BIN"
+# Fallback window when a transcript has no birthtime: attribute only invocations
+# from the recent past instead of the drawer's whole history.
+_ACTIVE_AGENT_FALLBACK_WINDOW_SEC = 6 * 3600
+
+
+def _hub_agents_dir() -> Path:
+    override = os.environ.get(HUB_AGENTS_DIR_ENV)
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".agentlas" / "networking" / "hub-agents"
+
+
+def _iso_to_epoch(value: str) -> float:
+    try:
+        from datetime import datetime
+
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _session_active_agents(started_epoch: float) -> list[str]:
+    """Slugs whose invocation ledger shows activity inside this session's window.
+
+    R21 W1b — the ledger is written deterministically at borrow time
+    (hub_invocation.py), so detection needs no model cooperation. A transcript
+    without a birthtime yields started_epoch=0; fall back to a bounded recent
+    window rather than attributing a drawer's entire history to this session.
+    """
+    base = _hub_agents_dir()
+    if not base.is_dir():
+        return []
+    # Floor to whole seconds: ledger/ticket timestamps carry second precision
+    # while a file birthtime carries sub-second — an entry stamped in the same
+    # second as session start must count as inside the window (measured: the
+    # truncated ts compared 0.465s "before" the start and broke rerun detection).
+    window_start = float(int(started_epoch or (time.time() - _ACTIVE_AGENT_FALLBACK_WINDOW_SEC)))
+    active: list[str] = []
+    try:
+        drawers = sorted(p for p in base.iterdir() if p.is_dir())
+    except OSError:
+        return []
+    for drawer in drawers:
+        for ledger in (drawer / "memory" / "invocation-ledger.jsonl", drawer / "invocation-ledger.jsonl"):
+            if not ledger.is_file():
+                continue
+            for row in _read_jsonl(ledger):
+                if _iso_to_epoch(str(row.get("ts") or "")) >= window_start:
+                    active.append(drawer.name)
+                    break
+            if active and active[-1] == drawer.name:
+                break
+    return active
+
+
+def _drawer_ticket_once(drawer: Path, record: dict[str, Any]) -> bool:
+    """Append a ticket to the drawer ledger unless the same content is present.
+
+    Same idempotency principle as emit_ticket (G6): dedupe on normalized content
+    hash so duplicate hook channels and reruns converge on a single ticket.
+    """
+    ledger = drawer / "memory" / "memory-tickets.jsonl"
+    key = _content_hash(str(record.get("content") or ""))
+    for row in _read_jsonl(ledger):
+        if str(row.get("dedupe") or "") == key:
+            return False
+        if _content_hash(str(row.get("content") or "")) == key:
+            return False
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    payload = {**record, "dedupe": key}
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    return True
+
+
+def _drawer_write_note(drawer: Path, event: dict[str, Any]) -> Path | None:
+    """Write one learning note into the drawer's notes/ — the exact folder the
+    grounding directive's experience_record ingests. Idempotent by content hash."""
+    notes = drawer / "notes"
+    key = _content_hash(str(event.get("content") or ""))
+    target = notes / f"learning-{key}.md"
+    if target.exists():
+        return None
+    from datetime import date
+
+    notes.mkdir(parents=True, exist_ok=True)
+    evidence_lines = "".join(f"- {item}\n" for item in event.get("evidence") or [])
+    target.write_text(
+        f"# {date.today().isoformat()} {event.get('kind', 'learning')} ({key})\n\n"
+        f"{event.get('content', '')}\n\n"
+        f"## Evidence\n\n{evidence_lines or '- (none)\n'}",
+        encoding="utf-8",
+    )
+    return target
+
+
+def _ingest_drawer_notes(drawer: Path) -> str:
+    """R21 W1e — the hook runs experience_record itself instead of asking the
+    model to. scope=internal is contractual: private is write-only (measured —
+    OntologyRuntime.query resolves scopes as ["public","internal"]). Fail-open:
+    a missing binary or a failed run must never block session end."""
+    binary = Path(os.environ.get(ONTOLOGY_BIN_ENV) or (Path.home() / ".agentlas" / "runtime" / "current" / "bin" / "ontology"))
+    if not binary.is_file():
+        return "skipped:no-binary"
+    import subprocess
+
+    try:
+        completed = subprocess.run(
+            [str(binary), "--db", str(drawer / "memory" / "experience.sqlite"),
+             "ingest", str(drawer / "notes"), "--scope", "internal"],
+            capture_output=True, timeout=60, check=False,
+        )
+        return "ok" if completed.returncode == 0 else f"failed:rc{completed.returncode}"
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"failed:{type(exc).__name__}"
+
+
+def _route_borrowed_agent_events(
+    events: list[dict[str, Any]],
+    *,
+    started_epoch: float,
+    substantial: bool,
+    tool_uses: int,
+    edits: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """R21 W1c/W1d — route agent-attributed learnings into per-slug drawers and
+    leave a gap ticket when an active borrowed agent recorded nothing.
+
+    Returns (events_for_one, receipt). Unattributed events flow to the One path
+    unchanged; nothing is silently dropped. Fail-open on any drawer error.
+    """
+    receipt: dict[str, Any] = {}
+    active = _session_active_agents(started_epoch)
+    if not active:
+        return events, receipt
+    base = _hub_agents_dir()
+    remaining: list[dict[str, Any]] = []
+    routed_by_slug: dict[str, int] = {}
+    for event in events:
+        slug = str(event.get("agent_slug") or "")
+        if slug not in active:
+            remaining.append(event)
+            continue
+        drawer = base / slug
+        try:
+            ticketed = _drawer_ticket_once(drawer, {
+                "ts": _utc_now_iso(),
+                "source": "one-stop-hook",
+                "kind": event.get("kind", "hypothesis"),
+                "scope": event.get("scope", "agent_repo"),
+                "content": event.get("content", ""),
+                "evidence": event.get("evidence") or [],
+                "status": "candidate",
+            })
+            _drawer_write_note(drawer, event)
+            routed_by_slug[slug] = routed_by_slug.get(slug, 0) + (1 if ticketed else 0)
+        except OSError:
+            remaining.append(event)  # drawer unwritable — keep the learning in One
+    for slug in active:
+        entry: dict[str, Any] = {"tickets": routed_by_slug.get(slug, 0)}
+        drawer = base / slug
+        # Gap means "nothing recorded THIS SESSION", not "nothing routed this
+        # call" — a rerun of the same stop hook dedupes every event to zero and
+        # would otherwise stamp a false 'recorded no experience' ticket onto a
+        # drawer that did record (measured on the first E2E, 2026-08-11).
+        # Same whole-second floor as _session_active_agents: ticket timestamps
+        # truncate to seconds while birthtime carries sub-second precision.
+        window_start = float(int(started_epoch or (time.time() - _ACTIVE_AGENT_FALLBACK_WINDOW_SEC)))
+        already_recorded = any(
+            str(row.get("source")) == "one-stop-hook"
+            and _iso_to_epoch(str(row.get("ts") or "")) >= window_start
+            for row in _read_jsonl(drawer / "memory" / "memory-tickets.jsonl")
+        )
+        if routed_by_slug.get(slug, 0) == 0 and substantial and not already_recorded:
+            try:
+                entry["gap"] = _drawer_ticket_once(drawer, {
+                    "ts": _utc_now_iso(),
+                    "source": "one-stop-hook",
+                    "kind": "conflict",
+                    "scope": "agent_repo",
+                    "content": (
+                        f"Borrowed agent {slug} was active in a substantial session "
+                        f"({edits} edits, {tool_uses} tool uses) but recorded no experience."
+                    ),
+                    "evidence": [f"invocation-ledger:{slug}", f"tool_uses={tool_uses}", f"edits={edits}"],
+                    "status": "candidate",
+                })
+            except OSError:
+                entry["gap"] = False
+        if (drawer / "notes").is_dir() and any((drawer / "notes").iterdir()):
+            entry["ingest"] = _ingest_drawer_notes(drawer)
+        receipt[slug] = entry
+    return remaining, receipt
+
+
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, Any]:
     """Run the non-blocking session-end checkpoint.
 
@@ -986,6 +1207,25 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         supplied = [supplied]
     if isinstance(supplied, list):
         events.extend(harvest_memory_events_from_texts(supplied))
+
+    tool_uses, edits = _scan_transcript(transcript) if transcript else (0, 0)
+    # Record receipts only for edits or sufficiently tool-heavy work, not casual chat.
+    substantial = edits > 0 or tool_uses >= SUBSTANTIAL_TOOL_USES
+
+    # R21 W1c/W1d — learnings attributed to a borrowed Hub agent land in that
+    # agent's own drawer (ticket + ingestable note + gap fallback); everything
+    # else continues down the One path unchanged. Fail-open by construction.
+    try:
+        events, borrowed_receipt = _route_borrowed_agent_events(
+            events,
+            started_epoch=started,
+            substantial=substantial,
+            tool_uses=tool_uses,
+            edits=edits,
+        )
+    except Exception:
+        borrowed_receipt = {}
+
     project_slug = resolve_project_slug(workspace)
     for event in events:
         if emit_ticket(
@@ -1002,12 +1242,9 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         ):
             harvested += 1
 
-    tool_uses, edits = _scan_transcript(transcript) if transcript else (0, 0)
-    # Record receipts only for edits or sufficiently tool-heavy work, not casual chat.
-    substantial = edits > 0 or tool_uses >= SUBSTANTIAL_TOOL_USES
     capsule = _capsule_written_since(workspace, started)
 
-    if not substantial and harvested == 0:
+    if not substantial and harvested == 0 and not borrowed_receipt:
         return {"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits}
 
     receipt = record_session_receipt(
@@ -1018,6 +1255,8 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         detail=f"host={host or 'claude'} tool_uses={tool_uses} edits={edits} harvested={harvested}",
     )
     receipt["harvested"] = harvested
+    if borrowed_receipt:
+        receipt["borrowedAgents"] = borrowed_receipt
     if receipt["gap"]:
         emit_ticket(
             root,
@@ -1193,6 +1432,11 @@ def _classify(candidate: dict[str, Any], durable_hashes: set[str]) -> tuple[str,
         return ("reject", "host-absolute-path")
     if _rule_re("imperative").search(content.strip()):
         return ("reject", "imperative-not-memory")
+    # R21 W2b — a memory must never widen tool permissions (n=1 invariant, R20).
+    # Narrow verb-phrase match: an OBSERVATION about approvals stays admissible;
+    # only the assertion to skip/bypass them is rejected.
+    if _rule_re("capabilityWidening").search(content):
+        return ("reject", "capability-widening")
     if len(_normalize(content)) < int(_rule("limits.minContentChars", 12)):
         return ("reject", "too-short")
     if _content_hash(content) in durable_hashes:
@@ -1201,6 +1445,15 @@ def _classify(candidate: dict[str, Any], durable_hashes: set[str]) -> tuple[str,
         return ("defer", f"kind-not-promotable:{kind}")
     if not evidence:
         return ("defer", "evidence-required")
+    # R21 W2a — evidence must be machine-checkable in SHAPE (path:line, URL,
+    # command, hash, test/gate name). A candidate whose only support is
+    # self-reported satisfaction ("user rating 5/5") never reaches durable —
+    # this blocks the arXiv:2509.26354 refund reward-hacking case by evidence
+    # shape, after semantic screening measured non-separable (R20). ANY single
+    # well-shaped entry passes, so real evidence is never starved (harness B3).
+    shape_re = _rule_re("evidenceShapeAccept")
+    if not any(shape_re.search(str(item)) for item in evidence):
+        return ("defer", "evidence-shape-insufficient")
     return ("admit", "evidence-backed")
 
 
