@@ -1074,6 +1074,43 @@ def _drawer_write_note(drawer: Path, event: dict[str, Any]) -> Path | None:
     return target
 
 
+def _drawer_feed_evolution(drawer: Path, slug: str, event: dict[str, Any]) -> bool:
+    """Feed the drawer's ``memory_candidates`` so self-evolution can see it.
+
+    R17 §3 gap: ``derive_proposals_from_experience`` reads ``memory_candidates``
+    (evolution_proposals.py:150), but ``_ingest_drawer_notes`` only fills
+    ``chunks`` (recall). So a drawer could accumulate recall-visible experience
+    and STILL never produce an evolution proposal — the accumulation→evolution
+    chain was broken at the store level (measured 2026-08-12: ingesting 6
+    candidates via ingest_experience yields 1 proposal; via notes-ingest yields
+    0). ``agent_id`` matches ``_trusted_agent_projection``'s ``f"hub:{slug}"``
+    (memory_hook.py:197) so recall and evolution read the same rows. Idempotent
+    by content-hash source_memory_id; fail-open on a host without the ontology
+    package (recall still works via _ingest_drawer_notes)."""
+    try:
+        from ontology import OntologyRuntime, RuntimeConfig  # noqa: PLC0415
+    except Exception:
+        return False
+    content = str(event.get("content") or "")
+    if not content.strip():
+        return False
+    try:
+        runtime = OntologyRuntime(RuntimeConfig(db_path=drawer / "memory" / "experience.sqlite"))
+        kind = str(event.get("kind") or "hypothesis")
+        runtime.ingest_experience(
+            agent_id=f"hub:{slug}",
+            summary=content,
+            tags=[kind],
+            memory_kind=kind,
+            source_memory_id=_content_hash(content),
+            suggested_scope=str(event.get("scope") or "agent_repo"),
+            reason="drawer experience; per-agent self-evolution feed (plan §46)",
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _ingest_drawer_notes(drawer: Path) -> str:
     """R21 W1e — the hook runs experience_record itself instead of asking the
     model to. scope=internal is contractual: private is write-only (measured —
@@ -1116,10 +1153,29 @@ def _route_borrowed_agent_events(
     base = _hub_agents_dir()
     remaining: list[dict[str, Any]] = []
     routed_by_slug: dict[str, int] = {}
+    blocked_by_slug: dict[str, int] = {}
     for event in events:
         slug = str(event.get("agent_slug") or "")
         if slug not in active:
             remaining.append(event)
+            continue
+        # Drawer safety gate — R20 misevolution vectors (secret, capability
+        # widening, imperative-not-memory, host path) must NEVER reach a drawer's
+        # experience.sqlite: it is recalled into future sessions, so a secret or
+        # a "skip approval" instruction accumulated here would leak or degrade
+        # the very agent that learns it. Reuse the SAME _classify reject rules
+        # the One durable path uses (shared curator ruleset), so drawer and soul
+        # cannot drift. A rejected event is dropped from BOTH paths — a secret
+        # must not fall back into the One soul either. Non-reject verdicts
+        # (admit/defer/merge) still flow to the drawer: accumulation stays
+        # generous (owner: a sterile pipeline is failure), only the dangerous
+        # shapes are cut.
+        verdict, _reason = _classify(
+            {"content": event.get("content"), "type": event.get("kind"), "evidence": event.get("evidence") or []},
+            set(),
+        )
+        if verdict == "reject":
+            blocked_by_slug[slug] = blocked_by_slug.get(slug, 0) + 1
             continue
         drawer = base / slug
         try:
@@ -1133,11 +1189,19 @@ def _route_borrowed_agent_events(
                 "status": "candidate",
             })
             _drawer_write_note(drawer, event)
+            # Feed memory_candidates (evolution) alongside notes→chunks (recall).
+            # Without this the drawer accumulates recall but never evolves.
+            _drawer_feed_evolution(drawer, slug, event)
             routed_by_slug[slug] = routed_by_slug.get(slug, 0) + (1 if ticketed else 0)
         except OSError:
             remaining.append(event)  # drawer unwritable — keep the learning in One
     for slug in active:
         entry: dict[str, Any] = {"tickets": routed_by_slug.get(slug, 0)}
+        # Announce, never hide: a blocked misevolution vector is a fact about the
+        # session (P0 "relax only what you can announce"). Surfacing it also stops
+        # a blocked event from being miscounted as a gap ("recorded nothing").
+        if blocked_by_slug.get(slug):
+            entry["blocked"] = blocked_by_slug[slug]
         drawer = base / slug
         # Gap means "nothing recorded THIS SESSION", not "nothing routed this
         # call" — a rerun of the same stop hook dedupes every event to zero and
@@ -1187,23 +1251,20 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     root = Path(root).expanduser()
     enabled = (root / "state.json").exists()
     _record_state_transition(root, enabled)
-    if not enabled:
-        return {"skipped": "one_off"}
-    # M-1 — first-touch self-migration of legacy workspaces (idempotent).
-    try:
-        migrate_one_workspace(root)
-    except Exception:
-        pass  # migration must never block a session; curate() retries it
 
+    # Transcript parsing and per-agent drawer accumulation are One-INDEPENDENT.
+    # They used to sit AFTER the `if not enabled: return` gate, so a user who
+    # kept One off never accumulated any experience for the agents they built or
+    # borrowed — the drawers stayed empty (measured 2026-08-12: 62 drawers, ~0
+    # chunks). Plan §46 wants every agent to grow its own experience chips, not
+    # only the personal One agent, so the drawer half runs on every session end
+    # regardless of the One on/off state. The One half (soul tickets, One
+    # curation) still honors the gate below.
     workspace = str(payload.get("cwd") or payload.get("workspace") or "")
     transcripts = resolve_transcripts(payload, host)
     transcript = transcripts[0] if transcripts else ""
     started = _session_started_at(transcript)
 
-    # The runtime turns worker `## Memory Events` envelopes into tickets.
-    # Dedupe now lives inside emit_ticket under the G6 ledger lock, so duplicate
-    # hook channels and concurrent sessions converge on a single ticket.
-    harvested = 0
     events: list[dict[str, Any]] = []
     for path in transcripts:
         events.extend(harvest_memory_events(path))
@@ -1218,9 +1279,10 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     # Record receipts only for edits or sufficiently tool-heavy work, not casual chat.
     substantial = edits > 0 or tool_uses >= SUBSTANTIAL_TOOL_USES
 
-    # R21 W1c/W1d — learnings attributed to a borrowed Hub agent land in that
+    # R21 W1c/W1d — learnings attributed to a borrowed/built agent land in that
     # agent's own drawer (ticket + ingestable note + gap fallback); everything
     # else continues down the One path unchanged. Fail-open by construction.
+    # Runs BEFORE the One gate so drawers accumulate even when One is off.
     try:
         events, borrowed_receipt = _route_borrowed_agent_events(
             events,
@@ -1232,6 +1294,22 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     except Exception:
         borrowed_receipt = {}
 
+    if not enabled:
+        # One is off: the personal-agent soul path is skipped, but the drawer
+        # accumulation above already ran. Report what the drawers received so a
+        # One-off user still gets — and can observe — per-agent experience.
+        result: dict[str, Any] = {"skipped": "one_off"}
+        if borrowed_receipt:
+            result["borrowedAgents"] = borrowed_receipt
+        return result
+
+    # M-1 — first-touch self-migration of legacy workspaces (idempotent).
+    try:
+        migrate_one_workspace(root)
+    except Exception:
+        pass  # migration must never block a session; curate() retries it
+
+    harvested = 0
     project_slug = resolve_project_slug(workspace)
     for event in events:
         if emit_ticket(
