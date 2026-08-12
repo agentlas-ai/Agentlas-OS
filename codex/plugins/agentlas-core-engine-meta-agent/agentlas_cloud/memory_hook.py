@@ -192,8 +192,13 @@ def _trusted_agent_projection(project_root: Path) -> tuple[str, Path] | None:
         return None
     if not isinstance(referenced_payload, dict) or _normalize_slug(str(referenced_payload.get("slug") or "")) != slug:
         return None
-    agentlas_home = Path(os.environ.get("AGENTLAS_HOME", "~/.agentlas")).expanduser()
-    db_path = agentlas_home / "networking" / "hub-agents" / slug / "memory" / "experience.sqlite"
+    # Resolve the drawer root via the ONE canonical resolver so evolution reads
+    # the SAME experience.sqlite that one_workspace/local_registry write, under
+    # every relocation env (measured 2026-08-12 adversarial set 2). Falls back to
+    # the AGENTLAS_HOME form the resolver itself honors.
+    from .networking.bootstrap import hub_agents_dir
+
+    db_path = hub_agents_dir() / slug / "memory" / "experience.sqlite"
     return (f"hub:{slug}", db_path) if db_path.is_file() and not db_path.is_symlink() else None
 
 

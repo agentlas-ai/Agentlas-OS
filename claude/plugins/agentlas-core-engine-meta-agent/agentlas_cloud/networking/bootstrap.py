@@ -77,6 +77,28 @@ def networking_home() -> Path:
     return Path(os.path.expanduser("~")) / ".agentlas" / "networking"
 
 
+def hub_agents_dir() -> Path:
+    """Canonical per-agent 'drawer' root — the ONE resolver every surface must
+    use so a relocation env cannot make them diverge. one_workspace,
+    memory_hook, and local_registry each resolved this three different ways
+    (AGENTLAS_HUB_AGENTS_DIR vs networking_home() vs AGENTLAS_HOME), so under any
+    of those envs the borrowed/built-agent accumulation, recall, and evolution
+    read/wrote DIFFERENT drawers (measured 2026-08-12 adversarial set 2). Every
+    relocation env is honored, in an explicit precedence, so no existing setup
+    breaks: direct hub-agents override, then networking home, then agentlas home,
+    then the default."""
+    direct = os.environ.get("AGENTLAS_HUB_AGENTS_DIR")
+    if direct:
+        return Path(direct).expanduser()
+    net = os.environ.get("AGENTLAS_NETWORKING_HOME")
+    if net:
+        return Path(net).expanduser() / "hub-agents"
+    home = os.environ.get("AGENTLAS_HOME")
+    if home:
+        return Path(home).expanduser() / "networking" / "hub-agents"
+    return Path(os.path.expanduser("~")) / ".agentlas" / "networking" / "hub-agents"
+
+
 def atomic_write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".json")

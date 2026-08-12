@@ -21,9 +21,9 @@
       "sourceRef": "one_workspace.py _HOST_PATH_RE == package_contract.py HOST_PATH_RE"
     },
     "imperative": {
-      "regex": "(?:해라|하세요|하십시오|해줘|해 줘|하도록\\s*해|할\\s*것)\\s*[.!]?\\s*$|^(?:always|never|you\\s+must|ignore\\s+previous|disregard)\\b",
+      "regex": "(?:해라|하세요|하십시오|해줘|해 줘|하도록\\s*해|할\\s*것)\\s*[.!]?\\s*$|^(?:ignore\\s+(?:previous|all\\s+previous|the\\s+above)|disregard|forget\\s+(?:everything|all|previous|the\\s+above))\\b",
       "flags": "i",
-      "sourceRef": "one_workspace.py _IMPERATIVE_RE; instructions are not memories"
+      "sourceRef": "one_workspace.py _IMPERATIVE_RE; prompt-injection instructions are not memories. NOTE: 'always/never/you must' were REMOVED (2026-08-12 adversarial set 2) — they are the normal phrasing of legitimate procedural memories ('always shift(1) to prevent lookahead'), and rejecting them starved a large class of real learnings (R20: a sterile pipeline is failure). Capability-widening ('always run without approval') is still caught by the separate capabilityWidening rule."
     },
     "evidenceShapeAccept": {
       "regex": "[\\w./~-]+\\.[A-Za-z0-9]{1,6}(?::\\d+)?|:\\d+\\b|https?://|`[^`]+`|\\b[a-f0-9]{7,40}\\b|\\btest[_-][\\w-]+|\\bverify[-_][\\w-]+|\\bpytest\\b|arXiv:\\d{4}\\.\\d{4,5}|\\$ |^\\s*(?:bash|node|python3?|npm|git)\\b",
@@ -31,7 +31,7 @@
       "sourceRef": "R21 W2a 2026-08-11; accepts path:line / URL / backtick command / hash / test-gate name / receipt-like ids. A candidate whose evidence is ONLY self-reported satisfaction (ratings, feelings) never reaches durable — blocks the arXiv:2509.26354 refund reward-hacking case by evidence shape, not content semantics (R20: semantic screening measured non-separable)."
     },
     "capabilityWidening": {
-      "regex": "(?:skip|bypass|disable|without)\\s+(?:the\\s+)?(?:approval|permission|confirmation|consent|review)|(?:approval|permission|confirmation)[^.\\n]{0,40}(?:can|may|should)\\s+be\\s+(?:skipped|bypassed|disabled)|승인\\s*(?:없이|을?\\s*(?:건너뛰|생략|무시))|확인\\s*없이\\s*(?:실행|진행)|자동으로\\s*허용",
+      "regex": "(?:skip|bypass|disable|ignore|without)\\s+(?:(?:the|every|any|all|asking|for)\\s+){0,4}(?:approval|permission|confirmation|consent|review|gate|guardrail)|(?:approval|permission|confirmation)[^.\\n]{0,40}(?:can|may|should)\\s+be\\s+(?:skipped|bypassed|disabled)|승인\\s*(?:없이|을?\\s*(?:건너뛰|생략|무시))|확인\\s*없이\\s*(?:실행|진행)|자동으로\\s*허용",
       "flags": "i",
       "sourceRef": "R21 W2b 2026-08-11; n=1 invariant from R20 — a memory must never widen tool permissions. Narrow verb-phrase match so approval OBSERVATIONS remain admissible (harness B2 guards against over-blocking)."
     }

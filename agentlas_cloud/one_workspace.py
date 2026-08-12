@@ -1021,10 +1021,12 @@ _ACTIVE_AGENT_FALLBACK_WINDOW_SEC = 6 * 3600
 
 
 def _hub_agents_dir() -> Path:
-    override = os.environ.get(HUB_AGENTS_DIR_ENV)
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".agentlas" / "networking" / "hub-agents"
+    # Delegate to the ONE canonical resolver so this surface, memory_hook, and
+    # local_registry can never resolve the drawer root differently under a
+    # relocation env (measured 2026-08-12 adversarial set 2).
+    from .networking.bootstrap import hub_agents_dir  # noqa: PLC0415
+
+    return hub_agents_dir()
 
 
 def _iso_to_epoch(value: str) -> float:
@@ -1291,8 +1293,15 @@ def _route_borrowed_agent_events(
         # (already recorded in an earlier session) or blocked, that is not a gap
         # — attributed>0 covers both, so a re-derived learning no longer stamps
         # a false 'recorded no experience' ticket every session.
+        # Only judge a gap when the session window is CERTAIN (started_epoch>0).
+        # With no transcript birthtime the window falls back to a 6-hour span, so
+        # every agent borrowed in the last 6h would look "active this session" and
+        # get a false gap — routing still happens on that fallback, but the
+        # negative "recorded nothing" verdict needs a real window
+        # (measured 2026-08-12 adversarial set 2).
         if (
-            attributed_by_slug.get(slug, 0) == 0
+            started_epoch > 0
+            and attributed_by_slug.get(slug, 0) == 0
             and substantial
             and not already_recorded
         ):

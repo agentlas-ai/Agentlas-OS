@@ -90,11 +90,12 @@ def _ledger_seq() -> int:
 
 
 def _hub_agents_dir() -> Path:
-    """The per-agent drawer root, resolved the SAME way one_workspace does
-    (env override then networking home) so local ledgers land where
-    _session_active_agents scans (one_workspace.py:986)."""
-    override = os.environ.get("AGENTLAS_HUB_AGENTS_DIR")
-    return Path(override).expanduser() if override else networking_home() / "hub-agents"
+    """The per-agent drawer root — delegate to the ONE canonical resolver so
+    local ledgers land exactly where one_workspace._session_active_agents scans,
+    under every relocation env (measured 2026-08-12 adversarial set 2)."""
+    from ..networking.bootstrap import hub_agents_dir
+
+    return hub_agents_dir()
 
 
 def _drawer_slug_for(package_root: Path) -> str:
