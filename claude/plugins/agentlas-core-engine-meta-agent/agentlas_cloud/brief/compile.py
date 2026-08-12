@@ -282,12 +282,26 @@ def compile_offer(root: Path) -> dict[str, Any]:
         for item in requirements:
             if not isinstance(item, Mapping):
                 continue
-            capability = item.get("capability")
-            if not isinstance(capability, str) or not capability.strip():
+            # The live requirement schema (agentlas.mcp-requirement.v1) names
+            # its capability `requirementId`/`catalogId`; only older policies
+            # used `capability`. Reading `capability` alone made every current
+            # package compile to "declares no external tool requirement" while
+            # its own mcp-policy said required=true — the brief then routed the
+            # package to hosts that cannot run it. Measured 2026-08-12 on
+            # .builds/market-sentiment-digest (public-web-fetch, required).
+            capability = next(
+                (
+                    str(item[key]).strip()
+                    for key in ("capability", "requirementId", "catalogId")
+                    if isinstance(item.get(key), str) and str(item[key]).strip()
+                ),
+                "",
+            )
+            if not capability:
                 continue
             row: dict[str, Any] = {
-                "capability": capability.strip(),
-                "withoutIt": str(item.get("fallback") or "").strip()
+                "capability": capability,
+                "withoutIt": str(item.get("fallback") or item.get("reason") or "").strip()
                              or "not stated by the package",
             }
             preferred = item.get("preferred")

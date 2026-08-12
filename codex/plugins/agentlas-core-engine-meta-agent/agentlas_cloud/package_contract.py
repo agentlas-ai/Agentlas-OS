@@ -754,6 +754,51 @@ def _generated_runtime_blockers(workspace: Path) -> list[str]:
     return blockers
 
 
+def _restamp_package_hashes(workspace: Path) -> None:
+    """Make verify() the local build's "last writer is last hasher" chokepoint.
+
+    upload.py already enforces this ordering for published packages (its wizard
+    is the last writer AND the last hasher), but a locally built package never
+    runs that path, so `agentlas.json.packageHash` and the routing card's
+    `source.package_hash` stayed frozen at whatever byte snapshot existed when
+    each was first stamped. verify() itself then mutated the tree via
+    refresh_generated_projections(). Measured 2026-08-12 on both `.builds`
+    packages: three different stamped hashes for one tree. Restamping here —
+    after the projections, before the artifact checks — means a green verify
+    always leaves every stamped hash describing the final bytes.
+
+    Safe against self-reference: `agentlas.json` is in
+    PACKAGE_HASH_EXCLUDED_PATHS and the routing card's own refresh excludes the
+    card file from its hash.
+    """
+    manifest_path = workspace / "agentlas.json"
+    manifest = _read_json(manifest_path)
+    if manifest is None or _unfilled(manifest):
+        return
+    # Card first, manifest second — the card refresh WRITES the routing card,
+    # so stamping the manifest before it would hash a tree that is about to
+    # change (the exact ordering bug upload.py documents for its wizard).
+    if (workspace / ".agentlas" / "routing-card.json").is_file():
+        from .upload import refresh_routing_card_metadata
+
+        # Settle the card's semantic content (workforce block) first, then
+        # re-project A2A from the settled card, then hash. Without the middle
+        # step the A2A written earlier in verify() described the pre-settle
+        # card, so the SECOND verify changed A2A and every hash with it —
+        # verify was not a fixed point (measured 2026-08-12).
+        refresh_routing_card_metadata(workspace)
+        write_a2a_projection(workspace)
+        refresh_routing_card_metadata(workspace)
+    from .runtime import collect_package_files, package_hash, package_hash_includes
+
+    manifest["packageHash"] = package_hash(
+        [item for item in collect_package_files(workspace) if package_hash_includes(item.path)]
+    )
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
 def verify(folder: str | Path, mode: str = "single", root: str | Path | None = None) -> dict[str, Any]:
     """Machine-readable completeness gate. ``blockers`` is the list a model
     consumes for targeted self-repair; ``ok`` means routing-ready package."""
@@ -778,6 +823,7 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
     # reading artifacts so this same verify() call sees its own output — each
     # generator is a no-op (writes nothing) until its sources are filled.
     refresh_generated_projections(workspace)
+    _restamp_package_hashes(workspace)
     reports = [
         _verify_artifact(workspace, artifact, base)
         for artifact in artifacts_for_mode(load_contract(base), mode)

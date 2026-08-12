@@ -90,6 +90,12 @@ _PRESERVE_CONTENT_KEYS = (
     "required_inputs", "optional_inputs", "required_plugins",
     "benchmark_fixtures", "known_failure_cases", "risk_profile", "cost_hints",
     "locale_coverage", "memory_behavior", "approval_requirements", "entrypoints",
+    # Semantic-matching blocks. These carried the card's whole workforce résumé
+    # yet were absent here, so a documented `cards migrate --overwrite`
+    # (hep-build step 10) silently degraded every freshly built rich card to an
+    # agent-card stub. Measured 2026-08-12 on .builds/n8n-workflow-design-team
+    # and .builds/market-sentiment-digest: workforce/consumes/produces all lost.
+    "workforce", "consumes", "produces", "input_notes",
 )
 
 
@@ -300,6 +306,11 @@ def migrate_package(
             # human-authored content already on the card, so a re-migrate never
             # downgrades a rich routing-card to agent-card-derived stubs.
             card = _merge_preserving_existing(card, existing)
+            # The stub reason would now be a lie ("auto-migrated from
+            # agent-card.json") about a card whose content was preserved.
+            card["routing_status_reason"] = (
+                "re-migrated; authored routing-card content preserved"
+            )
 
     from .bootstrap import atomic_write_json
 

@@ -785,11 +785,14 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
         if is_unfilled(profile.get("titleEn")):
             profile["titleEn"] = _first_real(card.get("name"), manifest.get("name"), base.name)
         if is_unfilled(profile.get("titleKo")):
-            profile["titleKo"] = str(profile.get("titleEn"))
+            # The card's own Korean name is already on disk; falling straight
+            # back to English shipped English titleKo on every package that had
+            # a perfectly good name_ko (measured 2026-08-12 on both .builds).
+            profile["titleKo"] = _first_real(card.get("name_ko"), profile.get("titleEn"))
         if is_unfilled(profile.get("descriptionEn")):
             profile["descriptionEn"] = _first_real(card.get("summary"), summary, _agent_summary(base), profile["titleEn"])
         if is_unfilled(profile.get("descriptionKo")):
-            profile["descriptionKo"] = str(profile["descriptionEn"])
+            profile["descriptionKo"] = _first_real(card.get("summary_ko"), profile["descriptionEn"])
         guide = profile.get("guide")
         if not isinstance(guide, dict) or not guide:
             # The guide answers five questions a buyer asks. Each answer is taken
@@ -829,10 +832,21 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
                     derived["best-for"] = "Requests like: " + " / ".join(examples[:3])
             if "prerequisites" not in derived:
                 # An explicit "nothing required" is a concrete answer and a useful
-                # one. Leaving the field empty would say the same thing far worse.
-                derived["prerequisites"] = (
-                    "The package declares no required inputs; describe the work and it starts from there."
-                )
+                # one — but only when it is TRUE. This branch used to write it
+                # unconditionally, telling marketplace users "no required inputs"
+                # for packages whose routing card requires them (measured
+                # 2026-08-12: market-sentiment-digest requires `ticker`).
+                required = [
+                    str(item.get("name", "")).strip()
+                    for item in (card.get("required_inputs") or [])
+                    if isinstance(item, dict) and str(item.get("name", "")).strip()
+                ]
+                if required:
+                    derived["prerequisites"] = "Requires: " + ", ".join(required)
+                else:
+                    derived["prerequisites"] = (
+                        "The package declares no required inputs; describe the work and it starts from there."
+                    )
             if "expected-outputs" not in derived and card.get("capabilities"):
                 derived["expected-outputs"] = "Produces: " + ", ".join(
                     str(item).replace("_", " ") for item in list(card["capabilities"])[:4]

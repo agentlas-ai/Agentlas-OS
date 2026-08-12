@@ -59,8 +59,18 @@ def ensure_workforce_block(card: dict[str, Any]) -> dict[str, Any]:
     def semantic(values: Any, prefix: str, cap: int) -> list[str]:
         out: list[str] = []
         for value in values if isinstance(values, list) else []:
+            # Leveled entries ({"concept": "skill:x", "level": "declared"}) are
+            # the CURRENT card schema. str(dict) slugified the whole repr into
+            # ids like "skill:concept-skill-evidence-synthesis-level-declared"
+            # — measured live in workforce search results 2026-08-12.
+            if isinstance(value, dict):
+                value = value.get("concept") or value.get("id") or value.get("name") or ""
             raw = str(value).strip().lower()
-            body = raw.split(":", 1)[1] if raw.startswith(f"{prefix}:") else raw
+            body = raw
+            # Strip the prefix repeatedly: already-prefixed inputs otherwise
+            # compound ("skill:skill:write-tool-contracts", also measured live).
+            while body.startswith(f"{prefix}:"):
+                body = body.split(":", 1)[1]
             slug = re.sub(r"[^a-z0-9-]+", "-", body.replace("_", "-")).strip("-")
             concept = f"{prefix}:{slug}" if slug else ""
             if concept and concept not in out:
