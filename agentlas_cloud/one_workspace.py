@@ -100,16 +100,10 @@ _RULESET_DEFAULTS: dict[str, Any] = {
             "regex": r"[\w./~-]+\.[A-Za-z0-9]{1,6}(?::\d+)?|:\d+\b|https?://|`[^`]+`|\b[a-f0-9]{7,40}\b|\btest[_-][\w-]+|\bverify[-_][\w-]+|\bpytest\b|arXiv:\d{4}\.\d{4,5}|\$ |^\s*(?:bash|node|python3?|npm|git)\b",
             "flags": "im",
         },
-        # R21 W2b — mirror of the canonical ruleset entry; keep byte-identical.
-        "capabilityWidening": {
-            "regex": r"(?:skip|bypass|disable|without)\s+(?:(?:the|every|any|all|asking|for|mandatory|required|manual|human)\s+){0,4}(?:approval|permission|confirmation|consent|review|gate|guardrail)|auto[- ]?approve|자동\s*승인|(?:approval|permission|confirmation)[^.\n]{0,40}(?:can|may|should)\s+be\s+(?:skipped|bypassed|disabled)|승인\s*(?:없이|을?\s*(?:건너뛰|생략|무시))|확인\s*없이\s*(?:실행|진행)|자동으로\s*허용",
-            "flags": "i",
-        },
-        # 2026-08-12 adversarial set 3 — mirror of the canonical ruleset entry.
-        "capabilityWideningException": {
-            "regex": r"(?:never|not|n't|do not|don't|must not|should not|shouldn't|avoid|refuse to|무시하지\s*마|건너뛰지\s*마|생략하지\s*마|하지\s*마|하면\s*안)",
-            "flags": "i",
-        },
+        # capabilityWidening / capabilityWideningException were REMOVED 2026-08-12
+        # (owner decision): a content wordlist cannot separate a widening
+        # assertion from a safety lesson across languages, and misevolution
+        # defence lives in recall framing + the PreToolUse broker instead.
     },
     "kinds": {
         "promotable": ["fact", "decision", "procedure", "preference", "risk", "deprecation"],
@@ -174,7 +168,19 @@ def _rule_re(name: str) -> "re.Pattern[str]":
     spec = _rule(f"patterns.{name}", {}) or {}
     fallback = _RULESET_DEFAULTS["patterns"][name]
     regex = spec.get("regex") or fallback["regex"]
-    flags = re.IGNORECASE if "i" in str(spec.get("flags", fallback["flags"])) else 0
+    # Honour every declared flag, not just 'i': the Desktop executor compiles
+    # `new RegExp(regex, flags)` and applies them all, so dropping 'm'/'s' here
+    # made the byte-identical ruleset behave differently across surfaces
+    # (evidenceShapeAccept declares 'im'; its `^(?:bash|node|…)` line-anchor
+    # needs MULTILINE — 2026-08-12 set 4).
+    flag_str = str(spec.get("flags", fallback["flags"]))
+    flags = 0
+    if "i" in flag_str:
+        flags |= re.IGNORECASE
+    if "m" in flag_str:
+        flags |= re.MULTILINE
+    if "s" in flag_str:
+        flags |= re.DOTALL
     return re.compile(regex, flags)
 
 
@@ -574,10 +580,20 @@ class _LedgerLock:
         for _ in range(attempts):
             try:
                 self.fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                # Record the holder pid so a stale-lock takeover can prove the
+                # holder is really gone before stealing. A live-but-slow holder
+                # (a >stale_ms critical section — a big under-lock read, a paused
+                # process) must NOT have its lock unlinked, or two writers both
+                # run check-then-append and double-write, defeating the G6 dedupe
+                # this lock exists to guarantee (2026-08-12 set 4).
+                try:
+                    os.write(self.fd, str(os.getpid()).encode("ascii"))
+                except OSError:
+                    pass
                 return True
             except FileExistsError:
                 try:
-                    if (time.time() - self.path.stat().st_mtime) * 1000 > stale_ms:
+                    if (time.time() - self.path.stat().st_mtime) * 1000 > stale_ms and self._holder_is_dead():
                         self.path.unlink(missing_ok=True)
                         continue
                 except OSError:
@@ -586,6 +602,25 @@ class _LedgerLock:
             except OSError:
                 return False
         return False
+
+    def _holder_is_dead(self) -> bool:
+        """True only when the recorded holder pid is provably gone. An unknown or
+        living holder is treated as alive so we keep waiting rather than steal a
+        lock that is still in use (a legacy lock with no pid keeps the old
+        stale-mtime takeover)."""
+        try:
+            holder = self.path.read_text(encoding="ascii").strip()
+        except OSError:
+            return True
+        if not holder.isdigit():
+            return True
+        try:
+            os.kill(int(holder), 0)
+            return False
+        except ProcessLookupError:
+            return True
+        except OSError:
+            return False
 
     def __exit__(self, *exc: Any) -> None:
         if self.fd is not None:
@@ -1119,10 +1154,17 @@ def _drawer_write_note(drawer: Path, event: dict[str, Any]) -> Path | None:
 
     notes.mkdir(parents=True, exist_ok=True)
     evidence_lines = "".join(f"- {item}\n" for item in event.get("evidence") or [])
+    # Built outside the f-string on purpose: a backslash inside an f-string
+    # EXPRESSION is a SyntaxError before Python 3.12, and this module declares
+    # 3.9 support (every launcher accepts >= 3.9). macOS ships 3.9.6 as
+    # /usr/bin/python3, so the inline form made the whole module unimportable on
+    # a stock Mac — `agentlas-one on` reported "verification failed" with no
+    # visible reason.
+    evidence_block = evidence_lines or "- (none)\n"
     target.write_text(
         f"# {date.today().isoformat()} {event.get('kind', 'learning')} ({key})\n\n"
         f"{event.get('content', '')}\n\n"
-        f"## Evidence\n\n{evidence_lines or '- (none)\n'}",
+        f"## Evidence\n\n{evidence_block}",
         encoding="utf-8",
     )
     return target
@@ -1631,21 +1673,18 @@ def _classify(
             return ("reject", "host-absolute-path")
     if _rule_re("imperative").search(content.strip()):
         return ("reject", "imperative-not-memory")
-    # R21 W2b — a memory must never widen tool permissions (n=1 invariant, R20).
-    # A single content regex cannot separate "skip approval" (widen) from "never
-    # skip approval" (safety lesson) — measured non-separable (R20). So structure
-    # it: find the widening phrase, then admit it when a negation/prohibition
-    # GOVERNS that phrase — checked in a short look-back window, not the whole
-    # sentence, so a trailing "...and never wait for approval" after an
-    # "auto-approve" assertion cannot excuse the assertion (2026-08-12 set 3
-    # F1/F2/F5). Over-block starves real safety lessons and recall-framing + the
-    # PreToolUse broker are the actual enforcement layers, so this stays narrow.
-    widen = _rule_re("capabilityWidening").search(content)
-    if widen:
-        window = int(_rule("limits.capabilityWideningNegationWindowChars", 40))
-        lookback = content[max(0, widen.start() - window):widen.start()]
-        if not _rule_re("capabilityWideningException").search(lookback):
-            return ("reject", "capability-widening")
+    # Capability-widening content screening was REMOVED 2026-08-12 (owner
+    # decision). A content regex/wordlist cannot separate "skip approval" (widen)
+    # from "never skip approval" (safety lesson) — measured non-separable (R20) —
+    # and chasing it across languages means chasing every language's word order
+    # and grammar forever: three rounds of tuning kept over-blocking real safety
+    # lessons (Korean verb-final lessons were rejected wholesale) while still
+    # leaking assertions past the look-back window. A memory STRING cannot widen a
+    # tool permission on its own — the PreToolUse broker is the only real
+    # chokepoint (deny beats bypassPermissions), and recall framing ("reference,
+    # not rules") is the only misevolution mitigation with measured effect
+    # (injection.referenceFraming). Screening is delegated entirely to those two
+    # layers; no capabilityWidening rule remains.
     if len(_normalize(content)) < int(_rule("limits.minContentChars", 12)):
         return ("reject", "too-short")
     if _content_hash(content) in durable_hashes:

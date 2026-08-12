@@ -130,6 +130,129 @@ try() {
   "$@"
 }
 
+# Platform helpers (agentlas_is_windows / agentlas_native_path /
+# agentlas_path_sep / agentlas_mcp_launch) are canonical in
+# bin/agentlas-python-cache-boundary. The installer SOURCES them from the
+# downloaded release instead of re-implementing them: a second copy of "how do
+# we spell a path on Windows" is exactly how every MCP registration below ended
+# up hardcoding an extensionless bash runner that native Windows cannot spawn.
+agentlas_load_platform_helpers() {
+  if declare -F agentlas_is_windows >/dev/null 2>&1; then
+    return 0
+  fi
+  ensure_downloaded_source || return 1
+  # shellcheck source=/dev/null
+  source "$source_dir/bin/agentlas-python-cache-boundary" || return 1
+  declare -F agentlas_is_windows >/dev/null 2>&1
+}
+
+# PYTHONPATH for a runtime root, in the form the interpreter on THIS platform can
+# read: native path, native separator. The colon-joined POSIX form this replaces
+# produces one unusable entry on Windows, and the symptom is
+# `ModuleNotFoundError: No module named 'agentlas_cloud'`.
+installer_pythonpath() {
+  local root="$1" native sep
+  if agentlas_load_platform_helpers >/dev/null 2>&1; then
+    native="$(agentlas_native_path "$root")"
+    sep="$(agentlas_path_sep)"
+  else
+    native="$root"
+    sep=":"
+  fi
+  if [[ -n "${PYTHONPATH:-}" ]]; then
+    printf '%s%s%s\n' "$native" "$sep" "$PYTHONPATH"
+  else
+    printf '%s\n' "$native"
+  fi
+}
+
+# Absolute path of the installed local Core MCP runner, without extension.
+runtime_mcp_runner() {
+  printf '%s\n' "$HOME/.agentlas/runtime/current/bin/hephaestus"
+}
+
+# One place decides how a host must spell "launch the local Core MCP server":
+# command on the first line, then one argument per line. Eight host
+# registrations render from this, so the platform rule is fixed once instead of
+# eight times.
+runtime_mcp_launch_fields() {
+  local runner
+  runner="$(runtime_mcp_runner)"
+  if agentlas_load_platform_helpers; then
+    agentlas_mcp_launch "$runner"
+  else
+    warn "Platform helpers unavailable; assuming a POSIX MCP launch vector."
+    printf '%s\n' "$runner" "mcp" "serve"
+  fi
+}
+
+# Render the launch vector for a config format. Everything goes through
+# json.dumps because a Windows path carries backslashes, and an unescaped
+# backslash silently corrupts JSON, TOML and YAML alike.
+runtime_mcp_launch_render() {
+  local shape="$1" py=""
+  py="$(resolve_python_cmd || true)"
+  [[ -n "$py" ]] || return 1
+  # shellcheck disable=SC2086
+  runtime_mcp_launch_fields | AGENTLAS_RENDER_SHAPE="$shape" $py -c 'import json, os, sys
+fields = [line.rstrip("\n") for line in sys.stdin if line.strip()]
+if not fields:
+    raise SystemExit(1)
+command, args = fields[0], fields[1:]
+shape = os.environ["AGENTLAS_RENDER_SHAPE"]
+array = "[" + ", ".join(json.dumps(a) for a in args) + "]"
+if shape == "json":
+    print(json.dumps({"command": command, "args": args}))
+elif shape == "toml":
+    print("command = " + json.dumps(command))
+    print("args = " + array)
+elif shape == "yaml":
+    print("cmd: " + json.dumps(command))
+    print("args: " + array)
+else:
+    raise SystemExit(f"unknown render shape: {shape}")'
+}
+
+# Commands that live in the repo for the repo's own adapter surface and are
+# never installed into a user's global command directory.
+project_only_commands=(
+  "meta-agent.md"
+)
+
+# The managed command set is DERIVED from the release, never typed out again.
+# Six hardcoded copies of this list is how `agentlas-one` reached no machine and
+# `hep-graph` reached no installer, while every other command shipped fine.
+managed_command_files() {
+  ensure_downloaded_source || return 1
+  local dir="$source_dir/.claude/commands"
+  if [[ ! -d "$dir" ]]; then
+    warn "release is missing .claude/commands; cannot derive the managed command set."
+    return 1
+  fi
+  local path name skip excluded
+  for path in "$dir"/*.md; do
+    [[ -e "$path" ]] || continue
+    name="$(basename "$path")"
+    skip=0
+    for excluded in "${project_only_commands[@]}"; do
+      [[ "$name" == "$excluded" ]] && skip=1
+    done
+    [[ "$skip" == "1" ]] && continue
+    printf '%s\n' "$name"
+  done
+}
+
+# The managed commands a given runtime actually has an adapter for. Intersecting
+# with what the release ships means a runtime is never asked to install a file
+# that does not exist, and a newly added command reaches every runtime that
+# carries it without editing this script again.
+runtime_command_files() {
+  local adapter_dir="$1" name
+  managed_command_files | while IFS= read -r name; do
+    [[ -f "$adapter_dir/$name" ]] && printf '%s\n' "$name"
+  done
+}
+
 preflight_git() {
   if have git; then
     return 0
@@ -218,8 +341,14 @@ install_runtime_home() {
   log "== Hephaestus runtime home =="
   rm -rf "$home_dir"
   mkdir -p "$home_dir"
+  # system-agents/ carries the canonical curator-ruleset.json. one_workspace.py
+  # resolves it as here.parent/system-agents/curator-ruleset.json, so without it
+  # the stop-hook curator falls back to the embedded ruleset on every install and
+  # stamps sha="embedded" into every decision receipt (2026-08-12 set 4). The
+  # release archive ships only that one file under system-agents/.
   cp -R "$source_dir/bin" "$source_dir/agentlas_cloud" "$source_dir/career_graph" \
     "$source_dir/ontology" "$source_dir/schemas" "$source_dir/templates" \
+    "$source_dir/system-agents" \
     "$home_dir/" || return 1
   # Hook packs must travel with the runner: `agentlas-one on` installs them, and
   # a user who never re-runs the installer would otherwise never receive them.
@@ -232,7 +361,7 @@ install_runtime_home() {
   cp "$source_dir/package-contract.json" "$home_dir/package-contract.json" || return 1
   mkdir -p "$(dirname "$model_dest")"
   cp -R "$model_source" "$model_dest" || return 1
-  if ! PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$home_dir${PYTHONPATH:+:$PYTHONPATH}" \
+  if ! PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$home_dir")" \
     $py -m ontology.model_assets verify "$model_dest" >/dev/null; then
     warn "Bundled Model2Vec asset failed local checksum/provenance verification; refusing the runtime install."
     return 1
@@ -252,9 +381,11 @@ install_runtime_home() {
 	    "$home_dir/bin/hep-storm" \
 	    "$home_dir/bin/hep-global" \
 	    "$home_dir/bin/hep-update" \
-	    "$home_dir/bin/agentlas-memory-hook" 2>/dev/null || true
+	    "$home_dir/bin/agentlas-memory-hook" \
+	    "$home_dir/bin/agentlas-one" 2>/dev/null || true
   printf '%s\n' "$version" > "$home_dir/RELEASE"
   write_python3_shim "$home_dir/bin" || true
+  write_windows_command_shims "$home_dir/bin" || true
   if [[ ! -e "$home_dir/bin/Hephaestus" ]]; then
     ln -sfn hephaestus "$home_dir/bin/Hephaestus" 2>/dev/null || true
   fi
@@ -288,10 +419,16 @@ install_runtime_home() {
       rm -f "$legacy_agentlas_shim"
       log "Removed retired Core-owned agentlas alias; Agentlas Terminal keeps command ownership."
     fi
+	  # agentlas-one belongs here: it is the documented switch for the persistent
+	  # personal agent, and leaving it out of this list is why `agentlas-one on`
+	  # was not a command on any machine — the runner shipped, but nothing put it
+	  # on PATH.
 	  local -a shell_commands=(
-	    hephaestus ontology hep-build hep-network hep-local hep-cloud hep-hub hep-search hep-browser hep-call hep-upload hep-storm hep-global hep-update
+	    hephaestus ontology hep-build hep-network hep-local hep-cloud hep-hub hep-search hep-browser hep-call hep-upload hep-storm hep-global hep-update agentlas-one
 	  )
     local command
+    local windows_shims=0
+    agentlas_load_platform_helpers >/dev/null 2>&1 || true
     for command in "${shell_commands[@]}"; do
       rm -f "$user_bin/$command" 2>/dev/null || true
       cat > "$user_bin/$command" <<EOF
@@ -299,12 +436,27 @@ install_runtime_home() {
 exec "$current_link/bin/$command" "\$@"
 EOF
       chmod +x "$user_bin/$command" 2>/dev/null || true
+      # A bash shim is invisible to cmd.exe and PowerShell, so on Windows the
+      # same command also needs a .cmd sibling. Without it none of these
+      # commands exist outside Git Bash.
+      if declare -F agentlas_is_windows >/dev/null 2>&1 && agentlas_is_windows; then
+        rm -f "$user_bin/$command.cmd" 2>/dev/null || true
+        {
+          printf '@echo off\r\n'
+          printf 'setlocal\r\n'
+          printf '"%s" %%*\r\n' "$(agentlas_native_path "$current_link/bin/$command.cmd")"
+          printf 'if errorlevel 1 exit /b %%ERRORLEVEL%%\r\n'
+        } > "$user_bin/$command.cmd" 2>/dev/null && windows_shims=$((windows_shims + 1))
+      fi
     done
     if [[ -x "$user_bin/hephaestus" ]]; then
       case ":$PATH:" in
-	        *":$user_bin:"*) log "Installed shell commands: hephaestus, ontology, hep-build, hep-network, hep-local, hep-cloud, hep-hub, hep-search, hep-browser, hep-call, hep-upload, hep-storm, hep-global" ;;
+	        *":$user_bin:"*) log "Installed shell commands: ${shell_commands[*]}" ;;
         *) log "Installed shell commands in $user_bin (add ~/.local/bin to PATH to use them)" ;;
       esac
+    fi
+    if [[ "$windows_shims" -gt 0 ]]; then
+      log "Installed $windows_shims Windows .cmd shims in $user_bin (add it to PATH for cmd.exe and PowerShell)."
     fi
   fi
 }
@@ -393,6 +545,44 @@ EOF
   chmod +x "$bin_dir/python3"
 }
 
+# Every shell command in the runtime is a bash script, and cmd.exe cannot run a
+# bash script or an extensionless file at all. On Windows each one therefore
+# needs a .cmd sibling that hands the script to the bash that is running this
+# installer — resolved to an absolute native path, because bash.exe is usually
+# NOT on the PATH that cmd.exe and PowerShell see.
+#
+# hephaestus.cmd is deliberately excluded: it is the native Python entrypoint
+# written by write_python3_shim and must not be routed through bash.
+write_windows_command_shims() {
+  local bin_dir="$1"
+  agentlas_load_platform_helpers >/dev/null 2>&1 || return 0
+  agentlas_is_windows || return 0
+
+  local bash_path bash_native
+  bash_path="$(command -v bash 2>/dev/null || true)"
+  [[ -n "$bash_path" ]] || { warn "bash not found; skipped Windows command shims."; return 0; }
+  bash_native="$(agentlas_native_path "$bash_path")" || return 0
+
+  local name script written=0
+  for script in "$bin_dir"/*; do
+    [[ -f "$script" ]] || continue
+    name="$(basename "$script")"
+    case "$name" in
+      *.cmd|python3|hephaestus|Hephaestus) continue ;;
+    esac
+    # Only wrap actual shell scripts; a data file must not become a command.
+    head -1 "$script" 2>/dev/null | grep -q '^#!.*sh' || continue
+    {
+      printf '@echo off\r\n'
+      printf 'setlocal\r\n'
+      printf '"%s" "%s" %%*\r\n' "$bash_native" "$(agentlas_native_path "$script")"
+      printf 'exit /b %%ERRORLEVEL%%\r\n'
+    } > "$bin_dir/$name.cmd" 2>/dev/null && written=$((written + 1))
+  done
+  [[ "$written" -gt 0 ]] && log "Wrote $written Windows .cmd wrappers in $bin_dir"
+  return 0
+}
+
 # AgentSkills-spec universal skill: ~/.agents/skills is read natively by
 # Codex (USER scope), OpenCode, OpenClaw, Cursor, and Crush.
 install_agents_skills() {
@@ -430,10 +620,21 @@ install_claude() {
     try claude plugin marketplace update "$marketplace_name" >/dev/null 2>&1 || true
   fi
 
+  # `marketplace add` fails when the marketplace is already registered, and a
+  # hard `return 1` here used to abandon the whole Claude step: no plugin
+  # install, no command refresh, and the previous release's plugin cache left in
+  # place as the live one. An already-registered marketplace is a success state
+  # for this installer, so absorb it with `update` and keep going.
+  local marketplace_source=""
   if [[ -n "$requested_source_dir" ]]; then
-    run claude plugin marketplace add "$source_dir/claude" || return 1
+    marketplace_source="$source_dir/claude"
+    run claude plugin marketplace add "$marketplace_source" \
+      || try claude plugin marketplace update "$marketplace_name" >/dev/null 2>&1 \
+      || warn "Marketplace $marketplace_name could not be added or updated; continuing with the registered copy."
   else
-    run claude plugin marketplace add "$github_url" --sparse .claude-plugin claude/plugins || return 1
+    run claude plugin marketplace add "$github_url" --sparse .claude-plugin claude/plugins \
+      || try claude plugin marketplace update "$marketplace_name" >/dev/null 2>&1 \
+      || warn "Marketplace $marketplace_name could not be added or updated; continuing with the registered copy."
   fi
 
   run claude plugin install "$plugin_name@$marketplace_name" || return 1
@@ -442,8 +643,68 @@ install_claude() {
     warn "Claude global command refresh failed; bare /hep-* autocomplete will not persist into the next session."
     return 1
   }
+  register_claude_mcp || warn "Windows user-scope MCP registration failed; run the command printed above manually."
+  prune_claude_plugin_cache || warn "Old plugin cache versions were left in place."
   log "Bundled MCP: local hephaestus-network Core (Cloud/Hub upstream stays behind Core)."
   ok=$((ok + 1))
+}
+
+# The plugin's own .mcp.json points at the extensionless bash runner, and a
+# plugin manifest has no platform-conditional key to fix that (Claude Code
+# plugins reference: command/args/env plus ${CLAUDE_PLUGIN_ROOT}, nothing else).
+# Native Windows spawns stdio servers WITHOUT a shell, so that entry can never
+# start there and the whole local Workforce surface is missing — which is how a
+# Windows session ends up talking to the remote Hub with no menu projection.
+#
+# Register a user-scope server on Windows only. Claude Code namespaces plugin
+# MCP tools separately from user-scope ones, so this does not collide with the
+# POSIX plugin channel; on macOS/Linux the plugin entry is already correct and
+# this function is a no-op.
+register_claude_mcp() {
+  agentlas_load_platform_helpers || return 1
+  agentlas_is_windows || return 0
+
+  local -a fields=()
+  local field
+  while IFS= read -r field; do
+    [[ -n "$field" ]] && fields+=("$field")
+  done < <(runtime_mcp_launch_fields)
+  [[ "${#fields[@]}" -ge 2 ]] || return 1
+
+  try claude mcp remove hephaestus-network --scope user >/dev/null 2>&1 || true
+  run claude mcp add --scope user hephaestus-network -- "${fields[@]}" || return 1
+  log "Registered user-scope hephaestus-network MCP for native Windows."
+}
+
+# Plugin cache versions accumulate without bound (measured: seven releases in
+# one cache). Keep the active version and one rollback target; anything older is
+# an orphan that only confuses `claude plugin` output.
+prune_claude_plugin_cache() {
+  local cache="$HOME/.claude/plugins/cache/$marketplace_name/$plugin_name"
+  [[ -d "$cache" ]] || return 0
+  local keep="${version#v}"
+  local -a stale=()
+  local dir name
+  while IFS= read -r dir; do
+    name="$(basename "$dir")"
+    [[ "$name" == "$keep" ]] && continue
+    stale+=("$name")
+  done < <(find "$cache" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+  # sort -V keeps the newest non-active version as the rollback target.
+  local -a ordered=()
+  while IFS= read -r name; do
+    [[ -n "$name" ]] && ordered+=("$name")
+  done < <(printf '%s\n' "${stale[@]+"${stale[@]}"}" | sort -t. -k1,1n -k2,2n -k3,3n)
+  local total="${#ordered[@]}"
+  [[ "$total" -gt 1 ]] || return 0
+  local index=0
+  local removed=0
+  while [[ "$index" -lt $((total - 1)) ]]; do
+    rm -rf "$cache/${ordered[$index]}" 2>/dev/null && removed=$((removed + 1))
+    index=$((index + 1))
+  done
+  [[ "$removed" -gt 0 ]] && log "Pruned $removed orphaned plugin cache version(s); kept $keep and ${ordered[$((total - 1))]}."
+  return 0
 }
 
 # Keep the user-global ~/.claude/commands copies in sync with this release.
@@ -452,18 +713,23 @@ install_claude() {
 write_claude_commands() {
   ensure_downloaded_source || return 1
   mkdir -p "$HOME/.claude/commands"
-  local name src dest
-  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-connect.md hep-storm.md agentlas.md; do
+  local name src dest installed=""
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
     src="$source_dir/.claude/commands/$name"
     dest="$HOME/.claude/commands/$name"
     rm -f "$dest"
     cp "$src" "$dest" || return 1
-  done
+    installed+=" /${name%.md}"
+  done < <(managed_command_files)
+  [[ -n "$installed" ]] || { warn "No managed Claude commands were derived from the release."; return 1; }
   rm -f "$HOME/.claude/commands/hephaestus.md" "$HOME/.claude/commands/hephaests-network.md" \
         "$HOME/.claude/commands/hephaestus-build.md" "$HOME/.claude/commands/hephaestus-network.md" \
         "$HOME/.claude/commands/hephaestus-cloud.md" "$HOME/.claude/commands/hephaestus-search.md" \
         "$HOME/.claude/commands/hephaestus-call.md"
-  log "Refreshed Claude commands: /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-connect, /hep-storm"
+  # Report what was actually installed. A hardcoded sentence here would have
+  # kept claiming a complete set while two commands were missing from it.
+  log "Refreshed Claude commands:$installed"
 }
 
 remove_codex_existing() {
@@ -490,9 +756,9 @@ codex_custom_prompts_supported() {
 
 prune_managed_codex_prompts() {
   local name
-  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-connect.md hep-storm.md agentlas.md; do
-    rm -f "$HOME/.codex/prompts/$name"
-  done
+  while IFS= read -r name; do
+    [[ -n "$name" ]] && rm -f "$HOME/.codex/prompts/$name"
+  done < <(managed_command_files)
 }
 
 write_codex_prompts() {
@@ -505,16 +771,18 @@ write_codex_prompts() {
   local prompts_src="$source_dir/codex/prompts"
   [[ -d "$prompts_src" ]] || { warn "codex prompts not found: $prompts_src"; return 1; }
   mkdir -p "$HOME/.codex/prompts"
-  local name
-  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-connect.md hep-storm.md agentlas.md; do
+  local name installed=""
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
     rm -f "$HOME/.codex/prompts/$name"
     cp "$prompts_src/$name" "$HOME/.codex/prompts/$name" || return 1
-  done
+    installed+=" /prompts:${name%.md}"
+  done < <(runtime_command_files "$prompts_src")
   rm -f "$HOME/.codex/prompts/hephaestus.md" "$HOME/.codex/prompts/hephaests-network.md" \
         "$HOME/.codex/prompts/hephaestus-build.md" "$HOME/.codex/prompts/hephaestus-network.md" \
         "$HOME/.codex/prompts/hephaestus-cloud.md" "$HOME/.codex/prompts/hephaestus-search.md" \
         "$HOME/.codex/prompts/hephaestus-call.md"
-  log "Installed Codex custom prompts: /prompts:hep-build, /prompts:hep-network, /prompts:hep-local, /prompts:hep-cloud, /prompts:hep-hub, /prompts:hep-search, /prompts:hep-browser, /prompts:hep-call, /prompts:hep-upload, /prompts:hep-connect, /prompts:hep-storm"
+  log "Installed Codex custom prompts:$installed"
 }
 
 install_codex() {
@@ -598,8 +866,12 @@ register_codex_mcp() {
     skip && /^[[:space:]]*\[/ { skip=0 }
     !skip { print }
   ' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg" || return 1
-  printf '\n[mcp_servers.hephaestus-network]\ncommand = "%s"\nargs = ["mcp", "serve"]\n' \
-    "$HOME/.agentlas/runtime/current/bin/hephaestus" >> "$cfg"
+  local codex_launch=""
+  codex_launch="$(runtime_mcp_launch_render toml)" || {
+    warn "Could not render the local Core MCP launch vector for Codex."
+    return 1
+  }
+  printf '\n[mcp_servers.hephaestus-network]\n%s\n' "$codex_launch" >> "$cfg"
   if [[ -n "$preserved_env_table" ]]; then
     printf '\n%s\n' "$preserved_env_table" >> "$cfg"
   fi
@@ -680,16 +952,18 @@ install_antigravity() {
     if [[ -d "$data_dir" || ( "$installed" -eq 0 && "$data_dir" == "$HOME/.gemini/antigravity" ) ]]; then
       local global_dir="$data_dir/global_workflows"
       mkdir -p "$global_dir"
-      local name
-      for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-storm.md agentlas.md; do
+      local name workflows=""
+      while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
         rm -f "$global_dir/$name"
         cp "$source_dir/antigravity/workflows/$name" "$global_dir/$name" || return 1
-      done
+        workflows+=" /${name%.md}"
+      done < <(runtime_command_files "$source_dir/antigravity/workflows")
       rm -f "$global_dir/hephaestus.md" "$global_dir/hephaests-network.md" \
             "$global_dir/hephaestus-build.md" "$global_dir/hephaestus-network.md" \
             "$global_dir/hephaestus-cloud.md" "$global_dir/hephaestus-search.md" \
             "$global_dir/hephaestus-call.md"
-      log "Installed Antigravity global workflows: /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-storm"
+      log "Installed Antigravity global workflows:$workflows"
       installed=$((installed + 1))
     fi
   done
@@ -729,11 +1003,11 @@ register_antigravity_mcp() {
     return 0
   fi
   mkdir -p "$cfg_dir"
-  AGENTLAS_LOCAL_MCP="$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
     "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
-local = os.environ["AGENTLAS_LOCAL_MCP"]
+entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
 try:
     with open(path) as f:
         data = json.load(f)
@@ -743,7 +1017,7 @@ except ValueError as exc:
     raise SystemExit(f"refusing to overwrite invalid MCP config {path}: {exc}")
 servers = data.setdefault("mcpServers", {})
 servers.pop("agentlas", None)
-servers["hephaestus-network"] = {"command": local, "args": ["mcp", "serve"]}
+servers["hephaestus-network"] = dict(entry)
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
@@ -759,10 +1033,11 @@ register_cursor_mcp() {
   py="$(resolve_python_cmd || true)"
   [[ -n "$py" ]] || { warn "python3 not found; skipped Cursor MCP registration."; return 1; }
   mkdir -p "$(dirname "$cfg")"
-  AGENTLAS_LOCAL_MCP="$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
     "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
+entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
 try:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
@@ -772,10 +1047,7 @@ except ValueError as exc:
     raise SystemExit(f"refusing to overwrite invalid Cursor MCP config {path}: {exc}")
 servers = data.setdefault("mcpServers", {})
 servers.pop("agentlas", None)
-servers["hephaestus-network"] = {
-    "command": os.environ["AGENTLAS_LOCAL_MCP"],
-    "args": ["mcp", "serve"],
-}
+servers["hephaestus-network"] = dict(entry)
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
@@ -790,10 +1062,11 @@ register_opencode_mcp() {
   py="$(resolve_python_cmd || true)"
   [[ -n "$py" ]] || { warn "python3 not found; skipped OpenCode MCP registration."; return 1; }
   mkdir -p "$(dirname "$cfg")"
-  AGENTLAS_LOCAL_MCP="$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
     "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
+entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
 try:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
@@ -805,7 +1078,8 @@ servers = data.setdefault("mcp", {})
 servers.pop("agentlas", None)
 servers["hephaestus-network"] = {
     "type": "local",
-    "command": [os.environ["AGENTLAS_LOCAL_MCP"], "mcp", "serve"],
+    # OpenCode takes one argv array rather than command + args.
+    "command": [entry["command"], *entry["args"]],
     "enabled": True,
 }
 with open(path, "w", encoding="utf-8") as f:
@@ -824,11 +1098,13 @@ install_cursor() {
   log "== Cursor commands and skill =="
   ensure_downloaded_source || return 1
   mkdir -p "$HOME/.cursor/commands" "$HOME/.cursor/skills"
-  local name
-  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-storm.md agentlas.md; do
+  local name cursor_commands=""
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
     rm -f "$HOME/.cursor/commands/$name"
     cp "$source_dir/cursor/plugin/commands/$name" "$HOME/.cursor/commands/$name" || return 1
-  done
+    cursor_commands+=" /${name%.md}"
+  done < <(runtime_command_files "$source_dir/cursor/plugin/commands")
   rm -f "$HOME/.cursor/commands/hephaestus.md" "$HOME/.cursor/commands/hephaests-network.md" \
         "$HOME/.cursor/commands/hephaestus-build.md" "$HOME/.cursor/commands/hephaestus-network.md" \
         "$HOME/.cursor/commands/hephaestus-cloud.md" "$HOME/.cursor/commands/hephaestus-search.md" \
@@ -838,7 +1114,7 @@ install_cursor() {
     cp -R "$source_dir/skills/$name" "$HOME/.cursor/skills/$name" || return 1
   done
   register_cursor_mcp || warn "Cursor MCP registration failed; add local hephaestus-network to ~/.cursor/mcp.json manually."
-  log "Installed Cursor commands (/hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-storm), skills, and canonical Workforce MCP."
+  log "Installed Cursor commands ($cursor_commands ), skills, and canonical Workforce MCP."
   ok=$((ok + 1))
 }
 
@@ -852,17 +1128,19 @@ install_opencode() {
   log "== OpenCode commands =="
   ensure_downloaded_source || return 1
   mkdir -p "$HOME/.config/opencode/commands"
-  local name
-  for name in hep-build.md hep-network.md hep-local.md hep-cloud.md hep-hub.md hep-search.md hep-browser.md hep-call.md hep-upload.md hep-storm.md agentlas.md; do
+  local name opencode_commands=""
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
     rm -f "$HOME/.config/opencode/commands/$name"
     cp "$source_dir/opencode/commands/$name" "$HOME/.config/opencode/commands/$name" || return 1
-  done
+    opencode_commands+=" /${name%.md}"
+  done < <(runtime_command_files "$source_dir/opencode/commands")
   rm -f "$HOME/.config/opencode/commands/hephaestus.md" "$HOME/.config/opencode/commands/hephaests-network.md" \
         "$HOME/.config/opencode/commands/hephaestus-build.md" "$HOME/.config/opencode/commands/hephaestus-network.md" \
         "$HOME/.config/opencode/commands/hephaestus-cloud.md" "$HOME/.config/opencode/commands/hephaestus-search.md" \
         "$HOME/.config/opencode/commands/hephaestus-call.md"
   register_opencode_mcp || warn "OpenCode MCP registration failed; add local hephaestus-network to ~/.config/opencode/opencode.json manually."
-  log "Installed OpenCode commands and canonical Workforce MCP: /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-storm"
+  log "Installed OpenCode commands and canonical Workforce MCP:$opencode_commands"
   ok=$((ok + 1))
 }
 
@@ -969,13 +1247,17 @@ install_goose() {
     fi
   else
     mkdir -p "$(dirname "$cfg")"
+    local goose_launch=""
+    goose_launch="$(runtime_mcp_launch_render yaml | sed 's/^/    /')" || {
+      warn "Could not render the local Core MCP launch vector for goose."
+      return 1
+    }
     cat > "$cfg" <<EOF
 extensions:
   hephaestus-network:
     enabled: true
     type: stdio
-    cmd: $HOME/.agentlas/runtime/current/bin/hephaestus
-    args: [mcp, serve]
+$goose_launch
     timeout: 300
 EOF
     log "Registered canonical local hephaestus-network MCP in $cfg"
@@ -1012,10 +1294,11 @@ install_amp() {
   py="$(resolve_python_cmd || true)"
   [[ -n "$py" ]] || { warn "python3 not found; add local hephaestus-network to $cfg manually."; return 1; }
   mkdir -p "$(dirname "$cfg")"
-  AGENTLAS_LOCAL_MCP="$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
     "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
+entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
 try:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
@@ -1025,10 +1308,7 @@ except ValueError as exc:
     raise SystemExit(f"refusing to overwrite invalid Amp settings {path}: {exc}")
 servers = data.setdefault("amp.mcpServers", {})
 servers.pop("agentlas", None)
-servers["hephaestus-network"] = {
-    "command": os.environ["AGENTLAS_LOCAL_MCP"],
-    "args": ["mcp", "serve"],
-}
+servers["hephaestus-network"] = dict(entry)
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
@@ -1050,10 +1330,11 @@ install_copilot_cli() {
   py="$(resolve_python_cmd || true)"
   [[ -n "$py" ]] || { warn "python3 not found; add local hephaestus-network to $cfg manually."; return 1; }
   mkdir -p "$(dirname "$cfg")"
-  AGENTLAS_LOCAL_MCP="$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
     "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
+entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
 try:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
@@ -1065,8 +1346,7 @@ servers = data.setdefault("mcpServers", {})
 servers.pop("agentlas", None)
 servers["hephaestus-network"] = {
     "type": "local",
-    "command": os.environ["AGENTLAS_LOCAL_MCP"],
-    "args": ["mcp", "serve"],
+    **entry,
     "tools": ["*"],
 }
 with open(path, "w", encoding="utf-8") as f:
@@ -1110,10 +1390,11 @@ install_amazonq() {
   py="$(resolve_python_cmd || true)"
   [[ -n "$py" ]] || { warn "python3 not found; add local hephaestus-network to $cfg manually."; return 1; }
   mkdir -p "$(dirname "$cfg")"
-  AGENTLAS_LOCAL_MCP="$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
     "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
+entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
 try:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
@@ -1123,10 +1404,7 @@ except ValueError as exc:
     raise SystemExit(f"refusing to overwrite invalid Amazon Q MCP config {path}: {exc}")
 servers = data.setdefault("mcpServers", {})
 servers.pop("agentlas", None)
-servers["hephaestus-network"] = {
-    "command": os.environ["AGENTLAS_LOCAL_MCP"],
-    "args": ["mcp", "serve"],
-}
+servers["hephaestus-network"] = dict(entry)
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
@@ -1151,13 +1429,13 @@ bootstrap_networking() {
   fi
   log "== Hephaestus Network (global routing structure) =="
   local init_output
-  if ! init_output="$(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$source_dir${PYTHONPATH:+:$PYTHONPATH}" $py -m agentlas_cloud network init 2>&1)"; then
+  if ! init_output="$(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$source_dir")" $py -m agentlas_cloud network init 2>&1)"; then
     warn "Hephaestus Network init failed. Error was:"
     printf '%s\n' "$init_output" | tail -5 >&2
     warn "Retry manually: PYTHONPATH=<hephaestus-source> $py -m agentlas_cloud network init"
     return 1
   fi
-  PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$source_dir${PYTHONPATH:+:$PYTHONPATH}" $py -m agentlas_cloud network reindex >/dev/null 2>&1 || true
+  PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$source_dir")" $py -m agentlas_cloud network reindex >/dev/null 2>&1 || true
   log "Initialized ~/.agentlas/networking (cards, policies, ledgers, local memory map)."
 }
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "agentlas.curator-ruleset.v1",
-  "rulesetVersion": "1.2.1",
+  "rulesetVersion": "1.3.0",
   "updatedAt": "2026-08-12",
   "description": "Single canonical rule data for every Memory Curator executor (Desktop curator.ts, OS one_workspace.py, later terminal vendor). Executors load values from here; hard-coding a judgment value in an executor is a defect. memory-curator.md stays the human companion text.",
   "patterns": {
@@ -29,18 +29,9 @@
       "regex": "[\\w./~-]+\\.[A-Za-z0-9]{1,6}(?::\\d+)?|:\\d+\\b|https?://|`[^`]+`|\\b[a-f0-9]{7,40}\\b|\\btest[_-][\\w-]+|\\bverify[-_][\\w-]+|\\bpytest\\b|arXiv:\\d{4}\\.\\d{4,5}|\\$ |^\\s*(?:bash|node|python3?|npm|git)\\b",
       "flags": "im",
       "sourceRef": "R21 W2a 2026-08-11; accepts path:line / URL / backtick command / hash / test-gate name / receipt-like ids. A candidate whose evidence is ONLY self-reported satisfaction (ratings, feelings) never reaches durable — blocks the arXiv:2509.26354 refund reward-hacking case by evidence shape, not content semantics (R20: semantic screening measured non-separable)."
-    },
-    "capabilityWidening": {
-      "regex": "(?:skip|bypass|disable|without)\\s+(?:(?:the|every|any|all|asking|for|mandatory|required|manual|human)\\s+){0,4}(?:approval|permission|confirmation|consent|review|gate|guardrail)|auto[- ]?approve|자동\\s*승인|(?:approval|permission|confirmation)[^.\\n]{0,40}(?:can|may|should)\\s+be\\s+(?:skipped|bypassed|disabled)|승인\\s*(?:없이|을?\\s*(?:건너뛰|생략|무시))|확인\\s*없이\\s*(?:실행|진행)|자동으로\\s*허용",
-      "flags": "i",
-      "sourceRef": "R21 W2b 2026-08-11; n=1 invariant from R20 — a memory must never widen tool permissions. 2026-08-12 adversarial set 3 (F1/F5): dropped the `ignore` verb (it collided with factual observations naming an 'approval'/'review' field, e.g. 'the importer ignores approval-status columns'), added `auto-approve`/`자동 승인` and the emphasis connectors mandatory/required/manual/human (they were the leaked widening assertions). Polarity is handled separately by capabilityWideningException applied to a look-back window (a regex alone cannot separate 'skip approval' from 'never skip approval' — measured non-separable, R20). Deliberately narrow: over-block starves real safety lessons, and recall-framing + the PreToolUse broker are the actual enforcement layers, so object-less widening ('elevate to root', 'run unattended') is left to those layers rather than risk over-block."
-    },
-    "capabilityWideningException": {
-      "regex": "(?:never|not|n't|do not|don't|must not|should not|shouldn't|avoid|refuse to|무시하지\\s*마|건너뛰지\\s*마|생략하지\\s*마|하지\\s*마|하면\\s*안)",
-      "flags": "i",
-      "sourceRef": "2026-08-12 adversarial set 3 (F2). A negation/prohibition that GOVERNS the widening phrase turns it into a safety lesson ('never skip approval', 'do not bypass the gate') — admit it. Applied by each executor to a short look-back window before the capabilityWidening match (limits.capabilityWideningNegationWindowChars), NOT to the whole sentence: a trailing '...and never wait for approval' after an 'auto-approve' assertion must not excuse the assertion."
     }
   },
+  "_capabilityWideningNote": "capabilityWidening + capabilityWideningException were REMOVED 2026-08-12 (owner decision). A content wordlist/regex cannot separate a widening assertion from a safety lesson without re-implementing every language's word order and grammar (Korean verb-final lessons were rejected wholesale); across three tuning rounds it kept over-blocking real learnings while still leaking. A memory string cannot widen a tool permission on its own — misevolution defence lives in recall framing (injection.referenceFraming, the only mitigation with measured effect) and the PreToolUse broker (the only real chokepoint).",
   "kinds": {
     "promotable": [
       "fact",
@@ -104,8 +95,7 @@
     "evidenceMaxItems": 8,
     "serverMergeSimilarityPrefixChars": 40,
     "sourceRef": "one_workspace.py _classify/emit_ticket; server memory.ts dup check",
-    "mergeTokenOverlapMin": 0.6,
-    "capabilityWideningNegationWindowChars": 40
+    "mergeTokenOverlapMin": 0.6
   },
   "projectSpecificsGuard": {
     "minFolderNameChars": 4,
