@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
 
-from ..networking.bootstrap import atomic_write_json, networking_home, read_json
+from ..networking.bootstrap import append_jsonl, atomic_write_json, networking_home, read_json, utc_now
 from ..networking.card_lint import effective_status, routing_ineligibility_reasons
 from .compiler import compile_workforce_profile
 from .contracts import canonical_digest, verify_profile_integrity
@@ -76,6 +76,54 @@ def _detached(value: Any) -> Any:
 _WORKER_ID_SAFE_RE = re.compile(r"[^A-Za-z0-9._:@-]+")
 _TEAM_MEMBER_ENTRY_NAMES = ("agent.md", "AGENTS.md")
 _TEAM_MEMBER_MAX = 32
+
+
+def _hub_agents_dir() -> Path:
+    """The per-agent drawer root, resolved the SAME way one_workspace does
+    (env override then networking home) so local ledgers land where
+    _session_active_agents scans (one_workspace.py:986)."""
+    override = os.environ.get("AGENTLAS_HUB_AGENTS_DIR")
+    return Path(override).expanduser() if override else networking_home() / "hub-agents"
+
+
+def _drawer_slug_for(package_root: Path) -> str:
+    """The bare, normalized slug that names a package's drawer directory.
+
+    MUST be the bare slug (no `local/` tier prefix): the drawer dir name, the
+    model's `agent_slug` envelope value, and evolution's `hub:<slug>` agent_id
+    must all agree (one_workspace.py:1120, memory_hook.py:197). The routing
+    card's `id` is `local/<slug>` but `agent_card_ref.slug` carries the bare
+    form (card_migrate.py:291). Normalized identically to hub_invocation._norm_slug."""
+    card = read_json(package_root / ".agentlas" / "routing-card.json", default=None)
+    ref = card.get("agent_card_ref") if isinstance(card, Mapping) else None
+    raw = str(ref.get("slug") or "") if isinstance(ref, Mapping) else ""
+    return re.sub(r"[^a-z0-9]+", "-", raw.lower()).strip("-")
+
+
+def _wire_local_agent_experience(bundle: dict[str, Any], package_root: Path) -> None:
+    """Write a local invocation-ledger row and add an attribution directive so a
+    locally built agent accumulates experience like a borrowed one (plan §46)."""
+    slug = _drawer_slug_for(package_root)
+    if not slug:
+        return
+    drawer_mem = _hub_agents_dir() / slug / "memory"
+    drawer_mem.mkdir(parents=True, exist_ok=True)
+    append_jsonl(drawer_mem / "invocation-ledger.jsonl", {
+        "ts": utc_now(),
+        "source": "local-workforce",
+        "slug": slug,
+        "mode": "local_bundle",
+    })
+    directive = bundle.get("directiveBundle")
+    if isinstance(directive, dict):
+        instructions = str(directive.get("instructions") or "")
+        directive["instructions"] = instructions + (
+            f"\n\n## Experience attribution\n"
+            f"You are the Agentlas agent `{slug}`. When you record a learning in a "
+            f"`## Memory Events` envelope, set `\"agent_slug\": \"{slug}\"` on each "
+            f"candidate so it accumulates in this agent's own experience store, not "
+            f"the generic project memory.\n"
+        )
 
 
 def _local_team_execution_graph(
@@ -899,6 +947,19 @@ class LocalWorkforceRegistry:
                 entry_relative=entry_relative.as_posix(),
                 manager_content=instructions,
             )
+        # Plan §46 — a locally built agent must grow its own experience too.
+        # Borrowed Hub agents get an invocation-ledger at borrow time
+        # (hub_invocation.py:508), so stop_hook can detect them as active and
+        # route learnings into their drawer. Local F2 execution wrote nothing,
+        # so a local agent was never detected and its drawer stayed empty
+        # (measured 2026-08-12). Write the same ledger row here — bundle fetch is
+        # the "about to execute" moment, exactly as the borrowed path treats it —
+        # and tell the model to attribute learnings so the drawer actually fills.
+        # Fail-open: experience wiring must never break bundle delivery.
+        try:
+            _wire_local_agent_experience(bundle, package_root)
+        except Exception:
+            pass
         return bundle
 
     def events_after(self, cursor: int = 0) -> list[dict[str, Any]]:
