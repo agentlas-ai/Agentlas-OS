@@ -138,6 +138,27 @@ def main() -> int:
     else:
         print("mirror-check: skipped (no agentlas_desktop sibling checkout)")
 
+    # 5) embedded fallback parity — one_workspace._RULESET_DEFAULTS is the safety
+    #    net when the canonical JSON is unreadable (a mirror-only install, cf. the
+    #    host_adapters drift). Its regexes MUST equal the canonical ones or a
+    #    broken install silently classifies on stale rules (2026-08-12 set 3 F3:
+    #    the imperative + capabilityWidening embedded copies had drifted). Every
+    #    canonical pattern must also be present so _rule_re's fallback never
+    #    KeyErrors when it drops to embedded.
+    canonical_patterns = ruleset.get("patterns", {})
+    embedded_patterns = ow._RULESET_DEFAULTS.get("patterns", {})
+    for name, spec in canonical_patterns.items():
+        if name.startswith("_") or not isinstance(spec, dict):
+            continue  # `_note` and other annotations are not rule entries
+        emb = embedded_patterns.get(name)
+        if emb is None:
+            fail(f"embedded-parity/{name}: missing from one_workspace._RULESET_DEFAULTS")
+        if emb.get("regex") != spec.get("regex"):
+            fail(f"embedded-parity/{name}: embedded regex drifted from canonical")
+        if str(emb.get("flags", "")) != str(spec.get("flags", "")):
+            fail(f"embedded-parity/{name}: embedded flags drifted from canonical")
+        passed += 1
+
     print(f"PASS: {passed} curator fixture cases (ruleset {ruleset.get('rulesetVersion')} sha {sha})")
     return 0
 

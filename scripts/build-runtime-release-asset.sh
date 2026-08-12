@@ -76,6 +76,7 @@ runtime_paths=(
   "skills"
   "templates"
   "warp"
+  "system-agents/curator-ruleset.json"
   "scripts/install-all-runtimes.sh"
   "scripts/install-memory-hooks.py"
 )
@@ -135,6 +136,7 @@ required_runtime_paths=(
   "assets/model2vec/potion-base-8M-int8/LICENSE.model.txt"
   "scripts/install-all-runtimes.sh"
   "desktop-update-bridge-v1.json"
+  "system-agents/curator-ruleset.json"
 )
 IFS=. read -r release_major release_minor release_patch <<< "${tag#v}"
 if ((

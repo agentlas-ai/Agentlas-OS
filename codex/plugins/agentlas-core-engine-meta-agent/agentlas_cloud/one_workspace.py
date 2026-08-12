@@ -88,8 +88,11 @@ _RULESET_DEFAULTS: dict[str, Any] = {
             "flags": "",
         },
         "hostAbsolutePath": {"regex": r"(?:/Users/|/home/|[A-Za-z]:\\Users\\|file://)", "flags": ""},
+        # Mirror of the canonical ruleset entry; the verify-curator-fixtures gate
+        # asserts these embedded regexes stay byte-identical to system-agents/
+        # curator-ruleset.json (2026-08-12 set 3 F3: they had drifted).
         "imperative": {
-            "regex": r"(?:해라|하세요|하십시오|해줘|해 줘|하도록\s*해|할\s*것)\s*[.!]?\s*$|^(?:always|never|you\s+must|ignore\s+previous|disregard)\b",
+            "regex": r"(?:해라|하세요|하십시오|해줘|해 줘|하도록\s*해|할\s*것)\s*[.!]?\s*$|^(?:ignore\s+(?:previous|all\s+previous|the\s+above)|disregard|forget\s+(?:everything|all|previous|the\s+above))\b",
             "flags": "i",
         },
         # R21 W2a — mirror of the canonical ruleset entry; keep byte-identical.
@@ -99,7 +102,12 @@ _RULESET_DEFAULTS: dict[str, Any] = {
         },
         # R21 W2b — mirror of the canonical ruleset entry; keep byte-identical.
         "capabilityWidening": {
-            "regex": r"(?:skip|bypass|disable|without)\s+(?:the\s+)?(?:approval|permission|confirmation|consent|review)|(?:approval|permission|confirmation)[^.\n]{0,40}(?:can|may|should)\s+be\s+(?:skipped|bypassed|disabled)|승인\s*(?:없이|을?\s*(?:건너뛰|생략|무시))|확인\s*없이\s*(?:실행|진행)|자동으로\s*허용",
+            "regex": r"(?:skip|bypass|disable|without)\s+(?:(?:the|every|any|all|asking|for|mandatory|required|manual|human)\s+){0,4}(?:approval|permission|confirmation|consent|review|gate|guardrail)|auto[- ]?approve|자동\s*승인|(?:approval|permission|confirmation)[^.\n]{0,40}(?:can|may|should)\s+be\s+(?:skipped|bypassed|disabled)|승인\s*(?:없이|을?\s*(?:건너뛰|생략|무시))|확인\s*없이\s*(?:실행|진행)|자동으로\s*허용",
+            "flags": "i",
+        },
+        # 2026-08-12 adversarial set 3 — mirror of the canonical ruleset entry.
+        "capabilityWideningException": {
+            "regex": r"(?:never|not|n't|do not|don't|must not|should not|shouldn't|avoid|refuse to|무시하지\s*마|건너뛰지\s*마|생략하지\s*마|하지\s*마|하면\s*안)",
             "flags": "i",
         },
     },
@@ -1076,20 +1084,27 @@ def _drawer_ticket_once(drawer: Path, record: dict[str, Any]) -> bool:
     """Append a ticket to the drawer ledger unless the same content is present.
 
     Same idempotency principle as emit_ticket (G6): dedupe on normalized content
-    hash so duplicate hook channels and reruns converge on a single ticket.
+    hash UNDER the cross-process _LedgerLock, so duplicate hook channels, reruns,
+    and two host sessions ending near-simultaneously against this machine-global
+    drawer converge on a single ticket. The check-then-append was previously
+    unlocked and raced (2026-08-12 set 3: 24 concurrent callers wrote 23 rows for
+    one learning). Fail to acquire → skip (never block a session end).
     """
     ledger = drawer / "memory" / "memory-tickets.jsonl"
     key = _content_hash(str(record.get("content") or ""))
-    for row in _read_jsonl(ledger):
-        if str(row.get("dedupe") or "") == key:
-            return False
-        if _content_hash(str(row.get("content") or "")) == key:
-            return False
     ledger.parent.mkdir(parents=True, exist_ok=True)
-    payload = {**record, "dedupe": key}
-    with ledger.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    return True
+    with _LedgerLock(ledger) as acquired:
+        if not acquired:
+            return False
+        for row in _read_jsonl(ledger):
+            if str(row.get("dedupe") or "") == key:
+                return False
+            if _content_hash(str(row.get("content") or "")) == key:
+                return False
+        payload = {**record, "dedupe": key}
+        with ledger.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        return True
 
 
 def _drawer_write_note(drawer: Path, event: dict[str, Any]) -> Path | None:
@@ -1617,10 +1632,20 @@ def _classify(
     if _rule_re("imperative").search(content.strip()):
         return ("reject", "imperative-not-memory")
     # R21 W2b — a memory must never widen tool permissions (n=1 invariant, R20).
-    # Narrow verb-phrase match: an OBSERVATION about approvals stays admissible;
-    # only the assertion to skip/bypass them is rejected.
-    if _rule_re("capabilityWidening").search(content):
-        return ("reject", "capability-widening")
+    # A single content regex cannot separate "skip approval" (widen) from "never
+    # skip approval" (safety lesson) — measured non-separable (R20). So structure
+    # it: find the widening phrase, then admit it when a negation/prohibition
+    # GOVERNS that phrase — checked in a short look-back window, not the whole
+    # sentence, so a trailing "...and never wait for approval" after an
+    # "auto-approve" assertion cannot excuse the assertion (2026-08-12 set 3
+    # F1/F2/F5). Over-block starves real safety lessons and recall-framing + the
+    # PreToolUse broker are the actual enforcement layers, so this stays narrow.
+    widen = _rule_re("capabilityWidening").search(content)
+    if widen:
+        window = int(_rule("limits.capabilityWideningNegationWindowChars", 40))
+        lookback = content[max(0, widen.start() - window):widen.start()]
+        if not _rule_re("capabilityWideningException").search(lookback):
+            return ("reject", "capability-widening")
     if len(_normalize(content)) < int(_rule("limits.minContentChars", 12)):
         return ("reject", "too-short")
     if _content_hash(content) in durable_hashes:
