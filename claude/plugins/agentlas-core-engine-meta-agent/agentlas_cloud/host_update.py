@@ -34,7 +34,7 @@ def _stable_adapter_source(source: Path, home: Path) -> Path:
     the host keeps loading the old bundle — or loses the plugin entirely once
     that version directory is gone. Measured on a live machine: the Claude
     marketplace was bound to `.../runtime/1.1.110/host_adapters/claude` while
-    1.1.111 was installed.
+    1.2.0 was installed.
 
     The bundle is still VALIDATED at its versioned path by the caller; only the
     path handed to host registries becomes stable. os.path.abspath is used
