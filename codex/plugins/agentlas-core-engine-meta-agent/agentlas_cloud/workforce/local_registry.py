@@ -284,7 +284,24 @@ class LocalWorkforceRegistry:
             "sourceRefDigest": canonical_digest({"sourceRoot": source_ref}),
         }
         event = self._publish_event("quarantine", payload)
-        atomic_write_json(self.home / "quarantine" / f"{event['cursor']:020d}.json", event)
+        # The outbox copy above stays digest-only (it replicates outward), but
+        # quarantine/ never leaves this machine — and reconcile() runs in the
+        # background, so the human-readable refusal returned below is never
+        # seen by anyone. Storing only the digest here left the user with
+        # "quarantine / source_secret_material_forbidden / sha256:…" and no way
+        # to learn WHICH folder or WHY (measured 2026-08-12: three repeating
+        # quarantine events, undiagnosable without recomputing digests).
+        atomic_write_json(
+            self.home / "quarantine" / f"{event['cursor']:020d}.json",
+            {
+                **event,
+                "localDiagnostics": {
+                    "sourceRoot": source_ref,
+                    "message": str(error),
+                    **({"remediation": error.remediation} if error.remediation else {}),
+                },
+            },
+        )
         refusal = {
             "schemaVersion": LOCAL_REGISTRATION_SCHEMA,
             "status": "quarantined",

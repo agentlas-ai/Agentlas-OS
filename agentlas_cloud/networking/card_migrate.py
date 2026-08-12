@@ -20,6 +20,62 @@ from ..runtime import collect_package_files, package_hash
 SCHEMA = "routing-card/2.0"
 DEFAULT_RUNTIMES = ["claude-code", "codex", "gemini-cli", "agents-md"]
 
+# The only directories a package's globalInstallPath may write into. Packages
+# declare their own install destination, so without this allowlist a hostile
+# package could name ~/.ssh/authorized_keys. Real command/workflow homes only.
+_COMMAND_INSTALL_ROOTS = (
+    "~/.claude/commands",
+    "~/.codex/prompts",
+    "~/.gemini/commands",
+    "~/.gemini/antigravity/global_workflows",
+)
+
+
+def install_global_commands(pkg_dir: Path) -> list[dict[str, Any]]:
+    """Honor the package's own ``globalInstallPath`` declarations at local
+    registration time.
+
+    Before this existed the declaration had ZERO consumers (measured
+    2026-08-12: full three-surface + installed-runtime sweep) — every built
+    package shipped `.claude/commands/<slug>.md` plus a promise in
+    `.agentlas/global-commands.json`, and the only way to use the slash command
+    was to cd into the package folder. Only path-shaped, allowlisted, global-
+    scope entries install; prose instructions ("Codex plugin install …") and
+    anything outside _COMMAND_INSTALL_ROOTS are skipped with a reason. An
+    existing file with different content is never overwritten.
+    """
+    doc = read_json(pkg_dir / ".agentlas" / "global-commands.json", default={}) or {}
+    receipts: list[dict[str, Any]] = []
+    for entry in doc.get("commands") or []:
+        if not isinstance(entry, dict) or entry.get("scope") != "global":
+            continue
+        raw_target = str(entry.get("globalInstallPath") or "")
+        adapter = str(entry.get("adapterPath") or "")
+        if not raw_target.startswith(("~/", "/")) or not adapter:
+            continue
+        target = Path(raw_target).expanduser()
+        allowed = any(
+            target.is_relative_to(Path(root).expanduser())
+            for root in _COMMAND_INSTALL_ROOTS
+        )
+        receipt: dict[str, Any] = {"runtime": entry.get("runtime"), "target": str(target)}
+        source = pkg_dir / adapter
+        if not allowed:
+            receipt["status"] = "skipped_disallowed_target"
+        elif not source.is_file():
+            receipt["status"] = "skipped_missing_adapter"
+            receipt["adapterPath"] = adapter
+        else:
+            content = source.read_text(encoding="utf-8")
+            if target.exists() and target.read_text(encoding="utf-8") != content:
+                receipt["status"] = "skipped_existing_differs"
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+                receipt["status"] = "installed"
+        receipts.append(receipt)
+    return receipts
+
 
 def _snake(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", (value or "").lower()).strip("_")
@@ -325,11 +381,17 @@ def migrate_package(
         global_copy = dict(card)
         global_copy["source"] = {**card["source"], "ref": str(pkg_dir)}
         save_card(Path(home), global_copy)
+    # Install only on a real local registration (home = the global card store).
+    # package_adapter.materialize_package also calls this with home=None for
+    # borrow-time staging snapshots — borrowing an agent must never write into
+    # the user's ~/.claude/commands.
+    command_installs = install_global_commands(pkg_dir) if tier == "local" and home is not None else []
     return {
         "id": card_id,
         "status": "migrated",
         "type": card_type,
         "path": str(local_path),
+        **({"command_installs": command_installs} if command_installs else {}),
         **({"work_brief_warning": brief_warning} if brief_warning else {}),
     }
 

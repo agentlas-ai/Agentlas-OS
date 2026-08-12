@@ -810,12 +810,24 @@ def fill_declared_artifacts(root: Path, slug: str) -> list[str]:
 
     brief_path = root / ".agentlas" / "work-brief.json"
     if (summary or inputs) and stale(brief_path):
+        # Emit the SAME dialect the consumer validates. This used to write
+        # schemaVersion "agentlas.work-brief/1" with requirements/done_signal,
+        # but cards migrate reads it through interview/schema.resolve_work_brief,
+        # which only accepts "work-brief/1.0" with anti_scope/acceptance_criteria
+        # — so every completer-derived brief was rejected ("no user-confirmed
+        # anti_triggers") and the card shipped without them. Measured 2026-08-12
+        # on .builds/legacy-invoice-agent. Map the routing-card facts onto the
+        # consumer's field names: anti-scope→anti_scope, produces→acceptance,
+        # required inputs→constraints (informational; the consumer reads
+        # acceptance_criteria/anti_scope, but constraints is a valid field).
+        from .interview.schema import WORK_BRIEF_SCHEMA_VERSION
+
         _write_json(brief_path, {
-            "schemaVersion": "agentlas.work-brief/1",
+            "schemaVersion": WORK_BRIEF_SCHEMA_VERSION,
             "goal": summary or f"deliver what {slug} declares in its routing card",
-            "requirements": inputs,
-            "constraints": anti,
-            "done_signal": produces,
+            "acceptance_criteria": produces,
+            "anti_scope": anti,
+            "constraints": inputs,
             "derivedFrom": ".agentlas/routing-card.json",
         })
         written.append(".agentlas/work-brief.json")
@@ -1163,15 +1175,24 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
     # and the upload pass then withdrew the stencil for carrying `{{`, leaving
     # the package with no canonical core at all. Measured 2026-08-07: 15
     # packages published locally as ready with no AGENTS.md in the bundle.
-    if core.is_file() and _has_placeholders(core):
-        core.unlink()
-    if not core.is_file():
-        # The canonical core is missing but a body exists under another name.
-        # AGENTS.md is the entry every runtime reads first and the file the
-        # contract requires, so promote the body that IS there rather than
-        # refusing a package that has one. Measured 2026-08-07: several published
-        # packages ship `agent.md` alone and were refused for the file the
-        # engine could have named.
+    # A stencil AGENTS.md needs REPLACING with a real body, not DELETING. This
+    # used to unlink it unconditionally, but on the documented packager order
+    # (scaffold → complete → fill holes) `complete` runs while agent.md is still
+    # a stencil too, so nothing could be promoted — the unlink turned "AGENTS.md
+    # has holes to fill" into "AGENTS.md is missing", forcing a re-scaffold and
+    # a hard verify blocker. Measured 2026-08-12 on .builds/legacy-invoice-agent
+    # (repro'd twice). Fix: promote a real body over a missing OR stencil core;
+    # if no real body exists yet, LEAVE the stencil so its holes stay fillable.
+    # The upload pass still withdraws any stencil that survives to publish time —
+    # that guard is what the original 2026-08-07 measurement needed, and it is
+    # unaffected here.
+    core_is_stencil = core.is_file() and _has_placeholders(core)
+    if (not core.is_file()) or core_is_stencil:
+        # The canonical core is missing or still a stencil, but a real body may
+        # exist under another name. AGENTS.md is the entry every runtime reads
+        # first and the file the contract requires, so promote the body that IS
+        # there. Measured 2026-08-07: several published packages ship `agent.md`
+        # alone and were refused for the file the engine could have named.
         for candidate in ("agent.md", "README_FOR_HUMANS.md"):
             source = root / candidate
             if not source.is_file():
@@ -1185,7 +1206,11 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
             core.write_text(body, encoding="utf-8")
             written.append(f"AGENTS.md (promoted from {candidate})")
             break
+        # No real body to promote yet. A stencil left in place is a fillable
+        # target; only a genuinely absent core ends the work here.
         if not core.is_file():
+            return written
+        if _has_placeholders(core):
             return written
     try:
         core_text = core.read_text(encoding="utf-8")

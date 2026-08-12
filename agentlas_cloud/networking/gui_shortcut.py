@@ -234,6 +234,19 @@ def _open_hub_gui_shortcut(
             "error": str(exc),
         }
 
+    # A restored package used to land on disk and nowhere else: no restore
+    # path called cards migrate, so on another machine the agent stayed
+    # invisible to /hep-local until the user hand-registered it (measured
+    # 2026-08-12, wiring sweep: migrate_tree had exactly one caller, the CLI).
+    # Fail-open — a registration problem must not block opening the GUI.
+    try:
+        from .bootstrap import networking_home
+        from .card_migrate import migrate_package
+
+        migrate_package(install_dir, tier="local", home=networking_home(), overwrite=False)
+    except Exception:
+        pass
+
     launcher = _hub_launcher_path(install_dir)
     if launcher is None:
         return {
