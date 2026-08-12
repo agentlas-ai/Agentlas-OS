@@ -247,8 +247,19 @@ def package_agent(
     # the author never wrote. Upload does not block, and it does not publish
     # placeholder text either — so the only correct move is to take back exactly
     # what this pass added and could not answer.
+    # Withdraw what this pass created AND any canonical entry file that is still
+    # a stencil. The created-only list misses a PRE-EXISTING stencil AGENTS.md:
+    # scaffold skips a file that already exists, so it is never in `created`, yet
+    # it ships `{{ROLE}}` to a buyer as the very file the runtime reads first
+    # (measured 2026-08-12 adversarial set — a stencil AGENTS.md reached upload
+    # at status ready). Only a wholly-stencil file is taken back; a body a person
+    # partly wrote (no `{{`) is left exactly as it is.
+    withdraw_paths: list[str] = list(contract_scaffold.get("created") or [])
+    for name in AGENT_DEFINITION_FILES:
+        if name not in withdraw_paths:
+            withdraw_paths.append(name)
     withdrawn: list[str] = []
-    for relative in list(contract_scaffold.get("created") or []):
+    for relative in withdraw_paths:
         candidate = base / str(relative)
         if not candidate.is_file():
             continue

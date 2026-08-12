@@ -76,6 +76,11 @@ def _detached(value: Any) -> Any:
 _WORKER_ID_SAFE_RE = re.compile(r"[^A-Za-z0-9._:@-]+")
 _TEAM_MEMBER_ENTRY_NAMES = ("agent.md", "AGENTS.md")
 _TEAM_MEMBER_MAX = 32
+# Bounded tail for the local invocation-ledger: stop_hook only needs to know if
+# the agent was active in the recent session window, so keeping the last N rows
+# is enough and stops the file (and _session_active_agents' per-stop scan) from
+# growing without bound across repeated prepares.
+_LEDGER_MAX_ROWS = 200
 
 
 def _hub_agents_dir() -> Path:
@@ -108,12 +113,24 @@ def _wire_local_agent_experience(bundle: dict[str, Any], package_root: Path) -> 
         return
     drawer_mem = _hub_agents_dir() / slug / "memory"
     drawer_mem.mkdir(parents=True, exist_ok=True)
-    append_jsonl(drawer_mem / "invocation-ledger.jsonl", {
-        "ts": utc_now(),
-        "source": "local-workforce",
-        "slug": slug,
-        "mode": "local_bundle",
-    })
+    # A bundle is fetched once per prepare, and prepare != execute (retries,
+    # idempotent re-prepares), so an unbounded append would grow the ledger
+    # forever — and _session_active_agents re-parses the WHOLE file on every
+    # session end. stop_hook only cares whether the agent was active inside the
+    # recent session window, so a short bounded tail is sufficient and keeps the
+    # scan O(cap) instead of O(all prepares ever). Rewrite-with-cap here rather
+    # than append (measured 2026-08-12 adversarial set).
+    ledger = drawer_mem / "invocation-ledger.jsonl"
+    row = {"ts": utc_now(), "source": "local-workforce", "slug": slug, "mode": "local_bundle"}
+    try:
+        existing = ledger.read_text(encoding="utf-8").splitlines() if ledger.is_file() else []
+    except OSError:
+        existing = []
+    kept = [ln for ln in existing if ln.strip()][-(_LEDGER_MAX_ROWS - 1):]
+    kept.append(json.dumps(row, ensure_ascii=False))
+    tmp = ledger.with_suffix(".jsonl.tmp")
+    tmp.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    tmp.replace(ledger)
     directive = bundle.get("directiveBundle")
     if isinstance(directive, dict):
         instructions = str(directive.get("instructions") or "")

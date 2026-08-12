@@ -53,12 +53,27 @@ def install_global_commands(pkg_dir: Path) -> list[dict[str, Any]]:
         adapter = str(entry.get("adapterPath") or "")
         if not raw_target.startswith(("~/", "/")) or not adapter:
             continue
+        # RESOLVE before the allowlist check and before writing — the check and
+        # the write must see the SAME path the OS will. is_relative_to() on an
+        # unresolved path is purely lexical, so a declared globalInstallPath like
+        # "~/.claude/commands/../../.ssh/authorized_keys" passed the allowlist
+        # yet the OS resolved the ".." to ~/.ssh/authorized_keys at write time —
+        # exactly the file the allowlist exists to protect (path-traversal RCE,
+        # measured 2026-08-12 adversarial set). resolve() collapses ".." and
+        # follows symlinks, so the allowlist decision is made on the real target.
         target = Path(raw_target).expanduser()
+        try:
+            resolved = target.resolve()
+        except (OSError, RuntimeError):
+            receipts.append({"runtime": entry.get("runtime"), "target": str(target),
+                             "status": "skipped_unresolvable_target"})
+            continue
         allowed = any(
-            target.is_relative_to(Path(root).expanduser())
+            resolved == Path(root).expanduser().resolve()
+            or resolved.is_relative_to(Path(root).expanduser().resolve())
             for root in _COMMAND_INSTALL_ROOTS
         )
-        receipt: dict[str, Any] = {"runtime": entry.get("runtime"), "target": str(target)}
+        receipt: dict[str, Any] = {"runtime": entry.get("runtime"), "target": str(resolved)}
         source = pkg_dir / adapter
         if not allowed:
             receipt["status"] = "skipped_disallowed_target"
@@ -67,11 +82,11 @@ def install_global_commands(pkg_dir: Path) -> list[dict[str, Any]]:
             receipt["adapterPath"] = adapter
         else:
             content = source.read_text(encoding="utf-8")
-            if target.exists() and target.read_text(encoding="utf-8") != content:
+            if resolved.exists() and resolved.read_text(encoding="utf-8") != content:
                 receipt["status"] = "skipped_existing_differs"
             else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
+                resolved.parent.mkdir(parents=True, exist_ok=True)
+                resolved.write_text(content, encoding="utf-8")
                 receipt["status"] = "installed"
         receipts.append(receipt)
     return receipts

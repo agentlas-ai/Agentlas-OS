@@ -1074,6 +1074,9 @@ def _drawer_write_note(drawer: Path, event: dict[str, Any]) -> Path | None:
     return target
 
 
+_DRAWER_RUNTIME_CACHE: dict[str, Any] = {}
+
+
 def _drawer_feed_evolution(drawer: Path, slug: str, event: dict[str, Any]) -> bool:
     """Feed the drawer's ``memory_candidates`` so self-evolution can see it.
 
@@ -1095,7 +1098,17 @@ def _drawer_feed_evolution(drawer: Path, slug: str, event: dict[str, Any]) -> bo
     if not content.strip():
         return False
     try:
-        runtime = OntologyRuntime(RuntimeConfig(db_path=drawer / "memory" / "experience.sqlite"))
+        # Open the drawer runtime ONCE per drawer and reuse it — constructing an
+        # OntologyRuntime runs select_vector_adapter + full migrate() (~500ms),
+        # and this used to fire once PER event, an ~40x hot-path regression on
+        # every session end (measured 2026-08-12 adversarial set). Cache by db
+        # path, same pattern as _one_runtime's _ONE_RUNTIME_CACHE.
+        db_path = drawer / "memory" / "experience.sqlite"
+        key = str(db_path)
+        runtime = _DRAWER_RUNTIME_CACHE.get(key)
+        if runtime is None:
+            runtime = OntologyRuntime(RuntimeConfig(db_path=db_path))
+            _DRAWER_RUNTIME_CACHE[key] = runtime
         kind = str(event.get("kind") or "hypothesis")
         runtime.ingest_experience(
             agent_id=f"hub:{slug}",
@@ -1215,7 +1228,17 @@ def _route_borrowed_agent_events(
             and _iso_to_epoch(str(row.get("ts") or "")) >= window_start
             for row in _read_jsonl(drawer / "memory" / "memory-tickets.jsonl")
         )
-        if routed_by_slug.get(slug, 0) == 0 and substantial and not already_recorded:
+        # A gap means the agent recorded NOTHING worth keeping. If everything it
+        # emitted was blocked by the drawer safety gate (blocked>0, routed==0),
+        # that is not a gap — the agent DID emit, we refused it — and stamping a
+        # "recorded no experience" ticket would both lie and contradict the
+        # `blocked` field we already surfaced (measured 2026-08-12 adversarial set).
+        if (
+            routed_by_slug.get(slug, 0) == 0
+            and not blocked_by_slug.get(slug)
+            and substantial
+            and not already_recorded
+        ):
             try:
                 entry["gap"] = _drawer_ticket_once(drawer, {
                     "ts": _utc_now_iso(),
@@ -1510,10 +1533,21 @@ def _classify(
     kind = str(candidate.get("type") or "")
     evidence = candidate.get("evidence") or []
 
-    if _rule_re("secretKeyValue").search(content) or _rule_re("secretValueShapes").search(content):
-        return ("reject", "policy-secret")
-    if _rule_re("hostAbsolutePath").search(content):
-        return ("reject", "host-absolute-path")
+    # Secrets and host-absolute paths can hide in evidence[], not only content —
+    # and evidence is persisted verbatim (drawer notes/tickets → experience.sqlite,
+    # One soul "- Evidence:" lines) and recalled into later sessions. Scanning
+    # content alone let a benign learning with a secret in its evidence leak into
+    # both stores (measured 2026-08-12 adversarial set). Scan the same secret and
+    # host-path rules across content AND every evidence item. (imperative /
+    # capability-widening stay content-only: those are claims the learning makes,
+    # and an evidence citation legitimately quotes commands.)
+    secret_re_kv, secret_re_shape = _rule_re("secretKeyValue"), _rule_re("secretValueShapes")
+    host_re = _rule_re("hostAbsolutePath")
+    for text in (content, *(str(item) for item in evidence)):
+        if secret_re_kv.search(text) or secret_re_shape.search(text):
+            return ("reject", "policy-secret")
+        if host_re.search(text):
+            return ("reject", "host-absolute-path")
     if _rule_re("imperative").search(content.strip()):
         return ("reject", "imperative-not-memory")
     # R21 W2b — a memory must never widen tool permissions (n=1 invariant, R20).
