@@ -125,7 +125,12 @@ def migrate_package(
     home: Path | str | None = None,
     overwrite: bool = False,
 ) -> dict[str, Any] | None:
-    pkg_dir = Path(pkg_dir)
+    # Resolve BEFORE anything reads or stamps the path: a relative pkg_dir
+    # ("cards migrate .builds/x") flowed verbatim into the global card's
+    # source.ref, and reconcile — running from a different cwd — could never
+    # find the package again, so it silently vanished from every /hep-local
+    # menu (measured 2026-08-12 on .builds/coin-quant-backtester).
+    pkg_dir = Path(pkg_dir).expanduser().resolve()
     if not pkg_dir.is_dir():
         return None
     slug = pkg_dir.name
