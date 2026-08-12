@@ -28,7 +28,24 @@ SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]
 BEGIN_MARK="<!-- AGENTLAS-ONE:BEGIN -->"
 END_MARK="<!-- AGENTLAS-ONE:END -->"
 
-PY="${AGENTLAS_PYTHON:-python3}"
+# Resolve the interpreter the way every sibling launcher does: the runtime's own
+# verified shim FIRST, then PATH. This launcher was the only one that took
+# `python3` straight off PATH, and on a stock Mac that is 3.9.6 — old enough to
+# fail on syntax the rest of the product is free to use. The symptom was not an
+# error message but a quiet "(verification failed)" on `agentlas-one on`.
+_one_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+_one_resolve_python() {
+  local candidate
+  for candidate in "${AGENTLAS_PYTHON:-}" "${HEPHAESTUS_PYTHON:-}" "$_one_root/bin/python3" python3 python; do
+    [ -n "$candidate" ] || continue
+    if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  printf '%s' "python3"
+}
+PY="$(_one_resolve_python)"
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 

@@ -289,4 +289,125 @@ require_pattern modes/agentlas-packager.md 'Antigravity'
 require_pattern codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-build/SKILL.md 'global_commands'
 require_pattern claude/plugins/agentlas-core-engine-meta-agent/commands/hep-build.md 'global_commands'
 
+# Command SET equality, not a per-file allowlist.
+#
+# The allowlist above answers "does this file exist" and passed for years while
+# `/agentlas-one` had no user-global copy on any machine and `/hep-graph` was in
+# no installer list — a plugin command with no `~/.claude/commands` copy is only
+# reachable as `/hephaestus:<name>`, so the switch the docs told users to type
+# did not exist. A list that has to be edited by hand cannot catch a missing
+# entry, because the missing entry is the edit nobody made.
+python3 - <<'PY'
+import re
+import sys
+from pathlib import Path
+
+plugin_dir = Path("claude/plugins/agentlas-core-engine-meta-agent/commands")
+global_dir = Path(".claude/commands")
+
+# Repo-own adapter surfaces that are deliberately NOT user-global commands.
+# Must stay identical to `project_only_commands` in scripts/install-all-runtimes.sh.
+PROJECT_ONLY = {"meta-agent.md"}
+
+failures = []
+plugin = {path.name for path in plugin_dir.glob("*.md")}
+if not plugin:
+    failures.append(f"no plugin commands found in {plugin_dir}")
+global_set = {path.name for path in global_dir.glob("*.md")}
+
+missing_global = sorted(plugin - global_set)
+if missing_global:
+    failures.append(
+        "plugin commands with no user-global copy (only reachable as /hephaestus:<name>): "
+        + ", ".join(missing_global)
+        + " — run scripts/sync-adapters.sh"
+    )
+extra_global = sorted(global_set - plugin - PROJECT_ONLY)
+if extra_global:
+    failures.append(
+        "user-global commands with no plugin source: "
+        + ", ".join(extra_global)
+        + " — add the plugin command or declare it project-only in both this gate and the installer"
+    )
+
+# The UPDATER is the second install path and it has its own idea of the command
+# set. Measured: `agentlas`, `agentlas-one` and `hep-graph` were absent from
+# update.py's list, so a machine that installed once and then only ever
+# auto-updated kept those three files frozen at first-install content forever,
+# and nothing reported it — a name that is not in the list is never considered.
+updater = Path("agentlas_cloud/update.py").read_text(encoding="utf-8")
+if "_managed_command_names" not in updater:
+    failures.append(
+        "agentlas_cloud/update.py does not derive the managed command set; a hardcoded "
+        "list there silently freezes any command missing from it"
+    )
+for caller in ("_adapter_paths", "_installed_adapter_file_targets"):
+    index = updater.find(f"def {caller}(")
+    if index < 0:
+        failures.append(f"agentlas_cloud/update.py is missing {caller}")
+        continue
+    body = updater[index : index + 1500]
+    if "_managed_command_names" not in body:
+        failures.append(
+            f"agentlas_cloud/update.py:{caller} still iterates a hardcoded command tuple; "
+            "derive it so the updater and the installer cannot disagree"
+        )
+if "PROJECT_ONLY_COMMANDS" in updater:
+    updater_project_only = set(
+        re.findall(r'PROJECT_ONLY_COMMANDS\s*=\s*frozenset\(\{([^}]*)\}\)', updater)
+    )
+    declared = set(re.findall(r'"([^"]+)"', "".join(updater_project_only)))
+    if declared != {name[:-3] for name in PROJECT_ONLY}:
+        failures.append(
+            f"project-only sets disagree: gate {sorted(PROJECT_ONLY)} vs updater {sorted(declared)}"
+        )
+else:
+    failures.append("agentlas_cloud/update.py is missing PROJECT_ONLY_COMMANDS")
+
+installer = Path("scripts/install-all-runtimes.sh").read_text(encoding="utf-8")
+# The installer must DERIVE the managed set. A literal list is the regression.
+literal = re.findall(r"for name in (?:hep-|agentlas)[^\n;]*\.md[^\n;]*;", installer)
+if literal:
+    failures.append(
+        f"installer still hardcodes {len(literal)} command list(s); derive them from "
+        ".claude/commands via managed_command_files instead"
+    )
+for helper in ("managed_command_files", "runtime_command_files"):
+    if f"{helper}()" not in installer:
+        failures.append(f"installer is missing the {helper} helper")
+if "PROJECT_ONLY" and "project_only_commands=(" not in installer:
+    failures.append("installer is missing project_only_commands; this gate and it must agree")
+installer_project_only = set(
+    re.findall(r'^\s*"([^"]+\.md)"', installer[installer.index("project_only_commands=("):], re.M)[:len(PROJECT_ONLY)]
+) if "project_only_commands=(" in installer else set()
+if installer_project_only != PROJECT_ONLY:
+    failures.append(
+        f"project-only command sets disagree: gate {sorted(PROJECT_ONLY)} vs installer {sorted(installer_project_only)}"
+    )
+
+# Every runtime that carries command adapters must cover the core surface. A
+# runtime may legitimately lack a command (cursor/opencode/antigravity ship no
+# hep-connect), but never these.
+CORE = {"hep-build.md", "hep-network.md", "agentlas.md"}
+for adapter_dir in (
+    Path("codex/prompts"),
+    Path("cursor/plugin/commands"),
+    Path("opencode/commands"),
+    Path("antigravity/workflows"),
+):
+    if not adapter_dir.is_dir():
+        failures.append(f"missing command adapter directory: {adapter_dir}")
+        continue
+    present = {path.name for path in adapter_dir.glob("*.md")}
+    missing_core = sorted(CORE - present)
+    if missing_core:
+        failures.append(f"{adapter_dir} is missing core commands: {', '.join(missing_core)}")
+
+if failures:
+    for failure in failures:
+        print(f"verify-global-command-contract: {failure}", file=sys.stderr)
+    raise SystemExit(1)
+print(f"command set equality: {len(plugin)} plugin commands, all mirrored to .claude/commands")
+PY
+
 echo "Global command contract verification passed."

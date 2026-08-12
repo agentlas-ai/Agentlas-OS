@@ -119,33 +119,33 @@ skill_mirrors=(
   ".agentlas/routing-card.json:codex/plugins/agentlas-core-engine-meta-agent/.agentlas/routing-card.json"
   ".agentlas/routing-card.json:gemini/extension/.agentlas/routing-card.json"
   "cursor/rules/hephaestus.mdc:cursor/plugin/rules/hephaestus.mdc"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-build.md:.claude/commands/hep-build.md"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-network.md:.claude/commands/hep-network.md"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-cloud.md:.claude/commands/hep-cloud.md"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-search.md:.claude/commands/hep-search.md"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-browser.md:.claude/commands/hep-browser.md"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-call.md:.claude/commands/hep-call.md"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-upload.md:.claude/commands/hep-upload.md"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-connect.md:.claude/commands/hep-connect.md"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-storm.md:.claude/commands/hep-storm.md"
-  "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-graph.md:.claude/commands/hep-graph.md"
-  "gemini/extension/commands/hep-build.toml:.gemini/commands/hep-build.toml"
-  "gemini/extension/commands/hep-network.toml:.gemini/commands/hep-network.toml"
-  "gemini/extension/commands/hep-cloud.toml:.gemini/commands/hep-cloud.toml"
-  "gemini/extension/commands/hep-search.toml:.gemini/commands/hep-search.toml"
-  "gemini/extension/commands/hep-browser.toml:.gemini/commands/hep-browser.toml"
-  "gemini/extension/commands/hep-call.toml:.gemini/commands/hep-call.toml"
-  "gemini/extension/commands/hep-upload.toml:.gemini/commands/hep-upload.toml"
-  "gemini/extension/commands/hep-storm.toml:.gemini/commands/hep-storm.toml"
-  "antigravity/workflows/hep-build.md:.agents/workflows/hep-build.md"
-  "antigravity/workflows/hep-network.md:.agents/workflows/hep-network.md"
-  "antigravity/workflows/hep-cloud.md:.agents/workflows/hep-cloud.md"
-  "antigravity/workflows/hep-search.md:.agents/workflows/hep-search.md"
-  "antigravity/workflows/hep-browser.md:.agents/workflows/hep-browser.md"
-  "antigravity/workflows/hep-call.md:.agents/workflows/hep-call.md"
-  "antigravity/workflows/hep-upload.md:.agents/workflows/hep-upload.md"
-  "antigravity/workflows/hep-storm.md:.agents/workflows/hep-storm.md"
 )
+
+# EVERY plugin command gets a user-global copy. This is a glob on purpose: the
+# hardcoded list it replaces silently omitted `agentlas-one.md` entirely and
+# `hep-graph.md` from the installer's set, and a plugin command with no global
+# copy is only reachable as `/hephaestus:<name>` — which is why "agentlas one on
+# doesn't exist" was true on every machine that had not been hand-edited.
+claude_command_dir="claude/plugins/agentlas-core-engine-meta-agent/commands"
+for command_path in "$claude_command_dir"/*.md; do
+  [[ -e "$command_path" ]] || continue
+  skill_mirrors+=("$command_path:.claude/commands/$(basename "$command_path")")
+done
+
+# Same rule for the other two in-repo mirrors. These lists were left hardcoded
+# when the Claude one became a glob, and they were ALREADY stale: hep-hub and
+# hep-local were missing from both, so `.gemini/commands/hep-hub.toml` and
+# `.agents/workflows/hep-local.md` still carried the pre-fix contract (echo the
+# whole candidateSet back) while their sources had moved on — and `--check`
+# reported clean because it never compared those pairs.
+for command_path in gemini/extension/commands/*.toml; do
+  [[ -e "$command_path" ]] || continue
+  skill_mirrors+=("$command_path:.gemini/commands/$(basename "$command_path")")
+done
+for command_path in antigravity/workflows/*.md; do
+  [[ -e "$command_path" ]] || continue
+  skill_mirrors+=("$command_path:.agents/workflows/$(basename "$command_path")")
+done
 
 drift=0
 

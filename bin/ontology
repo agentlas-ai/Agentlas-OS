@@ -11,10 +11,13 @@ if ! agentlas_export_python_cache_boundary; then
   exit 78
 fi
 
+root_native="$(agentlas_native_path "$root")"
+path_sep="$(agentlas_path_sep)"
+
 for candidate in "${HEPHAESTUS_PYTHON:-}" "$root/bin/python3" python3 python; do
   [[ -n "$candidate" ]] || continue
   if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
-    PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec "$candidate" -m ontology "$@"
+    PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" exec "$candidate" -m ontology "$@"
   fi
 done
 

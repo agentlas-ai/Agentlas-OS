@@ -26,6 +26,70 @@ def _normal_version(value: Any) -> str:
     return str(value or "").strip().lstrip("vV")
 
 
+def _stable_adapter_source(source: Path, home: Path) -> Path:
+    """Return the version-independent `current/...` path for an adapter bundle.
+
+    Registering the versioned directory pins a host marketplace to one release:
+    the next update installs a new version, nothing re-registers the host, and
+    the host keeps loading the old bundle — or loses the plugin entirely once
+    that version directory is gone. Measured on a live machine: the Claude
+    marketplace was bound to `.../runtime/1.1.110/host_adapters/claude` while
+    1.1.111 was installed.
+
+    The bundle is still VALIDATED at its versioned path by the caller; only the
+    path handed to host registries becomes stable. os.path.abspath is used
+    instead of resolve() on purpose: resolve() would follow the symlink straight
+    back to the versioned directory and reintroduce the pin.
+    """
+    current = home / ".agentlas" / "runtime" / "current"
+    candidate = current / source.name
+    if not candidate.is_dir():
+        # Nothing usable to point at. Never hand a host registry a path that does
+        # not exist: Path.resolve() is non-strict, so a dangling `current`
+        # symlink and a pruned version directory resolve to the SAME missing
+        # string and would otherwise compare equal.
+        return source
+    try:
+        if candidate.resolve() == source.resolve():
+            return Path(os.path.abspath(str(candidate)))
+        # `current` is a real directory, not a symlink: this is the normal
+        # Windows layout, because symlink creation there needs admin rights or
+        # Developer Mode and update.py falls back to copytree. Comparing
+        # resolved paths can never match in that layout, so compare the release
+        # marker instead — same release means the stable path is equivalent.
+        if not current.is_symlink():
+            current_release = _release_marker(current)
+            source_release = _release_marker(source.parent)
+            if current_release and current_release == source_release:
+                return Path(os.path.abspath(str(candidate)))
+    except OSError:
+        return source
+    return source
+
+
+def _release_marker(root: Path) -> str | None:
+    """The RELEASE marker a runtime directory carries, or None."""
+    try:
+        return _normal_version((root / "RELEASE").read_text(encoding="utf-8")) or None
+    except (OSError, ValueError):
+        return None
+
+
+def _source_bound(text: str, source: Path, leaf: str = "") -> bool:
+    """A host may record either the stable path we passed or the version it
+    resolves to, so accept both rather than reconciling on every single run."""
+    if not text:
+        return False
+    stable = source / leaf if leaf else source
+    candidates = {str(stable)}
+    try:
+        resolved = source.resolve()
+        candidates.add(str(resolved / leaf if leaf else resolved))
+    except OSError:
+        pass
+    return any(candidate in text for candidate in candidates)
+
+
 def _json_version(path: Path) -> str | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -134,7 +198,7 @@ def _codex_status(home: Path, source: Path, target: str) -> dict[str, Any]:
         text = config.read_text(encoding="utf-8")
     except OSError:
         text = ""
-    source_bound = str(source) in text and f'[plugins."{PLUGIN_ID}"]' in text
+    source_bound = _source_bound(text, source) and f'[plugins."{PLUGIN_ID}"]' in text
     return {
         "host": "codex",
         "detected": shutil.which("codex") is not None and (cache.is_dir() or PLUGIN_ID in text),
@@ -160,7 +224,7 @@ def _claude_status(home: Path, source: Path, target: str) -> dict[str, Any]:
         marketplace_text = marketplace.read_text(encoding="utf-8")
     except OSError:
         marketplace_text = ""
-    source_bound = str(source / "claude") in marketplace_text
+    source_bound = _source_bound(marketplace_text, source, "claude")
     return {
         "host": "claude",
         "detected": shutil.which("claude") is not None and (cache.is_dir() or PLUGIN_ID in text),
@@ -194,7 +258,7 @@ def _gemini_status(home: Path, source: Path, target: str) -> dict[str, Any]:
 
 def host_plugin_status(source: Path, release_tag: str, *, home: Path | None = None) -> dict[str, Any]:
     home_dir = (home or Path.home()).expanduser().resolve()
-    source_root = source.expanduser().resolve()
+    source_root = _stable_adapter_source(source.expanduser().resolve(), home_dir)
     target = _normal_version(release_tag)
     return {
         "schemaVersion": "agentlas.host-plugin-status.v1",
@@ -325,7 +389,7 @@ def reconcile_host_plugins(
     execute: bool = True,
 ) -> dict[str, Any]:
     home_dir = (home or Path.home()).expanduser().resolve()
-    source_root = source.expanduser().resolve()
+    source_root = _stable_adapter_source(source.expanduser().resolve(), home_dir)
     target = _normal_version(release_tag)
     if not target:
         return {"status": "blocked", "reason": "release_tag_missing", "hosts": []}

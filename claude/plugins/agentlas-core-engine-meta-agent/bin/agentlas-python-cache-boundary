@@ -52,3 +52,85 @@ agentlas_export_python_cache_boundary() {
   prefix="$(agentlas_python_cache_prefix "${1:-}")" || return 1
   export PYTHONPYCACHEPREFIX="$prefix"
 }
+
+# ------------------------------------------------------------------ platform
+#
+# Native Windows (Git Bash / MSYS2) is not "POSIX with different slashes" for
+# any of the three things this runtime does at a boundary:
+#
+#   1. The CLI hosts spawn stdio MCP children WITHOUT a shell, so an
+#      extensionless shebang script is not an executable image. Windows needs
+#      `cmd /c <runner>.cmd`.
+#   2. A native python.exe cannot resolve a POSIX path like /c/Users/x, so any
+#      path handed to it (PYTHONPATH, sys.path) has to be converted.
+#   3. PYTHONPATH is semicolon-separated on Windows. Joining with ':' silently
+#      produces one nonexistent entry, and the symptom is
+#      `ModuleNotFoundError: No module named 'agentlas_cloud'`.
+#
+# These helpers live here because every launcher and every hook already sources
+# this file, so there is exactly one place that answers the platform question.
+
+agentlas_is_windows() {
+  case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+agentlas_path_sep() {
+  if agentlas_is_windows; then printf ';'; else printf ':'; fi
+}
+
+# POSIX path -> the form the native interpreter understands. cygpath ships with
+# Git for Windows; the manual branch covers a stripped MSYS. Anything that is
+# not a /<drive>/... path is returned unchanged rather than mangled.
+agentlas_native_path() {
+  local path="${1:-}"
+  [[ -n "$path" ]] || return 1
+  if ! agentlas_is_windows; then
+    printf '%s\n' "$path"
+    return 0
+  fi
+  local converted=""
+  if command -v cygpath >/dev/null 2>&1; then
+    converted="$(cygpath -w "$path" 2>/dev/null || true)"
+    if [[ -n "$converted" ]]; then
+      printf '%s\n' "$converted"
+      return 0
+    fi
+  fi
+  if [[ "$path" =~ ^/([A-Za-z])/(.*)$ ]]; then
+    local drive="${BASH_REMATCH[1]}" rest="${BASH_REMATCH[2]}"
+    drive="$(printf '%s' "$drive" | tr '[:lower:]' '[:upper:]')"
+    printf '%s:\\%s\n' "$drive" "${rest//\//\\}"
+    return 0
+  fi
+  printf '%s\n' "$path"
+}
+
+# Export PYTHONPATH for a runtime root in native form with the native
+# separator. Exported instead of printed so no caller can reintroduce ':'.
+agentlas_export_pythonpath() {
+  local root="${1:-}" native sep
+  [[ -n "$root" ]] || return 1
+  native="$(agentlas_native_path "$root")" || return 1
+  sep="$(agentlas_path_sep)"
+  if [[ -n "${PYTHONPATH:-}" ]]; then
+    export PYTHONPATH="$native$sep$PYTHONPATH"
+  else
+    export PYTHONPATH="$native"
+  fi
+}
+
+# The exact launch vector a host must record for the local Core MCP server.
+# Prints one field per line: command, then each argument. `$1` is the
+# extensionless runner path (its `.cmd` sibling is used on Windows).
+agentlas_mcp_launch() {
+  local runner="${1:-}"
+  [[ -n "$runner" ]] || return 1
+  if agentlas_is_windows; then
+    printf '%s\n' "cmd" "/c" "$(agentlas_native_path "${runner}.cmd")" "mcp" "serve"
+  else
+    printf '%s\n' "$runner" "mcp" "serve"
+  fi
+}

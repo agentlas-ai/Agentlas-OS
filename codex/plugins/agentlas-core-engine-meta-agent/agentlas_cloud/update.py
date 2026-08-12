@@ -75,6 +75,13 @@ LEGACY_MODEL2VEC_ASSET_NAME = "potion-base-8M-int8"
 MODEL2VEC_ASSET_NAMES = (MODEL2VEC_ASSET_NAME, LEGACY_MODEL2VEC_ASSET_NAME)
 RELEASE_MODEL2VEC_PATH = Path("assets") / "model2vec" / MODEL2VEC_ASSET_NAME
 RUNTIME_MODEL2VEC_PATH = Path("models") / "model2vec" / MODEL2VEC_ASSET_NAME
+# Fallback only. The managed command set is DERIVED from the release (see
+# _managed_command_names) because a hardcoded list here silently froze three
+# commands: `agentlas`, `agentlas-one` and `hep-graph` were absent from this
+# tuple, so a machine that installed once and then only ever auto-updated kept
+# those three files at their first-install content forever — and nothing
+# reported it, because a name that is not in the list is never even considered.
+# The installer already derives its set; this path must agree with it.
 HEP_COMMANDS = (
     "hep-build",
     "hep-network",
@@ -88,6 +95,38 @@ HEP_COMMANDS = (
     "hep-connect",
     "hep-storm",
 )
+
+# Repo-own adapter surfaces that are never installed as user-global commands.
+# Must stay identical to `project_only_commands` in scripts/install-all-runtimes.sh.
+PROJECT_ONLY_COMMANDS = frozenset({"meta-agent"})
+
+
+def _managed_command_names(source: Path | None = None, home: Path | None = None) -> tuple[str, ...]:
+    """The managed command set, derived rather than typed out again.
+
+    `source` is a release bundle: read `.claude/commands/*.md`, which is the same
+    directory the installer derives from. `home` is an installed machine: read
+    what is actually present so a destination-only sweep covers every command
+    that reached this user, including ones added after their last full install.
+    Both are unioned with HEP_COMMANDS so a stripped bundle can only ever widen
+    the set, never shrink it below the historical floor.
+    """
+
+    names: set[str] = set(HEP_COMMANDS)
+    for directory in (
+        source / ".claude" / "commands" if source is not None else None,
+        home / ".claude" / "commands" if home is not None else None,
+    ):
+        if directory is None or not directory.is_dir():
+            continue
+        try:
+            entries = sorted(directory.glob("*.md"))
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.stem and entry.stem not in PROJECT_ONLY_COMMANDS:
+                names.add(entry.stem)
+    return tuple(sorted(names))
 HEP_SKILLS = ("hephaestus-network", "hephaestus-cloud", "hephaestus-storm")
 AUTO_UPDATE_MARKER = "auto-update.json"
 
@@ -184,7 +223,9 @@ def _adapter_paths(home: Path) -> list[Path]:
 
     codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
     paths: list[Path] = []
-    for command in HEP_COMMANDS:
+    # Destination-only sweep: derive from what this machine actually has, so a
+    # command installed after the last full update is still swept.
+    for command in _managed_command_names(home=home):
         paths.extend(
             [
                 home / ".claude" / "commands" / f"{command}.md",
@@ -628,6 +669,9 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             installed_model_path = target / "models" / "model2vec" / source_model.name
             (staged_target / "RELEASE").write_text(f"{tag}\n", encoding="utf-8")
             write_python_shims(staged_target / "bin", sys.executable)
+            # The archive carries bash scripts only; Windows needs a .cmd for
+            # each one or the commands disappear from cmd.exe on every update.
+            write_windows_command_shims(staged_target / "bin")
             _healthcheck_runtime(staged_target)
             _activate_runtime(staged_target, target)
             staged_target = None
@@ -704,6 +748,7 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
             if source_release:
                 (dest / "RELEASE").write_text(f"{source_release}\n", encoding="utf-8")
             write_python_shims(dest / "bin", sys.executable)
+            write_windows_command_shims(dest / "bin")
             updated.append(str(dest))
         except Exception as exc:
             failed.append({"path": str(dest), "error": str(exc)})
@@ -1033,6 +1078,8 @@ def write_python_shims(bin_dir: Path, executable: str) -> None:
             'if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\\Agentlas\\PythonCache") '
             'else (set "PYTHONPYCACHEPREFIX=%TEMP%\\Agentlas-PythonCache")\r\n'
         )
+    # The bash shim keeps LF and stays on write_text; only .cmd files need the
+    # CRLF-preserving writer.
     shell_shim.write_text(
         '#!/usr/bin/env bash\n'
         'export PYTHONDONTWRITEBYTECODE=1\n'
@@ -1041,25 +1088,87 @@ def write_python_shims(bin_dir: Path, executable: str) -> None:
         encoding="utf-8",
     )
     shell_shim.chmod(0o755)
-    cmd_shim.write_text(
+    _write_cmd_text(
+        cmd_shim,
         '@echo off\r\n'
         'setlocal\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
         f"{cmd_cache}"
         f'"{executable_text}" %*\r\n'
         'exit /b %ERRORLEVEL%\r\n',
-        encoding="utf-8",
     )
     _write_cmd_runner(cmd_runner, cache_prefix)
-    env_cmd.write_text(
+    _write_cmd_text(
+        env_cmd,
         '@echo off\r\n'
         'set "PYTHONUTF8=1"\r\n'
         'set "PYTHONIOENCODING=utf-8"\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
         f"{cmd_cache}"
         'set "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n',
-        encoding="utf-8",
     )
+
+
+def _write_cmd_text(path: Path, text: str) -> None:
+    """Write a .cmd file with its CRLF line endings intact.
+
+    Path.write_text() opens with newline=None, which re-translates every "\n" to
+    os.linesep — on Windows that turns the "\r\n" these files require into
+    "\r\r\n". Its `newline=` parameter only exists from Python 3.10 and the
+    launchers accept 3.9, so open() is used explicitly instead of passing it.
+    """
+
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+
+
+def write_windows_command_shims(bin_dir: Path) -> list[str]:
+    """Give every bash command in the runtime a `.cmd` sibling on Windows.
+
+    This exists in BOTH install paths on purpose. scripts/install-all-runtimes.sh
+    writes these wrappers, and then this module — the updater — replaces the whole
+    runtime directory from the release archive. Measured: an auto-update triggered
+    during a fresh install removed all 17 wrappers the installer had just written,
+    because only python3/hephaestus shims were rewritten here. On Windows that
+    silently takes every command back out of cmd.exe and PowerShell.
+
+    cmd.exe cannot execute a shebang script, so each wrapper hands the script to
+    bash by absolute path (bash.exe is usually not on the PATH cmd.exe sees).
+    Returns the wrapper names written; empty off Windows or when bash is absent.
+    """
+    if os.name != "nt":
+        return []
+    bash = shutil.which("bash") or shutil.which("bash.exe")
+    if not bash:
+        return []
+    # A path cmd.exe cannot execute is worse than a bare name: MSYS answers with
+    # its own virtual mount path (/usr/bin/bash), which resolves nowhere outside
+    # MSYS. Fall back to letting cmd.exe resolve `bash` from PATH.
+    if not re.match(r"^[A-Za-z]:[\\/]", bash):
+        bash = "bash"
+    # python3/hephaestus own native .cmd entrypoints from write_python_shims, and
+    # agentlas-python-cache-boundary is a sourced library, not a command.
+    skip = {"python3", "hephaestus", "Hephaestus", "agentlas-python-cache-boundary"}
+    written: list[str] = []
+    for script in sorted(bin_dir.iterdir()):
+        if not script.is_file() or script.suffix == ".cmd" or script.name in skip:
+            continue
+        try:
+            first_line = script.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0]
+        except OSError:
+            continue
+        if not first_line.startswith("#!") or "sh" not in first_line:
+            continue
+        target = bin_dir / f"{script.name}.cmd"
+        _write_cmd_text(
+        target,
+            "@echo off\r\n"
+            "setlocal\r\n"
+            f'"{bash}" "{script}" %*\r\n'
+            "exit /b %ERRORLEVEL%\r\n",
+        )
+        written.append(target.name)
+    return written
 
 
 def _write_cmd_runner(path: Path, cache_prefix: Path | None = None) -> None:
@@ -1070,7 +1179,8 @@ def _write_cmd_runner(path: Path, cache_prefix: Path | None = None) -> None:
             'if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\\Agentlas\\PythonCache") '
             'else (set "PYTHONPYCACHEPREFIX=%TEMP%\\Agentlas-PythonCache")\r\n'
         )
-    path.write_text(
+    _write_cmd_text(
+        path,
         '@echo off\r\n'
         'setlocal\r\n'
         'set "PYTHONUTF8=1"\r\n'
@@ -1102,7 +1212,6 @@ def _write_cmd_runner(path: Path, cache_prefix: Path | None = None) -> None:
         ':use_path_python\r\n'
         'python -m agentlas_cloud %*\r\n'
         'exit /b %ERRORLEVEL%\r\n',
-        encoding="utf-8",
     )
 
 
@@ -1282,7 +1391,9 @@ def _spawn_auto_update_worker(runtime_root: Path) -> None:
 def _installed_adapter_file_targets(source: Path, home: Path) -> list[tuple[Path, Path]]:
     codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
     targets: list[tuple[Path, Path]] = []
-    for command in HEP_COMMANDS:
+    # Derived from the release being installed: a new command reaches every
+    # runtime adapter without editing this function.
+    for command in _managed_command_names(source=source, home=home):
         targets.extend(
             [
                 (Path(".claude") / "commands" / f"{command}.md", home / ".claude" / "commands" / f"{command}.md"),

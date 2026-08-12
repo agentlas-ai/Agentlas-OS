@@ -369,6 +369,15 @@ class WorkforceSourceService:
             payload["expandSlotIds"] = list(expand_slot_ids)
         if scope_mode == "typed":
             payload["sourceScope"] = source
+        # The remote Hub answers `workforce.search_candidates` with a folded
+        # decision menu by default (packageHash/contentDigest/qualificationEvidence
+        # dropped, produces/consumes collapsed to counts). This module's own
+        # `federation.py::_validate_candidate` hard-requires exactly those fields
+        # and raises `source_invalid_candidate_set` on a folded response — the
+        # whole search fails, not just a smaller menu. Request the legacy
+        # full-echo shape explicitly; an older Hub that predates the projection
+        # ignores an unknown argument, so this is safe in either deploy order.
+        payload["fullDossier"] = True
         # A source withholds any gap code an older runtime would discard the whole
         # CandidateSet over, so by default it never sends
         # `gap:requirement-vocabulary-unsupported:*` — the code that says a stated

@@ -3,6 +3,15 @@ set -uo pipefail
 
 export PYTHONDONTWRITEBYTECODE=1
 
+# The installer is itself an install: it must not race a background auto-update
+# that replaces the runtime directory underneath it. Every `hephaestus` or
+# `python -m agentlas_cloud` call this script makes would otherwise arm
+# maybe_auto_update(), whose detached worker rewrites bin/ on its own schedule —
+# measured: fresh installs ended with the just-written Windows .cmd wrappers
+# deleted while the install still reported success.
+export HEPHAESTUS_AUTO_UPDATE=0
+export HEPHAESTUS_UPDATE_CHECK=0
+
 agentlas_installer_python_cache_prefix() {
   local home_real prefix
   [[ -n "${HOME:-}" && "$HOME" == /* && -d "$HOME" ]] || return 1
@@ -35,6 +44,16 @@ old_plugin_name="${HEPHAESTUS_OLD_PLUGIN:-agentlas-meta-agent}"
 requested_source_dir="${HEPHAESTUS_SOURCE_DIR:-}"
 source_dir="$requested_source_dir"
 force="${HEPHAESTUS_FORCE:-1}"
+
+# Must stay identical to HOST_ADAPTER_BUNDLE_DIR / HOST_ADAPTER_DIRS in
+# agentlas_cloud/update.py — the updater builds the same bundle from the same set,
+# and engine discovery in the shipped commands reads it by that exact path.
+HOST_ADAPTER_BUNDLE_DIR="host_adapters"
+host_adapter_dirs=(
+  ".agents" ".claude" ".claude-plugin" ".gemini"
+  amazonq amp antigravity claude codex copilot-cli cursor gemini goose grok
+  hermes hooks openclaw opencode skills warp
+)
 
 ok=0
 failed=0
@@ -384,6 +403,30 @@ install_runtime_home() {
 	    "$home_dir/bin/agentlas-memory-hook" \
 	    "$home_dir/bin/agentlas-one" 2>/dev/null || true
   printf '%s\n' "$version" > "$home_dir/RELEASE"
+  # The host-adapter bundle. The updater builds this from HOST_ADAPTER_DIRS
+  # (agentlas_cloud/update.py) and the commands that find the engine look for it:
+  # `.claude/commands/hep-build.md` and `agentlas.md` probe
+  # `runtime/current/host_adapters/{claude,codex}/plugins/agentlas-core-engine-meta-agent`
+  # for an AGENTS.md + package-contract.json pair. This script never wrote it, so
+  # a runtime installed HERE and one installed by the updater had different
+  # layouts, and engine discovery fell through to "run the installer first" on a
+  # machine that had just run the installer. Same set, same shape, both paths.
+  local adapter_bundle="$home_dir/$HOST_ADAPTER_BUNDLE_DIR"
+  rm -rf "$adapter_bundle"
+  mkdir -p "$adapter_bundle"
+  local adapter
+  for adapter in "${host_adapter_dirs[@]}"; do
+    [[ -d "$source_dir/$adapter" ]] || continue
+    cp -R "$source_dir/$adapter" "$adapter_bundle/$adapter" || return 1
+  done
+  for adapter in manifest.json; do
+    [[ -f "$source_dir/$adapter" ]] && cp "$source_dir/$adapter" "$adapter_bundle/$adapter"
+  done
+  if [[ -f "$source_dir/scripts/install-memory-hooks.py" ]]; then
+    mkdir -p "$adapter_bundle/scripts"
+    cp "$source_dir/scripts/install-memory-hooks.py" "$adapter_bundle/scripts/install-memory-hooks.py"
+  fi
+  printf '%s\n' "$version" > "$adapter_bundle/RELEASE"
   write_python3_shim "$home_dir/bin" || true
   write_windows_command_shims "$home_dir/bin" || true
   if [[ ! -e "$home_dir/bin/Hephaestus" ]]; then
@@ -428,13 +471,22 @@ install_runtime_home() {
 	  )
     local command
     local windows_shims=0
+    local shim_failures=0
     agentlas_load_platform_helpers >/dev/null 2>&1 || true
     for command in "${shell_commands[@]}"; do
       rm -f "$user_bin/$command" 2>/dev/null || true
-      cat > "$user_bin/$command" <<EOF
+      # Checked, not fire-and-forget: with a read-only ~/.local/bin every one of
+      # these writes fails and the installer used to still print
+      # "Failed runtimes: 0", so a user had no reason to suspect that NONE of the
+      # commands had been installed.
+      if ! cat > "$user_bin/$command" <<EOF
 #!/usr/bin/env bash
 exec "$current_link/bin/$command" "\$@"
 EOF
+      then
+        shim_failures=$((shim_failures + 1))
+        continue
+      fi
       chmod +x "$user_bin/$command" 2>/dev/null || true
       # A bash shim is invisible to cmd.exe and PowerShell, so on Windows the
       # same command also needs a .cmd sibling. Without it none of these
@@ -457,6 +509,10 @@ EOF
     fi
     if [[ "$windows_shims" -gt 0 ]]; then
       log "Installed $windows_shims Windows .cmd shims in $user_bin (add it to PATH for cmd.exe and PowerShell)."
+    fi
+    if [[ "$shim_failures" -gt 0 ]]; then
+      warn "$shim_failures of ${#shell_commands[@]} shell commands could not be written to $user_bin (is it writable?)."
+      return 1
     fi
   fi
 }
@@ -562,13 +618,28 @@ write_windows_command_shims() {
   bash_path="$(command -v bash 2>/dev/null || true)"
   [[ -n "$bash_path" ]] || { warn "bash not found; skipped Windows command shims."; return 0; }
   bash_native="$(agentlas_native_path "$bash_path")" || return 0
+  # Under MSYS, `command -v bash` answers with MSYS's own virtual mount path
+  # (/usr/bin/bash), which is NOT a filesystem path cmd.exe can execute — and
+  # without cygpath there is nothing to convert it with. A bare `bash` at least
+  # resolves through the PATH cmd.exe has; baking in an unresolvable absolute
+  # path guarantees failure.
+  case "$bash_native" in
+    [A-Za-z]:\\*|[A-Za-z]:/*) ;;
+    *)
+      warn "Could not express $bash_path as a Windows path; .cmd wrappers will resolve 'bash' from PATH."
+      bash_native="bash"
+      ;;
+  esac
 
   local name script written=0
   for script in "$bin_dir"/*; do
     [[ -f "$script" ]] || continue
     name="$(basename "$script")"
     case "$name" in
-      *.cmd|python3|hephaestus|Hephaestus) continue ;;
+      # python3/hephaestus own native .cmd entrypoints written by
+      # write_python3_shim; agentlas-python-cache-boundary is a sourced library,
+      # and a command that only ever no-ops is worse than no command.
+      *.cmd|python3|hephaestus|Hephaestus|agentlas-python-cache-boundary) continue ;;
     esac
     # Only wrap actual shell scripts; a data file must not become a command.
     head -1 "$script" 2>/dev/null | grep -q '^#!.*sh' || continue
@@ -778,6 +849,7 @@ write_codex_prompts() {
     cp "$prompts_src/$name" "$HOME/.codex/prompts/$name" || return 1
     installed+=" /prompts:${name%.md}"
   done < <(runtime_command_files "$prompts_src")
+  [[ -n "$installed" ]] || { warn "No managed commands matched $prompts_src; Codex prompts were not refreshed."; return 1; }
   rm -f "$HOME/.codex/prompts/hephaestus.md" "$HOME/.codex/prompts/hephaests-network.md" \
         "$HOME/.codex/prompts/hephaestus-build.md" "$HOME/.codex/prompts/hephaestus-network.md" \
         "$HOME/.codex/prompts/hephaestus-cloud.md" "$HOME/.codex/prompts/hephaestus-search.md" \
@@ -821,6 +893,9 @@ stamp_plugin_cache_releases() {
       [[ -f "$dir/bin/hephaestus" ]] || continue
       printf '%s\n' "$version" > "$dir/RELEASE" || true
       write_python3_shim "$dir/bin" || true
+      # Same rule as the runtime bin: a bash command with no .cmd sibling does not
+      # exist to cmd.exe. Swept here too so the plugin cache cannot drift from it.
+      write_windows_command_shims "$dir/bin" || true
       count=$((count + 1))
     done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
   done
@@ -959,6 +1034,7 @@ install_antigravity() {
         cp "$source_dir/antigravity/workflows/$name" "$global_dir/$name" || return 1
         workflows+=" /${name%.md}"
       done < <(runtime_command_files "$source_dir/antigravity/workflows")
+      [[ -n "$workflows" ]] || { warn "No managed commands matched $source_dir/antigravity/workflows."; return 1; }
       rm -f "$global_dir/hephaestus.md" "$global_dir/hephaests-network.md" \
             "$global_dir/hephaestus-build.md" "$global_dir/hephaestus-network.md" \
             "$global_dir/hephaestus-cloud.md" "$global_dir/hephaestus-search.md" \
@@ -1105,6 +1181,7 @@ install_cursor() {
     cp "$source_dir/cursor/plugin/commands/$name" "$HOME/.cursor/commands/$name" || return 1
     cursor_commands+=" /${name%.md}"
   done < <(runtime_command_files "$source_dir/cursor/plugin/commands")
+  [[ -n "$cursor_commands" ]] || { warn "No managed commands matched $source_dir/cursor/plugin/commands."; return 1; }
   rm -f "$HOME/.cursor/commands/hephaestus.md" "$HOME/.cursor/commands/hephaests-network.md" \
         "$HOME/.cursor/commands/hephaestus-build.md" "$HOME/.cursor/commands/hephaestus-network.md" \
         "$HOME/.cursor/commands/hephaestus-cloud.md" "$HOME/.cursor/commands/hephaestus-search.md" \
@@ -1135,6 +1212,7 @@ install_opencode() {
     cp "$source_dir/opencode/commands/$name" "$HOME/.config/opencode/commands/$name" || return 1
     opencode_commands+=" /${name%.md}"
   done < <(runtime_command_files "$source_dir/opencode/commands")
+  [[ -n "$opencode_commands" ]] || { warn "No managed commands matched $source_dir/opencode/commands."; return 1; }
   rm -f "$HOME/.config/opencode/commands/hephaestus.md" "$HOME/.config/opencode/commands/hephaests-network.md" \
         "$HOME/.config/opencode/commands/hephaestus-build.md" "$HOME/.config/opencode/commands/hephaestus-network.md" \
         "$HOME/.config/opencode/commands/hephaestus-cloud.md" "$HOME/.config/opencode/commands/hephaestus-search.md" \

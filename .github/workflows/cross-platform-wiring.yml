@@ -1,0 +1,123 @@
+name: Cross-platform wiring
+
+# Native Windows and Linux are advertised surfaces that nothing executed in CI.
+# The result: a Windows install printed success while the local Core MCP server
+# could not be spawned on any host, `agentlas_cloud` was unimportable through the
+# launchers, the plugin hooks were eaten by Git Bash escape handling, and
+# `agentlas-one` never reached PATH. None of that crashed — the surfaces were
+# simply absent, which is exactly the failure a green test suite cannot see.
+#
+# `shell: bash` on windows-latest is Git Bash, which is the shell the product
+# actually runs in on Windows (and the one the hosts hand hook commands to).
+
+on:
+  push:
+    branches: [main]
+    # Deliberately broad. A narrow list already missed agentlas_cloud/update.py —
+    # the module that replaces the whole runtime directory and therefore decides
+    # whether any of this survives an update — and career_graph/ontology, which
+    # the python-floor job compiles. A path filter that omits the file where the
+    # bug lives is the same failure as having no job.
+    paths:
+      - "bin/**"
+      - "hooks/**"
+      - "agentlas_cloud/**"
+      - "career_graph/**"
+      - "ontology/**"
+      - "scripts/**"
+      - ".claude/commands/**"
+      - "claude/plugins/agentlas-core-engine-meta-agent/commands/**"
+      - ".github/workflows/cross-platform-wiring.yml"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-platform-wiring-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The launchers accept Python >= 3.9 and macOS ships 3.9.6 as /usr/bin/python3,
+  # so 3.9 is a real production floor, not a legacy courtesy. One f-string with a
+  # backslash in its expression part (legal only from 3.12) made the whole One
+  # workspace module unimportable there, and the product reported
+  # "(verification failed)" instead of the SyntaxError. Compile at the floor.
+  python-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Compile at the minimum supported Python
+        run: python -m compileall -q agentlas_cloud ontology career_graph
+
+  wiring:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Static half: is the wiring written correctly. Cheap, and fails before an
+      # install can mask the problem.
+      - name: Static wiring contract
+        run: bash scripts/verify-windows-wiring.sh
+
+      # Give the installer two host config directories to find. Cursor and
+      # OpenCode are gated on the directory rather than a binary, so this is what
+      # makes the MCP launch vector actually get written on the runner — the one
+      # assertion that proves `cmd /c ...hephaestus.cmd` is produced on Windows.
+      - name: Seed host config directories
+        run: mkdir -p "$HOME/.cursor" "$HOME/.config/opencode"
+
+      # Install from this checkout: no download, no release asset, no network.
+      # continue-on-error because an absent host CLI is a normal, warned outcome
+      # on a bare runner — the post-install contract below is the verdict, not
+      # the installer's own exit code.
+      - name: Install from this checkout
+        continue-on-error: true
+        env:
+          HEPHAESTUS_SOURCE_DIR: ${{ github.workspace }}
+          HEPHAESTUS_FORCE: "1"
+        run: bash scripts/install-all-runtimes.sh
+
+      # Behavioural half: after an install that reported success, do the surfaces
+      # exist and run on THIS platform?
+      - name: Post-install wiring contract
+        run: bash scripts/verify-installed-wiring.sh
+
+      # The launchers are the PYTHONPATH proof, but assert the import directly
+      # too: on Windows a colon-joined or POSIX-form PYTHONPATH fails here with
+      # ModuleNotFoundError while every file is present and correct.
+      - name: Local Core MCP server answers a handshake
+        run: |
+          runner="$HOME/.agentlas/runtime/current/bin/hephaestus"
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}'
+          printf '%s\n' "$request" | "$runner" mcp serve > handshake.json 2>handshake.err || true
+          cat handshake.err || true
+          python3 - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          raw = Path("handshake.json").read_text(encoding="utf-8").strip()
+          if not raw:
+              sys.exit("local Core MCP server produced no response to initialize")
+          first = json.loads(raw.splitlines()[0])
+          result = first.get("result") or {}
+          if not result.get("serverInfo"):
+              sys.exit(f"initialize did not return serverInfo: {first}")
+          print(f"local Core MCP serverInfo: {result['serverInfo']}")
+          PY

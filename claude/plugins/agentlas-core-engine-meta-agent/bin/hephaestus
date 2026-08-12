@@ -37,6 +37,11 @@ resolve_python() {
 }
 
 HEPHAESTUS_PY="$(resolve_python || true)"
+# The interpreter may be a native Windows python launched from MSYS bash, which
+# cannot read a POSIX root. Convert once: this value is both PYTHONPATH and the
+# sys.path entry the bootstrap below inserts.
+root_native="$(agentlas_native_path "$root")"
+path_sep="$(agentlas_path_sep)"
 
 run_python_module() {
   if [[ -z "$HEPHAESTUS_PY" ]]; then
@@ -44,7 +49,7 @@ run_python_module() {
     exit 127
   fi
   # shellcheck disable=SC2086
-  HEPHAESTUS_RUNTIME_ROOT="$root" PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" $HEPHAESTUS_PY -c 'import os, runpy, sys; cwd=os.getcwd(); root=os.environ["HEPHAESTUS_RUNTIME_ROOT"]; sys.path=[p for p in sys.path if p not in ("", cwd, root)]; sys.path.insert(0, root); sys.argv=sys.argv[1:]; runpy.run_module(sys.argv[0], run_name="__main__", alter_sys=True)' "$@"
+  HEPHAESTUS_RUNTIME_ROOT="$root_native" PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" $HEPHAESTUS_PY -c 'import os, runpy, sys; cwd=os.getcwd(); root=os.environ["HEPHAESTUS_RUNTIME_ROOT"]; sys.path=[p for p in sys.path if p not in ("", cwd, root)]; sys.path.insert(0, root); sys.argv=sys.argv[1:]; runpy.run_module(sys.argv[0], run_name="__main__", alter_sys=True)' "$@"
 }
 
 upload_question() {

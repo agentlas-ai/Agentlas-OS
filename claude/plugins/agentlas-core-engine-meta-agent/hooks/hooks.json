@@ -1,12 +1,13 @@
 {
   "description": "Local-only Agentlas context recall plus dependency impact before mutations.",
+  "_windowsPathNote": "Every command below starts by normalizing ${CLAUDE_PLUGIN_ROOT} into R with tr (POSIX-safe: bash ${var//x/y} is a syntax error under dash, which is /bin/sh on Debian and Ubuntu). Hook commands run through Git Bash on Windows, and the host expands the plugin root to a BACKSLASH path (C:\\Users\\...); bash then reads \\U, \\p, \\s as escapes and the command word collapses into garbage (anthropics/claude-code#21878). C:/Users/... is accepted by Git Bash and the substitution is a no-op on macOS and Linux, so one form is correct everywhere. Do not inline ${CLAUDE_PLUGIN_ROOT} into a path again.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -x \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-memory-hook\" ]; then \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-memory-hook\" --host claude --event SessionStart; else printf '{}\\n'; fi",
+            "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-memory-hook\" ]; then \"$R/bin/agentlas-memory-hook\" --host claude --event SessionStart; else printf '{}\\n'; fi",
             "timeout": 15
           }
         ]
@@ -17,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -x \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-memory-hook\" ]; then \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-memory-hook\" --host claude --event UserPromptSubmit; else printf '{}\\n'; fi",
+            "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-memory-hook\" ]; then \"$R/bin/agentlas-memory-hook\" --host claude --event UserPromptSubmit; else printf '{}\\n'; fi",
             "timeout": 15
           }
         ]
@@ -34,7 +35,7 @@
           },
           {
             "type": "command",
-            "command": "if [ -x \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-memory-hook\" ]; then \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-memory-hook\" --host claude --event PreToolUse; else printf '{}\\n'; fi",
+            "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-memory-hook\" ]; then \"$R/bin/agentlas-memory-hook\" --host claude --event PreToolUse; else printf '{}\\n'; fi",
             "timeout": 10
           }
         ]
@@ -45,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -x \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-one\" ]; then \"${CLAUDE_PLUGIN_ROOT}/bin/agentlas-one\" stop-hook; else printf '{}\\n'; fi",
+            "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-one\" ]; then \"$R/bin/agentlas-one\" stop-hook; else printf '{}\\n'; fi",
             "timeout": 10
           }
         ]

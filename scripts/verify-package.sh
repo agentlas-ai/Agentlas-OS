@@ -411,6 +411,7 @@ required_files=(
   "scripts/install-all-runtimes.sh"
   "scripts/verify-install-docs.sh"
   "scripts/verify-global-command-contract.sh"
+  "scripts/verify-windows-wiring.sh"
   "scripts/verify-builder-quality-contract.sh"
   "scripts/verify-gateway-channel-contract.sh"
   "scripts/verify-ontology-runtime.sh"
@@ -617,6 +618,11 @@ scripts/verify-builder-quality-contract.sh
 scripts/verify-experience-assets-contract.sh
 scripts/verify-gateway-channel-contract.sh
 scripts/verify-ontology-runtime.sh
+# Windows/Linux wiring. Every surface this checks was absent on native Windows
+# while the install reported success: no local Core MCP on any host, an
+# unimportable agentlas_cloud, hooks eaten by Git Bash escapes, and agentlas-one
+# never on PATH. A silently missing surface needs a gate more than a crash does.
+scripts/verify-windows-wiring.sh
 scripts/sync-adapters.sh --check
 # The routing-card gate below lints the cards already checked into this repo. It
 # cannot see the templates every built package is scaffolded from, which is how a

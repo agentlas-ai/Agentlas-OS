@@ -8,4 +8,18 @@ if ! agentlas_export_python_cache_boundary; then
   printf '%s\n' "career-graph: could not establish a safe external Python cache directory." >&2
   exit 78
 fi
-PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" python3 -m career_graph "$@"
+root_native="$(agentlas_native_path "$root")"
+path_sep="$(agentlas_path_sep)"
+
+# Prefer the runtime's own verified interpreter over whatever `python3` PATH
+# resolves to: macOS ships 3.9.6 as /usr/bin/python3, old enough to reject syntax
+# the rest of the product uses. Every sibling launcher resolves in this order.
+for candidate in "${HEPHAESTUS_PYTHON:-}" "$root/bin/python3" python3 python; do
+  [[ -n "$candidate" ]] || continue
+  if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
+    PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" exec "$candidate" -m career_graph "$@"
+  fi
+done
+
+printf '%s\n' "career-graph: Python 3.9+ not found. Re-run the Agentlas OS installer." >&2
+exit 127
