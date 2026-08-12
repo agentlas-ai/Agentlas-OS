@@ -53,6 +53,15 @@ NOTES_DIR = "notes"
 
 # Heuristic lower bound that prevents casual chat from creating work receipts.
 SUBSTANTIAL_TOOL_USES = 5
+# Harvest caps — a session's Memory Events are model-authored and untrusted, so
+# bound count/size to keep a crafted envelope from filling disk, feeding a
+# backtracking evidence-shape regex a giant string, or costing O(N^2) in the
+# ticket-ledger rescan. Generous for real learnings, fatal only to abuse.
+_MAX_HARVEST_CANDIDATES = 64
+_MAX_CONTENT_CHARS = 4000
+_MAX_EVIDENCE_ITEM_CHARS = 500
+_MAX_ENVELOPE_BYTES = 1_000_000
+_MAX_TEXT_BYTES = 2_000_000
 # Bounded rollout window inspected by the stop hook.
 RECENT_ROLLOUT_WINDOW_SEC = 1800
 MAX_ROLLOUTS_PER_STOP = 12
@@ -778,20 +787,48 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
     for text in texts or []:
         if not isinstance(text, str):
             continue
+        # Bound BEFORE the regex: the envelope finder scans the whole assistant
+        # text, so a 500MB blob spends a minute in finditer before any later cap
+        # applies (measured 2026-08-12 adversarial set 2). A real assistant
+        # message with a Memory Events block is well under this ceiling; truncate
+        # so the block (which comes at/near the end of the answer) still parses
+        # for normal sizes while abuse is cut.
+        if len(text) > _MAX_TEXT_BYTES:
+            text = text[-_MAX_TEXT_BYTES:]
         matches = list(_MEMORY_ENVELOPE_FENCED_RE.finditer(text))
         if not matches:
             matches = list(_MEMORY_ENVELOPE_BARE_RE.finditer(text))
         for match in matches:
+            raw = match.group(1)
+            # Reject the parse itself when the envelope is abusively large — a
+            # 500MB blob would spend a minute in json.loads before any per-field
+            # cap could help. A real Memory Events block (≤64 candidates, bounded
+            # content/evidence) is well under this ceiling.
+            if len(raw) > _MAX_ENVELOPE_BYTES:
+                continue
             try:
-                envelope = json.loads(match.group(1))
+                envelope = json.loads(raw)
             except json.JSONDecodeError:
                 continue
             if not isinstance(envelope, dict):
                 continue
-            for candidate in envelope.get("candidates") or []:
+            candidates_raw = envelope.get("candidates") or []
+            # Bound the iteration itself (not just `found`): dedup could keep
+            # `found` small while a million-candidate list still spun the loop.
+            if isinstance(candidates_raw, list):
+                candidates_raw = candidates_raw[: _MAX_HARVEST_CANDIDATES * 8]
+            for candidate in candidates_raw:
+                # Bound the harvest — content, evidence, and candidate COUNT were
+                # all unbounded, so one crafted envelope could fill a drawer's
+                # disk, feed a quadratically-backtracking evidence-shape regex a
+                # giant string (ReDoS), and cost O(N^2) in emit_ticket's ledger
+                # rescan (measured 2026-08-12 adversarial set 2). These caps are
+                # generous for real learnings and fatal only to abuse.
+                if len(found) >= _MAX_HARVEST_CANDIDATES:
+                    break
                 if not isinstance(candidate, dict):
                     continue
-                content = str(candidate.get("content") or "").strip()
+                content = str(candidate.get("content") or "").strip()[:_MAX_CONTENT_CHARS]
                 if not content:
                     continue
                 key = _content_hash(content)
@@ -811,7 +848,7 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
                     "content": content,
                     "kind": str(candidate.get("memory_kind") or "hypothesis"),
                     "scope": str(candidate.get("suggested_scope") or "agent_repo"),
-                    "evidence": [str(item) for item in evidence][:8] if isinstance(evidence, list) else [],
+                    "evidence": [str(item)[:_MAX_EVIDENCE_ITEM_CHARS] for item in evidence][:8] if isinstance(evidence, list) else [],
                     # G4/G8 — a worker may explicitly name the durable block this
                     # replaces (its h:16hex). Anything else is ignored, never guessed.
                     "supersedes": supersedes if re.fullmatch(r"[0-9a-f]{16}", supersedes) else "",
@@ -1167,11 +1204,17 @@ def _route_borrowed_agent_events(
     remaining: list[dict[str, Any]] = []
     routed_by_slug: dict[str, int] = {}
     blocked_by_slug: dict[str, int] = {}
+    attributed_by_slug: dict[str, int] = {}
     for event in events:
         slug = str(event.get("agent_slug") or "")
         if slug not in active:
             remaining.append(event)
             continue
+        # This agent DID emit an attributed learning this session, whether or not
+        # it ends up routed (dedup can drop it to 0). Track it so a re-derived
+        # learning the agent already recorded earlier is not falsely flagged as
+        # "recorded no experience" (measured 2026-08-12 adversarial set 2).
+        attributed_by_slug[slug] = attributed_by_slug.get(slug, 0) + 1
         # Drawer safety gate — R20 misevolution vectors (secret, capability
         # widening, imperative-not-memory, host path) must NEVER reach a drawer's
         # experience.sqlite: it is recalled into future sessions, so a secret or
@@ -1191,6 +1234,7 @@ def _route_borrowed_agent_events(
             blocked_by_slug[slug] = blocked_by_slug.get(slug, 0) + 1
             continue
         drawer = base / slug
+        ticket_committed = False
         try:
             ticketed = _drawer_ticket_once(drawer, {
                 "ts": _utc_now_iso(),
@@ -1201,13 +1245,22 @@ def _route_borrowed_agent_events(
                 "evidence": event.get("evidence") or [],
                 "status": "candidate",
             })
+            ticket_committed = True
             _drawer_write_note(drawer, event)
             # Feed memory_candidates (evolution) alongside notes→chunks (recall).
             # Without this the drawer accumulates recall but never evolves.
             _drawer_feed_evolution(drawer, slug, event)
             routed_by_slug[slug] = routed_by_slug.get(slug, 0) + (1 if ticketed else 0)
         except OSError:
-            remaining.append(event)  # drawer unwritable — keep the learning in One
+            # Only fall back to the One path if NOTHING landed in the drawer. If
+            # the ticket already committed and a LATER step (note/feed) failed,
+            # sending the event to One too would double-write the same learning
+            # into both stores — the very thing attribution routing prevents
+            # (measured 2026-08-12 adversarial set 2). Count it as routed instead.
+            if ticket_committed:
+                routed_by_slug[slug] = routed_by_slug.get(slug, 0) + 1
+            else:
+                remaining.append(event)  # drawer unwritable — keep the learning in One
     for slug in active:
         entry: dict[str, Any] = {"tickets": routed_by_slug.get(slug, 0)}
         # Announce, never hide: a blocked misevolution vector is a fact about the
@@ -1233,9 +1286,13 @@ def _route_borrowed_agent_events(
         # that is not a gap — the agent DID emit, we refused it — and stamping a
         # "recorded no experience" ticket would both lie and contradict the
         # `blocked` field we already surfaced (measured 2026-08-12 adversarial set).
+        # A gap is only real when the agent emitted NOTHING attributed this
+        # session (attributed==0). If it emitted but every event was deduped
+        # (already recorded in an earlier session) or blocked, that is not a gap
+        # — attributed>0 covers both, so a re-derived learning no longer stamps
+        # a false 'recorded no experience' ticket every session.
         if (
-            routed_by_slug.get(slug, 0) == 0
-            and not blocked_by_slug.get(slug)
+            attributed_by_slug.get(slug, 0) == 0
             and substantial
             and not already_recorded
         ):

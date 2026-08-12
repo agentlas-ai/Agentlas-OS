@@ -41,6 +41,10 @@ MAX_FILE_BYTES = 512 * 1024
 MAX_WALKED_ENTRIES = 20_000
 MAX_FILES = 400
 AGENT_DEFINITION_FILES = {"AGENT.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md", "agent.md", "manifest.md", "system-prompt.md"}
+# Engine scaffold stencils are all `{{UPPER_SNAKE}}` (mirrors repackage._PLACEHOLDER).
+# Deliberately does NOT match user templating like `{{input}}` or `${{ secrets.X }}`,
+# so the withdraw pass never deletes a file a person actually authored.
+_ENGINE_STENCIL_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 SKIP_DIRS = {".git", ".next", "node_modules", "dist", "out", "release", "__pycache__"}
 CLOUD_PACKAGE_HASH_VERSION = "path-sha256-executable-v2"
 # These files are local, mutable verification evidence. Agent Cloud performs
@@ -248,12 +252,18 @@ def package_agent(
     # placeholder text either — so the only correct move is to take back exactly
     # what this pass added and could not answer.
     # Withdraw what this pass created AND any canonical entry file that is still
-    # a stencil. The created-only list misses a PRE-EXISTING stencil AGENTS.md:
-    # scaffold skips a file that already exists, so it is never in `created`, yet
-    # it ships `{{ROLE}}` to a buyer as the very file the runtime reads first
-    # (measured 2026-08-12 adversarial set — a stencil AGENTS.md reached upload
-    # at status ready). Only a wholly-stencil file is taken back; a body a person
-    # partly wrote (no `{{`) is left exactly as it is.
+    # an ENGINE stencil. The created-only list misses a PRE-EXISTING stencil
+    # AGENTS.md: scaffold skips a file that already exists, so it is never in
+    # `created`, yet it ships `{{ROLE}}` to a buyer as the very file the runtime
+    # reads first (measured 2026-08-12).
+    #
+    # Match ONLY engine stencil tokens `{{UPPER_SNAKE}}` (repackage._PLACEHOLDER),
+    # never any `{{`. The bare-`{{` test deleted user-authored source in place —
+    # a README with `${{ secrets.TOKEN }}` (GitHub Actions), an agent.md with
+    # `{{input}}`/`{{target_lang}}` prompt placeholders — permanent silent data
+    # loss that could leave a package with no entry file (measured 2026-08-12
+    # adversarial set 2). Engine stencils are all UPPER_SNAKE; user templating
+    # (lowercase, dotted, spaced) never is.
     withdraw_paths: list[str] = list(contract_scaffold.get("created") or [])
     for name in AGENT_DEFINITION_FILES:
         if name not in withdraw_paths:
@@ -267,7 +277,7 @@ def package_agent(
             body = candidate.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if "{{" not in body:
+        if _ENGINE_STENCIL_RE.search(body) is None:
             continue
         try:
             candidate.unlink()

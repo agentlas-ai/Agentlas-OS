@@ -81,6 +81,12 @@ _TEAM_MEMBER_MAX = 32
 # is enough and stops the file (and _session_active_agents' per-stop scan) from
 # growing without bound across repeated prepares.
 _LEDGER_MAX_ROWS = 200
+_LEDGER_SEQ = [0]
+
+
+def _ledger_seq() -> int:
+    _LEDGER_SEQ[0] += 1
+    return _LEDGER_SEQ[0]
 
 
 def _hub_agents_dir() -> Path:
@@ -128,9 +134,22 @@ def _wire_local_agent_experience(bundle: dict[str, Any], package_root: Path) -> 
         existing = []
     kept = [ln for ln in existing if ln.strip()][-(_LEDGER_MAX_ROWS - 1):]
     kept.append(json.dumps(row, ensure_ascii=False))
-    tmp = ledger.with_suffix(".jsonl.tmp")
-    tmp.write_text("\n".join(kept) + "\n", encoding="utf-8")
-    tmp.replace(ledger)
+    # Per-writer unique temp name: a shared fixed ".jsonl.tmp" made concurrent
+    # prepares of the SAME slug race — writer A renames tmp→ledger, then writer
+    # B's replace() hit a now-missing tmp and raised FileNotFoundError (swallowed
+    # fail-open, so the row was silently lost). A unique name per writer means
+    # each replace() targets its own tmp; the last writer wins the ledger, which
+    # is fine — the bounded tail only needs recent activity, not every row
+    # (measured 2026-08-12 adversarial set 2).
+    tmp = ledger.with_name(f"{ledger.name}.{os.getpid()}-{_ledger_seq()}.tmp")
+    try:
+        tmp.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        tmp.replace(ledger)
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
     directive = bundle.get("directiveBundle")
     if isinstance(directive, dict):
         instructions = str(directive.get("instructions") or "")
