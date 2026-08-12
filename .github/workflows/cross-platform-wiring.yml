@@ -95,7 +95,14 @@ jobs:
 
       # Behavioural half: after an install that reported success, do the surfaces
       # exist and run on THIS platform?
+      #
+      # VERIFY_WIRING_REQUIRE_MCP: the seed step above exists so there IS a host
+      # config to inspect. Without this floor the MCP section passes having
+      # inspected nothing, which is what it did — the launch-vector assertions
+      # were carried entirely by that seed step happening to work.
       - name: Post-install wiring contract
+        env:
+          VERIFY_WIRING_REQUIRE_MCP: "1"
         run: bash scripts/verify-installed-wiring.sh
 
       # The launchers are the PYTHONPATH proof, but assert the import directly
@@ -107,7 +114,12 @@ jobs:
           request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}'
           printf '%s\n' "$request" | "$runner" mcp serve > handshake.json 2>handshake.err || true
           cat handshake.err || true
-          python3 - <<'PY'
+          # Not `python3`: native Windows ships python.exe only and setup-python
+          # does not guarantee a python3 alias in Git Bash, so hardcoding it makes
+          # this step fail for a reason that has nothing to do with the MCP server
+          # it is testing — a false Windows defect.
+          py="$(command -v python3 || command -v python)"
+          "$py" - <<'PY'
           import json
           import sys
           from pathlib import Path

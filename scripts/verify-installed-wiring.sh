@@ -20,6 +20,16 @@ runtime="$HOME/.agentlas/runtime/current"
 user_bin="$HOME/.local/bin"
 failures=0
 
+# `python3` is not a universal name. Native Windows ships `python.exe` only, and
+# actions/setup-python does not guarantee a `python3` alias there, so a step that
+# hardcodes `python3` fails for a reason that has nothing to do with the wiring
+# it claims to test — a green-looking gate reporting a red platform.
+PY=""
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1; then PY="$candidate"; break; fi
+done
+[[ -n "$PY" ]] || { echo "verify-installed-wiring: no python3/python on PATH" >&2; exit 1; }
+
 fail() {
   echo "verify-installed-wiring: $*" >&2
   failures=$((failures + 1))
@@ -97,13 +107,14 @@ fi
 
 # 5. Any host MCP registration this install wrote must carry a launch vector the
 #    host can actually spawn.
-python3 - "$is_windows" <<'PY' || failures=$((failures + 1))
+"$PY" - "$is_windows" "${VERIFY_WIRING_REQUIRE_MCP:-0}" <<'PY' || failures=$((failures + 1))
 import json
 import os
 import sys
 from pathlib import Path
 
 is_windows = sys.argv[1] == "1"
+require_mcp = sys.argv[2] == "1"
 home = Path(os.path.expanduser("~"))
 targets = {
     "cursor": (home / ".cursor/mcp.json", ("mcpServers",)),
@@ -113,10 +124,11 @@ targets = {
     "copilot": (home / ".copilot/mcp-config.json", ("mcpServers",)),
     "amazonq": (home / ".aws/amazonq/mcp.json", ("mcpServers",)),
 }
-problems, checked = [], 0
+problems, checked, present = [], 0, 0
 for label, (path, keys) in targets.items():
     if not path.is_file():
         continue
+    present += 1
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as exc:
@@ -128,6 +140,12 @@ for label, (path, keys) in targets.items():
         if isinstance(section, dict) and isinstance(section.get("hephaestus-network"), dict):
             entry = section["hephaestus-network"]
     if entry is None:
+        # Every host here is gated on its config DIRECTORY, so a config file that
+        # exists is a host the installer decided to register into. No entry means
+        # the registration it reported did not land — previously a silent
+        # `continue`, which is how this whole check could pass having inspected
+        # nothing at all.
+        problems.append(f"{label}: {path} exists but carries no hephaestus-network entry")
         continue
     checked += 1
     # OpenCode takes one argv array; everyone else takes command + args.
@@ -144,9 +162,19 @@ for label, (path, keys) in targets.items():
     if argv[-2:] != ["mcp", "serve"]:
         problems.append(f"{label}: launch vector does not end in `mcp serve`: {argv}")
 
+# A bare machine with no host CLI legitimately has nothing to check, so 0 is not
+# a failure by itself — but it must never READ like a pass. Print the denominator
+# and let CI, which seeds host config directories precisely so there is something
+# to inspect, demand a floor.
+if require_mcp and checked == 0:
+    problems.append(
+        f"inspected 0 host MCP registrations ({present} config file(s) present) "
+        "while VERIFY_WIRING_REQUIRE_MCP=1 — the launch-vector assertions never ran"
+    )
+
 for problem in problems:
     print(f"verify-installed-wiring: {problem}", file=sys.stderr)
-print(f"  ok  checked {checked} host MCP registration(s)")
+print(f"  ok  checked {checked} of {present} present host MCP config(s)")
 raise SystemExit(1 if problems else 0)
 PY
 
@@ -161,6 +189,35 @@ if [[ -d "$HOME/.claude/commands" ]]; then
 else
   ok "no ~/.claude/commands (Claude CLI absent on this machine)"
 fi
+
+# 7. Runtime-home payloads that only the INSTALLER used to copy. Every consumer
+#    of these degrades instead of raising, so their absence is invisible: the
+#    curator silently falls back to the embedded ruleset and stamps
+#    sha="embedded" on every decision receipt, and `agentlas-one on` reports
+#    success having installed no goose/openclaw hooks at all. Assert resolution,
+#    not just file presence — the ruleset path is resolved relative to the
+#    agentlas_cloud package, so only an import through this runtime proves it.
+#
+#    Run from INSIDE $runtime, not from wherever this script was invoked: with
+#    `-c`, sys.path[0] is the current directory and it beats PYTHONPATH, so a run
+#    started in an Agentlas-OS checkout imports the repo's agentlas_cloud and
+#    reads the repo's ruleset. Measured: that spelling reported a healthy
+#    sha=4c5dd515 for a runtime whose real answer is "embedded".
+ruleset_sha="$(cd "$runtime" 2>/dev/null && PYTHONPATH="$runtime" PYTHONNOUSERSITE=1 "$PY" -c \
+  'from agentlas_cloud.one_workspace import load_ruleset; print(load_ruleset()[1])' 2>&1)"
+case "$ruleset_sha" in
+  embedded)
+    fail "curator ruleset resolved to the embedded fallback — $runtime/system-agents/curator-ruleset.json is missing (every decision receipt will read sha=embedded)" ;;
+  [0-9a-f]*)
+    ok "curator ruleset resolved from the runtime: sha=$ruleset_sha" ;;
+  *)
+    fail "could not resolve the curator ruleset through $runtime: $(printf '%s' "$ruleset_sha" | tail -1)" ;;
+esac
+
+for pack in "goose/plugins/agentlas-one" "openclaw/hooks/agentlas-one"; do
+  [[ -d "$runtime/$pack" ]] && ok "hook pack $pack" \
+    || fail "missing hook pack: $runtime/$pack (agentlas-one on would install no hooks for this host and still report success)"
+done
 
 if [[ "$failures" -gt 0 ]]; then
   echo "verify-installed-wiring: $failures failure(s)." >&2

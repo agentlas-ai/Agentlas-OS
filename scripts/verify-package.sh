@@ -623,6 +623,12 @@ scripts/verify-ontology-runtime.sh
 # unimportable agentlas_cloud, hooks eaten by Git Bash escapes, and agentlas-one
 # never on PATH. A silently missing surface needs a gate more than a crash does.
 scripts/verify-windows-wiring.sh
+# The runtime home is written by two programs that share no code — the installer
+# and the updater — and the second one is what every machine gets forever after
+# its first install. Twice now a payload was added to one and not the other
+# (system-agents/curator-ruleset.json, then the goose/openclaw hook packs), and
+# both times every consumer degraded silently instead of failing.
+scripts/verify-runtime-home-parity.sh
 scripts/sync-adapters.sh --check
 # The routing-card gate below lints the cards already checked into this repo. It
 # cannot see the templates every built package is scaffolded from, which is how a

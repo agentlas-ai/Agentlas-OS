@@ -1,5 +1,87 @@
 # Changelog
 
+## v1.2.0 - 2026-08-12
+
+- **The local Core MCP server now starts on native Windows.** Windows Claude
+  Code, Codex, Cursor, OpenCode, Amp, Copilot CLI and Amazon Q spawn stdio MCP
+  servers without a shell, but every host registration pointed at an
+  extensionless bash runner — so on Windows the local Core could not start at
+  all and every session silently fell through to the remote Hub. All eight
+  registrations now render from one launch vector, `PYTHONPATH` is written in
+  native form with the platform separator, and `.cmd` shims are installed for
+  the commands that need them.
+- **`agentlas-one on` works on a stock Mac.** The runner now prefers the
+  runtime's own Python over whatever is first on `PATH`; macOS ships 3.9.6,
+  which could not parse the One workspace module, and the only symptom was
+  `(verification failed)` with no error.
+- **The managed command list is derived, not typed out.** It had been written
+  by hand in seven places, and all seven omitted `agentlas-one` and `hep-graph`
+  — the documented switch was not a command on any machine that had not been
+  hand-edited.
+- **Agents built and borrowed locally accumulate experience and self-evolve
+  even when One is off.** An agent's own experience is its asset; it is no
+  longer gated behind the One switch.
+- **Content screening no longer decides what a memory is allowed to say.**
+  Judgment stays with evidence and shape; the screening pass that tried to
+  classify meaning by word list is removed, and the canonical curator ruleset
+  now actually reaches the installed runtime.
+
+## v1.1.111 - 2026-08-12
+
+- **One's memory now searches by meaning, like every other layer.** The project,
+  borrowed-agent and Desktop memories were already served by the local ontology
+  runtime — the engine behind the published LoCoMo and LongMemEval numbers — but
+  the One drawer had been built later on its own store and searched by word
+  overlap. Durable soul blocks are now projected into that engine as a
+  rebuildable, incremental index; the soul file stays authoritative, and a host
+  without the engine recalls exactly as before. Measured on LongMemEval with
+  gold evidence labels and no reader model: 93.5% to 96.0% recall@10 over 200
+  questions.
+- **Recall got roughly 20x faster.** 490ms to 21ms, by reusing the runtime
+  instance instead of reconstructing it on every call.
+
+## v1.1.110 - 2026-08-12
+
+- **Built packages follow the planned folder layout.** A2A, tools, permissions,
+  hooks and provenance projections, plus thin `CLAUDE.md` / `GEMINI.md`
+  adapters over the canonical core.
+- **Experience pipeline v2.** Borrowed agents harvest from their own drawer, and
+  evidence-shape governance plus reference framing decide what is allowed to
+  become durable.
+
+## v1.1.109 - 2026-08-11
+
+- **One curator ruleset for every surface.** Three curators had drifted apart —
+  one judging semantically, one discarding before the gate, one rejecting
+  deterministically — so the same learning survived on one product and vanished
+  on another. `system-agents/curator-ruleset.json` is now the canonical judgment
+  table (kinds, evidence requirements, downgrade rules, concurrency, budgets)
+  and every executor reads it instead of reimplementing it.
+- **The One drawer is write-protected everywhere.** Direct edits to
+  `~/.agentlas/one` are refused with a reason pointing at the Memory Events
+  envelope. Recall stays free.
+- **A learning cannot be recorded twice.** Tickets get deterministic
+  content-hash IDs under a ledger lock, so double hooks, concurrent sessions and
+  manual reruns no longer duplicate one learning. A new entry may also name the
+  block it replaces; the old one is hidden from recall rather than deleted.
+
+## v1.1.108 - 2026-08-10
+
+- **Anonymous build telemetry.** `hep-build` runs locally without sign-in, so
+  there was no signal on where builds actually fail. The engine now sends
+  counters only — a locally generated install id, which step ran, whether it
+  passed, a machine error code, a duration. Never a path, a package name, a
+  prompt, or error text, and the allowlist is enforced on both ends. It runs
+  detached with a 3-second timeout and swallows every failure, so an offline
+  build is byte-identical to one with telemetry off. `AGENTLAS_TELEMETRY=0` and
+  `DO_NOT_TRACK=1` both stop it.
+  Existing installs are treated as undecided rather than opted out: they carry a
+  `telemetry: false` written by an old default that no command could set and
+  nobody chose, so only a value carrying the explicit marker counts as a choice.
+- **A goal survives the session that created it.** Objective, tasks, cycle
+  accounting and budget are now durable on the same goal id as the workforce
+  roster binding, so hosts rejoin work that outlives one session.
+
 ## v1.1.107 - 2026-08-10
 
 - **Switching Agentlas One on now arms every checkpoint by itself.** `on` used

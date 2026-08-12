@@ -658,14 +658,24 @@ write_windows_command_shims() {
 # Codex (USER scope), OpenCode, OpenClaw, Cursor, and Crush.
 install_agents_skills() {
   ensure_downloaded_source || return 1
-  mkdir -p "$HOME/.agents/skills"
+  # Every other install step guards its writes; this one did not, so an
+  # unwritable ~/.agents (read-only mount, root-owned directory, full disk) let
+  # the function fall through to its own success log and return 0. The five
+  # skills a user then cannot see were reported as installed.
+  mkdir -p "$HOME/.agents/skills" 2>/dev/null \
+    || { warn "Could not create ~/.agents/skills (is it writable?); universal skills were not installed."; return 1; }
   local name src
   for name in hephaestus-network hephaestus-cloud hephaestus-storm; do
     src="$source_dir/.agents/skills/$name"
     [[ -d "$src" ]] || src="$source_dir/skills/$name"
     [[ -d "$src" ]] || { warn "canonical $name skill not found."; return 1; }
     rm -rf "$HOME/.agents/skills/$name"
-    cp -R "$src" "$HOME/.agents/skills/$name"
+    cp -R "$src" "$HOME/.agents/skills/$name" \
+      || { warn "Could not write ~/.agents/skills/$name (is it writable?)."; return 1; }
+    # cp can report success on a partial copy when the destination fills up, and
+    # the only file that makes a skill a skill is SKILL.md.
+    [[ -f "$HOME/.agents/skills/$name/SKILL.md" ]] \
+      || { warn "~/.agents/skills/$name was written without SKILL.md; the skill would never load."; return 1; }
   done
   log "Installed universal skills: ~/.agents/skills/hephaestus-network, hephaestus-cloud, and hephaestus-storm"
 }

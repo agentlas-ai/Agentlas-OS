@@ -41,7 +41,25 @@ MAX_RUNTIME_ARCHIVE_BYTES = 256 * 1024 * 1024
 # this, but it was missing from this list, so it was lost entirely from
 # installs — a managed runtime's hep-network then stopped on a missing schema.
 RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "ontology", "templates")
-RUNTIME_OPTIONAL_DIRS = ("schemas",)
+# Runtime-home payloads that the installer copies and the updater must copy too,
+# or a machine that installed once and then only ever auto-updated loses them on
+# its next update — silently, because every consumer below degrades rather than
+# raises:
+#   system-agents/ — one_workspace._ruleset_paths() resolves the canonical
+#     curator-ruleset.json as <runtime>/system-agents/curator-ruleset.json.
+#     Without it load_ruleset() falls back to the embedded defaults and stamps
+#     sha="embedded" into every decision receipt.
+#   goose/, openclaw/ — bin/agentlas-one's hook_asset_root() looks for
+#     <runtime>/goose/plugins/agentlas-one and <runtime>/openclaw/hooks/
+#     agentlas-one. When neither is present it returns 1 and the caller
+#     `return 0`s, so `agentlas-one on` reports success having installed no
+#     hooks for those two hosts. (These also travel inside host_adapters/, but
+#     that is the adapter bundle — not the path the runner reads.)
+# Optional rather than required on purpose: an archive predating the release
+# allowlist entry must still be installable, and a hard requirement here turns a
+# silent degradation into a total update outage. scripts/verify-runtime-home-
+# parity.sh is what keeps this list honest against the installer.
+RUNTIME_OPTIONAL_DIRS = ("schemas", "system-agents", "goose", "openclaw")
 RUNTIME_FILES = ("package-contract.json",)
 RUNTIME_BRIDGE_FILES = (
     "desktop-update-bridge-v1.json",
@@ -224,8 +242,14 @@ def _adapter_paths(home: Path) -> list[Path]:
     codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
     paths: list[Path] = []
     # Destination-only sweep: derive from what this machine actually has, so a
-    # command installed after the last full update is still swept.
-    for command in _managed_command_names(home=home):
+    # command installed after the last full update is still swept. Derived ONCE
+    # and reused by every branch below: the plugin-cache branch kept its own
+    # `HEP_COMMANDS` loop after this call site was fixed, so cached adapters for
+    # `agentlas`, `agentlas-one` and `hep-graph` were never swept and kept the
+    # permission-blocked preflight forever on exactly the machines that read the
+    # cache copy first.
+    managed_commands = _managed_command_names(home=home)
+    for command in managed_commands:
         paths.extend(
             [
                 home / ".claude" / "commands" / f"{command}.md",
@@ -261,7 +285,7 @@ def _adapter_paths(home: Path) -> list[Path]:
             for runtime in ("claude", "codex"):
                 command_dir = child / runtime / "plugins" / "agentlas-core-engine-meta-agent" / "commands"
                 if command_dir.is_dir():
-                    for command in HEP_COMMANDS:
+                    for command in managed_commands:
                         paths.append(command_dir / f"{command}.md")
             for skill in HEP_SKILLS:
                 paths.append(child / "skills" / skill / "SKILL.md")
