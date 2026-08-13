@@ -15,6 +15,10 @@ def _as_graph(project_root: str | Path | dict[str, Any]) -> tuple[dict[str, Any]
         graph_data = project_root
     else:
         graph_data = load_graph(project_root)
+    if graph_data.get("status") not in {None, "ok"}:
+        raise ValueError(
+            f"AO graph is unavailable: {graph_data.get('status')} ({'; '.join(graph_data.get('errors') or [])})"
+        )
     graph = graph_data.get("graph", graph_data)
     agents = list(graph.get("agents", []))
     artifacts = list(graph.get("artifacts", []))
@@ -46,6 +50,7 @@ def describe_graph(project_root: str | Path = ".") -> dict[str, Any]:
         relation_counts[relation] = relation_counts.get(relation, 0) + 1
     artifact_kinds = sorted({str(artifact.get("kind") or artifact.get("id") or "").removeprefix("artifact:") for artifact in graph.get("artifacts", [])})
     return {
+        "status": graph_data.get("status", "ok"),
         "path": str(Path(project_root) / ".agentlas" / AGENT_ONTOLOGY_DIR),
         "warnings": graph_data.get("warnings", []),
         "errors": graph_data.get("errors", []),
@@ -233,7 +238,12 @@ def _query_matches(graph: dict[str, Any], condition: str, node_ids: set[str], pr
     return set(node_ids) - result if negated else result
 
 
-def execute_query(query: str, project_root: str | Path | dict[str, Any] = ".") -> dict[str, Any]:
+def execute_query(
+    query: str,
+    project_root: str | Path | dict[str, Any] = ".",
+    *,
+    max_results: int = 100,
+) -> dict[str, Any]:
     """Execute a tiny AO query language.
 
     Supported syntax: ``field:value`` filters chained with ``and``, each
@@ -247,9 +257,26 @@ def execute_query(query: str, project_root: str | Path | dict[str, Any] = ".") -
     - ``type:Specialist and produces:codebase_change``
     """
 
+    if max_results < 1:
+        return {"status": "error", "error": "max_results must be at least 1", "query": query, "matches": [], "count": 0, "returned": 0}
+    if not isinstance(project_root, dict):
+        graph_context = load_graph(project_root)
+        if graph_context.get("status") != "ok":
+            return {
+                "status": "error",
+                "error": "ao_graph_unavailable",
+                "load_status": graph_context.get("status"),
+                "details": list(graph_context.get("errors") or []),
+                "query": query,
+                "matches": [],
+                "count": 0,
+                "returned": 0,
+            }
+        project_root = graph_context
+
     query_text = (query or "").strip()
     if not query_text:
-        return {"query": "", "matches": [], "count": 0}
+        return {"status": "ok", "query": "", "matches": [], "count": 0, "returned": 0}
 
     graph, node_index, _ = _as_graph(project_root)
     graph["node_index"] = node_index
@@ -287,10 +314,15 @@ def execute_query(query: str, project_root: str | Path | dict[str, Any] = ".") -
         )
     if not candidates:
         warnings.append("query empty")
+    total = len(results)
+    limited = results[:max_results]
     return {
+        "status": "ok",
         "query": query_text,
-        "count": len(results),
-        "matches": results,
+        "count": total,
+        "returned": len(limited),
+        "truncated": total > len(limited),
+        "matches": limited,
         "warnings": warnings,
         "unmatched_fields": [],
     }
@@ -367,6 +399,8 @@ def plan_pipeline_ao(
     while queue and len(stages) < max_stages:
         artifact = queue.pop(0)
         for agent in producers(artifact):
+            if len(stages) >= max_stages:
+                break
             if agent in visited:
                 continue
             visited.add(agent)

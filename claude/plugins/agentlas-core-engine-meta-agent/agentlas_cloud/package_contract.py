@@ -20,7 +20,9 @@ loop. Constrained decoding belongs only to ``fill``-shaped artifacts.
 from __future__ import annotations
 
 import json
+import os
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +33,7 @@ HOST_PATH_RE = re.compile(
     r"|[A-Za-z]:\\+Users\\+[^\\\s\"'<>]+(?:\\+[^\\\s\"'<>]+)*"
 )
 TEXT_SCAN_LIMIT_BYTES = 2 * 1024 * 1024
+PACKAGE_PATH_SCAN_LIMIT = 10_000
 GENERATED_RUNTIME_PATHS = (
     ".agentlas/ontology-runtime.json",
     ".agentlas/ontology-sources.json",
@@ -82,6 +85,9 @@ def contract_prompt_lines(mode: str, root: Path | None = None) -> list[str]:
     lines: list[str] = []
     for artifact in artifacts_for_mode(load_contract(root), mode):
         marker = "required" if artifact.get("required", True) else "optional"
+        optional_when = artifact.get("optionalWhen") or []
+        if marker == "required" and optional_when:
+            marker += f"; optional only for explicit {', '.join(optional_when)} profile"
         desc = artifact.get("description") or ""
         lines.append(f"- {artifact['path']} ({marker}): {desc}")
     return lines
@@ -104,6 +110,56 @@ def _default_substitutions(package_id: str, name: str, command: str, mode: str) 
     }
 
 
+def _workspace_symlink_error(workspace: Path) -> dict[str, str] | None:
+    """Reject package trees that could redirect a later mutation.
+
+    Contract scaffold/complete/verify all write derived files.  A containment
+    check on the final path is insufficient because an existing intermediate
+    directory can be replaced by a symlink.  Walk without following links and
+    fail before the first package write.  The bound matches the upload walk's
+    fail-closed posture and prevents an adversarial tree from making preflight
+    unbounded.
+    """
+
+    walked = 0
+    pending = [workspace]
+    while pending:
+        directory = pending.pop()
+        try:
+            entries = os.scandir(directory)
+        except OSError as error:
+            return {
+                "error": "workspace_unreadable",
+                "message": f"package workspace could not be inspected safely: {directory}: {error}",
+            }
+        with entries:
+            for entry in entries:
+                walked += 1
+                if walked > PACKAGE_PATH_SCAN_LIMIT:
+                    return {
+                        "error": "workspace_scan_limit",
+                        "message": (
+                            f"package workspace has more than {PACKAGE_PATH_SCAN_LIMIT} paths; "
+                            "use a focused package folder"
+                        ),
+                    }
+                relative = Path(entry.path).relative_to(workspace).as_posix()
+                if entry.is_symlink():
+                    return {
+                        "error": "workspace_symlink_forbidden",
+                        "message": f"symbolic links are not allowed in a mutable package workspace: {relative}",
+                    }
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        pending.append(Path(entry.path))
+                except OSError as error:
+                    return {
+                        "error": "workspace_unreadable",
+                        "message": f"package path could not be inspected safely: {relative}: {error}",
+                    }
+    return None
+
+
 def _workspace_path_error(workspace: Path, *, must_exist: bool) -> dict[str, str] | None:
     """Say why a user-supplied workspace path is unusable, or None if it is fine.
 
@@ -118,6 +174,12 @@ def _workspace_path_error(workspace: Path, *, must_exist: bool) -> dict[str, str
     ("agent folder not found"). Report the path, never diagnose a package that
     was never looked at.
     """
+    prohibited = {Path(workspace.anchor).resolve(), Path.home().resolve(), engine_root().resolve()}
+    if workspace in prohibited:
+        return {
+            "error": "package_target_too_broad",
+            "message": f"refusing broad or engine package target: {workspace}",
+        }
     if not workspace.exists():
         if not must_exist:
             return None  # scaffold creates the workspace; absence is expected
@@ -134,7 +196,92 @@ def _workspace_path_error(workspace: Path, *, must_exist: bool) -> dict[str, str
             "error": "workspace_not_a_folder",
             "message": f"not a folder: {workspace} — a package workspace must be a directory",
         }
-    return None
+    return _workspace_symlink_error(workspace)
+
+
+def workspace_path_problem(folder: str | Path, *, must_exist: bool = True) -> dict[str, str] | None:
+    """Public path preflight shared by CLI contract actions."""
+
+    requested = Path(folder).expanduser()
+    if requested.is_symlink():
+        return {
+            "error": "workspace_symlink_forbidden",
+            "message": f"package workspace itself may not be a symbolic link: {requested}",
+        }
+    workspace = requested.resolve(strict=False)
+    return _workspace_path_error(workspace, must_exist=must_exist)
+
+
+def _require_safe_mutation_workspace(folder: str | Path) -> Path:
+    problem = workspace_path_problem(folder, must_exist=True)
+    if problem:
+        raise ValueError(f"{problem['error']}: {problem['message']}")
+    return Path(folder).expanduser().resolve()
+
+
+def resolve_package_target(target: str, *, base: str | Path | None = None) -> dict[str, str]:
+    """Resolve one explicit user-confirmed package target without guessing.
+
+    Build adapters call this before any scaffold/complete/verify operation.  A
+    missing value, shell glob, shorthand for the current directory, filesystem
+    root, home directory, or the engine checkout is ambiguous or dangerously
+    broad and must never collapse to the host's current working directory.
+    """
+
+    raw = str(target or "").strip()
+    base_path = Path(base or Path.cwd()).expanduser().resolve()
+    if not raw:
+        return {
+            "status": "error",
+            "error": "package_target_required",
+            "message": "an exact package folder must be explicitly named or confirmed by the user",
+        }
+    if any(character in raw for character in ("\x00", "\n", "\r")):
+        return {
+            "status": "error",
+            "error": "package_target_invalid",
+            "message": "package target contains a control character",
+        }
+    if any(character in raw for character in ("*", "?", "[", "]", "{", "}")):
+        return {
+            "status": "error",
+            "error": "package_target_ambiguous",
+            "message": "package target must name exactly one folder; globs and alternatives are not allowed",
+        }
+    normalized = raw.replace("\\", "/").rstrip("/") or "/"
+    if normalized in {".", ".."} or normalized.startswith("../"):
+        return {
+            "status": "error",
+            "error": "package_target_ambiguous",
+            "message": "package target may not default to the current or parent workspace; provide the exact folder",
+        }
+
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = base_path / candidate
+    if candidate.is_symlink():
+        return {
+            "status": "error",
+            "error": "workspace_symlink_forbidden",
+            "message": f"package workspace itself may not be a symbolic link: {candidate}",
+        }
+    package_root = candidate.resolve(strict=False)
+    prohibited = {Path(package_root.anchor).resolve(), Path.home().resolve(), engine_root().resolve()}
+    if package_root in prohibited:
+        return {
+            "status": "error",
+            "error": "package_target_too_broad",
+            "message": f"refusing broad or engine package target: {package_root}",
+        }
+    path_problem = _workspace_path_error(package_root, must_exist=False)
+    if path_problem:
+        return {"status": "error", **path_problem}
+    return {
+        "status": "ok",
+        "package_target": raw,
+        "package_root": str(package_root),
+        "base": str(base_path),
+    }
 
 
 def scaffold(
@@ -149,8 +296,9 @@ def scaffold(
     files) and substitute the identity placeholders we already know. Model
     placeholders ({{TRIGGER_KO_1}}...) stay for the fill step."""
     base = Path(root) if root else engine_root()
-    workspace = Path(folder).expanduser().resolve()
-    path_error = _workspace_path_error(workspace, must_exist=False)
+    requested_workspace = Path(folder).expanduser()
+    workspace = requested_workspace.resolve(strict=False)
+    path_error = workspace_path_problem(requested_workspace, must_exist=False)
     if path_error:
         return {
             "workspace": str(workspace),
@@ -167,10 +315,28 @@ def scaffold(
     command = (command or package_id).lstrip("/")
     subs = _default_substitutions(package_id, name, command, mode)
 
+    artifacts = artifacts_for_mode(load_contract(base), mode)
+    for artifact in artifacts:
+        if "*" in artifact["path"]:
+            continue
+        _, target_problem = _safe_package_target(workspace, artifact["path"], label="artifact path")
+        if target_problem:
+            return {
+                "workspace": str(workspace),
+                "mode": mode,
+                "package_id": package_id,
+                "created": [],
+                "skipped_existing": [],
+                "missing_templates": [],
+                "error": "workspace_symlink_forbidden",
+                "message": target_problem,
+            }
+
     created: list[str] = []
     skipped: list[str] = []
     missing_templates: list[str] = []
-    for artifact in artifacts_for_mode(load_contract(base), mode):
+    missing_required_templates: list[str] = []
+    for artifact in artifacts:
         if "*" in artifact["path"]:
             # A roster row (agents/*/agent.md) names a variable-count set the
             # builder must author, not one skeleton to copy. It still appears in
@@ -187,6 +353,8 @@ def scaffold(
         template_path = base / template_ref
         if not template_path.is_file():
             missing_templates.append(template_ref)
+            if artifact.get("required", True):
+                missing_required_templates.append(template_ref)
             continue
         text = template_path.read_text(encoding="utf-8")
         for key, value in subs.items():
@@ -194,14 +362,129 @@ def scaffold(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
         created.append(artifact["path"])
-    return {
+    adapter_report = materialize_declared_command_adapters(workspace, package_id)
+    report: dict[str, Any] = {
         "workspace": str(workspace),
         "mode": mode,
         "package_id": package_id,
         "created": created,
         "skipped_existing": skipped,
         "missing_templates": missing_templates,
+        "created_adapters": adapter_report["written"],
+        "adapter_warnings": adapter_report["warnings"],
     }
+    if missing_required_templates:
+        report.update(
+            {
+                "error": "required_template_missing",
+                "message": "required package template(s) are missing from the engine",
+                "missing_required_templates": sorted(set(missing_required_templates)),
+            }
+        )
+    return report
+
+
+def _safe_package_target(
+    workspace: Path, relative_path: str, *, label: str = "package path"
+) -> tuple[Path | None, str | None]:
+    """Resolve one package-relative mutation target without following links."""
+
+    raw = str(relative_path or "").strip().replace("\\", "/")
+    if not raw:
+        return None, f"{label} must be a non-empty package-relative path"
+    if raw.startswith("/") or re.match(r"^[A-Za-z]:/", raw):
+        return None, f"{label} must be package-relative: {raw}"
+    relative = Path(raw)
+    if any(part in {"", ".", ".."} for part in relative.parts):
+        return None, f"{label} contains an unsafe segment: {raw}"
+    target = workspace.joinpath(*relative.parts)
+    try:
+        target.resolve(strict=False).relative_to(workspace.resolve())
+    except (OSError, ValueError):
+        return None, f"{label} escapes the package: {raw}"
+    cursor = workspace
+    for part in relative.parts:
+        cursor /= part
+        if cursor.is_symlink():
+            return None, f"{label} traverses a symbolic link: {raw}"
+    return target, None
+
+
+def _safe_adapter_target(workspace: Path, adapter_path: str) -> tuple[Path | None, str | None]:
+    """Resolve a declared adapter path without allowing package escape."""
+
+    return _safe_package_target(workspace, adapter_path, label="adapterPath")
+
+
+def _command_adapter_body(runtime: str, command: str, slug: str, target: Path) -> str:
+    command_name = command.lstrip("/") or slug
+    if target.suffix == ".toml":
+        return (
+            f'description = "Run {command_name} from its Agentlas package contract."\n'
+            'prompt = """\n'
+            f"Run `/{command_name}` by reading the package-root `AGENTS.md` first.\n"
+            "Treat `.agentlas/global-commands.json` as the command declaration and keep\n"
+            "all package reads and writes inside the package root.\n"
+            '"""\n'
+        )
+    if runtime == "agentlas-terminal" or target.parts[-2:-1] == ("bin",):
+        return (
+            "#!/usr/bin/env sh\n"
+            "set -eu\n"
+            f'exec "${{AGENTLAS_CLI:-agentlas}}" run "{command_name}" "$@"\n'
+        )
+    return (
+        f"# /{command_name}\n\n"
+        "Read the package-root `AGENTS.md` as the canonical instructions.\n\n"
+        "Use `.agentlas/global-commands.json` for this command's runtime declaration.\n"
+        "Keep package reads and writes inside the package root and preserve authored files.\n"
+    )
+
+
+def materialize_declared_command_adapters(workspace: Path, slug: str = "") -> dict[str, list[str]]:
+    """Create missing files promised by `.agentlas/global-commands.json`.
+
+    The command table is executable package structure, not documentation. This
+    pass never overwrites authored content; it only creates absent thin adapters
+    and restores the executable bit on a declared terminal adapter.
+    """
+
+    workspace = _require_safe_mutation_workspace(workspace)
+    commands_path = workspace / ".agentlas" / "global-commands.json"
+    try:
+        payload = json.loads(commands_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"written": [], "warnings": []}
+    rows = payload.get("commands") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return {"written": [], "warnings": []}
+
+    package_slug = str(slug or payload.get("packageId") or workspace.name).strip()
+    written: list[str] = []
+    warnings: list[str] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or not row.get("adapterPath"):
+            continue
+        relative = str(row["adapterPath"]).replace("\\", "/")
+        target, problem = _safe_adapter_target(workspace, relative)
+        if problem or target is None:
+            warnings.append(f"commands[{index}]: {problem}")
+            continue
+        runtime = str(row.get("runtime") or "")
+        if target.exists():
+            if runtime == "agentlas-terminal" and target.is_file() and not os.access(target, os.X_OK):
+                target.chmod(target.stat().st_mode | 0o111)
+                written.append(f"{relative} (made executable)")
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            _command_adapter_body(runtime, str(row.get("command") or ""), package_slug, target),
+            encoding="utf-8",
+        )
+        if runtime == "agentlas-terminal":
+            target.chmod(target.stat().st_mode | 0o111)
+        written.append(relative)
+    return {"written": written, "warnings": warnings}
 
 
 def project_a2a_card(workspace: Path) -> dict[str, Any] | None:
@@ -289,10 +572,15 @@ def project_a2a_card(workspace: Path) -> dict[str, Any] | None:
 def write_a2a_projection(workspace: Path) -> str | None:
     """Write the A2A projection into the workspace; return its relative path, or
     None when agent-card.json is not filled yet (nothing to project)."""
+    workspace = _require_safe_mutation_workspace(workspace)
     card = project_a2a_card(workspace)
     if card is None:
         return None
-    target = workspace / "A2A" / "agent-card.a2a.json"
+    target, target_problem = _safe_package_target(
+        workspace, "A2A/agent-card.a2a.json", label="A2A projection path"
+    )
+    if target_problem or target is None:
+        raise ValueError(target_problem or "unsafe A2A projection path")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(card, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return target.relative_to(workspace).as_posix()
@@ -443,7 +731,11 @@ def _write_text_projection(workspace: Path, relative_path: str, generator: Any) 
     content = generator(workspace)
     if content is None:
         return None
-    target = workspace / relative_path
+    target, target_problem = _safe_package_target(
+        workspace, relative_path, label="generated projection path"
+    )
+    if target_problem or target is None:
+        raise ValueError(target_problem or f"unsafe generated projection path: {relative_path}")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return target.relative_to(workspace).as_posix()
@@ -454,6 +746,7 @@ def refresh_generated_projections(workspace: Path) -> list[str]:
     contract now owns. Called from verify() — never from scaffold(), whose
     sources are still unfilled ``{{PLACEHOLDER}}`` templates at that point —
     so the same verify() call always sees its own freshly written output."""
+    workspace = _require_safe_mutation_workspace(workspace)
     written: list[str] = []
     a2a = write_a2a_projection(workspace)
     if a2a:
@@ -469,7 +762,11 @@ def refresh_generated_projections(workspace: Path) -> list[str]:
             written.append(result)
     provenance = project_provenance(workspace)
     if provenance is not None:
-        target = workspace / "provenance.json"
+        target, target_problem = _safe_package_target(
+            workspace, "provenance.json", label="provenance projection path"
+        )
+        if target_problem or target is None:
+            raise ValueError(target_problem or "unsafe provenance projection path")
         target.write_text(json.dumps(provenance, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         written.append("provenance.json")
     return written
@@ -497,83 +794,73 @@ def _verify_skills_consistency(workspace: Path) -> list[str]:
     return warnings
 
 
+@lru_cache(maxsize=8)
+def _local_schema_registry(schema_directory: str) -> Any:
+    """Build a no-network registry for every schema shipped with this engine."""
+
+    from referencing import Registry, Resource
+    from referencing.jsonschema import DRAFT202012
+
+    registry = Registry()
+    for candidate in sorted(Path(schema_directory).glob("*.schema.json")):
+        payload = json.loads(candidate.read_text(encoding="utf-8"))
+        resource = Resource.from_contents(payload, default_specification=DRAFT202012)
+        uris = {candidate.resolve().as_uri(), payload.get("$id")}
+        for uri in sorted(value for value in uris if isinstance(value, str) and value):
+            registry = registry.with_resource(uri, resource)
+    return registry
+
+
 def _schema_shape_errors(doc: Any, schema_path: Path) -> list[str]:
-    """Check the artifact against the shape its schema already declares.
+    """Validate an artifact with the complete declared JSON Schema draft.
 
-    WHY (both halves matter):
-
-    Presence: an explicit empty list/string is a declared value (e.g.
-    skills: []), not an omission, so required-key checking stays presence-only.
-    Deep quality checks belong to per-artifact lints (routing-card), not here.
-
-    Declared values: this gate used to check presence ONLY, which left every
-    ``const``/``enum`` in the schema unenforced anywhere in the build path. A
-    routing card carrying ``schemaVersion: "1.0"`` (what the scaffold template
-    itself wrote) passed ``contract verify`` with ok=true and lint
-    routing_ready, and was then hard-rejected at borrow
-    (workforce/package_adapter.inspect_package) and at upload
-    (upload._server_routing_problem) — a package the build gate certified could
-    not be registered or published. A const/enum is a value the contract has
-    already fixed, so reading it here invents nothing; it just puts build,
-    borrow and upload back on one source of truth.
+    Draft 2020-12 is the default for schemas without an explicit meta-schema;
+    older declared drafts remain standards-complete through ``validator_for``.
+    References resolve only from the bundled schema directory, so validation
+    never performs a network fetch. Missing validator dependencies, malformed
+    schemas, and unresolved references fail closed as package blockers.
     """
+
+    # Scaffold placeholders are already an explicit blocker. Deferring schema
+    # validation until they are filled avoids reporting secondary oneOf and
+    # pattern failures for a document that is not an instance yet.
+    if PLACEHOLDER_RE.search(json.dumps(doc, ensure_ascii=False)):
+        return []
+
     try:
+        from jsonschema import Draft202012Validator
+        from jsonschema.exceptions import SchemaError
+        from jsonschema.validators import validator_for
+
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return [f"schema unreadable: {schema_path.name}"]
-    errors: list[str] = []
-
-    def walk(value: Any, spec: Any, path: str) -> None:
-        if not isinstance(spec, dict):
-            return
-        placeholder = isinstance(value, str) and PLACEHOLDER_RE.search(value)
-        if placeholder:
-            return
-        expected = spec.get("type")
-        allowed_types = expected if isinstance(expected, list) else [expected] if expected else []
-        type_ok = (
-            not allowed_types
-            or ("object" in allowed_types and isinstance(value, dict))
-            or ("array" in allowed_types and isinstance(value, list))
-            or ("string" in allowed_types and isinstance(value, str))
-            or ("integer" in allowed_types and isinstance(value, int) and not isinstance(value, bool))
-            or ("number" in allowed_types and isinstance(value, (int, float)) and not isinstance(value, bool))
-            or ("boolean" in allowed_types and isinstance(value, bool))
-            or ("null" in allowed_types and value is None)
+        validator_class = validator_for(schema, default=Draft202012Validator)
+        validator_class.check_schema(schema)
+        validator = validator_class(
+            schema,
+            registry=_local_schema_registry(str(schema_path.parent.resolve())),
+            format_checker=validator_class.FORMAT_CHECKER,
         )
-        if not type_ok:
-            errors.append(f"{path} has invalid type")
-            return
-        if "const" in spec and value != spec["const"]:
-            errors.append(f"{path} must be {spec['const']!r} (found {value!r})")
-        if isinstance(spec.get("enum"), list) and value not in spec["enum"]:
-            errors.append(f"{path} must be one of {spec['enum']!r} (found {value!r})")
-        if isinstance(value, str) and isinstance(spec.get("pattern"), str):
-            if re.fullmatch(spec["pattern"], value) is None:
-                errors.append(f"{path} does not match required pattern")
-        if isinstance(value, list):
-            if isinstance(spec.get("minItems"), int) and len(value) < spec["minItems"]:
-                errors.append(f"{path} needs at least {spec['minItems']} items")
-            if isinstance(spec.get("maxItems"), int) and len(value) > spec["maxItems"]:
-                errors.append(f"{path} allows at most {spec['maxItems']} items")
-            for index, item in enumerate(value):
-                walk(item, spec.get("items"), f"{path}[{index}]")
-        if isinstance(value, dict):
-            required = spec.get("required") if isinstance(spec.get("required"), list) else []
-            for field in required:
-                if field not in value or value.get(field) is None:
-                    errors.append(f"missing required field: {path}.{field}")
-            properties = spec.get("properties") if isinstance(spec.get("properties"), dict) else {}
-            if spec.get("additionalProperties") is False:
-                for field in value:
-                    if field not in properties:
-                        errors.append(f"{path}.{field} is not allowed")
-            for field, child in properties.items():
-                if field in value:
-                    walk(value[field], child, f"{path}.{field}")
+        issues = sorted(
+            validator.iter_errors(doc),
+            key=lambda issue: (
+                tuple(str(part) for part in issue.absolute_path),
+                tuple(str(part) for part in issue.absolute_schema_path),
+            ),
+        )
+    except ImportError as error:
+        return [f"schema validation unavailable: {error.name or error}"]
+    except (OSError, ValueError, SchemaError) as error:
+        return [f"schema invalid or unreadable: {schema_path.name}: {error}"]
+    except Exception as error:
+        return [f"schema validation failed closed: {schema_path.name}: {error}"]
 
-    walk(doc, schema, "$")
-    return errors
+    problems: list[str] = []
+    for issue in issues:
+        location = "$"
+        for part in issue.absolute_path:
+            location += f"[{part}]" if isinstance(part, int) else f".{part}"
+        problems.append(f"{location}: {issue.message}")
+    return problems
 
 
 def _verify_team_shape(workspace: Path, artifact: dict[str, Any]) -> dict[str, Any]:
@@ -599,6 +886,168 @@ def _verify_team_shape(workspace: Path, artifact: dict[str, Any]) -> dict[str, A
         "team_shape": shape,
         "problems": list(shape["errors"]),
     }
+
+
+QUALITY_DOC_SECTIONS: dict[str, tuple[str, ...]] = {
+    "builder-interview": ("## Request", "## Mode", "## Answers", "## Assumptions", "## Follow-Ups"),
+    "research-sources": (
+        "## Similar Agent And Repository Research",
+        "## Academic Or Professional Theory Research",
+        "## Synthesis",
+        "## Rejected Sources Or Ideas",
+    ),
+    "tool-selection": ("## Fallbacks", "## Blocked Or Unavailable Tools"),
+    "domain-expert-synthesis": (
+        "## Target Expertise",
+        "## Interview-Derived Requirements",
+        "## Similar Agent And Repository Patterns",
+        "## Academic Or Professional Theory Basis",
+        "## Tool And Plugin Reasoning",
+        "## Prompt Architecture Decisions",
+        "## Domain Heuristics And Decision Rules",
+        "## Examples And Counterexamples",
+        "## Evaluation Cases Derived From Research",
+        "## Open Assumptions",
+    ),
+    "prompt-performance-contract": (
+        "## Identity",
+        "## Non-Goals",
+        "## Operating Loop",
+        "## Input Contract",
+        "## Output Contract",
+        "## Tool And Plugin Policy",
+        "## Memory And Freshness Policy",
+        "## Domain Heuristics",
+        "## Source-To-Prompt Trace",
+        "## Examples",
+        "## Evaluation Rubric",
+        "## Escalation And Refusal",
+    ),
+}
+
+
+def _quality_doc_problems(text: str, lint_name: str) -> list[str]:
+    return [f"missing required section: {heading}" for heading in QUALITY_DOC_SECTIONS[lint_name] if heading not in text]
+
+
+def _work_brief_problems(doc: dict[str, Any]) -> list[str]:
+    from .interview.schema import work_brief_problem
+
+    problems: list[str] = []
+    consumer_problem = work_brief_problem(doc)
+    if consumer_problem:
+        problems.append(consumer_problem)
+        return problems
+    for field in ("constraints", "acceptance_criteria", "anti_scope", "assumptions", "deferred", "evaluation_principles", "exit_conditions"):
+        if field not in doc:
+            problems.append(f"missing interview field: {field}")
+        elif not isinstance(doc[field], list):
+            problems.append(f"{field} must be a list")
+    for field in ("acceptance_criteria", "anti_scope", "evaluation_principles", "exit_conditions"):
+        if isinstance(doc.get(field), list) and not doc[field]:
+            problems.append(f"{field} must not be empty")
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    if metadata.get("surface") != "hep-build":
+        problems.append("metadata.surface must be 'hep-build'")
+    score = metadata.get("ambiguity_score")
+    try:
+        ambiguity = float(score)
+    except (TypeError, ValueError):
+        problems.append("metadata.ambiguity_score must be numeric")
+    else:
+        if ambiguity > 0.2:
+            problems.append(f"metadata.ambiguity_score must be <= 0.2 (found {ambiguity:g})")
+    return problems
+
+
+def _capability_eval_problems(doc: dict[str, Any]) -> list[str]:
+    problems: list[str] = []
+    if doc.get("schemaVersion") != "agentlas-capability-eval-plan/1.0":
+        problems.append("schemaVersion must be agentlas-capability-eval-plan/1.0")
+    positive = doc.get("positive_cases")
+    negative = doc.get("negative_cases")
+    if not isinstance(positive, list):
+        problems.append("positive_cases must be a list")
+        positive = []
+    if not isinstance(negative, list):
+        problems.append("negative_cases must be a list")
+        negative = []
+    if len(positive) < 10:
+        problems.append(f"positive_cases needs >=10 cases (has {len(positive)})")
+    if len(negative) < 5:
+        problems.append(f"negative_cases needs >=5 cases (has {len(negative)})")
+    for index, case in enumerate(positive):
+        if not isinstance(case, dict):
+            problems.append(f"positive_cases[{index}] must be an object")
+            continue
+        if not str(case.get("prompt") or "").strip():
+            problems.append(f"positive_cases[{index}].prompt is required")
+        if not isinstance(case.get("expected_artifacts"), list) or not case["expected_artifacts"]:
+            problems.append(f"positive_cases[{index}].expected_artifacts must not be empty")
+        if not isinstance(case.get("pass_criteria"), list) or not case["pass_criteria"]:
+            problems.append(f"positive_cases[{index}].pass_criteria must not be empty")
+    for index, case in enumerate(negative):
+        if not isinstance(case, dict):
+            problems.append(f"negative_cases[{index}] must be an object")
+            continue
+        if not str(case.get("prompt") or "").strip():
+            problems.append(f"negative_cases[{index}].prompt is required")
+        if not str(case.get("expected_behavior") or "").strip():
+            problems.append(f"negative_cases[{index}].expected_behavior is required")
+    if not isinstance(doc.get("tool_smoke_checks"), list):
+        problems.append("tool_smoke_checks must be a list")
+    return problems
+
+
+def _minimal_private_profile_active(workspace: Path) -> bool:
+    """Recognize only the complete user-confirmed private opt-out receipt.
+
+    This deliberately duplicates the security-significant constants from the
+    JSON Schema.  Verification must decide artifact requiredness before it can
+    produce per-artifact schema reports, so an incomplete, misspelled, or
+    model-asserted opt-out always falls back to the strict profile.
+    """
+
+    profile = _read_json(workspace / ".agentlas" / "build-profile.json")
+    if not isinstance(profile, dict):
+        return False
+    opt_out = profile.get("minimalPrivateOptOut")
+    return bool(
+        profile.get("schemaVersion") == "agentlas-build-profile/1.0"
+        and profile.get("profile") == "minimal-private"
+        and isinstance(opt_out, dict)
+        and opt_out.get("requestedBy") == "user"
+        and opt_out.get("confirmed") is True
+        and opt_out.get("publicMarketplaceReady") is False
+        and isinstance(opt_out.get("reason"), str)
+        and opt_out["reason"].strip()
+    )
+
+
+def _global_command_adapter_problems(workspace: Path, doc: dict[str, Any]) -> list[str]:
+    problems: list[str] = []
+    rows = doc.get("commands")
+    if not isinstance(rows, list):
+        return problems
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or "adapterPath" not in row:
+            continue
+        relative = str(row.get("adapterPath") or "").replace("\\", "/")
+        target, problem = _safe_adapter_target(workspace, relative)
+        if problem or target is None:
+            problems.append(f"commands[{index}]: {problem}")
+            continue
+        if not target.is_file():
+            problems.append(f"commands[{index}].adapterPath missing: {relative}")
+            continue
+        try:
+            target.resolve().relative_to(workspace.resolve())
+        except (OSError, ValueError):
+            problems.append(f"commands[{index}].adapterPath escapes the package: {relative}")
+            continue
+        if row.get("runtime") == "agentlas-terminal" and not os.access(target, os.X_OK):
+            problems.append(f"commands[{index}].adapterPath is not executable: {relative}")
+    return problems
 
 
 def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> dict[str, Any]:
@@ -649,6 +1098,25 @@ def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> d
     schema_ref = artifact.get("schema")
     if schema_ref and doc is not None:
         problems.extend(_schema_shape_errors(doc, base / schema_ref))
+
+    lint_name = artifact.get("lint") or {
+        ".agentlas/global-commands.json": "global-command-adapters",
+        ".agentlas/capability-eval-plan.json": "capability-eval-plan",
+        ".agentlas/work-brief.json": "work-brief",
+        "docs/builder-interview.md": "builder-interview",
+        "docs/research-sources.md": "research-sources",
+        "docs/tool-selection.md": "tool-selection",
+        "docs/domain-expert-synthesis.md": "domain-expert-synthesis",
+        "docs/prompt-performance-contract.md": "prompt-performance-contract",
+    }.get(str(artifact.get("path") or ""))
+    if lint_name in QUALITY_DOC_SECTIONS:
+        problems.extend(_quality_doc_problems(text, str(lint_name)))
+    if lint_name == "work-brief" and isinstance(doc, dict):
+        problems.extend(_work_brief_problems(doc))
+    if lint_name == "capability-eval-plan" and isinstance(doc, dict):
+        problems.extend(_capability_eval_problems(doc))
+    if lint_name == "global-command-adapters" and isinstance(doc, dict):
+        problems.extend(_global_command_adapter_problems(workspace, doc))
 
     if artifact.get("lint") == "routing-card" and isinstance(doc, dict):
         from .networking.card_lint import lint_card
@@ -803,8 +1271,8 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
     """Machine-readable completeness gate. ``blockers`` is the list a model
     consumes for targeted self-repair; ``ok`` means routing-ready package."""
     base = Path(root) if root else engine_root()
-    workspace = Path(folder).expanduser().resolve()
-    path_error = _workspace_path_error(workspace, must_exist=True)
+    workspace = Path(folder).expanduser().resolve(strict=False)
+    path_error = workspace_path_problem(folder, must_exist=True)
     if path_error:
         return {
             "workspace": str(workspace),
@@ -824,10 +1292,13 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
     # generator is a no-op (writes nothing) until its sources are filled.
     refresh_generated_projections(workspace)
     _restamp_package_hashes(workspace)
-    reports = [
-        _verify_artifact(workspace, artifact, base)
-        for artifact in artifacts_for_mode(load_contract(base), mode)
-    ]
+    build_profile = "minimal-private" if _minimal_private_profile_active(workspace) else "standard"
+    reports = []
+    for artifact in artifacts_for_mode(load_contract(base), mode):
+        effective_artifact = dict(artifact)
+        if build_profile in (artifact.get("optionalWhen") or []):
+            effective_artifact["required"] = False
+        reports.append(_verify_artifact(workspace, effective_artifact, base))
     blockers = [
         f"{report['path']}: {problem}"
         for report in reports
@@ -855,6 +1326,10 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
     ]
     warnings.extend(cleanup)
     warnings.extend(_verify_skills_consistency(workspace))
+    if build_profile == "minimal-private":
+        warnings.append(
+            "minimal-private opt-out is active; this package is private-only and is not public or marketplace ready"
+        )
     return {
         "workspace": str(workspace),
         "mode": mode,
@@ -863,4 +1338,6 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
         "blockers": blockers,
         "warnings": warnings,
         "cleanup": cleanup,
+        "build_profile": build_profile,
+        "public_marketplace_ready": bool(not blockers and build_profile == "standard"),
     }

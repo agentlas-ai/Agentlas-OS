@@ -9,7 +9,14 @@ from pathlib import Path
 import re
 from typing import Any
 
-from .loader import AGENT_ONTOLOGY_DIR, _read_json, load_grammar
+from .loader import (
+    AGENT_ONTOLOGY_DIR,
+    _read_json,
+    load_grammar,
+    materialization_content_digest,
+    read_derivation_json,
+    source_fingerprint,
+)
 from .loader import _artifact_id as canonical_artifact_id
 
 # Canonical router ids that may be referenced by edges without an explicit
@@ -42,6 +49,8 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
         "counts": {"agents": 0, "artifacts": 0, "capabilities": 0, "edges": 0},
         "errors": [],
         "status": "ok",
+        "source_fingerprint": source_fingerprint(root),
+        "materialization_content_digest": None,
     }
 
     if not source_root.exists():
@@ -51,13 +60,23 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
 
     if write and not overwrite and target_root.exists() and any(target_root.iterdir() if target_root.exists() else []):
         report["status"] = "skipped"
+        report["error"] = "ao_migrate_requires_overwrite"
         report["errors"].append("target already exists; pass --overwrite to rewrite")
         return report
 
-    company_blueprint = _read_json(source_root / "company-blueprint.json", default={}) or {}
-    routing_card = _read_json(source_root / "routing-card.json", default={}) or {}
-    sitemap = _read_json(source_root / "sitemap.json", default={}) or {}
-    memory_map = _read_json(source_root / "memory-map.json", default={}) or {}
+    try:
+        company_blueprint = read_derivation_json(source_root / "company-blueprint.json")
+        routing_card = read_derivation_json(source_root / "routing-card.json")
+        sitemap = read_derivation_json(source_root / "sitemap.json")
+        memory_map = read_derivation_json(source_root / "memory-map.json")
+    except ValueError as exc:
+        # Parse and validate every derivation source before touching the current
+        # materialization. A broken source must never become a successful empty
+        # graph or erase the last known-good AO view.
+        report["status"] = "error"
+        report["error"] = "ao_source_invalid"
+        report["errors"].append(str(exc))
+        return report
 
     agents: list[dict[str, Any]] = []
     artifacts: list[dict[str, Any]] = []
@@ -281,6 +300,7 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
         # present, so re-running migrate is idempotent and never clobbers a
         # user-customized grammar.json.
         _write_jsonl(target_root / "grammar.json", grammar, is_json=True)
+        report["materialization_content_digest"] = materialization_content_digest(root)
         _write_jsonl(
             target_root / "migrate-report.json",
             {
@@ -288,6 +308,8 @@ def migrate_ontology(project_root: str | Path = ".", write: bool = True, overwri
                 "written_at": datetime.now(timezone.utc).isoformat(),
                 "counts": report["counts"],
                 "overwrite": overwrite,
+                "source_fingerprint": report["source_fingerprint"],
+                "materialization_content_digest": report["materialization_content_digest"],
                 "unmapped": report["unmapped"],
             },
             is_json=True,

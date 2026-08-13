@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from ..model_allocation import EFFORT_TOKEN_RE
@@ -40,6 +42,35 @@ _MCP_TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.$:/@+~-]{0,127}$")
 _UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _MAX_DIGEST_VALUE_DEPTH = 32
 _MAX_DIGEST_VALUE_NODES = 10_000
+
+
+@lru_cache(maxsize=1)
+def _execution_receipt_schema_validator() -> Any:
+    """Load the complete bundled Draft 2020-12 receipt schema locally."""
+
+    from jsonschema import Draft202012Validator
+
+    schema_path = (
+        Path(__file__).resolve().parents[2]
+        / "schemas"
+        / "workforce-execution-receipt.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+def _execution_receipt_schema_issues(receipt: Any) -> list[str]:
+    try:
+        error = next(_execution_receipt_schema_validator().iter_errors(receipt), None)
+    except Exception:
+        # Missing validator dependencies, malformed bundled schemas, recursion,
+        # and unreadable resources all fail closed without reflecting attacker
+        # controlled paths or values into the public issue list.
+        return ["execution_receipt_schema_validation_unavailable"]
+    return ["execution_receipt_schema_invalid"] if error is not None else []
+
+
 def _is_valid_effort(value: Any) -> bool:
     """Same open vocabulary as model_allocation.normalize_effort.
 
@@ -1286,7 +1317,7 @@ def validate_execution_receipt(
 ) -> dict[str, Any]:
     """Validate actual direct/nested invocations against one prepared v5 plan."""
 
-    issues: list[str] = []
+    issues: list[str] = _execution_receipt_schema_issues(receipt)
     normalized_tool_inventory: dict[str, Any] | None = None
     tool_inventory_digest: str | None = None
     try:
@@ -1703,12 +1734,17 @@ def validate_execution_receipt(
         issues.append("execution_not_passed")
     if receipt.get("status") == "passed" and issues:
         issues.append("false_pass_claim")
+    try:
+        validated_digest: str | None = canonical_digest(receipt)
+    except (TypeError, ValueError, RecursionError):
+        issues.append("execution_receipt_not_canonical_json")
+        validated_digest = None
     return {
         "schemaVersion": "agentlas.workforce-execution-validation.v2",
         "status": "rejected" if issues else "accepted",
         "issues": sorted(set(issues)),
         "executionId": receipt.get("executionId"),
-        "validatedDigest": canonical_digest(receipt),
+        "validatedDigest": validated_digest,
     }
 
 

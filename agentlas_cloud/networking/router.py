@@ -430,6 +430,7 @@ def _load_ao_context(project_dir: Path | str) -> dict[str, Any]:
         "node_index": context.get("node_index", {}),
         "grammar": context.get("grammar", {}),
         "agent_count": context.get("counts", {}).get("agents", 0),
+        "load_status": context.get("load_status"),
         "errors": context.get("errors", []),
         "warnings": context.get("warnings", []),
     }
@@ -444,8 +445,29 @@ def _filter_candidates_by_ao(
     from ..agent_graph import edge_is_blocked, explain_edge_gate
 
     ao = _load_ao_context(project_dir)
+    if ao.get("load_status") == "stale":
+        return [], {
+            "status": "stale",
+            "eligible": 0,
+            "errors": list(ao.get("errors") or []),
+            "warnings": list(ao.get("warnings") or []),
+        }
+    if not ao.get("valid") and ao.get("load_status") != "degraded":
+        return [], {
+            "status": "invalid",
+            "eligible": 0,
+            "errors": list(ao.get("errors") or []),
+            "warnings": list(ao.get("warnings") or []),
+        }
     if not ao.get("node_index"):
         return cards, {"status": "missing"}
+    if not ao.get("valid"):
+        return [], {
+            "status": "invalid",
+            "eligible": 0,
+            "errors": list(ao.get("errors") or []),
+            "warnings": list(ao.get("warnings") or []),
+        }
 
     node_index: dict[str, dict[str, Any]] = ao["node_index"]  # type: ignore[assignment]
     mapped = {str(card.get("id")) for card in cards if str(card.get("id") or "") in node_index}
@@ -810,7 +832,7 @@ def _byom_execution_plan(
         # borrow #1 blindly.
         "alternatives": alternatives,
         "project_dir": str(project),
-        "attach": ["project_codebase", "agentlas_memory", "super_ontology"],
+        "attach": ["project_codebase", "agentlas_memory", "semantic_ontology"],
         "borrow_command": (
             f'hephaestus hep-call "{primary}" "<request>" --project {project}'
             if recommended
@@ -1287,6 +1309,32 @@ def route_request(
     ]
     ao_filter_report: dict[str, Any] = {}
     usable, ao_filter_report = _filter_candidates_by_ao(usable, project, caller_id=caller_id)
+    if ao_filter_report.get("status") in {"invalid", "stale"}:
+        ao_status = str(ao_filter_report["status"])
+        error = "ao_graph_stale" if ao_status == "stale" else "ao_graph_invalid"
+        chain.append(f"ao:{ao_status}")
+        return finish(
+            {
+                "action": "blocked",
+                "status": "blocked",
+                "selected": None,
+                "candidates": [],
+                "error": error,
+                "ao": {
+                    "status": ao_status,
+                    "errors": list(ao_filter_report.get("errors") or []),
+                    "warnings": list(ao_filter_report.get("warnings") or []),
+                },
+                "reasons": [f"project Agent Ontology is {ao_status}; routing stopped"],
+            },
+            [],
+            [error],
+            match_reason=error,
+            graph_path=[],
+            allowed_by=[],
+            blocked_by_axiom=[],
+            fallback_scope=None,
+        )
     usable_by_id = {str(card.get("id")): card for card in usable}
     ao_blocked_by_axiom: list[str] = []
     ao_fallback_scope: str | None = None

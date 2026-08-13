@@ -104,9 +104,9 @@ def evaluate_local_operator_policy(
 ) -> dict[str, Any]:
     """Return a minimal Local Operator Mode policy decision.
 
-    The default is allow. Most super-ontology signals become labels, candidate
-    promotion, or automatic redaction guidance. Human approval is deliberately
-    rare in local mode.
+    The default is allow. Policy signals become labels, candidate promotion, or
+    automatic redaction guidance. Human approval is deliberately rare in local
+    mode.
     """
 
     terms = {str(token).lower() for token in query_tokens}

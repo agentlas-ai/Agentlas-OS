@@ -15,8 +15,10 @@ def validate_graph(project_root: str | Path | None = None) -> dict[str, Any]:
     graph = context["graph"]
     grammar = context.get("grammar") or load_grammar(project_root or ".")
 
-    errors: list[str] = []
-    warnings: list[str] = []
+    errors: list[str] = list(context.get("errors") or [])
+    warnings: list[str] = list(context.get("warnings") or [])
+    if context.get("status") not in {"ok", None} and not errors:
+        errors.append(f"AO load status is {context.get('status')}")
     blocked_edges: list[dict[str, Any]] = []
 
     node_index: dict[str, dict[str, Any]] = {
@@ -126,6 +128,7 @@ def validate_graph(project_root: str | Path | None = None) -> dict[str, Any]:
         }),
         "node_index": node_index,
         "grammar": grammar,
+        "load_status": context.get("status"),
     }
 
 

@@ -43,7 +43,7 @@ portable Agentlas-compatible package.
 - Keep the canonical instructions in `AGENTS.md`.
 - Keep adapters thin.
 - Run mode classification before routing.
-- Run `docs/builder-interview-research-gate.md` before generation. A rough user
+- Run `contracts/builder-interview-research-gate.md` before generation. A rough user
   prompt is not enough: ask an 8-12 question first batch, research official
   sources, similar agent repositories or comparables, academic/professional
   theory, and plugin docs, compare tool/plugin options, synthesize the domain

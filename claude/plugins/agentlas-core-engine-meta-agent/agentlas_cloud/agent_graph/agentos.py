@@ -1,7 +1,7 @@
 """Agent OS assembly surfaces.
 
 - ``build_pack`` (Phase 2): assemble an installable Ontology Pack manifest from
-  the AO graph + kernel enforcement + interchange formats, with a content hash.
+  the AO graph + interchange formats, with a content hash.
 - ``os_surface`` (Phase 6): map the subsystems into OS kernel-module roles, each
   with a *live* status derived from real checks — so "it is an Agent OS" is a
   checkable claim, not a metaphor.
@@ -15,12 +15,42 @@ from pathlib import Path
 from typing import Any
 
 from .a2a import WELL_KNOWN_PATH
-from .kernel import verify_enforcement
 from .loader import load_graph
 from .okf import FORMAT as OKF_FORMAT
 from .validator import validate_graph
 
 PACK_FORMAT = "agent-ontology-pack-v1"
+
+
+def runtime_adapters() -> list[dict[str, Any]]:
+    """Describe each host adapter as an independent runtime surface."""
+
+    return [
+        {
+            "runtime": "claude-code",
+            "adapter_root": "claude/plugins/agentlas-core-engine-meta-agent",
+            "kind": "plugin_adapter",
+            "depends_on": [],
+        },
+        {
+            "runtime": "codex",
+            "adapter_root": "codex/plugins/agentlas-core-engine-meta-agent",
+            "kind": "thin_plugin_adapter",
+            "depends_on": [],
+        },
+        {
+            "runtime": "gemini-cli",
+            "adapter_root": "gemini/extension",
+            "kind": "extension_adapter",
+            "depends_on": [],
+        },
+        {
+            "runtime": "antigravity",
+            "adapter_root": "antigravity/workflows",
+            "kind": "independent_workflow_hook_adapter",
+            "depends_on": [],
+        },
+    ]
 
 
 def build_pack(project_root: str | Path = ".") -> dict[str, Any]:
@@ -30,12 +60,16 @@ def build_pack(project_root: str | Path = ".") -> dict[str, Any]:
     graph = context.get("graph", {})
     counts = context.get("counts", {})
     caps = sorted(str(c) for c in graph.get("capabilities", []) if str(c).strip())
-    kernel = verify_enforcement(project_root)
-
+    validation = validate_graph(project_root)
     fingerprint = json.dumps(
-        {"counts": counts, "capabilities": caps, "kernel": kernel["fully_enforced_count"]},
+        {
+            "format": PACK_FORMAT,
+            "graph": graph,
+            "grammar": context.get("grammar") or {},
+        },
         sort_keys=True,
         ensure_ascii=False,
+        separators=(",", ":"),
     )
     content_hash = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:16]
 
@@ -43,10 +77,6 @@ def build_pack(project_root: str | Path = ".") -> dict[str, Any]:
         "format": PACK_FORMAT,
         "counts": counts,
         "capabilities": caps,
-        "kernel": {
-            "runtime_enforced_seeds": kernel["fully_enforced_count"],
-            "all_enforced": kernel["all_enforced"],
-        },
         "interchange": {"okf": OKF_FORMAT, "a2a_well_known": WELL_KNOWN_PATH},
         "artifacts": [
             "agent-ontology/grammar.json",
@@ -57,7 +87,9 @@ def build_pack(project_root: str | Path = ".") -> dict[str, Any]:
             "agent-ontology/capabilities.json",
         ],
         "content_hash": content_hash,
-        "installable": bool(counts.get("agents")),
+        "source_status": context.get("status"),
+        "valid": bool(validation.get("valid")),
+        "installable": bool(counts.get("agents")) and bool(validation.get("valid")),
     }
 
 
@@ -66,15 +98,19 @@ def os_surface(project_root: str | Path = ".") -> dict[str, Any]:
 
     context = load_graph(project_root)
     counts = context.get("counts", {})
-    kernel = verify_enforcement(project_root)
     validation = validate_graph(project_root)
+    grammar = context.get("grammar") or {}
+    axiom_count = sum(len(grammar.get(kind) or []) for kind in ("deny", "require"))
 
     modules = [
         {
-            "os_role": "protected mode / access manager",
-            "subsystem": "super-ontology kernel + AO deny/require axioms",
-            "live": bool(kernel["all_enforced"]),
-            "detail": f"{kernel['fully_enforced_count']} seed contracts runtime-enforced",
+            "os_role": "policy advisory / access contract",
+            "subsystem": "AO deny/require advisory axioms",
+            "live": bool(validation.get("valid")),
+            "detail": (
+                f"{axiom_count} AO access axioms validated as advisory policy; "
+                "the host runtime remains the enforcement authority"
+            ),
         },
         {
             "os_role": "package manager + type system",
@@ -93,9 +129,13 @@ def os_surface(project_root: str | Path = ".") -> dict[str, Any]:
         },
         {
             "os_role": "scheduler / dispatcher",
-            "subsystem": "Network router (deterministic, Hub-first public default)",
-            "live": _module_present("agentlas_cloud.networking.router"),
-            "detail": "AO-filtered candidate routing + receipts",
+            "subsystem": "Workforce Network federation (Local + owner Cloud + public Hub)",
+            "live": _module_present("agentlas_cloud.workforce.federation"),
+            "detail": (
+                "Core federates exact-source menus; the host LLM selects exact releases, "
+                "then Core validates and prepares the pinned roster. The deterministic "
+                "card router is legacy/debug only."
+            ),
         },
         {
             "os_role": "IPC + discovery",
@@ -116,6 +156,7 @@ def os_surface(project_root: str | Path = ".") -> dict[str, Any]:
         "modules": modules,
         "all_live": all(m["live"] for m in modules),
         "live_count": sum(1 for m in modules if m["live"]),
+        "runtime_adapters": runtime_adapters(),
         "factory_contract": factory_contract(),
     }
 
@@ -124,7 +165,7 @@ def factory_contract() -> dict[str, Any]:
     """Phase 6: the mandatory contract every emitted agent/team inherits.
 
     The factory does not just produce agents — it produces agents that are born
-    ABI-compatible with the Agent OS (they inherit the kernel, memory discipline,
+    ABI-compatible with the Agent OS (they inherit AO, memory discipline,
     routing card, promotion path, and interchange surface).
     """
 
@@ -138,10 +179,11 @@ def factory_contract() -> dict[str, Any]:
             "policy_gate (shared-memory approval)",
             "okf_export (vendor-neutral pack)",
             "bi_temporal_memory (supersede-not-delete)",
-            "super_ontology_kernel (default-deny axioms)",
+            "ao_access_axioms (advisory deny/require; host-enforced)",
         ],
         "guarantee": "every Team-Builder / Single-Agent-Builder / Packager output is born ABI-compatible with the Agent OS",
-        "degraded_runtimes": {"codex": "thin adapter", "gemini": "thin adapter"},
+        "runtime_adapters": runtime_adapters(),
+        "degraded_runtimes": {"codex": "thin adapter", "gemini-cli": "extension adapter"},
     }
 
 

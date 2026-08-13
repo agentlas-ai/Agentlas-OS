@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from functools import lru_cache
 import inspect
 import json
+from threading import Lock
 import time
 from typing import Any, Callable, Collection, Mapping
 
@@ -23,6 +26,7 @@ from .contracts import (
     canonical_json,
     normalize_work_order,
 )
+from .circuit import DEFAULT_WORKFORCE_REMOTE_CIRCUIT, WorkforceRemoteCircuit
 from .federation import (
     LineageVerifier,
     WORKFORCE_SOURCE_FAILURE_CODES,
@@ -68,6 +72,7 @@ WORKFORCE_SOURCE_BUNDLE_FAILURE_CODES = frozenset(
         "source_unauthorized",
         "source_forbidden",
         "source_timeout",
+        "source_circuit_open",
         "source_rate_limited",
         "insufficient_credits",
         "owner_only",
@@ -79,6 +84,46 @@ WORKFORCE_SOURCE_BUNDLE_FAILURE_CODES = frozenset(
 
 _PREPARE_CACHE_WAIT_SECONDS = 10.0
 _PREPARE_CACHE_POLL_SECONDS = 0.025
+_CAPABILITY_CACHE_TTL_SECONDS = 60
+
+
+@lru_cache(maxsize=16)
+def _cached_remote_capabilities(
+    base_url: str,
+    auth_partition: str,
+    time_bucket: int,
+) -> tuple[Mapping[str, Any], ...]:
+    """Share one successful, account-separated tools/list result briefly."""
+
+    return tuple(dict(row) for row in list_hub_tools())
+
+
+def _default_remote_capabilities() -> list[Mapping[str, Any]]:
+    base_url = hub_url()
+    record = read_token_record(base_url)
+    auth_claim = "anonymous"
+    if isinstance(record, Mapping):
+        auth_claim = str(
+            record.get("account_subject")
+            or record.get("login_instance_id")
+            or record.get("client_id")
+            or "authenticated"
+        )
+    auth_partition = canonical_digest(
+        {
+            "schemaVersion": "agentlas.workforce-capability-cache-partition.v1",
+            "baseUrl": base_url,
+            "authClaim": auth_claim,
+        }
+    )
+    return [
+        dict(row)
+        for row in _cached_remote_capabilities(
+            base_url,
+            auth_partition,
+            int(time.monotonic() // _CAPABILITY_CACHE_TTL_SECONDS),
+        )
+    ]
 
 
 class WorkforceSourceError(ValueError):
@@ -89,6 +134,7 @@ class WorkforceSourceError(ValueError):
         *,
         retry_after_ms: int | None = None,
         receipt_expires_at: str | None = None,
+        attempt_count: int = 1,
     ):
         self.code = code
         # Which specific check refused, in words, when the code alone cannot say.
@@ -107,6 +153,7 @@ class WorkforceSourceError(ValueError):
             if isinstance(receipt_expires_at, str) and receipt_expires_at
             else None
         )
+        self.attempt_count = max(1, min(2, attempt_count))
         super().__init__(f"{code}: {self.reason}" if self.reason else code)
 
 
@@ -249,9 +296,11 @@ class WorkforceSourceService:
         remote_capabilities: RemoteCapabilities | None = None,
         lineage_verifier: LineageVerifier | None = None,
         cloud_source_supported: bool | None = None,
-        reconcile_local: bool = True,
+        reconcile_local: bool = False,
         auth_partition: str | None = None,
         prepare_receipt_cache: WorkforcePrepareReceiptCache | None = None,
+        remote_circuit: WorkforceRemoteCircuit | None = None,
+        circuit_key: str | None = None,
     ):
         self.local_registry = local_registry or LocalWorkforceRegistry()
         self.session_store = session_store or FederationSessionStore(lineage_verifier=lineage_verifier)
@@ -265,16 +314,29 @@ class WorkforceSourceService:
             self.remote_bundle_fetch
         )
         self.remote_bundle_verifier = remote_bundle_verifier or self._default_remote_bundle_verifier
-        self.remote_capabilities = remote_capabilities or list_hub_tools
+        self.remote_capabilities = remote_capabilities or _default_remote_capabilities
         self._remote_capability_cache: list[Mapping[str, Any]] | None = None
+        self._remote_capability_lock = Lock()
         self.lineage_verifier = lineage_verifier or self.session_store.lineage_verifier
         # None means capability-negotiated. Explicit False is useful for an
         # offline/older deployment that must not be probed.
         self.cloud_source_supported = cloud_source_supported
         self.reconcile_local = reconcile_local
         self._configured_auth_partition = auth_partition
+        self.remote_circuit = remote_circuit or DEFAULT_WORKFORCE_REMOTE_CIRCUIT
+        self.circuit_key = circuit_key
         self.prepare_receipt_cache = prepare_receipt_cache or WorkforcePrepareReceiptCache(
             self.session_store.path
+        )
+
+    def _circuit_context_key(self, work_order: Mapping[str, Any]) -> str:
+        if isinstance(self.circuit_key, str) and self.circuit_key.strip():
+            return self.circuit_key.strip()
+        return canonical_digest(
+            {
+                "schemaVersion": "agentlas.workforce-remote-circuit-context.v1",
+                "workOrder": work_order,
+            }
         )
 
     def _prepare_auth_partition(self) -> str:
@@ -295,16 +357,18 @@ class WorkforceSourceService:
 
     def _remote_tools(self) -> list[Mapping[str, Any]]:
         if self._remote_capability_cache is None:
-            try:
-                self._remote_capability_cache = list(self.remote_capabilities())
-            except HubAuthRequiredError as exc:
-                raise WorkforceSourceError("source_unauthorized") from exc
-            except HubToolError as exc:
-                raise WorkforceSourceError(
-                    _finite_failure(getattr(exc, "code", "source_unavailable"))
-                ) from exc
-            except (OSError, TimeoutError, TypeError, ValueError) as exc:
-                raise WorkforceSourceError("source_unavailable") from exc
+            with self._remote_capability_lock:
+                if self._remote_capability_cache is None:
+                    try:
+                        self._remote_capability_cache = list(self.remote_capabilities())
+                    except HubAuthRequiredError as exc:
+                        raise WorkforceSourceError("source_unauthorized") from exc
+                    except HubToolError as exc:
+                        raise WorkforceSourceError(
+                            _finite_failure(getattr(exc, "code", "source_unavailable"))
+                        ) from exc
+                    except (OSError, TimeoutError, TypeError, ValueError) as exc:
+                        raise WorkforceSourceError("source_unavailable") from exc
         return self._remote_capability_cache
 
     def _remote_search_scope_mode(self, source: str) -> str:
@@ -563,44 +627,85 @@ class WorkforceSourceService:
         source: str,
         work_order: Mapping[str, Any],
         expand_slot_ids: list[str],
-    ) -> tuple[dict[str, Any], dict[str, Mapping[str, Any]]]:
-        try:
-            response = self.remote_search(source, work_order, expand_slot_ids)
-        except WorkforceSourceError:
-            raise
-        except HubAuthRequiredError as exc:
-            raise WorkforceSourceError("source_unauthorized") from exc
-        except TimeoutError as exc:
-            raise WorkforceSourceError("source_timeout") from exc
-        except HubToolError as exc:
-            raise WorkforceSourceError(_finite_failure(getattr(exc, "code", "source_unavailable"))) from exc
-        except (OSError, ValueError) as exc:
-            raise WorkforceSourceError("source_unavailable") from exc
+        circuit_key: str,
+    ) -> tuple[dict[str, Any], dict[str, Mapping[str, Any]], int]:
+        allowed, retry_after_ms = self.remote_circuit.allow(circuit_key, source)
+        if not allowed:
+            raise WorkforceSourceError(
+                "source_circuit_open",
+                retry_after_ms=retry_after_ms,
+            )
+        attempts = 0
+        while True:
+            attempts += 1
+            try:
+                response = self.remote_search(source, work_order, expand_slot_ids)
+                break
+            except WorkforceSourceError as exc:
+                if attempts < 2 and exc.code in {"source_timeout", "source_unavailable"}:
+                    continue
+                exc.attempt_count = attempts
+                self.remote_circuit.record_failure(circuit_key, source, exc.code)
+                raise
+            except HubAuthRequiredError as exc:
+                raise WorkforceSourceError("source_unauthorized", attempt_count=attempts) from exc
+            except TimeoutError as exc:
+                if attempts < 2:
+                    continue
+                self.remote_circuit.record_failure(circuit_key, source, "source_timeout")
+                raise WorkforceSourceError("source_timeout", attempt_count=attempts) from exc
+            except HubToolError as exc:
+                code = _finite_failure(getattr(exc, "code", "source_unavailable"))
+                if attempts < 2 and code in {"source_timeout", "source_unavailable"}:
+                    continue
+                self.remote_circuit.record_failure(circuit_key, source, code)
+                raise WorkforceSourceError(code, attempt_count=attempts) from exc
+            except OSError as exc:
+                if attempts < 2:
+                    continue
+                self.remote_circuit.record_failure(circuit_key, source, "source_unavailable")
+                raise WorkforceSourceError("source_unavailable", attempt_count=attempts) from exc
+            except ValueError as exc:
+                self.remote_circuit.record_failure(circuit_key, source, "source_unavailable")
+                raise WorkforceSourceError("source_unavailable", attempt_count=attempts) from exc
         if not isinstance(response, Mapping):
-            raise WorkforceSourceError("source_invalid_candidate_set")
+            self.remote_circuit.record_success(circuit_key, source)
+            raise WorkforceSourceError("source_invalid_candidate_set", attempt_count=attempts)
+        # The transport reached the source. Protocol/contract refusals should
+        # not make the next independent turn wait behind a transport breaker.
+        self.remote_circuit.record_success(circuit_key, source)
         refusal = _response_failure_code(
             response,
             allowed_codes=WORKFORCE_SOURCE_FAILURE_CODES,
             fallback="source_unavailable",
         )
         if refusal is not None:
-            raise WorkforceSourceError(refusal)
-        if source == "cloud":
-            source_receipt = response.get("sourceReceipt")
-            source_claim = response.get("sourceScope") == "cloud" or (
-                isinstance(source_receipt, Mapping) and source_receipt.get("source") == "cloud"
-            )
-            if not source_claim:
-                # An older server may ignore the new sourceScope argument and
-                # return a public Hub menu. Never relabel that as owner Cloud.
-                raise WorkforceSourceError("source_not_supported")
+            raise WorkforceSourceError(refusal, attempt_count=attempts)
+        source_receipt = response.get("sourceReceipt")
+        response_scope = response.get("sourceScope")
+        receipt_source = (
+            source_receipt.get("source")
+            if isinstance(source_receipt, Mapping)
+            else None
+        )
+        source_claims = [
+            claim for claim in (response_scope, receipt_source) if claim is not None
+        ]
+        if any(claim != source for claim in source_claims) or (
+            source == "cloud" and not source_claims
+        ):
+            # Legacy Hub responses may omit a claim, but no explicit claim may
+            # contradict the requested source. Cloud additionally requires a
+            # positive claim because an old Hub-only server would otherwise be
+            # silently relabeled as owner Cloud.
+            raise WorkforceSourceError("source_not_supported", attempt_count=attempts)
         candidate_set = response.get("candidateSet") if isinstance(response.get("candidateSet"), Mapping) else response
         lineages = response.get("lineageAttestations") if isinstance(response.get("lineageAttestations"), Mapping) else {}
         return dict(candidate_set), {
             str(key): dict(value)
             for key, value in lineages.items()
             if isinstance(value, Mapping)
-        }
+        }, attempts
 
     def search(
         self,
@@ -629,8 +734,11 @@ class WorkforceSourceService:
             raise WorkforceSourceError("work_order_slots_missing")
         candidate_sets: dict[str, dict[str, Any]] = {}
         failures: dict[str, str] = {}
+        attempts: dict[str, int] = {}
         lineages: dict[str, dict[str, Mapping[str, Any]]] = {}
         expand = list(expand_slot_ids or [])
+        circuit_key = self._circuit_context_key(accepted_work_order)
+        remote_sources: list[str] = []
         for source in sources:
             if source == "local":
                 try:
@@ -648,13 +756,30 @@ class WorkforceSourceService:
                 continue
             if source == "cloud" and self.cloud_source_supported is False and self._uses_default_remote_search:
                 failures["cloud"] = "source_not_supported"
+                attempts["cloud"] = 0
                 continue
-            try:
-                candidate_set, source_lineages = self._search_remote(source, accepted_work_order, expand)
-                candidate_sets[source] = candidate_set
-                lineages[source] = source_lineages
-            except WorkforceSourceError as exc:
-                failures[source] = _finite_failure(exc.code)
+            remote_sources.append(source)
+
+        # Cloud and Hub are independent source sessions. Fan them out together
+        # so Network latency is one remote-search window, then fold outcomes in
+        # canonical source order for stable receipts and digests.
+        if remote_sources:
+            with ThreadPoolExecutor(max_workers=len(remote_sources)) as executor:
+                remote_results = {
+                    source: executor.submit(
+                        self._search_remote, source, accepted_work_order, expand, circuit_key
+                    )
+                    for source in remote_sources
+                }
+                for source in remote_sources:
+                    try:
+                        candidate_set, source_lineages, attempt_count = remote_results[source].result()
+                        candidate_sets[source] = candidate_set
+                        lineages[source] = source_lineages
+                        attempts[source] = attempt_count
+                    except WorkforceSourceError as exc:
+                        failures[source] = _finite_failure(exc.code)
+                        attempts[source] = exc.attempt_count
 
         policy = (
             accepted_work_order.get("selectionPolicy")
@@ -680,6 +805,7 @@ class WorkforceSourceService:
             ontology_version=str(accepted_work_order.get("ontologyVersion") or ""),
             slot_ids=slot_ids,
             source_failures=failures,
+            source_attempts=attempts,
             lineage_attestations=lineages,
             lineage_verifier=self.lineage_verifier,
             minimum_candidates_per_slot=minimum_candidates,
@@ -797,6 +923,7 @@ class WorkforceSourceService:
             raise WorkforceSourceError(exc.code) from exc
 
         remote_pins = [pin for pin in pins if pin.get("source") != "local"]
+        circuit_key = self._circuit_context_key(work_order)
         auth_partition: str | None = None
         if remote_pins:
             auth_partition = self._prepare_auth_partition()
@@ -921,6 +1048,14 @@ class WorkforceSourceService:
                             # sourceFetchIdempotencyKey.
                             pass
 
+                    allowed, retry_after_ms = self.remote_circuit.allow(circuit_key, source)
+                    if not allowed:
+                        release_claim()
+                        raise WorkforceSourceError(
+                            "source_circuit_open",
+                            retry_after_ms=retry_after_ms,
+                        )
+
                     while True:
                         try:
                             if self._remote_bundle_fetch_accepts_context:
@@ -932,20 +1067,25 @@ class WorkforceSourceService:
                             else:
                                 raw_response = self.remote_bundle_fetch(source, remote_pin)
                             response = dict(raw_response)
-                        except WorkforceSourceError:
+                        except WorkforceSourceError as exc:
                             release_claim()
+                            self.remote_circuit.record_failure(circuit_key, source, exc.code)
                             raise
                         except HubAuthRequiredError as exc:
                             release_claim()
                             raise WorkforceSourceError("source_unauthorized") from exc
                         except TimeoutError as exc:
                             release_claim()
+                            self.remote_circuit.record_failure(circuit_key, source, "source_timeout")
                             raise WorkforceSourceError("source_timeout") from exc
                         except HubToolError as exc:
                             release_claim()
-                            raise WorkforceSourceError(_bundle_fetch_failure_code(exc)) from exc
+                            code = _bundle_fetch_failure_code(exc)
+                            self.remote_circuit.record_failure(circuit_key, source, code)
+                            raise WorkforceSourceError(code) from exc
                         except (OSError, ValueError) as exc:
                             release_claim()
+                            self.remote_circuit.record_failure(circuit_key, source, "source_unavailable")
                             raise WorkforceSourceError("source_bundle_fetch_failed") from exc
                         refusal = _response_failure_code(
                             response,
@@ -953,6 +1093,10 @@ class WorkforceSourceService:
                             fallback="source_bundle_fetch_failed",
                         )
                         if refusal != "prepare_receipt_cache_busy":
+                            if refusal is None:
+                                self.remote_circuit.record_success(circuit_key, source)
+                            else:
+                                self.remote_circuit.record_failure(circuit_key, source, refusal)
                             break
                         retry_after_ms = _response_retry_after_ms(response)
                         receipt_expires_at = _response_receipt_expiry(response)

@@ -113,9 +113,11 @@ a required user approval.
    `card` names an Agentlas specialist, **borrow and run it attached to this
    project** via `"$RUNNER" hep-call "<card>" "<goal>" --project .` rather than
    role-playing it. Write artifacts to each packet's `write_scope`.
-5. **verify** — A packet passes only when its verifier passes (a packet with a
-   `loop.goal_command` is met when that command exits 0; an artifact packet is met
-   when its acceptance check passes). "It ran" is never success.
+5. **verify** — A packet passes only with separately attributable, validated
+   verification. A `loop.goal_command` exiting 0 may end the goal loop, but it
+   cannot verify the executor's own output or self-attest success. Require an
+   independent verifier and hash-validated artifact evidence. "It ran" is never
+   success.
 6. **bounded repair/retry** — On a concrete validation failure, repair and re-run
    that packet — bounded. Honor the goal-loop budget: tolerate transient failures
    with backoff, stop a packet as `stalled` after consecutive no-progress

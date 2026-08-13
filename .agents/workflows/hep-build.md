@@ -21,36 +21,40 @@ engine root before routing:
 
 ```bash
 ENGINE=""
-CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
-if [ -f "./AGENTS.md" ] && [ -f "./.agentlas/mode-map.json" ]; then
-  ENGINE="."
-else
-  for dir in \
-    "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus/"*/ \
-    "$CODEX_HOME_DIR/plugins/cache/agentlas-core-engine/hephaestus/"*/
-  do
-    [ -f "$dir/SKILL.md" ] && ENGINE="$dir"
-  done
-fi
+for candidate in \
+  "${CLAUDE_PLUGIN_ROOT:-}" \
+  "${CODEX_PLUGIN_ROOT:-}" \
+  "${PLUGIN_ROOT:-}" \
+  "$HOME/.agentlas/runtime/current/host_adapters/claude/plugins/agentlas-core-engine-meta-agent" \
+  "$HOME/.agentlas/runtime/current/host_adapters/codex/plugins/agentlas-core-engine-meta-agent" \
+  "$HOME/.agentlas/runtime/current" \
+  "." \
+  "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus/"*/ \
+  "${CODEX_HOME:-$HOME/.codex}/plugins/cache/agentlas-core-engine/hephaestus/"*/
+do
+  if [ -n "$candidate" ] && [ -f "$candidate/AGENTS.md" ] && [ -f "$candidate/package-contract.json" ] && [ -f "$candidate/contracts/builder-interview-research-gate.md" ]; then
+    ENGINE="$candidate"
+    break
+  fi
+done
 echo "ENGINE=$ENGINE"
 ```
 
 If `ENGINE` is empty, go to the final section ("not installed").
 
-## Route
-
-### If the request is `ontology`
-
-Open the project-local Knowledge/Memory panel:
+Resolve the runner once here. Every route below, including normal package
+builds, uses this value:
 
 ```bash
 RUNNER=""
 for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  "$ENGINE/bin/hephaestus" \
   "./bin/hephaestus" \
   "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus" \
   "./codex/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
 do
-  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; fi
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
 if [ -z "$RUNNER" ]; then
   for cache in "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus" \
@@ -60,6 +64,15 @@ if [ -z "$RUNNER" ]; then
   done
 fi
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
+```
+
+## Route
+
+### If the request is `ontology`
+
+Open the project-local Knowledge/Memory panel:
+
+```bash
 "$RUNNER" ontology --gui .
 ```
 
@@ -67,7 +80,7 @@ Report the returned `gui_url`, `db_path`, `inbox_path`, and verification status.
 
 ### Otherwise
 
-Read `$ENGINE/AGENTS.md` if it exists, otherwise `$ENGINE/SKILL.md`, then:
+Read `$ENGINE/AGENTS.md`, then:
 
 1. Read `$ENGINE/.agentlas/mode-map.json` and
    `$ENGINE/.agentlas/global-commands.json` when present.
@@ -79,8 +92,14 @@ Read `$ENGINE/AGENTS.md` if it exists, otherwise `$ENGINE/SKILL.md`, then:
    not show non-technical users internal labels like ownership boundary,
    memory/context, synthesis, or produces/consumes.
 3. Run the Builder Interview and Research Gate from
-   `docs/builder-interview-research-gate.md` before writing substantial package Follow the briefing interview engine (`agentlas_cloud/interview/`): lens-table questions (anti_scope/done_signal/stop_criterion required), stop only at ambiguity <= 0.2 with dimension floors met for 2 consecutive rounds, then a coverage check and a one-sentence goal restate; also write `.agentlas/work-brief.json` (work-brief/1.0) so `cards migrate` derives triggers/anti-triggers from the user's confirmed answers.
-   files. Ask an 8-12 question first batch when the request is vague, continue
+   `$ENGINE/contracts/builder-interview-research-gate.md` before writing
+   substantial package files. Follow the briefing interview engine
+   (`agentlas_cloud/interview/`): use the required anti-scope, done-signal, and
+   stop-criterion lenses; stop only at ambiguity <= 0.2 with dimension floors
+   met for two consecutive rounds; then run a coverage check and confirm a
+   one-sentence goal. Write `.agentlas/work-brief.json` (`work-brief/1.0`) so
+   `cards migrate` derives triggers and anti-triggers from confirmed answers.
+   Ask an 8-12 question first batch when the request is vague, continue
    follow-ups until the functional brief, ownership boundaries, role count,
    tool permission separation, synthesis need, and execution order are clear,
    research official sources, similar agent repositories or comparables,
@@ -98,34 +117,35 @@ Read `$ENGINE/AGENTS.md` if it exists, otherwise `$ENGINE/SKILL.md`, then:
    trigger examples, and sample user inputs may use the target user language.
 5. If missing narrow details would change files, adapters, or the public/private
    boundary, run the clarify-question-loop skill first.
-6. Generate or repair the smallest useful Agentlas package in the current
-Before writing any package file, lay the contract down:
-`"$ENGINE/bin/hephaestus" contract scaffold "$PACKAGE_ROOT" --mode single|team|package`.
-Then, as soon as the routing card exists, run
-`"$ENGINE/bin/hephaestus" contract complete "$PACKAGE_ROOT"` — the engine fills every
-artifact the package already answers (`agent.md`, work brief, sitemap, routing
-benchmarks, capability eval plan, builder interview, research sources, output
-example) from the routing card, the roster, and the schemas on disk. It never
-overwrites an authored body and never invents a fact. Run it BEFORE
-`contract verify`, so verify reports only the genuinely authored half.
-It copies every required artifact into place with named `{{PLACEHOLDER}}` holes and
-never overwrites. Skipping it is how a build ends with 5 of 18 required artifacts
-and still reports success. `contract prompt --mode <mode>` lists what each one is for.
+6. Take exactly one folder explicitly named or confirmed by the user as
+   `PACKAGE_TARGET`. If none was named, or more than one folder could match,
+   stop and ask; never use `.`, the cwd, or `$ENGINE`. Run
+   `"$RUNNER" contract resolve-target "$PACKAGE_TARGET" --base "$PWD"` and set
+   `PACKAGE_ROOT` only to the receipt's exact `package_root`. A nonzero exit or
+   any status other than `ok` is a blocker.
+7. Generate or repair the smallest useful Agentlas package at `PACKAGE_ROOT`.
+   Before writing any package file, lay the contract down:
+   `"$RUNNER" contract scaffold "$PACKAGE_ROOT" --mode single|team|package`.
+   Then, as soon as the routing card exists, run
+   `"$RUNNER" contract complete "$PACKAGE_ROOT" --mode single|team|package`.
+   The engine fills artifacts already answered by the routing card, roster, and
+   on-disk schemas without overwriting authored bodies or inventing facts. Run
+   complete before verify, then fill every remaining named placeholder.
+   `contract prompt --mode <mode>` lists the mode's artifacts.
 
-   workspace, then run `"$ENGINE/bin/hephaestus" contract verify "$PACKAGE_ROOT" --mode single|team|package` (this runs the team-shape rule too). If it
+   Run `"$RUNNER" contract verify "$PACKAGE_ROOT" --mode single|team|package`
+   (this runs the team-shape rule too). If it
    fails, do not report `completed`; correct the shape by collapsing to a valid
    single-agent package or adding orchestrator/HQ plus company-blueprint
    topology, then rerun the gate and verify it.
-7. If the package exists in the current workspace, register its routing-card to
+8. If the package exists in the current workspace, register its routing-card to
    local discovery so it can participate in local routing priority:
 
 ```bash
-if [ -x "./bin/hephaestus" ]; then
-  ./bin/hephaestus cards migrate "$PACKAGE_ROOT" --tier local --overwrite
-fi
+"$RUNNER" cards migrate "$PACKAGE_ROOT" --tier local --overwrite
 ```
 
-8. After verification and local discovery registration, ask exactly one final
+9. After verification and local discovery registration, ask exactly one final
    two-choice storage question, using structured choice controls when the host
    provides them:
    - **Cloud에 올리기** — owner-private Agent Cloud storage that the same
@@ -140,7 +160,7 @@ fi
    against the exact verified package root. Auth, offline, CAS, quota, or scan
    failure leaves the local package intact and must be reported with an exact
    retry command. Public Hub publishing remains a separate explicit action.
-9. Return `status`, `evidence`, `output`, `global_commands`,
+10. Return `status`, `evidence`, `output`, `global_commands`,
    `interview_research`, and `blockers`.
 
 ## If no engine root was found

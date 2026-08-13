@@ -40,7 +40,7 @@ MAX_RUNTIME_ARCHIVE_BYTES = 256 * 1024 * 1024
 # and others). Measured 2026-07-16: the release archive includes and enforces
 # this, but it was missing from this list, so it was lost entirely from
 # installs — a managed runtime's hep-network then stopped on a missing schema.
-RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "ontology", "templates")
+RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "contracts", "ontology", "templates")
 # Runtime-home payloads that the installer copies and the updater must copy too,
 # or a machine that installed once and then only ever auto-updated loses them on
 # its next update — silently, because every consumer below degrades rather than
@@ -145,7 +145,17 @@ def _managed_command_names(source: Path | None = None, home: Path | None = None)
             if entry.stem and entry.stem not in PROJECT_ONLY_COMMANDS:
                 names.add(entry.stem)
     return tuple(sorted(names))
-HEP_SKILLS = ("hephaestus-network", "hephaestus-cloud", "hephaestus-storm")
+# Every AgentSkills surface installed by the one-touch installer. Keep graph and
+# upload in the same updater-owned set as network/cloud/storm so an update can
+# never leave a first-install copy frozen indefinitely.
+HEP_SKILLS = (
+    "hephaestus-network",
+    "hephaestus-cloud",
+    "hephaestus-storm",
+    "hephaestus-graph",
+    "hephaestus-upload",
+)
+PYTHON_CACHE_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
 AUTO_UPDATE_MARKER = "auto-update.json"
 
 # Legacy in-adapter auto-update preflight. Older releases shipped command
@@ -269,6 +279,7 @@ def _adapter_paths(home: Path) -> list[Path]:
                 home / ".cursor" / "skills" / skill / "SKILL.md",
                 home / ".openclaw" / "skills" / skill / "SKILL.md",
                 home / ".hermes" / "skills" / skill / "SKILL.md",
+                home / ".gemini" / "config" / "plugins" / "agentlas-os" / "skills" / skill / "SKILL.md",
                 home / ".gemini" / "hephaestus-extension-source" / "skills" / skill / "SKILL.md",
             ]
         )
@@ -657,11 +668,11 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             staged_target.mkdir(parents=True)
             for name in RUNTIME_DIRS:
                 src = source / name
-                shutil.copytree(src, staged_target / name)
+                shutil.copytree(src, staged_target / name, ignore=PYTHON_CACHE_IGNORE)
             for name in RUNTIME_OPTIONAL_DIRS:
                 src = source / name
                 if src.is_dir():
-                    shutil.copytree(src, staged_target / name)
+                    shutil.copytree(src, staged_target / name, ignore=PYTHON_CACHE_IGNORE)
             for name in RUNTIME_FILES:
                 src = source / name
                 if src.is_file():
@@ -676,7 +687,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             for name in HOST_ADAPTER_DIRS:
                 src = source / name
                 if src.is_dir():
-                    shutil.copytree(src, adapter_bundle / name)
+                    shutil.copytree(src, adapter_bundle / name, ignore=PYTHON_CACHE_IGNORE)
             for name in ("manifest.json", "RELEASE"):
                 src = source / name
                 if src.is_file():
@@ -689,7 +700,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             _validate_host_adapter_bundle(adapter_bundle, tag)
             runtime_model = staged_target / "models" / "model2vec" / source_model.name
             runtime_model.parent.mkdir(parents=True)
-            shutil.copytree(source_model, runtime_model)
+            shutil.copytree(source_model, runtime_model, ignore=PYTHON_CACHE_IGNORE)
             installed_model_path = target / "models" / "model2vec" / source_model.name
             (staged_target / "RELEASE").write_text(f"{tag}\n", encoding="utf-8")
             write_python_shims(staged_target / "bin", sys.executable)
@@ -1453,6 +1464,10 @@ def _installed_adapter_dir_targets(source: Path, home: Path) -> list[tuple[Path,
                 (Path("skills") / skill, home / ".cursor" / "skills" / skill),
                 (Path("openclaw") / "skills" / skill, home / ".openclaw" / "skills" / skill),
                 (Path("skills") / skill, home / ".hermes" / "skills" / skill),
+                (
+                    Path("skills") / skill,
+                    home / ".gemini" / "config" / "plugins" / "agentlas-os" / "skills" / skill,
+                ),
             ]
         )
     return [(src_rel, dest) for src_rel, dest in targets if (source / src_rel).is_dir()]
@@ -1492,7 +1507,7 @@ def _replace_directory(src: Path, dest: Path) -> None:
             shutil.rmtree(tmp)
         else:
             tmp.unlink()
-    shutil.copytree(src, tmp)
+    shutil.copytree(src, tmp, ignore=PYTHON_CACHE_IGNORE)
     if dest.exists() or dest.is_symlink():
         if dest.is_dir() and not dest.is_symlink():
             shutil.rmtree(dest)
@@ -1656,6 +1671,7 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
         Path("ontology") / "__init__.py",
         Path("ontology") / "model_assets.py",
         Path("templates") / "agentlas.json.tpl",
+        Path("contracts") / "builder-interview-research-gate.md",
         Path("desktop-update-bridge-v1.json"),
         Path("scripts") / "install-memory-hooks.py",
     ):
@@ -1682,6 +1698,7 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
     if (runtime_root / "agentlas_cloud" / "package_contract.py").is_file():
         for relative in (
             Path("package-contract.json"),
+            Path("contracts") / "builder-interview-research-gate.md",
             Path("schemas") / "package-contract.schema.json",
             Path("schemas") / "workforce-work-order.schema.json",
             Path("schemas") / "workforce-selection.schema.json",
@@ -1881,7 +1898,7 @@ def _point_current_at(target: Path) -> dict[str, str]:
         replacement.symlink_to(target, target_is_directory=True)
     except OSError:
         _remove_path(replacement)
-        shutil.copytree(target, replacement)
+        shutil.copytree(target, replacement, ignore=PYTHON_CACHE_IGNORE)
 
     try:
         if current.is_symlink():

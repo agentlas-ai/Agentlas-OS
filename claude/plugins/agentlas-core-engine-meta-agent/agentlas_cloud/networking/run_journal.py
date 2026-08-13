@@ -21,6 +21,10 @@ Pure standard library, deterministic, local-first. No model calls.
 from __future__ import annotations
 
 import json
+import os
+import time
+import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +33,11 @@ from typing import Any
 
 TERMINAL_EVENTS = ("complete", "fail")
 DEFAULT_LOOP_THRESHOLD = 3
+# A legacy/interrupted claimant may have created the final lock file before its
+# metadata became visible.  Give that publication window a short grace period
+# so another process never mistakes a legitimately live, just-created lock for
+# abandoned garbage.
+CLAIM_PUBLISH_GRACE_SECONDS = 1.0
 
 
 def _now() -> str:
@@ -111,6 +120,61 @@ class RunJournal:
                 # it never silently changes the resume decision.
                 events.append({"event": "corrupt", "step_id": "", "raw": line})
         return events
+
+    def latest_packet_results(self, pipeline_id: str) -> dict[str, dict[str, Any]]:
+        """Return the last durable packet result for a pipeline.
+
+        Stormbreaker's execution ledger uses the same append-only JSONL file as
+        the generic step journal, but records ``packet_finished`` events instead
+        of step terminal events. Keeping this reader here gives the runner one
+        recovery boundary instead of teaching it to parse journal lines itself.
+        """
+
+        latest: dict[str, dict[str, Any]] = {}
+        for event in self.events():
+            if event.get("event") != "packet_finished":
+                continue
+            if str(event.get("pipeline_id") or "") != str(pipeline_id):
+                continue
+            packet_id = str(event.get("packet_id") or "")
+            if packet_id:
+                latest[packet_id] = event
+        return latest
+
+    @contextmanager
+    def packet_claim(self, packet_id: str, *, timeout_seconds: float) -> Any:
+        """Serialize one packet across local runner processes.
+
+        The lock is deliberately packet-scoped so independent parallel groups
+        remain parallel. A dead owner's lock is recoverable; a live owner makes
+        later invocations wait and re-read its durable result before deciding
+        whether any executor should run.
+        """
+
+        safe_packet_id = "".join(
+            ch for ch in str(packet_id) if ch.isalnum() or ch in {"-", "_"}
+        ) or "packet"
+        lock_path = self.path.parent / f".{self.path.name}.{safe_packet_id}.lock"
+        token = uuid.uuid4().hex
+        deadline = time.monotonic() + max(0.1, float(timeout_seconds))
+        acquired = False
+        while not acquired:
+            try:
+                _publish_claim(lock_path, token)
+            except FileExistsError:
+                if _remove_dead_claim(lock_path):
+                    continue
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.05)
+                continue
+            acquired = True
+
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                _release_claim(lock_path, token)
 
     def _step_states(self) -> tuple[dict[str, dict[str, Any]], list[str]]:
         """Return per-step state plus the first-seen order of step ids."""
@@ -244,3 +308,107 @@ class RunJournal:
 def default_journal_path(project_dir: str | Path, run_id: str) -> Path:
     safe = "".join(ch for ch in str(run_id) if ch.isalnum() or ch in {"-", "_"}) or "run"
     return Path(project_dir).expanduser().resolve() / ".agentlas" / "stormbreaker" / "journal" / f"{safe}.jsonl"
+
+
+def _publish_claim(path: Path, token: str) -> None:
+    """Publish a complete claim atomically without exposing a torn final lock.
+
+    The metadata is written and synced under a unique sibling name first.  A
+    same-directory hard link then performs the no-overwrite publication: either
+    the complete inode appears at ``path`` or an existing claimant wins.  An
+    interruption or ``os.write`` failure before that point leaves no final lock
+    that could strand later runs.
+    """
+
+    temporary = path.with_name(f".{path.name}.{token}.publishing")
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        payload = json.dumps(
+            {"pid": os.getpid(), "token": token, "created_at": _now()},
+            sort_keys=True,
+        ).encode("utf-8")
+        offset = 0
+        while offset < len(payload):
+            written = os.write(descriptor, payload[offset:])
+            if written <= 0:
+                raise OSError("packet_claim_metadata_write_incomplete")
+            offset += written
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+        # Hard-link creation is atomic and refuses to replace an existing lock.
+        os.link(temporary, path)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _remove_dead_claim(path: Path) -> bool:
+    try:
+        observed = path.stat()
+        raw = path.read_text(encoding="utf-8")
+        current = path.stat()
+        if _claim_state(observed) != _claim_state(current):
+            return False
+        payload = json.loads(raw)
+        pid = int(payload.get("pid"))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, AttributeError):
+        try:
+            observed = path.stat()
+        except OSError:
+            return False
+        age_seconds = max(0.0, time.time() - observed.st_mtime)
+        if age_seconds < CLAIM_PUBLISH_GRACE_SECONDS:
+            return False
+        return _unlink_claim_if_unchanged(path, observed)
+    if _pid_is_alive(pid):
+        return False
+    return _unlink_claim_if_unchanged(path, current)
+
+
+def _claim_state(value: os.stat_result) -> tuple[int, int, int, int]:
+    return (value.st_dev, value.st_ino, value.st_mtime_ns, value.st_size)
+
+
+def _unlink_claim_if_unchanged(path: Path, observed: os.stat_result) -> bool:
+    try:
+        if _claim_state(path.stat()) != _claim_state(observed):
+            return False
+        path.unlink()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _release_claim(path: Path, token: str) -> None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if str(payload.get("token") or "") != token:
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True

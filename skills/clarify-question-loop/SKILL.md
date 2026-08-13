@@ -10,7 +10,7 @@ boundary, or public/private release decision.
 
 For `/hep-build` creation or behavior-changing packaging, this is not a
 substitute for the Builder Interview and Research Gate in
-`docs/builder-interview-research-gate.md`. Run that gate first: ask an 8-12
+`contracts/builder-interview-research-gate.md`. Run that gate first: ask an 8-12
 question first batch, research similar agent repositories or comparables and
 academic/professional theory, then use this clarify loop only for the remaining
 narrow ambiguities.

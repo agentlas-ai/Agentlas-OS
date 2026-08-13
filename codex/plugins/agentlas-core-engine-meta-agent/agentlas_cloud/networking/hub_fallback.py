@@ -21,6 +21,7 @@ from typing import Any
 from ..auth import ensure_access_token
 from .bootstrap import append_jsonl, networking_home, read_json, read_jsonl, utc_now
 from .card_store import load_global_cards
+from .hub_client import finite_hub_tool_error_code
 from .memory import redact_tokens, unsafe_route_refusal
 from .tokenize import token_set
 
@@ -171,6 +172,28 @@ def search_hub(
     try:
         with urllib.request.urlopen(request, timeout=_HUB_TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            raw_detail = exc.read(65_537)
+            detail: Any = raw_detail.decode("utf-8", errors="replace")
+            if detail[:1] in {"{", "["}:
+                detail = json.loads(detail)
+        except (OSError, TypeError, ValueError):
+            detail = None
+        code = finite_hub_tool_error_code(detail, default="") or {
+            401: "source_unauthorized",
+            402: "insufficient_credits",
+            403: "source_forbidden",
+            408: "source_timeout",
+            429: "source_rate_limited",
+            504: "source_timeout",
+        }.get(exc.code, "source_unavailable")
+        return {
+            "status": "failed",
+            "scope": scope,
+            "error": code,
+            "results": [],
+        }
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
         cached_count = sum(
             1

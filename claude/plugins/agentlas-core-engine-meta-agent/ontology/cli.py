@@ -142,16 +142,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "auto":
-        return emit(
-            auto_activate_project(
-                args.project,
-                args.scope,
-                no_ingest=args.no_ingest,
-                db_override=args.db,
-                vector_adapter_name=args.embedding_adapter,
-                local_model_path=args.local_model_path,
-            )
+        result = auto_activate_project(
+            args.project,
+            args.scope,
+            no_ingest=args.no_ingest,
+            db_override=args.db,
+            vector_adapter_name=args.embedding_adapter,
+            local_model_path=args.local_model_path,
         )
+        emit(result)
+        return payload_exit_code(result)
     if args.command == "sources" and args.sources_command == "add":
         return emit(
             register_source(
@@ -180,19 +180,46 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
 
-    runtime = OntologyRuntime(
-        RuntimeConfig(
-            db_path=Path(args.db or DEFAULT_DB_PATH),
-            vector_adapter_name=args.embedding_adapter,
-            local_model_path=args.local_model_path,
-        )
+    read_only = (
+        (args.command == "query" and not args.record_memory)
+        or (args.command == "experience" and args.experience_command == "query")
+        or args.command == "graph"
+        or (args.command == "memory" and args.memory_command in {"candidates", "graph"})
+        or (args.command == "working-memory" and args.working_command == "read")
+        or args.command == "verify"
+        or (args.command == "storage" and args.storage_command in {"backup", "export"})
     )
+    try:
+        runtime = OntologyRuntime(
+            RuntimeConfig(
+                db_path=Path(args.db or DEFAULT_DB_PATH),
+                vector_adapter_name=args.embedding_adapter,
+                local_model_path=args.local_model_path,
+                read_only=read_only,
+            )
+        )
+    except FileNotFoundError as exc:
+        emit({"status": "missing_index", "error": str(exc)})
+        return 1
+    except RuntimeError as exc:
+        emit({"status": "error", "error": str(exc)})
+        return 2
 
     if args.command == "ingest":
-        return emit(runtime.ingest_path(args.path, access_scope=args.scope, parent_source_id=args.parent_source_id))
+        try:
+            result = runtime.ingest_path(
+                args.path,
+                access_scope=args.scope,
+                parent_source_id=args.parent_source_id,
+            )
+        except (OSError, ValueError) as exc:
+            emit({"status": "error", "error": "ontology_ingest_failed", "detail": str(exc)})
+            return 2
+        emit(result)
+        return payload_exit_code(result)
     if args.command == "query":
-        return emit(
-            runtime.query(
+        try:
+            result = runtime.query(
                 args.question,
                 agent_id=args.agent,
                 allowed_scopes=args.scope,
@@ -201,7 +228,11 @@ def main(argv: list[str] | None = None) -> int:
                 experience_token_budget=args.experience_token_budget,
                 experience_top_k=args.experience_top_k,
             )
-        )
+        except (OSError, ValueError) as exc:
+            emit({"status": "error", "error": "ontology_query_failed", "detail": str(exc)})
+            return 2
+        emit(result)
+        return payload_exit_code(result)
     if args.command == "experience" and args.experience_command == "ingest":
         source_refs = json.loads(args.source_refs_json)
         if not isinstance(source_refs, list):
@@ -223,17 +254,23 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     if args.command == "experience" and args.experience_command == "query":
-        return emit(
-            runtime.query_experience(
+        try:
+            result = runtime.query_experience(
                 args.question,
                 agent_id=args.agent,
                 allowed_scopes=args.scope,
                 token_budget=args.token_budget,
                 top_k=args.top_k,
             )
-        )
+        except (OSError, ValueError) as exc:
+            emit({"status": "error", "error": "invalid_experience_budget", "detail": str(exc)})
+            return 2
+        emit(result)
+        return payload_exit_code(result)
     if args.command == "graph" and args.graph_command == "entity":
-        return emit(runtime.graph_entity(args.name))
+        result = runtime.graph_entity(args.name)
+        emit(result)
+        return payload_exit_code(result)
     if args.command == "memory" and args.memory_command == "candidates":
         return emit({"candidates": runtime.list_memory_candidates(status=args.status)})
     if args.command == "memory" and args.memory_command == "decide":
@@ -257,7 +294,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "storage" and args.storage_command == "export":
         return emit(runtime.export_json(args.destination))
     if args.command == "storage" and args.storage_command == "import":
-        return emit(runtime.import_json(args.source))
+        try:
+            result = runtime.import_json(args.source)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            emit({"status": "error", "error": str(exc)})
+            return 2
+        emit(result)
+        return payload_exit_code(result)
     parser.error("unhandled command")
     return 2
 
@@ -265,6 +308,17 @@ def main(argv: list[str] | None = None) -> int:
 def emit(payload: Any) -> int:
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
+
+
+def payload_exit_code(payload: Any) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    status = str(payload.get("status") or "ok")
+    if status in {"ok", "pass", "active"}:
+        return 0
+    if status in {"missing", "missing_index", "not_found", "stale_index"}:
+        return 1
+    return 2
 
 
 def project_root(project: str | Path) -> Path:
@@ -396,11 +450,16 @@ def auto_activate_project(
         )
     )
     sync_results: list[dict[str, Any]] = []
+    scan_truncated = False
     if not no_ingest:
         for source in registered_ingest_paths(project):
             summary = runtime.ingest_path(source["path"], access_scope=source["scope"])
+            scan = summary.get("scan") if isinstance(summary.get("scan"), dict) else {}
+            source_truncated = scan.get("truncated") is True
+            scan_truncated = scan_truncated or source_truncated
             sync_results.append(
                 {
+                    "status": "partial" if source_truncated else "ok",
                     "path": source["path"],
                     "kind": source["kind"],
                     "scope": source["scope"],
@@ -409,11 +468,14 @@ def auto_activate_project(
                     "relations_written": summary["relations_written"],
                     "idempotent_skips": summary["idempotent_skips"],
                     "sources": len(summary["sources"]),
+                    "scan": scan,
+                    "skipped_sources": list(summary.get("skipped_sources") or []),
+                    "deleted_sources": list(summary.get("deleted_sources") or []),
                 }
             )
     verify = runtime.verify()
     return {
-        "status": "active",
+        "status": "partial" if scan_truncated else "active",
         "project_root": files["project_root"],
         "db_path": files["db_path"],
         "config_path": files["config_path"],
@@ -421,6 +483,11 @@ def auto_activate_project(
         "source_manifest_path": files["source_manifest_path"],
         "auto_ingest_policy": "inbox_and_registered_sources_only",
         "cross_project_search_default": "disabled",
+        "scan": {
+            "complete": not scan_truncated,
+            "truncated": scan_truncated,
+            "registered_paths": len(sync_results),
+        },
         "sync_results": sync_results,
         "verify": verify,
     }

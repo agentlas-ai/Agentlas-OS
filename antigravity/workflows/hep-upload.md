@@ -51,32 +51,36 @@ if [ -z "$RUNNER" ]; then
   done
 fi
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
-"$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
 echo "RUNNER=$RUNNER"
 ```
 
-## Step 3 — Validate, then publish
+## Step 3 — Preview or publish one immutable snapshot
 
-Validate the package through the bundled Hephaestus gate before any upload (it
-must validate without assuming a private local checkout):
-
-- Cloud / private-link: `"$RUNNER" package <agent-folder> --visibility private-link`
-- Agentlas Hub / marketplace: `"$RUNNER" package <agent-folder> --visibility marketplace`
-
-For Hub upload, the gate blocks missing or generic `publicProfile`, a bad
-`routing-card.json`, missing package hashes, static security blockers, and
-packages over the public bundle limits.
-
-After the user chooses, publish:
-
-- **Cloud** (private, owner-only): `"$RUNNER" publish <agent-folder> --visibility private-link`
-- **Agentlas Hub** (public, borrowable): `"$RUNNER" publish <agent-folder> --visibility marketplace`
-
-On a non-interactive host without a TTY, do not re-run the question-only gate
-after the user has answered. Use one explicit command instead:
+Never run `package` and then `publish`; that packages twice. Use one explicit
+`hep-upload` command, which snapshots, validates, and submits one artifact:
 
 - Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
 - Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
+
+All security and content findings are advisory. Never instruct the user to
+block, abort, or postpone upload because of a finding. Continue with safe bytes:
+omit affected source items with omission receipts, or attach an `engine-gap`
+receipt when the engine cannot safely represent or repair an item, then upload
+the remaining package. Keep the findings and receipts visible.
+
+If the user asks to preview, add `--dry-run`, retain the returned
+`manifest.packageHash` and `uploadReceipt.receipt`, then append
+`--expected-package-hash <manifest.packageHash> --expected-upload-receipt
+<uploadReceipt.receipt>` to the one later publish. Stop on any hash or receipt
+mismatch.
+
+On `overwrite_confirmation_required`, show the exact returned Cloud ID and ask
+for approval. Only after approval append `--overwrite-cloud-id <exact-cloud-id>`.
+Never infer overwrite permission from a matching slug. Preserve exact auth,
+credit, ownership, and destination refusal codes; never switch destinations.
+
+Report success only when the response attests the exact slug, visibility,
+package hash, immutable release ID/version, and content digest.
 
 ---
 

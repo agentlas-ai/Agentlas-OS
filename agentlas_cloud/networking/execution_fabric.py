@@ -16,6 +16,7 @@ from ..model_allocation import (
     resolve_model_allocation,
 )
 from .stormbreaker_harness import goal_ultracode_harness, harness_reference
+from .runtime_capabilities import descriptor_from_session
 
 
 STAGE_CAPABILITY_HINTS: dict[str, tuple[str, ...]] = {
@@ -98,6 +99,7 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
         except (TypeError, ValueError):
             max_parallel = 1
         family = _family_from_session(raw, session_id)
+        capability_descriptor = descriptor_from_session(raw, session_id)
         sessions.append(
             {
                 "session_id": session_id,
@@ -119,6 +121,7 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
                 ),
                 "supports_tools": bool(raw.get("supports_tools", True)) if isinstance(raw, Mapping) else True,
                 "supports_multimodal": bool(raw.get("supports_multimodal", False)) if isinstance(raw, Mapping) else False,
+                "capability_descriptor": capability_descriptor,
             }
         )
 
@@ -255,6 +258,7 @@ def build_execution_fabric(
                     "model": chosen_session["model"],
                     "trust": chosen_session["trust"],
                     "effort": allocation_receipt["resolved"].get("effort"),
+                    "capability_descriptor": chosen_session["capability_descriptor"],
                 },
                 "model_allocation": allocation_receipt,
                 "model_allocation_contract": {
@@ -315,20 +319,32 @@ def evaluate_final_gate(fabric: dict[str, Any], packet_statuses: dict[str, str])
     required = [str(packet_id) for packet_id in fabric.get("required_packet_ids") or []]
     passing: list[str] = []
     blocked: list[str] = []
+    unverified: list[str] = []
     missing: list[str] = []
+    fabric_errors: list[str] = []
+    if not required:
+        # ``all([])``-style/vacuous success is never a valid execution proof.
+        # A malformed or empty routed fabric must fail closed even when the
+        # caller supplies an equally empty packet-status map.
+        fabric_errors.append("empty_required_packet_set")
     for packet_id in required:
         status = packet_statuses.get(packet_id)
         if status == "passing":
             passing.append(packet_id)
         elif status == "blocked":
             blocked.append(packet_id)
+        elif status == "executed_unverified":
+            unverified.append(packet_id)
         else:
             missing.append(packet_id)
+    can_report_success = bool(required) and not fabric_errors and not missing and not blocked and not unverified
     return {
-        "can_report_success": not missing and not blocked,
-        "can_report_blocked": not missing and bool(blocked),
+        "can_report_success": can_report_success,
+        "can_report_blocked": bool(fabric_errors or blocked or unverified),
         "passing": passing,
         "blocked": blocked,
+        "unverified": unverified,
         "missing_or_incomplete": missing,
-        "final_gate": "success" if not missing and not blocked else "blocked",
+        "fabric_errors": fabric_errors,
+        "final_gate": "success" if can_report_success else "blocked",
     }

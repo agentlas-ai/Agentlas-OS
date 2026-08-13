@@ -249,6 +249,13 @@ class WorkforcePrepareReceiptCache:
     def __init__(self, path: Path | str):
         self.path = Path(path).expanduser()
         self._memory_only = str(self.path) == ":memory:"
+        self._closed = False
+        self._memory_uri = (
+            f"file:agentlas-prepare-{uuid4().hex}?mode=memory&cache=shared"
+            if self._memory_only
+            else None
+        )
+        self._memory_keeper = self._open_connection() if self._memory_only else None
         self._prepare_private_store_path()
         with closing(self._connect()) as connection, connection:
             connection.executescript(
@@ -380,15 +387,27 @@ class WorkforcePrepareReceiptCache:
             if os.name == "posix":
                 os.chmod(candidate, 0o600)
 
+    def _open_connection(self) -> sqlite3.Connection:
+        target = self._memory_uri if self._memory_only else str(self.path)
+        connection = sqlite3.connect(
+            target,
+            timeout=30,
+            uri=self._memory_only,
+            check_same_thread=not self._memory_only,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = FULL")
+        return connection
+
     def _connect(self) -> sqlite3.Connection:
+        if self._closed:
+            raise WorkforcePrepareCacheError("prepare_receipt_cache_closed")
         self._prepare_private_store_path()
         connection: sqlite3.Connection | None = None
         try:
-            connection = sqlite3.connect(str(self.path), timeout=30)
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA foreign_keys = ON")
-            connection.execute("PRAGMA journal_mode = WAL")
-            connection.execute("PRAGMA synchronous = FULL")
+            connection = self._open_connection()
             self._harden_private_store_files()
             return connection
         except WorkforcePrepareCacheError:
@@ -399,6 +418,28 @@ class WorkforcePrepareReceiptCache:
             if connection is not None:
                 connection.close()
             raise WorkforcePrepareCacheError("prepare_receipt_cache_unavailable") from exc
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if self._memory_keeper is not None:
+            self._memory_keeper.close()
+            self._memory_keeper = None
+
+    def __enter__(self) -> "WorkforcePrepareReceiptCache":
+        if self._closed:
+            raise WorkforcePrepareCacheError("prepare_receipt_cache_closed")
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     @staticmethod
     def _begin(connection: sqlite3.Connection) -> None:

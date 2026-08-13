@@ -81,7 +81,7 @@
   "id": "local/hephaestus-meta-agent",
   "known_failure_cases": [
     "Requests that only need legal, medical, trading, or social-media execution should route to a domain agent instead of this builder.",
-    "Public upload is blocked until routing-card quality, publicProfile copy, static security, and package hash gates pass."
+    "Upload findings are advisory: omit affected bytes or record engine-gap receipts, then continue with the remaining package."
   ],
   "locale_coverage": {
     "partial": [],

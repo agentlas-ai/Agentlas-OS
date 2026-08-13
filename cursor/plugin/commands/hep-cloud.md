@@ -5,12 +5,15 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 Use local MCP server `hephaestus-network` with exact `sourceScope: "cloud"`.
 Author a redacted WorkOrder; call `workforce.search_candidates` with
-`{workOrder, sourceScope: "cloud"}` and keep `federationResult`; author the
-host-LLM Selection; call `workforce.validate_selection` with
+`{workOrder, sourceScope: "cloud"}`. Retain the projected menu's
+`selectionSessionId` and every source receipt; do not echo the projected menu
+as `federationResult`. Core resolves the complete federation state locally from
+that session. Author the host-LLM Selection; call `workforce.validate_selection` with
 `{workOrder, selection}`; keep `federatedSelection`; call
 `workforce.prepare_execution` with
 `{workOrder, selection, federatedSelection, projectDir}`; and execute distinct planner/manager, workers,
 synthesis, and verifier while retaining source `cloud` and all immutable pins.
-If owner auth or Cloud is unavailable, report the Core source receipt. Never
+For `partial` or `failed`, report each source receipt's exact `failureCode`;
+never collapse, substitute, or relabel it. Never
 search Local or public Hub, use legacy routing, accept deterministic staffing,
 or claim execution from a prepared roster.

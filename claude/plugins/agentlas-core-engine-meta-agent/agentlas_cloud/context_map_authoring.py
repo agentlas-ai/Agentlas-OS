@@ -286,9 +286,9 @@ def last_derive_skipped() -> dict[str, int]:
 def refresh_declared_context(project: str | Path) -> dict[str, Any]:
     """Rewrite only the derived half of `.agentlas/context-map.json`.
 
-    Returns a receipt rather than raising: this runs inside read paths like
-    `context.slice`, and a project whose ledger cannot be parsed must still get
-    its code slice.
+    Returns a receipt rather than raising because explicit project bootstrap
+    owns this materialization and must report unreadable ledgers without
+    partially rewriting declared context.
     """
 
     root = Path(project).expanduser().resolve()

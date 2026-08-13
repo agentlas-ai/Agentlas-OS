@@ -53,6 +53,63 @@ agentlas_export_python_cache_boundary() {
   export PYTHONPYCACHEPREFIX="$prefix"
 }
 
+# Canonical interpreter resolution for the installer and its post-install
+# gates. Return a shell command string because the Windows launcher is two
+# words (`py -3`); callers intentionally invoke the result unquoted.
+agentlas_python_candidate_ok() {
+  "$@" -c 'import sys
+if sys.version_info < (3, 9):
+    raise SystemExit(1)
+from jsonschema import Draft202012Validator
+from referencing import Registry' >/dev/null 2>&1
+}
+
+agentlas_is_runtime_python_shim() {
+  local candidate="$1" resolved=""
+  if [[ "$candidate" == */* ]]; then
+    resolved="$candidate"
+  else
+    resolved="$(command -v "$candidate" 2>/dev/null || true)"
+  fi
+  [[ -n "$resolved" ]] || return 1
+  case "$resolved" in
+    "$HOME/.agentlas/runtime/"*/bin/python3|"$HOME/.agentlas/runtime/current/bin/python3") return 0 ;;
+  esac
+  return 1
+}
+
+agentlas_resolve_python_cmd() {
+  if [[ -n "${HEPHAESTUS_PYTHON:-}" ]] \
+    && ! agentlas_is_runtime_python_shim "$HEPHAESTUS_PYTHON" \
+    && agentlas_python_candidate_ok "$HEPHAESTUS_PYTHON"; then
+    printf '%s\n' "$HEPHAESTUS_PYTHON"
+    return 0
+  fi
+  local candidate
+  for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+    if [[ -x "$candidate" ]] \
+      && ! agentlas_is_runtime_python_shim "$candidate" \
+      && agentlas_python_candidate_ok "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 \
+      && ! agentlas_is_runtime_python_shim "$candidate" \
+      && agentlas_python_candidate_ok "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  if command -v py >/dev/null 2>&1 \
+    && agentlas_python_candidate_ok py -3; then
+    printf '%s\n' 'py -3'
+    return 0
+  fi
+  return 1
+}
+
 # ------------------------------------------------------------------ platform
 #
 # Native Windows (Git Bash / MSYS2) is not "POSIX with different slashes" for

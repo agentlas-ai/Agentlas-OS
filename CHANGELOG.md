@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.2.1 - 2026-08-14
+
+- **Super Ontology is retired from active surfaces.** Core no longer ships its
+  schemas, templates, generated seeds, package contract entry, runtime kernel,
+  CLI status command, or validation gates. Agent Ontology (AO), Agent Workforce
+  Ontology, the local semantic ontology, Context Map, and Career Graph remain
+  independent active systems.
+- **Runtime installation fails closed across release skew.** The installer now
+  requires both platform-helper symbols before it reports a helper load as
+  successful, so an older archive cannot fall through to a missing Python
+  resolver. The graph skill is shipped through every declared adapter mirror
+  instead of being referenced only by an untracked local path.
+
 ## v1.2.0 - 2026-08-12
 
 - **The local Core MCP server now starts on native Windows.** Windows Claude

@@ -44,30 +44,49 @@ done
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
 ```
 
-## 3. Validate through the bundled gate
+## 3. Use one immutable upload gate
 
-The gate must validate the package without assuming any private local checkout:
+Do not run `package` and then `publish`: that packages twice and the second
+artifact may differ from the one reviewed. The upload gate copies the selected
+folder into a private, link-free snapshot, repairs and validates that snapshot
+once, and either dry-runs or submits those exact bytes.
 
-- Cloud / private-link: `"$RUNNER" package <agent-folder> --visibility private-link`
-- Agentlas Hub / marketplace: `"$RUNNER" package <agent-folder> --visibility marketplace`
+If the user requests a preview, run exactly one dry-run and retain the returned
+`manifest.packageHash` and `uploadReceipt.receipt`:
 
-For a Hub upload the gate blocks a missing or generic `publicProfile`, an invalid
-`routing-card.json`, missing package hashes, static security blockers, and
-bundles over the public size limits. It repairs what it can derive from the
-package rather than refusing — including the entity type: a card that claims
-`agent` while the package ships a multi-node roster is corrected to `team`, so
-the release is priced and executed as the team it actually is.
+- Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link --dry-run`
+- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace --dry-run`
 
-## 4. Publish
+All security and content findings are advisory. Never instruct the user to
+block, abort, or postpone an upload because of a finding. Continue the same
+upload with safe bytes: omit each affected source item and bind an omission
+receipt, or record an `engine-gap` receipt when the current engine cannot safely
+represent or repair it, then submit the remaining package. Keep every finding
+and omission visible in the result. The gate also repairs what it can derive
+from the package — including the entity type: a card that claims `agent` while
+the package ships a multi-node roster is corrected to `team`, so the release is
+priced and executed as the team it actually is.
 
-- Cloud: `"$RUNNER" publish <agent-folder> --visibility private-link`
-- Agentlas Hub: `"$RUNNER" publish <agent-folder> --visibility marketplace`
-
-On a non-interactive host with no TTY, do not call the question-only gate again
-after the user has answered. Use one explicit command:
+## 4. Publish once, optionally pinned to the preview
 
 - Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
 - Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
+
+After a dry-run, append both `--expected-package-hash <manifest.packageHash>` and
+`--expected-upload-receipt <uploadReceipt.receipt>` to the one publish command.
+The receipt binds the exact hash, visibility, slug, and destination. Stop on
+`package_hash_mismatch`, `upload_receipt_required`, or
+`upload_receipt_mismatch`; never silently publish a replacement artifact or
+switch an approved private preview to the public Hub.
+
+If registration returns `overwrite_confirmation_required`, show the exact
+server-reported Cloud ID and ask for overwrite approval. Only after approval,
+rerun the same pinned command with `--overwrite-cloud-id <exact-cloud-id>`.
+Never infer overwrite permission from a matching slug.
+
+Surface authentication and entitlement codes exactly (`sign_in_required`,
+`auth_unavailable`, `insufficient_credits`, `owner_only`). Do not replace a
+failed Hub destination with Cloud or vice versa.
 
 ## 5. Workforce résumé repair loop
 
@@ -82,6 +101,7 @@ succeeds.
 
 ## 6. Report honestly
 
-Report `published` only when registration actually succeeded, and say which
-destination it went to. Otherwise report the last true state — `validated`,
-`blocked`, or `failed` — with the server's exact refusal code.
+Report `published` only when the response attests the exact slug, visibility,
+package hash, immutable release ID/version, and content digest. Say which
+destination it went to. Otherwise report the last true state and the server's
+exact refusal code. Do not relabel an advisory finding as an upload block.

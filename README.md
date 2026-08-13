@@ -63,11 +63,10 @@ adapters are installed too; do not stop after only installing the marketplace
 plugin:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-For Claude Code, confirm that `hephaestus@agentlas-core-engine` is enabled at
-user scope and that `~/.claude/commands/agentlas.md` exists. Do not report the
-install complete unless a bare `/agentlas` command will be available in the
-next session. At the end, confirm the active plugin, command surface, and global
-routing status, then tell me to restart the host or run `/reload-plugins`.
+Report the installer's own verification output for this host. Do not report
+install complete unless `/agentlas build` (or this host's equivalent command
+surface) will work in the next session, then tell me to restart the host or
+reload plugins.
 ```
 
 Use this when you are already inside an LLM and want the Agentlas command
@@ -481,7 +480,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.0
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.1
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -542,10 +541,10 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 Every row also answers to its original `/hep-*` name — `/agentlas network` and
 `/hep-network` are the same command. Nothing was renamed away, so existing
 scripts, notes, and muscle memory keep working. Current Codex uses explicit
-plugin skills such as `$hephaestus-network`, `$hephaestus-build`,
-`$hephaestus-cloud`, and `$hephaestus-storm`; other MCP surfaces can be
-requested in plain language. Custom `/prompts:*` commands were removed from
-Codex 0.117+.
+plugin skills `$hephaestus-build`, `$hephaestus-network`,
+`$hephaestus-cloud`, `$hephaestus-upload`, `$hephaestus-storm`, and
+`$hephaestus-graph`; other MCP surfaces can be requested in plain language.
+Custom `/prompts:*` commands were removed from Codex 0.117+.
 
 ---
 
@@ -606,17 +605,17 @@ Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization]
 
 Features first-party Korean document parsing (HWPX and legacy HWP5) with zero GPL dependencies. Fully local and SQLite-backed; confidential and private chunks are isolated, preventing them from reaching external cloud hooks.
 
-The v1.1.56 release contract ships and verifies a dependency-free
-`potion-base-8M` int8 Model2Vec asset as the primary semantic adapter. Its
-normalized 256-dimensional semantic vector is combined with a normalized
-hash-96 vector into one fixed 352-dimensional local vector. Runtime queries
-never download a model or call a hosted embedding API. Hash-only mode is an
-explicitly reported degraded fallback when the verified local asset is missing
-or rejected, not an alternative silent default.
+The v1.2.1 release contract ships and verifies the dependency-free
+`potion-multilingual-128M-int8` Model2Vec asset as the primary semantic
+adapter. Its pure-Python Unigram runtime returns a normalized 256-dimensional
+semantic vector. Runtime queries never download a model or call a hosted
+embedding API. Hash-96 mode is an explicitly reported degraded fallback when
+the verified local asset is missing or rejected, not an alternative silent
+default.
 
-The v1.1.56 self-updater installs the complete one-touch runtime payload,
+The v1.2.1 self-updater installs the complete one-touch runtime payload,
 including Career Graph, templates, and the verified model under the versioned
-`models/model2vec/potion-base-8M-int8` directory. It checks that payload before
+`models/model2vec/potion-multilingual-128M-int8` directory. It checks that payload before
 and after switching `~/.agentlas/runtime/current`, then repairs merge-safe
 memory hooks for detected hosts without replacing unrelated user configuration.
 
@@ -630,9 +629,11 @@ exact agent + allowed scope + active status + unexpired + not superseded
   -> all relevant memories when they fit, otherwise budgeted top-k
 ```
 
-Every governance-eligible experience row is considered before token-budget
-selection, so an arbitrary recency window cannot hide older evidence. Each Hub
-agent has a rebuildable private projection at
+Experience recall scores a deterministic newest-first window of at most 5,000
+governance-eligible rows before token-budget selection. When more rows are
+eligible, the response is explicitly `partial` with a truncated scan receipt;
+older evidence outside the bounded window may require a narrower query or
+projection rebuild. Each Hub agent has a rebuildable private projection at
 `~/.agentlas/networking/hub-agents/<normalized-slug>/memory/experience.sqlite`.
 The runtime may infer only same-agent, same-scope `similar_to` edges from local
 cosine similarity; `supersedes` and `contradicts` require an explicit curator
@@ -720,8 +721,7 @@ Hephaestus packages agents into a standard directory layout that any workspace r
 │   ├── field-test-report.json             # Field test results for package readiness
 │   ├── skill-registry.json                # Reusable skill inventory and lifecycle metadata
 │   ├── skill-trials.jsonl                 # Skill trial evidence before promotion
-│   ├── agent-ontology/                    # Local code/agent map for capabilities, artifacts, scopes, edges
-│   └── super-ontology-*.json/jsonl        # Governance contracts: evidence, privacy, side effects, resilience
+│   └── agent-ontology/                    # Local code/agent map for capabilities, artifacts, scopes, edges
 ├── skills/                                # Canonical reusable skills
 ├── modes/                                 # Mode contracts for build/package behavior
 ├── schemas/                               # JSON schemas for cards, memory maps, sitemap, evals, manifests
@@ -752,19 +752,32 @@ runtime adapters, verification ledgers, and release gates together.
 
 ### Dependency-aware project context
 
-Hephaestus keeps the project map local, refreshes it by source fingerprint, and
-hands each concrete task only the goals, constraints, definitions, backlinks,
-interfaces, and related files it structurally depends on.
+Hephaestus keeps the project map local. The explicit `context refresh` writer
+creates a content-addressed snapshot; passive reads then hand each concrete
+task only the goals, constraints, definitions, backlinks, interfaces, and
+related files it structurally depends on.
 
-Code Map v2 also carries an `agentlas.verification-map.v1` graph. It links
-source files to the tests that verify them, package test commands, CI workflows,
-and product-version contracts. Those non-source files participate in the map
-fingerprint, so changing a workflow or version manifest invalidates the same
-snapshot as changing code. `context impact` follows these links, and
-`context verify` blocks completion until affected source dependents are changed
-or reviewed and one linked execution channel is satisfied: run the local tests,
-run the CI workflow, or run both. Local and CI are alternatives, not duplicate
-requirements. Version contracts remain a separate release responsibility, and
+Passive MCP context reads remain write-free, but they recompute the same
+bounded file-list fingerprint before returning indexed data. If code,
+verification, CI, or version-contract inputs changed—or the freshness scan
+cannot complete—the read returns `context_map_stale` or
+`context_freshness_incomplete` with a `refresh=true` retry instead of returning
+old symbols as `status=ok`.
+
+The v3 manifest retains the Code Map v2 compatibility projection and carries an
+`agentlas.verification-map.v2` graph. Search-only lexical backlinks are kept
+separate from completion-gating dependency edges. Blocking edges come from
+resolved imports, explicit package commands, CI workflows, and version scopes;
+generated releases, embedded runtimes, and declared mirrors are not rescanned
+as canonical source. Every safe project file is inventoried by role, so docs,
+config, and prior-snapshot deletion tombstones are valid change inputs.
+
+`context impact` returns source review obligations separately from test/CI and
+release obligations. `context verify` passively reuses the same fresh snapshot,
+and `--verified` records an actually executed test path or exact command/CI ID.
+Putting a test in `--reviewed` or `--waived` never masquerades as execution.
+Local and CI are alternatives, not duplicate requirements. Version contracts
+remain a separate release responsibility, and
 a missing test reference blocks the CI channel that owns it until the workflow
 is fixed or explicitly waived. Local test files and fixtures may remain
 Git-ignored and excluded from public runtime archives; the project-local map
@@ -778,7 +791,8 @@ hephaestus context slice --project . --task "fix entity kind routing" \
   --target src/package-kind.ts --render
 hephaestus context impact --project . --changed src/package-kind.ts
 hephaestus context verify --project . --changed src/package-kind.ts \
-  --reviewed src/register/route.ts
+  --reviewed src/register/route.ts \
+  --verified tests/test-package-kind.ts
 ```
 
 Claude and Codex receive the task slice from their local hook and get a
@@ -797,6 +811,7 @@ or Context Map contents.
 | See the full team contract | [`agent.md`](agent.md) |
 | Architecture source of truth | [`docs/source-of-truth.md`](docs/source-of-truth.md) |
 | Runtime boundaries | [`docs/runtime-sync-boundaries.md`](docs/runtime-sync-boundaries.md) |
+| Context Map v3 | [`docs/context-map-v3.md`](docs/context-map-v3.md) |
 | Sitemap contract | [`.agentlas/sitemap.json`](.agentlas/sitemap.json) and [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
 | Mode map | [`.agentlas/mode-map.json`](.agentlas/mode-map.json) |
 | Routing card | [`.agentlas/routing-card.json`](.agentlas/routing-card.json) and [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |

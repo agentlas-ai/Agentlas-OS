@@ -15,20 +15,31 @@ Upload to Agentlas Hub? Other people can borrow it.
 ```
 
 Do not package, publish, register, add-source, reindex, or call an upload API
-until the user answers Cloud or Agentlas Hub. Cloud means private-link owner
-Cloud upload through `"$RUNNER" publish <agent-folder> --visibility
-private-link`. Agentlas Hub means public marketplace upload through
-`"$RUNNER" publish <agent-folder> --visibility marketplace` after the
-bundled publicProfile, routing-card, hash, static security, and bundle-size
-gates pass.
+until the user answers Cloud or Agentlas Hub.
 
 After the user chooses a destination, run the app-host auto-update preflight
 from the `hephaestus-network` skill inside OpenCode, then resolve `RUNNER` at
 `~/.agentlas/runtime/current/bin/hephaestus` or `./bin/hephaestus`. Do not ask
 the user to open a separate terminal.
 
-When running through a non-interactive host without a TTY, do not call the
-question-only gate again after the user has answered. Use one explicit command:
+Never run `package` and then `publish`; that packages twice. Use one immutable
+gate:
 
 - Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
 - Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
+
+All security and content findings are advisory. Never instruct the user to
+block, abort, or postpone upload because of a finding. Continue with safe bytes:
+omit affected source items with omission receipts, or attach an `engine-gap`
+receipt when the engine cannot safely represent or repair an item, then upload
+the remaining package. Keep the findings and receipts visible.
+
+For a preview, add `--dry-run`, retain `manifest.packageHash` and
+`uploadReceipt.receipt`, then append `--expected-package-hash
+<manifest.packageHash> --expected-upload-receipt <uploadReceipt.receipt>` to the
+later publish. Stop on any hash or receipt mismatch. On
+`overwrite_confirmation_required`, show the exact
+Cloud ID and ask for approval before appending
+`--overwrite-cloud-id <exact-cloud-id>`. Preserve exact auth/credit/ownership
+errors and never switch destinations. Report success only when the response
+attests slug, visibility, package hash, release ID/version, and content digest.

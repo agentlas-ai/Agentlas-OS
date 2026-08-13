@@ -9,7 +9,7 @@ from typing import Any
 
 BEGIN = "<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->"
 END = "<!-- HEPHAESTUS:GLOBAL-ROUTER:END -->"
-VERSION = "global-router.v5"
+VERSION = "global-router.v6"
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,7 @@ def default_targets(home: Path | None = None) -> dict[str, Target]:
     return {
         "codex": Target("codex", root / ".codex" / "AGENTS.md", "Codex AGENTS.md"),
         "claude": Target("claude", root / ".claude" / "CLAUDE.md", "Claude CLAUDE.md"),
-        "antigravity": Target("antigravity", root / ".gemini" / "GEMINI.md", "Antigravity/Gemini GEMINI.md"),
+        "antigravity": Target("antigravity", root / ".gemini" / "GEMINI.md", "Antigravity GEMINI.md"),
     }
 
 
@@ -116,28 +116,42 @@ def _select_targets(*, home: Path | None, targets: list[str] | None) -> list[Tar
 def _router_block(target_id: str) -> str:
     if target_id == "codex":
         host = "Codex"
-        command = "$hephaestus-network"
-        cloud_command = "/prompts:hep-cloud"
-        local_command = "/prompts:hep-local"
-        hub_command = "/prompts:hep-hub"
-        browser_command = "/prompts:hep-browser"
-        call_command = "/prompts:hep-call"
+        browser_instruction = (
+            "Ask for Agentlas Browser in plain language; Codex dispatches it through "
+            "the typed MCP surface"
+        )
+        network_instruction = "Use `$hephaestus-network <request>`"
+        scope_instruction = (
+            "Use `$hephaestus-cloud <request>` for owner Cloud. Request exact Local "
+            "or public Hub scope in plain language through typed Workforce MCP"
+        )
+        call_instruction = (
+            "Request the exact named Cloud or Hub agents in plain language through typed MCP"
+        )
+        host_surface_note = """
+- Codex 0.117 and later use installed `$hephaestus-build`,
+  `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload`,
+  `$hephaestus-storm`, and `$hephaestus-graph` skills. Request Browser, Local,
+  Hub, Search, and Call actions in plain language through typed MCP. Custom
+  `/prompts:hep-*` commands are legacy surfaces limited to Codex versions before
+  0.117; do not direct current Codex users to them."""
     elif target_id == "claude":
         host = "Claude Code"
-        command = "/hep-network"
-        cloud_command = "/hep-cloud"
-        local_command = "/hep-local"
-        hub_command = "/hep-hub"
-        browser_command = "/hep-browser"
-        call_command = "/hep-call"
+        browser_instruction = "Use `/hep-browser <url-or-query>`"
+        network_instruction = "Use `/hep-network <request>`"
+        scope_instruction = "Use `/hep-local`, `/hep-cloud`, or `/hep-hub`"
+        call_instruction = "Use `/hep-call <agent-slugs> <context>`"
+        host_surface_note = ""
     else:
-        host = "Antigravity/Gemini"
-        command = "/hep-network"
-        cloud_command = "/hep-cloud"
-        local_command = "/hep-local"
-        hub_command = "/hep-hub"
-        browser_command = "/hep-browser"
-        call_command = "/hep-call"
+        host = "Antigravity"
+        browser_instruction = "Use `/hep-browser <url-or-query>`"
+        network_instruction = "Use `/hep-network <request>`"
+        scope_instruction = "Use `/hep-local`, `/hep-cloud`, or `/hep-hub`"
+        call_instruction = "Use `/hep-call <agent-slugs> <context>`"
+        host_surface_note = """
+- Antigravity is an independent runtime target, not a Gemini CLI mode. The two
+  may read the same configuration path, but installation and runtime selection
+  remain separate."""
     return f"""{BEGIN}
 # Hephaestus Global Router ({VERSION})
 
@@ -146,19 +160,20 @@ These instructions were installed by `hephaestus global install` for {host}.
 - For simple questions, answer directly. Do not route trivial work through
   Hephaestus.
 - Prefer the installed runner at `~/.agentlas/runtime/current/bin/hephaestus`.
+{host_surface_note}
 - For substantial work, choose routing in this priority order:
-  1. Agentlas Browser first for browser-required work. Use `{browser_command}
-     <url-or-query>` when the task needs rendered pages, JS-heavy sites,
+  1. Agentlas Browser first for browser-required work. {browser_instruction}
+     when the task needs rendered pages, JS-heavy sites,
      click/form flows, login-visible state, or browser evidence.
-  2. Hephaestus Network next. Use `{command} <request>` to let the active host
+  2. Hephaestus Network next. {network_instruction} to let the active host
      LLM staff a temporary task force from the federated Local + owner Cloud +
      public Hub Workforce menu.
-  3. Use `{local_command}`, `{cloud_command}`, or `{hub_command}` only when the
+  3. {scope_instruction} only when the
      user explicitly restricts staffing to registered Local, owner Cloud, or
      public Hub inventory. These are source scopes, not fallback tiers.
   4. Local host skills are an adapter fallback only when Workforce is
      unavailable; do not misreport them as registered Local workers.
-- Use `{call_command} <agent-slugs> <context>` when the user names exact Hub or
+- {call_instruction} when the user names exact Hub or
   Cloud agents.
 - Source scopes are exact: `network = local + cloud + hub`, `local = registered
   local`, `cloud = owner cloud`, and `hub = public Hub`. Public demos and
@@ -166,10 +181,12 @@ These instructions were installed by `hephaestus global install` for {host}.
   presented as public availability.
 - For Network staffing, the active host LLM creates one redacted structured
   WorkOrder and calls local Core `workforce.search_candidates` with
-  `sourceScope=network` to federate the three source CandidateSets. It authors
-  the Selection, calls `workforce.validate_selection` with the exact
-  `federationResult`, then calls `workforce.prepare_execution` with that result
-  and the accepted `federatedSelection`.
+  `sourceScope=network` to federate the three source CandidateSets. The response
+  carries `selectionSessionId`. The host authors a Selection with that session
+  ID and calls `workforce.validate_selection(workOrder, selection)`. Core
+  restores the pinned federation result from the session. Do not echo the
+  projected menu as `federationResult`. Call `workforce.prepare_execution` with
+  the accepted `federatedSelection` and mandatory `projectDir`.
   Federation performs no scoring, reranking, or staffing decision. It may
   shadow the same `agentDefinitionId` by Local > Cloud > Hub only when every
   source proves the same lineage and exact immutable release; ambiguous or

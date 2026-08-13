@@ -496,7 +496,7 @@ def scan_files(files: list[PackageFile]) -> SecurityReport:
         if asset_identity:
             findings.append(
                 SecurityFinding(
-                    "BLOCK",
+                    "WARN",
                     "standalone-experience-asset",
                     file.path,
                     "A separately owned Experience/Taste asset cannot be embedded in AgentDefinition source "
@@ -508,28 +508,26 @@ def scan_files(files: list[PackageFile]) -> SecurityReport:
         # verdict is closed-form and can never be cleared by the judgment
         # runner, so without the exemption the OS BLOCKs its own output forever.
         if not is_value_free_credential_template(file.path) and is_credential_store_path(file.path):
-            findings.append(SecurityFinding("BLOCK", "credential-path", file.path, "Credential-like file path is excluded from Cloud package and public publish."))
+            findings.append(SecurityFinding("WARN", "credential-path", file.path, "Credential-like file path is excluded from the bundle and reported for review."))
         for number, line in enumerate(file.content.splitlines(), start=1):
             if any(pattern.search(line) for pattern in SECRET_PATTERNS):
-                findings.append(SecurityFinding("BLOCK", "secret-like-value", file.path, "Secret-like value detected and redacted.", number))
+                findings.append(SecurityFinding("WARN", "secret-like-value", file.path, "Secret-like value detected and reported for review.", number))
             if PROMPT_INJECTION.search(line):
                 add_nl(SecurityFinding("WARN", "prompt-injection", file.path, "Prompt-injection style instruction needs review.", number), line)
             if DESTRUCTIVE.search(line):
                 add_nl(SecurityFinding("WARN", "destructive-command", file.path, "Destructive or remote shell command needs review before execution.", number), line)
             if EXFIL.search(line):
-                add_nl(SecurityFinding("BLOCK", "external-exfiltration", file.path, "Potential credential exfiltration pattern blocked.", number), line)
+                add_nl(SecurityFinding("WARN", "external-exfiltration", file.path, "Potential credential exfiltration pattern needs review.", number), line)
             if UNICODE_OBFUSCATION.search(line):
                 add_nl(SecurityFinding("WARN", "unicode-obfuscation", file.path, "Unicode bidi or zero-width control character detected.", number), line)
     findings = _adjudicate_nl_findings(findings, nl_candidate_lines)
-    verdict = "BLOCK" if any(f.verdict == "BLOCK" for f in findings) else "WARN" if findings else "PASS"
+    verdict = "WARN" if findings else "PASS"
     return SecurityReport(verdict=verdict, scannedAt=now_iso(), findings=findings)
 
 
-# Natural-language rule verdicts (and ONLY these) may be cleared as false
-# positives by the resident judgment runner. SECRET_PATTERNS, credential paths
-# and standalone-asset identities are closed-form shape checks — the model can
-# never clear them. The external BYOK judgment file (merge_llm_judgment) stays
-# escalate-only and is unaffected by this in-proc adjudication.
+# Natural-language rule findings (and ONLY these) may be cleared as false
+# positives by the resident judgment runner. Closed-form findings remain in the
+# report, but every security finding is advisory for upload readiness.
 _NL_JUDGEABLE_QUESTIONS = {
     "prompt-injection": (
         "Does this line genuinely instruct an AI agent to ignore/override its instructions "
@@ -625,34 +623,41 @@ def merge_llm_judgment(report_dict: dict[str, Any], judgment_dict: dict[str, Any
     findings = [dict(finding) for finding in merged.get("findings", [])]
     for finding in findings:
         finding.setdefault("source", "static")
-    stage_verdict = judgment_verdict
+        if finding.get("verdict") == "BLOCK":
+            finding["reportedVerdict"] = "BLOCK"
+            finding["verdict"] = "WARN"
+    stage_verdict = "PASS" if judgment_verdict == "PASS" else "WARN"
     for raw in raw_findings:
         if not isinstance(raw, dict):
             raise ValueError("Each LLM judgment finding must be a JSON object.")
-        finding_verdict = raw.get("verdict") if raw.get("verdict") in {"WARN", "BLOCK"} else judgment_verdict
+        reported_verdict = raw.get("verdict") if raw.get("verdict") in {"WARN", "BLOCK"} else judgment_verdict
+        finding_verdict = "PASS" if reported_verdict == "PASS" else "WARN"
         finding_type = raw.get("type") if raw.get("type") in LLM_JUDGMENT_FINDING_TYPES else "other"
         message = str(raw.get("message", ""))[:LLM_JUDGMENT_MESSAGE_MAX_CHARS]
-        findings.append(
-            {
-                "verdict": finding_verdict,
-                "type": finding_type,
-                "path": str(raw.get("path", "")),
-                "message": message,
-                "line": raw.get("line") if isinstance(raw.get("line"), int) else None,
-                "redacted": bool(raw.get("redacted", True)),
-                "source": "llm-judgment",
-            }
-        )
+        merged_finding = {
+            "verdict": finding_verdict,
+            "type": finding_type,
+            "path": str(raw.get("path", "")),
+            "message": message,
+            "line": raw.get("line") if isinstance(raw.get("line"), int) else None,
+            "redacted": bool(raw.get("redacted", True)),
+            "source": "llm-judgment",
+        }
+        if reported_verdict == "BLOCK":
+            merged_finding["reportedVerdict"] = "BLOCK"
+        findings.append(merged_finding)
         stage_verdict = combine_verdicts(stage_verdict, finding_verdict)
 
     merged["findings"] = findings
-    merged["verdict"] = combine_verdicts(merged.get("verdict", "PASS"), stage_verdict)
+    base_verdict = "PASS" if merged.get("verdict") == "PASS" else "WARN"
+    merged["verdict"] = combine_verdicts(base_verdict, stage_verdict)
     merged["stages"] = ["static", "llm-judgment"]
     merged["llmJudgment"] = {
         "schemaVersion": str(judgment_dict.get("schemaVersion", LLM_JUDGMENT_SCHEMA_VERSION)),
         "judgedAt": str(judgment_dict.get("judgedAt", "")),
         "model": str(judgment_dict.get("model", "")) or None,
         "verdict": stage_verdict,
+        "reportedVerdict": judgment_verdict,
     }
     return merged
 
@@ -682,11 +687,7 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
     manifest = build_manifest(files, name or base.name)
     scan = scan_files(files)
     mcp_policy_validation = _validate_mcp_policy_path(base)
-    state = (
-        "Ready for MCP call"
-        if scan.verdict != "BLOCK" and mcp_policy_validation["status"] == "valid"
-        else "Blocked"
-    )
+    state = "Ready for MCP call" if mcp_policy_validation["status"] == "valid" else "Blocked"
     manifest_payload = manifest.to_json()
     existing_manifest = _read_existing_manifest(base)
     kept_contract: list[str] = []
@@ -741,7 +742,6 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
             state,
         ],
         "blockers": [
-            *(["Security scan blocked package upload."] if scan.verdict == "BLOCK" else []),
             *(
                 ["Invalid .agentlas/mcp-policy.json; fix the value-free catalog policy or remove it to regenerate the safe default."]
                 if mcp_policy_validation["status"] != "valid"

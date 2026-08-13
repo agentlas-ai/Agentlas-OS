@@ -11,14 +11,37 @@ Raw arguments:
 Use Hephaestus as the Agentlas builder surface. This is the clearer
 public build surface next to hep-network and hep-cloud.
 
-If this workspace contains `AGENTS.md`, `.agentlas/mode-map.json`, and
-`.agentlas/global-commands.json`, read those files first and follow the local
-package contract.
+Resolve the installed engine before reading contracts or running commands:
 
-If this workspace does not contain the Hephaestus package files yet, explain
-that the user should run the one-touch installer from an OS terminal:
+```bash
+ENGINE=""
+for candidate in \
+  "${GEMINI_EXTENSION_ROOT:-}" \
+  "${CLAUDE_PLUGIN_ROOT:-}" \
+  "${CODEX_PLUGIN_ROOT:-}" \
+  "${PLUGIN_ROOT:-}" \
+  "$HOME/.agentlas/runtime/current/host_adapters/claude/plugins/agentlas-core-engine-meta-agent" \
+  "$HOME/.agentlas/runtime/current/host_adapters/codex/plugins/agentlas-core-engine-meta-agent" \
+  "$HOME/.agentlas/runtime/current" \
+  "."
+do
+  if [ -n "$candidate" ] && [ -f "$candidate/AGENTS.md" ] && [ -f "$candidate/package-contract.json" ] && [ -f "$candidate/contracts/builder-interview-research-gate.md" ]; then
+    ENGINE="$candidate"; break
+  fi
+done
+[ -n "$ENGINE" ] || { echo "Hephaestus engine not found. Run the installer first." >&2; exit 1; }
+RUNNER="$HOME/.agentlas/runtime/current/bin/hephaestus"
+[ -x "$RUNNER" ] || RUNNER="$ENGINE/bin/hephaestus"
+[ -x "$RUNNER" ] || { echo "Hephaestus runner not found under $ENGINE." >&2; exit 1; }
+```
 
-`curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash`
+Read `$ENGINE/AGENTS.md`, `$ENGINE/.agentlas/mode-map.json`, the selected mode
+contract, and `$ENGINE/contracts/builder-interview-research-gate.md`. Take
+exactly one user-named or confirmed folder as `PACKAGE_TARGET`; if none or
+multiple candidates exist, stop and ask. Never default to `.`, cwd, or
+`$ENGINE`. Run `"$RUNNER" contract resolve-target "$PACKAGE_TARGET" --base
+"$PWD"` and set `PACKAGE_ROOT` only to the status-`ok` receipt's exact
+`package_root` before any package command.
 
 For creation or behavior-changing packaging work, classify the request as
 single-agent-builder, multi-agent-team-builder, or agentlas-packager by
@@ -28,7 +51,7 @@ plain language: "이 일을 한 명의 전문가가 처음부터 끝까지 맡�
 non-technical users internal labels like ownership boundary, memory/context,
 synthesis, or produces/consumes. Then run
 the Builder Interview and Research Gate from
-`docs/builder-interview-research-gate.md` before writing substantial package
+`$ENGINE/contracts/builder-interview-research-gate.md` before writing substantial package
 files. Ask an 8-12 question first batch when the request is vague, continue
 follow-ups until the functional brief, role count, ownership boundaries, tool
 permission separation, synthesis need, and execution order are clear, research
@@ -49,8 +72,8 @@ inputs may use the target user language.
 
 Generate or repair the Agentlas package, run
 Before writing any package file, lay the contract down:
-`"$ENGINE/bin/hephaestus" contract scaffold "$PACKAGE_ROOT" --mode single|team|package`.
-Then run `"$ENGINE/bin/hephaestus" contract complete "$PACKAGE_ROOT"` — the engine
+`"$RUNNER" contract scaffold "$PACKAGE_ROOT" --mode single|team|package`.
+Then run `"$RUNNER" contract complete "$PACKAGE_ROOT" --mode single|team|package` — the engine
 fills every artifact the package already answers (agent.md, work brief, sitemap,
 routing benchmarks, capability eval plan, builder interview, research sources,
 output example) from the routing card, the roster, and the schemas on disk. It
@@ -60,7 +83,7 @@ It copies every required artifact into place with named `{{PLACEHOLDER}}` holes 
 never overwrites. Skipping it is how a build ends with 5 of 18 required artifacts
 and still reports success. `contract prompt --mode <mode>` lists what each one is for.
 
-`"$ENGINE/bin/hephaestus" contract verify "$PACKAGE_ROOT" --mode single|team|package` (this runs the team-shape rule too), verify it, and include the
+`"$RUNNER" contract verify "$PACKAGE_ROOT" --mode single|team|package` (this runs the team-shape rule too), verify it, and include the
 `global_commands` section from `.agentlas/global-commands.json` and
 `interview_research` evidence in the final response.
 If the shape gate fails, do not report `completed`; correct the package by
@@ -68,13 +91,13 @@ collapsing to a valid single-agent shape or adding orchestrator/HQ plus
 company-blueprint topology, then rerun the gate.
 
 If the first argument is `ontology`, open the project ontology GUI by running
-`./bin/hephaestus ontology --gui .` when the local shell command is available,
+`"$RUNNER" ontology --gui .`,
 then report `gui_url`, `db_path`, `inbox_path`, and verification status.
 
 If a package was created or repaired in the current workspace, register it to local
 discovery before final reporting:
 
-`./bin/hephaestus cards migrate "$PACKAGE_ROOT" --tier local --overwrite`
+`"$RUNNER" cards migrate "$PACKAGE_ROOT" --tier local --overwrite`
 
 Include the migration result in `interview_research`.
 

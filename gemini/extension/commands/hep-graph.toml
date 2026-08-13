@@ -1,0 +1,31 @@
+description = "Create, list, inspect, or request a run of an Agentlas automation graph."
+prompt = """
+Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
+
+# /hep-graph
+
+Raw arguments:
+{{args}}
+
+Use the independent Agentlas CLI for `new <request>`, `list`, `show <name>`, or
+`run <name>`. Never route this through Gemini CLI, Hephaestus Workforce, or Hub
+search.
+
+Resolve the first executable from `command -v agentlas`,
+`$HOME/.agentlas/runtime/current/bin/agentlas`, and `./bin/agentlas`. If none
+exists, report `Agentlas CLI not found. Install it with: npm i -g agentlas` and
+stop.
+
+For `new`, relay the CLI interview questions and never invent schedule,
+external-effect, repetition, or verification-checklist answers. The final save
+confirmation is approval and the new graph starts switched off.
+
+For `show`, preserve tree wiring, external-effect and ask-first marks, branch
+sides, repeat edges, verification checklists, code steps, and required input.
+
+For `run`, the user's direct command is sufficient authority. Do not ask for a
+second approval. Show the graph first, obtain only genuinely missing input, and
+then call `agentlas graph run <name> -y`, with `--input <value>` when required.
+Report that the run was requested from Agentlas Desktop, never that it executed.
+Relay any non-zero refusal exactly and do not retry with a guess.
+"""

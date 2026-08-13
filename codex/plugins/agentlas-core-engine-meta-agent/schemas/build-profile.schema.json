@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/build-profile.schema.json",
+  "title": "Agentlas Build Profile",
+  "type": "object",
+  "required": ["schemaVersion", "profile", "minimalPrivateOptOut"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas-build-profile/1.0" },
+    "profile": { "enum": ["standard", "minimal-private"] },
+    "minimalPrivateOptOut": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["requestedBy", "confirmed", "reason", "publicMarketplaceReady"],
+          "properties": {
+            "requestedBy": { "const": "user" },
+            "confirmed": { "const": true },
+            "reason": { "type": "string", "minLength": 1 },
+            "publicMarketplaceReady": { "const": false }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "profile": { "const": "standard" },
+        "minimalPrivateOptOut": { "type": "null" }
+      }
+    },
+    {
+      "properties": {
+        "profile": { "const": "minimal-private" },
+        "minimalPrivateOptOut": { "type": "object" }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

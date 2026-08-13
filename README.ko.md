@@ -52,11 +52,9 @@ https://github.com/agentlas-ai/Agentlas-OS
 호스트 명령 어댑터까지 설치하도록 저장소의 정식 원터치 설치기를 실행해줘:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-Claude Code에서는 `hephaestus@agentlas-core-engine`이 user scope로 활성화됐고
-`~/.claude/commands/agentlas build.md`가 존재하는지 확인해줘. 다음 세션에서 bare
-`/agentlas build` 명령을 쓸 수 없는 상태라면 설치 완료라고 하지 마. 마지막에는
-활성화된 플러그인, 명령 표면, 전역 라우팅 상태를 확인하고, 호스트를
-재시작하거나 `/reload-plugins`를 실행하라고 알려줘.
+설치기 자체 검증 출력을 보고해줘. 다음 세션에서 `/agentlas build`(또는 이
+호스트에 맞는 명령 표면)가 동작하지 않으면 설치 완료라고 하지 말고,
+확인되면 호스트를 재시작하거나 플러그인을 다시 불러오라고 알려줘.
 ```
 
 이미 쓰고 있는 LLM에서 Agentlas 명령 표면을 바로 활성화하고 싶을 때
@@ -326,7 +324,7 @@ Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README�
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.0
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.1
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. Codex 0.117+에서는 custom `/prompts:*` 명령이 제거됐으므로, 설치 후에는 `$hephaestus-network <요청>` 스킬을 호출하세요.*
@@ -340,7 +338,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 </details>
 
-**그냥 말하세요:** 설치 후 네이티브 Agentlas 인터페이스에서는 평문으로 말하면 태스크가 자동 라우팅됩니다. 외부 LLM 도구에서는 아래에 나열된 명시적 명령을 사용하세요. Codex 0.117+에서는 `$hephaestus-network`, `$hephaestus-build`, `$hephaestus-cloud`, `$hephaestus-storm` 스킬을 사용하고 다른 MCP 표면은 평문으로 요청합니다.
+**그냥 말하세요:** 설치 후 네이티브 Agentlas 인터페이스에서는 평문으로 말하면 태스크가 자동 라우팅됩니다. 외부 LLM 도구에서는 아래에 나열된 명시적 명령을 사용하세요. Codex 0.117+에서는 `$hephaestus-build`, `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload`, `$hephaestus-storm`, `$hephaestus-graph` 스킬을 사용하고 다른 MCP 표면은 평문으로 요청합니다.
 
 ---
 
@@ -517,8 +515,7 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 │   ├── field-test-report.json             # package readiness field test 결과
 │   ├── skill-registry.json                # reusable skill inventory와 lifecycle metadata
 │   ├── skill-trials.jsonl                 # promotion 전 skill trial evidence
-│   ├── agent-ontology/                    # capability, artifact, scope, edge를 담은 local code/agent map
-│   └── super-ontology-*.json/jsonl        # evidence, privacy, side effect, resilience governance contract
+│   └── agent-ontology/                    # capability, artifact, scope, edge를 담은 local code/agent map
 ├── skills/                                # 정본 reusable skills
 ├── modes/                                 # build/package 동작 모드 계약
 ├── schemas/                               # card, memory map, sitemap, eval, manifest JSON schema
@@ -549,8 +546,11 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 
 ### 의존관계 기반 프로젝트 맥락
 
-Hephaestus는 프로젝트 지도를 로컬에만 보관하고 소스 fingerprint로 자동
-갱신합니다. 작업이 구체화되면 전체 문서를 밀어 넣는 대신 그 작업이
+Hephaestus는 프로젝트 지도를 로컬에만 보관합니다. `context refresh`만 현재
+파일 내용으로 주소가 정해지는 스냅샷과 v3 manifest를 쓰며, 이후 `impact`,
+`verify`, `slice` 같은 명령은 기본적으로 그 스냅샷을 변경하지 않고 읽습니다.
+내용이 오래됐거나 인벤토리가 불완전하면 조용히 다시 만들지 않고
+명시적으로 실패합니다. 작업이 구체화되면 전체 문서를 밀어 넣는 대신 그 작업이
 구조적으로 의존하는 목표, 제약, 정의, 역참조, 인터페이스와 관련 파일만
 Context Slice로 전달합니다.
 
@@ -561,7 +561,8 @@ hephaestus context slice --project . --task "entity kind 라우팅 수정" \
   --target src/package-kind.ts --render
 hephaestus context impact --project . --changed src/package-kind.ts
 hephaestus context verify --project . --changed src/package-kind.ts \
-  --reviewed src/register/route.ts
+  --reviewed src/register/route.ts \
+  --verified command:package.json#typecheck
 ```
 
 Claude와 Codex는 로컬 훅으로 작업 조각을 받고 편집 직전에 역참조 경고를

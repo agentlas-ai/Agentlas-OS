@@ -18,6 +18,10 @@ SOURCE_MANIFEST_FILE = "career-graph-sources.json"
 INBOX_DIR = "career-graph-inbox"
 DB_FILE = "career-graph.sqlite"
 EXPERIENCE_RELATION_LEDGER_FILE = "experience-relations.jsonl"
+MAX_JSONL_BYTES = 64 * 1024 * 1024
+MAX_JSON_BYTES = 64 * 1024 * 1024
+MAX_JSONL_LINES = 100_000
+MAX_QUERY_SCAN_ROWS = 5_000
 
 
 def utc_now() -> str:
@@ -34,6 +38,22 @@ def read_json(path: Path, default: Any = None) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return default
+
+
+def read_source_json_object(path: Path) -> dict[str, Any]:
+    """Read a canonical Career source without converting corruption to empty."""
+
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"career graph JSON source must be a regular file: {path.name}")
+    if path.stat().st_size > MAX_JSON_BYTES:
+        raise ValueError(f"career graph JSON source exceeds {MAX_JSON_BYTES} bytes: {path.name}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"career graph JSON source is invalid: {path.name}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"career graph JSON source must be an object: {path.name}")
+    return payload
 
 
 def compact_text(value: Any, limit: int = 8000) -> str:
@@ -61,17 +81,22 @@ def file_checksum(path: Path) -> str:
 def iter_jsonl(path: Path) -> Iterable[tuple[int, dict[str, Any]]]:
     if not path.is_file():
         return
-    for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError:
-            item = {"raw": line, "parse_error": "json_decode"}
-        if isinstance(item, dict):
-            yield line_no, item
-        else:
-            yield line_no, {"value": item}
+    if path.stat().st_size > MAX_JSONL_BYTES:
+        raise ValueError(f"career graph JSONL exceeds {MAX_JSONL_BYTES} bytes: {path.name}")
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line_no, line in enumerate(handle, start=1):
+            if line_no > MAX_JSONL_LINES:
+                raise ValueError(f"career graph JSONL exceeds {MAX_JSONL_LINES} lines: {path.name}")
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                item = {"raw": line, "parse_error": "json_decode"}
+            if isinstance(item, dict):
+                yield line_no, item
+            else:
+                yield line_no, {"value": item}
 
 
 @dataclass(frozen=True)
@@ -166,7 +191,12 @@ class CareerGraphRuntime:
             "db_path": str(db_path),
         }
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self, *, readonly: bool = False) -> sqlite3.Connection:
+        if readonly:
+            uri = f"{self.config.sqlite_path.resolve().as_uri()}?mode=ro"
+            conn = sqlite3.connect(uri, uri=True)
+            conn.row_factory = sqlite3.Row
+            return conn
         self.ensure_files()
         conn = sqlite3.connect(self.config.sqlite_path)
         conn.row_factory = sqlite3.Row
@@ -226,14 +256,34 @@ class CareerGraphRuntime:
         conn.commit()
 
     # -- ingest ----------------------------------------------------------------
+    def _next_ingest_run_id(self, conn: sqlite3.Connection, started: str) -> str:
+        """Allocate a replay-stable ID without collapsing same-second runs.
+
+        The first run keeps the legacy ``project + started_at`` identifier. If
+        another run starts in the same second, its deterministic ordinal is
+        included in the hash. The caller holds an IMMEDIATE transaction, so two
+        writers cannot choose the same ordinal.
+        """
+
+        ordinal = 0
+        while True:
+            run_id = (
+                stable_id("ingest", self.config.root, started)
+                if ordinal == 0
+                else stable_id("ingest", self.config.root, started, ordinal)
+            )
+            exists = conn.execute(
+                "SELECT 1 FROM ingest_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if exists is None:
+                return run_id
+            ordinal += 1
+
     def ingest(self, rebuild: bool = True) -> dict[str, Any]:
         self.ensure_files()
         started = utc_now()
-        run_id = stable_id("ingest", self.config.root, started)
         sources = self._canonical_sources()
-        nodes: list[dict[str, Any]] = []
-        edges: list[dict[str, Any]] = []
-
         project_node = self._node(
             "Project",
             stable_id("project", self.config.root),
@@ -241,36 +291,91 @@ class CareerGraphRuntime:
             str(self.config.root),
             source_path=str(self.config.root),
         )
-        nodes.append(project_node)
 
-        for source in sources:
+        known: dict[str, sqlite3.Row] = {}
+        project_node_exists = False
+        if self.config.sqlite_path.exists():
+            with closing(self.connect(readonly=True)) as conn:
+                known = {
+                    str(row["path"]): row
+                    for row in conn.execute("SELECT path, kind, checksum FROM sources")
+                }
+                project_node_exists = conn.execute(
+                    "SELECT 1 FROM nodes WHERE node_id = ?",
+                    (project_node["node_id"],),
+                ).fetchone() is not None
+
+        source_states = {
+            str(Path(source["path"])): self._source_state(source)
+            for source in sources
+        }
+        current_paths = set(source_states)
+        known_paths = set(known)
+        deleted_paths = sorted(known_paths - current_paths)
+        if rebuild:
+            changed_sources = list(sources)
+        else:
+            changed_sources = [
+                source
+                for source in sources
+                if (
+                    (old := known.get(str(Path(source["path"])))) is None
+                    or str(old["kind"]) != str(source["kind"])
+                    or str(old["checksum"] or "")
+                    != str(source_states[str(Path(source["path"]))]["checksum"])
+                )
+            ]
+        changed_paths = {str(Path(source["path"])) for source in changed_sources}
+        unchanged_paths = sorted(current_paths - changed_paths)
+
+        # Parse every changed source before opening the write transaction. If
+        # one canonical JSON source is malformed, the previous projection stays
+        # queryable and no source row or node is deleted.
+        parsed: list[tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]] = []
+        for source in changed_sources:
             source_nodes, source_edges = self._ingest_source(source, project_node["node_id"])
-            nodes.extend(source_nodes)
-            edges.extend(source_edges)
+            parsed.append((source, source_nodes, source_edges))
 
         with closing(self.connect()) as conn, conn:
+            # Serialize only the write/allocation phase. Parsing stays outside
+            # the lock, while run IDs remain collision-free across processes.
+            conn.execute("BEGIN IMMEDIATE")
+            run_id = self._next_ingest_run_id(conn, started)
             conn.execute(
-                "INSERT OR REPLACE INTO ingest_runs(run_id, project_root, started_at, status) VALUES (?, ?, ?, ?)",
+                "INSERT INTO ingest_runs(run_id, project_root, started_at, status) VALUES (?, ?, ?, ?)",
                 (run_id, str(self.config.root), started, "running"),
             )
             if rebuild:
                 conn.execute("DELETE FROM edges")
                 conn.execute("DELETE FROM nodes")
                 conn.execute("DELETE FROM sources")
-            for source in sources:
-                self._write_source(conn, source, started)
-            for node in nodes:
-                self._write_node(conn, node)
-            for edge in edges:
-                self._write_edge(conn, edge)
+            else:
+                for source_path in sorted(set(deleted_paths) | changed_paths):
+                    self._delete_source_projection(conn, source_path)
+            if rebuild or not project_node_exists:
+                self._write_node(conn, project_node)
+            for source, source_nodes, source_edges in parsed:
+                self._write_source(
+                    conn,
+                    source,
+                    started,
+                    state=source_states[str(Path(source["path"]))],
+                )
+                for node in source_nodes:
+                    self._write_node(conn, node)
+                for edge in source_edges:
+                    self._write_edge(conn, edge)
             finished = utc_now()
+            total_sources = conn.execute("SELECT count(*) FROM sources").fetchone()[0]
+            total_nodes = conn.execute("SELECT count(*) FROM nodes").fetchone()[0]
+            total_edges = conn.execute("SELECT count(*) FROM edges").fetchone()[0]
             conn.execute(
                 """
                 UPDATE ingest_runs
                 SET finished_at = ?, status = ?, source_count = ?, node_count = ?, edge_count = ?
                 WHERE run_id = ?
                 """,
-                (finished, "ok", len(sources), len(nodes), len(edges), run_id),
+                (finished, "ok", total_sources, total_nodes, total_edges, run_id),
             )
             conn.commit()
 
@@ -279,10 +384,33 @@ class CareerGraphRuntime:
             "project": str(self.config.root),
             "db_path": str(self.config.sqlite_path),
             "run_id": run_id,
-            "sources": len(sources),
-            "nodes": len(nodes),
-            "edges": len(edges),
+            "sources": total_sources,
+            "nodes": total_nodes,
+            "edges": total_edges,
             "rebuild": rebuild,
+            "changed_sources": len(changed_sources),
+            "unchanged_sources": len(unchanged_paths),
+            "deleted_sources": len(deleted_paths),
+        }
+
+    @staticmethod
+    def _source_state(source: dict[str, Any]) -> dict[str, Any]:
+        path = Path(source["path"])
+        if path.is_file():
+            metadata = path.stat()
+            with path.open("r", encoding="utf-8", errors="replace") as handle:
+                line_count = sum(1 for _ in handle)
+            return {
+                "checksum": file_checksum(path),
+                "mtime": metadata.st_mtime,
+                "size": metadata.st_size,
+                "line_count": line_count,
+            }
+        return {
+            "checksum": stable_id("dir", path),
+            "mtime": path.stat().st_mtime if path.exists() else None,
+            "size": 0,
+            "line_count": 0,
         }
 
     def _canonical_sources(self) -> list[dict[str, Any]]:
@@ -326,6 +454,31 @@ class CareerGraphRuntime:
             add(f"registered_{item.get('kind') or 'source'}", path)
 
         return sources
+
+    def _declared_missing_sources(self) -> list[Path]:
+        manifest = read_json(self.config.agentlas_dir / SOURCE_MANIFEST_FILE, default={}) or {}
+        missing: list[Path] = []
+        for item in manifest.get("sources", []) if isinstance(manifest, dict) else []:
+            if not isinstance(item, dict):
+                continue
+            path = Path(str(item.get("path") or "")).expanduser()
+            if not path.is_absolute():
+                path = self.config.root / path
+            if not path.exists():
+                missing.append(path)
+        return missing
+
+    @staticmethod
+    def _delete_source_projection(conn: sqlite3.Connection, source_path: str) -> None:
+        node_ids = [
+            str(row["node_id"])
+            for row in conn.execute("SELECT node_id FROM nodes WHERE source_path = ?", (source_path,))
+        ]
+        conn.execute("DELETE FROM edges WHERE source_path = ?", (source_path,))
+        for node_id in node_ids:
+            conn.execute("DELETE FROM edges WHERE from_node = ? OR to_node = ?", (node_id, node_id))
+        conn.execute("DELETE FROM nodes WHERE source_path = ?", (source_path,))
+        conn.execute("DELETE FROM sources WHERE path = ?", (source_path,))
 
     def _ingest_source(self, source: dict[str, Any], project_node: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         kind = source["kind"]
@@ -705,7 +858,7 @@ class CareerGraphRuntime:
         return candidates
 
     def _ingest_sitemap(self, path: Path, project_node: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        data = read_json(path, default={}) or {}
+        data = read_source_json_object(path)
         nodes: list[dict[str, Any]] = []
         edges: list[dict[str, Any]] = []
         by_id: dict[str, str] = {}
@@ -727,7 +880,7 @@ class CareerGraphRuntime:
         return nodes, edges
 
     def _ingest_code_map(self, path: Path, project_node: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        data = read_json(path, default={}) or {}
+        data = read_source_json_object(path)
         nodes: list[dict[str, Any]] = []
         edges: list[dict[str, Any]] = []
         modules: dict[str, str] = {}
@@ -778,27 +931,41 @@ class CareerGraphRuntime:
 
     # -- readers ---------------------------------------------------------------
     def status(self) -> dict[str, Any]:
-        files = self.ensure_files()
+        files = {
+            "project_root": str(self.config.root),
+            "agentlas_dir": str(self.config.agentlas_dir),
+            "config_path": str(self.config.agentlas_dir / CONFIG_FILE),
+            "source_manifest": str(self.config.agentlas_dir / SOURCE_MANIFEST_FILE),
+            "inbox_path": str(self.config.agentlas_dir / INBOX_DIR),
+            "db_path": str(self.config.sqlite_path),
+        }
         exists = self.config.sqlite_path.exists()
         counts = {"sources": 0, "nodes": 0, "edges": 0}
         stale: list[dict[str, Any]] = []
         if exists:
-            with closing(self.connect()) as conn:
+            with closing(self.connect(readonly=True)) as conn:
                 counts = {
                     "sources": conn.execute("SELECT count(*) FROM sources").fetchone()[0],
                     "nodes": conn.execute("SELECT count(*) FROM nodes").fetchone()[0],
                     "edges": conn.execute("SELECT count(*) FROM edges").fetchone()[0],
                 }
                 known = {row["path"]: row for row in conn.execute("SELECT path, checksum FROM sources")}
-            for source in self._canonical_sources():
+            current_sources = self._canonical_sources()
+            current_paths = {str(Path(source["path"])) for source in current_sources}
+            for known_path in sorted(set(known) - current_paths):
+                stale.append({"path": known_path, "reason": "source_deleted"})
+            for source in current_sources:
                 path = Path(source["path"])
                 old = known.get(str(path))
                 if old and path.is_file() and old["checksum"] != file_checksum(path):
                     stale.append({"path": str(path), "reason": "checksum_changed"})
                 elif not old:
                     stale.append({"path": str(path), "reason": "not_ingested"})
+        for path in self._declared_missing_sources():
+            if not any(item["path"] == str(path) for item in stale):
+                stale.append({"path": str(path), "reason": "source_missing"})
         return {
-            "status": "active",
+            "status": "active" if exists and not stale else ("stale" if exists else "missing_index"),
             **files,
             "db_exists": exists,
             "counts": counts,
@@ -810,9 +977,28 @@ class CareerGraphRuntime:
     def query(self, text: str, limit: int = 8) -> dict[str, Any]:
         if not self.config.sqlite_path.exists():
             return {"status": "missing_index", "query": text, "results": [], "hint": "run career-graph ingest first"}
+        if limit < 1:
+            return {"status": "error", "query": text, "results": [], "error": "limit must be at least 1"}
+        freshness = self.status()
+        if freshness["stale"]:
+            return {
+                "status": "stale_index",
+                "query": text,
+                "results": [],
+                "stale": freshness["stale"],
+                "hint": "run career-graph ingest before querying",
+            }
         terms = [term.lower() for term in text.split() if len(term) > 1]
-        with closing(self.connect()) as conn:
-            rows = [dict(row) for row in conn.execute("SELECT * FROM nodes")]
+        with closing(self.connect(readonly=True)) as conn:
+            rows = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM nodes ORDER BY node_id LIMIT ?",
+                    (MAX_QUERY_SCAN_ROWS + 1,),
+                )
+            ]
+        truncated = len(rows) > MAX_QUERY_SCAN_ROWS
+        rows = rows[:MAX_QUERY_SCAN_ROWS]
         scored: list[tuple[int, dict[str, Any]]] = []
         for row in rows:
             hay = f"{row.get('label') or ''} {row.get('text') or ''} {row.get('node_type') or ''}".lower()
@@ -822,8 +1008,9 @@ class CareerGraphRuntime:
                 scored.append((score, row))
         scored.sort(key=lambda pair: (-pair[0], pair[1]["node_type"], pair[1]["label"]))
         return {
-            "status": "ok",
+            "status": "partial" if truncated else "ok",
             "query": text,
+            "scan": {"budget": MAX_QUERY_SCAN_ROWS, "rows": len(rows), "truncated": truncated},
             "results": [
                 {
                     "score": score,
@@ -838,7 +1025,17 @@ class CareerGraphRuntime:
         }
 
     def trace(self, node_or_edge_id: str) -> dict[str, Any]:
-        with closing(self.connect()) as conn:
+        if not self.config.sqlite_path.exists():
+            return {"status": "missing_index", "id": node_or_edge_id}
+        freshness = self.status()
+        if freshness["stale"]:
+            return {
+                "status": "stale_index",
+                "id": node_or_edge_id,
+                "stale": freshness["stale"],
+                "hint": "run career-graph ingest before tracing",
+            }
+        with closing(self.connect(readonly=True)) as conn:
             node = conn.execute("SELECT * FROM nodes WHERE node_id = ?", (node_or_edge_id,)).fetchone()
             if node:
                 edges = [dict(row) for row in conn.execute("SELECT * FROM edges WHERE from_node = ? OR to_node = ?", (node_or_edge_id, node_or_edge_id))]
@@ -942,25 +1139,31 @@ class CareerGraphRuntime:
         return card
 
     # -- write helpers ---------------------------------------------------------
-    def _write_source(self, conn: sqlite3.Connection, source: dict[str, Any], at: str) -> None:
+    def _write_source(
+        self,
+        conn: sqlite3.Connection,
+        source: dict[str, Any],
+        at: str,
+        *,
+        state: dict[str, Any] | None = None,
+    ) -> None:
         path = Path(source["path"])
-        if path.is_file():
-            text = path.read_text(encoding="utf-8", errors="replace")
-            checksum = file_checksum(path)
-            line_count = len(text.splitlines())
-            size = path.stat().st_size
-            mtime = path.stat().st_mtime
-        else:
-            checksum = stable_id("dir", path)
-            line_count = 0
-            size = 0
-            mtime = path.stat().st_mtime if path.exists() else None
+        current = state or self._source_state(source)
         conn.execute(
             """
             INSERT OR REPLACE INTO sources(source_id, path, kind, checksum, mtime, size, line_count, last_ingested_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (stable_id("source", path), str(path), source["kind"], checksum, mtime, size, line_count, at),
+            (
+                stable_id("source", path),
+                str(path),
+                source["kind"],
+                current["checksum"],
+                current["mtime"],
+                current["size"],
+                current["line_count"],
+                at,
+            ),
         )
 
     def _write_node(self, conn: sqlite3.Connection, node: dict[str, Any]) -> None:

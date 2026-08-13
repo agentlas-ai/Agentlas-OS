@@ -29,16 +29,34 @@ def invoke_hub_agent(
     local_inventory: list[str] | None = None,
     expected_entity_kind: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch and prepare a Hub agent runtime bundle, then write an execution receipt."""
+    """Fetch an exact Hub agent bundle, or return candidates for host selection."""
 
     base = Path(home) if home else networking_home()
     local = _local_slug_audit(base)
     results = list(((hub_decision or {}).get("hub") or {}).get("results") or [])
-    selected = _select_candidate(results, slug)
-    if selected is None and slug:
-        selected = _candidate_from_search(slug, slug, base)
+    requested_slug = str(slug or "").strip()
+    if not requested_slug:
+        candidates = _callable_candidates(results)
+        return _record(
+            base,
+            {
+                "action": "hub_invoke",
+                "status": "selection_required",
+                "request_hash": _request_hash(request),
+                "routing_receipt_id": (hub_decision or {}).get("receipt_id"),
+                "candidates": candidates,
+                "candidate_count": len(candidates),
+                "reason": (
+                    "Direct Hub invocation requires an exact agent slug selected "
+                    "by the host. No candidate was selected and no runtime bundle "
+                    "was requested."
+                ),
+            },
+        )
+
+    selected = _select_candidate(results, requested_slug)
     if selected is None:
-        selected = _first_callable(results)
+        selected = _candidate_from_search(requested_slug, requested_slug, base)
     if selected is None:
         return _record(
             base,
@@ -51,7 +69,7 @@ def invoke_hub_agent(
             },
         )
 
-    selected_slug = str(selected.get("slug") or slug or "")
+    selected_slug = str(selected.get("slug") or requested_slug)
     selected_norm = _norm_slug(selected_slug)
     # Locally mirrored cards are NOT short-circuited. Every caller — including one
     # whose agent source is in a local private/restricted folder — goes
@@ -192,7 +210,7 @@ def invoke_hub_agent(
     next_step = (
         "Caller runtime executes the returned entry instructions with its own model; Agentlas Hub itself does not run an LLM completion. "
         "Follow `grounding.directive`: attach to the live project codebase at `grounding.project_dir` FIRST (mandatory), then consult this agent's "
-        "local memory and the super ontology only when the task needs deeper grounding. "
+        "local memory and the project semantic ontology only when the task needs deeper grounding. "
         f"While acting as this agent, begin each reply with the presence badge `\U0001f517 {agent_display_name or selected_slug}` so the user can see the hired agent is active."
     )
     if lease is not None and lease.get("active"):
@@ -279,11 +297,13 @@ def _select_candidate(results: list[dict[str, Any]], slug: str | None) -> dict[s
     return None
 
 
-def _first_callable(results: list[dict[str, Any]]) -> dict[str, Any] | None:
-    for item in results:
-        if isinstance(item, dict) and (item.get("callable") is True or item.get("kind") == "cloud-callable"):
-            return item
-    return None
+def _callable_candidates(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in results
+        if isinstance(item, dict)
+        and (item.get("callable") is True or item.get("kind") == "cloud-callable")
+    ]
 
 
 def _local_slug_audit(home: Path) -> dict[str, Any]:
@@ -674,7 +694,7 @@ def _default_memory_root(home: Path, slug: str) -> Path:
 
 
 def _ontology_db_path(project_dir: Path) -> Path:
-    # The project-local "super ontology" the Hephaestus runtime ingests into.
+    # The project-local semantic ontology database the Hephaestus runtime ingests into.
     return project_dir / ".agentlas" / "ontology-runtime.sqlite"
 
 
@@ -690,7 +710,7 @@ def _grounding_directive(
     Grounding has two tiers. The FIRST is unconditional: a borrowed agent must
     attach to the live working project it was invoked in — the actual codebase at
     ``project_dir`` — and operate on that, never as a context-less generic call.
-    The SECOND tier (the agent's own memory and the super ontology) is selective:
+    The SECOND tier (the agent's own memory and the semantic ontology) is selective:
     consult it ONLY when the task needs deeper grounding (brand facts, prior
     decisions, domain knowledge). Retrieval is relevance-gated, and this directive
     makes the host LLM the judge of whether to consult the second tier at all.

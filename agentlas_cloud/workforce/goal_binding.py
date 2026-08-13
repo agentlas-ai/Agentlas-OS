@@ -160,6 +160,42 @@ def implicit_goal_id(
     return f"goal:auto:{digest}"
 
 
+def workforce_preparation_ready(result: Any) -> bool:
+    """Return whether preparation pinned a non-empty executable roster."""
+
+    if not isinstance(result, Mapping) or result.get("status") != "prepared":
+        return False
+    if result.get("issues"):
+        return False
+    prepared_plan = result
+    nested_plan = result.get("executionPlan")
+    if isinstance(nested_plan, Mapping):
+        prepared_plan = nested_plan
+        if prepared_plan.get("status") != "prepared" or prepared_plan.get("issues"):
+            return False
+    roster = prepared_plan.get("executionRoster")
+    return isinstance(roster, list) and bool(roster)
+
+
+def workforce_preparation_refusal(action: str, result: Any) -> dict[str, Any]:
+    """Preserve a preparation refusal before any goal-binding attempt."""
+
+    payload = dict(result) if isinstance(result, Mapping) else {}
+    issues = payload.get("issues")
+    nested_plan = payload.get("executionPlan")
+    if not isinstance(issues, list) and isinstance(nested_plan, Mapping):
+        issues = nested_plan.get("issues")
+    return {
+        **payload,
+        "action": action,
+        "status": payload.get("status") or "rejected",
+        "error": payload.get("error") or "workforce_preparation_not_executable",
+        "issues": list(issues) if isinstance(issues, list) else [],
+        "executionAllowed": False,
+        "preparedButUnbound": False,
+    }
+
+
 def _execution_plan(preparation: Mapping[str, Any]) -> tuple[Mapping[str, Any], list[Mapping[str, Any]]]:
     if preparation.get("schemaVersion") in {
         "agentlas.workforce-federated-preparation.v1",
@@ -966,4 +1002,6 @@ __all__ = [
     "default_goal_store_path",
     "default_goal_runtime_root",
     "implicit_goal_id",
+    "workforce_preparation_ready",
+    "workforce_preparation_refusal",
 ]

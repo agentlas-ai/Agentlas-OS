@@ -1,27 +1,21 @@
 ---
 name: hephaestus-cloud
-description: "Use when the user types /hep-cloud or asks to find/route to one of THEIR OWN Agentlas cloud packages (보관함, 내 클라우드, 내 보관함, my cloud, my own agents). This is the owner-scoped leg of the three-scope model — it searches ONLY the signed-in user's own cloud packages, not the public marketplace (use hephaestus-network for that) and not local cards. The user's own cloud packages are restorable/owned by them and call-priced at a flat 1 credit."
+description: "Use when the user types /hep-cloud or asks to staff from THEIR OWN Agentlas cloud packages (보관함, 내 클라우드, 내 보관함, my cloud, my own agents). This exact source scope searches only the signed-in owner's Cloud inventory, never public Hub or registered Local inventory."
 metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "homepage": "https://github.com/agentlas-ai/Agentlas-OS"}}
 ---
 
 # Hephaestus Cloud Routing (my own cloud / 보관함)
 
-Route the request through the signed-in user's OWN Agentlas cloud packages only.
-Never guess an agent yourself when this skill is active — the router/Hub decides.
+Staff the request from the signed-in user's OWN Agentlas Cloud packages only.
+The active host LLM makes the final selection from Core's content menu; Core
+validates and pins it but never decides the roster.
 
 ## 0. Scope rule
 
-`/hep-cloud` is owner-scoped: it queries ONLY the authenticated owner's
-own cloud packages (보관함) via the Hub owner filter (`cargo.*`). It does **not**
-search the public marketplace and does **not** search local private/plugin
-cards.
-
-- The user's own cloud packages are restorable/owned by them, call-priced at a
-  flat **1 credit** per call.
-- For the public marketplace (others' published, per-call-priced agents), use
-  the `hephaestus-network` skill / `--hub-only` instead.
-- For the combined search (local + own cloud + Hub, each priced by origin), use
-  plain-language routing (`hephaestus route`).
+`/hep-cloud` is owner-scoped: it queries ONLY the authenticated owner's Cloud
+inventory. It does **not** search public Hub or registered Local inventory.
+Entitlement and credits remain server-authoritative; never hard-code a price.
+Use `sourceScope="network"` for the combined Local + Cloud + Hub menu.
 
 ## 1. Resolve the runner
 
@@ -46,9 +40,9 @@ fi
 If no runner exists, tell the user to run the one-touch installer:
 `curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash`
 
-If shell execution is unavailable in this harness but MCP is, call the
-`agentlas_authenticate` tool first, then call the `hephaestus_cloud_search` tool
-from the `hephaestus-network` MCP server instead.
+If shell execution is unavailable but MCP is available, use the typed Workforce
+tools from the `hephaestus-network` MCP server. Authentication may be established
+with `agentlas_authenticate`; do not substitute legacy cloud search for staffing.
 
 ## 2. Agentlas sign-in (required)
 
@@ -64,33 +58,34 @@ This opens the user's default browser only when there is no valid local sign-in
 yet, and reuses a saved sign-in silently. For CI/headless checks only, set
 `HEPHAESTUS_AUTH_AUTOPOPUP=0` and skip this step.
 
-## 3. Route (owner cloud only)
+## 3. Staff from owner Cloud only
 
-```bash
-"$RUNNER" cloud "<the user's request>" --project .
+Use local Core's typed sequence:
+
+```text
+workforce.search_candidates(sourceScope="cloud")
+workforce.validate_selection(workOrder=..., selection=...)
+workforce.prepare_execution(workOrder=..., selection=..., federatedSelection=..., projectDir=...)
+workforce.validate_execution_receipt(receipt=..., executionPlan=..., toolInventory=...)
 ```
 
-`hephaestus cloud` is shorthand for `hephaestus route "<request>" --scope cloud`
-(owner-scoped Hub query; implies `--hub-only`). Via MCP, call
-`hephaestus_cloud_search` instead.
+Preserve the Cloud source receipt and `selectionSessionId`; do not echo the
+projected search menu as a complete federation result. Core resolves the full
+pinned session. Legacy `hephaestus_cloud_search` is an explicitly gated debug
+surface, not an owner-Cloud staffing fallback.
 
-## 4. Act on the JSON decision (`scope: "cloud"`)
+## 4. Act on typed receipts
 
-- `action: "hub_candidates"` — these are the user's OWN cloud packages
-  (`hub.results[].slug`, `name`). Report them, and on the user's pick invoke that
-  package with the original request (call-priced at 1 credit).
-- `action: "clarify"` — ask `clarify_question` with the candidate list and
-  re-route with the answer (still cloud-scoped).
-- `action: "propose_new"` — no matching package in the user's cloud. Offer to
-  search the public marketplace (`hephaestus-network` / `--hub-only`) or to build
-  a new agent via `/hep-build`.
-- `action: "refuse"` — explain `reasons` (for example, loop guard). Do not retry.
+The host LLM selects from content evidence. Preserve exact source session,
+release, package/content hashes, selection receipt, and preparation receipt.
+Report finite refusal codes such as `source_unauthorized`,
+`insufficient_credits`, `owner_only`, `no_cloud_package`, or `agent_not_found`
+exactly; never collapse them to `source_unavailable`.
 
 ## 5. Hard rules
 
 - Never report public marketplace agents or local private/plugin cards as if
   they were the user's own cloud packages.
-- The router only chooses a package or fetches a BYOM bundle; it does not
-  execute payments, deletes, publishes, file writes, or external submissions.
+- Deterministic Core validates and pins; it never chooses the roster.
 - For actual tool execution, follow the host runtime's safety and permission
-  model. Report the routing `receipt_id` in your final message.
+  model. Receipt validation is local and read-only and does not execute workers.

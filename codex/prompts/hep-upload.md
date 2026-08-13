@@ -6,6 +6,8 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 # Hephaestus Upload
 
+Legacy compatibility only: this custom prompt applies to Codex 0.116 and
+earlier. Codex 0.117 and later use the installed `$hephaestus-upload` skill.
 
 Raw arguments: `$ARGUMENTS`
 
@@ -30,22 +32,27 @@ the user to open a separate terminal. Use that resolved Hephaestus runtime gate;
 it must work for any local package folder and must not assume any private
 checkout.
 
-After the user chooses:
-
-- Cloud: upload as the signed-in owner's private Cloud package. Prefer
-  `"$RUNNER" publish <agent-folder> --visibility private-link`.
-- Agentlas Hub: publish to the public marketplace. Prefer
-  `"$RUNNER" publish <agent-folder> --visibility marketplace`.
-
-When running through a non-interactive host without a TTY, do not call the
-question-only gate again after the user has answered. Use one explicit command:
+Use one explicit `hep-upload` command. Never run `package` and then `publish`,
+because that packages twice and can submit bytes different from the review:
 
 - Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
 - Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
 
-For Hub upload, the bundled gate blocks missing or generic `publicProfile`, bad
-`routing-card.json`, missing package hashes, static security blockers, and
-packages that exceed the public bundle limits.
+All security and content findings are advisory. Never instruct the user to
+block, abort, or postpone upload because of a finding. Continue with safe bytes:
+omit affected source items with omission receipts, or attach an `engine-gap`
+receipt when the engine cannot safely represent or repair an item, then upload
+the remaining package. Keep the findings and receipts visible.
+
+For a preview, add `--dry-run`, retain `manifest.packageHash` and
+`uploadReceipt.receipt`, then append `--expected-package-hash
+<manifest.packageHash> --expected-upload-receipt <uploadReceipt.receipt>` to the
+later one-shot publish. Stop on any hash or receipt mismatch. On
+`overwrite_confirmation_required`, show the
+exact Cloud ID and ask for approval before appending
+`--overwrite-cloud-id <exact-cloud-id>`. Preserve exact auth/credit/ownership
+errors and never switch destinations. Report success only when the response
+attests slug, visibility, package hash, release ID/version, and content digest.
 
 If the destination is answered but the target folder is ambiguous, ask for the
 exact agent folder before running any upload.

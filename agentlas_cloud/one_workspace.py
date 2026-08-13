@@ -1425,6 +1425,15 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     # Record receipts only for edits or sufficiently tool-heavy work, not casual chat.
     substantial = edits > 0 or tool_uses >= SUBSTANTIAL_TOOL_USES
 
+    # Nothing in this checkpoint can affect a drawer or the One curator. Return
+    # before consulting the fallback borrowed-agent window: transcriptless hosts
+    # otherwise attach unrelated recently active agents, manufacture a non-empty
+    # receipt, and turn an idle Stop event into curation work.
+    if not events and not substantial:
+        if not enabled:
+            return {"skipped": "one_off"}
+        return {"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits}
+
     # R21 W1c/W1d — learnings attributed to a borrowed/built agent land in that
     # agent's own drawer (ticket + ingestable note + gap fallback); everything
     # else continues down the One path unchanged. Fail-open by construction.

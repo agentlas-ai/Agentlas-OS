@@ -30,6 +30,7 @@ WORKFORCE_SOURCE_FAILURE_CODES = (
     "source_not_supported",
     "source_unavailable",
     "source_timeout",
+    "source_circuit_open",
     "source_unauthorized",
     "source_forbidden",
     "source_rate_limited",
@@ -44,6 +45,20 @@ WORKFORCE_SOURCE_FAILURE_CODES = (
     "owner_only",
     "no_cloud_package",
     "agent_not_found",
+)
+
+# These gaps describe evidence the federation layer cannot reconstruct or
+# supersede by merging more candidates.  In particular, an unsupported
+# requirement means a source did not enforce part of the user's WorkOrder, and
+# a contract-invalid candidate means source results were dropped before the
+# host saw them.  Both must survive even when another source fills the slot.
+_FEDERATION_PASSTHROUGH_GAPS = frozenset(
+    {
+        "gap:candidate-contract-invalid",
+    }
+)
+_FEDERATION_PASSTHROUGH_GAP_PREFIXES = (
+    "gap:requirement-vocabulary-unsupported:",
 )
 
 _FAILURES = frozenset(WORKFORCE_SOURCE_FAILURE_CODES)
@@ -456,6 +471,63 @@ def workforce_lineage_claim_digest(definition_id: str, appearance: Mapping[str, 
     )
 
 
+def _has_verified_global_identity(
+    definition_id: str,
+    appearances: list[dict[str, Any]],
+    lineage_verifier: LineageVerifier | None,
+) -> bool:
+    """Prove one definition is immutable across every source and slot.
+
+    Repeating one exact release inside a single source is not a source
+    collision.  As soon as two sources claim the definition, every appearance
+    must carry the same verified lineage; source precedence is never identity
+    authority.
+    """
+
+    immutable = {
+        (
+            row["agentReleaseId"],
+            row["releaseVersion"],
+            row["packageHash"],
+            row["contentDigest"],
+            row["entityKind"],
+        )
+        for row in appearances
+    }
+    if len(immutable) != 1:
+        return False
+    if len({row["source"] for row in appearances}) == 1:
+        return True
+    lineage = [row.get("lineageAttestation") for row in appearances]
+    claims = {
+        (item.get("lineageDigest"), item.get("issuer"))
+        for item in lineage
+        if isinstance(item, Mapping)
+    }
+    if (
+        not all(isinstance(item, Mapping) for item in lineage)
+        or len(claims) != 1
+        or lineage_verifier is None
+    ):
+        return False
+    for appearance in appearances:
+        attestation = appearance["lineageAttestation"]
+        if (
+            attestation.get("claimDigest")
+            != workforce_lineage_claim_digest(definition_id, appearance)
+            or not isinstance(attestation.get("proof"), Mapping)
+            or lineage_verifier(
+                str(appearance["source"]),
+                definition_id,
+                attestation,
+                {key: value for key, value in appearance.items() if key != "candidate"},
+            )
+            is not True
+        ):
+            return False
+    return True
+
+
 def _source_receipt(payload: Mapping[str, Any]) -> dict[str, Any]:
     detached = dict(payload)
     detached["receiptDigest"] = canonical_digest(detached)
@@ -495,6 +567,7 @@ def federate_candidate_sets(
     ontology_version: str,
     slot_ids: Iterable[str],
     source_failures: Mapping[str, str] | None = None,
+    source_attempts: Mapping[str, int] | None = None,
     lineage_attestations: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
     lineage_verifier: LineageVerifier | None = None,
     minimum_candidates_per_slot: int | Mapping[str, int] = 2,
@@ -507,19 +580,25 @@ def federate_candidate_sets(
     clock = _clock(now)
     candidate_sets = dict(source_candidate_sets or {})
     failures = dict(source_failures or {})
+    attempts = dict(source_attempts or {})
     attestations = dict(lineage_attestations or {})
     slots = tuple(str(item) for item in slot_ids)
     if not _valid_id(work_order_id) or not _valid_id(ontology_version):
         raise WorkforceFederationError("invalid_federation_identity")
     if not slots or len(slots) > 32 or len(slots) != len(set(slots)) or any(not _valid_id(item) for item in slots):
         raise WorkforceFederationError("invalid_federation_slots")
-    supplied = set(candidate_sets) | set(failures) | set(attestations)
+    supplied = set(candidate_sets) | set(failures) | set(attestations) | set(attempts)
     if supplied - set(sources):
         raise WorkforceFederationError("source_outside_scope")
     if set(candidate_sets) & set(failures):
         raise WorkforceFederationError("source_has_conflicting_outcome")
     if any(value not in _FAILURES for value in failures.values()):
         raise WorkforceFederationError("invalid_source_failure_code")
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2
+        for value in attempts.values()
+    ):
+        raise WorkforceFederationError("invalid_source_attempt_count")
     if isinstance(minimum_candidates_per_slot, Mapping):
         minimums = {str(key): value for key, value in minimum_candidates_per_slot.items()}
         if set(minimums) != set(slots):
@@ -554,6 +633,7 @@ def federate_candidate_sets(
                         "source": source,
                         "status": "failed",
                         "failureCode": failures[source],
+                        "attemptCount": attempts.get(source, 0),
                         "observedAt": _timestamp(clock),
                     }
                 )
@@ -566,6 +646,7 @@ def federate_candidate_sets(
                         "source": source,
                         "status": "failed",
                         "failureCode": "source_not_configured",
+                        "attemptCount": attempts.get(source, 0),
                         "observedAt": _timestamp(clock),
                     }
                 )
@@ -586,6 +667,7 @@ def federate_candidate_sets(
                         "source": source,
                         "status": "failed",
                         "failureCode": exc.code,
+                        "attemptCount": attempts.get(source, 1),
                         "observedAt": _timestamp(clock),
                     }
                 )
@@ -604,17 +686,18 @@ def federate_candidate_sets(
                     "expiresAt": normalized["expiresAt"],
                     "slotCount": len(normalized["slots"]),
                     "candidateCount": sum(len(slot["candidates"]) for slot in normalized["slots"]),
+                    "attemptCount": attempts.get(source, 1),
                 }
             )
         )
 
     precedence = {source: index for index, source in enumerate(WORKFORCE_SOURCE_PRECEDENCE)}
-    # An immutable release id cannot belong to two definitions. Resolve a
-    # cross-source collision by the fixed Local > Cloud > Hub source
-    # precedence so a lower-trust appearance can never suppress the
-    # higher-priority card. Same-source collisions were already rejected by
-    # _validate_candidate_set and remain a source-level failure.
-    release_winners: dict[str, tuple[int, str]] = {}
+    # An immutable release id cannot belong to two definitions.  Source
+    # precedence is not identity authority: if two sources attach one release
+    # id to different definitions, every definition participating in that
+    # collision is ambiguous and must disappear from the host-visible menu.
+    # Same-source collisions were already rejected by _validate_candidate_set.
+    definitions_by_release: dict[str, set[str]] = {}
     for source in sources:
         source_set = valid_sets.get(source)
         if source_set is None:
@@ -622,17 +705,58 @@ def federate_candidate_sets(
         for source_slot in source_set["slots"]:
             for candidate in source_slot["candidates"]:
                 release_id = candidate["agentReleaseId"]
-                winner = release_winners.get(release_id)
-                candidate_owner = (precedence[source], candidate["agentDefinitionId"])
-                if winner is None or candidate_owner[0] < winner[0]:
-                    release_winners[release_id] = candidate_owner
+                definitions_by_release.setdefault(release_id, set()).add(
+                    candidate["agentDefinitionId"]
+                )
+    release_collision_definitions = {
+        definition_id
+        for definitions in definitions_by_release.values()
+        if len(definitions) > 1
+        for definition_id in definitions
+    }
+    global_appearances: dict[str, list[dict[str, Any]]] = {}
+    for source in sources:
+        source_set = valid_sets.get(source)
+        if source_set is None:
+            continue
+        for source_slot in source_set["slots"]:
+            for source_rank, candidate in enumerate(source_slot["candidates"]):
+                definition_id = candidate["agentDefinitionId"]
+                appearance = {
+                    "source": source,
+                    "sourceRank": source_rank,
+                    "candidateSetDigest": source_set["candidateSetDigest"],
+                    "agentReleaseId": candidate["agentReleaseId"],
+                    "releaseVersion": candidate["releaseVersion"],
+                    "packageHash": candidate["packageHash"],
+                    "contentDigest": candidate["contentDigest"],
+                    "entityKind": candidate["entityKind"],
+                    "candidate": candidate,
+                }
+                attestation = (attestations.get(source) or {}).get(definition_id)
+                if attestation is not None:
+                    try:
+                        appearance["lineageAttestation"] = validate_lineage_attestation(
+                            attestation
+                        )
+                    except WorkforceFederationError:
+                        appearance["lineageAttestationInvalid"] = True
+                global_appearances.setdefault(definition_id, []).append(appearance)
+    globally_quarantined_definitions = set(release_collision_definitions)
+    globally_quarantined_definitions.update(
+        definition_id
+        for definition_id, appearances in global_appearances.items()
+        if not _has_verified_global_identity(
+            definition_id, appearances, lineage_verifier
+        )
+    )
     merged_slots: list[dict[str, Any]] = []
     provenance_rows: list[dict[str, Any]] = []
     for slot_id in slots:
         appearances_by_definition: dict[str, list[dict[str, Any]]] = {}
-        precedence_conflicted_definitions: set[str] = set()
         excluded_gaps: set[str] = set()
-        slot_had_release_collision = False
+        passthrough_gaps: set[str] = set()
+        quarantined_identity = False
         for source in sources:
             source_set = valid_sets.get(source)
             if source_set is None:
@@ -641,11 +765,15 @@ def federate_candidate_sets(
             excluded_gaps.update(
                 gap for gap in source_slot["coverageGaps"] if gap.startswith("gap:excluded:")
             )
+            passthrough_gaps.update(
+                gap
+                for gap in source_slot["coverageGaps"]
+                if gap in _FEDERATION_PASSTHROUGH_GAPS
+                or gap.startswith(_FEDERATION_PASSTHROUGH_GAP_PREFIXES)
+            )
             for source_rank, candidate in enumerate(source_slot["candidates"]):
-                release_winner = release_winners[candidate["agentReleaseId"]]
-                if release_winner[1] != candidate["agentDefinitionId"]:
-                    slot_had_release_collision = True
-                    precedence_conflicted_definitions.add(release_winner[1])
+                if candidate["agentDefinitionId"] in globally_quarantined_definitions:
+                    quarantined_identity = True
                     continue
                 definition_id = candidate["agentDefinitionId"]
                 attestation = (attestations.get(source) or {}).get(definition_id)
@@ -671,59 +799,19 @@ def federate_candidate_sets(
                 appearances_by_definition.setdefault(definition_id, []).append(appearance)
 
         selected_rows: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
-        quarantined_identity = slot_had_release_collision
         for definition_id, appearances in appearances_by_definition.items():
             merge_exact_shadow = False
             if len(appearances) > 1:
-                immutable = {
-                    (
-                        row["agentReleaseId"],
-                        row["releaseVersion"],
-                        row["packageHash"],
-                        row["contentDigest"],
-                        row["entityKind"],
-                    )
-                    for row in appearances
-                }
-                lineage = [row.get("lineageAttestation") for row in appearances]
-                claims = {
-                    (item.get("lineageDigest"), item.get("issuer"))
-                    for item in lineage
-                    if isinstance(item, Mapping)
-                }
-                lineage_verified = (
-                    len(immutable) == 1
-                    and all(isinstance(item, Mapping) for item in lineage)
-                    and len(claims) == 1
-                    and lineage_verifier is not None
+                merge_exact_shadow = _has_verified_global_identity(
+                    definition_id, appearances, lineage_verifier
                 )
-                if lineage_verified:
-                    for appearance in appearances:
-                        attestation = appearance["lineageAttestation"]
-                        expected_claim = workforce_lineage_claim_digest(definition_id, appearance)
-                        if (
-                            attestation.get("claimDigest") != expected_claim
-                            or not isinstance(attestation.get("proof"), Mapping)
-                            or lineage_verifier(
-                                str(appearance["source"]),
-                                definition_id,
-                                attestation,
-                                {key: value for key, value in appearance.items() if key != "candidate"},
-                            )
-                            is not True
-                        ):
-                            lineage_verified = False
-                            break
-                merge_exact_shadow = lineage_verified
                 if not merge_exact_shadow:
-                    # Retain only the higher-priority appearance. Publishing a
-                    # lower conflicting/unattested claim in provenance would
-                    # let it influence later source-pin validation.
+                    # Missing/invalid lineage or immutable drift makes the
+                    # definition ambiguous.  Quarantine the whole identity;
+                    # retaining the higher-precedence appearance would turn
+                    # source order into a staffing decision.
                     quarantined_identity = True
-                    precedence_conflicted_definitions.add(definition_id)
-                    appearances = [
-                        min(appearances, key=lambda row: precedence[row["source"]])
-                    ]
+                    continue
             selected = min(appearances, key=lambda row: precedence[row["source"]])
             public_appearances = []
             for row in sorted(appearances, key=lambda item: precedence[item["source"]]):
@@ -739,13 +827,7 @@ def federate_candidate_sets(
                 "agentDefinitionId": definition_id,
                 "selectedAgentReleaseId": selected["agentReleaseId"],
                 "selectedSource": selected["source"],
-                "resolution": (
-                    "exact_attested_shadow"
-                    if merge_exact_shadow
-                    else "precedence_conflict"
-                    if definition_id in precedence_conflicted_definitions
-                    else "unique_definition"
-                ),
+                "resolution": "exact_attested_shadow" if merge_exact_shadow else "unique_definition",
                 "appearances": public_appearances,
             }
             selected_rows.append((definition_id, selected, provenance))
@@ -788,7 +870,7 @@ def federate_candidate_sets(
             selected_rows = bounded_rows
         selected_rows.sort(key=lambda row: (row[0], row[1]["agentReleaseId"]))
         cards = [deepcopy(row[1]["candidate"]) for row in selected_rows]
-        coverage: set[str] = set()
+        coverage: set[str] = set(passthrough_gaps)
         if quarantined_identity:
             # Public evidence remains aggregate and finite: never echo the
             # conflicted definition or an attacker-controlled reason.
@@ -991,24 +1073,44 @@ def validate_federation_result(
                 "receiptDigest",
             }
             if (
-                set(receipt) != expected_keys
+                set(receipt) not in (expected_keys, expected_keys | {"attemptCount"})
                 or not _valid_id(receipt.get("selectionSessionId"))
                 or not _valid_hash(receipt.get("candidateSetDigest"))
                 or not isinstance(receipt.get("slotCount"), int)
                 or not isinstance(receipt.get("candidateCount"), int)
+                or (
+                    "attemptCount" in receipt
+                    and (
+                        isinstance(receipt.get("attemptCount"), bool)
+                        or not isinstance(receipt.get("attemptCount"), int)
+                        or not 0 <= receipt["attemptCount"] <= 2
+                    )
+                )
             ):
                 raise WorkforceFederationError("invalid_federation_result")
             _result_timestamp(receipt.get("issuedAt"))
             _result_timestamp(receipt.get("expiresAt"))
         elif receipt.get("status") == "failed":
             failed_count += 1
-            if set(receipt) != {
+            expected_keys = {
                 "source",
                 "status",
                 "failureCode",
                 "observedAt",
                 "receiptDigest",
-            } or receipt.get("failureCode") not in _FAILURES:
+            }
+            if (
+                set(receipt) not in (expected_keys, expected_keys | {"attemptCount"})
+                or receipt.get("failureCode") not in _FAILURES
+                or (
+                    "attemptCount" in receipt
+                    and (
+                        isinstance(receipt.get("attemptCount"), bool)
+                        or not isinstance(receipt.get("attemptCount"), int)
+                        or not 0 <= receipt["attemptCount"] <= 2
+                    )
+                )
+            ):
                 raise WorkforceFederationError("invalid_federation_result")
             _result_timestamp(receipt.get("observedAt"))
         else:
@@ -1041,6 +1143,7 @@ def validate_federation_result(
     if provenance_keys != card_keys:
         raise WorkforceFederationError("invalid_federation_result")
     seen_provenance: set[tuple[str, str, str]] = set()
+    global_provenance_appearances: dict[str, list[dict[str, Any]]] = {}
     precedence = {source: index for index, source in enumerate(WORKFORCE_SOURCE_PRECEDENCE)}
     for row in provenance:
         if not isinstance(row, Mapping) or set(row) != {
@@ -1108,6 +1211,9 @@ def validate_federation_result(
             if "lineageAttestation" in appearance:
                 attestation = validate_lineage_attestation(appearance["lineageAttestation"])
                 lineage_claims.add((attestation["lineageDigest"], attestation["issuer"]))
+            global_provenance_appearances.setdefault(
+                str(row["agentDefinitionId"]), []
+            ).append(dict(appearance))
             if source == row.get("selectedSource"):
                 selected = appearance
         expected_source = min(appearance_sources, key=lambda source: precedence[source])
@@ -1135,18 +1241,28 @@ def validate_federation_result(
                     is not True
                 ):
                     raise WorkforceFederationError("definition_lineage_unproven")
-        elif row.get("resolution") not in {"unique_definition", "precedence_conflict"}:
+        elif row.get("resolution") != "unique_definition":
             raise WorkforceFederationError("invalid_federation_result")
-        elif row.get("resolution") == "precedence_conflict":
-            source_slot = next(
-                slot for slot in candidate_set["slots"]
-                if slot["slotId"] == row["slotId"]
-            )
-            if "gap:excluded:structural-or-security-invalid" not in source_slot["coverageGaps"]:
-                raise WorkforceFederationError("invalid_federation_result")
         for field in ("agentReleaseId", "releaseVersion", "packageHash", "contentDigest", "entityKind"):
             if selected.get(field) != card.get(field):
                 raise WorkforceFederationError("selected_release_claim_mismatch")
+    for definition_id, appearances in global_provenance_appearances.items():
+        immutable = {
+            (
+                row["agentReleaseId"],
+                row["releaseVersion"],
+                row["packageHash"],
+                row["contentDigest"],
+                row["entityKind"],
+            )
+            for row in appearances
+        }
+        if len(immutable) != 1:
+            raise WorkforceFederationError("invalid_federation_result")
+        if not _has_verified_global_identity(
+            definition_id, appearances, lineage_verifier
+        ):
+            raise WorkforceFederationError("definition_lineage_unproven")
 
 
 __all__ = [

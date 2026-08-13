@@ -46,11 +46,10 @@ https://github.com/agentlas-ai/Agentlas-OS
 host command adapters लिखने के लिए repo का canonical one-touch installer चलाएँ:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-Claude Code के लिए confirm करें कि `hephaestus@agentlas-core-engine` user scope में
-enabled है और `~/.claude/commands/agentlas build.md` मौजूद है। अगर अगली session में
-bare `/agentlas build` उपलब्ध नहीं होगा, तो install complete report न करें। अंत में
-active plugin, command surface और global routing status confirm करें और host restart
-या `/reload-plugins` चलाने को कहें।
+installer के अपने verification output की report दें। अगली session में
+`/agentlas build` (या उस host के बराबर command surface) काम नहीं करता, तो
+install complete report न करें; काम करने की पुष्टि होने पर host restart या
+plugin reload करने को कहें।
 ```
 
 जब आप पहले से किसी LLM के अंदर हों और Hephaestus वहीं active करना चाहते हों,
@@ -191,7 +190,7 @@ documented bare `/agentlas build` autocomplete के लिए ऊपर का
 
 अपने OS terminal से:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.0
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.1
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:agentlas` in-app entry है।*

@@ -10,6 +10,7 @@ memory or indexes.
 from __future__ import annotations
 
 import hashlib
+import fnmatch
 import json
 import os
 import queue
@@ -52,8 +53,10 @@ AUTO_BOOTSTRAP_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_AUTO"
 MCP_AUTO_BOOTSTRAP_ENV = "AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO"
 AUTO_ALLOWED_ROOTS_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_ALLOWED_ROOTS"
 CODE_MAP_CACHE_SCHEMA = "agentlas.code-map-cache.v4"
-CODE_MAP_POLICY_VERSION = "dependency-verification-index.v2"
-VERIFICATION_MAP_SCHEMA = "agentlas.verification-map.v1"
+CODE_MAP_POLICY_VERSION = "content-snapshot-precision-index.v3"
+VERIFICATION_MAP_SCHEMA = "agentlas.verification-map.v2"
+CONTEXT_INDEX_POLICY_SCHEMA = "agentlas.context-index-policy.v1"
+CODE_MAP_MANIFEST_SCHEMA = "agentlas.code-map-manifest.v3"
 
 PRIVACY_PATTERNS = (
     ".agentlas/",
@@ -77,7 +80,6 @@ PRIVACY_PATTERNS = (
     ".agentlas/career-graph-inbox/",
     ".agentlas/career-graph.sqlite*",
     ".agentlas/experience-relations.jsonl",
-    ".agentlas/super-ontology-*",
     ".agentlas/stormbreaker/",
     ".agentlas/pipeline/",
     ".agentlas/*.lock",
@@ -159,7 +161,14 @@ VERSION_CONTRACT_NAMES = {
 }
 MAX_VERIFICATION_FILE_BYTES = 512 * 1024
 MAX_VERIFICATION_NODES = 2_000
+# The Desktop repository currently produces more than 50k legitimate
+# source-to-test links. Keep the graph bounded, but high enough that the
+# completion gate can represent that real product instead of failing its own
+# refresh as incomplete. The 24 MiB serialized-map limit remains the final
+# memory/output guard.
 MAX_VERIFICATION_EDGES = 50_000
+MAX_DEPENDENCY_EDGES = 50_000
+MAX_SNAPSHOT_READ_BYTES = 1024 * 1024 * 1024
 TEST_PATH_REFERENCE_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.-])"
     r"((?:test|tests|scripts)/[A-Za-z0-9_./@+-]+"
@@ -179,13 +188,51 @@ SKIP_DIRS = {
     ".venv",
     ".vercel",
     "__pycache__",
-    "build",
     "coverage",
     "dist",
     "node_modules",
     "target",
     "vendor",
 }
+
+# Generic directory names such as ``build`` are valid source-route segments
+# (for example ``src/components/build``). Only treat them as generated output
+# when they are rooted directly under the selected project.
+ROOT_OUTPUT_DIRS = {"build", "out", "release", "release-local"}
+
+DEFAULT_CONTEXT_INDEX_POLICY = {
+    "schemaVersion": CONTEXT_INDEX_POLICY_SCHEMA,
+    "excludeRoots": [],
+    "mirrorRoots": [],
+    "testRoots": ["test", "tests", "__tests__", "spec", "specs"],
+    "testGlobs": [
+        "**/*.test.*",
+        "**/*-spec.*",
+        "**/*-test.*",
+        "**/*_test.*",
+        "**/test_*.*",
+        "scripts/audit-*",
+        "scripts/check-*",
+        "scripts/compare-*",
+        "scripts/proof-*",
+        "scripts/qa-*",
+        "scripts/smoke-*",
+        "scripts/test-*",
+        "scripts/validate-*",
+        "scripts/verify-*",
+    ],
+}
+
+JS_IMPORT_SPECIFIER_PATTERNS = (
+    re.compile(r"(?m)^\s*import\s*['\"]([^'\"]+)['\"]"),
+    re.compile(r"(?ms)^\s*(?:import|export)\s+[^;]{0,2000}?\s+from\s*['\"]([^'\"]+)['\"]"),
+    re.compile(r"\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)"),
+    re.compile(r"\bimport\(\s*['\"]([^'\"]+)['\"]\s*\)"),
+)
+PYTHON_IMPORT_SPECIFIER_PATTERNS = (
+    re.compile(r"(?m)^\s*from\s+([.]*[A-Za-z_][\w.]*)\s+import\s+"),
+    re.compile(r"(?m)^\s*import\s+([A-Za-z_][\w.]*)"),
+)
 
 SYMBOL_PATTERNS = (
     ("class", re.compile(r"^\s*(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_$][\w$]*)")),
@@ -208,6 +255,109 @@ def _project_root(project: str | Path) -> Path:
     if root in unsafe:
         raise ValueError("unsafe_project_root")
     return root
+
+
+def _context_index_policy(root: Path) -> dict[str, Any]:
+    """Load a tracked, project-owned indexing policy without consulting private state."""
+
+    path = root / "agentlas-context-map.json"
+    if not path.exists():
+        return dict(DEFAULT_CONTEXT_INDEX_POLICY)
+    payload = _read_json_object(path)
+    if payload.get("schemaVersion") != CONTEXT_INDEX_POLICY_SCHEMA:
+        raise ValueError("context_index_policy_invalid")
+    policy = dict(DEFAULT_CONTEXT_INDEX_POLICY)
+    for field in ("excludeRoots", "mirrorRoots", "testRoots", "testGlobs"):
+        values = payload.get(field, policy[field])
+        if not isinstance(values, list) or any(
+            not isinstance(value, str)
+            or not value.strip()
+            or value.startswith(("/", "./"))
+            or ".." in Path(value).parts
+            for value in values
+        ):
+            raise ValueError("context_index_policy_invalid")
+        policy[field] = sorted({value.strip().strip("/") for value in values})
+    policy["schemaVersion"] = CONTEXT_INDEX_POLICY_SCHEMA
+    return policy
+
+
+def _policy_digest(policy: Mapping[str, Any]) -> str:
+    return _canonical_json_digest(dict(policy))
+
+
+def _matches_root(relative: str, roots: Sequence[str]) -> bool:
+    return any(relative == root or relative.startswith(root + "/") for root in roots)
+
+
+def _matches_test_policy(relative: str, policy: Mapping[str, Any]) -> bool:
+    return _matches_root(relative, policy.get("testRoots") or ()) or any(
+        fnmatch.fnmatchcase(relative, pattern)
+        for pattern in policy.get("testGlobs") or ()
+    )
+
+
+def _policy_allows(relative: str, policy: Mapping[str, Any]) -> bool:
+    return not _matches_root(relative, policy.get("excludeRoots") or ()) and not _matches_root(
+        relative,
+        policy.get("mirrorRoots") or (),
+    )
+
+
+def _file_role(relative: str) -> str:
+    path = Path(relative)
+    suffix = path.suffix.lower()
+    if _is_ci_workflow_path(relative):
+        return "workflow"
+    if _is_test_path(relative):
+        return "test"
+    if _is_version_contract_path(relative):
+        return "version_contract"
+    if suffix in CODE_EXTENSIONS:
+        return "source"
+    if suffix in {".md", ".mdx", ".rst", ".txt"}:
+        return "documentation"
+    if suffix in {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".xml"}:
+        return "config"
+    return "asset"
+
+
+def _content_snapshot(
+    root: Path,
+    relative_files: Sequence[str],
+    policy: Mapping[str, Any],
+) -> tuple[str, dict[str, str], int]:
+    """Return a content-addressed snapshot; stat timestamps are cache hints only."""
+
+    digest = hashlib.sha256()
+    content_hashes: dict[str, str] = {}
+    read_bytes = 0
+    digest.update(_policy_digest(policy).encode("ascii"))
+    digest.update(b"\0")
+    for relative in sorted(relative_files):
+        path = root / relative
+        file_digest = hashlib.sha256()
+        try:
+            with path.open("rb") as handle:
+                while True:
+                    chunk = handle.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    read_bytes += len(chunk)
+                    if read_bytes > MAX_SNAPSHOT_READ_BYTES:
+                        raise OSError("context_snapshot_read_budget_exceeded")
+                    file_digest.update(chunk)
+        except OSError:
+            raise
+        value = "sha256:" + file_digest.hexdigest()
+        content_hashes[relative] = value
+        digest.update(relative.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+        digest.update(_file_role(relative).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(value.encode("ascii"))
+        digest.update(b"\0")
+    return "sha256:" + digest.hexdigest(), content_hashes, read_bytes
 
 
 def _truthy_env(name: str) -> bool:
@@ -605,15 +755,6 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
             continue
         _write_missing(root / relative, rendered, created, root)
 
-    template_root = _template_root()
-    if template_root:
-        for template in sorted(template_root.glob("super-ontology-*.tpl")):
-            relative = ".agentlas/" + template.name.removesuffix(".tpl")
-            rendered = _render_template(template.name, replacements)
-            if rendered is not None:
-                _write_missing(root / relative, rendered, created, root)
-    else:
-        warnings.append("template_root_missing:super_ontology_not_seeded")
     return created, warnings
 
 
@@ -977,6 +1118,7 @@ def _merge_managed_sitemap_context(
         key = (edge["from"], edge["to"], edge["type"])
         if key not in existing_edges:
             edges.append(edge)
+            existing_edges.add(key)
             changed = True
     if isinstance(code_map, dict):
         next_projection = {
@@ -1088,7 +1230,7 @@ def _harden_private_tree(root: Path) -> list[str]:
 def _safe_file(root: Path, path: Path) -> bool:
     try:
         relative = path.relative_to(root)
-        if any(part in SKIP_DIRS or part == ".." for part in relative.parts):
+        if _should_skip_relative_path(relative):
             return False
         if path.is_symlink():
             return False
@@ -1097,6 +1239,24 @@ def _safe_file(root: Path, path: Path) -> bool:
         return stat.S_ISREG(os.stat(path, follow_symlinks=False).st_mode)
     except (OSError, RuntimeError, ValueError):
         return False
+
+
+def _should_skip_relative_path(relative: Path) -> bool:
+    parts = relative.parts
+    if not parts or any(
+        part == ".." or part in SKIP_DIRS or part.lower().endswith(".app")
+        for part in parts
+    ):
+        return True
+    return parts[0] in ROOT_OUTPUT_DIRS
+
+
+def _prune_walk_directories(root: Path, current: Path, dirnames: list[str]) -> None:
+    dirnames[:] = [
+        name
+        for name in dirnames
+        if not _should_skip_relative_path((current / name).relative_to(root))
+    ]
 
 
 def _run_bounded_stdout(
@@ -1239,8 +1399,8 @@ def _walk_file_list(root: Path, deadline: float) -> tuple[list[Path], str | None
     skipped_unsafe = 0
     stop: str | None = None
     for current, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
         current_path = Path(current)
+        _prune_walk_directories(root, current_path, dirnames)
         for name in filenames:
             path = current_path / name
             if _safe_file(root, path):
@@ -1257,6 +1417,7 @@ def _walk_file_list(root: Path, deadline: float) -> tuple[list[Path], str | None
 def _walk_local_test_files(
     root: Path,
     deadline: float,
+    policy: Mapping[str, Any] | None = None,
 ) -> tuple[list[Path], str | None, int]:
     """Discover local test code even when Git intentionally ignores it.
 
@@ -1267,9 +1428,18 @@ def _walk_local_test_files(
 
     files: list[Path] = []
     skipped_unsafe = 0
+    selected_policy = policy or DEFAULT_CONTEXT_INDEX_POLICY
     for current, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
         current_path = Path(current)
+        _prune_walk_directories(root, current_path, dirnames)
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if _policy_allows(
+                (current_path / name).relative_to(root).as_posix(),
+                selected_policy,
+            )
+        ]
         for name in filenames:
             path = current_path / name
             try:
@@ -1277,7 +1447,12 @@ def _walk_local_test_files(
             except ValueError:
                 skipped_unsafe += 1
                 continue
-            if not _is_test_path(relative):
+            if not _policy_allows(relative, selected_policy):
+                continue
+            if (
+                not _matches_test_policy(relative, selected_policy)
+                or Path(relative).suffix.lower() not in CODE_EXTENSIONS
+            ):
                 continue
             if _safe_file(root, path):
                 files.append(path)
@@ -1360,6 +1535,7 @@ def _code_map_binding_complete(
 ) -> bool:
     stats = project_map.get("stats") if isinstance(project_map.get("stats"), dict) else {}
     expected_root_hash = _project_root_hash(project)
+    manifest = _read_json_object(project / ".agentlas" / "code-map" / "manifest.json")
     return (
         project_map.get("schemaVersion") == "agentlas.code-map.v2"
         and project_map.get("projectRootHash") == expected_root_hash
@@ -1369,7 +1545,18 @@ def _code_map_binding_complete(
         and cache.get("policyVersion") == CODE_MAP_POLICY_VERSION
         and cache.get("projectRootHash") == expected_root_hash
         and cache.get("fingerprintHash") == project_map.get("fingerprintHash")
+        and cache.get("snapshotId") == project_map.get("snapshotId")
+        and cache.get("policyDigest") == project_map.get("policyDigest")
         and cache.get("mapPayloadDigest") == _canonical_json_digest(project_map)
+        and manifest.get("schemaVersion") == CODE_MAP_MANIFEST_SCHEMA
+        and manifest.get("projectRootHash") == expected_root_hash
+        and manifest.get("snapshotId") == project_map.get("snapshotId")
+        and manifest.get("policyDigest") == project_map.get("policyDigest")
+        and manifest.get("complete") is True
+        and isinstance(manifest.get("compatibilityMap"), dict)
+        and manifest["compatibilityMap"].get("path") == "project-map.json"
+        and manifest["compatibilityMap"].get("schemaVersion") == project_map.get("schemaVersion")
+        and manifest["compatibilityMap"].get("digest") == _canonical_json_digest(project_map)
         and cache.get("completeMap") is True
         and stats.get("coverageComplete") is True
         and stats.get("incompleteReasons") == []
@@ -1400,6 +1587,10 @@ def _code_map_incomplete_reasons(stats: dict[str, Any]) -> list[str]:
         reasons.append("output_truncated")
     if stats.get("verificationGraphTruncated") is True:
         reasons.append("verification_graph_truncated")
+    if stats.get("dependencyEdgesTruncated") is True:
+        reasons.append("dependency_graph_truncated")
+    if stats.get("snapshotComplete") is not True:
+        reasons.append("snapshot_incomplete")
     return sorted(set(reasons))
 
 
@@ -1601,7 +1792,115 @@ def _package_test_commands(relative: str, text: str) -> list[dict[str, str]]:
                 "command": command[:1_000],
             }
         )
-    return rows[:256]
+    def command_priority(row: Mapping[str, str]) -> tuple[int, str]:
+        name = row["name"].lower()
+        broad = name in {"test", "typecheck", "check", "verify", "e2e:smoke"}
+        return (0 if broad else 1, name)
+
+    return sorted(rows, key=command_priority)[:256]
+
+
+def _resolve_import_specifier(
+    importer: str,
+    specifier: str,
+    source_files: set[str],
+) -> str | None:
+    specifier = specifier.strip()
+    if not specifier:
+        return None
+    importer_parent = Path(importer).parent
+    importer_suffix = Path(importer).suffix.lower()
+    raw_candidates: list[Path] = []
+    if importer_suffix == ".py":
+        leading_dots = len(specifier) - len(specifier.lstrip("."))
+        module = specifier[leading_dots:].replace(".", "/")
+        if leading_dots:
+            base = importer_parent
+            for _ in range(max(0, leading_dots - 1)):
+                base = base.parent
+            raw_candidates.append(base / module)
+        else:
+            raw_candidates.extend((Path(module), Path("src") / module))
+    elif specifier.startswith("."):
+        raw_candidates.append(importer_parent / specifier)
+    elif specifier.startswith("@/"):
+        alias_path = specifier[2:]
+        raw_candidates.extend((Path(alias_path), Path("src") / alias_path))
+    else:
+        # Bare JS/TS specifiers name external packages unless a project alias
+        # explicitly says otherwise. Treating `react` as local `src/react.ts`
+        # creates authoritative false edges.
+        return None
+    if importer_suffix == ".py" and not raw_candidates:
+        dotted = specifier.replace(".", "/")
+        raw_candidates.extend((Path(specifier), Path(dotted), Path("src") / dotted))
+    candidates: list[str] = []
+    extensions = tuple(sorted(CODE_EXTENSIONS))
+    for raw in raw_candidates:
+        normalized = Path(os.path.normpath(raw.as_posix())).as_posix()
+        if normalized.startswith("../") or normalized == "..":
+            continue
+        candidates.append(normalized)
+        if not Path(normalized).suffix:
+            candidates.extend(normalized + extension for extension in extensions)
+            candidates.extend((Path(normalized) / ("index" + extension)).as_posix() for extension in extensions)
+            candidates.extend((Path(normalized) / ("__init__" + extension)).as_posix() for extension in extensions)
+    exact = sorted({candidate for candidate in candidates if candidate in source_files})
+    return exact[0] if len(exact) == 1 else None
+
+
+def _import_specifiers(importer: str, text: str) -> list[str]:
+    suffix = Path(importer).suffix.lower()
+    if suffix == ".py":
+        # Python comments end at the line boundary; import strings are not
+        # meaningful dependency declarations.
+        searchable = re.sub(r"(?m)#.*$", "", text)
+        patterns = PYTHON_IMPORT_SPECIFIER_PATTERNS
+    elif suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}:
+        # Remove comments before scanning require()/import() so examples and
+        # disabled code never become blocking dependency edges.
+        searchable = re.sub(r"/\*[\s\S]*?\*/", "", text)
+        searchable = re.sub(r"(?m)//.*$", "", searchable)
+        patterns = JS_IMPORT_SPECIFIER_PATTERNS
+    else:
+        return []
+    return sorted(
+        {
+            match.group(1).strip()
+            for pattern in patterns
+            for match in pattern.finditer(searchable)
+            if match.group(1).strip()
+        }
+    )
+
+
+def _exact_dependency_edges(
+    *,
+    scanned_files: Sequence[str],
+    file_texts: Mapping[str, str],
+) -> tuple[list[dict[str, str]], bool]:
+    """Build authoritative reverse dependencies from exact import paths only."""
+
+    source_files = set(scanned_files)
+    rows: set[tuple[str, str, str]] = set()
+    truncated = False
+    for importer in sorted(scanned_files):
+        text = file_texts.get(importer, "")
+        for specifier in _import_specifiers(importer, text):
+            target = _resolve_import_specifier(importer, specifier, source_files)
+            if target is None or target == importer:
+                continue
+            rows.add((target, importer, "imports"))
+            if len(rows) > MAX_DEPENDENCY_EDGES:
+                truncated = True
+                break
+        if truncated:
+            break
+    ordered = sorted(rows)[:MAX_DEPENDENCY_EDGES]
+    return [
+        {"from": source, "to": target, "relation": relation}
+        for source, target, relation in ordered
+    ], truncated
 
 
 def _verification_graph(
@@ -1609,10 +1908,10 @@ def _verification_graph(
     *,
     relative_files: Sequence[str],
     scanned_files: Sequence[str],
-    definitions: Mapping[str, Sequence[Mapping[str, Any]]],
-    ref_index: Mapping[str, Sequence[str]],
+    test_files: Sequence[str],
+    dependency_edges: Sequence[Mapping[str, str]],
 ) -> dict[str, Any]:
-    test_files = sorted(relative for relative in scanned_files if _is_test_path(relative))
+    test_files = sorted(set(test_files))
     workflow_files = sorted(relative for relative in relative_files if _is_ci_workflow_path(relative))
     version_files = sorted(relative for relative in relative_files if _is_version_contract_path(relative))
     texts = {
@@ -1664,21 +1963,25 @@ def _verification_graph(
         }
         nodes.append(row)
         version_contracts.append(row)
+    node_count = len(nodes)
     nodes = nodes[:MAX_VERIFICATION_NODES]
     allowed_node_ids = {str(node["id"]) for node in nodes}
 
     edges: list[dict[str, str]] = []
     edge_keys: set[tuple[str, str, str]] = set()
+    edge_limit_hit = False
 
     def add_edge(source: str, target: str, relation: str) -> None:
+        nonlocal edge_limit_hit
         key = (source, target, relation)
+        if key in edge_keys:
+            return
+        if len(edges) >= MAX_VERIFICATION_EDGES:
+            edge_limit_hit = True
+            return
         if (
-            key in edge_keys
-            or len(edges) >= MAX_VERIFICATION_EDGES
-            or (
                 (source.startswith(("test:", "command:", "ci:", "version:")) and source not in allowed_node_ids)
                 or (target.startswith(("test:", "command:", "ci:", "version:")) and target not in allowed_node_ids)
-            )
         ):
             return
         edge_keys.add(key)
@@ -1686,27 +1989,12 @@ def _verification_graph(
 
     test_set = set(test_files)
     source_files = [relative for relative in scanned_files if relative not in test_set]
-    for symbol, definition_rows in definitions.items():
-        tests = sorted(
-            {
-                str(relative)
-                for relative in ref_index.get(symbol, ())
-                if isinstance(relative, str) and relative in test_set
-            }
-        )
-        if not tests:
-            continue
-        sources = sorted(
-            {
-                str(row.get("f") or "")
-                for row in definition_rows
-                if isinstance(row, Mapping)
-                and str(row.get("f") or "") in source_files
-            }
-        )
-        for source in sources:
-            for test in tests:
-                add_edge(source, f"test:{test}", "verified_by")
+    source_set = set(source_files)
+    for dependency in dependency_edges:
+        source = str(dependency.get("from") or "")
+        target = str(dependency.get("to") or "")
+        if source in source_set and target in test_set:
+            add_edge(source, f"test:{target}", "verified_by_import")
 
     source_by_stem: dict[str, list[str]] = defaultdict(list)
     for relative in source_files:
@@ -1720,7 +2008,32 @@ def _verification_graph(
         }
         for normalized in sorted(normalized_stems):
             for source in source_by_stem.get(normalized, ()):
-                add_edge(source, f"test:{test}", "verified_by_name")
+                add_edge(source, f"test:{test}", "advisory_by_name")
+
+    broad_command_names = {"test", "typecheck", "check", "verify", "e2e:smoke"}
+    commands_by_scope: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for command in commands:
+        name = command["name"].lower()
+        if name in broad_command_names or name.endswith((":typecheck", ":check")):
+            commands_by_scope[Path(command["path"]).parent.as_posix()].append(command)
+    for source in source_files:
+        source_parts = Path(source).parts
+        matching_scopes = [
+            scope
+            for scope in commands_by_scope
+            if scope == "."
+            or Path(scope).parts == source_parts[: len(Path(scope).parts)]
+        ]
+        if not matching_scopes:
+            continue
+        nearest_scope = max(matching_scopes, key=lambda scope: len(Path(scope).parts))
+        def command_rank(row: Mapping[str, str]) -> tuple[int, str, str]:
+            name = row["name"].lower()
+            rank = 0 if name == "test" else 1 if name == "typecheck" else 2 if name == "check" else 3
+            return rank, name, row["id"]
+
+        for command in sorted(commands_by_scope[nearest_scope], key=command_rank)[:1]:
+            add_edge(source, command["id"], "verified_by_command")
 
     for test in test_files:
         test_name = Path(test).name
@@ -1778,8 +2091,29 @@ def _verification_graph(
         if not matching_scopes:
             continue
         nearest_scope = max(matching_scopes, key=lambda scope: len(Path(scope).parts))
-        for contract in contracts_by_scope[nearest_scope]:
-            add_edge(source, str(contract["id"]), "versioned_by")
+        contract_priority = {
+            "package.json": 0,
+            "pyproject.toml": 1,
+            "cargo.toml": 2,
+            "manifest.json": 3,
+            "gemini-extension.json": 4,
+            "package-lock.json": 5,
+        }
+        authoritative_contract = min(
+            contracts_by_scope[nearest_scope],
+            key=lambda row: (
+                contract_priority.get(Path(str(row["path"])).name.lower(), 99),
+                str(row["path"]),
+            ),
+        )
+        # Version ownership is a release obligation, not evidence that source
+        # code was executed. Advisory edges remain visible in the graph while
+        # ordinary verification traversal intentionally skips them.
+        add_edge(
+            source,
+            str(authoritative_contract["id"]),
+            "advisory_versioned_by",
+        )
     for workflow in workflow_files:
         lowered = texts.get(workflow, "").lower()
         if any(marker in lowered for marker in ("release", "publish", "deploy", "tag")):
@@ -1843,8 +2177,8 @@ def _verification_graph(
             "edges": len(edges),
             "issues": len(issues),
             "truncated": (
-                len(nodes) >= MAX_VERIFICATION_NODES
-                or len(edges) >= MAX_VERIFICATION_EDGES
+                node_count > MAX_VERIFICATION_NODES
+                or edge_limit_hit
                 or len(issues) >= 256
             ),
         },
@@ -1855,11 +2189,14 @@ def _verification_graph(
 
 def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any]:
     project = _project_root(root)
+    policy = _context_index_policy(project)
+    policy_digest = _policy_digest(policy)
     out_dir = project / ".agentlas" / "code-map"
     json_path = out_dir / "project-map.json"
     md_path = out_dir / "project-map.md"
     seed_path = out_dir / "project-seed.json"
     cache_path = out_dir / ".cache.json"
+    manifest_path = out_dir / "manifest.json"
     started = time.monotonic()
     deadline = started + MAX_CODE_SCAN_SECONDS
     all_files, list_stop, skipped_unsafe = _git_file_list(project, deadline)
@@ -1876,9 +2213,10 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         path.relative_to(project).as_posix()
         for path in all_files
         if _safe_file(project, path)
+        and _policy_allows(path.relative_to(project).as_posix(), policy)
     }
     local_test_files, local_test_stop, local_test_skipped_unsafe = (
-        _walk_local_test_files(project, deadline)
+        _walk_local_test_files(project, deadline, policy)
     )
     skipped_unsafe += local_test_skipped_unsafe
     if local_test_stop:
@@ -1898,13 +2236,14 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         relative
         for relative in relative_files
         if Path(relative).suffix.lower() in CODE_EXTENSIONS
-        and _is_test_path(relative)
+        and (_is_test_path(relative) or relative in local_test_code_files)
     )
     source_code_candidates = [
         relative
         for relative in relative_files
         if Path(relative).suffix.lower() in CODE_EXTENSIONS
         and not _is_test_path(relative)
+        and relative not in local_test_code_files
     ]
     code_files = source_code_candidates[:MAX_CODE_FILES]
     if len(source_code_candidates) > MAX_CODE_FILES:
@@ -1918,7 +2257,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             or relative in local_test_relative_files
         )
     ]
-    fingerprint_files = sorted(set(code_files + verification_files))
+    fingerprint_files = relative_files
     fingerprints: dict[str, dict[str, int]] = {}
     fingerprint_failures = 0
     for relative in fingerprint_files:
@@ -1933,20 +2272,33 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "size": file_stat.st_size,
         }
     fingerprint = _fingerprint_hash(fingerprints)
+    snapshot_complete = False
+    try:
+        snapshot_id, content_hashes, snapshot_read_bytes = _content_snapshot(
+            project,
+            relative_files,
+            policy,
+        )
+        snapshot_complete = True
+    except OSError:
+        snapshot_id, content_hashes, snapshot_read_bytes = "", {}, 0
+        list_stop = list_stop or "snapshot_read_incomplete"
 
     cache = _read_json_object(cache_path)
     existing_map = _read_json_object(json_path)
     complete_listing = list_stop is None
     cache_current = (
         _code_map_binding_complete(project, existing_map, cache)
-        and cache.get("fingerprintHash") == fingerprint
-        and int(cache.get("candidateCodeFiles") or -1) == len(code_files)
-        and int(cache.get("candidateMappedFiles") or -1) == len(fingerprints)
+        and cache.get("snapshotId") == snapshot_id
+        and existing_map.get("snapshotId") == snapshot_id
+        and cache.get("policyDigest") == policy_digest
+        and int(cache.get("candidateCodeFiles", -1)) == len(code_files)
+        and int(cache.get("candidateMappedFiles", -1)) == len(fingerprints)
         and cache.get("completeListing") is True
         and cache.get("listingSource") == source
         and complete_listing
     )
-    if json_path.exists() and md_path.exists() and seed_path.exists() and not force and cache_current:
+    if json_path.exists() and md_path.exists() and seed_path.exists() and manifest_path.exists() and not force and cache_current:
         sitemap_warning = _merge_managed_sitemap_context(project, _read_json_object(json_path))
         return {
             "status": "existing",
@@ -1985,6 +2337,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     read_bytes = 0
     token_occurrences = 0
     scanned_files: list[str] = []
+    file_texts: dict[str, str] = {}
     budget_stop = list_stop
     total_symbols = 0
     for relative in code_files:
@@ -2009,6 +2362,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             continue
         read_bytes += file_stat.st_size
         scanned_files.append(relative)
+        file_texts[relative] = text
         symbols, symbols_truncated = _extract_symbols(text, MAX_TOTAL_SYMBOLS - total_symbols)
         total_symbols += len(symbols)
         if symbols_truncated:
@@ -2091,6 +2445,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             continue
         verification_test_bytes += file_stat.st_size
         scanned_verification_test_files.append(relative)
+        file_texts[relative] = text
         tokens = {
             match.group(0).lower()
             for match in TOKEN_PATTERN.finditer(text)
@@ -2119,14 +2474,17 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         {"from": source_module, "to": target_module, "weight": weight}
         for (source_module, target_module), weight in module_dependencies.most_common(100)
     ]
+    all_scanned_files = sorted(set(scanned_files + scanned_verification_test_files))
+    dependency_edges, dependency_edges_truncated = _exact_dependency_edges(
+        scanned_files=all_scanned_files,
+        file_texts=file_texts,
+    )
     verification_graph = _verification_graph(
         project,
         relative_files=relative_files,
-        scanned_files=sorted(
-            set(scanned_files + scanned_verification_test_files)
-        ),
-        definitions=definitions,
-        ref_index=ref_index,
+        scanned_files=all_scanned_files,
+        test_files=scanned_verification_test_files,
+        dependency_edges=dependency_edges,
     )
 
     generated_at = utc_now()
@@ -2135,6 +2493,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         and skipped_large == 0
         and skipped_unreadable == 0
         and fingerprint_failures == 0
+        and snapshot_complete
+        and not dependency_edges_truncated
         and len(scanned_files) == len(code_files)
         and len(scanned_verification_test_files) == len(verification_test_code_files)
     )
@@ -2143,11 +2503,41 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         for key in truncated_ref_symbols
     )
     project_root_hash = _project_root_hash(project)
+    previous_roles = (
+        existing_map.get("fileRoles")
+        if isinstance(existing_map.get("fileRoles"), dict)
+        else {}
+    )
+    previous_tombstones = (
+        existing_map.get("tombstones")
+        if isinstance(existing_map.get("tombstones"), dict)
+        else {}
+    )
+    current_files = set(relative_files)
+    tombstones = {
+        str(path): dict(row) if isinstance(row, dict) else {"role": "unknown"}
+        for path, row in previous_tombstones.items()
+        if isinstance(path, str)
+        and path not in current_files
+        and not (project / path).exists()
+    }
+    for path, role in previous_roles.items():
+        if (
+            isinstance(path, str)
+            and path not in current_files
+            and not (project / path).exists()
+        ):
+            tombstones[path] = {
+                "role": str(role or "unknown"),
+                "resolution": "deleted",
+            }
     project_map = {
         "schemaVersion": "agentlas.code-map.v2",
         "project": project.name,
         "projectRootHash": project_root_hash,
         "fingerprintHash": fingerprint,
+        "snapshotId": snapshot_id,
+        "policyDigest": policy_digest,
         "generatedAt": generated_at,
         "source": source,
         "stats": {
@@ -2162,6 +2552,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "skippedLarge": skipped_large,
             "skippedUnreadable": skipped_unreadable,
             "fingerprintFailures": fingerprint_failures,
+            "snapshotReadBytes": snapshot_read_bytes,
+            "snapshotComplete": snapshot_complete,
             "skippedUnsafe": skipped_unsafe,
             "bytesRead": read_bytes,
             "readByteLimit": MAX_CODE_TOTAL_READ_BYTES,
@@ -2179,6 +2571,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "localVerificationFiles": len(local_test_relative_files),
             "verificationTestBytes": verification_test_bytes,
             "verificationGraphTruncated": verification_graph["stats"]["truncated"],
+            "dependencyEdges": len(dependency_edges),
+            "dependencyEdgesTruncated": dependency_edges_truncated,
             "fallbackReason": fallback_reason,
             "genMs": int((time.monotonic() - started) * 1000),
         },
@@ -2189,12 +2583,21 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         "byExt": dict(by_extension.most_common(30)),
         "indexedFiles": scanned_files,
         "mappedFiles": sorted(
-            set(scanned_files + list(verification_graph.get("mappedFiles") or []))
+            set(relative_files)
         ),
+        "fileRoles": {
+            relative: (
+                "test" if relative in verification_test_code_files else _file_role(relative)
+            )
+            for relative in relative_files
+        },
+        "tombstones": tombstones,
+        "contentHashes": content_hashes,
         "fileSymbols": file_symbols,
         "defIndex": dict(definitions),
         "refIndex": dict(ref_index),
         "refCount": dict(ref_count),
+        "dependencyEdges": dependency_edges,
         "verificationGraph": verification_graph,
     }
     markdown = "\n".join(
@@ -2231,7 +2634,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     serialized_map, output_bytes = _bounded_project_map(project_map)
     coverage_complete = project_map["stats"].get("coverageComplete") is True
     map_payload_digest = _canonical_json_digest(project_map)
-    existed = {path for path in (json_path, md_path, seed_path, cache_path) if path.exists()}
+    existed = {path for path in (json_path, md_path, seed_path, cache_path, manifest_path) if path.exists()}
     _ensure_dir(out_dir, 0o700)
     _atomic_write(json_path, serialized_map)
     _atomic_write(md_path, markdown)
@@ -2261,6 +2664,34 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         + "\n",
     )
     _atomic_write(
+        manifest_path,
+        json.dumps(
+            {
+                "schemaVersion": CODE_MAP_MANIFEST_SCHEMA,
+                "project": project.name,
+                "projectRootHash": project_root_hash,
+                "snapshotId": snapshot_id,
+                "policyDigest": policy_digest,
+                "complete": coverage_complete,
+                "compatibilityMap": {
+                    "path": "project-map.json",
+                    "schemaVersion": project_map["schemaVersion"],
+                    "digest": map_payload_digest,
+                },
+                "indexes": {
+                    "inventoryCount": len(relative_files),
+                    "dependencyEdgeCount": len(dependency_edges),
+                    "verificationGraphDigest": verification_graph["graphDigest"],
+                    "tombstoneCount": len(tombstones),
+                },
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+    )
+    _atomic_write(
         cache_path,
         json.dumps(
             {
@@ -2268,6 +2699,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
                 "policyVersion": CODE_MAP_POLICY_VERSION,
                 "generatedAt": generated_at,
                 "fingerprintHash": fingerprint,
+                "snapshotId": snapshot_id,
+                "policyDigest": policy_digest,
                 "candidateCodeFiles": len(code_files),
                 "candidateMappedFiles": len(fingerprints),
                 "completeListing": complete_listing,
@@ -2287,7 +2720,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         "path": ".agentlas/code-map/project-map.json",
         "created": [
             path.relative_to(project).as_posix()
-            for path in (json_path, md_path, seed_path, cache_path)
+            for path in (json_path, md_path, seed_path, cache_path, manifest_path)
             if path not in existed
         ],
         "stats": project_map["stats"],

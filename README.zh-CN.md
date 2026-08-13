@@ -45,11 +45,9 @@ https://github.com/agentlas-ai/Agentlas-OS
 同时写入可在下一次 session 中继续使用的 host command adapters：
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-对于 Claude Code，请确认 `hephaestus@agentlas-core-engine` 已在 user scope
-启用，并且 `~/.claude/commands/agentlas build.md` 存在。如果下一次 session 中
-无法使用 bare `/agentlas build`，不要报告安装完成。最后确认已启用的 plugin、
-command surface 和 global routing 状态，并提示我重启 host 或运行
-`/reload-plugins`。
+请报告安装器自身的验证输出。如果下一次 session 中 `/agentlas build`
+（或该 host 对应的 command surface）无法使用，不要报告安装完成；确认可用后，
+提示我重启 host 或重新加载 plugin。
 ```
 
 当你已经在某个 LLM 里，并希望直接启用 Hephaestus 时使用这段内容。
@@ -185,7 +183,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 在操作系统终端中运行：
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.0
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.1
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注：Codex 应用内不支持 `/plugin marketplace add`，请在操作系统终端中运行上面两条命令。操作系统终端的 CLI 命令为单数形式（`codex plugin`）；在 Codex 应用内，插件浏览器的斜杠命令为复数形式（`/plugins`）。安装完成后，`/prompts:agentlas` 即为应用内入口。*

@@ -34,8 +34,9 @@ done
 1. Author a redacted `agentlas.workforce-work-order.v1`; private project
    grounding stays on-host.
 2. Call `workforce.search_candidates` with
-   `{workOrder, sourceScope: "cloud"}` and keep the complete response as
-   `federationResult`.
+   `{workOrder, sourceScope: "cloud"}`. Preserve the Cloud source receipt and
+   `selectionSessionId`; the projected menu is not a complete
+   `federationResult` and must not be echoed as one.
 3. Author the final `agentlas.workforce-selection.v1` as the active host LLM,
    then call `workforce.validate_selection` with
    `{workOrder, selection}` and keep the response as `federatedSelection`. Revise on
@@ -48,7 +49,9 @@ done
 5. Execute distinct planner/manager, worker, synthesis, and verifier calls with
    explicit artifact handoffs. Preserve packaged Team graphs.
 
-If owner authentication or the Cloud source is unavailable, report
-`source_unavailable` and the Core receipt. Do not silently search Local or Hub,
+Report the exact finite Core refusal—such as `source_unauthorized`,
+`source_forbidden`, `source_rate_limited`, `insufficient_credits`, `owner_only`,
+`no_cloud_package`, `agent_not_found`, `source_not_supported`, or
+`source_unavailable`—with the source receipt. Do not silently search Local or Hub,
 call a legacy route, or expose a direct remote `agentlas` MCP alongside Core.
 A prepared roster is not proof of execution.

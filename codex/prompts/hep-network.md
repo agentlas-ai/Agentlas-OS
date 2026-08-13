@@ -42,8 +42,9 @@ done
    delivery language, not the search language — keep it as the required output
    language even though the order is authored in English.
 2. Call `workforce.search_candidates` with
-   `{workOrder, sourceScope: "network"}` and keep the response as
-   `federationResult`. Preserve source receipts and provenance; unavailable
+   `{workOrder, sourceScope: "network"}` and preserve source receipts plus
+   `selectionSessionId`. The default response is a projected menu, not a
+   complete `federationResult`; do not echo it as one. Unavailable
    sources remain explicit.
 3. From content and qualification evidence, author
    `agentlas.workforce-selection.v1` yourself. Call

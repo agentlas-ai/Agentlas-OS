@@ -10,8 +10,14 @@ from pathlib import Path
 import sqlite3
 import stat
 from typing import Any, Mapping
+from uuid import uuid4
 
-from .contracts import canonical_digest, canonical_json, validate_candidate_set_coverage_gaps
+from .contracts import (
+    canonical_digest,
+    canonical_json,
+    normalize_work_order,
+    validate_candidate_set_coverage_gaps,
+)
 from .federation import LineageVerifier, validate_federation_result
 from .privacy import WorkOrderHubBoundaryError, assert_hub_work_order_boundary
 
@@ -43,6 +49,13 @@ class FederationSessionStore:
     ):
         self.path = (Path(path) if path else default_federation_store_path()).expanduser()
         self._memory_only = str(self.path) == ":memory:"
+        self._closed = False
+        self._memory_uri = (
+            f"file:agentlas-federation-{uuid4().hex}?mode=memory&cache=shared"
+            if self._memory_only
+            else None
+        )
+        self._memory_keeper = self._open_connection() if self._memory_only else None
         self.lineage_verifier = lineage_verifier
         self._prepare_private_store_path()
         # sqlite3.Connection.__exit__ only commits or rolls back; it does not
@@ -186,15 +199,27 @@ class FederationSessionStore:
             if os.name == "posix":
                 os.chmod(candidate, 0o600)
 
+    def _open_connection(self) -> sqlite3.Connection:
+        target = self._memory_uri if self._memory_only else str(self.path)
+        connection = sqlite3.connect(
+            target,
+            timeout=30,
+            uri=self._memory_only,
+            check_same_thread=not self._memory_only,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = FULL")
+        return connection
+
     def _connect(self) -> sqlite3.Connection:
+        if self._closed:
+            raise FederationSessionError("federation_session_store_closed")
         self._prepare_private_store_path()
         connection: sqlite3.Connection | None = None
         try:
-            connection = sqlite3.connect(str(self.path), timeout=30)
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA foreign_keys = ON")
-            connection.execute("PRAGMA journal_mode = WAL")
-            connection.execute("PRAGMA synchronous = FULL")
+            connection = self._open_connection()
             self._harden_private_store_files()
             return connection
         except FederationSessionError:
@@ -205,6 +230,28 @@ class FederationSessionStore:
             if connection is not None:
                 connection.close()
             raise FederationSessionError("federation_session_store_unavailable") from exc
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if self._memory_keeper is not None:
+            self._memory_keeper.close()
+            self._memory_keeper = None
+
+    def __enter__(self) -> "FederationSessionStore":
+        if self._closed:
+            raise FederationSessionError("federation_session_store_closed")
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def save(
         self,
@@ -304,9 +351,13 @@ class FederationSessionStore:
         if not isinstance(work_order, Mapping):
             raise FederationSessionError("federation_work_order_not_accepted")
         try:
-            boundary = assert_hub_work_order_boundary(work_order)
-            payload = canonical_json(work_order)
-            digest = canonical_digest(work_order)
+            # The schema defines omitted slot-list fields as the same value as
+            # explicit empty arrays. Search freezes that normalized form, so
+            # every durable read/validation boundary must canonicalize it too.
+            accepted_work_order = normalize_work_order(work_order)
+            boundary = assert_hub_work_order_boundary(accepted_work_order)
+            payload = canonical_json(accepted_work_order)
+            digest = canonical_digest(accepted_work_order)
         except (WorkOrderHubBoundaryError, TypeError, ValueError):
             raise FederationSessionError("federation_work_order_not_accepted") from None
         if boundary.get("workOrderDigest") != digest:

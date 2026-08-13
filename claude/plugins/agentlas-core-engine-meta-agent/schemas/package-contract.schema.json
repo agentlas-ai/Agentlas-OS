@@ -1,6 +1,6 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "agentlas.package-contract.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/package-contract.schema.json",
   "title": "Agentlas Package Contract",
   "description": "Machine-readable single source of truth for the artifacts every generated Agentlas package must contain. Prompts (hep-build.md, builder agents, Desktop Build) and gates (hephaestus contract verify) both derive from this file so the contract can never drift between surfaces.",
   "type": "object",
@@ -22,7 +22,13 @@
             "minItems": 1
           },
           "required": { "type": "boolean", "default": true },
-          "format": { "enum": ["json", "jsonl", "markdown"] },
+          "optionalWhen": {
+            "type": "array",
+            "items": { "enum": ["minimal-private"] },
+            "uniqueItems": true,
+            "description": "A required artifact becomes optional only after the verifier validates the named explicit build profile. Missing or malformed profile receipts remain strict."
+          },
+          "format": { "enum": ["json", "jsonl", "markdown", "text"] },
           "fill": {
             "enum": ["static", "fill", "generate"],
             "description": "static: scaffolder copies the template verbatim (no model). fill: model fills template placeholders only (extraction-shaped; safe for schema-constrained decoding). generate: model writes free-form content first, then structures it — never constrain decoding here (reasoning degrades under premature serialization)."

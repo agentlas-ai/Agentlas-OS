@@ -51,11 +51,14 @@ def _snake(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(value or "").lower()).strip("_")
 
 
-def _vocabulary(project_root: str | Path = ".") -> set[str]:
+def _vocabulary(
+    project_root: str | Path = ".",
+    graph_context: dict[str, Any] | None = None,
+) -> set[str]:
     """The controlled capability vocabulary: grammar + materialized capabilities."""
 
     grammar = load_grammar(project_root)
-    graph = load_graph(project_root)
+    graph = graph_context or load_graph(project_root)
     vocab = {str(c).strip() for c in grammar.get("capabilities", []) if str(c).strip()}
     vocab |= {
         str(c).strip()
@@ -126,9 +129,19 @@ def import_agent_card(card: dict[str, Any], project_root: str | Path = ".") -> d
     """
 
     if not isinstance(card, dict):
-        return {"error": "agent card must be a JSON object", "edges": [], "can_invoke": False}
+        return {"status": "error", "error": "agent_card_invalid", "detail": "agent card must be a JSON object", "edges": [], "can_invoke": False}
 
-    vocab = _vocabulary(project_root)
+    graph_context = load_graph(project_root)
+    if graph_context.get("status") == "stale":
+        return {
+            "status": "error",
+            "error": "ao_graph_unavailable",
+            "graph_status": graph_context.get("status"),
+            "details": list(graph_context.get("errors") or []),
+            "edges": [],
+            "can_invoke": False,
+        }
+    vocab = _vocabulary(project_root, graph_context)
     raw_name = card.get("name") or card.get("url") or "external-agent"
     external_id = f"external:{_snake(raw_name)}"
     node = {
@@ -170,6 +183,7 @@ def import_agent_card(card: dict[str, Any], project_root: str | Path = ".") -> d
         warnings.append(f"skills truncated to {_MAX_SKILLS} (received {len(raw_skills)})")
 
     return {
+        "status": "ok",
         "external_agent": node,
         "edges": edges,
         "aligned": aligned,
@@ -192,16 +206,24 @@ def export_agent_card(project_root: str | Path = ".", agent_id: str | None = Non
     ``local/``) is used, else the first agent.
     """
 
-    graph = load_graph(project_root).get("graph", {})
+    graph_context = load_graph(project_root)
+    if graph_context.get("status") != "ok":
+        return {
+            "status": "error",
+            "error": "ao_graph_unavailable",
+            "graph_status": graph_context.get("status"),
+            "details": list(graph_context.get("errors") or []),
+        }
+    graph = graph_context.get("graph", {})
     agents = graph.get("agents", [])
     if not agents:
-        return {"error": "no agents available to export"}
+        return {"status": "error", "error": "ao_agent_unavailable", "detail": "no agents available to export"}
 
     target: dict[str, Any] | None = None
     if agent_id:
         target = next((a for a in agents if str(a.get("id")) == agent_id), None)
         if target is None:
-            return {"error": f"agent not found: {agent_id}"}
+            return {"status": "error", "error": "ao_agent_not_found", "detail": f"agent not found: {agent_id}"}
     else:
         target = next((a for a in agents if str(a.get("id", "")).startswith("local/")), agents[0])
 
@@ -221,7 +243,7 @@ def export_agent_card(project_root: str | Path = ".", agent_id: str | None = Non
         "protocolVersion": "1.0",
         "name": str(target.get("name") or target_id),
         "description": f"Agentlas agent ({target_id})",
-        "version": "1.2.0",
+        "version": "1.2.1",
         "capabilities": {"streaming": False, "pushNotifications": False},
         "defaultInputModes": ["text"],
         "defaultOutputModes": ["text"],
@@ -239,6 +261,7 @@ def export_agent_card(project_root: str | Path = ".", agent_id: str | None = Non
 
     leaked = sorted(k for k in _PRIVATE_FIELDS if k in card)
     return {
+        "status": "ok",
         "agent_card": card,
         "source_agent": target_id,
         "redacted_fields": sorted(_PRIVATE_FIELDS),
@@ -255,7 +278,17 @@ def build_a2a_registry(project_root: str | Path = ".") -> dict[str, Any]:
     for external mesh exposure (redesign decision 3).
     """
 
-    graph = load_graph(project_root).get("graph", {})
+    graph_context = load_graph(project_root)
+    if graph_context.get("status") != "ok":
+        return {
+            "status": "error",
+            "error": "ao_graph_unavailable",
+            "graph_status": graph_context.get("status"),
+            "details": list(graph_context.get("errors") or []),
+            "count": 0,
+            "agents": [],
+        }
+    graph = graph_context.get("graph", {})
     caps_by_agent: dict[str, set[str]] = {}
     for edge in graph.get("edges", []):
         if str(edge.get("relation") or edge.get("kind")) != "has_capability":
@@ -281,6 +314,7 @@ def build_a2a_registry(project_root: str | Path = ".") -> dict[str, Any]:
             }
         )
     return {
+        "status": "ok",
         "format": "a2a-registry-v1",
         "count": len(entries),
         "agents": entries,

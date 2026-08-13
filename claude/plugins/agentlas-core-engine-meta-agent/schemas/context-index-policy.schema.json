@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/context-index-policy.schema.json",
+  "title": "Agentlas Context Index Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "excludeRoots", "mirrorRoots", "testRoots"],
+  "properties": {
+    "schemaVersion": {
+      "const": "agentlas.context-index-policy.v1"
+    },
+    "excludeRoots": {
+      "$ref": "#/$defs/roots"
+    },
+    "mirrorRoots": {
+      "$ref": "#/$defs/roots"
+    },
+    "testRoots": {
+      "$ref": "#/$defs/roots"
+    },
+    "testGlobs": {
+      "$ref": "#/$defs/roots"
+    }
+  },
+  "$defs": {
+    "roots": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+      }
+    }
+  }
+}

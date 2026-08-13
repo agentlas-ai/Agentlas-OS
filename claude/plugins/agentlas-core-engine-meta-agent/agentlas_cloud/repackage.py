@@ -26,8 +26,9 @@ from __future__ import annotations
 
 import json
 import re
+from functools import wraps
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping, TypeVar
 
 from .routing_vocabulary import (
     RISK_CAPABILITY_ALIASES,
@@ -48,6 +49,29 @@ SKILL_REGISTRY_SCHEMA = "agentlas.skill-registry/1"
 GLOBAL_COMMANDS_SCHEMA = "agentlas.global-commands/1"
 
 _PLACEHOLDER = re.compile(r"\{\{[A-Z0-9_]+\}\}")
+_MutationResult = TypeVar("_MutationResult")
+
+
+def _safe_package_mutator(
+    function: Callable[..., _MutationResult],
+) -> Callable[..., _MutationResult]:
+    """Fail closed before any public repackaging mutation.
+
+    CLI complete and upload both compose these APIs, but callers can also use
+    them directly.  Keeping the check on every public mutator makes safety an
+    API invariant and narrows the race window between multi-step repairs.
+    """
+
+    @wraps(function)
+    def guarded(root: str | Path, *args: Any, **kwargs: Any) -> _MutationResult:
+        from .package_contract import workspace_path_problem
+
+        path_problem = workspace_path_problem(root, must_exist=True)
+        if path_problem:
+            raise ValueError(f"{path_problem['error']}: {path_problem['message']}")
+        return function(Path(root).expanduser().resolve(), *args, **kwargs)
+
+    return guarded
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -79,6 +103,7 @@ def _first_paragraph(text: str, limit: int = 300) -> str:
     return ""
 
 
+@_safe_package_mutator
 def derive(
     package_root: str | Path,
     *,
@@ -493,6 +518,7 @@ def fill_company_blueprint(root: Path, slug: str, name: str) -> bool:
     return True
 
 
+@_safe_package_mutator
 def coerce_contract_shapes(root: Path, slug: str) -> list[str]:
     """Move already-present answers into the shape their schema declares.
 
@@ -724,7 +750,8 @@ def _card_texts(value: Any) -> list[str]:
     return out
 
 
-def reconcile_team_shape(root: Path) -> list[str]:
+@_safe_package_mutator
+def reconcile_team_shape(root: Path, *, requested_mode: str = "") -> list[str]:
     """Make the declared entity kind and the roster on disk agree.
 
     Two ways they disagree in the published corpus, both measured 2026-08-07:
@@ -738,7 +765,10 @@ def reconcile_team_shape(root: Path) -> list[str]:
        package is the fact and the card is its description; a description that
        disagrees with the folder is worse than none, so the card is corrected
        down to `agent` rather than the package being refused for a roster it
-       never had.
+       never had. This repair is forbidden while an explicit team build is in
+       progress: scaffold creates the blueprint before the builder authors its
+       roster, so absence at that intermediate point is not evidence of a
+       single-agent package.
     """
 
     changed: list[str] = []
@@ -754,7 +784,7 @@ def reconcile_team_shape(root: Path) -> list[str]:
             changed.append(f"agents/{source.stem}/agent.md (from {source.name})")
         nested = list(root.glob("agents/*/agent.md"))
 
-    if not nested:
+    if not nested and requested_mode != "team":
         # No roster: this is a single agent whatever anything else claims. The
         # card AND the blueprint both have to stop saying team, because either
         # one alone still puts the package on the TEAM branch of the contract -
@@ -773,6 +803,7 @@ def reconcile_team_shape(root: Path) -> list[str]:
     return changed
 
 
+@_safe_package_mutator
 def fill_declared_artifacts(root: Path, slug: str) -> list[str]:
     """Write the contract artifacts the routing card already answers.
 
@@ -784,7 +815,8 @@ def fill_declared_artifacts(root: Path, slug: str) -> list[str]:
 
     Keys are the ones the consumers actually read, not a shape guessed from the
     name - `context_map_authoring` reads goal/requirements/constraints/done_signal
-    off the work brief, and the benchmark rows follow templates/routing-benchmark.jsonl.tpl.
+    off the work brief, and benchmark rows are generated from routing-card
+    triggers rather than copied from an internal fixture.
     """
 
     written: list[str] = []
@@ -1049,6 +1081,7 @@ MANIFEST_CLOSED_OBJECTS = {
 }
 
 
+@_safe_package_mutator
 def prune_unrecognised_manifest_keys(root: Path) -> list[str]:
     """Drop manifest keys the schema does not admit, and name each one.
 
@@ -1081,6 +1114,7 @@ def prune_unrecognised_manifest_keys(root: Path) -> list[str]:
         _write_json(path, manifest)
     return dropped
 
+@_safe_package_mutator
 def fill_capability_eval_plan(root: Path) -> bool:
     """Write the eval plan from the trigger examples the card already carries.
 
@@ -1119,6 +1153,15 @@ def fill_capability_eval_plan(root: Path) -> bool:
         return False
 
     produces = [p for p in (card.get("produces") or []) if isinstance(p, str) and p.strip()]
+    def repeat_to_minimum(values: list[str], minimum: int) -> list[tuple[str, int]]:
+        """Repeat declared prompts as stability trials without inventing facts."""
+
+        if not values:
+            return []
+        return [(values[index % len(values)], index // len(values) + 1) for index in range(minimum)]
+
+    positive_trials = repeat_to_minimum(positive, 10)
+    negative_trials = repeat_to_minimum(negative, 5)
     payload = {
         "schemaVersion": "agentlas-capability-eval-plan/1.0",
         "positive_cases": [
@@ -1130,19 +1173,24 @@ def fill_capability_eval_plan(root: Path) -> bool:
                     "the request is accepted and handled by this agent",
                     "the deliverable follows the package's own return contract",
                 ],
+                "repeat": repeat,
             }
-            for index, prompt in enumerate(positive[:6], start=1)
+            for index, (prompt, repeat) in enumerate(positive_trials, start=1)
         ],
         "negative_cases": [
             {
                 "id": f"anti-{index:03d}",
                 "prompt": prompt,
                 "expected_behavior": "declines or reroutes; this is outside the declared scope",
+                "repeat": repeat,
             }
-            for index, prompt in enumerate(negative[:4], start=1)
+            for index, (prompt, repeat) in enumerate(negative_trials, start=1)
         ],
         "tool_smoke_checks": [],
-        "derivedFrom": ".agentlas/routing-card.json (trigger_examples, anti_triggers, produces)",
+        "derivedFrom": (
+            ".agentlas/routing-card.json (trigger_examples, anti_triggers, produces); "
+            "declared prompts repeat as stability trials until the 10/5 verifier floor"
+        ),
     }
     _write_json(path, payload)
     return True
@@ -1151,6 +1199,7 @@ def fill_capability_eval_plan(root: Path) -> bool:
 RUNTIME_ADAPTER_FILES = ("CLAUDE.md", "GEMINI.md", "AGENTS.md")
 
 
+@_safe_package_mutator
 def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
     """Write the adapter files the contract requires, from the package's own core.
 
@@ -1261,6 +1310,7 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
     return written
 
 
+@_safe_package_mutator
 def fill_thin_runtime_adapters(root: Path, slug: str) -> list[str]:
     """Write CLAUDE.md / GEMINI.md as thin adapters over AGENTS.md.
 
@@ -1324,6 +1374,7 @@ def fill_thin_runtime_adapters(root: Path, slug: str) -> list[str]:
     return written
 
 
+@_safe_package_mutator
 def redact_host_paths(root: Path) -> list[str]:
     """Replace absolute host paths with package-relative ones, in place.
 

@@ -14,6 +14,7 @@ import hashlib
 import http.server
 import json
 import os
+import re
 import secrets
 import stat
 import time
@@ -47,8 +48,66 @@ def _account_subject(value: Any) -> str | None:
     return None
 
 
+def _validated_url_parts(value: str, *, allow_query: bool) -> urllib.parse.SplitResult:
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
+    except (TypeError, ValueError) as exc:
+        raise AgentlasAuthError("Agentlas URL is invalid.") from exc
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    if not scheme or not host:
+        raise AgentlasAuthError("Agentlas URL must include a scheme and host.")
+    if parsed.username is not None or parsed.password is not None:
+        raise AgentlasAuthError("Agentlas URL must not contain embedded credentials.")
+    if scheme not in {"http", "https"}:
+        raise AgentlasAuthError("Agentlas URL scheme must be HTTP or HTTPS.")
+    if parsed.fragment or (parsed.query and not allow_query):
+        raise AgentlasAuthError("Agentlas base URL must not contain a query or fragment.")
+    if port is not None and not 1 <= port <= 65535:
+        raise AgentlasAuthError("Agentlas URL port is invalid.")
+    return parsed
+
+
 def normalize_base_url(base_url: str | None = None) -> str:
-    return (base_url or os.environ.get("AGENTLAS_HUB_URL") or DEFAULT_AGENTLAS_URL).rstrip("/")
+    raw = str(base_url or os.environ.get("AGENTLAS_HUB_URL") or DEFAULT_AGENTLAS_URL).strip()
+    parsed = _validated_url_parts(raw, allow_query=False)
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").encode("idna").decode("ascii").lower()
+    port = parsed.port
+    if port == (443 if scheme == "https" else 80):
+        port = None
+    authority_host = f"[{host}]" if ":" in host else host
+    authority = authority_host if port is None else f"{authority_host}:{port}"
+    path = (parsed.path or "").rstrip("/")
+    return urllib.parse.urlunsplit((scheme, authority, path, "", ""))
+
+
+def _url_origin(value: str) -> tuple[str, str, int]:
+    parsed = _validated_url_parts(value, allow_query=True)
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    port = parsed.port or (443 if scheme == "https" else 80)
+    return scheme, host, port
+
+
+class _CredentialAwareRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow valid redirects without forwarding a Bearer credential cross-origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urllib.parse.urljoin(req.full_url, newurl)
+        redirected = super().redirect_request(req, fp, code, msg, headers, target)
+        if redirected is not None and _url_origin(req.full_url) != _url_origin(target):
+            redirected.remove_header("Authorization")
+        return redirected
+
+
+def same_origin_urlopen(request: urllib.request.Request, *, timeout: int):
+    """Open a validated HTTP(S) request and follow redirects."""
+
+    _validated_url_parts(request.full_url, allow_query=True)
+    opener = urllib.request.build_opener(_CredentialAwareRedirectHandler())
+    return opener.open(request, timeout=timeout)
 
 
 def _assert_safe_directory_chain(path: Path) -> None:
@@ -111,13 +170,23 @@ def auth_home() -> Path:
 
 
 def token_path(base_url: str | None = None) -> Path:
-    parsed = urllib.parse.urlparse(normalize_base_url(base_url))
+    normalized = normalize_base_url(base_url)
+    parsed = urllib.parse.urlsplit(normalized)
+    label = re.sub(r"[^a-z0-9.-]+", "_", (parsed.hostname or "agentlas").lower()).strip("._") or "agentlas"
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+    return auth_home() / f"{parsed.scheme}-{label}-{digest}.json"
+
+
+def _legacy_token_path(base_url: str | None = None) -> Path | None:
+    normalized = normalize_base_url(base_url)
+    parsed = urllib.parse.urlsplit(normalized)
+    if parsed.scheme != "https":
+        return None
     host = (parsed.netloc or "agentlas").replace(":", "_")
     return auth_home() / f"{host}.json"
 
 
-def read_token_record(base_url: str | None = None) -> dict[str, Any] | None:
-    path = token_path(base_url)
+def _read_token_record_path(path: Path) -> dict[str, Any] | None:
     _assert_private_regular_file(path, allow_missing=True)
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
@@ -151,6 +220,17 @@ def read_token_record(base_url: str | None = None) -> dict[str, Any] | None:
     finally:
         os.close(descriptor)
     return payload if isinstance(payload, dict) else None
+
+
+def read_token_record(base_url: str | None = None) -> dict[str, Any] | None:
+    path = token_path(base_url)
+    record = _read_token_record_path(path)
+    if record is not None:
+        return record
+    legacy = _legacy_token_path(base_url)
+    if legacy is not None and legacy != path:
+        return _read_token_record_path(legacy)
+    return None
 
 
 def _write_token_record_unlocked(record: dict[str, Any], path: Path) -> Path:
@@ -332,13 +412,19 @@ def ensure_login_instance_id(base_url: str | None = None) -> str | None:
 
 
 def delete_token_record(base_url: str | None = None) -> bool:
-    path = token_path(base_url)
-    _assert_private_regular_file(path, allow_missing=True)
-    try:
-        path.unlink()
-        return True
-    except FileNotFoundError:
-        return False
+    paths = [token_path(base_url)]
+    legacy = _legacy_token_path(base_url)
+    if legacy is not None and legacy not in paths:
+        paths.append(legacy)
+    removed = False
+    for path in paths:
+        _assert_private_regular_file(path, allow_missing=True)
+        try:
+            path.unlink()
+            removed = True
+        except FileNotFoundError:
+            pass
+    return removed
 
 
 def auth_status(base_url: str | None = None) -> dict[str, Any]:
@@ -558,7 +644,7 @@ def _json_request(
         headers = {"Content-Type": "application/json", "Accept": "application/json", **(headers or {})}
     request = urllib.request.Request(url, data=body, headers=headers or {"Accept": "application/json"}, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with same_origin_urlopen(request, timeout=timeout) as response:
             parsed = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = _safe_http_error_detail(exc)

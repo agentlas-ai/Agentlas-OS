@@ -52,13 +52,20 @@ Use the Agentlas Core Workforce contracts in this order:
 
 ```text
 workforce.search_candidates(sourceScope="network")
-workforce.validate_selection(workOrder=..., candidateSet=federationResult.candidateSet, selection=..., federationResult=...)
-workforce.prepare_execution(workOrder=..., candidateSet=federationResult.candidateSet, selection=..., federationResult=..., federatedSelection=..., projectDir=..., goalId=activeGoalId?)
+workforce.validate_selection(workOrder=..., selection=...)
+workforce.prepare_execution(workOrder=..., selection=..., federatedSelection=..., projectDir=..., goalId=activeGoalId?)
+workforce.validate_execution_receipt(receipt=..., executionPlan=..., toolInventory=...)
 ```
 
 The source-internal `workforce.fetch_runtime_bundle` call is performed by Core
 from the pinned original source session/digest. The host must not call it
 directly or replace it with a slug/`latest` lookup.
+
+The default search response is a projected decision menu. Preserve its source
+receipts and `selectionSessionId`, but do not echo that projection as
+`federationResult`; Core resolves and revalidates the full pinned result by
+session. The final receipt call is local, bounded, and read-only. It validates
+host-produced evidence and never executes workers or creates a receipt.
 
 The current CLI equivalent is `workforce search --scope network`. A host adapter
 that does not yet expose typed `sourceScope` must report that wiring gap; it

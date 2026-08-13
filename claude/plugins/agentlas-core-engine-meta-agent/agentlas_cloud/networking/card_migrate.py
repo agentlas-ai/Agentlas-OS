@@ -28,7 +28,39 @@ _COMMAND_INSTALL_ROOTS = (
     "~/.codex/prompts",
     "~/.gemini/commands",
     "~/.gemini/antigravity/global_workflows",
+    "~/.gemini/antigravity-ide/global_workflows",
 )
+
+_ANTIGRAVITY_DATA_ROOTS = (
+    "~/.gemini/antigravity",
+    "~/.gemini/antigravity-ide",
+)
+
+
+def _command_install_targets(entry: dict[str, Any], adapter: str) -> tuple[list[str], str | None]:
+    """Return exact install targets, honoring detected Antigravity variants."""
+
+    raw_paths = entry.get("globalInstallPaths")
+    if isinstance(raw_paths, list):
+        targets = [str(item) for item in raw_paths if isinstance(item, str) and item]
+    else:
+        raw_target = str(entry.get("globalInstallPath") or "")
+        targets = [raw_target] if raw_target else []
+
+    if str(entry.get("runtime") or "").lower() != "antigravity":
+        return targets, None
+
+    # Existing generated packages declared only the legacy Antigravity path.
+    # Derive both known variants from the trusted adapter basename, then write
+    # only to data roots that already exist. Creating a missing runtime root and
+    # returning "installed" was a false-positive installation receipt.
+    filename = Path(adapter).name
+    if not filename:
+        return [], "skipped_missing_adapter"
+    detected = [Path(root).expanduser() for root in _ANTIGRAVITY_DATA_ROOTS if Path(root).expanduser().is_dir()]
+    if not detected:
+        return [], "skipped_runtime_not_detected"
+    return [str(root / "global_workflows" / filename) for root in detected], None
 
 
 def install_global_commands(pkg_dir: Path) -> list[dict[str, Any]]:
@@ -49,9 +81,16 @@ def install_global_commands(pkg_dir: Path) -> list[dict[str, Any]]:
     for entry in doc.get("commands") or []:
         if not isinstance(entry, dict) or entry.get("scope") != "global":
             continue
-        raw_target = str(entry.get("globalInstallPath") or "")
         adapter = str(entry.get("adapterPath") or "")
-        if not raw_target.startswith(("~/", "/")) or not adapter:
+        raw_targets, target_error = _command_install_targets(entry, adapter)
+        if target_error:
+            receipts.append({
+                "runtime": entry.get("runtime"),
+                "targets": raw_targets,
+                "status": target_error,
+            })
+            continue
+        if not adapter:
             continue
         # RESOLVE before the allowlist check and before writing — the check and
         # the write must see the SAME path the OS will. is_relative_to() on an
@@ -61,34 +100,37 @@ def install_global_commands(pkg_dir: Path) -> list[dict[str, Any]]:
         # exactly the file the allowlist exists to protect (path-traversal RCE,
         # measured 2026-08-12 adversarial set). resolve() collapses ".." and
         # follows symlinks, so the allowlist decision is made on the real target.
-        target = Path(raw_target).expanduser()
-        try:
-            resolved = target.resolve()
-        except (OSError, RuntimeError):
-            receipts.append({"runtime": entry.get("runtime"), "target": str(target),
-                             "status": "skipped_unresolvable_target"})
-            continue
-        allowed = any(
-            resolved == Path(root).expanduser().resolve()
-            or resolved.is_relative_to(Path(root).expanduser().resolve())
-            for root in _COMMAND_INSTALL_ROOTS
-        )
-        receipt: dict[str, Any] = {"runtime": entry.get("runtime"), "target": str(resolved)}
-        source = pkg_dir / adapter
-        if not allowed:
-            receipt["status"] = "skipped_disallowed_target"
-        elif not source.is_file():
-            receipt["status"] = "skipped_missing_adapter"
-            receipt["adapterPath"] = adapter
-        else:
-            content = source.read_text(encoding="utf-8")
-            if resolved.exists() and resolved.read_text(encoding="utf-8") != content:
-                receipt["status"] = "skipped_existing_differs"
+        for raw_target in raw_targets:
+            if not raw_target.startswith(("~/", "/")):
+                continue
+            target = Path(raw_target).expanduser()
+            try:
+                resolved = target.resolve()
+            except (OSError, RuntimeError):
+                receipts.append({"runtime": entry.get("runtime"), "target": str(target),
+                                 "status": "skipped_unresolvable_target"})
+                continue
+            allowed = any(
+                resolved == Path(root).expanduser().resolve()
+                or resolved.is_relative_to(Path(root).expanduser().resolve())
+                for root in _COMMAND_INSTALL_ROOTS
+            )
+            receipt: dict[str, Any] = {"runtime": entry.get("runtime"), "target": str(resolved)}
+            source = pkg_dir / adapter
+            if not allowed:
+                receipt["status"] = "skipped_disallowed_target"
+            elif not source.is_file():
+                receipt["status"] = "skipped_missing_adapter"
+                receipt["adapterPath"] = adapter
             else:
-                resolved.parent.mkdir(parents=True, exist_ok=True)
-                resolved.write_text(content, encoding="utf-8")
-                receipt["status"] = "installed"
-        receipts.append(receipt)
+                content = source.read_text(encoding="utf-8")
+                if resolved.exists() and resolved.read_text(encoding="utf-8") != content:
+                    receipt["status"] = "skipped_existing_differs"
+                else:
+                    resolved.parent.mkdir(parents=True, exist_ok=True)
+                    resolved.write_text(content, encoding="utf-8")
+                    receipt["status"] = "installed"
+            receipts.append(receipt)
     return receipts
 
 

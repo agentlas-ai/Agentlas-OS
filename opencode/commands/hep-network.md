@@ -13,8 +13,10 @@ a non-English request (the candidate corpus is English; cross-lingual matching
 buries the right agent, measured 1st vs 144th for one query), while keeping
 `languages` as the required delivery language — and call
 `workforce.search_candidates` with exact
-`sourceScope: "network"` (registered Local + owner Cloud + public Hub), keeping
-the response as `federationResult`. Author the final Selection yourself, call
+`sourceScope: "network"` (registered Local + owner Cloud + public Hub). Retain
+the projected menu's `selectionSessionId` and every source receipt; do not echo
+the projected menu as `federationResult`. Core resolves the complete federation
+state locally from that session. Author the final Selection yourself, call
 `workforce.validate_selection` with
 `{workOrder, selection}`, keep `federatedSelection`, then call
 `workforce.prepare_execution` with
@@ -32,6 +34,7 @@ the roster across sessions, restarts, compaction, and lease expiry; release it
 only with `workforce.complete_goal(explicitCompletion=true)` after explicit
 whole-goal completion/cancellation. A 24-hour lease controls only the next Hub
 charge; standby is not a continuously running model.
-Never use legacy
+For `partial` or `failed`, report each source receipt's exact `failureCode`;
+never collapse, substitute, or relabel it. Never use legacy
 `hephaestus_route`, direct remote search, deterministic staffing, silent
 substitution, or preparation as execution proof.

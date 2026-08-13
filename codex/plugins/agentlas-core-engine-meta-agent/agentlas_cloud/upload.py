@@ -5,6 +5,8 @@ import hashlib
 import json
 import os
 import re
+import stat
+import tempfile
 import unicodedata
 import urllib.error
 import urllib.request
@@ -14,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from . import content_guard
-from .auth import ensure_access_token, normalize_base_url
+from .auth import AgentlasAuthError, ensure_access_token, normalize_base_url, same_origin_urlopen
 from .networking.card_lint import lint_card
 from .package_contract import (
     is_generated_runtime_path,
@@ -40,6 +42,7 @@ MAX_FILE_BYTES = 512 * 1024
 # measured on the files actually uploaded.
 MAX_WALKED_ENTRIES = 20_000
 MAX_FILES = 400
+MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024
 AGENT_DEFINITION_FILES = {"AGENT.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md", "agent.md", "manifest.md", "system-prompt.md"}
 # Engine scaffold stencils are all `{{UPPER_SNAKE}}` (mirrors repackage._PLACEHOLDER).
 # Deliberately does NOT match user templating like `{{input}}` or `${{ secrets.X }}`,
@@ -74,6 +77,7 @@ BLOCKED_FILE_PATTERNS = [
     re.compile(r"^id_rsa(?:\.pub)?$", re.I),
     re.compile(r"^credentials(?:\..*)?$", re.I),
     re.compile(r"^secrets?(?:\..*)?$", re.I),
+    re.compile(r"^\.npmrc$", re.I),
     re.compile(r"(?:^|[._-])service-account(?:[._-]|$)", re.I),
     re.compile(r"\.(?:key|pem|p12|pfx|mobileprovision)$", re.I),
 ]
@@ -83,13 +87,27 @@ SECRET_PATTERNS = [
     ("github-token", re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{30,}\b"), "GitHub token"),
     ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"), "Slack token"),
     ("aws-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "AWS access key"),
+    ("npm-token", re.compile(r"\bnpm_[A-Za-z0-9]{20,}\b"), "npm access token"),
+    ("anthropic-key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}\b"), "Anthropic API key"),
+    ("google-api-key", re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"), "Google API key"),
+    ("gitlab-token", re.compile(r"\bglpat-[0-9A-Za-z_-]{20,}\b"), "GitLab token"),
+    ("huggingface-token", re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"), "Hugging Face token"),
+    ("stripe-secret", re.compile(r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b"), "Stripe secret key"),
     ("generic-secret", re.compile(r"\b(?:api[_-]?key|secret|token|password)\s*[:=]\s*['\"][^'\"]{8,}['\"]", re.I), "hard-coded credential"),
 ]
+UNQUOTED_SECRET_ASSIGNMENT = re.compile(
+    r"(?<![A-Za-z0-9])[_A-Za-z0-9-]*(?:api[_-]?(?:key|token)|access[_-]?token|auth[_-]?token|"
+    r"secret(?:[_-]?access[_-]?key)?|password|passphrase|credential)[_A-Za-z0-9-]*"
+    r"\s*[:=]\s*([^\s,;#}\]]{8,})",
+    re.I,
+)
 CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)+$")
 
 
 class UploadError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: str = "upload_error") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass
@@ -101,15 +119,32 @@ class UploadFile:
     executable: bool
 
 
+@dataclass(frozen=True)
+class SnapshotEntry:
+    kind: str
+    mode: int
+    device: int
+    inode: int
+    links: int
+    size: int
+    modified_ns: int
+    changed_ns: int
+
+
+@dataclass(frozen=True)
+class SnapshotTailCommitment:
+    entry_count: int
+    regular_file_bytes: int
+    digest: str
+
+
 
 def _is_unfinished_artifact(finding: dict[str, Any]) -> bool:
     """True when a blocker is only "the author has not written this yet".
 
-    Kept deliberately narrow. It matches a missing or still-templated package
-    contract artifact and nothing else — never a secret, a symlink, a size limit,
-    a credential-bearing path, or a malformed card. Widening this predicate would
-    turn "we repair instead of refusing" into "we publish anything", which is a
-    different policy and not this one.
+    This narrow classification controls the user-facing explanation. Other
+    unsupported entries are withheld later with an engine-gap receipt; none of
+    the classifications authorize shipping bytes that the collector omitted.
     """
 
     message = str(finding.get("message") or "")
@@ -287,9 +322,7 @@ def package_agent(
     if withdrawn:
         contract_scaffold["withdrawn"] = withdrawn
 
-    career_card_findings = prepare_public_career_card_for_upload(base)
     files, file_count, findings = collect_upload_files(base)
-    findings = career_card_findings + findings
 
     # Repair before judging. Upload does not reject: a refusal hands the author a
     # list of field names and lets them guess the house format, and the measured
@@ -306,7 +339,6 @@ def package_agent(
         # finding derived from them has to be recomputed rather than filtered. A
         # filter would leave a stale blocker that the package no longer has.
         files, file_count, findings = collect_upload_files(base)
-        findings = prepare_public_career_card_for_upload(base) + findings
 
     # Compile the resume LAST, after every repair has run, so it describes what is
     # actually about to ship rather than what arrived. Without this call the whole
@@ -374,6 +406,26 @@ def package_agent(
                 "Repair the named artifact with the package's own facts, then rerun the upload.",
             )
         )
+
+    # Generate a public card only when the package opted in and no card exists.
+    # Existing cards are accepted as authored metadata; Career freshness is not
+    # an upload policy gate.
+    findings.extend(prepare_public_career_card_for_upload(base))
+    files, file_count, final_collection_findings = collect_upload_files(base)
+    existing_findings = {
+        (item.get("id"), item.get("file"), item.get("line"), item.get("message"))
+        for item in findings
+    }
+    for finding in final_collection_findings:
+        identity = (
+            finding.get("id"),
+            finding.get("file"),
+            finding.get("line"),
+            finding.get("message"),
+        )
+        if identity not in existing_findings:
+            findings.append(finding)
+            existing_findings.add(identity)
 
     if setup_wizard.get("mcpPolicyValidation", {}).get("status") != "valid":
         # `_repair_mcp_policy_file` ran before the wizard and either stripped the
@@ -472,11 +524,9 @@ def package_agent(
         # What shipped is not what the author wrote. Say so where the author will
         # see it, not only in a findings list nobody reads.
         bundle["repairs"] = repairs
-    # ANY blocker still standing after the repair pass blocks. The classification
-    # only decides what the repair ATTEMPTS; it never excuses a defect the repair
-    # failed to fix. Letting "repairable" mean "ignorable" would publish a package
-    # nobody fixed while reporting it ready — the same silent-default failure this
-    # file's content guard exists to prevent.
+    # Findings are collected before final policy normalization. Unsupported bytes
+    # have already been withheld, so a remaining blocker describes an engine gap
+    # in the thinner artifact rather than a permission to ship those bytes.
     remaining = [f for f in findings if f["severity"] == "blocker"]
     # A contract artifact the author has not finished writing is a gap in the
     # listing, not a reason to refuse the upload. The package still works; what
@@ -484,15 +534,12 @@ def package_agent(
     # `capability-eval-plan.json` ended up on 4% of live releases — the gate said
     # no, and the packages shipped through whatever path did not check.
     #
-    # This only ever softens an artifact-completeness finding. Since 2026-08-08
-    # (owner rule) secrets no longer BLOCK either - they are masked or withheld
+    # This first pass labels unfinished artifact gaps distinctly. Since
+    # 2026-08-08, secrets are masked or withheld
     # in place with receipt findings ("redacted-secret", "redacted-file",
     # "mcp-policy-auto-repaired"), because "remove the value and try again" hands
-    # the author work the engine can do deterministically. What still blocks is
-    # what cannot be repaired without inventing facts or shipping a broken
-    # artifact: symlinks, size/count limits, cross-kind asset embedding, and
-    # contract gaps that need author/model facts (until the packager re-invoke
-    # loop lands - see docs/2026-08-08-upgrade R7/R12).
+    # the author work the engine can do deterministically. Other unsupported
+    # bytes are withheld and normalized to engine-gap receipts below.
     deferred = [f for f in remaining if _is_unfinished_artifact(f)]
     if deferred:
         deferred_ids = {id(f) for f in deferred}
@@ -500,24 +547,13 @@ def package_agent(
         for finding in deferred:
             finding["severity"] = "warning"
             finding["deferred"] = "publishable; the listing is thinner until this is written"
-    # 필수개정 7-2 (owner rule 2026-08-09): 유저는 스스로 못 고친다 — 구조/마켓페이지
-    # 결함으로 업로드를 반려하지 않는다. 결정론 리패키징(derive/reconcile/coerce/
-    # refresh/repair)이 여기까지 왔는데도 남은 structure·market-page blocker는 엔진이
-    # 자동 완성하지 못한 지점이므로, 사용자에게 "고쳐오세요"를 넘기지 않고 경고로 강등해
-    # 얇은 리스팅으로라도 출하하며 엔진 결함으로 고지한다("리패키징까지 실패하면 사용자
-    # 잘못이 아니라 엔진 결함"). 단 진짜 안전/불가 항목은 계속 막는다:
-    #   - size (파일 수·용량 한계 — 물리적으로 못 싣는다)
-    #   - privacy (career-card-privacy — 원시 기억/프롬프트 유출)
-    #   - asset-boundary (교차종 자산 임베딩 — 다른 소유 자산)
-    #   - secret 값(이미 마스킹되어 blocker가 아니지만, 못 가린 실키가 남으면 유지)
-    HARD_BLOCK_CATEGORIES = {"size", "asset-boundary", "secret"}
-    HARD_BLOCK_IDS_PREFIX = ("career-card-privacy", "unportable-path")
-    def _must_stay_blocked(finding: dict[str, Any]) -> bool:
-        if finding.get("category") in HARD_BLOCK_CATEGORIES:
-            return True
-        fid = str(finding.get("id") or "")
-        return any(fid.startswith(p) for p in HARD_BLOCK_IDS_PREFIX)
-    engine_gap = [f for f in remaining if not _must_stay_blocked(f)]
+    # Owner rule: upload never hands a refusal back to the author. Anything
+    # unsafe or unsupported has already been omitted from `files`; anything
+    # derivable has already been repaired. A blocker still standing here is an
+    # engine gap receipt about the thinner artifact, not permission to publish
+    # the omitted bytes and not a reason to prevent the remaining package from
+    # uploading.
+    engine_gap = list(remaining)
     if engine_gap:
         gap_ids = {id(f) for f in engine_gap}
         remaining = [f for f in remaining if id(f) not in gap_ids]
@@ -525,6 +561,13 @@ def package_agent(
             finding["severity"] = "warning"
             finding["deferred"] = "published with a thinner listing; the engine could not auto-complete this and it is flagged as an engine gap, never handed back to the author to fix"
             finding["engineGap"] = True
+    # The remaining package proceeds, but approval must seal what was withheld
+    # as well as what shipped. This is recomputed after snapshot-level omissions
+    # are added by publish_agent.
+    provisional = {"manifest": manifest, "bundle": bundle, "review": {"findings": findings}}
+    omissions = _attach_omission_manifest(provisional, base)
+    manifest = provisional["manifest"]
+    bundle = provisional["bundle"]
     # Review verdict/summary must reflect the FINAL severities, computed after
     # secret redaction and artifact deferral have run. Building it earlier froze
     # a "9 blocker(s) / fail" string onto a package whose findings had all been
@@ -547,7 +590,11 @@ def package_agent(
             else (
                 f"Ready: {manifest['slug']} (content guard removed {sanitized_line_count} line(s))."
                 if sanitized_line_count
-                else f"Ready: {manifest['slug']}."
+                else (
+                    f"Ready: {manifest['slug']} ({len(omissions)} source item(s) omitted and receipt-bound)."
+                    if omissions
+                    else f"Ready: {manifest['slug']}."
+                )
             )
         ),
     }
@@ -577,38 +624,805 @@ def _dry_run_summary(packaged: dict[str, Any]) -> str:
     verdict = review.get("verdict")
     if verdict and verdict not in {"pass", "passed", "ok"}:
         notes.append(f"package review verdict: {verdict}")
+    omissions = (packaged.get("bundle") or {}).get("omissions") or []
+    if omissions:
+        paths = [str(item.get("path") or "unknown") for item in omissions[:3]]
+        suffix = "" if len(omissions) <= 3 else f" and {len(omissions) - 3} more"
+        notes.append(
+            f"{len(omissions)} source item(s) were omitted and receipt-bound: "
+            f"{', '.join(paths)}{suffix}"
+        )
     if not notes:
         return f"Dry run passed: {slug}."
+    return f"Dry run ready: {slug}; " + "; ".join(notes) + "."
+
+
+def _hash_regular_source(path: Path) -> str | None:
+    """Hash one ordinary source file without following links or accepting mutation."""
+
+    try:
+        before = path.lstat()
+    except OSError:
+        return None
+    if not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode):
+        return None
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        return None
+    digest = hashlib.sha256()
+    try:
+        opened = os.fstat(descriptor)
+        if _snapshot_entry(opened, "file") != _snapshot_entry(before, "file"):
+            return None
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+        if _snapshot_entry(os.fstat(descriptor), "file") != _snapshot_entry(before, "file"):
+            return None
+    finally:
+        os.close(descriptor)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _attach_omission_manifest(packaged: dict[str, Any], source_root: Path) -> list[dict[str, Any]]:
+    """Bind every named source omission to the package approval receipt.
+
+    Upload remains nonblocking. The binding makes the thinner artifact honest:
+    changing omitted regular-file bytes changes the dry-run receipt even when
+    the shipped package bytes themselves are unchanged.
+    """
+
+    bundle = packaged.get("bundle") or {}
+    shipped = {
+        str(item.get("path") or "")
+        for item in bundle.get("files") or []
+        if isinstance(item, dict)
+    }
+    findings = (packaged.get("review") or {}).get("findings") or []
+    omissions: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        omitted_digest = str(finding.get("omittedDigest") or "")
+        if (
+            str(finding.get("id") or "").startswith("snapshot-entry-budget-")
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", omitted_digest)
+        ):
+            evidence_scope = {
+                "path": "<snapshot-tail>",
+                "reason": "snapshot-entry-budget",
+                "category": "package-omission",
+                "sourceSha256": omitted_digest,
+                "omittedEntryCount": int(finding.get("omittedEntryCount") or 0),
+                "omittedBytes": int(finding.get("omittedBytes") or 0),
+            }
+            evidence = json.dumps(
+                evidence_scope,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            omissions.append(
+                {
+                    **evidence_scope,
+                    "evidenceSha256": f"sha256:{hashlib.sha256(evidence).hexdigest()}",
+                }
+            )
+            continue
+        raw_path = finding.get("file")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            continue
+        relative = raw_path.strip().replace("\\", "/")
+        if relative in shipped:
+            continue
+        reason = str(finding.get("id") or "package-omission")
+        key = (relative, reason)
+        if key in seen:
+            continue
+        seen.add(key)
+        source_sha256: str | None = None
+        candidate = Path(relative)
+        if not candidate.is_absolute() and ".." not in candidate.parts:
+            source_sha256 = _hash_regular_source(source_root / candidate)
+        category = str(finding.get("category") or "package-omission")
+        if source_sha256 is None and category != "package-omission":
+            # A missing desired contract file is an engine gap, not omitted
+            # source input. Keep it in findings without misreporting it here.
+            continue
+        evidence_scope = {
+            "path": relative,
+            "reason": reason,
+            "category": category,
+            "sourceSha256": source_sha256,
+        }
+        evidence = json.dumps(
+            evidence_scope,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        omissions.append({
+            **evidence_scope,
+            "evidenceSha256": f"sha256:{hashlib.sha256(evidence).hexdigest()}",
+        })
+    omissions.sort(key=lambda item: (str(item["path"]), str(item["reason"])))
+    canonical = json.dumps(
+        omissions,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    omission_digest = f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+    bundle["omissions"] = omissions
+    bundle["omissionDigest"] = omission_digest
+    packaged["bundle"] = bundle
+    manifest = packaged.get("manifest") or {}
+    manifest["omissionCount"] = len(omissions)
+    manifest["omissionDigest"] = omission_digest
+    snapshot_tail = next(
+        (item for item in omissions if item.get("reason") == "snapshot-entry-budget"),
+        None,
+    )
+    if snapshot_tail is not None:
+        manifest["snapshotOmittedEntryCount"] = snapshot_tail["omittedEntryCount"]
+        manifest["snapshotOmittedBytes"] = snapshot_tail["omittedBytes"]
+        manifest["snapshotOmissionDigest"] = snapshot_tail["sourceSha256"]
+    packaged["manifest"] = manifest
+    return omissions
     return f"Dry run completed with warnings: {slug} — " + "; ".join(notes)
+
+
+def _read_regular_file(
+    path: Path | str, expected: os.stat_result, *, directory_fd: int | None = None
+) -> bytes:
+    """Read one file without following a last-moment symlink or inode swap."""
+
+    path_name = Path(path).name
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise UploadError(f"Unsafe or unreadable package file: {path_name}", code="unsafe_package_tree") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if _snapshot_entry(opened, "file") != _snapshot_entry(expected, "file"):
+            raise UploadError(
+                f"Package file changed or crossed a filesystem boundary while being read: {path_name}",
+                code="unsafe_package_tree",
+            )
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            raw = handle.read(expected.st_size + 1)
+        if len(raw) != expected.st_size:
+            raise UploadError(
+                f"Package file changed while being read: {path_name}",
+                code="unsafe_package_tree",
+            )
+        return raw
+    finally:
+        os.close(descriptor)
+
+
+def _snapshot_entry(metadata: os.stat_result, kind: str) -> SnapshotEntry:
+    return SnapshotEntry(
+        kind=kind,
+        mode=stat.S_IMODE(metadata.st_mode),
+        device=metadata.st_dev,
+        inode=metadata.st_ino,
+        links=metadata.st_nlink,
+        size=metadata.st_size,
+        modified_ns=metadata.st_mtime_ns,
+        changed_ns=metadata.st_ctime_ns,
+    )
+
+
+def _open_snapshot_root(source: Path) -> tuple[int, os.stat_result]:
+    root_meta = source.lstat()
+    if not stat.S_ISDIR(root_meta.st_mode) or stat.S_ISLNK(root_meta.st_mode):
+        raise UploadError("Upload source must be an ordinary directory.", code="unsafe_package_tree")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(source, flags)
+    except OSError as exc:
+        raise UploadError("Upload source changed while being opened.", code="unsafe_package_tree") from exc
+    opened = os.fstat(descriptor)
+    if _snapshot_entry(opened, "directory") != _snapshot_entry(root_meta, "directory"):
+        os.close(descriptor)
+        raise UploadError("Upload source changed while being opened.", code="unsafe_package_tree")
+    return descriptor, opened
+
+
+_SNAPSHOT_TRUNCATED = "__agentlas_snapshot_truncated__"
+
+
+def _hash_snapshot_file(
+    path_name: str, expected: os.stat_result, *, directory_fd: int
+) -> str:
+    """Hash an omitted regular file without following links or accepting mutation."""
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path_name, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise UploadError(
+            f"Unsafe or unreadable omitted package file: {path_name}",
+            code="unsafe_package_tree",
+        ) from exc
+    digest = hashlib.sha256()
+    try:
+        opened = os.fstat(descriptor)
+        if _snapshot_entry(opened, "file") != _snapshot_entry(expected, "file"):
+            raise UploadError(
+                f"Omitted package file changed while being hashed: {path_name}",
+                code="unsafe_package_tree",
+            )
+        remaining = expected.st_size
+        while remaining:
+            block = os.read(descriptor, min(1024 * 1024, remaining))
+            if not block:
+                raise UploadError(
+                    f"Omitted package file changed while being hashed: {path_name}",
+                    code="unsafe_package_tree",
+                )
+            digest.update(block)
+            remaining -= len(block)
+        if os.read(descriptor, 1):
+            raise UploadError(
+                f"Omitted package file changed while being hashed: {path_name}",
+                code="unsafe_package_tree",
+            )
+        if _snapshot_entry(os.fstat(descriptor), "file") != _snapshot_entry(expected, "file"):
+            raise UploadError(
+                f"Omitted package file changed while being hashed: {path_name}",
+                code="unsafe_package_tree",
+            )
+    finally:
+        os.close(descriptor)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _capture_snapshot_inventory(
+    source: Path,
+) -> tuple[dict[str, SnapshotEntry], SnapshotTailCommitment]:
+    """Capture shipped entries plus a deterministic commitment to the omitted tail."""
+
+    inventory: dict[str, SnapshotEntry] = {}
+    walked = 0
+    total_bytes = 0
+    truncated = False
+    omitted_count = 0
+    omitted_bytes = 0
+    omitted_digest = hashlib.sha256()
+
+    def bind_omitted(
+        relative: str,
+        metadata: os.stat_result,
+        *,
+        directory_fd: int,
+        entry_name: str,
+    ) -> None:
+        nonlocal omitted_count, omitted_bytes
+        if stat.S_ISLNK(metadata.st_mode):
+            kind = "symlink"
+            try:
+                target = os.readlink(entry_name, dir_fd=directory_fd)
+            except OSError as exc:
+                raise UploadError(
+                    f"Could not inspect omitted package link: {relative}",
+                    code="unsafe_package_tree",
+                ) from exc
+            byte_digest = f"sha256:{hashlib.sha256(os.fsencode(target)).hexdigest()}"
+        elif stat.S_ISDIR(metadata.st_mode):
+            kind = "directory"
+            byte_digest = None
+        elif stat.S_ISREG(metadata.st_mode):
+            kind = "file" if metadata.st_nlink == 1 else "hardlink"
+            byte_digest = _hash_snapshot_file(
+                entry_name,
+                metadata,
+                directory_fd=directory_fd,
+            )
+            omitted_bytes += metadata.st_size
+        else:
+            kind = "special"
+            byte_digest = None
+        record = {
+            "path": relative,
+            "kind": kind,
+            "mode": stat.S_IMODE(metadata.st_mode),
+            "bytes": metadata.st_size if stat.S_ISREG(metadata.st_mode) else 0,
+            "byteDigest": byte_digest,
+        }
+        omitted_digest.update(
+            json.dumps(
+                record,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        omitted_digest.update(b"\n")
+        omitted_count += 1
+
+    def scan_directory(
+        directory_fd: int,
+        relative_parts: tuple[str, ...],
+        *,
+        parent_withheld: bool = False,
+    ) -> None:
+        nonlocal walked, total_bytes, truncated
+        try:
+            iterator = os.scandir(directory_fd)
+        except OSError as exc:
+            location = "/".join(relative_parts) or "."
+            raise UploadError(f"Could not read package directory: {location}", code="unsafe_package_tree") from exc
+        with iterator:
+            entries = sorted(iterator, key=lambda item: os.fsencode(item.name))
+            for entry in entries:
+                if entry.name in SKIP_DIRS:
+                    continue
+                walked += 1
+                parts = (*relative_parts, entry.name)
+                relative = Path(*parts).as_posix()
+                try:
+                    metadata = entry.stat(follow_symlinks=False)
+                except OSError as exc:
+                    raise UploadError(f"Could not inspect package path: {relative}", code="unsafe_package_tree") from exc
+                withheld = parent_withheld or walked > MAX_WALKED_ENTRIES
+                if withheld:
+                    truncated = True
+                    bind_omitted(
+                        relative,
+                        metadata,
+                        directory_fd=directory_fd,
+                        entry_name=entry.name,
+                    )
+                    if stat.S_ISDIR(metadata.st_mode) and not stat.S_ISLNK(metadata.st_mode):
+                        expected = _snapshot_entry(metadata, "directory")
+                        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+                        try:
+                            child_fd = os.open(entry.name, flags, dir_fd=directory_fd)
+                        except OSError as exc:
+                            raise UploadError(
+                                f"Package directory changed while being read: {relative}",
+                                code="unsafe_package_tree",
+                            ) from exc
+                        try:
+                            if _snapshot_entry(os.fstat(child_fd), "directory") != expected:
+                                raise UploadError(
+                                    f"Package directory changed while being read: {relative}",
+                                    code="unsafe_package_tree",
+                                )
+                            scan_directory(child_fd, parts, parent_withheld=True)
+                        finally:
+                            os.close(child_fd)
+                    continue
+                if stat.S_ISLNK(metadata.st_mode):
+                    inventory[relative] = _snapshot_entry(metadata, "ignored-symlink")
+                    continue
+                if stat.S_ISDIR(metadata.st_mode):
+                    expected = _snapshot_entry(metadata, "directory")
+                    inventory[relative] = expected
+                    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+                    try:
+                        child_fd = os.open(entry.name, flags, dir_fd=directory_fd)
+                    except OSError as exc:
+                        raise UploadError(
+                            f"Package directory changed while being read: {relative}",
+                            code="unsafe_package_tree",
+                        ) from exc
+                    try:
+                        if _snapshot_entry(os.fstat(child_fd), "directory") != expected:
+                            raise UploadError(
+                                f"Package directory changed while being read: {relative}",
+                                code="unsafe_package_tree",
+                            )
+                        scan_directory(child_fd, parts)
+                    finally:
+                        os.close(child_fd)
+                    continue
+                if not stat.S_ISREG(metadata.st_mode):
+                    inventory[relative] = _snapshot_entry(metadata, "ignored-special-file")
+                    continue
+                if metadata.st_nlink != 1:
+                    inventory[relative] = _snapshot_entry(metadata, "ignored-hardlink")
+                    continue
+                total_bytes += metadata.st_size
+                if total_bytes > MAX_SNAPSHOT_BYTES:
+                    inventory[relative] = _snapshot_entry(metadata, "ignored-snapshot-byte-budget")
+                    continue
+                inventory[relative] = _snapshot_entry(metadata, "file")
+
+    root_fd, root_meta = _open_snapshot_root(source)
+    inventory["."] = _snapshot_entry(root_meta, "directory")
+    try:
+        scan_directory(root_fd, ())
+    finally:
+        os.close(root_fd)
+    if truncated:
+        inventory[_SNAPSHOT_TRUNCATED] = SnapshotEntry(
+            kind="ignored-entry-budget",
+            mode=0,
+            device=0,
+            inode=0,
+            links=0,
+            size=0,
+            modified_ns=0,
+            changed_ns=0,
+        )
+    commitment = SnapshotTailCommitment(
+        entry_count=omitted_count,
+        regular_file_bytes=omitted_bytes,
+        digest=f"sha256:{omitted_digest.hexdigest()}",
+    )
+    return inventory, commitment
+
+
+def _copy_snapshot_inventory(source: Path, destination: Path, inventory: dict[str, SnapshotEntry]) -> None:
+    seen = {"."}
+    destination.mkdir(mode=0o700)
+
+    def copy_directory(directory_fd: int, target: Path, relative_parts: tuple[str, ...]) -> None:
+        try:
+            iterator = os.scandir(directory_fd)
+        except OSError as exc:
+            location = "/".join(relative_parts) or "."
+            raise UploadError(f"Could not read package directory: {location}", code="unsafe_package_tree") from exc
+        with iterator:
+            for entry in iterator:
+                if entry.name in SKIP_DIRS:
+                    continue
+                parts = (*relative_parts, entry.name)
+                relative = Path(*parts).as_posix()
+                expected = inventory.get(relative)
+                if expected is None:
+                    if _SNAPSHOT_TRUNCATED in inventory:
+                        continue
+                    raise UploadError(
+                        f"Package entry appeared while the snapshot was being copied: {relative}",
+                        code="unsafe_package_tree",
+                    )
+                try:
+                    metadata = entry.stat(follow_symlinks=False)
+                except OSError as exc:
+                    raise UploadError(f"Could not inspect package path: {relative}", code="unsafe_package_tree") from exc
+                if expected.kind.startswith("ignored-"):
+                    if _snapshot_entry(metadata, expected.kind) != expected:
+                        raise UploadError(
+                            f"Omitted package entry changed while the snapshot was being copied: {relative}",
+                            code="unsafe_package_tree",
+                        )
+                    seen.add(relative)
+                    continue
+                if stat.S_ISDIR(metadata.st_mode):
+                    current = _snapshot_entry(metadata, "directory")
+                elif stat.S_ISREG(metadata.st_mode):
+                    current = _snapshot_entry(metadata, "file")
+                else:
+                    raise UploadError(
+                        f"Package entry changed type while the snapshot was being copied: {relative}",
+                        code="unsafe_package_tree",
+                    )
+                if current != expected:
+                    raise UploadError(
+                        f"Package entry changed while the snapshot was being copied: {relative}",
+                        code="unsafe_package_tree",
+                    )
+                seen.add(relative)
+                target_path = target / entry.name
+                if expected.kind == "directory":
+                    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+                    try:
+                        child_fd = os.open(entry.name, flags, dir_fd=directory_fd)
+                    except OSError as exc:
+                        raise UploadError(
+                            f"Package directory changed while being copied: {relative}",
+                            code="unsafe_package_tree",
+                        ) from exc
+                    try:
+                        if _snapshot_entry(os.fstat(child_fd), "directory") != expected:
+                            raise UploadError(
+                                f"Package directory changed while being copied: {relative}",
+                                code="unsafe_package_tree",
+                            )
+                        target_path.mkdir(mode=expected.mode or 0o700)
+                        copy_directory(child_fd, target_path, parts)
+                    finally:
+                        os.close(child_fd)
+                    continue
+                if expected.size > MAX_FILE_BYTES:
+                    with target_path.open("wb") as handle:
+                        handle.truncate(expected.size)
+                else:
+                    target_path.write_bytes(
+                        _read_regular_file(entry.name, metadata, directory_fd=directory_fd)
+                    )
+                target_path.chmod(expected.mode)
+
+    root_fd, root_meta = _open_snapshot_root(source)
+    try:
+        if _snapshot_entry(root_meta, "directory") != inventory.get("."):
+            raise UploadError("Upload source changed before it could be copied.", code="unsafe_package_tree")
+        copy_directory(root_fd, destination, ())
+    finally:
+        os.close(root_fd)
+    missing = sorted(set(inventory) - seen - {_SNAPSHOT_TRUNCATED})
+    if missing:
+        raise UploadError(
+            f"Package entries disappeared while the snapshot was being copied: {missing[0]}",
+            code="unsafe_package_tree",
+        )
+
+
+def _snapshot_package_source(source: Path, destination: Path) -> list[dict[str, Any]]:
+    """Copy a bounded, link-free snapshot and return omission receipts.
+
+    Unsupported filesystem entries are withheld rather than turning upload into
+    a user-facing refusal. The source is still descriptor-anchored and checked
+    for concurrent mutation; only ordinary files copied into the snapshot can
+    reach the package hash or the server.
+    """
+
+    inventory, tail_commitment = _capture_snapshot_inventory(source)
+    _copy_snapshot_inventory(source, destination, inventory)
+    if _capture_snapshot_inventory(source) != (inventory, tail_commitment):
+        raise UploadError(
+            "Upload source changed while the package snapshot was being copied.",
+            code="unsafe_package_tree",
+        )
+    omissions: list[dict[str, Any]] = []
+    for relative, entry in sorted(inventory.items()):
+        if relative == _SNAPSHOT_TRUNCATED:
+            finding = _finding(
+                    "snapshot-entry-budget",
+                    "warning",
+                    "size",
+                    (
+                        f"{tail_commitment.entry_count} entries after the "
+                        f"{MAX_WALKED_ENTRIES}-entry snapshot budget were withheld."
+                    ),
+                    None,
+                    "Engine receipt: the bounded package was uploaded; split large source trees for complete delivery.",
+                )
+            finding.update(
+                {
+                    "omittedEntryCount": tail_commitment.entry_count,
+                    "omittedBytes": tail_commitment.regular_file_bytes,
+                    "omittedDigest": tail_commitment.digest,
+                }
+            )
+            omissions.append(finding)
+        elif entry.kind.startswith("ignored-"):
+            omissions.append(
+                _finding(
+                    entry.kind,
+                    "warning",
+                    "package-omission",
+                    "Unsupported or out-of-budget filesystem entry was withheld from the uploaded copy.",
+                    relative,
+                    "Engine receipt: this path did not ship and did not block the remaining package.",
+                )
+            )
+    return omissions
+
+
+def _pin_snapshot_agent_identity(snapshot: Path, fallback_name: str) -> None:
+    """Give first-run snapshots a repeatable ID without writing it to source."""
+
+    manifest_path = snapshot / "agentlas.json"
+    manifest = _read_json(manifest_path) or {}
+    if str(manifest.get("agentId") or "").strip():
+        return
+    identity_seed = str(manifest.get("slug") or manifest.get("name") or fallback_name).strip().lower()
+    digest = hashlib.sha256(f"agentlas-upload-agent-id-v1\0{identity_seed}".encode("utf-8")).hexdigest()
+    manifest["agentId"] = f"agt_{digest[:32]}"
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _normalized_sha256(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text[7:] if text.startswith("sha256:") else text
+
+
+def _normalize_destination_base_url(base_url: str | None) -> str:
+    try:
+        return normalize_base_url(base_url)
+    except AgentlasAuthError as exc:
+        raise UploadError(str(exc), code="invalid_destination") from exc
+
+
+def _upload_receipt(manifest: dict[str, Any], base_url: str) -> dict[str, Any]:
+    scope = {
+        "schemaVersion": "agentlas.upload-receipt.v1",
+        "packageHash": f"sha256:{_normalized_sha256(manifest.get('packageHash'))}",
+        "packageHashVersion": str(manifest.get("packageHashVersion") or ""),
+        "slug": str(manifest.get("slug") or ""),
+        "visibility": str(manifest.get("visibility") or ""),
+        "destinationBaseUrl": base_url,
+        "omissionCount": int(manifest.get("omissionCount") or 0),
+        "omissionDigest": str(manifest.get("omissionDigest") or ""),
+        "snapshotOmittedEntryCount": int(manifest.get("snapshotOmittedEntryCount") or 0),
+        "snapshotOmittedBytes": int(manifest.get("snapshotOmittedBytes") or 0),
+        "snapshotOmissionDigest": str(manifest.get("snapshotOmissionDigest") or ""),
+    }
+    canonical = json.dumps(scope, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {**scope, "receipt": f"sha256:{hashlib.sha256(canonical).hexdigest()}"}
+
+
+def _without_local_upload_paths(value: Any, local_paths: tuple[str, ...]) -> Any:
+    """Copy server-bound metadata while replacing host-local source paths."""
+
+    if isinstance(value, dict):
+        return {
+            key: _without_local_upload_paths(item, local_paths)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_without_local_upload_paths(item, local_paths) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_without_local_upload_paths(item, local_paths) for item in value)
+    if isinstance(value, str):
+        sanitized = value
+        for local_path in local_paths:
+            sanitized = sanitized.replace(local_path, "<local-upload-root>")
+        return sanitized
+    return value
+
+
+def _normalized_upload_receipt(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if text.startswith("sha256:") else f"sha256:{text}"
+
+
+def _attest_registration(
+    registration: dict[str, Any], manifest: dict[str, Any], visibility: str
+) -> dict[str, Any]:
+    """Fail closed unless the server proves the exact release it registered."""
+
+    if not isinstance(registration, dict):
+        raise UploadError("Registration response was not an object.", code="registration_attestation_failed")
+    expected = {
+        "status": "registered",
+        "slug": str(manifest.get("slug") or ""),
+        "visibility": visibility,
+    }
+    for field, value in expected.items():
+        if registration.get(field) != value:
+            raise UploadError(
+                f"Registration response did not attest {field}={value!r}.",
+                code="registration_attestation_failed",
+            )
+    if _normalized_sha256(registration.get("packageHash")) != _normalized_sha256(manifest.get("packageHash")):
+        raise UploadError(
+            "Registration response did not attest the submitted package hash.",
+            code="registration_attestation_failed",
+        )
+    for field in ("agentReleaseId", "releaseVersion"):
+        if not isinstance(registration.get(field), str) or not registration[field].strip():
+            raise UploadError(
+                f"Registration response omitted {field}.", code="registration_attestation_failed"
+            )
+    digest = str(registration.get("contentDigest") or "")
+    if re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest) is None:
+        raise UploadError(
+            "Registration response omitted a valid contentDigest.",
+            code="registration_attestation_failed",
+        )
+    return registration
 
 
 def publish_agent(
     folder: str | Path,
     *,
     slug: str | None = None,
-    visibility: str = "marketplace",
+    visibility: str,
     base_url: str | None = None,
     dry_run: bool = False,
     interactive: bool = True,
+    expected_package_hash: str | None = None,
+    expected_upload_receipt: str | None = None,
+    overwrite_cloud_id: str | None = None,
 ) -> dict[str, Any]:
-    packaged = package_agent(folder, slug=slug, visibility=visibility, write_manifest=True)
-    if packaged["status"] == "blocked":
-        packaged["registration"] = None
-        return packaged
-    if dry_run:
-        packaged["status"] = "dry-run"
-        packaged["registration"] = None
-        packaged["summary"] = _dry_run_summary(packaged)
-        return packaged
+    if visibility not in {"marketplace", "private-link"}:
+        raise UploadError("Choose exactly one upload visibility: marketplace or private-link.", code="visibility_required")
+    destination_base_url = _normalize_destination_base_url(base_url)
+    requested_source = Path(folder).expanduser()
+    source_link_resolved = requested_source.is_symlink()
+    source = requested_source.resolve()
+    if not source.is_dir():
+        raise UploadError(f"agent folder not found: {folder}", code="agent_folder_not_found")
+    with tempfile.TemporaryDirectory(prefix="hephaestus-upload.") as temporary:
+        snapshot = Path(temporary) / "package"
+        snapshot_omissions = _snapshot_package_source(source, snapshot)
+        _pin_snapshot_agent_identity(snapshot, source.name)
+        packaged = package_agent(snapshot, slug=slug, visibility=visibility, write_manifest=True)
+        if source_link_resolved:
+            snapshot_omissions.insert(
+                0,
+                _finding(
+                    "source-symlink-resolved",
+                    "warning",
+                    "source-selection",
+                    "The selected upload root was a symlink; its resolved directory was snapshotted.",
+                    ".",
+                    "Engine receipt: only the resolved directory contents were considered.",
+                ),
+            )
+        if snapshot_omissions:
+            packaged["review"]["findings"].extend(snapshot_omissions)
+            packaged["review"] = static_review(packaged["review"]["findings"])
+            packaged["bundle"]["snapshotOmissions"] = snapshot_omissions
+        omissions = _attach_omission_manifest(packaged, source)
+        if omissions and packaged.get("status") != "blocked":
+            packaged["summary"] = (
+                f"Ready: {packaged['manifest']['slug']} "
+                f"({len(omissions)} source item(s) omitted and receipt-bound)."
+            )
+        packaged["folder"] = str(source)
+        packaged["sourceSelection"] = {
+            "selected": str(requested_source),
+            "resolved": str(source),
+            "symlinkResolved": source_link_resolved,
+        }
+        actual_hash = str(packaged.get("manifest", {}).get("packageHash") or "")
+        upload_receipt = _upload_receipt(packaged.get("manifest") or {}, destination_base_url)
+        packaged["uploadReceipt"] = upload_receipt
+        if expected_package_hash and _normalized_sha256(expected_package_hash) != _normalized_sha256(actual_hash):
+            raise UploadError(
+                f"Package hash changed: expected {_normalized_sha256(expected_package_hash)}, got {actual_hash}.",
+                code="package_hash_mismatch",
+            )
+        if expected_upload_receipt and _normalized_upload_receipt(expected_upload_receipt) != upload_receipt["receipt"]:
+            raise UploadError(
+                "Upload approval receipt does not match the package hash, visibility, slug, and destination.",
+                code="upload_receipt_mismatch",
+            )
+        if not dry_run and expected_package_hash and not expected_upload_receipt:
+            raise UploadError(
+                "A package hash alone does not bind the approved destination and slug. "
+                "Run one dry-run and pass its uploadReceipt.receipt with --expected-upload-receipt.",
+                code="upload_receipt_required",
+            )
+        if packaged["status"] == "blocked":
+            packaged["registration"] = None
+            return packaged
+        if dry_run:
+            packaged["status"] = "dry-run"
+            packaged["registration"] = None
+            packaged["summary"] = _dry_run_summary(packaged)
+            return packaged
 
-    registration = register_package(
-        packaged["manifest"],
-        packaged["bundle"],
-        packaged["review"],
-        visibility=packaged["manifest"]["visibility"],
-        base_url=base_url,
-        interactive=interactive,
-    )
+        local_paths = tuple(
+            sorted(
+                {
+                    str(source),
+                    *(str(requested_source.resolve()) for _ in (0,)),
+                    *(str(requested_source) for _ in (0,) if requested_source.is_absolute()),
+                },
+                key=len,
+                reverse=True,
+            )
+        )
+        server_manifest = _without_local_upload_paths(packaged["manifest"], local_paths)
+        server_bundle = _without_local_upload_paths(packaged["bundle"], local_paths)
+        server_review = _without_local_upload_paths(packaged["review"], local_paths)
+        registration = register_package(
+            server_manifest,
+            server_bundle,
+            server_review,
+            visibility=packaged["manifest"]["visibility"],
+            base_url=destination_base_url,
+            interactive=interactive,
+            overwrite_cloud_id=overwrite_cloud_id,
+        )
+        registration = _attest_registration(registration, packaged["manifest"], visibility)
     packaged["status"] = "registered"
     packaged["registration"] = registration
     registered_slug = registration.get("slug") or packaged["manifest"]["slug"]
@@ -667,8 +1481,8 @@ def _with_localized_listing(manifest: dict[str, Any]) -> dict[str, Any]:
 
     The endpoint reads `manifest.localized.{titleEn,titleKo,descriptionEn,descriptionKo}`
     and rejects a publish with `localized_metadata_required` when any is missing.
-    Packages carry exactly that copy — in `publicProfile` (the market-page gate
-    already blocks upload without it) and again as `name/nameKo/summary/summaryKo`
+    Packages carry exactly that copy — in an authored or auto-repaired
+    `publicProfile` and again as `name/nameKo/summary/summaryKo`
     — but nothing ever mapped it onto the manifest, so a package that passed every
     local gate still failed at registration. This maps it; it never invents copy.
     """
@@ -737,11 +1551,18 @@ def register_package(
     visibility: str,
     base_url: str | None = None,
     interactive: bool = True,
+    overwrite_cloud_id: str | None = None,
 ) -> dict[str, Any]:
-    base = normalize_base_url(base_url)
-    token = ensure_access_token(base, interactive=interactive)
+    base = _normalize_destination_base_url(base_url)
+    try:
+        token = ensure_access_token(base, interactive=interactive)
+    except AgentlasAuthError as exc:
+        raise UploadError(str(exc), code="auth_unavailable") from exc
     if not token:
-        raise UploadError("Agentlas sign-in is required. Run `bin/hephaestus auth login` first.")
+        raise UploadError(
+            "Agentlas sign-in is required. Run `bin/hephaestus auth login` first.",
+            code="sign_in_required",
+        )
     payload = {
         "manifest": _with_localized_listing(manifest),
         "bundle": bundle,
@@ -767,26 +1588,36 @@ def register_package(
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with same_origin_urlopen(request, timeout=180) as response:
             return json.loads(response.read().decode("utf-8"))
 
     try:
         return _post()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        # A same-slug overwrite of a different-generation asset needs an
-        # optimistic-concurrency precondition. The 428 body hands us the current
-        # ETag + cloudId; retry once with them so the overwrite proceeds (the
-        # expected "same id overwrites" behavior) instead of hard-failing.
         if exc.code == 428:
             precondition = _overwrite_precondition_headers(detail)
             if precondition:
+                current_cloud_id = precondition["x-agentlas-cloud-id"]
+                if not overwrite_cloud_id:
+                    raise UploadError(
+                        "The destination already contains a different release. "
+                        f"Re-run with --overwrite-cloud-id {current_cloud_id} only after confirming that exact target.",
+                        code="overwrite_confirmation_required",
+                    ) from exc
+                if overwrite_cloud_id != current_cloud_id:
+                    raise UploadError(
+                        "Overwrite authorization does not match the server's current cloud asset.",
+                        code="overwrite_target_mismatch",
+                    ) from exc
                 try:
                     return _post(precondition)
                 except urllib.error.HTTPError as retry_exc:
-                    retry_detail = retry_exc.read().decode("utf-8", errors="replace")[:800]
+                    retry_detail = retry_exc.read().decode("utf-8", errors="replace")
+                    retry_code = _registration_error_code(retry_detail, "registration_http_error")
                     raise UploadError(
-                        f"Agentlas Cloud registration failed HTTP {retry_exc.code} after precondition retry: {retry_detail}"
+                        f"Agentlas Cloud registration failed HTTP {retry_exc.code} after authorized overwrite: {retry_detail[:800]}",
+                        code=retry_code,
                     ) from retry_exc
         # The CLI half of the BYOM repair-retry loop: the server never calls a
         # platform LLM during upload, it returns a mismatch list plus the
@@ -822,10 +1653,22 @@ def register_package(
                     "If the package truly does not say what work it performs, ask the user one plain question:",
                     '"What concrete work should this agent complete, and what should the finished result look like?"',
                 ])
-                raise UploadError("\n".join(lines)) from exc
-        raise UploadError(f"Agentlas Cloud registration failed HTTP {exc.code}: {detail[:800]}") from exc
+                raise UploadError("\n".join(lines), code="workforce_resume_incomplete") from exc
+        raise UploadError(
+            f"Agentlas Cloud registration failed HTTP {exc.code}: {detail[:800]}",
+            code=_registration_error_code(detail, "registration_http_error"),
+        ) from exc
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
-        raise UploadError(f"Agentlas Cloud registration failed: {exc}") from exc
+        raise UploadError(f"Agentlas Cloud registration failed: {exc}", code="registration_transport_error") from exc
+
+
+def _registration_error_code(detail: str, fallback: str) -> str:
+    try:
+        body = json.loads(detail)
+    except (TypeError, ValueError):
+        return fallback
+    code = body.get("code") if isinstance(body, dict) else None
+    return code if isinstance(code, str) and code else fallback
 
 
 def refresh_routing_card_metadata(base: Path) -> dict[str, Any]:
@@ -1258,14 +2101,37 @@ def _secret_line_reason(line: str) -> tuple[str, str] | None:
     for finding_id, pattern, message in SECRET_PATTERNS:
         if pattern.search(line):
             return finding_id, f"Removed possible {message} before upload."
+    unquoted = UNQUOTED_SECRET_ASSIGNMENT.search(line)
+    if unquoted and not _looks_like_secret_placeholder(unquoted.group(1)):
+        return "generic-secret", "Removed possible unquoted hard-coded credential before upload."
     return None
+
+
+def _looks_like_secret_placeholder(value: str) -> bool:
+    candidate = value.strip().strip("'\"")
+    lowered = candidate.lower()
+    if not candidate or candidate.startswith(("$", "<", "[", "{{")):
+        return True
+    if re.fullmatch(r"[A-Z][A-Z0-9_]{2,}", candidate):
+        return True
+    return lowered in {
+        "changeme",
+        "example",
+        "none",
+        "null",
+        "placeholder",
+        "redacted",
+        "replace-me",
+        "your-api-key",
+        "your-token-here",
+    } or any(marker in lowered for marker in ("placeholder", "example", "your_", "your-"))
 
 
 # Mirrors Agent Cloud's portableRelativePath contract
 # (AgentsAtlas/app/src/lib/agentlas-cloud/package-contract.ts). The server
-# refuses the whole bundle when any one path breaks these rules, so the same
-# rules have to run here — while we still know which local file produced the
-# path — or `package` says "ready" and only the real upload finds out.
+# refuses the whole bundle when any one path breaks these rules. The client
+# catches and withholds the exact local path, then emits an engine receipt so
+# the portable remainder can still upload.
 _UNPORTABLE_SEGMENT_CHARS = re.compile('[<>:"|?*\x00-\x1f]')
 _WINDOWS_RESERVED_SEGMENT = re.compile(r"^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)", re.I)
 
@@ -1322,7 +2188,9 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
     file_count = 0
     walked = 0
     shipped_paths: dict[str, str] = {}
-    for path in sorted(base.rglob("*")):
+    # Keep traversal lazy. Sorting `rglob()` first materialized an attacker-sized
+    # tree before the walk bound below could run, defeating the bound entirely.
+    for path in base.rglob("*"):
         rel = path.relative_to(base).as_posix()
         if any(part in SKIP_DIRS for part in path.relative_to(base).parts):
             continue
@@ -1332,18 +2200,26 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             or is_generated_runtime_path(rel)
         ):
             continue
-        if path.is_symlink():
-            findings.append(_finding("symlink", "blocker", "policy", "Symbolic links are not allowed in cloud agent packages.", rel, "Replace the symlink with an ordinary file or remove it."))
-            continue
-        if not path.is_file():
-            continue
-        # A pathological tree must still terminate even when almost nothing in it
-        # is uploadable, but this is a walk bound, not the package ceiling.
         walked += 1
         if walked > MAX_WALKED_ENTRIES:
-            findings.append(_finding("file-count-limit", "blocker", "size", f"Package has more than {MAX_FILES} files.", None, "Publish a focused agent/team folder."))
+            findings.append(_finding("walk-entry-limit", "blocker", "size", f"Package tree has more than {MAX_WALKED_ENTRIES} entries.", None, "Publish a focused agent/team folder."))
             break
-        stat = path.stat()
+        try:
+            metadata = path.lstat()
+        except OSError:
+            findings.append(_finding("unsafe-file", "blocker", "policy", "Package path could not be inspected safely.", rel, "Remove or replace the unreadable path."))
+            continue
+        if stat.S_ISLNK(metadata.st_mode):
+            findings.append(_finding("symlink", "blocker", "policy", "Symbolic links are not allowed in cloud agent packages.", rel, "Replace the symlink with an ordinary file or remove it."))
+            continue
+        if stat.S_ISDIR(metadata.st_mode):
+            continue
+        if not stat.S_ISREG(metadata.st_mode):
+            findings.append(_finding("special-file", "blocker", "policy", "Special filesystem objects are not allowed in cloud agent packages.", rel, "Replace the path with an ordinary file or remove it."))
+            continue
+        if metadata.st_nlink != 1:
+            findings.append(_finding("hardlink", "blocker", "policy", "Hard-linked files can expose content outside the selected package boundary.", rel, "Copy the content into a new ordinary file and remove the hard link."))
+            continue
         # `^\.env(?:\..*)?$` also matches `.env.example`, which the Output
         # Contract makes mandatory, so the packager's own output was an
         # unpublishable blocker. Value-free by the OS's own declaration; the
@@ -1361,16 +2237,15 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
         # both counts below tally survivors only, so the author saw "Ready" with
         # matching fileCount/includedFileCount and shipped an agent missing its
         # own files. Every path that now refuses a file names that file.
-        if stat.st_size > MAX_FILE_BYTES:
+        if metadata.st_size > MAX_FILE_BYTES:
             # Blocker, not "high": the file is dropped from the bundle, and a
             # "high" finding never fails static_review, so publish_agent went on
             # to register the truncated package and answered "Registered <slug>."
             findings.append(_finding("large-file", "blocker", "size", f"File exceeds {MAX_FILE_BYTES} bytes and cannot be shipped in the package.", rel, "Move the large asset out of the package folder, or split it below the limit."))
             continue
-        # Path portability gate. Agent Cloud refuses the ENTIRE bundle when any
-        # one path breaks its portableRelativePath contract, and its 400 could
-        # not name the file — with up to MAX_FILES paths the author had to guess.
-        # Decide it here, where the offending local file is still in hand.
+        # Path portability boundary. Agent Cloud refuses the entire bundle when
+        # any path breaks its contract, so decide it here and withhold the exact
+        # offending path before registration.
         # macOS stores Korean/accented filenames decomposed (NFD) while the
         # contract requires NFC, so normalize that away instead of blocking a
         # name that is byte-different but visually identical; everything else
@@ -1405,13 +2280,17 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
                 )
             )
             continue
-        raw = path.read_bytes()
+        try:
+            raw = _read_regular_file(path, metadata)
+        except UploadError as exc:
+            findings.append(_finding("unsafe-file", "blocker", "policy", str(exc), rel, "Retry from a stable package directory containing only ordinary files."))
+            continue
         text = _decode_package_text(raw)
         if text is None:
             # A real binary cannot ride in a UTF-8 text artifact, but silence made
             # that indistinguishable from "nothing was here". Name the file so the
             # author learns which asset the borrower will not receive.
-            findings.append(_finding("binary-file", "high", "content", "Binary file cannot be shipped in a text-only cloud package and was left out.", rel, "Host the asset outside the package, or remove it so the package contents match what ships."))
+            findings.append(_finding("binary-file", "blocker", "content", "Binary file cannot be shipped in a text-only cloud package and was left out.", rel, "Host the asset outside the package, or remove it so the package contents match what ships."))
             continue
         asset_identity = standalone_experience_asset_identity(text)
         if asset_identity:
@@ -1427,8 +2306,8 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
                     "the base package may keep only exact release IDs or value-free loadout references.",
                 )
             )
-            # Never place cross-kind bytes in the returned base-agent bundle,
-            # even though the blocker already prevents registration/dry-run.
+            # Never place cross-kind bytes in the returned base-agent bundle;
+            # the final policy records the omission without blocking the rest.
             continue
         text, sanitized_findings = sanitize_upload_file_text(rel, text)
         findings.extend(sanitized_findings)
@@ -1469,9 +2348,10 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
                 bytes=len(raw),
                 sha256=digest,
                 contentBase64=base64.b64encode(raw).decode("ascii"),
-                executable=bool(stat.st_mode & 0o111),
+                executable=bool(metadata.st_mode & 0o111),
             )
         )
+    files.sort(key=lambda item: item.path.encode("utf-16-be"))
     return files, file_count, findings
 
 
@@ -1653,6 +2533,9 @@ def _runtime_labels(base: Path) -> list[str]:
         labels.append("codex")
     if (base / "GEMINI.md").exists():
         labels.append("gemini")
+    antigravity_workflows = base / "antigravity" / "workflows"
+    if antigravity_workflows.is_dir() and any(path.is_file() for path in antigravity_workflows.rglob("*")):
+        labels.append("antigravity")
     return labels or ["agents-md"]
 
 

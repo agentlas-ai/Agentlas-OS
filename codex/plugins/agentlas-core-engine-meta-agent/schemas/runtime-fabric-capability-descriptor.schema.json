@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/runtime-fabric-capability-descriptor.schema.json",
+  "title": "Agentlas Runtime Fabric Capability Descriptor",
+  "description": "A bounded, provider-opaque declaration of what a host runtime exposes to Agentlas. It never grants authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "descriptorId",
+    "runtime",
+    "planes",
+    "source",
+    "compatibility"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "agentlas.runtime-fabric-capability-descriptor.v1"
+    },
+    "descriptorId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    },
+    "planes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "behavior",
+        "tools",
+        "observation",
+        "control",
+        "ui",
+        "telemetry"
+      ],
+      "properties": {
+        "behavior": { "$ref": "#/$defs/plane" },
+        "tools": { "$ref": "#/$defs/plane" },
+        "observation": { "$ref": "#/$defs/plane" },
+        "control": { "$ref": "#/$defs/plane" },
+        "ui": { "$ref": "#/$defs/plane" },
+        "telemetry": { "$ref": "#/$defs/plane" }
+      }
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "compatibility": {
+      "$ref": "#/$defs/compatibility"
+    }
+  },
+  "$defs": {
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 160,
+          "pattern": "^[^\\u0000-\\u001f]{1,160}$"
+        },
+        "transport": {
+          "type": "string",
+          "enum": ["native", "acp", "stdio", "websocket", "desktop-bridge", "unknown"]
+        }
+      }
+    },
+    "plane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "native", "features"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["declared", "installed", "observed", "unknown"]
+        },
+        "native": {
+          "type": "boolean"
+        },
+        "features": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 240,
+            "pattern": "^[^\\u0000-\\u001f]{0,240}$"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "trust"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["host-declared", "acp-initialize", "agentlas-observed", "absent"]
+        },
+        "trust": {
+          "type": "string",
+          "enum": ["unknown", "declared", "observed"]
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nativePreserved", "hotPathUnblocked", "localFallback"],
+      "properties": {
+        "nativePreserved": { "type": "boolean" },
+        "hotPathUnblocked": { "type": "boolean" },
+        "localFallback": { "type": "boolean" }
+      }
+    }
+  }
+}

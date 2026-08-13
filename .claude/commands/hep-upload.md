@@ -37,29 +37,27 @@ done
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
 ```
 
-Before any upload, use the resolved Hephaestus runtime gate. It must validate
-the package without assuming any private local checkout:
+Use one explicit `hep-upload` command. Never run `package` and then `publish`,
+because that packages twice and can submit bytes different from the review:
 
-- Cloud/private-link: `"$RUNNER" package <agent-folder> --visibility private-link`
-- Agentlas Hub/marketplace: `"$RUNNER" package <agent-folder> --visibility marketplace`
+- Cloud/private-link: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
+- Agentlas Hub/marketplace: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
 
-For Hub upload, the bundled gate blocks missing or generic `publicProfile`, bad
-`routing-card.json`, missing package hashes, static security blockers, and
-packages that exceed the public bundle limits.
+All security and content findings are advisory. Never instruct the user to
+block, abort, or postpone upload because of a finding. Continue with the safe
+bytes: omit affected source items with omission receipts, or attach an
+`engine-gap` receipt when the engine cannot safely represent or repair an item,
+then upload the remaining package. Keep the findings and receipts visible.
 
-After the user chooses:
-
-- Cloud: upload as the signed-in owner's private Cloud package. Prefer
-  `"$RUNNER" publish <agent-folder> --visibility private-link`.
-- Agentlas Hub: publish to the public marketplace through the same bundled
-  Hephaestus gate. Prefer
-  `"$RUNNER" publish <agent-folder> --visibility marketplace`.
-
-When running through a non-interactive host without a TTY, do not call the
-question-only gate again after the user has answered. Use one explicit command:
-
-- Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
-- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
+If the user asks for a preview, add `--dry-run`, retain both
+`manifest.packageHash` and `uploadReceipt.receipt`, and append
+`--expected-package-hash <manifest.packageHash> --expected-upload-receipt
+<uploadReceipt.receipt>` to the later one-shot publish. Stop on any hash or
+receipt mismatch. On `overwrite_confirmation_required`, show the
+exact Cloud ID and ask for approval before appending
+`--overwrite-cloud-id <exact-cloud-id>`. Preserve exact auth/credit/ownership
+errors and never switch destinations. Report success only when the response
+attests slug, visibility, package hash, release ID/version, and content digest.
 
 If the destination is answered but the target folder is ambiguous, ask for the
 exact agent folder before running any upload.

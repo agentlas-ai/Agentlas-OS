@@ -47,6 +47,20 @@
       "description": "Package manifest: permissions, memory policy, read allow/deny lists"
     },
     {
+      "path": ".agentlas/build-profile.json",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "format": "json",
+      "fill": "static",
+      "template": "templates/build-profile.json.tpl",
+      "schema": "schemas/build-profile.schema.json",
+      "description": "Fail-closed build readiness profile; only a complete user-confirmed minimal-private receipt can opt out of quality dossiers"
+    },
+    {
       "path": ".agentlas/agent-card.json",
       "modes": [
         "single",
@@ -167,6 +181,7 @@
         "package"
       ],
       "required": true,
+      "optionalWhen": ["minimal-private"],
       "format": "json",
       "fill": "fill",
       "template": "templates/capability-eval-plan.json.tpl",
@@ -181,6 +196,7 @@
         "package"
       ],
       "required": true,
+      "optionalWhen": ["minimal-private"],
       "format": "json",
       "fill": "generate",
       "template": null,
@@ -196,11 +212,11 @@
       ],
       "required": true,
       "format": "jsonl",
-      "fill": "fill",
-      "template": "templates/routing-benchmark.jsonl.tpl",
+      "fill": "generate",
+      "template": null,
       "schema": null,
       "minLines": 10,
-      "description": ">=10 routing benchmark cases (route + reject, ko + en). Canonical path is the plural `.agentlas/routing-benchmarks.jsonl`, which is what 140 of 144 forge packages and 183 live Hub releases actually ship. The contract previously said `benchmarks/`, which no generation ever wrote, so every package failed this required artifact on the path alone while the file sat on disk. The spelling carries no meaning; only agreement does."
+      "description": ">=10 routing benchmark cases (route + reject, ko + en), generated from the package routing card instead of copied from an internal fixture. Canonical path is the plural `.agentlas/routing-benchmarks.jsonl`, which is what 140 of 144 forge packages and 183 live Hub releases actually ship. The contract previously said `benchmarks/`, which no generation ever wrote, so every package failed this required artifact on the path alone while the file sat on disk. The spelling carries no meaning; only agreement does."
     },
     {
       "path": "docs/builder-interview.md",
@@ -210,11 +226,12 @@
         "package"
       ],
       "required": true,
+      "optionalWhen": ["minimal-private"],
       "format": "markdown",
       "fill": "generate",
       "template": "templates/builder-interview.md.tpl",
       "schema": null,
-      "minLines": 3,
+      "minLines": 20,
       "description": "Interview summary that grounded this package"
     },
     {
@@ -225,12 +242,61 @@
         "package"
       ],
       "required": true,
+      "optionalWhen": ["minimal-private"],
       "format": "markdown",
       "fill": "generate",
       "template": "templates/research-sources.md.tpl",
       "schema": null,
-      "minLines": 2,
+      "minLines": 12,
       "description": "Sources consulted during build research"
+    },
+    {
+      "path": "docs/tool-selection.md",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "optionalWhen": ["minimal-private"],
+      "format": "markdown",
+      "fill": "generate",
+      "template": "templates/tool-selection.md.tpl",
+      "schema": null,
+      "minLines": 8,
+      "description": "Selected and rejected tools/plugins, permission boundaries, fallbacks, and smoke tests"
+    },
+    {
+      "path": "docs/domain-expert-synthesis.md",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "optionalWhen": ["minimal-private"],
+      "format": "markdown",
+      "fill": "generate",
+      "template": "templates/domain-expert-synthesis.md.tpl",
+      "schema": null,
+      "minLines": 24,
+      "description": "Interview, comparable-agent, theory, and tool findings synthesized into specialist behavior"
+    },
+    {
+      "path": "docs/prompt-performance-contract.md",
+      "modes": [
+        "single",
+        "team",
+        "package"
+      ],
+      "required": true,
+      "optionalWhen": ["minimal-private"],
+      "format": "markdown",
+      "fill": "generate",
+      "template": "templates/prompt-performance-contract.md.tpl",
+      "schema": null,
+      "minLines": 24,
+      "description": "Performance-oriented prompt contract with operating loop, examples, rubric, and refusal rules"
     },
     {
       "path": "agents/*/agent.md",
@@ -268,20 +334,6 @@
       "template": "templates/sitemap.json.tpl",
       "schema": "schemas/sitemap.schema.json",
       "description": "Task flow: produces/consumes graph"
-    },
-    {
-      "path": ".agentlas/super-ontology-contract.json",
-      "modes": [
-        "single",
-        "team",
-        "package"
-      ],
-      "required": false,
-      "format": "json",
-      "fill": "static",
-      "template": "templates/super-ontology-contract.json.tpl",
-      "schema": null,
-      "description": "Governance contract seed (copied verbatim; export_only)"
     },
     {
       "path": "contracts/intake.schema.json",

@@ -17,6 +17,10 @@
     "packageHash",
     "contentDigest",
     "entityKind",
+    "prepareAttemptDigest",
+    "selectedSourcePinDigest",
+    "sourceFetchBindingDigest",
+    "sourceFetchIdempotencyKey",
     "receiptDigest"
   ],
   "properties": {
@@ -32,6 +36,10 @@
     "packageHash": { "$ref": "#/$defs/hash" },
     "contentDigest": { "$ref": "#/$defs/hash" },
     "entityKind": { "enum": ["agent", "team"] },
+    "prepareAttemptDigest": { "$ref": "#/$defs/hash" },
+    "selectedSourcePinDigest": { "$ref": "#/$defs/hash" },
+    "sourceFetchBindingDigest": { "$ref": "#/$defs/hash" },
+    "sourceFetchIdempotencyKey": { "$ref": "#/$defs/hash" },
     "receiptDigest": { "$ref": "#/$defs/hash" }
   },
   "$defs": {

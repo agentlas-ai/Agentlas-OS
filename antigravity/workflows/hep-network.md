@@ -20,8 +20,10 @@ ongoing work before considering recruitment.
    cross-lingual matching buries the right agent, measured 1st vs 144th for one
    query), while keeping `languages` as the required delivery language.
 2. Call `workforce.search_candidates` with
-   `{workOrder, sourceScope: "network"}` and keep the response as
-   `federationResult`, retaining all source receipts and provenance.
+   `{workOrder, sourceScope: "network"}`. Retain the projected menu's
+   `selectionSessionId` and every source receipt; do not echo the projected
+   menu as `federationResult`. Core resolves the complete federation state
+   locally from that session.
 3. Author `agentlas.workforce-selection.v1` yourself from content and
    qualification evidence; call `workforce.validate_selection` with
    `{workOrder, selection}` and keep `federatedSelection`. Revise on rejection.
@@ -44,7 +46,8 @@ expiry. Release it only through
 completion/cancellation. A 24-hour lease controls only the next server charge;
 standby is durable availability, not a continuously running model.
 
-Report `executed` only from a receipt proving every child invocation and a
+For `partial` or `failed`, report each source receipt's exact `failureCode`;
+never collapse, substitute, or relabel it. Report `executed` only from a receipt proving every child invocation and a
 passing verifier. Otherwise report the last truthful state and source outages.
 Do not call legacy `hephaestus_route`, bypass Core with direct remote search,
 accept a deterministic picker, or use popularity/history/price/availability as

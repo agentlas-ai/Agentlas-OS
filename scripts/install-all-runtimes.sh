@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.2.0}"
+version="${HEPHAESTUS_REF:-v1.2.1}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -58,10 +58,14 @@ host_adapter_dirs=(
 ok=0
 failed=0
 tmp_source_dir=""
+runtime_stage_dir=""
 
 cleanup() {
   if [[ -n "$tmp_source_dir" ]]; then
     rm -rf "$tmp_source_dir"
+  fi
+  if [[ -n "$runtime_stage_dir" && -d "$runtime_stage_dir" ]]; then
+    rm -rf "$runtime_stage_dir"
   fi
 }
 trap cleanup EXIT
@@ -78,60 +82,22 @@ have() {
   command -v "$1" >/dev/null 2>&1
 }
 
-python_ok() {
-  "$@" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1
-}
-
-is_runtime_python_shim() {
-  local candidate="$1"
-  local resolved=""
-  if [[ "$candidate" == */* ]]; then
-    resolved="$candidate"
-  else
-    resolved="$(command -v "$candidate" 2>/dev/null || true)"
-  fi
-  [[ -n "$resolved" ]] || return 1
-  case "$resolved" in
-    "$HOME/.agentlas/runtime/"*/bin/python3|"$HOME/.agentlas/runtime/current/bin/python3")
-      return 0
-      ;;
-  esac
-  return 1
-}
-
-python_candidate_ok() {
-  local candidate="$1"
-  if is_runtime_python_shim "$candidate"; then
-    return 1
-  fi
-  python_ok "$candidate"
-}
-
 resolve_python_cmd() {
-  if [[ -n "${HEPHAESTUS_PYTHON:-}" ]] && python_candidate_ok "$HEPHAESTUS_PYTHON"; then
-    printf '%s\n' "$HEPHAESTUS_PYTHON"
-    return 0
+  agentlas_load_platform_helpers || return 1
+  agentlas_resolve_python_cmd
+}
+
+# The canonical resolver returns either one executable path or the Windows
+# launcher vector `py -3`. Never quote that vector as one executable and never
+# rely on general word splitting for paths supplied through HEPHAESTUS_PYTHON.
+run_resolved_python() {
+  local py="$1"
+  shift
+  if [[ "$py" == "py -3" ]]; then
+    command py -3 "$@"
+  else
+    "$py" "$@"
   fi
-  local candidate
-  for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
-    if [[ -x "$candidate" ]] && python_candidate_ok "$candidate"; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done
-  if have python3 && python_candidate_ok python3; then
-    printf '%s\n' python3
-    return 0
-  fi
-  if have python && python_candidate_ok python; then
-    printf '%s\n' python
-    return 0
-  fi
-  if have py && py -3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
-    printf '%s\n' 'py -3'
-    return 0
-  fi
-  return 1
 }
 
 run() {
@@ -149,6 +115,119 @@ try() {
   "$@"
 }
 
+copy_tree_without_python_cache() {
+  local src="$1" dest="$2"
+  [[ -d "$src" ]] || { warn "copy source directory missing: $src"; return 1; }
+  have tar || { warn "tar is required for cache-free local-source copies."; return 1; }
+  mkdir -p "$dest" || return 1
+  (
+    cd "$src" || exit 1
+    tar --exclude='__pycache__' --exclude='*/__pycache__' \
+      --exclude='*.pyc' --exclude='*.pyo' -cf - .
+  ) | (
+    cd "$dest" || exit 1
+    tar -xf -
+  ) || return 1
+  find "$dest" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || return 1
+  find "$dest" -depth -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || return 1
+}
+
+atomic_replace_path() {
+  local source_path="$1" destination_path="$2" py="$3"
+  run_resolved_python "$py" - "$source_path" "$destination_path" <<'PY'
+import os
+import sys
+
+os.replace(sys.argv[1], sys.argv[2])
+PY
+}
+
+promote_runtime_home() {
+  local runtime_root="$1" home_dir="$2" stage_dir="$3" expected_release="$4" py="$5"
+  local plain="${home_dir##*/}"
+  local previous_dir="$runtime_root/.${plain}.previous.$$"
+  local current_link="$runtime_root/current"
+  local current_tmp="$runtime_root/.current.$$"
+  local current_rollback="$runtime_root/.current.rollback.$$"
+  local legacy_current_backup="$runtime_root/.current.previous.$$"
+  local old_current_target=""
+  local promoted_target=""
+  local promoted_release=""
+
+  if [[ "$(cat "$stage_dir/RELEASE" 2>/dev/null || true)" != "$expected_release" ]]; then
+    warn "Staged runtime RELEASE does not match $expected_release; refusing promotion."
+    return 1
+  fi
+  if [[ -e "$previous_dir" || -L "$previous_dir" \
+    || -e "$current_tmp" || -L "$current_tmp" \
+    || -e "$current_rollback" || -L "$current_rollback" \
+    || -e "$legacy_current_backup" || -L "$legacy_current_backup" ]]; then
+    warn "Runtime staging collision; refusing to replace the live runtime."
+    return 1
+  fi
+
+  if [[ -L "$current_link" ]]; then
+    old_current_target="$(readlink "$current_link")" || return 1
+    ln -s "$old_current_target" "$current_rollback" || return 1
+  elif [[ -e "$current_link" ]]; then
+    mv "$current_link" "$legacy_current_backup" || return 1
+  fi
+  if [[ -e "$home_dir" || -L "$home_dir" ]]; then
+    mv "$home_dir" "$previous_dir" || {
+      [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]] \
+        && mv "$legacy_current_backup" "$current_link" 2>/dev/null || true
+      rm -f "$current_rollback"
+      return 1
+    }
+  fi
+  if ! mv "$stage_dir" "$home_dir"; then
+    [[ -e "$previous_dir" || -L "$previous_dir" ]] \
+      && mv "$previous_dir" "$home_dir" 2>/dev/null || true
+    [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]] \
+      && mv "$legacy_current_backup" "$current_link" 2>/dev/null || true
+    rm -f "$current_rollback"
+    return 1
+  fi
+  runtime_stage_dir=""
+  if ! ln -s "$home_dir" "$current_tmp" \
+    || ! atomic_replace_path "$current_tmp" "$current_link" "$py"; then
+    rm -f "$current_tmp"
+    if [[ -L "$current_rollback" ]]; then
+      atomic_replace_path "$current_rollback" "$current_link" "$py" 2>/dev/null || true
+    elif [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]]; then
+      mv "$legacy_current_backup" "$current_link" 2>/dev/null || true
+    fi
+    rm -rf "$home_dir"
+    [[ -e "$previous_dir" || -L "$previous_dir" ]] \
+      && mv "$previous_dir" "$home_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  promoted_target="$(readlink "$current_link" 2>/dev/null || true)"
+  promoted_release="$(cat "$current_link/RELEASE" 2>/dev/null || true)"
+  if [[ "$promoted_target" != "$home_dir" || "$promoted_release" != "$expected_release" ]]; then
+    warn "Runtime current verification failed after promotion; restoring the prior runtime."
+    if [[ -L "$current_rollback" ]]; then
+      atomic_replace_path "$current_rollback" "$current_link" "$py" 2>/dev/null || true
+    elif [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]]; then
+      rm -f "$current_link"
+      mv "$legacy_current_backup" "$current_link" 2>/dev/null || true
+    else
+      rm -f "$current_link"
+    fi
+    rm -rf "$home_dir"
+    [[ -e "$previous_dir" || -L "$previous_dir" ]] \
+      && mv "$previous_dir" "$home_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  rm -f "$current_rollback"
+  [[ -e "$previous_dir" || -L "$previous_dir" ]] && rm -rf "$previous_dir"
+  [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]] \
+    && rm -rf "$legacy_current_backup"
+  return 0
+}
+
 # Platform helpers (agentlas_is_windows / agentlas_native_path /
 # agentlas_path_sep / agentlas_mcp_launch) are canonical in
 # bin/agentlas-python-cache-boundary. The installer SOURCES them from the
@@ -156,13 +235,21 @@ try() {
 # we spell a path on Windows" is exactly how every MCP registration below ended
 # up hardcoding an extensionless bash runner that native Windows cannot spawn.
 agentlas_load_platform_helpers() {
-  if declare -F agentlas_is_windows >/dev/null 2>&1; then
+  if declare -F agentlas_is_windows >/dev/null 2>&1 \
+    && declare -F agentlas_resolve_python_cmd >/dev/null 2>&1; then
     return 0
   fi
   ensure_downloaded_source || return 1
   # shellcheck source=/dev/null
   source "$source_dir/bin/agentlas-python-cache-boundary" || return 1
-  declare -F agentlas_is_windows >/dev/null 2>&1
+  # Both symbols must land, not just agentlas_is_windows: a stale or
+  # version-skewed source_dir can source cleanly while omitting a newer
+  # function such as agentlas_resolve_python_cmd, which then fails as
+  # "command not found" at the call site instead of here, and every caller
+  # that gates on this guard (resolve_python_cmd, the Windows shim writer,
+  # ...) silently treats that as "python3 not found" or "not on Windows".
+  declare -F agentlas_is_windows >/dev/null 2>&1 \
+    && declare -F agentlas_resolve_python_cmd >/dev/null 2>&1
 }
 
 # PYTHONPATH for a runtime root, in the form the interpreter on THIS platform can
@@ -212,8 +299,7 @@ runtime_mcp_launch_render() {
   local shape="$1" py=""
   py="$(resolve_python_cmd || true)"
   [[ -n "$py" ]] || return 1
-  # shellcheck disable=SC2086
-  runtime_mcp_launch_fields | AGENTLAS_RENDER_SHAPE="$shape" $py -c 'import json, os, sys
+  runtime_mcp_launch_fields | AGENTLAS_RENDER_SHAPE="$shape" run_resolved_python "$py" -c 'import json, os, sys
 fields = [line.rstrip("\n") for line in sys.stdin if line.strip()]
 if not fields:
     raise SystemExit(1)
@@ -236,6 +322,17 @@ else:
 # never installed into a user's global command directory.
 project_only_commands=(
   "meta-agent.md"
+)
+
+# AgentSkills-spec surfaces installed into ~/.agents plus host-specific skill
+# homes. The updater carries the exact same set in agentlas_cloud/update.py;
+# the package gate compares both against skills/ so additions cannot be omitted.
+managed_skill_names=(
+  "hephaestus-network"
+  "hephaestus-cloud"
+  "hephaestus-storm"
+  "hephaestus-graph"
+  "hephaestus-upload"
 )
 
 # The managed command set is DERIVED from the release, never typed out again.
@@ -344,13 +441,26 @@ ensure_downloaded_source() {
 install_runtime_home() {
   ensure_downloaded_source || { warn "runtime home install skipped: no source."; return 1; }
   local plain="${version#v}"
-  local home_dir="$HOME/.agentlas/runtime/$plain"
+  if [[ ! "$plain" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    warn "Runtime ref cannot be used as a local version directory: $version"
+    return 1
+  fi
+  local runtime_root="$HOME/.agentlas/runtime"
+  local home_dir="$runtime_root/$plain"
+  local current_link="$runtime_root/current"
+  mkdir -p "$runtime_root" || return 1
+  runtime_stage_dir="$(mktemp -d "$runtime_root/.${plain}.staging.XXXXXX")" || return 1
+  local stage_dir="$runtime_stage_dir"
   local model_source="$source_dir/assets/model2vec/potion-multilingual-128M-int8"
-  local model_dest="$home_dir/models/model2vec/potion-multilingual-128M-int8"
+  local model_dest="$stage_dir/models/model2vec/potion-multilingual-128M-int8"
   local py=""
   py="$(resolve_python_cmd || true)"
   if [[ -z "$py" ]]; then
-    warn "Python 3.9+ is required to verify the bundled local embedding model."
+    warn "Python 3.9+ with jsonschema and referencing is required for the runtime contract validator."
+    return 1
+  fi
+  if ! run_resolved_python "$py" -c 'from jsonschema import Draft202012Validator; from referencing import Registry' >/dev/null 2>&1; then
+    warn "Python dependencies jsonschema and referencing are required for standards-complete package validation."
     return 1
   fi
   if [[ ! -d "$model_source" ]]; then
@@ -358,51 +468,50 @@ install_runtime_home() {
     return 1
   fi
   log "== Hephaestus runtime home =="
-  rm -rf "$home_dir"
-  mkdir -p "$home_dir"
+  # Build and verify away from the live version. The existing runtime remains
+  # callable until every copy, model check, adapter and shim below succeeds.
   # system-agents/ carries the canonical curator-ruleset.json. one_workspace.py
   # resolves it as here.parent/system-agents/curator-ruleset.json, so without it
   # the stop-hook curator falls back to the embedded ruleset on every install and
   # stamps sha="embedded" into every decision receipt (2026-08-12 set 4). The
   # release archive ships only that one file under system-agents/.
-  cp -R "$source_dir/bin" "$source_dir/agentlas_cloud" "$source_dir/career_graph" \
-    "$source_dir/ontology" "$source_dir/schemas" "$source_dir/templates" \
-    "$source_dir/system-agents" \
-    "$home_dir/" || return 1
+  local runtime_dir
+  for runtime_dir in bin agentlas_cloud career_graph contracts ontology schemas templates system-agents; do
+    copy_tree_without_python_cache "$source_dir/$runtime_dir" "$stage_dir/$runtime_dir" || return 1
+  done
   # Hook packs must travel with the runner: `agentlas-one on` installs them, and
   # a user who never re-runs the installer would otherwise never receive them.
   local pack
   for pack in goose openclaw; do
     [[ -d "$source_dir/$pack" ]] || continue
-    rm -rf "${home_dir:?}/$pack"
-    cp -R "$source_dir/$pack" "$home_dir/$pack" || return 1
+    copy_tree_without_python_cache "$source_dir/$pack" "$stage_dir/$pack" || return 1
   done
-  cp "$source_dir/package-contract.json" "$home_dir/package-contract.json" || return 1
+  cp "$source_dir/package-contract.json" "$stage_dir/package-contract.json" || return 1
   mkdir -p "$(dirname "$model_dest")"
-  cp -R "$model_source" "$model_dest" || return 1
-  if ! PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$home_dir")" \
-    $py -m ontology.model_assets verify "$model_dest" >/dev/null; then
+  copy_tree_without_python_cache "$model_source" "$model_dest" || return 1
+  if ! PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$stage_dir")" \
+    run_resolved_python "$py" -m ontology.model_assets verify "$model_dest" >/dev/null; then
     warn "Bundled Model2Vec asset failed local checksum/provenance verification; refusing the runtime install."
     return 1
   fi
-  chmod +x "$home_dir/bin/hephaestus" \
-    "$home_dir/bin/ontology" \
-    "$home_dir/bin/career-graph" \
-    "$home_dir/bin/hep-build" \
-    "$home_dir/bin/hep-network" \
-    "$home_dir/bin/hep-local" \
-    "$home_dir/bin/hep-cloud" \
-    "$home_dir/bin/hep-hub" \
-    "$home_dir/bin/hep-search" \
-    "$home_dir/bin/hep-browser" \
-	    "$home_dir/bin/hep-call" \
-	    "$home_dir/bin/hep-upload" \
-	    "$home_dir/bin/hep-storm" \
-	    "$home_dir/bin/hep-global" \
-	    "$home_dir/bin/hep-update" \
-	    "$home_dir/bin/agentlas-memory-hook" \
-	    "$home_dir/bin/agentlas-one" 2>/dev/null || true
-  printf '%s\n' "$version" > "$home_dir/RELEASE"
+  chmod +x "$stage_dir/bin/hephaestus" \
+    "$stage_dir/bin/ontology" \
+    "$stage_dir/bin/career-graph" \
+    "$stage_dir/bin/hep-build" \
+    "$stage_dir/bin/hep-network" \
+    "$stage_dir/bin/hep-local" \
+    "$stage_dir/bin/hep-cloud" \
+    "$stage_dir/bin/hep-hub" \
+    "$stage_dir/bin/hep-search" \
+    "$stage_dir/bin/hep-browser" \
+	    "$stage_dir/bin/hep-call" \
+	    "$stage_dir/bin/hep-upload" \
+	    "$stage_dir/bin/hep-storm" \
+	    "$stage_dir/bin/hep-global" \
+	    "$stage_dir/bin/hep-update" \
+	    "$stage_dir/bin/agentlas-memory-hook" \
+	    "$stage_dir/bin/agentlas-one" 2>/dev/null || true
+  printf '%s\n' "$version" > "$stage_dir/RELEASE"
   # The host-adapter bundle. The updater builds this from HOST_ADAPTER_DIRS
   # (agentlas_cloud/update.py) and the commands that find the engine look for it:
   # `.claude/commands/hep-build.md` and `agentlas.md` probe
@@ -411,13 +520,12 @@ install_runtime_home() {
   # a runtime installed HERE and one installed by the updater had different
   # layouts, and engine discovery fell through to "run the installer first" on a
   # machine that had just run the installer. Same set, same shape, both paths.
-  local adapter_bundle="$home_dir/$HOST_ADAPTER_BUNDLE_DIR"
-  rm -rf "$adapter_bundle"
+  local adapter_bundle="$stage_dir/$HOST_ADAPTER_BUNDLE_DIR"
   mkdir -p "$adapter_bundle"
   local adapter
   for adapter in "${host_adapter_dirs[@]}"; do
     [[ -d "$source_dir/$adapter" ]] || continue
-    cp -R "$source_dir/$adapter" "$adapter_bundle/$adapter" || return 1
+    copy_tree_without_python_cache "$source_dir/$adapter" "$adapter_bundle/$adapter" || return 1
   done
   for adapter in manifest.json; do
     [[ -f "$source_dir/$adapter" ]] && cp "$source_dir/$adapter" "$adapter_bundle/$adapter"
@@ -427,25 +535,26 @@ install_runtime_home() {
     cp "$source_dir/scripts/install-memory-hooks.py" "$adapter_bundle/scripts/install-memory-hooks.py"
   fi
   printf '%s\n' "$version" > "$adapter_bundle/RELEASE"
-  write_python3_shim "$home_dir/bin" || true
-  write_windows_command_shims "$home_dir/bin" || true
-  if [[ ! -e "$home_dir/bin/Hephaestus" ]]; then
-    ln -sfn hephaestus "$home_dir/bin/Hephaestus" 2>/dev/null || true
+  write_python3_shim "$stage_dir/bin" || true
+  write_windows_command_shims "$stage_dir/bin" || true
+  if [[ ! -e "$stage_dir/bin/Hephaestus" ]]; then
+    ln -sfn hephaestus "$stage_dir/bin/Hephaestus" 2>/dev/null || true
   fi
   # Agentlas Terminal owns the `agentlas` shell command as an independent
   # product surface. Core must not shadow it with a Hephaestus alias.
-  rm -f "$home_dir/bin/agentlas" 2>/dev/null || true
-  rm -f "$home_dir/bin/Hephaestus-build" "$home_dir/bin/Hephaestus-search" \
-        "$home_dir/bin/Hephaestus-call" "$home_dir/bin/Hephaestus-storm" \
-        "$home_dir/bin/hephaestus-network" \
-        "$home_dir/bin/hephaestus-build" "$home_dir/bin/hephaests-network" \
-        "$home_dir/bin/hephaestus-search" "$home_dir/bin/hephaestus-call" \
-        "$home_dir/bin/hephaestus-storm" 2>/dev/null || true
-  local current_link="$HOME/.agentlas/runtime/current"
-  if [[ -e "$current_link" && ! -L "$current_link" ]]; then
-    rm -rf "$current_link"
-  fi
-  ln -sfn "$home_dir" "$current_link"
+  rm -f "$stage_dir/bin/agentlas" 2>/dev/null || true
+  rm -f "$stage_dir/bin/Hephaestus-build" "$stage_dir/bin/Hephaestus-search" \
+        "$stage_dir/bin/Hephaestus-call" "$stage_dir/bin/Hephaestus-storm" \
+        "$stage_dir/bin/hephaestus-network" \
+        "$stage_dir/bin/hephaestus-build" "$stage_dir/bin/hephaests-network" \
+        "$stage_dir/bin/hephaestus-search" "$stage_dir/bin/hephaestus-call" \
+        "$stage_dir/bin/hephaestus-storm" 2>/dev/null || true
+
+  # Commit only after the staged runtime is complete. Python's os.replace is a
+  # same-filesystem atomic rename on both macOS and Linux and, unlike `mv -f`,
+  # does not follow an existing `current` symlink as a destination directory.
+  promote_runtime_home "$runtime_root" "$home_dir" "$stage_dir" "$version" "$py" \
+    || return 1
   log "Installed runner: $HOME/.agentlas/runtime/current/bin/hephaestus"
 
   local user_bin="$HOME/.local/bin"
@@ -515,6 +624,10 @@ EOF
       return 1
     fi
   fi
+  # The portable Core is a complete installed surface even when no optional
+  # host application is present. Count it so a clean/headless machine does not
+  # receive exit 1 after a usable runtime was atomically promoted.
+  ok=$((ok + 1))
 }
 
 write_python3_shim() {
@@ -665,19 +778,22 @@ install_agents_skills() {
   mkdir -p "$HOME/.agents/skills" 2>/dev/null \
     || { warn "Could not create ~/.agents/skills (is it writable?); universal skills were not installed."; return 1; }
   local name src
-  for name in hephaestus-network hephaestus-cloud hephaestus-storm; do
+  for name in "${managed_skill_names[@]}"; do
     src="$source_dir/.agents/skills/$name"
     [[ -d "$src" ]] || src="$source_dir/skills/$name"
     [[ -d "$src" ]] || { warn "canonical $name skill not found."; return 1; }
     rm -rf "$HOME/.agents/skills/$name"
-    cp -R "$src" "$HOME/.agents/skills/$name" \
+    copy_tree_without_python_cache "$src" "$HOME/.agents/skills/$name" \
       || { warn "Could not write ~/.agents/skills/$name (is it writable?)."; return 1; }
     # cp can report success on a partial copy when the destination fills up, and
     # the only file that makes a skill a skill is SKILL.md.
     [[ -f "$HOME/.agents/skills/$name/SKILL.md" ]] \
       || { warn "~/.agents/skills/$name was written without SKILL.md; the skill would never load."; return 1; }
   done
-  log "Installed universal skills: ~/.agents/skills/hephaestus-network, hephaestus-cloud, and hephaestus-storm"
+  log "Installed universal skills: ${managed_skill_names[*]}"
+  # AgentSkills are a real install target shared by current hosts, not merely
+  # an adapter side effect. Count this success independently of host detection.
+  ok=$((ok + 1))
 }
 
 remove_claude_existing() {
@@ -846,7 +962,7 @@ write_codex_prompts() {
   ensure_downloaded_source || return 1
   if ! codex_custom_prompts_supported; then
     prune_managed_codex_prompts
-    log 'Codex 0.117+ skill entrypoints: $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm'
+    log 'Codex 0.117+ skill entrypoints: $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm, $hephaestus-graph'
     return 0
   fi
   local prompts_src="$source_dir/codex/prompts"
@@ -967,7 +1083,7 @@ write_gemini_fallback_command() {
   local command_dir="$HOME/.gemini/commands"
   mkdir -p "$command_dir"
   local name
-  for name in hep-build.toml hep-network.toml hep-local.toml hep-cloud.toml hep-hub.toml hep-search.toml hep-browser.toml hep-call.toml hep-upload.toml hep-storm.toml agentlas.toml; do
+  for name in hep-build.toml hep-network.toml hep-local.toml hep-cloud.toml hep-hub.toml hep-search.toml hep-browser.toml hep-call.toml hep-upload.toml hep-storm.toml hep-graph.toml agentlas.toml; do
     rm -f "$command_dir/$name"
     cp "$source_dir/gemini/extension/commands/$name" "$command_dir/$name" || return 1
   done
@@ -975,7 +1091,7 @@ write_gemini_fallback_command() {
         "$command_dir/hephaestus-build.toml" "$command_dir/hephaestus-network.toml" \
         "$command_dir/hephaestus-cloud.toml" "$command_dir/hephaestus-search.toml" \
         "$command_dir/hephaestus-call.toml"
-  log "Installed Gemini fallback commands: /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-storm"
+  log "Installed Gemini fallback commands: /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-storm, /hep-graph"
 }
 
 install_gemini() {
@@ -997,7 +1113,7 @@ install_gemini() {
     local stable_gemini_source="$HOME/.gemini/hephaestus-extension-source"
     rm -rf "$stable_gemini_source"
     mkdir -p "$stable_gemini_source"
-    cp -R "$gemini_extension_dir"/. "$stable_gemini_source"/
+    copy_tree_without_python_cache "$gemini_extension_dir" "$stable_gemini_source" || return 1
     gemini_extension_dir="$stable_gemini_source"
   fi
 
@@ -1069,7 +1185,7 @@ install_antigravity() {
 }
 EOF
   if [[ -d "$source_dir/skills" ]]; then
-    cp -R "$source_dir/skills"/* "$plugin_target/skills/" 2>/dev/null || true
+    copy_tree_without_python_cache "$source_dir/skills" "$plugin_target/skills" || return 1
     log "Installed Antigravity plugin and skills into $plugin_target"
   fi
 
@@ -1090,7 +1206,7 @@ register_antigravity_mcp() {
   fi
   mkdir -p "$cfg_dir"
   AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
-    "$py" - "$cfg" <<'PY' || return 1
+    run_resolved_python "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
 entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
@@ -1120,7 +1236,7 @@ register_cursor_mcp() {
   [[ -n "$py" ]] || { warn "python3 not found; skipped Cursor MCP registration."; return 1; }
   mkdir -p "$(dirname "$cfg")"
   AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
-    "$py" - "$cfg" <<'PY' || return 1
+    run_resolved_python "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
 entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
@@ -1149,7 +1265,7 @@ register_opencode_mcp() {
   [[ -n "$py" ]] || { warn "python3 not found; skipped OpenCode MCP registration."; return 1; }
   mkdir -p "$(dirname "$cfg")"
   AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
-    "$py" - "$cfg" <<'PY' || return 1
+    run_resolved_python "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
 entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
@@ -1196,9 +1312,9 @@ install_cursor() {
         "$HOME/.cursor/commands/hephaestus-build.md" "$HOME/.cursor/commands/hephaestus-network.md" \
         "$HOME/.cursor/commands/hephaestus-cloud.md" "$HOME/.cursor/commands/hephaestus-search.md" \
         "$HOME/.cursor/commands/hephaestus-call.md"
-  for name in hephaestus-network hephaestus-cloud hephaestus-storm; do
+  for name in "${managed_skill_names[@]}"; do
     rm -rf "$HOME/.cursor/skills/$name"
-    cp -R "$source_dir/skills/$name" "$HOME/.cursor/skills/$name" || return 1
+    copy_tree_without_python_cache "$source_dir/skills/$name" "$HOME/.cursor/skills/$name" || return 1
   done
   register_cursor_mcp || warn "Cursor MCP registration failed; add local hephaestus-network to ~/.cursor/mcp.json manually."
   log "Installed Cursor commands ($cursor_commands ), skills, and canonical Workforce MCP."
@@ -1248,7 +1364,7 @@ install_memory_hooks() {
   local hook_output=""
   if ! hook_output="$(
     PYTHONUTF8=1 PYTHONIOENCODING=utf-8 \
-      $py "$source_dir/scripts/install-memory-hooks.py" \
+      run_resolved_python "$py" "$source_dir/scripts/install-memory-hooks.py" \
       --source-dir "$source_dir" --home "$HOME" --hosts auto 2>&1
   )"; then
     warn "Local memory hook install failed. Error was:"
@@ -1269,16 +1385,17 @@ install_openclaw() {
   ensure_downloaded_source || return 1
   local name skill_src
   mkdir -p "$HOME/.openclaw/skills"
-  for name in hephaestus-network hephaestus-cloud hephaestus-storm; do
+  for name in "${managed_skill_names[@]}"; do
     skill_src="$source_dir/openclaw/skills/$name"
+    [[ -d "$skill_src" ]] || continue
     if have openclaw && openclaw skills install "$skill_src" --global >/dev/null 2>&1; then
       log "Installed OpenClaw skill via: openclaw skills install --global ($name)"
     else
       rm -rf "$HOME/.openclaw/skills/$name"
-      cp -R "$skill_src" "$HOME/.openclaw/skills/$name" || return 1
+      copy_tree_without_python_cache "$skill_src" "$HOME/.openclaw/skills/$name" || return 1
     fi
   done
-  log "Installed OpenClaw skills: hephaestus-network, hephaestus-cloud, and hephaestus-storm"
+  log "Installed available OpenClaw skills from the managed AgentSkills set"
   install_openclaw_hook || warn "OpenClaw memory hook install failed; skills remain installed."
   ok=$((ok + 1))
 }
@@ -1294,7 +1411,7 @@ install_openclaw_hook() {
   fi
   mkdir -p "$HOME/.openclaw/hooks"
   rm -rf "$HOME/.openclaw/hooks/agentlas-one"
-  cp -R "$hook_src" "$HOME/.openclaw/hooks/agentlas-one" || return 1
+  copy_tree_without_python_cache "$hook_src" "$HOME/.openclaw/hooks/agentlas-one" || return 1
   log "Installed OpenClaw hook by copy: agentlas-one"
 }
 
@@ -1308,11 +1425,11 @@ install_hermes() {
   ensure_downloaded_source || return 1
   mkdir -p "$HOME/.hermes/skills"
   local name
-  for name in hephaestus-network hephaestus-cloud hephaestus-storm; do
+  for name in "${managed_skill_names[@]}"; do
     rm -rf "$HOME/.hermes/skills/$name"
-    cp -R "$source_dir/skills/$name" "$HOME/.hermes/skills/$name" || return 1
+    copy_tree_without_python_cache "$source_dir/skills/$name" "$HOME/.hermes/skills/$name" || return 1
   done
-  log "Installed Hermes skills: hephaestus-network, hephaestus-cloud, and hephaestus-storm (MCP: see hermes/README.md)"
+  log "Installed Hermes skills: ${managed_skill_names[*]} (MCP: see hermes/README.md)"
   ok=$((ok + 1))
 }
 
@@ -1364,7 +1481,7 @@ install_goose_hook() {
   local dest="$HOME/.agents/plugins/agentlas-one"
   mkdir -p "$(dirname "$dest")"
   rm -rf "$dest"
-  cp -R "$src" "$dest" || return 1
+  copy_tree_without_python_cache "$src" "$dest" || return 1
   log "Installed goose SessionEnd hook: ~/.agents/plugins/agentlas-one"
 }
 
@@ -1383,7 +1500,7 @@ install_amp() {
   [[ -n "$py" ]] || { warn "python3 not found; add local hephaestus-network to $cfg manually."; return 1; }
   mkdir -p "$(dirname "$cfg")"
   AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
-    "$py" - "$cfg" <<'PY' || return 1
+    run_resolved_python "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
 entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
@@ -1419,7 +1536,7 @@ install_copilot_cli() {
   [[ -n "$py" ]] || { warn "python3 not found; add local hephaestus-network to $cfg manually."; return 1; }
   mkdir -p "$(dirname "$cfg")"
   AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
-    "$py" - "$cfg" <<'PY' || return 1
+    run_resolved_python "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
 entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
@@ -1479,7 +1596,7 @@ install_amazonq() {
   [[ -n "$py" ]] || { warn "python3 not found; add local hephaestus-network to $cfg manually."; return 1; }
   mkdir -p "$(dirname "$cfg")"
   AGENTLAS_LOCAL_MCP_ENTRY="$(runtime_mcp_launch_render json)" \
-    "$py" - "$cfg" <<'PY' || return 1
+    run_resolved_python "$py" - "$cfg" <<'PY' || return 1
 import json, os, sys
 path = sys.argv[1]
 entry = json.loads(os.environ["AGENTLAS_LOCAL_MCP_ENTRY"])
@@ -1517,13 +1634,13 @@ bootstrap_networking() {
   fi
   log "== Hephaestus Network (global routing structure) =="
   local init_output
-  if ! init_output="$(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$source_dir")" $py -m agentlas_cloud network init 2>&1)"; then
+  if ! init_output="$(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$source_dir")" run_resolved_python "$py" -m agentlas_cloud network init 2>&1)"; then
     warn "Hephaestus Network init failed. Error was:"
     printf '%s\n' "$init_output" | tail -5 >&2
     warn "Retry manually: PYTHONPATH=<hephaestus-source> $py -m agentlas_cloud network init"
     return 1
   fi
-  PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$source_dir")" $py -m agentlas_cloud network reindex >/dev/null 2>&1 || true
+  PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$source_dir")" run_resolved_python "$py" -m agentlas_cloud network reindex >/dev/null 2>&1 || true
   log "Initialized ~/.agentlas/networking (cards, policies, ledgers, local memory map)."
 }
 
@@ -1610,14 +1727,14 @@ main() {
   log "Restart open Claude Code, Codex, Gemini, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, goose, Amp, Copilot CLI, Warp, and Amazon Q apps."
   log "Then use:"
   log "  Agentlas:    describe the task in plain language; native tools choose the path"
-	  log "  Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-connect"
-	  log '  Codex:       $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-storm; use plain language for local/hub/search/browser/call/upload/connect'
-	  log "  Gemini CLI:  /extensions list or /commands list, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
-	  log "  Antigravity: reopen the workspace, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
-	  log "  Cursor:      /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
-	  log "  OpenCode:    /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
-	  log "  OpenClaw:    /skill hephaestus-storm <request> or /skill hephaestus-network <request>"
-	  log "  Hermes:      hephaestus-storm/hephaestus-network skills (+ MCP, see hermes/README.md)"
+	  log "  Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph, /hep-connect"
+	  log '  Codex:       $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm, $hephaestus-graph; use plain language for local/hub/search/browser/call/connect'
+	  log "  Gemini CLI:  /extensions list or /commands list, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
+	  log "  Antigravity: reopen the workspace, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
+	  log "  Cursor:      /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
+	  log "  OpenCode:    /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
+	  log "  OpenClaw:    /skill hephaestus-upload <agent-folder> or /skill hephaestus-network <request>"
+	  log "  Hermes:      hephaestus-upload/hephaestus-network/hephaestus-graph skills (+ MCP, see hermes/README.md)"
 	  log "  goose/Amp/Copilot CLI/Amazon Q: project AGENTS.md is read natively; use the hephaestus-network MCP tools"
 	  log "  Warp:        hep-network workflow (project AGENTS.md is read natively)"
 	  log "  Shell/debug: ontology <command>, hep-build \"<request>\", hep-network \"<request>\", hep-local \"<request>\", hep-cloud \"<request>\", hep-hub \"<request>\", hep-search \"<request>\", hep-browser <url-or-query>, hep-call \"agent-a,agent-b\" \"<context>\", hep-upload <agent-folder>, hep-global install, or hep-storm \"<request>\" --background"
@@ -1631,5 +1748,9 @@ main() {
     exit 1
   fi
 }
+
+if [[ "${AGENTLAS_INSTALLER_LIBRARY_ONLY:-0}" == "1" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 main "$@"

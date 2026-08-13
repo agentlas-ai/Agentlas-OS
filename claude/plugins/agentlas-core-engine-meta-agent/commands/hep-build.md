@@ -88,11 +88,16 @@ for candidate in \
   "$HOME/.agentlas/runtime/current" \
   "."
 do
-  if [ -n "$candidate" ] && [ -f "$candidate/AGENTS.md" ] && [ -f "$candidate/package-contract.json" ]; then
+  if [ -n "$candidate" ] && [ -f "$candidate/AGENTS.md" ] && [ -f "$candidate/package-contract.json" ] && [ -f "$candidate/contracts/builder-interview-research-gate.md" ]; then
     ENGINE="$candidate"; break
   fi
 done
 [ -z "$ENGINE" ] && { echo "Hephaestus engine not found. Run the installer first." >&2; exit 1; }
+RUNNER=""
+for candidate in "$HOME/.agentlas/runtime/current/bin/hephaestus" "$ENGINE/bin/hephaestus"; do
+  if [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
+done
+[ -n "$RUNNER" ] || { echo "Hephaestus runner not found." >&2; exit 1; }
 echo "ENGINE=$ENGINE"
 ```
 
@@ -112,7 +117,7 @@ from it, say so as a blocker — do not carry on and improvise it.
    마지막에 합쳐야 하나요?" Do not show non-technical users internal labels
    like ownership boundary, memory/context, synthesis, or produces/consumes.
 4. Run the Builder Interview and Research Gate in
-   `$ENGINE/docs/builder-interview-research-gate.md` before writing substantial
+   `$ENGINE/contracts/builder-interview-research-gate.md` before writing substantial
    package files. Ask an 8-12 question first batch when the request is vague; continue
    follow-ups until target user, tasks, inputs, outputs, examples,
    tools/plugins, memory, failure modes, ownership boundaries, execution order,
@@ -125,18 +130,23 @@ from it, say so as a blocker — do not carry on and improvise it.
    academic/professional theory, and tool/plugin docs. Record selected and
    rejected tools/plugins with permission, secret, fallback, and smoke-test
    notes, then synthesize domain-expert behavior before writing prompts.
-5. **Lay the contract down before writing anything.** Set `PACKAGE_ROOT` to the
-   absolute path of the package folder, then:
+5. **Resolve exactly one package target before writing anything.** Take one
+   folder explicitly named or confirmed by the user as `PACKAGE_TARGET`. If no
+   exact folder was named, or multiple candidates exist, stop and ask. Never
+   default to `.`, the cwd, or `$ENGINE`. Run
+   `"$RUNNER" contract resolve-target "$PACKAGE_TARGET" --base "$PWD"` and set
+   `PACKAGE_ROOT` only to the status-`ok` receipt's exact `package_root`. A
+   nonzero exit or any error receipt is a blocker. Then:
 
    ```bash
-   "$ENGINE/bin/hephaestus" contract scaffold "$PACKAGE_ROOT" --mode single|team|package
+   "$RUNNER" contract scaffold "$PACKAGE_ROOT" --mode single|team|package
    ```
 
    Then, as soon as the routing card exists, let the engine answer every hole it
    can from the package's own declarations:
 
    ```bash
-   "$ENGINE/bin/hephaestus" contract complete "$PACKAGE_ROOT"
+   "$RUNNER" contract complete "$PACKAGE_ROOT" --mode single|team|package
    ```
 
    This writes `agent.md`, `.agentlas/work-brief.json`, `.agentlas/sitemap.json`,
@@ -167,50 +177,39 @@ from it, say so as a blocker — do not carry on and improvise it.
    `docs/prompt-performance-contract.md`, and
    `.agentlas/capability-eval-plan.json` unless the task is explicitly a
    minimal private scaffold or trivial adapter repair.
+   For a minimal private scaffold, do not infer the exception: require the
+   user's explicit request and confirmation, then write the exact
+   `.agentlas/build-profile.json` receipt defined by the Builder Interview and
+   Research Gate. Any missing or malformed receipt remains `standard`.
 7. Load only the matching public skills.
 8. Generate or repair `.agentlas/global-commands.json` and matching runtime
    command files or aliases.
-9. Market Page Copy Gate — make the public detail page readable before
-   reporting. For any agent/team package created or repaired, write or repair
-   `agentlas.json.publicProfile` (`titleKo`, `descriptionKo`, a `guide` with
-   `whatItDoesKo` / `bestForKo` / `prerequisitesKo` / `expectedOutputsKo` /
-   `carefulWithKo`, and for teams a `detail` with `members` and `flow` in human
-   labels). Mine only sanitized, already-public source fields: routing-card
-   `summary_ko` / `capabilities` / `required_inputs` / `produces`,
-   `README_FOR_HUMANS.md`, and team `company-blueprint.json`. Do NOT trust
-   `.claude/skills/*` descriptions or `CLAUDE.md` titles — generated packages
-   often carry a wrong template there. Never copy secrets, local paths, raw
-   stage ids (P0/G0), or snake_case capability ids into public copy. The page
-   must answer: who it's for, what the user gives it, what it does in plain
-   words, what it returns (name ≥ 2 deliverables), what it can access, and where
-   a human approves. This is BYOK work — the builder's own model writes the copy.
-   Verify with the bundled runtime gate:
-   `"$ENGINE/bin/hephaestus" package "$PACKAGE_ROOT" --visibility marketplace`.
-   Recompute the package hash after writing `agentlas.json`.
-10. If a package was created or repaired, register it to local discovery before
+9. If a package was created or repaired, register it to local discovery before
    reporting. Pass `$PACKAGE_ROOT`, never `.`:
 
    ```bash
-   "$ENGINE/bin/hephaestus" cards migrate "$PACKAGE_ROOT" --tier local --overwrite
+   "$RUNNER" cards migrate "$PACKAGE_ROOT" --tier local --overwrite
    ```
 
-   With `.` this step resolves a different root than step 9 wrote to and
+   With `.` this step resolves a different root than the verified package and
    overwrites its output — measured: `id` becomes `local/agent`, `workforce`
    becomes `null`, and `routing_status` promotes itself from draft to trusted.
    An absolute path does not reproduce any of it.
 
-11. Run the package contract gate before reporting completion:
+10. Run the package contract gate before reporting completion:
 
    ```bash
-   "$ENGINE/bin/hephaestus" contract verify "$PACKAGE_ROOT" --mode single|team|package
+   "$RUNNER" contract verify "$PACKAGE_ROOT" --mode single|team|package
    ```
 
    This is the same contract step 5 scaffolded from, so its blockers name the
    exact artifact and the exact unfilled hole, and for a team it runs the
    team-shape rule as well. Fix every blocker and rerun until the list is empty.
    **A non-empty blocker list means you may not report `completed`** — report
-   `blocked` and list them verbatim.
-12. After the verified package has been written and registered locally, ask one
+   `blocked` and list them verbatim. Public or marketplace intent additionally
+   requires `public_marketplace_ready: true`; a `minimal-private` receipt is
+   never public-ready and must not be promoted by this command.
+11. After the verified package has been written and registered locally, ask one
     final storage question. Prefer the host's structured two-choice UI when it
     exists, and use these choices without adding a public-Hub option:
     - **Cloud에 올리기** — save the package owner-private in Agent Cloud so it
@@ -225,7 +224,7 @@ from it, say so as a blocker — do not carry on and improvise it.
     resolved Hephaestus runner against the exact verified package root:
 
     ```bash
-    "$ENGINE/bin/hephaestus" upload "$PACKAGE_ROOT" --visibility private-link
+    "$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link
     ```
 
     `PACKAGE_ROOT` is the exact gate-verified package, never the workspace or a
@@ -233,7 +232,7 @@ from it, say so as a blocker — do not carry on and improvise it.
     security-scan failure must leave the local package intact; report the
     failure and the exact retry command. Public Hub publication remains a
     separate explicit `/hep-upload ... --visibility marketplace` action.
-13. Return `status`, `evidence`, `output`, `global_commands`, `market_page_copy`,
+12. Return `status`, `evidence`, `output`, `global_commands`,
    `interview_research`, and `blockers`. `evidence` must carry the resolved
    `ENGINE`, the `contract scaffold` receipt, and the final `contract verify`
    blocker list — a build that cannot show those three did not run this flow.

@@ -41,6 +41,28 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-subagent-hook\" ]; then \"$R/bin/agentlas-subagent-hook\" --host claude --event SubagentStart; else printf '{}\\n'; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-subagent-hook\" ]; then \"$R/bin/agentlas-subagent-hook\" --host claude --event SubagentStop; else printf '{}\\n'; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

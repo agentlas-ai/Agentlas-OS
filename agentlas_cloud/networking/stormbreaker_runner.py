@@ -9,6 +9,7 @@ the final gate.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 import uuid
@@ -28,7 +29,8 @@ from .run_journal import RunJournal
 from .stormbreaker_harness import goal_ultracode_harness
 
 
-RUNNER_VERSION = "stormbreaker.auto_runner.v2"
+RUNNER_VERSION = "stormbreaker.auto_runner.v3"
+VERIFICATION_RECEIPT_SCHEMA = "stormbreaker.packet-verification-receipt.v2"
 STORMBREAKER_RESEARCH_LOADOUTS = {"auto", "safe", "public-web", "social", "browser", "full", "recommended"}
 STORMBREAKER_RESEARCH_DEPTHS = {"quick", "deep"}
 STORMBREAKER_DEFAULT_RESEARCH_LOADOUT = "safe"
@@ -69,6 +71,7 @@ def run_stormbreaker_query(
     caller_id: str | None = None,
     session_inventory: list[Any] | None = None,
     executor_command: str | None = None,
+    verifier_command: str | None = None,
     execute_card_commands: bool = False,
     max_workers: int | None = None,
     timeout_seconds: int = 900,
@@ -125,6 +128,7 @@ def run_stormbreaker_query(
         home=home,
         project_dir=project_dir,
         executor_command=executor_command,
+        verifier_command=verifier_command,
         execute_card_commands=execute_card_commands,
         max_workers=max_workers,
         timeout_seconds=timeout_seconds,
@@ -381,6 +385,7 @@ def run_stormbreaker_decision(
     home: Path | str | None = None,
     project_dir: Path | str = ".",
     executor_command: str | None = None,
+    verifier_command: str | None = None,
     execute_card_commands: bool = False,
     max_workers: int | None = None,
     timeout_seconds: int = 900,
@@ -442,6 +447,24 @@ def run_stormbreaker_decision(
     # never executes that copy: every run is reconciled to this release's
     # canonical protocol and digest.
     execution_harness = goal_ultracode_harness()
+
+    restored_results = _restore_passing_packet_results(
+        RunJournal(journal),
+        packet_by_id=packet_by_id,
+        pipeline_id=pipeline_id,
+        project=project,
+        mode=mode,
+        executor_command=executor_command,
+        verifier_command=verifier_command,
+        research_evidence=research_evidence,
+        research_options=research_options,
+        user_query=user_query,
+        work_brief=work_brief,
+        execution_harness=execution_harness,
+    )
+    for packet_id, restored in restored_results.items():
+        packet_statuses[packet_id] = "passing"
+        packet_results.append(restored)
 
     _append_journal(
         journal,
@@ -514,6 +537,7 @@ def run_stormbreaker_decision(
                         pipeline_id=pipeline_id,
                         group_id=group_id,
                         executor_command=executor_command,
+                        verifier_command=verifier_command,
                         execute_card_commands=execute_card_commands,
                         timeout_seconds=timeout_seconds,
                         research_evidence=research_evidence,
@@ -542,14 +566,15 @@ def run_stormbreaker_decision(
                         )
                     packet_statuses[packet_id] = result["status"]
                     packet_results.append(result)
-                    started_sessions.append(
-                        {
-                            "packet_id": packet_id,
-                            "session_id": result.get("session_id"),
-                            "status": result["status"],
-                            "mode": result.get("execution_mode"),
-                        }
-                    )
+                    if not result.get("resumed"):
+                        started_sessions.append(
+                            {
+                                "packet_id": packet_id,
+                                "session_id": result.get("session_id"),
+                                "status": result["status"],
+                                "mode": result.get("execution_mode"),
+                            }
+                        )
 
     # Fabric-level drive-to-completion loop: a single blocked gate is not the end.
     # Re-run non-passing packets up to ``max_replans`` extra attempts, but stop the
@@ -563,6 +588,11 @@ def run_stormbreaker_decision(
         _execute_pending_groups()
         final_gate = evaluate_final_gate(dict(fabric), packet_statuses)
         if final_gate.get("can_report_success"):
+            break
+        if final_gate.get("unverified"):
+            # Exit-zero work without a verifier is a completed handoff, not a
+            # transient failure. Re-running the same executor cannot manufacture
+            # the missing acceptance proof, so stop without wasting attempts.
             break
         if mode == "materialize":
             # Materialization hands the complete packet contract to the host;
@@ -592,6 +622,8 @@ def run_stormbreaker_decision(
         status = "completed"
     elif mode == "materialize" and packet_statuses and all(value == "materialized" for value in packet_statuses.values()):
         status = "materialized"
+    elif final_gate.get("unverified"):
+        status = "unverified"
     else:
         status = "blocked"
     _append_journal(
@@ -614,7 +646,7 @@ def run_stormbreaker_decision(
         "status": status,
         "runner_version": RUNNER_VERSION,
         "execution_mode": mode,
-        "claim_level": _claim_level(mode),
+        "claim_level": _claim_level(mode, status=status),
         "pipeline_id": pipeline_id,
         "route_receipt_id": decision.get("receipt_id"),
         "handoff_dir": handoff_dir,
@@ -654,6 +686,74 @@ def _run_packet(
     pipeline_id: str,
     group_id: str,
     executor_command: str | None,
+    verifier_command: str | None,
+    execute_card_commands: bool,
+    timeout_seconds: int,
+    research_evidence: bool,
+    research_options: dict[str, Any],
+    user_query: str = "",
+    work_brief: dict[str, Any] | None = None,
+    execution_harness: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Claim, restore, or execute one packet without duplicating side effects."""
+
+    packet_id = str(packet["packet_id"])
+    run_journal = RunJournal(journal)
+    with run_journal.packet_claim(packet_id, timeout_seconds=timeout_seconds) as claimed:
+        if not claimed:
+            return _inflight_packet_result(
+                packet,
+                project=project,
+                pipeline_id=pipeline_id,
+                group_id=group_id,
+            )
+        restored = _restore_passing_packet_result(
+            run_journal.latest_packet_results(pipeline_id).get(packet_id),
+            packet=packet,
+            pipeline_id=pipeline_id,
+            project=project,
+            mode=_execution_mode(executor_command, execute_card_commands),
+            executor_command=executor_command,
+            verifier_command=verifier_command,
+            research_evidence=research_evidence,
+            research_options=research_options,
+            user_query=user_query,
+            work_brief=work_brief,
+            execution_harness=execution_harness or goal_ultracode_harness(),
+        )
+        if restored is not None:
+            return restored
+        return _run_packet_claimed(
+            packet,
+            project=project,
+            home=home,
+            journal=journal,
+            parent_receipt_id=parent_receipt_id,
+            pipeline_id=pipeline_id,
+            group_id=group_id,
+            executor_command=executor_command,
+            verifier_command=verifier_command,
+            execute_card_commands=execute_card_commands,
+            timeout_seconds=timeout_seconds,
+            research_evidence=research_evidence,
+            research_options=research_options,
+            user_query=user_query,
+            work_brief=work_brief,
+            execution_harness=execution_harness,
+        )
+
+
+def _run_packet_claimed(
+    packet: dict[str, Any],
+    *,
+    project: Path,
+    home: Path,
+    journal: Path,
+    parent_receipt_id: str,
+    pipeline_id: str,
+    group_id: str,
+    executor_command: str | None,
+    verifier_command: str | None,
     execute_card_commands: bool,
     timeout_seconds: int,
     research_evidence: bool,
@@ -668,10 +768,28 @@ def _run_packet(
     packet_file = write_scope / "packet.json"
     stdout_file = write_scope / "stdout.log"
     stderr_file = write_scope / "stderr.log"
+    verifier_stdout_file = write_scope / "verifier-stdout.log"
+    verifier_stderr_file = write_scope / "verifier-stderr.log"
     result_file = write_scope / "packet-result.json"
+    verification_receipt_file = write_scope / "verification-receipt.json"
+    try:
+        verification_receipt_file.unlink()
+    except FileNotFoundError:
+        pass
     session = packet.get("session_hint") or {}
     session_id = str(session.get("session_id") or "host:primary")
     mode = _execution_mode(executor_command, execute_card_commands)
+    resume_identity = _packet_resume_identity(
+        packet,
+        mode=mode,
+        executor_command=executor_command,
+        verifier_command=verifier_command,
+        research_evidence=research_evidence,
+        research_options=research_options,
+        user_query=user_query,
+        work_brief=work_brief,
+        execution_harness=execution_harness or goal_ultracode_harness(),
+    )
     started_at = utc_now()
     execution_receipt_id = uuid.uuid4().hex[:16]
     research_summary = _collect_packet_research_evidence(
@@ -693,6 +811,21 @@ def _run_packet(
         "write_scope": str(write_scope),
         "data_policy": packet.get("data_policy") or [],
         "execution_harness": execution_harness or goal_ultracode_harness(),
+        "verification_receipt": {
+            "schema_version": VERIFICATION_RECEIPT_SCHEMA,
+            "path": str(verification_receipt_file),
+            "writer": "separate_verifier_command",
+            "required_fields": {
+                "packet_id": packet_id,
+                "status": "passed",
+                "execution_receipt_id": execution_receipt_id,
+                "verification_nonce": "runner-issued after executor exit",
+                "verifier.id": "non-empty stable verifier identity",
+                "verifier.command_sha256": "runner-validated verifier command digest",
+                "verifier.status": "passed",
+                "verifier.evidence": "non-empty artifact path + sha256 list",
+            },
+        },
     }
     try:
         from agentlas_cloud.context_map import context_slice
@@ -762,10 +895,15 @@ def _run_packet(
             packet_file=packet_file,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
+            verification_receipt_file=verification_receipt_file,
             executor_command=executor_command,
+            verifier_command=verifier_command,
             execute_card_commands=execute_card_commands,
             timeout_seconds=timeout_seconds,
             execution_harness=execution_harness,
+            execution_receipt_id=execution_receipt_id,
+            verifier_stdout_file=verifier_stdout_file,
+            verifier_stderr_file=verifier_stderr_file,
         )
     else:
         completed = _execute_packet_command(
@@ -775,15 +913,24 @@ def _run_packet(
             packet_file=packet_file,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
+            verification_receipt_file=verification_receipt_file,
             executor_command=executor_command,
+            verifier_command=verifier_command,
             execute_card_commands=execute_card_commands,
             timeout_seconds=timeout_seconds,
             execution_harness=execution_harness,
+            execution_receipt_id=execution_receipt_id,
+            verifier_stdout_file=verifier_stdout_file,
+            verifier_stderr_file=verifier_stderr_file,
         )
     if completed.get("materialized"):
         status = "materialized"
+    elif completed.get("verified"):
+        status = "passing"
+    elif completed.get("ok"):
+        status = "executed_unverified"
     else:
-        status = "passing" if completed["ok"] else "blocked"
+        status = "blocked"
     detail = str(completed["detail"])
     result = {
         "runner_version": RUNNER_VERSION,
@@ -805,8 +952,14 @@ def _run_packet(
         "result_file": _relative_to_project(project, result_file),
         "stdout_file": _relative_to_project(project, stdout_file),
         "stderr_file": _relative_to_project(project, stderr_file),
+        "verifier_stdout_file": _relative_to_project(project, verifier_stdout_file),
+        "verifier_stderr_file": _relative_to_project(project, verifier_stderr_file),
         "returncode": completed.get("returncode"),
+        "resume_identity": resume_identity,
     }
+    if completed.get("verification_receipt") is not None:
+        result["verification_receipt"] = completed["verification_receipt"]
+        result["verification_receipt_sha256"] = _file_sha256(verification_receipt_file)
     if completed.get("goal_loop") is not None:
         result["goal_loop"] = completed["goal_loop"]
     if research_summary is not None:
@@ -838,12 +991,17 @@ def _execute_packet_command(
     stdout_file: Path,
     stderr_file: Path,
     executor_command: str | None,
+    verifier_command: str | None,
     execute_card_commands: bool,
     timeout_seconds: int,
+    verification_receipt_file: Path,
+    execution_receipt_id: str,
+    verifier_stdout_file: Path,
+    verifier_stderr_file: Path,
     execution_harness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if executor_command:
-        return _run_subprocess(
+        completed = _run_subprocess(
             executor_command,
             packet,
             project=project,
@@ -851,6 +1009,21 @@ def _execute_packet_command(
             packet_file=packet_file,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
+            timeout_seconds=timeout_seconds,
+            execution_harness=execution_harness,
+        )
+        return _verify_completed_execution(
+            completed,
+            executor_command=executor_command,
+            verifier_command=verifier_command,
+            packet=packet,
+            project=project,
+            write_scope=write_scope,
+            packet_file=packet_file,
+            verification_receipt_file=verification_receipt_file,
+            verifier_stdout_file=verifier_stdout_file,
+            verifier_stderr_file=verifier_stderr_file,
+            execution_receipt_id=execution_receipt_id,
             timeout_seconds=timeout_seconds,
             execution_harness=execution_harness,
         )
@@ -868,7 +1041,7 @@ def _execute_packet_command(
                 encoding="utf-8",
             )
             return {"ok": False, "detail": "slash_command_requires_runtime_adapter", "returncode": None}
-        return _run_subprocess(
+        completed = _run_subprocess(
             command,
             packet,
             project=project,
@@ -876,6 +1049,21 @@ def _execute_packet_command(
             packet_file=packet_file,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
+            timeout_seconds=timeout_seconds,
+            execution_harness=execution_harness,
+        )
+        return _verify_completed_execution(
+            completed,
+            executor_command=command,
+            verifier_command=verifier_command,
+            packet=packet,
+            project=project,
+            write_scope=write_scope,
+            packet_file=packet_file,
+            verification_receipt_file=verification_receipt_file,
+            verifier_stdout_file=verifier_stdout_file,
+            verifier_stderr_file=verifier_stderr_file,
+            execution_receipt_id=execution_receipt_id,
             timeout_seconds=timeout_seconds,
             execution_harness=execution_harness,
         )
@@ -899,20 +1087,36 @@ def _run_packet_goal_loop(
     stdout_file: Path,
     stderr_file: Path,
     executor_command: str | None,
+    verifier_command: str | None = None,
     execute_card_commands: bool,
     timeout_seconds: int,
+    verification_receipt_file: Path | None = None,
+    execution_receipt_id: str | None = None,
+    verifier_stdout_file: Path | None = None,
+    verifier_stderr_file: Path | None = None,
     execution_harness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run a packet as a goal-seeking loop (`goal_loop.run_goal_loop`).
 
     Activated when the packet declares ``loop: {goal_command, ...}``. Each
-    iteration runs the packet's normal command once, then the goal verifier
-    (``goal_command``, run in the project dir) decides whether the goal is met
-    (exit 0). The verifier's stdout doubles as the progress signal, so a task
-    that keeps advancing is sustained while a flatlined one trips stall
-    detection. A failing iteration is a transient failure (retried with backoff),
-    not fatal — the loop is hardened against breaking, runaway, and false-success.
+    iteration runs the packet's normal command once, then the goal condition
+    (``goal_command``, run in the project dir) decides whether the loop can stop
+    (exit 0). Its stdout doubles as the progress signal, so a task that keeps
+    advancing is sustained while a flatlined one trips stall detection. The goal
+    condition is not independent verification: only a distinct verifier with a
+    valid artifact receipt may set ``verified``. A failing iteration is a
+    transient failure (retried with backoff), not fatal — the loop is hardened
+    against breaking, runaway, and false-success.
     """
+
+    if verification_receipt_file is None:
+        verification_receipt_file = write_scope / "verification-receipt.json"
+    if execution_receipt_id is None:
+        execution_receipt_id = uuid.uuid4().hex[:16]
+    if verifier_stdout_file is None:
+        verifier_stdout_file = write_scope / "verifier-stdout.log"
+    if verifier_stderr_file is None:
+        verifier_stderr_file = write_scope / "verifier-stderr.log"
 
     spec = packet.get("loop") if isinstance(packet.get("loop"), dict) else {}
     goal_command = str(spec.get("goal_command") or "").strip()
@@ -924,7 +1128,10 @@ def _run_packet_goal_loop(
         backoff_base=float(spec.get("backoff_base") or 0.0),
     )
 
+    last_completed: dict[str, Any] = {}
+
     def iterate(state: Any, iteration: int) -> tuple[Any, str]:
+        nonlocal last_completed
         completed = _execute_packet_command(
             packet,
             project=project,
@@ -932,13 +1139,19 @@ def _run_packet_goal_loop(
             packet_file=packet_file,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
+            verification_receipt_file=verification_receipt_file,
             executor_command=executor_command,
+            verifier_command=verifier_command,
             execute_card_commands=execute_card_commands,
             timeout_seconds=timeout_seconds,
             execution_harness=execution_harness,
+            execution_receipt_id=execution_receipt_id,
+            verifier_stdout_file=verifier_stdout_file,
+            verifier_stderr_file=verifier_stderr_file,
         )
         if not completed.get("ok"):
             raise RuntimeError(str(completed.get("detail") or "iteration_failed"))
+        last_completed = completed
         check = _run_goal_check(goal_command, project=project, timeout_seconds=timeout_seconds)
         progress = f"goal_rc={check.get('returncode')}:{_short_digest(check.get('stdout') or '')}"
         return {"completed": completed, "check": check}, progress
@@ -953,11 +1166,18 @@ def _run_packet_goal_loop(
     detail = f"goal_loop:{outcome.outcome}:{outcome.iterations}it"
     if outcome.detail:
         detail = f"{detail}:{outcome.detail}"
+    independently_verified = bool(outcome.reached_goal and last_completed.get("verified"))
+    if outcome.reached_goal and not independently_verified:
+        detail = f"{detail}:independent_packet_verification_missing"
     return {
         "ok": outcome.reached_goal,
+        "verified": independently_verified,
         "detail": detail,
         "returncode": 0 if outcome.reached_goal else 1,
         "goal_loop": outcome.as_dict(),
+        "verification_receipt": (
+            last_completed.get("verification_receipt") if independently_verified else None
+        ),
     }
 
 
@@ -1060,8 +1280,404 @@ def _run_subprocess(
     stdout_file.write_text(completed.stdout or "", encoding="utf-8")
     stderr_file.write_text(completed.stderr or "", encoding="utf-8")
     if completed.returncode == 0:
-        return {"ok": True, "detail": "executor_completed", "returncode": completed.returncode}
+        return {
+            "ok": True,
+            "verified": False,
+            "detail": "executor_completed_verification_required",
+            "returncode": completed.returncode,
+        }
     return {"ok": False, "detail": f"executor_failed:{completed.returncode}", "returncode": completed.returncode}
+
+
+def _verify_completed_execution(
+    completed: Mapping[str, Any],
+    *,
+    executor_command: str,
+    verifier_command: str | None,
+    packet: Mapping[str, Any],
+    project: Path,
+    write_scope: Path,
+    packet_file: Path,
+    verification_receipt_file: Path,
+    verifier_stdout_file: Path,
+    verifier_stderr_file: Path,
+    execution_receipt_id: str,
+    timeout_seconds: int,
+    execution_harness: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Run a separately attributable verifier after a successful executor."""
+
+    if not completed.get("ok"):
+        return dict(completed)
+    if not verifier_command:
+        return {
+            **dict(completed),
+            "verified": False,
+            "detail": "executor_completed_unverified:verifier_command_missing",
+        }
+    if verifier_command.strip() == executor_command.strip():
+        return {
+            **dict(completed),
+            "verified": False,
+            "detail": "executor_completed_unverified:verifier_not_separately_attributable",
+        }
+
+    # Anything the executor placed at the documented path is untrusted. Delete
+    # it before minting the nonce that is disclosed only to the verifier process.
+    try:
+        verification_receipt_file.unlink()
+    except FileNotFoundError:
+        pass
+    verification_nonce = uuid.uuid4().hex
+    executor_digest = hashlib.sha256(executor_command.encode("utf-8")).hexdigest()
+    verifier_digest = hashlib.sha256(verifier_command.encode("utf-8")).hexdigest()
+    env = os.environ.copy()
+    harness = execution_harness or goal_ultracode_harness()
+    env.update(
+        {
+            "STORMBREAKER_PACKET_ID": str(packet.get("packet_id") or ""),
+            "STORMBREAKER_WRITE_SCOPE": str(write_scope),
+            "STORMBREAKER_PACKET_FILE": str(packet_file),
+            "STORMBREAKER_PROJECT_DIR": str(project),
+            "STORMBREAKER_EXECUTION_RECEIPT_ID": execution_receipt_id,
+            "STORMBREAKER_EXECUTOR_COMMAND_SHA256": executor_digest,
+            "STORMBREAKER_VERIFICATION_NONCE": verification_nonce,
+            "STORMBREAKER_VERIFIER_COMMAND_SHA256": verifier_digest,
+            "STORMBREAKER_VERIFICATION_RECEIPT_FILE": str(verification_receipt_file),
+            "STORMBREAKER_HARNESS_ID": str(harness.get("harness_id") or ""),
+            "STORMBREAKER_HARNESS_PROMPT_SHA256": str(harness.get("prompt_sha256") or ""),
+        }
+    )
+    try:
+        verified = subprocess.run(
+            verifier_command,
+            shell=True,
+            cwd=str(project),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+            **_stormbreaker_worker_process_options(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        verifier_stdout_file.write_text(exc.stdout or "", encoding="utf-8")
+        verifier_stderr_file.write_text(
+            (exc.stderr or "") + f"\nverifier timed out after {timeout_seconds}s\n",
+            encoding="utf-8",
+        )
+        return {**dict(completed), "verified": False, "detail": f"verifier_timeout:{timeout_seconds}s"}
+    except OSError as exc:
+        verifier_stdout_file.write_text("", encoding="utf-8")
+        verifier_stderr_file.write_text(str(exc), encoding="utf-8")
+        return {**dict(completed), "verified": False, "detail": f"verifier_os_error:{exc}"}
+
+    verifier_stdout_file.write_text(verified.stdout or "", encoding="utf-8")
+    verifier_stderr_file.write_text(verified.stderr or "", encoding="utf-8")
+    if verified.returncode != 0:
+        return {
+            **dict(completed),
+            "verified": False,
+            "detail": f"verifier_failed:{verified.returncode}",
+        }
+    receipt, receipt_error = _read_passing_verification_receipt(
+        verification_receipt_file,
+        packet_id=str(packet.get("packet_id") or ""),
+        execution_receipt_id=execution_receipt_id,
+        verification_nonce=verification_nonce,
+        verifier_command_sha256=verifier_digest,
+        project=project,
+        write_scope=write_scope,
+    )
+    if receipt is None:
+        return {
+            **dict(completed),
+            "verified": False,
+            "detail": f"executor_completed_unverified:{receipt_error}",
+        }
+    return {
+        **dict(completed),
+        "verified": True,
+        "detail": "executor_completed_and_independent_verification_passed",
+        "verification_receipt": receipt,
+    }
+
+
+def _read_passing_verification_receipt(
+    path: Path,
+    *,
+    packet_id: str,
+    execution_receipt_id: str,
+    verification_nonce: str,
+    verifier_command_sha256: str,
+    project: Path,
+    write_scope: Path,
+) -> tuple[dict[str, Any] | None, str]:
+    """Validate verifier attribution and every declared artifact digest."""
+
+    if not path.is_file():
+        return None, "verification_receipt_missing"
+    try:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None, "verification_receipt_unreadable"
+    if not isinstance(receipt, dict):
+        return None, "verification_receipt_not_object"
+    if receipt.get("schema_version") != VERIFICATION_RECEIPT_SCHEMA:
+        return None, "verification_receipt_schema_mismatch"
+    if str(receipt.get("packet_id") or "") != packet_id:
+        return None, "verification_receipt_packet_mismatch"
+    if str(receipt.get("execution_receipt_id") or "") != execution_receipt_id:
+        return None, "verification_receipt_execution_mismatch"
+    if str(receipt.get("verification_nonce") or "") != verification_nonce:
+        return None, "verification_receipt_nonce_mismatch"
+    if receipt.get("status") != "passed":
+        return None, "verification_receipt_not_passed"
+    verifier = receipt.get("verifier")
+    if not isinstance(verifier, Mapping) or verifier.get("status") != "passed":
+        return None, "verification_receipt_verifier_not_passed"
+    if not str(verifier.get("id") or "").strip():
+        return None, "verification_receipt_verifier_identity_missing"
+    if str(verifier.get("command_sha256") or "") != verifier_command_sha256:
+        return None, "verification_receipt_verifier_command_mismatch"
+    evidence = verifier.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        return None, "verification_receipt_evidence_missing"
+    for item in evidence:
+        if not isinstance(item, Mapping) or item.get("kind") != "artifact":
+            return None, "verification_receipt_evidence_invalid"
+        raw_path = str(item.get("path") or "").strip()
+        expected_digest = str(item.get("sha256") or "").strip().lower()
+        if not raw_path or len(expected_digest) != 64 or any(ch not in "0123456789abcdef" for ch in expected_digest):
+            return None, "verification_receipt_evidence_invalid"
+        try:
+            evidence_path = _resolve_project_path(project, raw_path)
+        except ValueError:
+            return None, "verification_receipt_evidence_escaped_project"
+        try:
+            evidence_path.relative_to(write_scope)
+        except ValueError:
+            return None, "verification_receipt_evidence_outside_write_scope"
+        if not evidence_path.is_file():
+            return None, "verification_receipt_evidence_missing_file"
+        digest = hashlib.sha256()
+        try:
+            with evidence_path.open("rb") as handle:
+                for block in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(block)
+        except OSError:
+            return None, "verification_receipt_evidence_unreadable"
+        if digest.hexdigest() != expected_digest:
+            return None, "verification_receipt_evidence_digest_mismatch"
+    return receipt, "verification_receipt_passed"
+
+
+def _packet_resume_identity(
+    packet: Mapping[str, Any],
+    *,
+    mode: str,
+    executor_command: str | None,
+    verifier_command: str | None,
+    research_evidence: bool,
+    research_options: Mapping[str, Any],
+    user_query: str,
+    work_brief: Mapping[str, Any] | None,
+    execution_harness: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind a resumable result to every input that can change packet work."""
+
+    return {
+        "schema_version": "stormbreaker.packet-resume-identity.v1",
+        "packet_sha256": _canonical_sha256(packet),
+        "execution_mode": mode,
+        "executor_command_sha256": _text_sha256(executor_command),
+        "verifier_command_sha256": _text_sha256(verifier_command),
+        "research_evidence": bool(research_evidence),
+        "research_options_sha256": _canonical_sha256(research_options),
+        "user_query_sha256": _text_sha256(user_query),
+        "work_brief_sha256": _canonical_sha256(work_brief or {}),
+        "harness_id": str(execution_harness.get("harness_id") or ""),
+        "harness_prompt_sha256": str(execution_harness.get("prompt_sha256") or ""),
+    }
+
+
+def _restore_passing_packet_results(
+    run_journal: RunJournal,
+    *,
+    packet_by_id: Mapping[str, dict[str, Any]],
+    pipeline_id: str,
+    project: Path,
+    mode: str,
+    executor_command: str | None,
+    verifier_command: str | None,
+    research_evidence: bool,
+    research_options: Mapping[str, Any],
+    user_query: str,
+    work_brief: Mapping[str, Any] | None,
+    execution_harness: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    latest = run_journal.latest_packet_results(pipeline_id)
+    restored: dict[str, dict[str, Any]] = {}
+    for packet_id, packet in packet_by_id.items():
+        result = _restore_passing_packet_result(
+            latest.get(packet_id),
+            packet=packet,
+            pipeline_id=pipeline_id,
+            project=project,
+            mode=mode,
+            executor_command=executor_command,
+            verifier_command=verifier_command,
+            research_evidence=research_evidence,
+            research_options=research_options,
+            user_query=user_query,
+            work_brief=work_brief,
+            execution_harness=execution_harness,
+        )
+        if result is not None:
+            restored[packet_id] = result
+    return restored
+
+
+def _restore_passing_packet_result(
+    journal_result: Mapping[str, Any] | None,
+    *,
+    packet: Mapping[str, Any],
+    pipeline_id: str,
+    project: Path,
+    mode: str,
+    executor_command: str | None,
+    verifier_command: str | None,
+    research_evidence: bool,
+    research_options: Mapping[str, Any],
+    user_query: str,
+    work_brief: Mapping[str, Any] | None,
+    execution_harness: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Restore only a current, journaled, independently verified packet."""
+
+    packet_id = str(packet.get("packet_id") or "")
+    if not isinstance(journal_result, Mapping):
+        return None
+    if journal_result.get("status") != "passing":
+        return None
+    if str(journal_result.get("pipeline_id") or "") != pipeline_id:
+        return None
+    if str(journal_result.get("packet_id") or "") != packet_id:
+        return None
+
+    expected_identity = _packet_resume_identity(
+        packet,
+        mode=mode,
+        executor_command=executor_command,
+        verifier_command=verifier_command,
+        research_evidence=research_evidence,
+        research_options=research_options,
+        user_query=user_query,
+        work_brief=work_brief,
+        execution_harness=execution_harness,
+    )
+    if journal_result.get("resume_identity") != expected_identity:
+        return None
+
+    write_scope = _resolve_project_path(
+        project,
+        str(packet.get("write_scope") or f".agentlas/pipeline/{pipeline_id}/{packet_id}/"),
+    )
+    result_file = write_scope / "packet-result.json"
+    packet_file = write_scope / "packet.json"
+    receipt_file = write_scope / "verification-receipt.json"
+    try:
+        result = json.loads(result_file.read_text(encoding="utf-8"))
+        packet_contract = json.loads(packet_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(result, dict) or not isinstance(packet_contract, dict):
+        return None
+    if packet_contract.get("packet") != dict(packet):
+        return None
+    if result.get("status") != "passing" or result.get("resume_identity") != expected_identity:
+        return None
+    execution_receipt_id = str(result.get("execution_receipt_id") or "")
+    if not execution_receipt_id or execution_receipt_id != str(journal_result.get("execution_receipt_id") or ""):
+        return None
+    receipt_digest = _file_sha256(receipt_file)
+    if not receipt_digest:
+        return None
+    if receipt_digest != str(result.get("verification_receipt_sha256") or ""):
+        return None
+    if receipt_digest != str(journal_result.get("verification_receipt_sha256") or ""):
+        return None
+    stored_receipt = result.get("verification_receipt")
+    if not isinstance(stored_receipt, Mapping):
+        return None
+    verification_nonce = str(stored_receipt.get("verification_nonce") or "")
+    verifier_digest = _text_sha256(verifier_command)
+    receipt, _ = _read_passing_verification_receipt(
+        receipt_file,
+        packet_id=packet_id,
+        execution_receipt_id=execution_receipt_id,
+        verification_nonce=verification_nonce,
+        verifier_command_sha256=verifier_digest,
+        project=project,
+        write_scope=write_scope,
+    )
+    if receipt is None or receipt != dict(stored_receipt):
+        return None
+    return {**result, "resumed": True, "resume_source": "journal_and_verified_artifacts"}
+
+
+def _inflight_packet_result(
+    packet: Mapping[str, Any],
+    *,
+    project: Path,
+    pipeline_id: str,
+    group_id: str,
+) -> dict[str, Any]:
+    packet_id = str(packet.get("packet_id") or "")
+    write_scope = _resolve_project_path(
+        project,
+        str(packet.get("write_scope") or f".agentlas/pipeline/{pipeline_id}/{packet_id}/"),
+    )
+    return {
+        "runner_version": RUNNER_VERSION,
+        "packet_id": packet_id,
+        "pipeline_id": pipeline_id,
+        "stage": packet.get("stage"),
+        "stage_order": packet.get("stage_order"),
+        "card": packet.get("card"),
+        "session_id": (packet.get("session_hint") or {}).get("session_id") or "host:primary",
+        "parallel_group": group_id,
+        "execution_mode": "resume_wait",
+        "status": "blocked",
+        "detail": "packet_claim_timeout:another_runner_still_owns_packet",
+        "write_scope": _relative_to_project(project, write_scope),
+        "resumed": True,
+    }
+
+
+def _canonical_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _text_sha256(value: str | None) -> str:
+    return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError:
+        return ""
+    return digest.hexdigest()
 
 
 def _blocked_packet_result(
@@ -1715,12 +2331,16 @@ def _execution_mode(executor_command: str | None, execute_card_commands: bool) -
     return "materialize"
 
 
-def _claim_level(mode: str) -> str:
-    if mode == "materialize":
+def _claim_level(mode: str, *, status: str) -> str:
+    if status == "blocked":
+        return "blocked"
+    if status == "unverified":
+        return "executed_unverified"
+    if status == "materialized":
         return "handoff_artifacts_materialized"
     if mode == "card_command":
-        return "card_command_executed"
-    return "external_executor_completed"
+        return "card_command_verified"
+    return "external_executor_verified"
 
 
 def _max_workers(configured: int | None, fabric: Mapping[str, Any]) -> int:

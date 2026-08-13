@@ -8,7 +8,7 @@ description: "Use when generating a single installable agent that should keep le
 ## Procedure
 
 1. Keep the package as one worker unless the user asks for a team.
-2. Run `docs/builder-interview-research-gate.md` before generation: ask an
+2. Run `contracts/builder-interview-research-gate.md` before generation: ask an
    8-12 question first batch, research official sources, similar agent
    repositories or comparables, academic/professional theory, and plugin docs,
    compare tool/plugin choices, and write the domain-expert synthesis plus

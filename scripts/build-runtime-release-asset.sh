@@ -46,6 +46,7 @@ runtime_paths=(
   "desktop-update-bridge-v1.json"
   "manifest.json"
   "package-contract.json"
+  ".agentlas/global-commands.json"
   ".agents"
   ".claude"
   ".claude-plugin"
@@ -62,6 +63,7 @@ runtime_paths=(
   "claude"
   "codex"
   "copilot-cli"
+  "contracts"
   "cursor"
   "gemini"
   "goose"
@@ -108,9 +110,22 @@ if grep -E "$forbidden_archive_pattern" "$manifest_tmp" >/dev/null; then
   exit 2
 fi
 
+# The only public `.agentlas` payload is machine-readable command discovery.
+# AO materialization, ledgers, memory, caches, and receipts are private runtime
+# state and must never become release assets even if a future allowlist grows.
+if grep -E '(^|/)\.agentlas/' "$manifest_tmp" \
+  | grep -Fv "${prefix}.agentlas/global-commands.json" >/dev/null; then
+  echo "release archive contains forbidden internal .agentlas materialization" >&2
+  grep -E '(^|/)\.agentlas/' "$manifest_tmp" \
+    | grep -Fv "${prefix}.agentlas/global-commands.json" >&2
+  exit 2
+fi
+
 required_runtime_paths=(
   "manifest.json"
   "package-contract.json"
+  ".agentlas/global-commands.json"
+  "contracts/builder-interview-research-gate.md"
   "bin/hephaestus"
   "bin/agentlas-python-cache-boundary"
   "agentlas_cloud/mcp_stdio.py"

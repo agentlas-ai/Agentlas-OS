@@ -84,8 +84,24 @@ resolve_upload_folder() {
 }
 
 run_upload_gate() {
-  local target choice visibility arg
-  local -a folder_args publish_args
+  local target choice visibility="" arg
+  local -a folder_args=() publish_args=()
+  set_upload_visibility() {
+    local requested="$1" normalized
+    case "$requested" in
+      cloud|private|private-link) normalized="private-link" ;;
+      hub|marketplace|public|agentlas-hub) normalized="marketplace" ;;
+      *)
+        echo "Unknown upload visibility: $requested. Use private-link or marketplace." >&2
+        return 2
+        ;;
+    esac
+    if [[ -n "$visibility" && "$visibility" != "$normalized" ]]; then
+      echo "Contradictory upload destinations: both $visibility and $normalized were requested." >&2
+      return 2
+    fi
+    visibility="$normalized"
+  }
   while [[ "$#" -gt 0 ]]; do
     arg="$1"
     case "$arg" in
@@ -94,26 +110,26 @@ run_upload_gate() {
           echo "Missing value for --visibility. Use private-link or marketplace." >&2
           return 2
         fi
-        visibility="${2:-}"
+        set_upload_visibility "${2:-}" || return $?
         shift 2
         ;;
       --visibility=*)
-        visibility="${arg#--visibility=}"
+        set_upload_visibility "${arg#--visibility=}" || return $?
         shift
         ;;
       --cloud|cloud|private|private-link)
-        visibility="${visibility:-private-link}"
+        set_upload_visibility private-link || return $?
         shift
         ;;
       --hub|hub|marketplace|public|agentlas-hub)
-        visibility="${visibility:-marketplace}"
+        set_upload_visibility marketplace || return $?
         shift
         ;;
       --dry-run|--no-open)
         publish_args+=("$arg")
         shift
         ;;
-      --slug|--base-url)
+      --slug|--base-url|--expected-package-hash|--expected-upload-receipt|--overwrite-cloud-id)
         if [[ "$#" -lt 2 || "${2:-}" == --* ]]; then
           echo "Missing value for $arg." >&2
           return 2
@@ -121,7 +137,7 @@ run_upload_gate() {
         publish_args+=("$arg" "${2:-}")
         shift 2
         ;;
-      --slug=*|--base-url=*)
+      --slug=*|--base-url=*|--expected-package-hash=*|--expected-upload-receipt=*|--overwrite-cloud-id=*)
         publish_args+=("$arg")
         shift
         ;;
@@ -131,19 +147,11 @@ run_upload_gate() {
         ;;
     esac
   done
-  case "${visibility:-}" in
-    "" ) ;;
-    cloud|private|private-link)
-      visibility="private-link"
-      ;;
-    hub|marketplace|public|agentlas-hub)
-      visibility="marketplace"
-      ;;
-    *)
-      echo "Unknown upload visibility: $visibility. Use private-link or marketplace." >&2
-      return 2
-      ;;
-  esac
+  unset -f set_upload_visibility
+  if [[ "${#folder_args[@]}" -gt 1 ]]; then
+    echo "Choose exactly one upload folder." >&2
+    return 2
+  fi
   if [[ -n "${visibility:-}" ]]; then
     if ! target="$(resolve_upload_folder ${folder_args[@]+"${folder_args[@]}"})"; then
       echo "업로드 대상 에이전트 폴더를 찾지 못했습니다. /hep-upload <agent-folder> --visibility <private-link|marketplace> 형태로 다시 실행하세요." >&2
@@ -154,10 +162,11 @@ run_upload_gate() {
   fi
   upload_question
   if [[ ! -t 0 ]]; then
+    echo '{"status":"input_required","error":"upload_destination_required","performed":false}' >&2
     echo "No upload performed. Choose Cloud or Agentlas Hub in the chat, then run one explicit command:" >&2
     echo "  hep-upload <agent-folder> --visibility private-link   # Cloud" >&2
     echo "  hep-upload <agent-folder> --visibility marketplace    # Agentlas Hub" >&2
-    return 0
+    return 3
   fi
   printf 'Select 1 or 2: ' >&2
   read -r choice
@@ -195,7 +204,7 @@ Usage:
   bin/hephaestus contract verify <agent-folder> [--mode single|team|package]
   bin/hephaestus contract prompt [--mode single|team|package]
   bin/hephaestus package <agent-folder> [--visibility marketplace|private-link]
-  bin/hephaestus publish <agent-folder> [--visibility marketplace|private-link] [--dry-run]
+  bin/hephaestus publish <agent-folder> --visibility marketplace|private-link [--dry-run] [--expected-package-hash <sha256>] [--expected-upload-receipt <sha256>] [--overwrite-cloud-id <id>]
   bin/hephaestus field-test
 	  bin/hephaestus auth status|login|ensure|logout [--base-url <url>]
   bin/hephaestus doctor
@@ -338,16 +347,14 @@ case "$command" in
 	  plugins)
 	    run_python_module agentlas_cloud plugins "$@"
 	    ;;
-  meta-agent|hep-build|hephaestus-build|Hephaestus-build|build)
-    request="${*:-Create or package an Agentlas-compatible agent.}"
-    cat <<EOF
-Hephaestus meta-agent request:
-$request
-
-Open Claude Code or Codex with the installed plugin, then run:
-/hep-build $request
-EOF
-    ;;
+	  meta-agent|hep-build|hephaestus-build|Hephaestus-build|build)
+	    request="${*:-Create or package an Agentlas-compatible agent.}"
+	    escaped_request="${request//\\/\\\\}"
+	    escaped_request="${escaped_request//\"/\\\"}"
+	    escaped_request="${escaped_request//$'\n'/\\n}"
+	    printf '{"status":"error","error":"host_llm_required","command":"hep-build","request":"%s","message":"hep-build requires a connected host LLM; run /hep-build in an installed Hephaestus host adapter"}\n' "$escaped_request" >&2
+	    exit 3
+	    ;;
 	  network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract)
 	    # `contract` was the one subcommand the Python CLI exposed that this
 	    # dispatcher never listed. It fell through to the natural-language

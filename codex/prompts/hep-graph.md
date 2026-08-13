@@ -88,18 +88,17 @@ carry that into the summary too.
 
 ## Run
 
-With `run <name>`:
+With `run <name>`, the user's direct command is the authority to request that
+run. Do not ask for a second yes: graph approval is captured when the graph is
+created, and adding another confirmation here makes an approved automation
+needlessly stall.
 
-1. Run `"$CLI" graph show "<name>"` first and show the user what the graph
-   does, including any step that changes something outside.
-2. Ask the user to confirm. Never skip this — requesting a run is an
-   outward-facing action on the user's behalf.
-   - A scheduled graph: ask "run it now?".
-   - A graph that starts from a value (`graph show` says so): ask the user for
-     that value in their own words. Do not invent one, and do not reuse an
-     example from the graph — an automation started from a value you made up
-     produces work the user never asked for.
-3. Only after an explicit yes:
+1. Run `"$CLI" graph show "<name>"` first and report what the graph does,
+   including any step that changes something outside.
+2. If the graph starts from a value (`graph show` says so), require that value
+   from the user in their own words. This is missing execution input, not an
+   approval prompt. Do not invent one or reuse an example from the graph.
+3. Request the run immediately once all required input is present:
 
 ```bash
 "$CLI" graph run "<name>" -y

@@ -12,13 +12,31 @@ import json
 import os
 import re
 import stat
+import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .project_bootstrap import (
+    CODE_EXTENSIONS,
     CODE_MAP_CACHE_SCHEMA,
+    CODE_MAP_MANIFEST_SCHEMA,
     CODE_MAP_POLICY_VERSION,
+    MAX_CODE_FILES,
+    MAX_CODE_SCAN_SECONDS,
+    _fingerprint_hash,
+    _content_snapshot,
+    _context_index_policy,
+    _file_role,
+    _git_file_list,
+    _is_ci_workflow_path,
+    _is_test_path,
+    _is_version_contract_path,
+    _safe_file,
+    _policy_allows,
+    _walk_file_list,
+    _walk_local_test_files,
     generate_code_map,
 )
 
@@ -26,9 +44,9 @@ from .project_bootstrap import (
 CODE_MAP_SCHEMA = "agentlas.code-map.v2"
 CONTEXT_SLICE_SCHEMA = "agentlas.context-slice.v1"
 CONTEXT_QUERY_RECEIPT_SCHEMA = "agentlas.context-query-receipt.v1"
-CONTEXT_IMPACT_RECEIPT_SCHEMA = "agentlas.context-impact-receipt.v1"
-CONTEXT_VERIFICATION_RECEIPT_SCHEMA = "agentlas.context-verification-receipt.v1"
-VERIFICATION_MAP_SCHEMA = "agentlas.verification-map.v1"
+CONTEXT_IMPACT_RECEIPT_SCHEMA = "agentlas.context-impact-receipt.v2"
+CONTEXT_VERIFICATION_RECEIPT_SCHEMA = "agentlas.context-verification-receipt.v2"
+VERIFICATION_MAP_SCHEMA = "agentlas.verification-map.v2"
 
 MAX_MAP_BYTES = 24 * 1024 * 1024
 MAX_TASK_CHARS = 12_000
@@ -38,6 +56,8 @@ MAX_SELECTED_FILES = 64
 MAX_IMPACT_FILES = 2_048
 MAX_CONTEXT_NODES = 48
 MAX_CONTEXT_EDGES = 128
+MAX_DECLARED_NODES = 2_000
+MAX_DECLARED_EDGES = 8_000
 MAX_RENDER_CHARS = 9_000
 
 _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
@@ -195,6 +215,92 @@ def _task_path_hints(root: Path, task: str, targets: Sequence[str]) -> list[str]
     return _bounded_strings(paths, MAX_SELECTED_FILES)
 
 
+def _passive_code_map_fingerprint(root: Path) -> tuple[str, str, int, int, str]:
+    """Recompute only the bounded freshness receipt without writing a map."""
+
+    deadline = time.monotonic() + MAX_CODE_SCAN_SECONDS
+    all_files, list_stop, _ = _git_file_list(root, deadline)
+    source = "git" if all_files is not None else "filesystem"
+    if all_files is None:
+        all_files, list_stop, _ = _walk_file_list(root, deadline)
+    if list_stop is not None:
+        raise ContextMapError("context_freshness_incomplete")
+
+    policy = _context_index_policy(root)
+    listed_relative_files = {
+        path.relative_to(root).as_posix()
+        for path in all_files
+        if _safe_file(root, path)
+        and _policy_allows(path.relative_to(root).as_posix(), policy)
+    }
+    local_test_files, local_test_stop, _ = _walk_local_test_files(root, deadline, policy)
+    if local_test_stop is not None:
+        raise ContextMapError("context_freshness_incomplete")
+    local_test_relative_files = {
+        path.relative_to(root).as_posix()
+        for path in local_test_files
+        if _safe_file(root, path)
+    }
+    local_test_code_files = {
+        relative
+        for relative in local_test_relative_files
+        if Path(relative).suffix.lower() in CODE_EXTENSIONS
+    }
+    relative_files = sorted(listed_relative_files | local_test_relative_files)
+    source_code_candidates = [
+        relative
+        for relative in relative_files
+        if Path(relative).suffix.lower() in CODE_EXTENSIONS
+        and not _is_test_path(relative)
+        and relative not in local_test_code_files
+    ]
+    if len(source_code_candidates) > MAX_CODE_FILES:
+        raise ContextMapError("context_freshness_incomplete")
+    code_files = source_code_candidates[:MAX_CODE_FILES]
+    verification_files = [
+        relative
+        for relative in relative_files
+        if (
+            _is_ci_workflow_path(relative)
+            or _is_version_contract_path(relative)
+            or relative in local_test_relative_files
+        )
+    ]
+    fingerprint_files = relative_files
+    fingerprints: dict[str, dict[str, int]] = {}
+    for relative in fingerprint_files:
+        try:
+            metadata = os.stat(root / relative, follow_symlinks=False)
+        except OSError as exc:
+            raise ContextMapError("context_freshness_incomplete") from exc
+        fingerprints[relative] = {
+            "mtimeNs": metadata.st_mtime_ns,
+            "ctimeNs": metadata.st_ctime_ns,
+            "size": metadata.st_size,
+        }
+    try:
+        snapshot_id, _hashes, _read_bytes = _content_snapshot(root, relative_files, policy)
+    except OSError as exc:
+        raise ContextMapError("context_freshness_incomplete") from exc
+    return _fingerprint_hash(fingerprints), snapshot_id, len(code_files), len(fingerprints), source
+
+
+def _require_passive_freshness(
+    root: Path,
+    payload: Mapping[str, Any],
+    cache: Mapping[str, Any],
+) -> None:
+    _fingerprint, snapshot_id, code_files, mapped_files, source = _passive_code_map_fingerprint(root)
+    if (
+        snapshot_id != str(payload.get("snapshotId") or "")
+        or int(cache.get("candidateCodeFiles", -1)) != code_files
+        or int(cache.get("candidateMappedFiles", -1)) != mapped_files
+        or cache.get("completeListing") is not True
+        or str(cache.get("listingSource") or "") != source
+    ):
+        raise ContextMapError("context_map_stale")
+
+
 def load_code_map(
     project: str | Path,
     *,
@@ -231,6 +337,9 @@ def load_code_map(
         or not isinstance(payload.get("fileSymbols"), dict)
         or not isinstance(payload.get("indexedFiles"), list)
         or not isinstance(payload.get("mappedFiles"), list)
+        or not isinstance(payload.get("fileRoles"), dict)
+        or not isinstance(payload.get("dependencyEdges"), list)
+        or not isinstance(payload.get("tombstones"), dict)
     ):
         raise ContextMapError("context_map_upgrade_required")
     verification_graph = payload.get("verificationGraph")
@@ -250,8 +359,16 @@ def load_code_map(
         root / ".agentlas" / "code-map" / ".cache.json",
         max_bytes=1024 * 1024,
     )
+    try:
+        manifest = _regular_json(
+            root / ".agentlas" / "code-map" / "manifest.json",
+            max_bytes=1024 * 1024,
+        )
+    except ContextMapError as exc:
+        raise ContextMapError("context_map_integrity_failed") from exc
     expected_root_hash = "sha256:" + hashlib.sha256(str(root).encode("utf-8")).hexdigest()
     fingerprint = str(payload.get("fingerprintHash") or "")
+    snapshot_id = str(payload.get("snapshotId") or "")
     stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}
     reference_index = payload["refIndex"]
     reference_count = payload["refCount"]
@@ -261,14 +378,31 @@ def load_code_map(
         for key, count in reference_count.items()
         if isinstance(count, int) and count >= 0
     ) and all(isinstance(count, int) and count >= 0 for count in reference_count.values())
+    compatibility_map = (
+        manifest.get("compatibilityMap")
+        if isinstance(manifest.get("compatibilityMap"), dict)
+        else {}
+    )
+    payload_digest = _canonical_digest(payload)
     if (
         not re.fullmatch(r"sha256:[0-9a-f]{64}", fingerprint)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", snapshot_id)
         or payload.get("projectRootHash") != expected_root_hash
         or cache.get("schemaVersion") != CODE_MAP_CACHE_SCHEMA
         or cache.get("policyVersion") != CODE_MAP_POLICY_VERSION
         or cache.get("projectRootHash") != expected_root_hash
         or cache.get("fingerprintHash") != fingerprint
-        or cache.get("mapPayloadDigest") != _canonical_digest(payload)
+        or cache.get("snapshotId") != snapshot_id
+        or cache.get("policyDigest") != payload.get("policyDigest")
+        or cache.get("mapPayloadDigest") != payload_digest
+        or manifest.get("schemaVersion") != CODE_MAP_MANIFEST_SCHEMA
+        or manifest.get("projectRootHash") != expected_root_hash
+        or manifest.get("snapshotId") != snapshot_id
+        or manifest.get("policyDigest") != payload.get("policyDigest")
+        or manifest.get("complete") is not True
+        or compatibility_map.get("path") != "project-map.json"
+        or compatibility_map.get("schemaVersion") != schema
+        or compatibility_map.get("digest") != payload_digest
         or int(cache.get("candidateMappedFiles") or -1)
         != int(stats.get("candidateMappedFiles") or -2)
         or (
@@ -287,6 +421,8 @@ def load_code_map(
         or int(stats.get("candidateCodeFiles") or 0) != int(stats.get("codeFiles") or 0)
     ):
         raise ContextMapError("context_map_incomplete")
+    if not refresh:
+        _require_passive_freshness(root, payload, cache)
     return root, payload, refresh_receipt
 
 
@@ -308,7 +444,9 @@ def _node_status(node: Mapping[str, Any]) -> str:
     return str(node.get("status") or "").lower()
 
 
-def _load_declared_graph(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _load_declared_graph(
+    root: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Merge explicit Context Map declarations with annotated sitemap nodes.
 
     Generated file/directory-only sitemap rows are deliberately ignored here:
@@ -318,28 +456,60 @@ def _load_declared_graph(root: Path) -> tuple[list[dict[str, Any]], list[dict[st
 
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
+    source_nodes = 0
+    source_edges = 0
+    loaded_sources: list[str] = []
     for relative in (".agentlas/context-map.json", ".agentlas/sitemap.json"):
         path = root / relative
         if not path.exists():
             continue
         try:
             payload = _regular_json(path, max_bytes=16 * 1024 * 1024)
-        except ContextMapError:
-            continue
+        except ContextMapError as exc:
+            raise ContextMapError("context_declared_map_invalid") from exc
+        loaded_sources.append(relative)
         raw_nodes = payload.get("nodes")
         raw_edges = payload.get("edges") or payload.get("relationships")
+        if raw_nodes is not None and not isinstance(raw_nodes, list):
+            raise ContextMapError("context_declared_map_invalid")
+        if raw_edges is not None and not isinstance(raw_edges, list):
+            raise ContextMapError("context_declared_map_invalid")
         if isinstance(raw_nodes, list):
+            source_nodes += len(raw_nodes)
             for candidate in raw_nodes:
                 if not isinstance(candidate, dict):
-                    continue
+                    raise ContextMapError("context_declared_map_invalid")
                 kind = _node_type(candidate)
                 if relative.endswith("sitemap.json") and kind in {"file", "directory"}:
                     continue
-                if _node_id(candidate) and _node_status(candidate) in _ACTIVE_STATES:
+                if not _node_id(candidate):
+                    raise ContextMapError("context_declared_map_invalid")
+                if _node_status(candidate) in _ACTIVE_STATES:
                     nodes.append(dict(candidate))
         if isinstance(raw_edges, list):
-            edges.extend(dict(candidate) for candidate in raw_edges if isinstance(candidate, dict))
-    return nodes[:2_000], edges[:8_000]
+            source_edges += len(raw_edges)
+            for candidate in raw_edges:
+                if not isinstance(candidate, dict):
+                    raise ContextMapError("context_declared_map_invalid")
+                source, target, _ = _edge_parts(candidate)
+                if not source or not target:
+                    raise ContextMapError("context_declared_map_invalid")
+                edges.append(dict(candidate))
+    loaded_nodes = nodes[:MAX_DECLARED_NODES]
+    loaded_edges = edges[:MAX_DECLARED_EDGES]
+    report = {
+        "sources": loaded_sources,
+        "sourceNodeCount": source_nodes,
+        "sourceEdgeCount": source_edges,
+        "eligibleNodeCount": len(nodes),
+        "eligibleEdgeCount": len(edges),
+        "loadedNodeCount": len(loaded_nodes),
+        "loadedEdgeCount": len(loaded_edges),
+        "omittedNodeCount": max(0, len(nodes) - len(loaded_nodes)),
+        "omittedEdgeCount": max(0, len(edges) - len(loaded_edges)),
+    }
+    report["partial"] = bool(report["omittedNodeCount"] or report["omittedEdgeCount"])
+    return loaded_nodes, loaded_edges, report
 
 
 def _edge_parts(edge: Mapping[str, Any]) -> tuple[str, str, str]:
@@ -355,7 +525,7 @@ def _select_declared_context(
     *,
     terms: Sequence[str],
     selected_files: Sequence[str],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     by_id = {_node_id(node): node for node in nodes if _node_id(node)}
     selected: set[str] = {
         node_id
@@ -396,16 +566,25 @@ def _select_declared_context(
                     selected_edges.append(edge)
         if not changed:
             break
-    selected_nodes = [by_id[node_id] for node_id in sorted(selected) if node_id in by_id][
-        :MAX_CONTEXT_NODES
-    ]
+    eligible_nodes = [by_id[node_id] for node_id in sorted(selected) if node_id in by_id]
+    eligible_edge_count = len(selected_edges)
+    selected_nodes = eligible_nodes[:MAX_CONTEXT_NODES]
     allowed_ids = {_node_id(node) for node in selected_nodes}
     selected_edges = [
         edge
         for edge in selected_edges
         if _edge_parts(edge)[0] in allowed_ids and _edge_parts(edge)[1] in allowed_ids
     ][:MAX_CONTEXT_EDGES]
-    return selected_nodes, selected_edges
+    report = {
+        "eligibleNodeCount": len(eligible_nodes),
+        "eligibleEdgeCount": eligible_edge_count,
+        "selectedNodeCount": len(selected_nodes),
+        "selectedEdgeCount": len(selected_edges),
+        "omittedNodeCount": max(0, len(eligible_nodes) - len(selected_nodes)),
+        "omittedEdgeCount": max(0, eligible_edge_count - len(selected_edges)),
+    }
+    report["partial"] = bool(report["omittedNodeCount"] or report["omittedEdgeCount"])
+    return selected_nodes, selected_edges, report
 
 
 def _module_of(path: str) -> str:
@@ -537,17 +716,10 @@ def context_slice(
         if len(module_edges) >= 48:
             break
 
-    # The declared graph is refreshed on the same terms as the code map: this
-    # file had a reader and no writer, so it answered "what are this project's
-    # goals" with an empty list on every machine. Deriving here keeps the answer
-    # as current as the ledger it comes from.
-    declared_receipt: dict[str, Any] | None = None
-    if refresh:
-        from .context_map_authoring import refresh_declared_context
-
-        declared_receipt = refresh_declared_context(root)
-    declared_nodes, declared_edges = _load_declared_graph(root)
-    selected_nodes, selected_edges = _select_declared_context(
+    # Slice construction is a reader. Explicit project bootstrap/refresh owns
+    # declared-context materialization; a query must never rewrite project state.
+    declared_nodes, declared_edges, declared_load = _load_declared_graph(root)
+    selected_nodes, selected_edges, declared_selection = _select_declared_context(
         declared_nodes,
         declared_edges,
         terms=terms,
@@ -555,6 +727,18 @@ def context_slice(
     )
     task_digest = _canonical_digest({"task": task[:MAX_TASK_CHARS], "targets": list(targets)})
     map_fingerprint = str(code_map.get("fingerprintHash") or "")
+    declared_context_receipt = {
+        **declared_load,
+        "selectedNodeCount": declared_selection["selectedNodeCount"],
+        "selectedEdgeCount": declared_selection["selectedEdgeCount"],
+        "selectionEligibleNodeCount": declared_selection["eligibleNodeCount"],
+        "selectionEligibleEdgeCount": declared_selection["eligibleEdgeCount"],
+        "omittedNodeCount": declared_load["omittedNodeCount"]
+        + declared_selection["omittedNodeCount"],
+        "omittedEdgeCount": declared_load["omittedEdgeCount"]
+        + declared_selection["omittedEdgeCount"],
+        "partial": bool(declared_load["partial"] or declared_selection["partial"]),
+    }
     receipt_base = {
         "schemaVersion": CONTEXT_QUERY_RECEIPT_SCHEMA,
         "taskDigest": task_digest,
@@ -572,12 +756,15 @@ def context_slice(
         "selectedSymbols": symbols,
         "selectedFiles": selected_files,
         "selectedContextNodeIds": [_node_id(node) for node in selected_nodes],
+        "partial": declared_context_receipt["partial"],
+        "declaredContext": declared_context_receipt,
         "refreshStatus": _refresh_status(refresh_receipt),
         "issuedAt": _utc_now(),
     }
     receipt_base["receiptDigest"] = _canonical_digest(receipt_base)
     return {
         "schemaVersion": CONTEXT_SLICE_SCHEMA,
+        "status": "partial" if declared_context_receipt["partial"] else "ok",
         "project": str(code_map.get("project") or root.name),
         "taskDigest": task_digest,
         "goalsAndConstraints": [
@@ -678,6 +865,11 @@ def impact(
     definitions = code_map.get("defIndex", {})
     references_index = code_map.get("refIndex", {})
     file_symbols = code_map.get("fileSymbols", {})
+    dependency_edges = [
+        edge for edge in code_map.get("dependencyEdges", []) if isinstance(edge, Mapping)
+    ]
+    file_roles = code_map.get("fileRoles") if isinstance(code_map.get("fileRoles"), dict) else {}
+    tombstones = code_map.get("tombstones") if isinstance(code_map.get("tombstones"), dict) else {}
     indexed_files = {
         str(value)
         for value in code_map.get("mappedFiles", code_map.get("indexedFiles", []))
@@ -685,16 +877,51 @@ def impact(
     }
     changed_files: list[str] = []
     changed_symbols: list[str] = []
+    change_kinds: list[dict[str, str]] = []
     for raw in changed:
         normalized = _normalize_file(root, raw)
         if normalized and normalized in indexed_files:
             changed_files.append(normalized)
+            change_kinds.append(
+                {
+                    "path": normalized,
+                    "status": "modified",
+                    "role": str(file_roles.get(normalized) or "unknown"),
+                    "resolution": "current",
+                }
+            )
             for item in file_symbols.get(normalized, []) if isinstance(file_symbols, dict) else []:
                 if isinstance(item, dict):
                     display = str(item.get("n") or "")
                     key = display.lower()
                     if key:
                         changed_symbols.append(key)
+        elif (
+            normalized
+            and _policy_allows(normalized, _context_index_policy(root))
+            and _safe_file(root, root / normalized)
+        ):
+            changed_files.append(normalized)
+            change_kinds.append(
+                {
+                    "path": normalized,
+                    "status": "modified",
+                    "role": _file_role(normalized),
+                    "resolution": "opaque-current",
+                }
+            )
+        elif normalized and normalized in tombstones:
+            changed_files.append(normalized)
+            tombstone = tombstones.get(normalized)
+            tombstone = tombstone if isinstance(tombstone, Mapping) else {}
+            change_kinds.append(
+                {
+                    "path": normalized,
+                    "status": "deleted",
+                    "role": str(tombstone.get("role") or "unknown"),
+                    "resolution": "tombstone",
+                }
+            )
         else:
             if normalized is None:
                 raise ContextMapError("context_changed_target_invalid")
@@ -708,13 +935,39 @@ def impact(
 
     impacted: set[str] = set(changed_files)
     paths: list[dict[str, Any]] = []
+    dependency_frontier = set(changed_files)
+    while dependency_frontier:
+        next_frontier: set[str] = set()
+        for edge in dependency_edges:
+            source = str(edge.get("from") or "")
+            target = str(edge.get("to") or "")
+            if (
+                source in dependency_frontier
+                and target
+                and str(file_roles.get(target) or "") != "test"
+                and target not in impacted
+            ):
+                impacted.add(target)
+                next_frontier.add(target)
+                if len(impacted) > MAX_IMPACT_FILES:
+                    break
+        if len(impacted) > MAX_IMPACT_FILES:
+            break
+        if not next_frontier:
+            break
+        dependency_frontier = next_frontier
     for symbol in sorted(set(changed_symbols)):
-        refs = [
-            str(value)
-            for value in references_index.get(symbol, [])
-            if isinstance(value, str)
-        ][:MAX_IMPACT_FILES]
-        impacted.update(refs)
+        # Lexical references remain useful for locate/refs, but are advisory
+        # for file changes. Only an explicitly supplied symbol may expand by
+        # text mention; changed files use exact dependency edges above.
+        refs = []
+        if not changed_files:
+            refs = [
+                str(value)
+                for value in references_index.get(symbol, [])
+                if isinstance(value, str)
+            ][:MAX_IMPACT_FILES]
+            impacted.update(refs)
         paths.append(
             {
                 "changedSymbol": symbol,
@@ -729,11 +982,17 @@ def impact(
     )
     verification_nodes = {
         str(node.get("id") or ""): {
+            "id": str(node.get("id") or ""),
             "path": str(node.get("path") or ""),
             "kind": str(node.get("kind") or "verification"),
         }
         for node in verification_graph.get("nodes", [])
         if isinstance(node, dict) and str(node.get("id") or "")
+    }
+    verification_nodes_by_path = {
+        node["path"]: node
+        for node in verification_nodes.values()
+        if node["path"]
     }
     verification_edges = [
         edge
@@ -745,7 +1004,8 @@ def impact(
         if not isinstance(issue, dict):
             continue
         source = str(issue.get("source") or "")
-        source_node = verification_nodes.get(source) or {}
+        source_node = verification_nodes.get(source) or verification_nodes_by_path.get(source) or {}
+        source_id = str(source_node.get("id") or source)
         source_path = str(source_node.get("path") or source)
         source_kind = str(source_node.get("kind") or "")
         issue_channel = (
@@ -760,7 +1020,7 @@ def impact(
             verification_issues.append(
                 {
                     "code": str(issue.get("code") or "verification_graph_issue"),
-                    "sourceId": source,
+                    "sourceId": source_id,
                     "source": source_path,
                     "channel": issue_channel,
                     "missingPath": missing_path,
@@ -780,13 +1040,18 @@ def impact(
             source = str(edge.get("from") or "")
             target = str(edge.get("to") or "")
             relation = str(edge.get("relation") or "verifies")
-            if source not in frontier or not target:
+            if (
+                source not in frontier
+                or not target
+                or relation.startswith("advisory_")
+                or relation == "released_by"
+            ):
                 continue
             node = verification_nodes.get(target)
             if node and node["path"]:
-                impacted.add(node["path"])
-                target_key = (node["path"], node["kind"], relation)
+                target_key = (node["id"], node["kind"], relation)
                 verification_targets[target_key] = {
+                    "id": node["id"],
                     "path": node["path"],
                     "kind": node["kind"],
                     "relation": relation,
@@ -799,12 +1064,13 @@ def impact(
             break
         frontier = next_frontier
     for node_id, node in verification_nodes.items():
-        if not node["path"] or node["path"] not in impacted:
+        if not node["path"] or node["path"] not in changed_files:
             continue
-        target_key = (node["path"], node["kind"], "structural_impact")
+        target_key = (node["id"], node["kind"], "structural_impact")
         verification_targets.setdefault(
             target_key,
             {
+                "id": node["id"],
                 "path": node["path"],
                 "kind": node["kind"],
                 "relation": "structural_impact",
@@ -823,10 +1089,10 @@ def impact(
     ]
     local_commands = sorted(
         {
-            str(target.get("path") or "")
+            str(target.get("id") or "")
             for target in target_rows
             if str(target.get("kind") or "") == "test_command"
-            and str(target.get("path") or "")
+            and str(target.get("id") or "")
         }
     )
     local_tests = sorted(
@@ -838,22 +1104,25 @@ def impact(
         }
     )
     verification_channels = {
-        # Prefer concrete test files as the local execution evidence. Package
-        # manifests can be both a test-command container and a version contract;
-        # treating the shared path alone as proof would let a version bump
-        # masquerade as a test run. Command paths are the fallback only for
-        # projects whose executable test command has no discoverable test file.
-        "local": local_tests or local_commands,
+        # Test paths and exact package-command IDs are independent execution
+        # receipts. Keep their union: discovering a test file must not make a
+        # valid command receipt unrecognizable.
+        "local": sorted(set(local_tests) | set(local_commands)),
         "ci": sorted(
             {
-                str(target.get("path") or "")
+                str(target.get("id") or "")
                 for target in target_rows
                 if str(target.get("kind") or "") == "ci_workflow"
-                and str(target.get("path") or "")
+                and str(target.get("id") or "")
             }
         ),
     }
-    impacted_files = sorted(impacted)[:MAX_IMPACT_FILES]
+    if len(impacted) > MAX_IMPACT_FILES:
+        # A partial impact set cannot be honest completion evidence. Require
+        # the caller to narrow or decompose the change instead of returning a
+        # clipped list as status=ok.
+        raise ContextMapError("context_impact_incomplete")
+    impacted_files = sorted(impacted)
     map_stats = code_map.get("stats") if isinstance(code_map.get("stats"), dict) else {}
     map_budget_stop = str(map_stats.get("budgetStop") or "")
     map_output_truncated = map_stats.get("outputTruncated") is True
@@ -865,30 +1134,49 @@ def impact(
         and not map_budget_stop
         and not map_output_truncated
     )
+    canonical_changes = sorted(
+        {
+            (change["path"], change["status"], change["role"], change["resolution"]): change
+            for change in change_kinds
+        }.values(),
+        key=lambda change: (
+            change["path"],
+            change["status"],
+            change["role"],
+            change["resolution"],
+        ),
+    )
     receipt = {
         "schemaVersion": CONTEXT_IMPACT_RECEIPT_SCHEMA,
         "mapFingerprint": str(code_map.get("fingerprintHash") or ""),
+        "snapshotId": str(code_map.get("snapshotId") or ""),
+        "changeSetDigest": _canonical_digest(canonical_changes),
         "mapComplete": map_complete,
         "mapBudgetStop": map_budget_stop or None,
         "mapOutputTruncated": map_output_truncated,
         "mapIncompleteReasons": list(map_stats.get("incompleteReasons") or []),
         "changedFiles": sorted(set(changed_files)),
+        "changes": canonical_changes,
         "changedSymbols": sorted(set(changed_symbols)),
         "impactedFiles": impacted_files,
-        "verificationTargets": [
-            target
-            for target in target_rows
-            if str(target.get("path") or "") in impacted_files
-        ],
-        "verificationChannelPolicy": "any-valid-channel",
+        "verificationTargets": target_rows,
+        "verificationChannelPolicy": "one-executed-valid-channel",
         "verificationChannels": verification_channels,
+        "releaseObligations": sorted(
+            {
+                str(target.get("path") or "")
+                for target in target_rows
+                if str(target.get("kind") or "") == "version_contract"
+                and str(target.get("path") or "")
+            }
+        ),
         "verificationGraphDigest": str(verification_graph.get("graphDigest") or ""),
         "verificationIssues": verification_issues,
-        "truncated": len(impacted) > MAX_IMPACT_FILES,
+        "truncated": False,
         "refreshStatus": _refresh_status(refresh_receipt),
-        "issuedAt": _utc_now(),
     }
     receipt["receiptDigest"] = _canonical_digest(receipt)
+    receipt["issuedAt"] = _utc_now()
     return {
         "action": "context.impact",
         "status": "ok",
@@ -906,31 +1194,36 @@ def verify_impact(
     changed: Sequence[str],
     reviewed: Sequence[str],
     *,
+    verified: Sequence[str] = (),
     waived: Sequence[str] = (),
     refresh: bool = True,
 ) -> dict[str, Any]:
-    if not refresh:
-        raise ContextMapError("context_verification_refresh_required")
     impact_result = impact(project, changed, refresh=refresh)
     impact_receipt = impact_result["receipt"]
     if impact_receipt.get("mapComplete") is not True or impact_receipt.get("truncated") is True:
         raise ContextMapError("context_verification_map_incomplete")
     root = _project_root(project)
+    if any(_normalize_file(root, raw) is None for raw in [*reviewed, *verified, *waived]):
+        raise ContextMapError("context_verification_evidence_invalid")
     reviewed_files = {
         value for raw in reviewed if (value := _normalize_file(root, raw))
+    }
+    reviewed_scopes = {
+        value.rstrip("/") + "/"
+        for raw in reviewed
+        if raw.strip().replace("\\", "/").endswith("/")
+        and (value := _normalize_file(root, raw.strip().rstrip("/")))
+    }
+    verified_files = {
+        value for raw in verified if (value := _normalize_file(root, raw))
     }
     waived_files = {
         value for raw in waived if (value := _normalize_file(root, raw))
     }
     changed_files = set(impact_receipt["changedFiles"])
     required = set(impact_result["impactedFiles"])
-    verification_required_changes = {
-        str(target.get("path") or "")
-        for target in impact_receipt.get("verificationTargets", [])
-        if isinstance(target, Mapping)
-        and str(target.get("kind") or "")
-        == "version_contract"
-        and str(target.get("path") or "")
+    reviewed_by_scope = {
+        path for path in required if any(path.startswith(scope) for scope in reviewed_scopes)
     }
     channel_rows = impact_receipt.get("verificationChannels")
     verification_channels = (
@@ -946,34 +1239,19 @@ def verify_impact(
         if isinstance(channel_rows, Mapping)
         else {}
     )
-    accounted_files = changed_files | reviewed_files | waived_files
     eligible_channels = sorted(
         name for name, paths in verification_channels.items() if paths
     )
     satisfied_channels = sorted(
         name
         for name, paths in verification_channels.items()
-        if paths and paths <= accounted_files
+        if paths and bool(paths & verified_files)
     )
     selected_channel = satisfied_channels[0] if satisfied_channels else None
-    verification_channel_paths = set().union(*verification_channels.values()) if verification_channels else set()
-    unresolved_channel_files = (
-        set()
-        if selected_channel
-        else verification_channel_paths - accounted_files
-    )
     unresolved = sorted(
-        (
-            required
-            - verification_channel_paths
-            - verification_required_changes
-            - changed_files
-            - reviewed_files
-            - waived_files
-        )
-        | (verification_required_changes - changed_files - waived_files)
-        | unresolved_channel_files
+        required - changed_files - reviewed_files - reviewed_by_scope - waived_files
     )
+    verification_evidence_missing = bool(eligible_channels) and not selected_channel
     unresolved_verification_issues = [
         issue
         for issue in impact_receipt.get("verificationIssues", [])
@@ -984,13 +1262,31 @@ def verify_impact(
             or str(issue.get("channel") or "") in {"", selected_channel}
         )
     ]
+    valid_verification_evidence = set().union(*verification_channels.values()) if verification_channels else set()
+    issue_sources = {
+        str(issue.get("source") or "")
+        for issue in impact_receipt.get("verificationIssues", [])
+        if isinstance(issue, Mapping)
+    }
+    unrecognized_evidence = {
+        "reviewed": sorted(
+            path
+            for path in reviewed_files
+            if path not in required and not any(item.startswith(path.rstrip("/") + "/") for item in required)
+        ),
+        "verified": sorted(verified_files - valid_verification_evidence),
+        "waived": sorted(waived_files - required - issue_sources),
+    }
+    has_unrecognized_evidence = any(unrecognized_evidence.values())
     receipt = {
         "schemaVersion": CONTEXT_VERIFICATION_RECEIPT_SCHEMA,
         "impactReceiptDigest": impact_receipt["receiptDigest"],
         "mapFingerprint": impact_receipt["mapFingerprint"],
+        "snapshotId": impact_receipt.get("snapshotId"),
+        "changeSetDigest": impact_receipt.get("changeSetDigest"),
         "verificationGraphDigest": impact_receipt.get("verificationGraphDigest"),
         "verificationTargets": impact_receipt.get("verificationTargets", []),
-        "verificationChannelPolicy": "any-valid-channel",
+        "verificationChannelPolicy": "one-executed-valid-channel",
         "verificationChannels": {
             name: sorted(paths)
             for name, paths in sorted(verification_channels.items())
@@ -998,16 +1294,31 @@ def verify_impact(
         "eligibleVerificationChannels": eligible_channels,
         "satisfiedVerificationChannels": satisfied_channels,
         "selectedVerificationChannel": selected_channel,
-        "verificationRequiredChanges": sorted(verification_required_changes),
+        "verificationEvidenceMissing": verification_evidence_missing,
+        "releaseObligations": impact_receipt.get("releaseObligations", []),
         "verificationIssues": unresolved_verification_issues,
+        "unrecognizedEvidence": unrecognized_evidence,
         "changedFiles": sorted(changed_files),
         "reviewedFiles": sorted(reviewed_files),
+        "reviewedScopes": sorted(reviewed_scopes),
+        "verifiedFiles": sorted(verified_files),
         "waivedFiles": sorted(waived_files),
         "unresolvedFiles": unresolved,
-        "status": "passed" if not unresolved and not unresolved_verification_issues else "blocked",
-        "issuedAt": _utc_now(),
+        "unresolvedCount": len(unresolved),
+        "unresolvedModuleCounts": dict(
+            sorted(Counter(_module_of(path) for path in unresolved).items())
+        ),
+        "status": (
+            "passed"
+            if not unresolved
+            and not unresolved_verification_issues
+            and not verification_evidence_missing
+            and not has_unrecognized_evidence
+            else "blocked"
+        ),
     }
     receipt["receiptDigest"] = _canonical_digest(receipt)
+    receipt["issuedAt"] = _utc_now()
     return {
         "action": "context.verify",
         "status": receipt["status"],

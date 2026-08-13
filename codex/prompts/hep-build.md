@@ -13,6 +13,32 @@ Use the `agentlas-core-engine-meta-agent` skill from the Hephaestus plugin.
 Expose `/prompts:hep-build` as the public Codex build prompt next to
 `/prompts:hep-network` and `/prompts:hep-cloud`.
 
+Resolve the installed engine first:
+
+```bash
+ENGINE=""
+for candidate in \
+  "${CODEX_PLUGIN_ROOT:-}" "${CLAUDE_PLUGIN_ROOT:-}" "${PLUGIN_ROOT:-}" \
+  "$HOME/.agentlas/runtime/current/host_adapters/codex/plugins/agentlas-core-engine-meta-agent" \
+  "$HOME/.agentlas/runtime/current/host_adapters/claude/plugins/agentlas-core-engine-meta-agent" \
+  "$HOME/.agentlas/runtime/current" "."
+do
+  if [ -n "$candidate" ] && [ -f "$candidate/AGENTS.md" ] && [ -f "$candidate/package-contract.json" ] && [ -f "$candidate/contracts/builder-interview-research-gate.md" ]; then
+    ENGINE="$candidate"; break
+  fi
+done
+[ -n "$ENGINE" ] || { echo "Hephaestus engine not found. Run the installer first." >&2; exit 1; }
+RUNNER="$HOME/.agentlas/runtime/current/bin/hephaestus"
+[ -x "$RUNNER" ] || RUNNER="$ENGINE/bin/hephaestus"
+[ -x "$RUNNER" ] || { echo "Hephaestus runner not found under $ENGINE." >&2; exit 1; }
+```
+
+Read contracts only from `$ENGINE`. Take exactly one user-named or confirmed
+folder as `PACKAGE_TARGET`; if none or multiple candidates exist, stop and ask.
+Never default to `.`, cwd, or `$ENGINE`. Run `"$RUNNER" contract resolve-target
+"$PACKAGE_TARGET" --base "$PWD"` and set `PACKAGE_ROOT` only to the status-`ok`
+receipt's exact `package_root` before any package command.
+
 - If the arguments are `ontology`, resolve the runner exactly as in
   `/prompts:hep-network` and run `"$RUNNER" ontology`.
 - Otherwise classify the request as single-agent-builder,
@@ -23,8 +49,10 @@ Expose `/prompts:hep-build` as the public Codex build prompt next to
   전문가가 나눠 맡고 마지막에 합쳐야 하나요?" Do not expose internal labels
   like ownership boundary, memory/context, synthesis, or produces/consumes.
 - Before writing substantial package files, run the Builder Interview and
-  Research Gate from `docs/builder-interview-research-gate.md`: ask an 8-12 Follow the briefing interview engine (`agentlas_cloud/interview/`): lens-table questions (anti_scope/done_signal/stop_criterion required), stop only at ambiguity <= 0.2 with dimension floors met for 2 consecutive rounds, then a coverage check and a one-sentence goal restate; also write `.agentlas/work-brief.json` (work-brief/1.0) so `cards migrate` derives triggers/anti-triggers from the user's confirmed answers.
-  question first batch when the request is vague, continue follow-ups until the
+  Research Gate from `$ENGINE/contracts/builder-interview-research-gate.md`.
+  Follow the briefing interview engine (`agentlas_cloud/interview/`) and write
+  `.agentlas/work-brief.json` (`work-brief/1.0`). Ask an 8-12 question first
+  batch when the request is vague, continue follow-ups until the
   functional brief is clear, research official sources, similar agent
   repositories or comparables, academic/professional theory, and plugin docs,
   compare selected and rejected tools/plugins, synthesize domain-expert
@@ -40,9 +68,9 @@ Expose `/prompts:hep-build` as the public Codex build prompt next to
   user inputs may use the target user language.
 - After creating or repairing a package, run
 Before writing any package file, lay the contract down:
-`"$ENGINE/bin/hephaestus" contract scaffold "$PACKAGE_ROOT" --mode single|team|package`.
+`"$RUNNER" contract scaffold "$PACKAGE_ROOT" --mode single|team|package`.
 Then, as soon as the routing card exists, run
-`"$ENGINE/bin/hephaestus" contract complete "$PACKAGE_ROOT"` — the engine fills every
+`"$RUNNER" contract complete "$PACKAGE_ROOT" --mode single|team|package` — the engine fills every
 artifact the package already answers (`agent.md`, work brief, sitemap, routing
 benchmarks, capability eval plan, builder interview, research sources, output
 example) from the routing card, the roster, and the schemas on disk. It never
@@ -52,13 +80,13 @@ It copies every required artifact into place with named `{{PLACEHOLDER}}` holes 
 never overwrites. Skipping it is how a build ends with 5 of 18 required artifacts
 and still reports success. `contract prompt --mode <mode>` lists what each one is for.
 
-  `"$ENGINE/bin/hephaestus" contract verify "$PACKAGE_ROOT" --mode single|team|package` (this runs the team-shape rule too). If it fails, do not report
+  `"$RUNNER" contract verify "$PACKAGE_ROOT" --mode single|team|package` (this runs the team-shape rule too). If it fails, do not report
   `completed`; correct the shape by collapsing to a valid single-agent package
   or adding orchestrator/HQ plus company-blueprint topology.
 - Include `global_commands` for the created agent or team in the final
   response, plus `interview_research` evidence.
 - If a package was created/repaired in the current workspace, register it to
-  local discovery immediately: run `./bin/hephaestus cards migrate "$PACKAGE_ROOT" --tier local
+  local discovery immediately: run `"$RUNNER" cards migrate "$PACKAGE_ROOT" --tier local
   --overwrite` (or the same `hephaestus` runner in cache if local binary is
   unavailable), and include migration result in `evidence`.
 

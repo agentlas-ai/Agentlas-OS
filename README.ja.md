@@ -45,11 +45,10 @@ marketplace plugin だけをインストールして終了せず、次の sessio
 host command adapters まで書き込む公式 one-touch installer を実行してください:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-Claude Code では `hephaestus@agentlas-core-engine` が user scope で有効で、
-`~/.claude/commands/agentlas build.md` が存在することを確認してください。次の
-session で bare `/agentlas build` を使えない状態なら、install 完了と報告しないで
-ください。最後に plugin、command surface、global routing の状態を確認し、
-host の再起動または `/reload-plugins` の実行を案内してください。
+installer 自身の検証出力を報告してください。次の session で `/agentlas build`
+（またはその host に対応する command surface）が使えない場合は install 完了と
+報告せず、使えることを確認したら host の再起動または plugin の再読み込みを
+案内してください。
 ```
 
 すでに使っている LLM の中で Hephaestus をすぐ有効化したいときに使ってください。
@@ -191,7 +190,7 @@ one-touch installer を使用してください。これは
 
 OS のターミナルから:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.0
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.1
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注: Codex アプリ内では `/plugin marketplace add` は利用できません。上記の 2 つのコマンドを OS のターミナルで実行してください。OS ターミナルの CLI コマンドは単数形（`codex plugin`）ですが、Codex アプリ内のプラグインブラウザーのスラッシュコマンドは複数形（`/plugins`）です。インストール後は、`/prompts:agentlas` がアプリ内のエントリーポイントになります。*

@@ -66,7 +66,7 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
   `docs/stormbreaker-goal-ultracode-harness.md`,
   `agentlas_cloud/networking/stormbreaker_harness.py`, and
   `schemas/stormbreaker-goal-ultracode-harness.schema.json`.
-- Builder quality gate: `docs/builder-interview-research-gate.md`,
+- Builder quality gate: `contracts/builder-interview-research-gate.md`,
   `docs/builder-quality-research-basis.md`,
   `templates/builder-interview.md.tpl`, `templates/research-sources.md.tpl`,
   `templates/tool-selection.md.tpl`, `templates/domain-expert-synthesis.md.tpl`,
@@ -98,6 +98,11 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
 
 Runtime-specific folders are adapters. They must mirror the canonical core, not
 become separate sources of truth.
+
+Agent Ontology (AO), Agent Workforce Ontology, the local semantic ontology,
+Context Map, and Career Graph are independent active systems. Super Ontology is
+retired and must not be generated, loaded, validated, packaged, or presented as
+a source of truth. Its retained documentation is an archived design record only.
 
 ## Third-Party Plugin Boundary
 
@@ -193,7 +198,7 @@ authority model:
    - `20-multi-agent-team-builder`;
    - `30-agentlas-packager`.
 4. Run the Builder Interview and Research Gate
-   (`docs/builder-interview-research-gate.md`) before writing substantial
+   (`contracts/builder-interview-research-gate.md`) before writing substantial
    generated package files. Ask an 8-12 question first batch when the request is
    vague, continue follow-ups until the functional brief is clear, research
    official sources, similar agent repositories or comparables,
@@ -263,10 +268,13 @@ app should accept plain language and dispatch through native Agentlas/
 Hephaestus tools without requiring a `/hep-*` command. External LLM hosts
 registered through MCP, plugins, prompts, or command files expose the core
 commands `/hep-build`, `/hep-network`, `/hep-local`, `/hep-cloud`, `/hep-hub`,
-`/hep-search`, `/hep-call`, and `/hep-upload` (Codex prompt equivalents use
-`/prompts:hep-*`). Stormbreaker, research loadouts, route options, and other
-lower-level controls must be selected automatically from context unless the
-operator is using a debug/automation shell directly.
+`/hep-search`, `/hep-browser`, `/hep-call`, `/hep-upload`, `/hep-storm`, and
+`/hep-graph`. Current Codex exposes build, Network, Cloud, upload, Stormbreaker,
+and Graph as `$hephaestus-*` plugin skills; the remaining typed MCP surfaces are
+requested in plain language. Custom `/prompts:hep-*` commands are legacy only.
+Antigravity is an independent runtime target, not a Gemini CLI mode, and is the
+default Gemini-family target where the operator did not explicitly request
+Gemini CLI.
 
 `/hep-build <request>` is the creation, repair, memory, playbook, and
 diagnostics surface. `/hep-network <request>` (alias
@@ -275,10 +283,12 @@ Agent Workforce Ontology staffing surface across Local, Cloud, and Hub.
 `/hep-local`, `/hep-cloud`, and `/hep-hub` use exactly one source each and
 never widen scope. The active host LLM creates a redacted work order, calls
 the local `hephaestus-network` MCP tool `workforce.search_candidates` with
-`sourceScope`, preserves its complete response as `federationResult`, chooses
-the exact roster, calls `workforce.validate_selection` with that result, then
-passes both `federationResult` and `federatedSelection` to
-`workforce.prepare_execution`. It then runs distinct
+`sourceScope`, preserves its source receipts and selection session, chooses
+the exact roster, then calls `workforce.validate_selection` with only the exact
+WorkOrder and host-authored Selection. Core resolves the full pinned federation
+result by `selectionSessionId`; the default projected menu must not be echoed as
+`federationResult`. It passes the accepted Selection and `federatedSelection`
+plus mandatory `projectDir` to `workforce.prepare_execution`. It then runs distinct
 worker/synthesis/verifier invocations. Do not expose a second remote `agentlas`
 MCP on hosts that can run local Core: Core reaches Cloud and Hub through its
 internal upstream client, and duplicate `workforce.*` tools would bypass the
@@ -286,6 +296,8 @@ federation and privacy boundary. Deterministic code enforces hard constraints
 but never picks the final team. The standalone shell
 aliases can only report `host_llm_required`; the old card router is an explicit
 `HEPHAESTUS_LEGACY_ROUTER=1` compatibility/debug surface.
+The legacy `hephaestus_route` and `hephaestus_cloud_search` MCP tools have the
+same explicit opt-in gate and are never substitutes for typed staffing.
 `/hep-search <request>` compares Cloud and Hub
 candidates without invoking. `/hep-call <slugs> <context>` prepares explicitly
 named agents. `/hep-upload <agent-folder>` is the upload gate: before any
@@ -301,7 +313,9 @@ explicit and substitution requires a new host-LLM decision. Never send raw
 prompts or local memory to Hub. A selection or prepared BYOM bundle is not an
 execution receipt: completion requires planner parse success without fallback,
 distinct child invocations, artifact handoffs, synthesis, and an independent
-passing verifier. Generated and packaged repos must include
+passing verifier. Validate the host-produced receipt locally with
+`workforce.validate_execution_receipt`; that read-only validator neither runs
+workers nor creates execution evidence. Generated and packaged repos must include
 `.agentlas/routing-card.json` (see `schemas/routing-card.schema.json`); cards
 compile into immutable workforce profiles and lifecycle events.
 
@@ -383,34 +397,6 @@ Generated or packaged repos must include the relevant subset of:
 - `.agentlas/skill-registry.json`;
 - `.agentlas/skill-trials.jsonl`;
 - `.agentlas/curator-decisions.jsonl`;
-- `.agentlas/super-ontology-contract.json`;
-- `.agentlas/super-ontology-open-world-coverage.json`;
-- `.agentlas/super-ontology-consensus-coordination.json`;
-- `.agentlas/super-ontology-task-coverage.json`;
-- `.agentlas/super-ontology-contextual-flow.json`;
-- `.agentlas/super-ontology-causal-impact.json`;
-- `.agentlas/super-ontology-assurance-case.json`;
-- `.agentlas/super-ontology-knowledge-homeostasis.json`;
-- `.agentlas/super-ontology-adversarial-provenance.json`;
-- `.agentlas/super-ontology-epistemic-calibration.json`;
-- `.agentlas/super-ontology-semantic-alignment.json`;
-- `.agentlas/super-ontology-resilience-control.json`;
-- `.agentlas/super-ontology-invariant-verification.json`;
-- `.agentlas/super-ontology-observability-telemetry.json`;
-- `.agentlas/super-ontology-objective-proxy-validity.json`;
-- `.agentlas/super-ontology-stakeholder-preference-governance.json`;
-- `.agentlas/super-ontology-normative-authority-drift.json`;
-- `.agentlas/super-ontology-side-effect-containment.json`;
-- `.agentlas/super-ontology-source-lineage-version.json`;
-- `.agentlas/super-ontology-entity-identity-resolution.json`;
-- `.agentlas/super-ontology-temporal-state-transition.json`;
-- `.agentlas/super-ontology-capability-delegation-authority.json`;
-- `.agentlas/super-ontology-privacy-confidentiality-boundary.json`;
-- `.agentlas/super-ontology-strategic-incentive-compatibility.json`;
-- `.agentlas/super-ontology-reflexive-feedback-stability.json`;
-- `.agentlas/super-ontology-replays.jsonl`;
-- `.agentlas/super-ontology-evidence.jsonl`;
-- `.agentlas/super-ontology-memory-bridge.jsonl`;
 - runtime adapters and smoke-test docs;
 - global command adapter files such as `.claude/commands/<slug>.md`,
   `codex/plugins/<package-id>/commands/<slug>.md`, and

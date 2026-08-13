@@ -16,8 +16,8 @@ own cloud packages (보관함) through Core's typed `sourceScope: "cloud"`. It d
 search the public marketplace and does **not** search local private/plugin
 cards.
 
-- The user's own cloud packages are restorable/owned by them, call-priced at a
-  flat **1 credit** per call.
+- The user's own Cloud packages are restorable/owned by them. Entitlement,
+  lease, and charged credits are server-authoritative; do not hard-code a price.
 - For the public marketplace only, use `/hep-hub` (`sourceScope: "hub"`).
 - For the combined Local + own Cloud + public Hub menu, use `/hep-network`
   (`sourceScope: "network"`).
@@ -79,14 +79,20 @@ actual local Core tools in this order:
 
 ```text
 workforce.search_candidates(sourceScope="cloud")
-workforce.validate_selection(workOrder=..., candidateSet=federationResult.candidateSet, selection=..., federationResult=...)
-workforce.prepare_execution(workOrder=..., candidateSet=federationResult.candidateSet, selection=..., federationResult=..., federatedSelection=...)
+workforce.validate_selection(workOrder=..., selection=...)
+workforce.prepare_execution(workOrder=..., selection=..., federatedSelection=..., projectDir=..., goalId=activeGoalId?)
+workforce.validate_execution_receipt(receipt=..., executionPlan=..., toolInventory=...)
 ```
 
 The host LLM authors the final Selection. If the deployed owner-Cloud Workforce
 source contract is absent, report `source_not_supported`; do not silently query
 public Hub or legacy cargo search. A shell without an active host LLM can only
 report that orchestration is required.
+
+The default search response is a projected menu. Preserve its Cloud source
+receipt and `selectionSessionId`, but do not echo it as a complete
+`federationResult`; Core resolves the full pinned result by session. Receipt
+validation is local and read-only and cannot create execution evidence.
 
 ## 4. Act on the typed result (`scope: "cloud"`)
 
@@ -101,4 +107,5 @@ local Core; never send the federated wrapper back to remote validation.
 - Deterministic Core validates governance and immutable pins but never chooses
   the roster. The active host LLM chooses from content evidence.
 - For actual tool execution, follow the host runtime's safety and permission
-  model. Report the routing `receipt_id` in your final message.
+  model. Report the exact source receipt plus `selectionReceiptId`,
+  `preparationReceiptId`, and validated execution receipt status when present.

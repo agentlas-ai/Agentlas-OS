@@ -7,8 +7,10 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 Use local MCP server `hephaestus-network` and exact `sourceScope: "local"` for
 the request after `/hep-local`. Author a redacted WorkOrder, call
-`workforce.search_candidates` with `{workOrder, sourceScope: "local"}` and keep
-`federationResult`; author the final host-LLM Selection; call
+`workforce.search_candidates` with `{workOrder, sourceScope: "local"}`. Retain
+the projected menu's `selectionSessionId` and every source receipt; do not echo
+the projected menu as `federationResult`. Core resolves the complete federation
+state locally from that session. Author the final host-LLM Selection; call
 `workforce.validate_selection` with
 `{workOrder, selection}` and keep `federatedSelection`; then call
 `workforce.prepare_execution` with
@@ -16,6 +18,6 @@ the request after `/hep-local`. Author a redacted WorkOrder, call
 source `local` and every immutable pin; execute planner/manager, workers,
 synthesis, and verifier as distinct invocations.
 
-If Core or the registered Local inventory is unavailable, report
-`source_unavailable`. Never search Cloud or Hub, accept a deterministic picker,
+For `partial` or `failed`, report each source receipt's exact `failureCode`;
+never collapse, substitute, or relabel it. Never search Cloud or Hub, accept a deterministic picker,
 or claim execution from preparation alone.

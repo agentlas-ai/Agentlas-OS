@@ -31,8 +31,7 @@ from .a2a import (
 )
 from .okf import FORMAT as OKF_FORMAT
 from .okf import from_okf_bundle, to_okf_bundle
-from .kernel import ENFORCED_SEEDS, load_kernel, verify_enforcement
-from .agentos import PACK_FORMAT, build_pack, factory_contract, os_surface
+from .agentos import PACK_FORMAT, build_pack, factory_contract, os_surface, runtime_adapters
 from .catalog import knowledge_catalog_descriptor
 from .memory import BiTemporalStore, MemoryEntry
 
@@ -49,11 +48,9 @@ __all__ = [
     "build_pack",
     "os_surface",
     "factory_contract",
+    "runtime_adapters",
     "plan_pipeline_ao",
     "knowledge_catalog_descriptor",
-    "ENFORCED_SEEDS",
-    "load_kernel",
-    "verify_enforcement",
     "to_okf_bundle",
     "from_okf_bundle",
     "align_capability",

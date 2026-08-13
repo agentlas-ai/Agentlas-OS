@@ -5,7 +5,7 @@ a Knowledge-Catalog-ingestible descriptor over an OKF export and declares the
 runtimes that can consume the pack, so the Agent OS participates as a pack
 *producer* in a multi-agent mesh (Claude Code / Codex / Gemini CLI / any
 OKF-aware agent) without proprietary coupling. Every export stays value-free
-(redaction-safe) per the kernel's public-export invariant.
+(redaction-safe) under the public-export invariant.
 """
 
 from __future__ import annotations
@@ -51,6 +51,6 @@ def knowledge_catalog_descriptor(
             "google_cloud_knowledge_catalog": "okf-bundle",
             "method": "serve the OKF bundle directory; consumers parse YAML frontmatter + Markdown links",
         },
-        "kernel_enforced": pack["kernel"]["all_enforced"],
+        "ao_validated": pack["valid"],
         "value_free_export": True,
     }

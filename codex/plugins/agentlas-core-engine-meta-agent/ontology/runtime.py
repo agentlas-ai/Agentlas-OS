@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -10,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
+from urllib.parse import unquote, urlparse
 
 from .embeddings import (
     CJK_RUN_PATTERN,
@@ -31,11 +33,28 @@ MAX_ONTOLOGY_INBOX_FILES = 80
 MAX_INGEST_FILE_BYTES = 16 * 1024 * 1024
 MAX_INGEST_TOTAL_BYTES = 128 * 1024 * 1024
 MAX_INGEST_DEPTH = 12
+MAX_QUERY_RESULTS = 100
+MAX_EXPERIENCE_SCAN_ROWS = 5_000
+MAX_STORAGE_IMPORT_BYTES = 128 * 1024 * 1024
+STORAGE_TABLES = (
+    "sources",
+    "source_lineage",
+    "chunks",
+    "entities",
+    "entity_aliases",
+    "relations",
+    "memory_candidates",
+    "memory_candidate_events",
+    "memory_links",
+    "working_memory",
+    "experience_entities",
+    "experience_mentions",
+    "experience_relations",
+)
 
-# Hybrid document retrieval (A-2/A-3) uses bounded fallback scans. Governed
-# experience retrieval is intentionally different: every eligible row is
-# scored before the adaptive token-budget selector chooses all-relevant or
-# vector/RRF top-k, so an arbitrary recency window cannot hide old evidence.
+# Hybrid document and governed experience retrieval both expose hard local
+# scan budgets. Experience results report partial status when the deterministic
+# newest-first candidate window is truncated.
 RRF_K = 60
 RRF_MISSING_RANK = 10_000
 VECTOR_FALLBACK_SCAN_CAP = 5_000
@@ -82,6 +101,7 @@ class RuntimeConfig:
     vector_adapter: VectorAdapter | None = None
     vector_adapter_name: str = "auto"
     local_model_path: Path | str | None = None
+    read_only: bool = False
 
 
 class OntologyRuntime:
@@ -95,14 +115,35 @@ class OntologyRuntime:
         )
         self.fts_tokenizer = "unicode61"
         self._expansion_cache: dict[str, list[str]] = {}
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.migrate()
+        if self.config.read_only:
+            if not self.db_path.is_file():
+                raise FileNotFoundError(f"ontology runtime database does not exist: {self.db_path}")
+            self._load_read_only_state()
+        else:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self.migrate()
 
     def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        if self.config.read_only:
+            conn = sqlite3.connect(f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True)
+        else:
+            conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
+
+    def _load_read_only_state(self) -> None:
+        with closing(self.connect()) as conn:
+            version = conn.execute("SELECT max(version) FROM schema_migrations").fetchone()[0]
+            if version != SCHEMA_VERSION:
+                raise RuntimeError(
+                    f"ontology schema {version!r} requires migration to {SCHEMA_VERSION}; open writable once first"
+                )
+            row = conn.execute(
+                "SELECT config_json FROM runtime_adapters WHERE name = 'chunk_fts'"
+            ).fetchone()
+            if row is not None:
+                self.fts_tokenizer = str(json_loads(row["config_json"], {}).get("tokenizer") or "unicode61")
 
     def migrate(self) -> None:
         with closing(self.connect()) as conn, conn:
@@ -343,14 +384,16 @@ class OntologyRuntime:
                 (SCHEMA_VERSION, utc_now()),
             )
             self._register_vector_adapter(conn)
-            conn.execute(
-                "INSERT OR REPLACE INTO runtime_adapters(name, kind, status, config_json, updated_at) VALUES (?, ?, ?, ?, ?)",
-                ("chunk_fts", "fts", "available", json_dumps({"tokenizer": self.fts_tokenizer}), utc_now()),
+            self._upsert_runtime_adapter(
+                conn,
+                name="chunk_fts",
+                kind="fts",
+                status="available",
+                config_json=json_dumps({"tokenizer": self.fts_tokenizer}),
             )
             for name, status in self.parser_registry.adapter_statuses():
-                conn.execute(
-                    "INSERT OR REPLACE INTO runtime_adapters(name, kind, status, config_json, updated_at) VALUES (?, ?, ?, ?, ?)",
-                    (name, "parser", status, "{}", utc_now()),
+                self._upsert_runtime_adapter(
+                    conn, name=name, kind="parser", status=status, config_json="{}"
                 )
 
     @staticmethod
@@ -432,12 +475,37 @@ class OntologyRuntime:
 
     def _register_vector_adapter(self, conn: sqlite3.Connection) -> None:
         metadata = vector_adapter_metadata(self.vector_adapter)
+        self._upsert_runtime_adapter(
+            conn,
+            name=self.vector_adapter.name,
+            kind="vector",
+            status=self.vector_adapter.status,
+            config_json=json_dumps(metadata),
+        )
+
+    @staticmethod
+    def _upsert_runtime_adapter(
+        conn: sqlite3.Connection,
+        *,
+        name: str,
+        kind: str,
+        status: str,
+        config_json: str,
+    ) -> None:
         conn.execute(
             """
-            INSERT OR REPLACE INTO runtime_adapters(name, kind, status, config_json, updated_at)
-            VALUES (?, 'vector', ?, ?, ?)
+            INSERT INTO runtime_adapters(name, kind, status, config_json, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+              kind = excluded.kind,
+              status = excluded.status,
+              config_json = excluded.config_json,
+              updated_at = excluded.updated_at
+            WHERE runtime_adapters.kind != excluded.kind
+               OR runtime_adapters.status != excluded.status
+               OR runtime_adapters.config_json != excluded.config_json
             """,
-            (self.vector_adapter.name, self.vector_adapter.status, json_dumps(metadata), utc_now()),
+            (name, kind, status, config_json, utc_now()),
         )
 
     def _ensure_fts_table(self, conn: sqlite3.Connection) -> str:
@@ -510,6 +578,7 @@ class OntologyRuntime:
 
     def ingest_path(self, path: str | Path, access_scope: str = "internal", parent_source_id: str | None = None) -> dict[str, Any]:
         root = Path(path)
+        synchronize_directory = root.is_dir() and not root.is_symlink()
         files, skipped_sources = self._bounded_source_files(root)
         summary = {
             "db_path": str(self.db_path),
@@ -520,6 +589,17 @@ class OntologyRuntime:
             "idempotent_skips": 0,
             "bytes_read": 0,
             "skipped_sources": skipped_sources,
+            "deleted_sources": [],
+            "scan": {
+                "complete": not any(
+                    item.get("reason") in {"file_count_limit", "total_byte_limit"}
+                    for item in skipped_sources
+                ),
+                "truncated": any(
+                    item.get("reason") in {"file_count_limit", "total_byte_limit"}
+                    for item in skipped_sources
+                ),
+            },
         }
         with closing(self.connect()) as conn, conn:
             for source_path in files:
@@ -532,7 +612,114 @@ class OntologyRuntime:
                 summary["entities_written"] += result["entities_written"]
                 summary["relations_written"] += result["relations_written"]
                 summary["idempotent_skips"] += 1 if result["unchanged"] else 0
+            if synchronize_directory:
+                summary["deleted_sources"] = self._delete_missing_sources_under_root(conn, root, files)
+            self._prune_orphan_entities(conn)
         return summary
+
+    @staticmethod
+    def _path_from_file_uri(uri: str) -> Path | None:
+        parsed = urlparse(uri)
+        if parsed.scheme != "file":
+            return None
+        return Path(unquote(parsed.path))
+
+    @staticmethod
+    def _file_content_hash(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 256), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _stale_source_rows(self, conn: sqlite3.Connection) -> list[dict[str, str]]:
+        stale: list[dict[str, str]] = []
+        for row in conn.execute(
+            "SELECT source_id, uri, display_name, content_hash FROM sources ORDER BY source_id"
+        ):
+            path = self._path_from_file_uri(str(row["uri"] or ""))
+            if path is None:
+                continue
+            if path.is_symlink() or not path.is_file():
+                stale.append(
+                    {
+                        "source_id": str(row["source_id"]),
+                        "uri": str(row["uri"]),
+                        "display_name": str(row["display_name"]),
+                        "reason": "source_deleted",
+                    }
+                )
+                continue
+            try:
+                current_hash = self._file_content_hash(path)
+            except OSError:
+                stale.append(
+                    {
+                        "source_id": str(row["source_id"]),
+                        "uri": str(row["uri"]),
+                        "display_name": str(row["display_name"]),
+                        "reason": "source_unreadable",
+                    }
+                )
+                continue
+            if current_hash != str(row["content_hash"] or ""):
+                stale.append(
+                    {
+                        "source_id": str(row["source_id"]),
+                        "uri": str(row["uri"]),
+                        "display_name": str(row["display_name"]),
+                        "reason": "source_changed",
+                    }
+                )
+        return stale
+
+    @staticmethod
+    def _stale_source_error(stale_sources: list[dict[str, str]]) -> str:
+        reasons = {item.get("reason") for item in stale_sources}
+        return "ontology_sources_deleted" if reasons == {"source_deleted"} else "ontology_sources_changed"
+
+    def _delete_missing_sources_under_root(
+        self,
+        conn: sqlite3.Connection,
+        root: Path,
+        current_files: list[Path],
+    ) -> list[dict[str, str]]:
+        root_resolved = root.resolve()
+        current = {path.resolve() for path in current_files}
+        deleted: list[dict[str, str]] = []
+        for row in conn.execute("SELECT source_id, uri, display_name FROM sources ORDER BY source_id"):
+            path = self._path_from_file_uri(str(row["uri"] or ""))
+            if path is None:
+                continue
+            try:
+                path.relative_to(root_resolved)
+            except ValueError:
+                continue
+            if path in current or path.exists() or path.is_symlink():
+                continue
+            source_id = str(row["source_id"])
+            self._delete_source_derivatives(conn, source_id)
+            conn.execute(
+                "DELETE FROM source_lineage WHERE parent_source_id = ? OR child_source_id = ?",
+                (source_id, source_id),
+            )
+            conn.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
+            deleted.append(
+                {
+                    "source_id": source_id,
+                    "uri": str(row["uri"]),
+                    "display_name": str(row["display_name"]),
+                }
+            )
+        return deleted
+
+    @staticmethod
+    def _prune_orphan_entities(conn: sqlite3.Connection) -> None:
+        conn.execute(
+            "DELETE FROM entities WHERE NOT EXISTS ("
+            "SELECT 1 FROM relations WHERE subject_entity_id = entities.entity_id "
+            "OR object_entity_id = entities.entity_id)"
+        )
 
     def _bounded_source_files(self, root: Path) -> tuple[list[Path], list[dict[str, str]]]:
         """Enumerate regular files without following links or unbounded trees."""
@@ -608,10 +795,33 @@ class OntologyRuntime:
         allowed_scopes: Iterable[str] | None = None,
         limit: int = 5,
         *,
-        record_memory: bool = True,
+        record_memory: bool = False,
         experience_token_budget: int = DEFAULT_EXPERIENCE_TOKEN_BUDGET,
         experience_top_k: int = DEFAULT_EXPERIENCE_TOP_K,
     ) -> dict[str, Any]:
+        if limit < 1 or limit > MAX_QUERY_RESULTS:
+            return {
+                "status": "error",
+                "error": f"limit must be between 1 and {MAX_QUERY_RESULTS}",
+                "query": question,
+                "chunks": [],
+            }
+        if experience_token_budget < 1:
+            return {
+                "status": "error",
+                "error": "invalid_experience_token_budget",
+                "detail": "experience_token_budget must be at least 1",
+                "query": question,
+                "chunks": [],
+            }
+        if experience_top_k < 1:
+            return {
+                "status": "error",
+                "error": "invalid_experience_top_k",
+                "detail": "experience_top_k must be at least 1",
+                "query": question,
+                "chunks": [],
+            }
         requested_scopes = list(allowed_scopes) if allowed_scopes is not None else None
         document_scopes = requested_scopes or ["public", "internal"]
         # An agent's dedicated experience projection is private by default and
@@ -619,6 +829,22 @@ class OntologyRuntime:
         # long-standing explicit opt-in boundary above.
         experience_scopes = requested_scopes or (["public", "internal", "private"] if agent_id else ["public", "internal"])
         with closing(self.connect()) as conn, conn:
+            stale_sources = self._stale_source_rows(conn)
+            if stale_sources:
+                return {
+                    "status": "stale_index",
+                    "error": self._stale_source_error(stale_sources),
+                    "query": question,
+                    "stale_sources": stale_sources,
+                    "chunks": [],
+                    "related_entities": [],
+                    "relation_edges": [],
+                    "experience_memory": self._empty_experience_result(
+                        question, agent_id, experience_token_budget
+                    ),
+                    "memory_candidate_suggestions": [],
+                    "working_memory": [],
+                }
             chunks = self._search_chunks(conn, question, document_scopes, limit)
             entities = self._related_entities(conn, question, chunks, document_scopes)
             relations = self._relation_edges(conn, entities, chunks, document_scopes)
@@ -651,6 +877,11 @@ class OntologyRuntime:
                     )
                 working_memory = self.read_working_memory(agent_id, _conn=conn)
         return {
+            "status": (
+                "partial"
+                if experience.get("scan", {}).get("truncated") is True
+                else "ok"
+            ),
             "query": question,
             "chunks": chunks,
             "related_entities": entities,
@@ -1075,6 +1306,7 @@ class OntologyRuntime:
                   AND (newer.expiry IS NULL OR newer.expiry > ?)
               )
             ORDER BY m.updated_at DESC, m.ticket_id
+            LIMIT ?
             """,
             (
                 agent_id,
@@ -1083,10 +1315,20 @@ class OntologyRuntime:
                 utc_now(),
                 *ACTIVE_EXPERIENCE_STATUSES,
                 utc_now(),
+                MAX_EXPERIENCE_SCAN_ROWS + 1,
             ),
         ).fetchall()
+        scan_truncated = len(rows) > MAX_EXPERIENCE_SCAN_ROWS
+        rows = rows[:MAX_EXPERIENCE_SCAN_ROWS]
         if not rows:
-            return self._empty_experience_result(question, agent_id, token_budget)
+            result = self._empty_experience_result(question, agent_id, token_budget)
+            result["scan"] = {
+                "budget": MAX_EXPERIENCE_SCAN_ROWS,
+                "rows": 0,
+                "truncated": scan_truncated,
+            }
+            result["status"] = "partial" if scan_truncated else "ok"
+            return result
 
         query_tokens = set(tokenize(question))
         query_vector = self.vector_adapter.embed(question)
@@ -1143,6 +1385,12 @@ class OntologyRuntime:
         if not scored:
             result = self._empty_experience_result(question, agent_id, token_budget)
             result["eligible_count"] = len(rows)
+            result["scan"] = {
+                "budget": MAX_EXPERIENCE_SCAN_ROWS,
+                "rows": len(rows),
+                "truncated": scan_truncated,
+            }
+            result["status"] = "partial" if scan_truncated else "ok"
             return result
 
         lexical_order = [
@@ -1202,6 +1450,7 @@ class OntologyRuntime:
             mode = "hybrid_top_k"
         self._attach_memory_links(conn, selected)
         return {
+            "status": "partial" if scan_truncated else "ok",
             "query": question,
             "agent_id": agent_id,
             "mode": mode,
@@ -1211,6 +1460,11 @@ class OntologyRuntime:
             "relevant_count": len(ranked),
             "selected_count": len(selected),
             "items": selected,
+            "scan": {
+                "budget": MAX_EXPERIENCE_SCAN_ROWS,
+                "rows": len(rows),
+                "truncated": scan_truncated,
+            },
             "governance": {
                 "agent_isolation": "exact",
                 "allowed_scopes": allowed_scopes,
@@ -1223,6 +1477,7 @@ class OntologyRuntime:
     @staticmethod
     def _empty_experience_result(question: str, agent_id: str | None, token_budget: int) -> dict[str, Any]:
         return {
+            "status": "ok",
             "query": question,
             "agent_id": agent_id,
             "mode": "empty",
@@ -1327,22 +1582,33 @@ class OntologyRuntime:
     def graph_entity(self, name: str, allowed_scopes: Iterable[str] | None = None) -> dict[str, Any]:
         document_scopes = list(allowed_scopes) if allowed_scopes is not None else ["public", "internal"]
         with closing(self.connect()) as conn, conn:
+            stale_sources = self._stale_source_rows(conn)
+            if stale_sources:
+                return {
+                    "status": "stale_index",
+                    "error": self._stale_source_error(stale_sources),
+                    "stale_sources": stale_sources,
+                    "entity": None,
+                    "aliases": [],
+                    "relations": [],
+                    "evidence_chunks": [],
+                }
             entity = self._find_entity(conn, name)
             if entity is None:
-                return {"entity": None, "aliases": [], "relations": [], "evidence_chunks": []}
+                return {"status": "ok", "entity": None, "aliases": [], "relations": [], "evidence_chunks": []}
             relations = self._relations_for_entity(conn, entity["entity_id"], document_scopes)
             if not relations:
                 # Entity and alias rows are globally deduplicated, so existence
                 # alone is not safe to expose. A caller sees an entity only when
                 # at least one relation has provenance in an allowed scope.
-                return {"entity": None, "aliases": [], "relations": [], "evidence_chunks": []}
+                return {"status": "ok", "entity": None, "aliases": [], "relations": [], "evidence_chunks": []}
             chunk_ids = sorted({relation["evidence_chunk_id"] for relation in relations})
             evidence = self._chunks_by_ids(conn, chunk_ids, document_scopes)
             aliases = [
                 row["alias"]
                 for row in conn.execute("SELECT alias FROM entity_aliases WHERE entity_id = ? ORDER BY alias", (entity["entity_id"],))
             ]
-        return {"entity": entity, "aliases": aliases, "relations": relations, "evidence_chunks": evidence}
+        return {"status": "ok", "entity": entity, "aliases": aliases, "relations": relations, "evidence_chunks": evidence}
 
     def list_memory_candidates(self, status: str | None = None) -> list[dict[str, Any]]:
         with closing(self.connect()) as conn, conn:
@@ -1698,12 +1964,6 @@ class OntologyRuntime:
                     """,
                     (agent_id, now),
                 ).fetchall()
-                conn.execute(
-                    "UPDATE working_memory SET last_used_at = ?, updated_at = ? WHERE agent_id = ? AND status = 'active' AND expires_at > ?",
-                    (now, now, agent_id, now),
-                )
-                if close:
-                    conn.commit()
             return [self._working_memory_row(row) for row in rows]
         finally:
             if close:
@@ -1741,18 +2001,27 @@ class OntologyRuntime:
             unsupported = conn.execute(
                 "SELECT count(*) FROM sources WHERE parser_status = 'unsupported_pending_adapter'"
             ).fetchone()[0]
+            stale_sources = self._stale_source_rows(conn)
         direct_write_blocked = False
         try:
             self.write_durable_memory("verify", {"probe": True})
         except DirectDurableMemoryWriteBlocked:
             direct_write_blocked = True
-        status = "pass" if integrity == "ok" and migration == SCHEMA_VERSION and direct_write_blocked else "fail"
+        status = (
+            "pass"
+            if integrity == "ok"
+            and migration == SCHEMA_VERSION
+            and direct_write_blocked
+            and not stale_sources
+            else "fail"
+        )
         return {
             "status": status,
             "schema_version": migration,
             "integrity_check": integrity,
             "counts": counts,
             "unsupported_pending_adapters": unsupported,
+            "stale_sources": stale_sources,
             "direct_durable_memory_write_blocked": direct_write_blocked,
             "storage_adapter": {"name": "sqlite", "status": "available", "path": str(self.db_path)},
             "vector_adapter": vector_adapter_metadata(self.vector_adapter),
@@ -1770,7 +2039,7 @@ class OntologyRuntime:
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
         data: dict[str, list[dict[str, Any]]] = {}
-        tables = ["sources", "chunks", "entities", "entity_aliases", "relations", "memory_candidates", "memory_links", "working_memory"]
+        tables = list(STORAGE_TABLES)
         with closing(self.connect()) as conn, conn:
             for table in tables:
                 data[table] = [dict(row) for row in conn.execute(f"SELECT * FROM {table}")]
@@ -1779,20 +2048,67 @@ class OntologyRuntime:
 
     def import_json(self, source: str | Path) -> dict[str, Any]:
         source = Path(source)
+        if source.is_symlink() or not source.is_file():
+            raise ValueError("ontology import requires a regular JSON file")
+        if source.stat().st_size > MAX_STORAGE_IMPORT_BYTES:
+            raise ValueError(f"ontology import exceeds {MAX_STORAGE_IMPORT_BYTES} bytes")
         data = json.loads(source.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("ontology import must be a JSON object")
+        unknown_tables = sorted(set(data) - set(STORAGE_TABLES))
+        missing_tables = sorted(set(STORAGE_TABLES) - set(data))
+        if unknown_tables or missing_tables:
+            raise ValueError(
+                f"ontology import table set mismatch; unknown={unknown_tables}, missing={missing_tables}"
+            )
+        total_rows = 0
+        imported_counts: dict[str, int] = {}
         with closing(self.connect()) as conn, conn:
-            for table, rows in data.items():
+            table_columns = {
+                table: [str(row["name"]) for row in conn.execute(f'PRAGMA table_info("{table}")')]
+                for table in STORAGE_TABLES
+            }
+            for table in STORAGE_TABLES:
+                rows = data[table]
+                if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                    raise ValueError(f"ontology import table {table} must be a list of objects")
+                allowed = set(table_columns[table])
+                for row in rows:
+                    if set(row) != allowed:
+                        raise ValueError(
+                            f"ontology import columns for {table} do not match runtime schema"
+                        )
+                total_rows += len(rows)
+                if total_rows > 1_000_000:
+                    raise ValueError("ontology import exceeds 1000000 rows")
+
+            for table in reversed(STORAGE_TABLES):
+                conn.execute(f'DELETE FROM "{table}"')
+            for table in STORAGE_TABLES:
+                rows = data[table]
                 if not rows:
+                    imported_counts[table] = 0
                     continue
-                keys = list(rows[0].keys())
+                keys = table_columns[table]
                 placeholders = ", ".join(["?"] * len(keys))
-                columns = ", ".join(keys)
+                columns = ", ".join(f'"{key}"' for key in keys)
                 for row in rows:
                     conn.execute(
-                        f"INSERT OR REPLACE INTO {table}({columns}) VALUES ({placeholders})",
+                        f'INSERT INTO "{table}"({columns}) VALUES ({placeholders})',
                         tuple(row[key] for key in keys),
                     )
-        return {"status": "ok", "import_path": str(source)}
+                imported_counts[table] = len(rows)
+            self._rebuild_fts_rows(conn)
+            foreign_key_issues = conn.execute("PRAGMA foreign_key_check").fetchall()
+            integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+            if foreign_key_issues or integrity != "ok":
+                raise ValueError("ontology import failed database integrity verification")
+        return {
+            "status": "ok",
+            "import_path": str(source),
+            "tables": list(STORAGE_TABLES),
+            "rows": imported_counts,
+        }
 
     def _ingest_file(self, conn: sqlite3.Connection, path: Path, access_scope: str, parent_source_id: str | None) -> dict[str, Any]:
         resolved, raw = self._read_source_snapshot(path)

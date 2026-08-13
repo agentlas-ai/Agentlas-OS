@@ -22,7 +22,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="Show graph files, source counts, and freshness")
 
     ingest = sub.add_parser("ingest", help="Rebuild the derived Career Graph index from canonical ledgers")
-    ingest.add_argument("--incremental", action="store_true", help="Do not clear existing nodes/edges first")
+    ingest.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Reparse only new or checksum-changed sources and prune deleted projections",
+    )
 
     query = sub.add_parser("query", help="Search graph nodes and return source refs the agent should inspect")
     query.add_argument("text")
@@ -46,13 +50,25 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.command == "status":
-        return emit(runtime.status())
+        result = runtime.status()
+        emit(result)
+        return payload_exit_code(result)
     if args.command == "ingest":
-        return emit(runtime.ingest(rebuild=not args.incremental))
+        try:
+            result = runtime.ingest(rebuild=not args.incremental)
+        except (OSError, ValueError) as exc:
+            emit({"status": "error", "error": "career_ingest_failed", "detail": str(exc)})
+            return 2
+        emit(result)
+        return payload_exit_code(result)
     if args.command == "query":
-        return emit(runtime.query(args.text, limit=args.limit))
+        result = runtime.query(args.text, limit=args.limit)
+        emit(result)
+        return payload_exit_code(result)
     if args.command == "trace":
-        return emit(runtime.trace(args.id))
+        result = runtime.trace(args.id)
+        emit(result)
+        return payload_exit_code(result)
     if args.command == "public-card":
         return emit(runtime.public_card(write=args.write))
     if args.command == "verify":
@@ -113,3 +129,14 @@ def normalize_common_args(argv: list[str] | None) -> tuple[list[str], dict[str, 
 def emit(payload: Any) -> int:
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
+
+
+def payload_exit_code(payload: Any) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    status = str(payload.get("status") or "ok")
+    if status in {"ok", "active"}:
+        return 0
+    if status in {"missing_index", "not_found", "stale", "stale_index"}:
+        return 1
+    return 2

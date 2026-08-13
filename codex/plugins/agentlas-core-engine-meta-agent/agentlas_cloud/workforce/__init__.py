@@ -6,6 +6,11 @@ used by the local Core runtime and mirrored by hosted surfaces.
 """
 
 from .compiler import compile_workforce_profile
+from .circuit import (
+    DEFAULT_WORKFORCE_REMOTE_CIRCUIT,
+    TRANSIENT_REMOTE_FAILURES,
+    WorkforceRemoteCircuit,
+)
 from .execution import (
     WORKFORCE_CAPABILITY_BINDING_PLAN_DIGEST_SCHEMA,
     WORKFORCE_CAPABILITY_BINDING_PLAN_SCHEMA,
@@ -130,6 +135,8 @@ from .goal_binding import (
     default_goal_store_path,
     default_goal_runtime_root,
     implicit_goal_id,
+    workforce_preparation_ready,
+    workforce_preparation_refusal,
 )
 
 __all__ = [
@@ -147,6 +154,8 @@ __all__ = [
     "default_goal_store_path",
     "default_goal_runtime_root",
     "implicit_goal_id",
+    "workforce_preparation_ready",
+    "workforce_preparation_refusal",
     "WORKFORCE_CAPABILITY_BINDING_PLAN_DIGEST_SCHEMA",
     "WORKFORCE_CAPABILITY_BINDING_PLAN_SCHEMA",
     "WORKFORCE_COVERAGE_GAP_CODES",
@@ -191,6 +200,9 @@ __all__ = [
     "FederatedProvenanceError",
     "WorkforceSourceError",
     "WorkforceSourceService",
+    "DEFAULT_WORKFORCE_REMOTE_CIRCUIT",
+    "TRANSIENT_REMOTE_FAILURES",
+    "WorkforceRemoteCircuit",
     "WorkforcePrepareCacheError",
     "WorkforcePrepareReceiptCache",
     "SelectionHubBoundaryError",

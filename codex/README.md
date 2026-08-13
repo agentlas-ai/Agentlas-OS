@@ -5,7 +5,8 @@ removed the separate custom-prompt slash surface, so Hephaestus exposes the
 current Codex product surface in two places:
 
 1. **Plugin skills**: explicitly invoke `$hephaestus-build`,
-   `$hephaestus-network`, `$hephaestus-cloud`, or `$hephaestus-storm`.
+   `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload`,
+   `$hephaestus-storm`, or `$hephaestus-graph`.
    Codex may also select them implicitly from plain language.
 2. **MCP**: the installer registers the local stdio server
    (`hephaestus mcp serve`) as `mcp_servers.hephaestus-network` in
@@ -72,7 +73,7 @@ app restart.
 Codex-only manual install:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.0
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.1
 codex plugin add hephaestus@agentlas-core-engine
 ```
 

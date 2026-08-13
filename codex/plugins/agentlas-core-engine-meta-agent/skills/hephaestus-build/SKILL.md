@@ -9,8 +9,43 @@ description: "Use when the user types /prompts:hep-build, mentions @Hephaestus f
 
 1. Treat this as the public Codex build surface. Do not expose or ask the user
    to invoke the older internal support skill names.
-2. Read `AGENTS.md` and `.agentlas/mode-map.json` when they exist in the
-   current workspace.
+2. Resolve the trusted engine root before reading any build contract:
+
+   ```bash
+   ENGINE=""
+   for candidate in \
+     "${CODEX_PLUGIN_ROOT:-}" \
+     "${CLAUDE_PLUGIN_ROOT:-}" \
+     "${PLUGIN_ROOT:-}" \
+     "$HOME/.agentlas/runtime/current/host_adapters/codex/plugins/agentlas-core-engine-meta-agent" \
+     "$HOME/.agentlas/runtime/current/host_adapters/claude/plugins/agentlas-core-engine-meta-agent" \
+     "$HOME/.agentlas/runtime/current" \
+     "."
+   do
+     if [ -n "$candidate" ] && [ -f "$candidate/AGENTS.md" ] && [ -f "$candidate/package-contract.json" ] && [ -f "$candidate/contracts/builder-interview-research-gate.md" ]; then
+       ENGINE="$candidate"
+       break
+     fi
+   done
+   [ -n "$ENGINE" ] || { echo "Hephaestus engine not found. Run the installer first." >&2; exit 1; }
+   RUNNER=""
+   for candidate in "$HOME/.agentlas/runtime/current/bin/hephaestus" "$ENGINE/bin/hephaestus"; do
+     if [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
+   done
+   [ -n "$RUNNER" ] || { echo "Hephaestus runner not found." >&2; exit 1; }
+   ```
+
+   Take exactly one folder explicitly named or confirmed by the user as
+   `PACKAGE_TARGET`. If none was named, or multiple candidates exist, stop and
+   ask. Never default to `.`, the cwd, or `$ENGINE`. Run
+   `"$RUNNER" contract resolve-target "$PACKAGE_TARGET" --base "$PWD"` and set
+   `PACKAGE_ROOT` only to the status-`ok` receipt's exact `package_root`.
+   Nonzero or error receipts are blockers.
+
+   Read `$ENGINE/AGENTS.md`, `$ENGINE/.agentlas/mode-map.json`, the selected
+   mode contract under `$ENGINE/modes/`, and
+   `$ENGINE/contracts/builder-interview-research-gate.md`. Do not substitute files
+   from the user's package workspace.
 3. Run the public mode classifier by independent ownership boundaries, not by
    keywords such as "team":
    - package or repair existing material -> `30-agentlas-packager`;
@@ -25,7 +60,7 @@ description: "Use when the user types /prompts:hep-build, mentions @Hephaestus f
    `team-builder`, ownership boundary, memory/context, synthesis, or
    produces/consumes.
 4. Run the Builder Interview and Research Gate from
-   `docs/builder-interview-research-gate.md` before writing substantial package
+   `$ENGINE/contracts/builder-interview-research-gate.md` before writing substantial package
    files:
    - ask an 8-12 question first batch when the request is vague;
    - continue follow-ups until target user, tasks, inputs, outputs, examples,
@@ -59,18 +94,28 @@ description: "Use when the user types /prompts:hep-build, mentions @Hephaestus f
    operating docs. Translate Korean or other-language source material into
    English agent behavior. Localized public copy, routing trigger examples, and
    sample user inputs may use the target user language.
-9. Emit or repair Agentlas contracts, including `.agentlas` activation seed
+9. Before writing package files, run
+   `"$RUNNER" contract scaffold "$PACKAGE_ROOT" --mode <single|team|package>`.
+   After the routing card is authored, run
+   `"$RUNNER" contract complete "$PACKAGE_ROOT" --mode <single|team|package>`.
+   Emit or repair Agentlas contracts, including `.agentlas` activation seed
    files and `.agentlas/global-commands.json` when local continuity is part of
    the output.
 10. Add the generated command to Claude Code, Codex, Gemini CLI, generic
    AGENTS.md, and terminal adapters. For teams, expose the orchestrator/HQ
    command and route workers through HQ unless direct worker commands were
    requested.
-11. Run `scripts/verify-team-package.sh <generated-package-root>` for generated
-    or repaired packages. If it fails, do not report completion; collapse the
-    output to a single-agent package or add the required orchestrator/HQ and
-    team contracts.
-12. Verify with `scripts/verify-package.sh`.
+11. For team mode, run
+    `"$ENGINE/scripts/verify-team-package.sh" "$PACKAGE_ROOT"` when that focused
+    gate exists. If it fails, do not report completion; collapse the output to
+    a single-agent package or add the required orchestrator/HQ and team
+    contracts.
+12. Run
+    `"$RUNNER" contract verify "$PACKAGE_ROOT" --mode <single|team|package>`.
+    A non-zero exit or non-empty blocker list means `blocked`, never
+    `completed`. Do not use the engine repository's `scripts/verify-package.sh`
+    as generated-package evidence; that script verifies the engine repository
+    itself.
 13. Once verification and local registration have succeeded, ask one final
     two-choice storage question using structured controls when available:
     **Cloud에 올리기** or **로컬에만 저장**. Cloud means owner-private Agent

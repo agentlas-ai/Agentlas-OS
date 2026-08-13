@@ -58,6 +58,18 @@ RESEARCH_SEARCH_PROVIDER_MODULES = {
     "github": "search.github_repos",
     "jina": "search.jina",
 }
+
+
+class _ExplicitSingleValueAction(argparse.Action):
+    """Reject contradictory repeats instead of silently taking the last one."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        current = getattr(namespace, self.dest, None)
+        if current is not None and current != values:
+            parser.error(f"contradictory {option_string} values: {current} and {values}")
+        setattr(namespace, self.dest, values)
+
+
 RESEARCH_SEARCH_PROVIDER_HINTS = {
     "ddg-html": "ddg_html",
     "news-rss": "news_rss",
@@ -189,6 +201,14 @@ def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
         help="Shell command launched once per packet. Packet data is exposed through STORMBREAKER_* env vars.",
     )
     parser.add_argument(
+        "--verifier-command",
+        default=None,
+        help=(
+            "Separate verifier launched only after executor exit. It receives a runner-issued nonce "
+            "and must write a v2 verification receipt with locally hash-validated artifact evidence."
+        ),
+    )
+    parser.add_argument(
         "--execute-card-commands",
         action="store_true",
         help="Execute card canonical_command values as shell commands when they are not slash commands.",
@@ -208,6 +228,23 @@ def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--research-depth", default="quick", choices=["quick", "deep"], help="With --research-evidence, choose quick or deep follow-up reads.")
     parser.add_argument("--research-follow-results", type=int, default=1, help="With --research-evidence, read the top N search results, bounded to 10.")
     parser.add_argument("--research-variant", action="append", default=[], help="With --research-evidence, add a bounded query variant such as docs, github, reddit, threads, or news.")
+
+
+def _stormbreaker_result_exit_code(result: Mapping[str, Any]) -> int:
+    """Return success only after Stormbreaker's final gate explicitly passes."""
+    status = result.get("status")
+    final_gate = result.get("final_gate")
+    if (
+        status == "completed"
+        and isinstance(final_gate, Mapping)
+        and final_gate.get("can_report_success") is True
+    ):
+        return 0
+    if status in {"completed", "materialized", "blocked", "not_executed"} or isinstance(
+        final_gate, Mapping
+    ):
+        return 1
+    return 2
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -240,16 +277,32 @@ def main(argv: list[str] | None = None) -> int:
     package_cmd = sub.add_parser("package", help="Package and statically review an agent folder for Cloud/Hub upload")
     package_cmd.add_argument("folder")
     package_cmd.add_argument("--slug")
-    package_cmd.add_argument("--visibility", choices=["marketplace", "private-link"], default="marketplace")
+    package_cmd.add_argument(
+        "--visibility",
+        choices=["marketplace", "private-link"],
+        required=True,
+        action=_ExplicitSingleValueAction,
+    )
     package_cmd.add_argument("--no-write", action="store_true", help="Do not refresh agentlas.json before review")
 
     publish_cmd = sub.add_parser("publish", help="Register a reviewed package with Agentlas Cloud or Hub")
     publish_cmd.add_argument("folder")
     publish_cmd.add_argument("--slug")
-    publish_cmd.add_argument("--visibility", choices=["marketplace", "private-link"], default="marketplace")
+    publish_cmd.add_argument(
+        "--visibility",
+        choices=["marketplace", "private-link"],
+        required=True,
+        action=_ExplicitSingleValueAction,
+    )
     publish_cmd.add_argument("--base-url", default=None)
     publish_cmd.add_argument("--dry-run", action="store_true", help="Package and review without registering")
     publish_cmd.add_argument("--no-open", action="store_true", help="Do not open a browser for sign-in")
+    publish_cmd.add_argument("--expected-package-hash", help="Refuse unless this exact dry-run artifact is packaged")
+    publish_cmd.add_argument(
+        "--expected-upload-receipt",
+        help="Refuse unless package hash, visibility, slug, and destination match the dry-run receipt",
+    )
+    publish_cmd.add_argument("--overwrite-cloud-id", help="Authorize overwrite of this exact server-reported Cloud asset")
 
     read = sub.add_parser("read-agent-file", help="Lazy file read with manifest gates")
     read.add_argument("folder")
@@ -326,28 +379,29 @@ def main(argv: list[str] | None = None) -> int:
     context_locate = context_sub.add_parser("locate", help="Locate exact symbols and their backlinks")
     context_locate.add_argument("query")
     context_locate.add_argument("--project", default=".")
-    context_locate.add_argument("--no-refresh", action="store_true")
+    context_locate.add_argument("--no-refresh", action="store_true", help=argparse.SUPPRESS)
     context_refs = context_sub.add_parser("refs", help="List definitions and reverse references for one symbol")
     context_refs.add_argument("symbol")
     context_refs.add_argument("--project", default=".")
-    context_refs.add_argument("--no-refresh", action="store_true")
+    context_refs.add_argument("--no-refresh", action="store_true", help=argparse.SUPPRESS)
     context_slice = context_sub.add_parser("slice", help="Build a bounded dependency-selected task context")
     context_slice.add_argument("--project", default=".")
     context_slice.add_argument("--task", default="")
     context_slice.add_argument("--task-stdin", action="store_true")
     context_slice.add_argument("--target", action="append", default=[])
-    context_slice.add_argument("--no-refresh", action="store_true")
+    context_slice.add_argument("--no-refresh", action="store_true", help=argparse.SUPPRESS)
     context_slice.add_argument("--render", action="store_true")
     context_impact = context_sub.add_parser("impact", help="Find files affected by changed files or symbols")
     context_impact.add_argument("--project", default=".")
     context_impact.add_argument("--changed", action="append", required=True)
-    context_impact.add_argument("--no-refresh", action="store_true")
+    context_impact.add_argument("--no-refresh", action="store_true", help=argparse.SUPPRESS)
     context_verify = context_sub.add_parser("verify", help="Gate completion on reviewed change impact")
     context_verify.add_argument("--project", default=".")
     context_verify.add_argument("--changed", action="append", required=True)
     context_verify.add_argument("--reviewed", action="append", default=[])
+    context_verify.add_argument("--verified", action="append", default=[])
     context_verify.add_argument("--waived", action="append", default=[])
-    context_verify.add_argument("--no-refresh", action="store_true")
+    context_verify.add_argument("--no-refresh", action="store_true", help=argparse.SUPPRESS)
 
     network = sub.add_parser("network", help="Hephaestus Network 2.0 (~/.agentlas/networking)")
     network_sub = network.add_subparsers(dest="network_command", required=True)
@@ -396,6 +450,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Fill every contract artifact the package's own routing card already answers")
     contract_complete.add_argument("workspace")
     contract_complete.add_argument("--slug", default="")
+    contract_complete.add_argument("--mode", choices=["single", "team", "package"], default="")
+    contract_resolve_target = contract_sub.add_parser(
+        "resolve-target",
+        help="Resolve one explicit user-confirmed package folder without defaulting to the cwd",
+    )
+    contract_resolve_target.add_argument("target")
+    contract_resolve_target.add_argument("--base", default=None)
     contract_prompt = contract_sub.add_parser("prompt", help="Render the contract artifact list as prompt bullet lines")
     contract_prompt.add_argument("--mode", choices=["single", "team", "package"], default="single")
 
@@ -413,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
     ao_query = ao_sub.add_parser("query", help="Run AO queries over the graph")
     ao_query.add_argument("query")
     ao_query.add_argument("project", nargs="?", default=".")
-    ao_query.add_argument("--max", type=int, default=100, help="Unused placeholder for future pagination")
+    ao_query.add_argument("--max", type=int, default=100, help="Maximum query results returned")
     ao_plan = ao_sub.add_parser("plan", help="Find AO path between two agents")
     ao_plan.add_argument("start", help="Source agent id")
     ao_plan.add_argument("target", help="Target agent id")
@@ -448,8 +509,6 @@ def main(argv: list[str] | None = None) -> int:
     ao_okf_import = ao_okf_sub.add_parser("import", help="Parse an external OKF bundle into nodes/edges (proposal only)")
     ao_okf_import.add_argument("bundle", help="Path to an OKF bundle directory")
     ao_okf_import.add_argument("project", nargs="?", default=".")
-    ao_kernel = ao_sub.add_parser("kernel", help="Super-ontology kernel status (runtime-enforced seed contracts)")
-    ao_kernel.add_argument("project", nargs="?", default=".")
     ao_pack = ao_sub.add_parser("pack", help="Build an installable Ontology Pack manifest")
     ao_pack.add_argument("project", nargs="?", default=".")
     ao_os = ao_sub.add_parser("os", help="Agent OS kernel-module surface (live status)")
@@ -508,6 +567,11 @@ def main(argv: list[str] | None = None) -> int:
         "--executor-command",
         default=None,
         help="With --auto-run, shell command launched once per packet. Packet data is exposed through STORMBREAKER_* env vars.",
+    )
+    route.add_argument(
+        "--verifier-command",
+        default=None,
+        help="With --auto-run, separate nonce-bound verifier command required before a packet may pass.",
     )
     route.add_argument(
         "--execute-card-commands",
@@ -775,6 +839,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     workforce_prepare.add_argument("--account-subject", default=None, help=argparse.SUPPRESS)
     workforce_prepare.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
+    workforce_receipt_validate = workforce_sub.add_parser(
+        "receipt-validate",
+        help="Read-only validation of a host-produced execution receipt",
+    )
+    workforce_receipt_validate.add_argument("receipt")
+    workforce_receipt_validate.add_argument("execution_plan")
+    workforce_receipt_validate.add_argument("tool_inventory")
+    workforce_receipt_validate.add_argument("--benchmark-mode", action="store_true")
     workforce_goal_bind = workforce_sub.add_parser(
         "goal-bind",
         help="Bind an exact prepared roster until explicit goal completion",
@@ -942,8 +1014,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             result = package_agent(args.folder, slug=args.slug, visibility=args.visibility, write_manifest=not args.no_write)
         except UploadError as exc:
-            code = emit({"status": "error", "error": str(exc)}) or 1
-            _finish_build_telemetry(telemetry, ok=False, error_code="upload_error")
+            code = emit({"status": "error", "code": exc.code, "error": str(exc)}) or 1
+            _finish_build_telemetry(telemetry, ok=False, error_code=exc.code)
             return code
         blocked = result.get("status") == "blocked"
         emit(result)
@@ -960,9 +1032,12 @@ def main(argv: list[str] | None = None) -> int:
                 base_url=args.base_url,
                 dry_run=args.dry_run,
                 interactive=not args.no_open,
+                expected_package_hash=args.expected_package_hash,
+                expected_upload_receipt=args.expected_upload_receipt,
+                overwrite_cloud_id=args.overwrite_cloud_id,
             )
         except UploadError as exc:
-            return emit({"status": "error", "error": str(exc)}) or 1
+            return emit({"status": "error", "code": exc.code, "error": str(exc)}) or 1
         emit(result)
         return 1 if result.get("status") == "blocked" else 0
     if args.command == "read-agent-file":
@@ -1029,12 +1104,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "auth":
         from .auth import AgentlasAuthError, auth_status, ensure_access_token, login, logout, normalize_base_url, token_path
 
-        if args.auth_command == "status":
-            return emit(auth_status(args.base_url))
-        if args.auth_command == "logout":
-            return emit(logout(args.base_url))
         try:
-            if args.auth_command == "login":
+            if args.auth_command == "status":
+                result = auth_status(args.base_url)
+            elif args.auth_command == "logout":
+                result = logout(args.base_url)
+            elif args.auth_command == "login":
                 result = login(args.base_url, open_browser=not args.no_open, timeout_seconds=args.timeout)
             elif args.auth_command == "ensure":
                 token = ensure_access_token(
@@ -1050,11 +1125,36 @@ def main(argv: list[str] | None = None) -> int:
                 }
             else:
                 parser.error("unhandled auth command")
+            # Never print token values from the CLI. Keep normalization inside
+            # the protected block so a malformed auth result cannot escape as
+            # an AttributeError traceback either.
+            if not isinstance(result, dict):
+                raise AgentlasAuthError("Authentication command returned an invalid result.")
+            result.pop("access_token", None)
+            return emit(result)
         except AgentlasAuthError as exc:
-            return emit({"status": "error", "error": str(exc), "token_path": str(token_path(args.base_url))}) or 1
-        # Never print token values from the CLI.
-        result.pop("access_token", None)
-        return emit(result)
+            # Do not derive token_path here: URL/path validation may be the
+            # original failure, and recomputing it from the same invalid input
+            # used to rethrow from the error handler and print a traceback.
+            return emit(
+                {
+                    "action": "auth",
+                    "command": args.auth_command,
+                    "status": "error",
+                    "code": "auth_error",
+                    "error": str(exc),
+                }
+            ) or 1
+        except Exception:  # noqa: BLE001 - every auth CLI failure is structured
+            return emit(
+                {
+                    "action": "auth",
+                    "command": args.auth_command,
+                    "status": "error",
+                    "code": "auth_internal_error",
+                    "error": "Authentication command failed.",
+                }
+            ) or 1
     if args.command == "plugins":
         from .plugin_discovery import resolve_plugins, scan_local_plugins
 
@@ -1100,8 +1200,8 @@ def main(argv: list[str] | None = None) -> int:
             # project with no state tells the user in as many words to run
             # `project init`. Bootstrapping here broke both promises: a plain
             # `context refresh` in an uninitialized directory created 48 files —
-            # ontology and career-graph SQLite databases, 20+ super-ontology
-            # contracts, project-soul-memory.md, credentials/ and signing/
+            # ontology and career-graph SQLite databases, project-soul-memory.md,
+            # credentials/ and signing/
             # scaffolding — and rewrote .gitignore, with no consent and no notice.
             # Terminal already refuses to do this (it calls its own boundary with
             # "read" permission and comments "the context command does not
@@ -1110,8 +1210,8 @@ def main(argv: list[str] | None = None) -> int:
             already_initialized = bool(
                 (Path(args.project).expanduser().resolve() / ".agentlas").is_dir()
             )
-            requested_bootstrap = args.context_command == "refresh" or not getattr(args, "no_refresh", False)
-            if requested_bootstrap and not already_initialized:
+            requested_bootstrap = args.context_command == "refresh"
+            if not already_initialized:
                 return emit({
                     "action": "context",
                     "status": "error",
@@ -1174,9 +1274,9 @@ def main(argv: list[str] | None = None) -> int:
                     ) or 2
                 return emit(refresh_result)
             if args.context_command == "locate":
-                return emit(locate(args.project, args.query, refresh=not args.no_refresh))
+                return emit(locate(args.project, args.query, refresh=False))
             if args.context_command == "refs":
-                return emit(references(args.project, args.symbol, refresh=not args.no_refresh))
+                return emit(references(args.project, args.symbol, refresh=False))
             if args.context_command == "slice":
                 task = args.task
                 if args.task_stdin:
@@ -1187,19 +1287,20 @@ def main(argv: list[str] | None = None) -> int:
                     args.project,
                     task,
                     targets=args.target,
-                    refresh=not args.no_refresh,
+                    refresh=False,
                 )
                 if args.render:
                     result["rendered"] = render_context_slice(result)
                 return emit(result)
             if args.context_command == "impact":
-                return emit(impact(args.project, args.changed, refresh=not args.no_refresh))
+                return emit(impact(args.project, args.changed, refresh=False))
             verification = verify_impact(
                 args.project,
                 args.changed,
                 args.reviewed,
+                verified=args.verified,
                 waived=args.waived,
-                refresh=not args.no_refresh,
+                refresh=False,
             )
             emit(verification)
             return 0 if verification.get("status") == "passed" else 3
@@ -1259,25 +1360,36 @@ def main(argv: list[str] | None = None) -> int:
 
             return emit(record_feedback(tokenize(args.query), args.chosen, args.correct))
     if args.command == "contract":
-        from .package_contract import contract_prompt_lines, scaffold, verify
+        from .package_contract import (
+            contract_prompt_lines,
+            materialize_declared_command_adapters,
+            resolve_package_target,
+            scaffold,
+            verify,
+            workspace_path_problem,
+        )
 
         if args.contract_command == "scaffold":
             telemetry = _build_telemetry_tracker("scaffold", mode=args.mode)
             report = scaffold(args.folder, mode=args.mode, package_id=args.id, name=args.name, command=args.command_slug)
             emit(report)
             failed = bool(report.get("error"))
-            # report["error"] is a machine code (workspace_not_found /
-            # workspace_not_a_folder); build_telemetry drops anything that is
-            # not a bare machine code before it can leave the machine.
+            # report["error"] is a machine code. This includes path refusals
+            # and a missing required engine template; either one means no valid
+            # scaffold exists for a caller to fill.
             _finish_build_telemetry(
                 telemetry,
                 ok=not failed,
                 error_code=str(report.get("error")) if failed else None,
             )
-            # A refused workspace path must not exit 0: callers chain
+            # A refused path or incomplete engine must not exit 0: callers chain
             # `scaffold && fill && verify`, and a silent success there means the
             # fill step writes into a workspace that was never created.
             return 1 if report.get("error") else 0
+        if args.contract_command == "resolve-target":
+            report = resolve_package_target(args.target, base=args.base)
+            emit(report)
+            return 0 if report.get("status") == "ok" else 1
         if args.contract_command == "complete":
             # The build's own completion step. `scaffold` writes stencils and
             # `verify` reports what is still unanswered; this is the piece in
@@ -1286,27 +1398,79 @@ def main(argv: list[str] | None = None) -> int:
             # time and a new agent is born complete, instead of every package
             # being repaired years later on its way out the door.
             from .repackage import (
+                coerce_contract_shapes,
+                derive,
                 fill_capability_eval_plan,
                 fill_declared_artifacts,
                 fill_runtime_adapter_bodies,
+                fill_thin_runtime_adapters,
+                prune_unrecognised_manifest_keys,
+                reconcile_team_shape,
+                redact_host_paths,
             )
 
-            telemetry = _build_telemetry_tracker("complete")
+            telemetry = _build_telemetry_tracker("complete", mode=args.mode or None)
             workspace = Path(args.workspace).expanduser().resolve()
+            path_problem = workspace_path_problem(workspace, must_exist=True)
+            if path_problem:
+                report = {
+                    "action": "contract complete",
+                    "workspace": str(workspace),
+                    "slug": str(args.slug or workspace.name),
+                    "written": [],
+                    "status": "error",
+                    **path_problem,
+                }
+                emit(report)
+                _finish_build_telemetry(
+                    telemetry,
+                    ok=False,
+                    error_code=str(path_problem["error"]),
+                )
+                return 1
             manifest = {}
             try:
                 manifest = json.loads((workspace / "agentlas.json").read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 manifest = {}
             slug = args.slug or (manifest.get("slug") if isinstance(manifest, dict) else "") or workspace.name
+            inferred_mode = "team" if any(workspace.glob("agents/*/agent.md")) else "single"
+            mode = args.mode or inferred_mode
+            reconciled = reconcile_team_shape(workspace, requested_mode=mode)
+            derived = derive(
+                workspace,
+                slug=str(slug),
+                entity_kind="team" if mode == "team" else "agent",
+            )
+            coerced = coerce_contract_shapes(workspace, str(slug))
+            pruned = prune_unrecognised_manifest_keys(workspace)
             written = fill_declared_artifacts(workspace, str(slug))
             if fill_capability_eval_plan(workspace):
                 written.append(".agentlas/capability-eval-plan.json")
             written.extend(fill_runtime_adapter_bodies(workspace, str(slug)))
-            print(json.dumps(
-                {"action": "contract complete", "workspace": str(workspace),
-                 "slug": str(slug), "written": written},
-                ensure_ascii=False, indent=2))
+            thin_adapters = fill_thin_runtime_adapters(workspace, str(slug))
+            written.extend(thin_adapters)
+            command_adapters = materialize_declared_command_adapters(workspace, str(slug))
+            written.extend(command_adapters["written"])
+            redacted = redact_host_paths(workspace)
+            report = {
+                "action": "contract complete",
+                "workspace": str(workspace),
+                "slug": str(slug),
+                "mode": mode,
+                "status": "ok",
+                "written": sorted(set(written)),
+                "repairs": {
+                    "team_shape": reconciled,
+                    "derived": derived.get("derived", []),
+                    "coerced": coerced,
+                    "manifest_keys_dropped": pruned,
+                    "thin_runtime_adapters": thin_adapters,
+                    "command_adapter_warnings": command_adapters["warnings"],
+                    "host_paths_redacted": redacted,
+                },
+            }
+            emit(report)
             _finish_build_telemetry(telemetry, ok=True)
             return 0
         if args.contract_command == "verify":
@@ -1378,8 +1542,11 @@ def main(argv: list[str] | None = None) -> int:
         from .workforce.local_registry import LocalWorkforceRegistry
         from .workforce.package_adapter import refusal_fields
 
-        def load_object(path: str) -> dict[str, Any]:
-            value = json.loads(Path(path).read_text(encoding="utf-8"))
+        def load_object(path: str, *, maximum_bytes: int = 64 * 1024 * 1024) -> dict[str, Any]:
+            source = Path(path)
+            if source.stat().st_size > maximum_bytes:
+                raise ValueError(f"workforce_input_too_large:{path}")
+            value = json.loads(source.read_text(encoding="utf-8"))
             if not isinstance(value, dict):
                 raise ValueError(f"workforce input must be a JSON object: {path}")
             return value
@@ -1390,6 +1557,21 @@ def main(argv: list[str] | None = None) -> int:
 
                 return emit({"schemaVersion": "agentlas.workforce-work-order.v1",
                              "lines": work_order_prompt_lines()})
+            if args.workforce_command == "receipt-validate":
+                from .workforce.execution import validate_execution_receipt
+
+                result = validate_execution_receipt(
+                    load_object(args.receipt, maximum_bytes=16 * 1024 * 1024),
+                    execution_plan=load_object(
+                        args.execution_plan, maximum_bytes=64 * 1024 * 1024
+                    ),
+                    tool_inventory=load_object(
+                        args.tool_inventory, maximum_bytes=16 * 1024 * 1024
+                    ),
+                    benchmark_mode=args.benchmark_mode,
+                )
+                emit(result)
+                return 0 if result.get("status") == "accepted" else 2
             if args.workforce_command.startswith("local-"):
                 registry = LocalWorkforceRegistry()
                 if args.workforce_command == "local-register":
@@ -1544,13 +1726,13 @@ def main(argv: list[str] | None = None) -> int:
             if args.workforce_command == "search":
                 from .workforce.source_service import WorkforceSourceService
 
-                return emit(
-                    WorkforceSourceService().search(
-                        work_order,
-                        source_scope=args.scope,
-                        expand_slot_ids=list(args.expand_slot),
-                    )
+                result = WorkforceSourceService().search(
+                    work_order,
+                    source_scope=args.scope,
+                    expand_slot_ids=list(args.expand_slot),
                 )
+                emit(result)
+                return 2 if result.get("status") == "failed" else 0
             candidate_input = load_object(args.candidate_set)
             federation_result = (
                 candidate_input
@@ -1583,20 +1765,23 @@ def main(argv: list[str] | None = None) -> int:
                     from .workforce.federation_store import FederationSessionStore
                     from .workforce.provenance import validate_federated_host_selection
 
-                    return emit(
-                        validate_federated_host_selection(
-                            selection,
-                            federation_result=federation_result,
-                            work_order=work_order,
-                            session_store=FederationSessionStore(),
-                        )
+                    result = validate_federated_host_selection(
+                        selection,
+                        federation_result=federation_result,
+                        work_order=work_order,
+                        session_store=FederationSessionStore(),
                     )
-                return emit(call_hub_tool("workforce.validate_selection", payload))
+                else:
+                    result = call_hub_tool("workforce.validate_selection", payload)
+                emit(result)
+                return 0 if result.get("status") == "accepted" else 2
             validation_receipt = load_object(args.validation_receipt)
             from .workforce.goal_binding import (
                 WorkforceGoalStore,
                 account_partition_for_subject,
                 implicit_goal_id,
+                workforce_preparation_ready,
+                workforce_preparation_refusal,
             )
 
             automatic_goal_id = implicit_goal_id(
@@ -1639,6 +1824,9 @@ def main(argv: list[str] | None = None) -> int:
                     source_runtime_bundles=source_bundles,
                     session_store=store,
                 )
+                if not workforce_preparation_ready(prepared_result):
+                    emit(workforce_preparation_refusal("workforce.prepare", prepared_result))
+                    return 2
                 prepare_account_partition = (
                     account_partition_for_subject(
                         args.account_subject,
@@ -1658,6 +1846,9 @@ def main(argv: list[str] | None = None) -> int:
                 return emit({**prepared_result, "goalBinding": goal_binding})
             payload["validationReceipt"] = validation_receipt
             prepared_result = call_hub_tool("workforce.prepare_execution", payload)
+            if not workforce_preparation_ready(prepared_result):
+                emit(workforce_preparation_refusal("workforce.prepare", prepared_result))
+                return 2
             prepare_account_partition = (
                 account_partition_for_subject(
                     args.account_subject,
@@ -2013,6 +2204,7 @@ def main(argv: list[str] | None = None) -> int:
                     home=home,
                     project_dir=args.project,
                     executor_command=args.executor_command,
+                    verifier_command=args.verifier_command,
                     execute_card_commands=args.execute_card_commands,
                     max_workers=args.max_workers,
                     timeout_seconds=args.timeout,
@@ -2031,7 +2223,7 @@ def main(argv: list[str] | None = None) -> int:
                     result["work_brief_warning"] = brief_warning
                 result["project_bootstrap"] = bootstrap
                 emit(result)
-                return 0 if result.get("status") in {"completed", "materialized"} else 1
+                return _stormbreaker_result_exit_code(result)
             decision["auto_run"] = {
                 "status": "skipped",
                 "reason": "route decision did not include a runnable pipeline execution_fabric",
@@ -2154,6 +2346,7 @@ def main(argv: list[str] | None = None) -> int:
                 home=home,
                 project_dir=args.project,
                 executor_command=args.executor_command,
+                verifier_command=args.verifier_command,
                 execute_card_commands=args.execute_card_commands,
                 max_workers=args.max_workers,
                 timeout_seconds=args.timeout,
@@ -2186,6 +2379,7 @@ def main(argv: list[str] | None = None) -> int:
                 caller_id=args.caller,
                 session_inventory=session_inventory,
                 executor_command=args.executor_command,
+                verifier_command=args.verifier_command,
                 execute_card_commands=args.execute_card_commands,
                 max_workers=args.max_workers,
                 timeout_seconds=args.timeout,
@@ -2205,11 +2399,7 @@ def main(argv: list[str] | None = None) -> int:
             from .networking.bootstrap import atomic_write_json
 
             atomic_write_json(Path(args.output_file), result)
-        if result.get("status") in {"completed", "materialized"}:
-            return 0
-        if result.get("status") in {"blocked", "not_executed"}:
-            return 1
-        return 2
+        return _stormbreaker_result_exit_code(result)
     if args.command == "local-gui":
         from .networking import init_networking
         from .networking.bootstrap import networking_home
@@ -2244,30 +2434,37 @@ def main(argv: list[str] | None = None) -> int:
             # Non-zero exit on invalid graph so CI / commit gates actually block.
             return 0 if result.get("valid") else 1
         if args.ao_command == "migrate":
-            return emit(
-                migrate_ontology(
-                    project_root=args.project,
-                    write=not args.no_write,
-                    overwrite=args.overwrite,
-                )
+            result = migrate_ontology(
+                project_root=args.project,
+                write=not args.no_write,
+                overwrite=args.overwrite,
             )
+            emit(result)
+            return 0 if result.get("status") == "ok" else 2
         if args.ao_command == "graph":
             graph = describe_graph(args.project)
+            if graph.get("status") != "ok":
+                emit(graph)
+                return 1 if graph.get("status") == "stale" else 2
             if args.agent:
                 on_disk = load_graph(args.project)
                 agents = [agent for agent in on_disk.get("graph", {}).get("agents", []) if str(agent.get("id")) == args.agent]
                 graph = {
                     "path": graph["path"],
+                    "status": "ok" if agents else "not_found",
                     "agent": agents[0] if agents else None,
                     "counts": {"agents": len(agents), "edges": 0, "artifacts": 0, "capabilities": 0},
                     "found": bool(agents),
                 }
-            return emit(graph)
+            emit(graph)
+            return 0 if graph.get("found", True) and not graph.get("errors") else 1
         if args.ao_command == "query":
-            return emit(execute_query(args.query, project_root=args.project))
+            result = execute_query(args.query, project_root=args.project, max_results=args.max)
+            emit(result)
+            return 0 if result.get("status") == "ok" else 2
         if args.ao_command in {"plan", "reachable"}:
-            return emit(
-                plan_path(
+            try:
+                result = plan_path(
                     project_root=args.project,
                     start=args.start,
                     target=args.target,
@@ -2275,7 +2472,11 @@ def main(argv: list[str] | None = None) -> int:
                     relation=args.relation,
                     allow_blocked=args.allow_blocked,
                 )
-            )
+            except ValueError as exc:
+                emit({"status": "error", "error": "ao_graph_unavailable", "detail": str(exc)})
+                return 2
+            emit(result)
+            return 0 if result.get("found") else 1
         if args.ao_command == "diff":
             result = diff_ontology(args.project)
             emit(result)
@@ -2286,20 +2487,33 @@ def main(argv: list[str] | None = None) -> int:
 
             if args.a2a_command == "import":
                 try:
-                    card = json.loads(Path(args.card).read_text(encoding="utf-8"))
+                    card_path = Path(args.card)
+                    if card_path.is_symlink() or not card_path.is_file():
+                        raise ValueError("A2A import requires a regular JSON file")
+                    if card_path.stat().st_size > 8 * 1024 * 1024:
+                        raise ValueError("A2A card exceeds 8388608 bytes")
+                    card = json.loads(card_path.read_text(encoding="utf-8"))
                 except OSError as exc:
-                    return emit({"status": "error", "error": f"cannot read card file: {exc}"}) or 2
+                    return emit({"status": "error", "error": "a2a_import_failed", "detail": str(exc)}) or 2
                 except json.JSONDecodeError as exc:
-                    return emit({"status": "error", "error": f"invalid JSON in card file: {exc}"}) or 2
+                    return emit({"status": "error", "error": "a2a_import_invalid_json", "detail": str(exc)}) or 2
+                except ValueError as exc:
+                    return emit({"status": "error", "error": "a2a_import_failed", "detail": str(exc)}) or 2
                 if not isinstance(card, dict):
                     return emit({"status": "error", "error": "agent card must be a JSON object"}) or 2
-                return emit(import_agent_card(card, project_root=args.project))
+                result = import_agent_card(card, project_root=args.project)
+                emit(result)
+                return 0 if result.get("status") == "ok" else 2
             if args.a2a_command == "export":
-                return emit(export_agent_card(project_root=args.project, agent_id=args.agent))
+                result = export_agent_card(project_root=args.project, agent_id=args.agent)
+                emit(result)
+                return 0 if result.get("status") == "ok" else 2
             if args.a2a_command == "registry":
                 from .agent_graph import build_a2a_registry
 
-                return emit(build_a2a_registry(args.project))
+                result = build_a2a_registry(args.project)
+                emit(result)
+                return 0 if result.get("status") == "ok" else 2
             return emit({"status": "error", "message": f"unknown a2a command: {args.a2a_command}"}) or 2
         if args.ao_command == "okf":
             from .agent_graph import from_okf_bundle, to_okf_bundle
@@ -2307,22 +2521,22 @@ def main(argv: list[str] | None = None) -> int:
             if args.okf_command == "export":
                 try:
                     return emit(to_okf_bundle(project_root=args.project, out_dir=args.out))
-                except OSError as exc:
-                    return emit({"status": "error", "error": f"cannot write OKF bundle: {exc}"}) or 2
+                except (OSError, ValueError) as exc:
+                    return emit({"status": "error", "error": "okf_export_failed", "detail": str(exc)}) or 2
             if args.okf_command == "import":
-                return emit(from_okf_bundle(args.bundle))
+                try:
+                    result = from_okf_bundle(args.bundle)
+                except (OSError, ValueError) as exc:
+                    return emit({"status": "error", "error": "okf_import_failed", "detail": str(exc)}) or 2
+                emit(result)
+                return 0 if result.get("status") == "ok" else 2
             return emit({"status": "error", "message": f"unknown okf command: {args.okf_command}"}) or 2
-        if args.ao_command == "kernel":
-            from .agent_graph import load_kernel, verify_enforcement
-
-            kernel = load_kernel(args.project)
-            verification = verify_enforcement(args.project)
-            emit({"kernel": kernel, "verification": verification})
-            return 0 if verification.get("all_enforced") else 1
         if args.ao_command == "pack":
             from .agent_graph import build_pack
 
-            return emit(build_pack(args.project))
+            result = build_pack(args.project)
+            emit(result)
+            return 0 if result.get("installable") else 1
         if args.ao_command == "os":
             from .agent_graph import os_surface
 
@@ -2336,12 +2550,18 @@ def main(argv: list[str] | None = None) -> int:
                 return emit(
                     knowledge_catalog_descriptor(args.project, okf_dir=args.out, export=not args.no_export)
                 )
-            except OSError as exc:
-                return emit({"status": "error", "error": f"cannot write catalog bundle: {exc}"}) or 2
+            except (OSError, ValueError) as exc:
+                return emit({"status": "error", "error": "ao_catalog_failed", "detail": str(exc)}) or 2
         if args.ao_command == "pipeline":
             from .agent_graph import plan_pipeline_ao
 
-            return emit(plan_pipeline_ao(args.project, args.artifact))
+            try:
+                result = plan_pipeline_ao(args.project, args.artifact)
+            except ValueError as exc:
+                emit({"status": "error", "error": "ao_graph_unavailable", "detail": str(exc)})
+                return 2
+            emit(result)
+            return 0 if result.get("found") else 1
         return emit({"status": "error", "message": f"unknown ao command: {args.ao_command}"}) or 2
     parser.error("unhandled command")
     return 2
@@ -2777,6 +2997,8 @@ def _stormbreaker_child_argv(args: argparse.Namespace, result_file: Path, decisi
         child.extend(["--session-inventory", args.session_inventory])
     if args.executor_command:
         child.extend(["--executor-command", args.executor_command])
+    if args.verifier_command:
+        child.extend(["--verifier-command", args.verifier_command])
     if args.execute_card_commands:
         child.append("--execute-card-commands")
     if args.max_workers is not None:
@@ -2896,7 +3118,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.2.0",
+            "version": "1.2.1",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

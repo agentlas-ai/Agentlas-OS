@@ -10,7 +10,7 @@ description: "Use when converting, repairing, or packaging an existing local or 
 1. Inspect the existing source: prompt, repo, ZIP, runtime folder, skill, command,
    or generated agent package.
 2. Classify it as single-agent, team-builder, or mixed/unclear.
-3. Run `docs/builder-interview-research-gate.md` when the source behavior,
+3. Run `contracts/builder-interview-research-gate.md` when the source behavior,
    target user, tools/plugins, output artifacts, or evaluation bar are unclear.
    Packaging must not turn a shallow prompt into a polished but weak package.
    When the gate runs, research official sources, similar agent repositories or

@@ -1,13 +1,13 @@
-"""Local stdio MCP server for the Hephaestus Network router.
+"""Local stdio MCP server for Hephaestus Workforce and legacy routing tools.
 
-Exposes the Hub-first Hephaestus Network router as MCP tools so any MCP-capable
-harness (OpenCode, Goose, Crush, Hermes Agent, Cursor, Codex, Gemini CLI, and
-Ollama-launched harnesses running local models such as Gemma or DeepSeek) can
-call routing without a runtime-specific command surface.
+The canonical Network path federates registered Local, owner Cloud, and public
+Hub candidate menus.  The active host LLM authors the exact-release selection;
+Core validates and prepares that pinned roster without scoring, reranking, or
+silently widening an explicit source scope.  Deterministic card-router tools
+remain available only behind the explicit legacy/debug opt-in.
 
 Transport: newline-delimited JSON-RPC 2.0 on stdin/stdout (MCP stdio). No
-third-party dependencies. Public Network calls skip local private cards by
-default; local routing requires the explicit `allow_local_routing` debug flag.
+third-party dependencies.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import os
 import sqlite3
 import sys
 from copy import deepcopy
+from pathlib import Path
 from typing import Any, Mapping
 
 from .model_allocation import (
@@ -34,15 +35,22 @@ from .workforce.contracts import (
     normalize_work_order,
     workforce_contract_metadata,
 )
-from .workforce.execution import WORKFORCE_EXECUTION_PLAN_SCHEMA
+from .workforce.execution import (
+    WORKFORCE_EXECUTION_PLAN_SCHEMA,
+    WORKFORCE_EXECUTION_RECEIPT_SCHEMA,
+)
 from .workforce.federation import WORKFORCE_FEDERATION_RESULT_SCHEMA
+from .workforce.goal_binding import (
+    workforce_preparation_ready,
+    workforce_preparation_refusal,
+)
 from .workforce.provenance import (
     WORKFORCE_FEDERATED_PREPARATION_SCHEMA,
     WORKFORCE_FEDERATED_SELECTION_SCHEMA,
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.0"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.1"}
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -61,7 +69,7 @@ _HOST_MODEL_ROLE_POLICY_FIELDS = frozenset({
     "requiredCapabilities",
     "inherit",
 })
-WORKFORCE_PROTOCOL_VERSION = "2026-07-26.1"
+WORKFORCE_PROTOCOL_VERSION = "2026-08-13.2"
 
 
 def workforce_protocol_metadata() -> dict[str, Any]:
@@ -75,6 +83,7 @@ def workforce_protocol_metadata() -> dict[str, Any]:
         "federatedSelectionSchemaVersion": WORKFORCE_FEDERATED_SELECTION_SCHEMA,
         "federatedPreparationSchemaVersion": WORKFORCE_FEDERATED_PREPARATION_SCHEMA,
         "executionPlanSchemaVersion": WORKFORCE_EXECUTION_PLAN_SCHEMA,
+        "executionReceiptSchemaVersion": WORKFORCE_EXECUTION_RECEIPT_SCHEMA,
         "sourceScopeRequired": True,
         "prepareAttemptSchemaVersion": "agentlas.workforce-prepare-attempt.v1",
         "sourceFetchIdempotencySchemaVersion": "agentlas.workforce-source-fetch-idempotency.v1",
@@ -86,8 +95,8 @@ def workforce_protocol_metadata() -> dict[str, Any]:
         "goalRosterLifetime": "until-explicit-completion",
         "codeMapSchemaVersion": "agentlas.code-map.v2",
         "contextSliceSchemaVersion": "agentlas.context-slice.v1",
-        "contextImpactReceiptSchemaVersion": "agentlas.context-impact-receipt.v1",
-        "contextVerificationReceiptSchemaVersion": "agentlas.context-verification-receipt.v1",
+        "contextImpactReceiptSchemaVersion": "agentlas.context-impact-receipt.v2",
+        "contextVerificationReceiptSchemaVersion": "agentlas.context-verification-receipt.v2",
         "localContextNetworkTransfer": "denied",
     }
     metadata["protocolDigest"] = canonical_digest(metadata)
@@ -369,10 +378,9 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "hephaestus_route",
         "description": (
-            "Route a natural-language request through the Hephaestus Network "
-            "Hub-first router. Returns a JSON decision (route, clarify, "
-            "pipeline, hub_fallback, propose_new, or refuse) with a receipt_id. "
-            "The router does not execute tools; the caller runtime owns execution safety."
+            "Legacy compatibility/debug card router. Disabled unless the operator "
+            "sets HEPHAESTUS_LEGACY_ROUTER=1; it is not the typed Local+Cloud+Hub "
+            "Workforce staffing surface and must not be reported as hep-network."
         ),
         "inputSchema": {
             "type": "object",
@@ -418,6 +426,13 @@ TOOLS: list[dict[str, Any]] = [
                                     "context_window": {"type": "integer"},
                                     "supports_tools": {"type": "boolean"},
                                     "supports_multimodal": {"type": "boolean"},
+                                    "capability_descriptor": {
+                                        "type": "object",
+                                        "description": (
+                                            "Optional strict agentlas.runtime-fabric-capability-descriptor.v1; "
+                                            "unknown or invalid declarations never block native execution."
+                                        ),
+                                    },
                                 },
                                 "additionalProperties": True,
                             },
@@ -483,6 +498,13 @@ TOOLS: list[dict[str, Any]] = [
                             "context_window": {"type": "integer", "minimum": 0},
                             "supports_tools": {"type": "boolean"},
                             "supports_multimodal": {"type": "boolean"},
+                            "capability_descriptor": {
+                                "type": "object",
+                                "description": (
+                                    "Optional strict agentlas.runtime-fabric-capability-descriptor.v1; "
+                                    "unknown or invalid declarations never block native execution."
+                                ),
+                            },
                             "capabilities": {
                                 "type": "array",
                                 "items": {"type": "string"},
@@ -523,13 +545,9 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "hephaestus_cloud_search",
         "description": (
-            "Search ONLY the signed-in user's OWN Agentlas cloud packages "
-            "and return a JSON decision with a receipt_id. This is the owner-scoped "
-            "leg of the three-scope model: it skips local cards and the public "
-            "marketplace, querying the Hub with the owner filter (cargo.*). The "
-            "user's own cloud packages are restorable/owned by them and call-priced "
-            "at a flat 1 credit. The router does not execute tools; the caller "
-            "runtime owns execution safety."
+            "Legacy compatibility/debug owner-cargo router. Disabled unless the "
+            "operator sets HEPHAESTUS_LEGACY_ROUTER=1. Use typed Workforce scope "
+            "cloud for exact receipts, refusals, validation, and preparation."
         ),
         "inputSchema": {
             "type": "object",
@@ -626,17 +644,26 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "hephaestus_hub_invoke",
         "description": (
-            "Invoke an Agentlas Hub public agent through the Hephaestus Network surface. "
-            "This skips local routing, calls Hub MCP marketplace.search_agents and "
-            "agentlas.get_runtime_bundle, resolves Hub plugins, touches Agentlas memory "
-            "when memory_root is provided, and writes an execution receipt. Agentlas "
-            "public agents are BYOM: the Hub returns a runtime bundle; it does not run an LLM."
+            "Prepare an exact Agentlas Hub public agent through the Hephaestus Network "
+            "surface. An exact slug is required before bundle preparation. Without one, "
+            "the tool returns Hub candidates with status=selection_required and never "
+            "requests a runtime bundle. With an exact slug, it requests the BYOM runtime "
+            "bundle, resolves Hub plugins, touches Agentlas memory when memory_root is "
+            "provided, and writes an execution receipt. The Hub does not run an LLM."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "request": {"type": "string", "description": "Prompt/task for the Hub agent."},
-                "slug": {"type": "string", "description": "Optional exact Hub agent slug. If omitted, first callable Hub result is used."},
+                "slug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": (
+                        "Exact Hub agent slug selected by the host. If omitted or blank, "
+                        "the tool returns candidates with status=selection_required and "
+                        "does not request a runtime bundle."
+                    ),
+                },
                 "project_dir": {"type": "string", "description": "Project directory for context (default: cwd)."},
                 "memory_root": {"type": "string", "description": "Optional Agentlas memory root to bootstrap/update missing-only."},
                 "approve_hub": {
@@ -687,6 +714,15 @@ TOOLS: list[dict[str, Any]] = [
                         "they cannot rank one against another, and Core still matches on the stored "
                         "originals — read summaries, skills, communities and fitEvidence instead. "
                         "Set true only for a legacy full-echo flow."
+                    ),
+                },
+                "turnId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "description": (
+                        "Optional local turn/session identity used only to short-circuit repeated dead remote calls; "
+                        "it is hashed locally and never sent to Cloud or Hub."
                     ),
                 },
             },
@@ -822,11 +858,40 @@ TOOLS: list[dict[str, Any]] = [
                         "content-free id from the WorkOrder id; the user need not say goal."
                     ),
                 },
+                "turnId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "description": (
+                        "Optional local turn/session identity used only to short-circuit repeated dead remote calls; "
+                        "it is hashed locally and never sent to Cloud or Hub."
+                    ),
+                },
             },
             "required": [
                 "workOrder", "selection",
                 "federatedSelection", "projectDir",
             ],
+        },
+        "_meta": workforce_tool_meta(),
+    },
+    {
+        "name": "workforce.validate_execution_receipt",
+        "description": (
+            "Read-only validation of one host-produced execution receipt against "
+            "the exact prepared plan and a private local tool-inventory snapshot. "
+            "This tool does not execute workers, create a receipt, or call Hub."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "receipt": {"type": "object"},
+                "executionPlan": {"type": "object"},
+                "toolInventory": {"type": "object"},
+                "benchmarkMode": {"type": "boolean", "default": False},
+            },
+            "required": ["receipt", "executionPlan", "toolInventory"],
         },
         "_meta": workforce_tool_meta(),
     },
@@ -955,6 +1020,19 @@ TOOLS: list[dict[str, Any]] = [
         "_meta": workforce_tool_meta(),
     },
     {
+        "name": "context.refresh",
+        "description": "Explicitly build one complete content-addressed project Context Map snapshot.",
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "force": {"type": "boolean", "default": False}
+            },
+            "required": ["projectDir"]
+        }
+    },
+    {
         "name": "context.locate",
         "description": (
             "Locate exact project symbols, definitions, and reverse references in the "
@@ -966,7 +1044,11 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
                 "query": {"type": "string", "minLength": 1, "maxLength": 12_000},
-                "refresh": {"type": "boolean"},
+                "refresh": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Explicitly rebuild project-local indexes. Passive reads never write and return context_map_stale instead of stale results.",
+                },
             },
             "required": ["projectDir", "query"],
         },
@@ -983,7 +1065,11 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
                 "symbol": {"type": "string", "minLength": 1, "maxLength": 256},
-                "refresh": {"type": "boolean"},
+                "refresh": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Explicitly rebuild project-local indexes. Passive reads never write and return context_map_stale instead of stale results.",
+                },
             },
             "required": ["projectDir", "symbol"],
         },
@@ -1007,7 +1093,11 @@ TOOLS: list[dict[str, Any]] = [
                     "uniqueItems": True,
                     "items": {"type": "string", "maxLength": 4096},
                 },
-                "refresh": {"type": "boolean"},
+                "refresh": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Explicitly rebuild project-local indexes. Passive reads never write and return context_map_stale instead of stale results.",
+                },
                 "render": {"type": "boolean"},
             },
             "required": ["projectDir", "task"],
@@ -1031,7 +1121,11 @@ TOOLS: list[dict[str, Any]] = [
                     "uniqueItems": True,
                     "items": {"type": "string", "maxLength": 4096},
                 },
-                "refresh": {"type": "boolean"},
+                "refresh": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Explicitly rebuild project-local indexes. Passive reads never write and return context_map_stale instead of stale results.",
+                },
             },
             "required": ["projectDir", "changed"],
         },
@@ -1060,13 +1154,24 @@ TOOLS: list[dict[str, Any]] = [
                     "uniqueItems": True,
                     "items": {"type": "string", "maxLength": 4096},
                 },
+                "verified": {
+                    "type": "array",
+                    "maxItems": 512,
+                    "uniqueItems": True,
+                    "description": "Exact test or CI paths with successful execution evidence; review alone never satisfies a verification channel.",
+                    "items": {"type": "string", "maxLength": 4096},
+                },
                 "waived": {
                     "type": "array",
                     "maxItems": 512,
                     "uniqueItems": True,
                     "items": {"type": "string", "maxLength": 4096},
                 },
-                "refresh": {"type": "boolean"},
+                "refresh": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Explicitly rebuild project-local indexes. Omit for a passive, read-only lookup.",
+                },
             },
             "required": ["projectDir", "changed"],
         },
@@ -1122,40 +1227,13 @@ def _workforce_preparation_ready(result: Any) -> bool:
     hides the real cause, so readiness must gate the bind call.
     """
 
-    if not isinstance(result, Mapping):
-        return False
-    if result.get("status") != "prepared":
-        return False
-    if result.get("issues"):
-        return False
-    prepared_plan = result
-    nested_plan = result.get("executionPlan")
-    if isinstance(nested_plan, Mapping):
-        prepared_plan = nested_plan
-        if prepared_plan.get("status") != "prepared":
-            return False
-        if prepared_plan.get("issues"):
-            return False
-    roster = prepared_plan.get("executionRoster")
-    return isinstance(roster, list) and bool(roster)
+    return workforce_preparation_ready(result)
 
 
 def _workforce_preparation_refusal(name: str, result: Any) -> dict[str, Any]:
     """Return the preparation's own refusal, never a binding error in its place."""
 
-    payload = dict(result) if isinstance(result, Mapping) else {}
-    issues = payload.get("issues")
-    return {
-        **payload,
-        "action": name,
-        "status": payload.get("status") or "rejected",
-        "error": payload.get("error") or "workforce_preparation_not_executable",
-        "issues": list(issues) if isinstance(issues, list) else [],
-        "executionAllowed": False,
-        # Preparation never succeeded, so the roster was never bound to a goal.
-        # Reporting preparedButUnbound here would invert cause and effect.
-        "preparedButUnbound": False,
-    }
+    return workforce_preparation_refusal(name, result)
 
 
 def _project_work_brief(project_dir: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -1179,6 +1257,26 @@ def _project_work_brief(project_dir: str) -> tuple[dict[str, Any] | None, dict[s
     return resolved.brief, None
 
 
+def _workforce_circuit_key(arguments: Mapping[str, Any], work_order: Mapping[str, Any]) -> str:
+    """Hash host turn context for the local remote circuit only."""
+
+    # An explicit turn/session is the unit of continuity. Do not append the
+    # WorkOrder digest in that case: search -> validate -> prepare may carry
+    # different tool payloads while still belonging to the same host turn and
+    # must fail fast after the first dead remote source. Direct callers without
+    # host continuity still get a safe exact-work-order key in source_service.
+    context = arguments.get("turnId") or arguments.get("sessionId")
+    material: dict[str, Any] = {
+        "schemaVersion": "agentlas.workforce-remote-circuit-context.v1",
+        "hostContext": str(context) if context else None,
+    }
+    if not context:
+        material["workOrderDigest"] = canonical_digest(work_order)
+    return canonical_digest(
+        material
+    )
+
+
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
@@ -1200,6 +1298,45 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             ),
             "repairable": True,
         }
+
+    if name in {"hephaestus_route", "hephaestus_cloud_search"} and os.environ.get(
+        "HEPHAESTUS_LEGACY_ROUTER"
+    ) != "1":
+        return {
+            "action": name,
+            "status": "rejected",
+            "error": "legacy_router_disabled",
+            "repairable": True,
+            "detail": (
+                "Use typed workforce.search_candidates, workforce.validate_selection, "
+                "and workforce.prepare_execution. Set HEPHAESTUS_LEGACY_ROUTER=1 "
+                "only for explicit compatibility/debug routing."
+            ),
+        }
+
+    if name == "workforce.validate_execution_receipt":
+        from .workforce.execution import validate_execution_receipt
+
+        values = (
+            ("receipt", arguments.get("receipt"), 16 * 1024 * 1024),
+            ("executionPlan", arguments.get("executionPlan"), 64 * 1024 * 1024),
+            ("toolInventory", arguments.get("toolInventory"), 16 * 1024 * 1024),
+        )
+        for label, value, maximum in values:
+            if not isinstance(value, Mapping):
+                return {"action": name, "status": "rejected", "error": f"{label}_invalid"}
+            try:
+                size = len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            except (TypeError, ValueError):
+                return {"action": name, "status": "rejected", "error": f"{label}_invalid"}
+            if size > maximum:
+                return {"action": name, "status": "rejected", "error": f"{label}_too_large"}
+        return validate_execution_receipt(
+            arguments["receipt"],
+            execution_plan=arguments["executionPlan"],
+            tool_inventory=arguments["toolInventory"],
+            benchmark_mode=arguments.get("benchmarkMode") is True,
+        )
 
     if name in {"hephaestus_route", "hephaestus_cloud_search", "hephaestus_hub_invoke"}:
         from .networking.memory import unsafe_route_refusal
@@ -1442,14 +1579,28 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 compact["referencedByOmitted"] = len(referenced) - len(referenced_by)
             return compact
 
+        def compact_context_node(item: Any) -> Any:
+            if not isinstance(item, Mapping):
+                return item
+            compact: dict[str, Any] = {}
+            for key in ("id", "nodeId", "type", "kind", "status", "title", "name", "path"):
+                value = item.get(key)
+                if isinstance(value, str) and value:
+                    compact[key] = value[:512]
+            return compact
+
         if tool_name == "context.impact":
             trim_list(payload, "impactedFiles", 16)
             trim_list(payload, "paths", 6, transform=compact_path)
             trim_list(payload, "verificationTargets", 12)
             receipt = dict(payload.get("receipt") or {})
+            full_receipt_digest = receipt.pop("receiptDigest", None)
             trim_list(receipt, "changedSymbols", 16, label="receipt.changedSymbols")
             trim_list(receipt, "impactedFiles", 16, label="receipt.impactedFiles")
             trim_list(receipt, "verificationTargets", 8, label="receipt.verificationTargets")
+            if full_receipt_digest:
+                receipt["fullReceiptDigest"] = full_receipt_digest
+            receipt["projectionDigest"] = canonical_digest(receipt)
             payload["receipt"] = receipt
         elif tool_name == "context.slice":
             payload.setdefault("action", tool_name)
@@ -1457,12 +1608,17 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             trim_list(payload, "contextEdges", 10)
             trim_list(payload, "files", 16)
             trim_list(payload, "moduleEdges", 10)
-            trim_list(payload, "relatedContextNodes", 6)
+            trim_list(payload, "goalsAndConstraints", 6, transform=compact_context_node)
+            trim_list(payload, "relatedContextNodes", 6, transform=compact_context_node)
             trim_list(payload, "symbols", 5, transform=compact_symbol)
             receipt = dict(payload.get("receipt") or {})
             trim_list(receipt, "selectedContextNodeIds", 12, label="receipt.selectedContextNodeIds")
             trim_list(receipt, "selectedFiles", 16, label="receipt.selectedFiles")
             trim_list(receipt, "selectedSymbols", 12, label="receipt.selectedSymbols")
+            full_receipt_digest = receipt.pop("receiptDigest", None)
+            if full_receipt_digest:
+                receipt["fullReceiptDigest"] = full_receipt_digest
+            receipt["projectionDigest"] = canonical_digest(receipt)
             payload["receipt"] = receipt
             verification = dict(payload.get("verification") or {})
             trim_list(verification, "edges", 6, label="verification.edges")
@@ -1471,13 +1627,75 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             payload["verification"] = verification
         elif tool_name == "context.verify":
             receipt = dict(payload.get("receipt") or {})
+            full_receipt_digest = receipt.pop("receiptDigest", None)
             trim_list(receipt, "unresolvedFiles", 20, label="receipt.unresolvedFiles")
             trim_list(receipt, "verificationTargets", 16, label="receipt.verificationTargets")
             trim_list(receipt, "verificationIssues", 20, label="receipt.verificationIssues")
+            if full_receipt_digest:
+                receipt["fullReceiptDigest"] = full_receipt_digest
+            receipt["projectionDigest"] = canonical_digest(receipt)
             payload["receipt"] = receipt
 
         if omissions:
             payload["omissions"] = omissions
+
+        if tool_name == "context.slice":
+            # The host-visible result has a hard 16 KiB budget, including the
+            # goals list that duplicates selected context nodes. Trim optional
+            # relationship rows deterministically until the complete JSON
+            # projection fits; every removed row remains accounted for.
+            byte_limit = 16 * 1024
+            shrinkable = [
+                (payload, "goalsAndConstraints", "goalsAndConstraints"),
+                (payload, "relatedContextNodes", "relatedContextNodes"),
+                (payload, "contextEdges", "contextEdges"),
+                (payload, "moduleEdges", "moduleEdges"),
+                (payload, "modules", "modules"),
+                (payload, "symbols", "symbols"),
+                (payload, "files", "files"),
+                (verification, "issues", "verification.issues"),
+                (verification, "edges", "verification.edges"),
+                (verification, "nodes", "verification.nodes"),
+                (receipt, "selectedContextNodeIds", "receipt.selectedContextNodeIds"),
+                (receipt, "selectedFiles", "receipt.selectedFiles"),
+                (receipt, "selectedSymbols", "receipt.selectedSymbols"),
+            ]
+
+            def projected_size() -> int:
+                return len(
+                    json.dumps(
+                        payload,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                )
+
+            while projected_size() > byte_limit:
+                candidate = max(
+                    (
+                        (len(value), container, field, label)
+                        for container, field, label in shrinkable
+                        if isinstance((value := container.get(field)), list) and value
+                    ),
+                    default=None,
+                    key=lambda row: row[0],
+                )
+                if candidate is None:
+                    rendered = payload.get("rendered")
+                    if isinstance(rendered, str) and rendered:
+                        removed = min(1024, len(rendered))
+                        payload["rendered"] = rendered[:-removed]
+                        omissions["renderedChars"] = omissions.get("renderedChars", 0) + removed
+                        payload["omissions"] = omissions
+                        continue
+                    break
+                _length, container, field, label = candidate
+                container[field].pop()
+                omissions[label] = omissions.get(label, 0) + 1
+                payload["omissions"] = omissions
+                receipt.pop("projectionDigest", None)
+                receipt["projectionDigest"] = canonical_digest(receipt)
         return payload
 
     def compact_routing_result(result: Mapping[str, Any]) -> dict[str, Any]:
@@ -1506,6 +1724,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return payload
 
     if name in {
+        "context.refresh",
         "context.locate",
         "context.refs",
         "context.slice",
@@ -1521,17 +1740,41 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             render_context_slice,
             verify_impact,
         )
-        from .project_bootstrap import ensure_project
+        from .project_bootstrap import ensure_project, project_status
 
         project_dir = arguments.get("projectDir")
         if not isinstance(project_dir, str) or not project_dir.strip():
             return {"action": name, "status": "error", "error": "context_project_invalid"}
         try:
-            project_receipt = ensure_project(
-                project_dir,
-                reason=f"mcp:{name}",
-                force_code_map=False,
-            )
+            project_root = Path(project_dir).expanduser().resolve(strict=True)
+            if not project_root.is_dir() or project_root.is_symlink():
+                return {"action": name, "status": "error", "error": "context_project_invalid"}
+            if name != "context.refresh" and not (project_root / ".agentlas").is_dir():
+                return {
+                    "action": name,
+                    "status": "error",
+                    "error": "project_not_initialized",
+                    "hint": (
+                        "Run `hephaestus project ensure --project <folder>` first. "
+                        "Read-only context tools never create project state."
+                    ),
+                }
+            # Reading context is passive by default.  Only an explicit
+            # refresh=true authorizes rebuilding project-local indexes.
+            refresh = name == "context.refresh" or arguments.get("refresh") is True
+            if refresh:
+                project_receipt = ensure_project(
+                    project_root,
+                    reason=f"mcp:{name}",
+                    force_code_map=name == "context.refresh" and arguments.get("force") is True,
+                )
+            else:
+                project_receipt = {
+                    **project_status(project_root),
+                    "action": "project_status",
+                    "reason": f"mcp:{name}",
+                    "writeAttempted": False,
+                }
             if project_receipt.get("status") not in {"active", "privacy_warning"}:
                 code_map_receipt = (
                     project_receipt.get("codeMap")
@@ -1551,8 +1794,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "error": "project_bootstrap_incomplete",
                     "project_bootstrap": compact_project_receipt(project_receipt),
                 }
-            refresh = arguments.get("refresh") is not False
-            if name == "context.locate":
+            if name == "context.refresh":
+                result = {
+                    "action": name,
+                    "status": "ok",
+                    "refresh": project_receipt.get("codeMap") or {},
+                }
+            elif name == "context.locate":
                 result = locate(project_dir, str(arguments.get("query") or ""), refresh=refresh)
             elif name == "context.refs":
                 result = references(project_dir, str(arguments.get("symbol") or ""), refresh=refresh)
@@ -1572,6 +1820,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     project_dir,
                     arguments.get("changed") or [],
                     arguments.get("reviewed") or [],
+                    verified=arguments.get("verified") or [],
                     waived=arguments.get("waived") or [],
                     refresh=refresh,
                 )
@@ -1586,6 +1835,18 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "detail": (
                         "context.verify requires a fresh dependency map. "
                         "Call context.verify again with refresh=true."
+                    ),
+                    "repairable": True,
+                    "retryArguments": {"refresh": True},
+                }
+            if exc.code in {"context_map_stale", "context_freshness_incomplete"}:
+                return {
+                    "action": name,
+                    "status": "error",
+                    "error": exc.code,
+                    "detail": (
+                        "Passive context reads refuse stale or unverified indexes. "
+                        "Call the same tool again with refresh=true."
                     ),
                     "repairable": True,
                     "retryArguments": {"refresh": True},
@@ -1792,7 +2053,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             expand_slot_ids = list(raw_expand_slot_ids)
         if name == "workforce.search_candidates":
             try:
-                search_result = WorkforceSourceService().search(
+                search_result = WorkforceSourceService(
+                    circuit_key=_workforce_circuit_key(arguments, work_order)
+                ).search(
                     work_order,
                     source_scope=str(source_scope),
                     expand_slot_ids=list(expand_slot_ids),
@@ -2041,7 +2304,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                                 # existing required-argument validation path
                                 # to refuse honestly, with no silent substitute.
                                 prepare_attempt = None
-                    service = WorkforceSourceService(session_store=store)
+                    service = WorkforceSourceService(
+                        session_store=store,
+                        circuit_key=_workforce_circuit_key(arguments, work_order),
+                    )
                     source_bundles = service.fetch_selected_runtime_bundles(
                         federated_selection,
                         work_order=work_order,
@@ -2255,23 +2521,19 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             hub_only=True,
             work_brief=work_brief,
         )
-        if decision.get("action") != "hub_candidates" and not arguments.get("slug"):
-            return with_bootstrap({
-                "action": "hub_invoke",
-                "status": "routing_not_ready",
-                "routing_decision": decision,
-                "detail": "Hub invocation requires a Hub-approved hub_only route that returns hub_candidates.",
-                **({"work_brief_warning": brief_warning} if brief_warning else {}),
-            })
+        requested_slug = arguments.get("slug")
+        exact_slug = requested_slug.strip() if isinstance(requested_slug, str) else ""
         invocation = invoke_hub_agent(
             arguments["request"],
-            slug=arguments.get("slug"),
+            slug=exact_slug or None,
             hub_decision=decision,
             project_dir=arguments.get("project_dir", "."),
             memory_root=arguments.get("memory_root"),
             version=str(arguments.get("version") or "latest"),
             local_inventory=arguments.get("local_inventory") or [],
         )
+        if invocation.get("status") == "selection_required":
+            invocation["routing_decision"] = decision
         if brief_warning:
             invocation["work_brief_warning"] = brief_warning
         return with_bootstrap(invocation)
@@ -2381,7 +2643,12 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
         tool_result = {
             "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, sort_keys=True)}]
         }
-        if isinstance(payload, Mapping) and payload.get("status") in {"error", "rejected", "blocked"}:
+        if isinstance(payload, Mapping) and payload.get("status") in {
+            "error",
+            "rejected",
+            "blocked",
+            "failed",
+        }:
             # Keep the finite JSON payload intact while also honoring MCP's
             # application-error signal. Hosts can persist the exact code instead
             # of replacing it with a later generic schema failure.

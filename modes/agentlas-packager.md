@@ -37,7 +37,7 @@ Cursor rules, another public repo, a ZIP, or an ad hoc Markdown structure.
 
 1. Decide whether the source is a single-agent package or team package.
 2. Preserve useful source behavior.
-3. Run `docs/builder-interview-research-gate.md` if the source does not
+3. Run `contracts/builder-interview-research-gate.md` if the source does not
    already prove target users, tasks, tools/plugins, output artifacts, and
    evaluation quality.
 4. Add missing Agentlas contracts.

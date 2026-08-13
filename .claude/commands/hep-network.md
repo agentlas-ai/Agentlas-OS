@@ -57,8 +57,9 @@ done
    it to the language the work product must be produced in (e.g. `ko`) even
    though the order itself is written in English.
 2. Call `workforce.search_candidates` on `hephaestus-network` with
-   `{workOrder, sourceScope: "network"}` and keep the complete response as
-   `federationResult`. Preserve every source receipt and provenance row. An
+   `{workOrder, sourceScope: "network"}`. Preserve every source receipt and
+   `selectionSessionId`; the default projected menu is not a complete
+   `federationResult` and must not be echoed as one. An
    unavailable source is explicit; it is not permission to pretend that source
    participated.
 3. As the active host LLM, author `agentlas.workforce-selection.v1` from the
