@@ -66,6 +66,7 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
                 "trust": "host",
                 "capabilities": ["route_selected_execution"],
                 "max_parallel": 1,
+                "capability_descriptor": descriptor_from_session(None, "host:primary"),
             }
         ]
 
