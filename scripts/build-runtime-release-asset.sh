@@ -110,14 +110,41 @@ if grep -E "$forbidden_archive_pattern" "$manifest_tmp" >/dev/null; then
   exit 2
 fi
 
-# The only public `.agentlas` payload is machine-readable command discovery.
-# AO materialization, ledgers, memory, caches, and receipts are private runtime
-# state and must never become release assets even if a future allowlist grows.
-if grep -E '(^|/)\.agentlas/' "$manifest_tmp" \
-  | grep -Fv "${prefix}.agentlas/global-commands.json" >/dev/null; then
+# These adapter metadata files are public runtime inputs and are already part
+# of the v1.2.0 release contract. AO materialization, ledgers, memory, caches,
+# ontology databases, and receipts are private runtime state and must never
+# become release assets even if a future allowlist grows.
+public_agentlas_paths=(
+  "${prefix}.agentlas"
+  "${prefix}.agentlas/global-commands.json"
+  "${prefix}claude/plugins/agentlas-core-engine-meta-agent/.agentlas"
+  "${prefix}claude/plugins/agentlas-core-engine-meta-agent/.agentlas/mode-map.json"
+  "${prefix}claude/plugins/agentlas-core-engine-meta-agent/.agentlas/routing-card.json"
+  "${prefix}codex/plugins/agentlas-core-engine-meta-agent/.agentlas"
+  "${prefix}codex/plugins/agentlas-core-engine-meta-agent/.agentlas/mode-map.json"
+  "${prefix}codex/plugins/agentlas-core-engine-meta-agent/.agentlas/routing-card.json"
+  "${prefix}gemini/extension/.agentlas"
+  "${prefix}gemini/extension/.agentlas/routing-card.json"
+)
+
+forbidden_agentlas_paths=""
+while IFS= read -r path; do
+  path="${path%/}"
+  allowed=0
+  for public_path in "${public_agentlas_paths[@]}"; do
+    if [[ "$path" == "$public_path" ]]; then
+      allowed=1
+      break
+    fi
+  done
+  if (( ! allowed )); then
+    forbidden_agentlas_paths+="$path\n"
+  fi
+done < <(grep -E '(^|/)\.agentlas/' "$manifest_tmp" || true)
+
+if [[ -n "$forbidden_agentlas_paths" ]]; then
   echo "release archive contains forbidden internal .agentlas materialization" >&2
-  grep -E '(^|/)\.agentlas/' "$manifest_tmp" \
-    | grep -Fv "${prefix}.agentlas/global-commands.json" >&2
+  printf '%b' "$forbidden_agentlas_paths" >&2
   exit 2
 fi
 
