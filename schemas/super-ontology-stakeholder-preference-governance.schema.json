@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-stakeholder-preference-governance.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "stakeholderRoles",
+    "preferenceSignals",
+    "conflictTypes",
+    "aggregationRules",
+    "requiredGovernanceEvidence",
+    "decisions",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-stakeholder-preference-governance" },
+    "state": { "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"] },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "stakeholderRoles": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "preferenceSignals": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "conflictTypes": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "aggregationRules": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "requiredGovernanceEvidence": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "decisions": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "researchBasis": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "hardStops": { "type": "array", "items": { "type": "string" }, "minItems": 15 }
+  },
+  "additionalProperties": false
+}

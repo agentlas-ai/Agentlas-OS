@@ -74,18 +74,18 @@ bad_patterns=(
 )
 
 for pattern in "${bad_patterns[@]}"; do
-  if rg -n "$pattern" "${scan_files[@]}" >/tmp/hephaestus-install-doc-bad.txt; then
+  if grep -n "$pattern" "${scan_files[@]}" >/tmp/hephaestus-install-doc-bad.txt; then
     cat /tmp/hephaestus-install-doc-bad.txt >&2
     fail "bad install-doc pattern still present: $pattern"
   fi
 done
 
-stale_pins="$(rg -oI 'v0\.[0-9]+\.[0-9]+' "${scan_files[@]}" 2>/dev/null | sort -u | grep -v "^${expected_tag}$" || true)"
+stale_pins="$(grep -oI 'v0\.[0-9]+\.[0-9]+' "${scan_files[@]}" 2>/dev/null | sort -u | grep -v "^${expected_tag}$" || true)"
 if [[ -n "$stale_pins" ]]; then
   fail "stale version pins in docs (expected only ${expected_tag}): $(printf '%s ' $stale_pins)"
 fi
 
-if rg -n 'agentlas-meta-agent' README*.md claude/README.md codex/README.md \
+if grep -n 'agentlas-meta-agent' README*.md claude/README.md codex/README.md \
   | grep -Ev 'agentlas-meta-agent-architecture|agentlas-meta-agent@agentlas-core-engine|agentlas run agentlas-meta-agent|old `agentlas-meta-agent`|still shows `agentlas-meta-agent`|older install still shows `agentlas-meta-agent`|points at `agentlas-meta-agent`|예전 `agentlas-meta-agent`|아직 `agentlas-meta-agent`' \
   >/tmp/hephaestus-old-name-docs.txt; then
   cat /tmp/hephaestus-old-name-docs.txt >&2
@@ -93,30 +93,30 @@ if rg -n 'agentlas-meta-agent' README*.md claude/README.md codex/README.md \
 fi
 
 for path in README.md README.ko.md codex/README.md; do
-  rg -q "codex plugin marketplace add agentlas-ai/Agentlas-OS --ref ${expected_tag_re}" "$path" || fail "missing Codex marketplace command in $path"
-  rg -q 'codex plugin add hephaestus@agentlas-core-engine' "$path" || fail "missing Codex add command in $path"
-  rg -q '\$hephaestus-network' "$path" || fail "missing current Codex network skill entrypoint in $path"
+  grep -q "codex plugin marketplace add agentlas-ai/Agentlas-OS --ref ${expected_tag_re}" "$path" || fail "missing Codex marketplace command in $path"
+  grep -q 'codex plugin add hephaestus@agentlas-core-engine' "$path" || fail "missing Codex add command in $path"
+  grep -q '\$hephaestus-network' "$path" || fail "missing current Codex network skill entrypoint in $path"
 done
 
-rg -q 'Codex does not accept `/plugin marketplace add` inside the app' README.md || fail "README.md does not warn about Codex /plugin"
-rg -q 'Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다' README.ko.md || fail "README.ko.md does not warn about Codex /plugin"
-rg -q '/plugins' README.md README.ko.md codex/README.md assets/install-codex-chat.svg assets/install-codex-cli.svg || fail "Codex /plugins browser command missing"
-rg -q 'mcp_servers\.hephaestus-network\.env' codex/README.md docs/model-allocation.md \
+grep -q 'Codex does not accept `/plugin marketplace add` inside the app' README.md || fail "README.md does not warn about Codex /plugin"
+grep -q 'Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다' README.ko.md || fail "README.ko.md does not warn about Codex /plugin"
+grep -q '/plugins' README.md README.ko.md codex/README.md assets/install-codex-chat.svg assets/install-codex-cli.svg || fail "Codex /plugins browser command missing"
+grep -q 'mcp_servers\.hephaestus-network\.env' codex/README.md docs/model-allocation.md \
   || fail "Codex role-model policy launch env is undocumented"
-rg -q 'preserved_env_table' scripts/install-all-runtimes.sh \
+grep -q 'preserved_env_table' scripts/install-all-runtimes.sh \
   || fail "Codex MCP registration does not preserve operator env policy"
-if rg -n 'After install, `/prompts:|설치 후에는 `/prompts:|deprecated-but-functional custom prompts' README.md README.ko.md codex/README.md docs/runtime-fallback-adapters.md; then
+if grep -n 'After install, `/prompts:|설치 후에는 `/prompts:|deprecated-but-functional custom prompts' README.md README.ko.md codex/README.md docs/runtime-fallback-adapters.md; then
   fail "current Codex docs still advertise removed custom prompts"
 fi
-rg -q -- '--target antigravity' README.md README.ko.md antigravity/README.md || fail "Antigravity global router target docs missing"
-rg -q 'xcode-select --install' README.md README.ko.md claude/README.md codex/README.md scripts/preflight-macos.sh || fail "macOS xcode-select preflight missing"
-rg -q 'git --version' README.md README.ko.md claude/README.md codex/README.md scripts/preflight-macos.sh || fail "git verification missing"
-if rg -q 'experimental_use_rmcp_client = true' scripts/install-all-runtimes.sh; then
+grep -q -- '--target antigravity' README.md README.ko.md antigravity/README.md || fail "Antigravity global router target docs missing"
+grep -q 'xcode-select --install' README.md README.ko.md claude/README.md codex/README.md scripts/preflight-macos.sh || fail "macOS xcode-select preflight missing"
+grep -q 'git --version' README.md README.ko.md claude/README.md codex/README.md scripts/preflight-macos.sh || fail "git verification missing"
+if grep -q 'experimental_use_rmcp_client = true' scripts/install-all-runtimes.sh; then
   fail "obsolete Codex remote-MCP feature flag must not be installed"
 fi
-rg -q 'releases/download/\$version/\$asset' scripts/install-all-runtimes.sh \
+grep -q 'releases/download/\$version/\$asset' scripts/install-all-runtimes.sh \
   || fail "one-touch installer must use the digest-bearing release asset"
-rg -q 'SHA-256 mismatch' scripts/install-all-runtimes.sh \
+grep -q 'SHA-256 mismatch' scripts/install-all-runtimes.sh \
   || fail "one-touch installer must fail closed on release digest mismatch"
 
 python3 - <<'PY'

@@ -66,6 +66,7 @@ NAME_ALLOWLIST = {
     ".agentlas/global-commands.json",
     ".agentlas/routing-card.json",
     ".agentlas/company-blueprint.json",
+    ".agentlas/build-profile.json",
     "docs/builder-interview.md",
     "docs/research-sources.md",
     "docs/tool-selection.md",

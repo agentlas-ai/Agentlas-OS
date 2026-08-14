@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-task-coverage.schema.json",
+  "title": "Agentlas Super Ontology Task Coverage",
+  "description": "agentlas-super-ontology-task-coverage seed for classifying requested work before graph slices, memory handoffs, tool bindings, or runtime actions.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "taskFamilies",
+    "affordanceTypes",
+    "evidenceModes",
+    "defaultDecision",
+    "runtimePromotionAllowed",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-task-coverage" },
+    "state": {
+      "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"]
+    },
+    "taskFamilies": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "retrieve_answer",
+          "summarize_synthesize",
+          "draft_artifact",
+          "transform_format",
+          "analyze_decide",
+          "plan_sequence",
+          "coordinate_social",
+          "execute_tool",
+          "monitor_repair",
+          "personalize_memory",
+          "regulated_boundary",
+          "multimodal_generate",
+          "physical_or_sensor",
+          "software_change",
+          "financial_or_compliance",
+          "education_or_coaching"
+        ]
+      },
+      "minItems": 16
+    },
+    "affordanceTypes": {
+      "type": "array",
+      "items": { "enum": ["read", "draft", "write", "publish", "execute", "physical", "train"] },
+      "minItems": 7
+    },
+    "evidenceModes": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "citation",
+          "current_approved_source",
+          "owner_authority",
+          "policy_or_law",
+          "measurement_or_dataset",
+          "license_or_consent",
+          "runtime_test",
+          "rollback_plan"
+        ]
+      },
+      "minItems": 8
+    },
+    "defaultDecision": { "const": "classify_before_action" },
+    "runtimePromotionAllowed": { "const": false },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": true
+}

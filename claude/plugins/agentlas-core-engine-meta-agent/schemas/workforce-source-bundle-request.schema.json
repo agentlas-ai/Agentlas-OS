@@ -12,11 +12,7 @@
     "releaseVersion",
     "packageHash",
     "contentDigest",
-    "entityKind",
-    "prepareAttemptDigest",
-    "selectedSourcePinDigest",
-    "sourceFetchBindingDigest",
-    "sourceFetchIdempotencyKey"
+    "entityKind"
   ],
   "properties": {
     "sourceSelectionSessionId": { "$ref": "#/$defs/id" },
@@ -27,10 +23,6 @@
     "packageHash": { "$ref": "#/$defs/hash" },
     "contentDigest": { "$ref": "#/$defs/hash" },
     "entityKind": { "enum": ["agent", "team"] },
-    "prepareAttemptDigest": { "$ref": "#/$defs/hash" },
-    "selectedSourcePinDigest": { "$ref": "#/$defs/hash" },
-    "sourceFetchBindingDigest": { "$ref": "#/$defs/hash" },
-    "sourceFetchIdempotencyKey": { "$ref": "#/$defs/hash" },
     "sourceScope": { "const": "cloud" }
   },
   "$defs": {

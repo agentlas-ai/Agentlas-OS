@@ -386,7 +386,7 @@ Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README�
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.3
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.4
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. Codex 0.117+에서는 custom `/prompts:*` 명령이 제거됐으므로, 설치 후에는 `$hephaestus-network <요청>` 스킬을 호출하세요.*
@@ -429,16 +429,19 @@ Agentlas OS 호스트를 설치하고 패키지 소유자로 로그인해야 합
 
 | 시스템 서브시스템 | 셸 명령 | 예시 |
 | :--- | :--- | :--- |
-| **에이전트 / 팀 빌더** | `/agentlas build` | `/agentlas build create a customer support agent for Shopify refunds` |
-| **Workforce 연합 라우팅(Local + Cloud + Hub)** | `/agentlas network` | `/agentlas network split this launch plan into research, copy, QA, and release agents` |
-| **등록된 로컬 에이전트 전용** | `/agentlas local` | `/agentlas local use only agents registered on this machine` |
-| **내 Cloud 에이전트 전용** | `/agentlas cloud` | `/agentlas cloud use my saved finance analyst agent to review this report` |
-| **공개 Hub 에이전트 전용** | `/agentlas hub` | `/agentlas hub find public specialists for accessibility QA` |
-| **디렉터리 검색** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
-| **브라우저 하드포인트** | `/agentlas browser` | `/agentlas browser https://example.com` |
-| **프로세스 간 호출(IPC)** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
-| **Cloud / Hub 목적지 선택 게이트** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
-| **Telegram 설정** | `/agentlas connect` | `/agentlas connect Telegram for Marketing Agent Team` |
+| **에이전트 / 팀 빌더** | `/agentlas-build` (또는 `/agentlas build`, `/hep-build`) | `/agentlas-build create a customer support agent for Shopify refunds` |
+| **Workforce 연합 라우팅(Local + Cloud + Hub)** | `/agentlas-network` (또는 `/agentlas network`, `/hep-network`) | `/agentlas-network split this launch plan into research, copy, QA, and release agents` |
+| **스톰브레이커 루프** | `/agentlas-storm` (또는 `/agentlas storm`, `/hep-storm`) | `/agentlas-storm build full-stack saas landing page` |
+| **자동화 그래프** | `/agentlas-graph` (또는 `/agentlas graph`, `/hep-graph`) | `/agentlas-graph create daily market summary automation` |
+| **퍼스널 에이전트 모드** | `/agentlas-one on|off` (또는 `/agentlas one on|off`, `/hep-one on|off`) | `/agentlas-one on` |
+| **등록된 로컬 에이전트 전용** | `/agentlas-local` (또는 `/agentlas local`, `/hep-local`) | `/agentlas-local use only agents registered on this machine` |
+| **내 Cloud 에이전트 전용** | `/agentlas-cloud` (또는 `/agentlas cloud`, `/hep-cloud`) | `/agentlas-cloud use my saved finance analyst agent to review this report` |
+| **공개 Hub 에이전트 전용** | `/agentlas-hub` (또는 `/agentlas hub`, `/hep-hub`) | `/agentlas-hub find public specialists for accessibility QA` |
+| **디렉터리 검색** | `/agentlas-search` (또는 `/agentlas search`, `/hep-search`) | `/agentlas-search find agents for a market report workflow` |
+| **브라우저 하드포인트** | `/agentlas-browser` (또는 `/agentlas browser`, `/hep-browser`) | `/agentlas-browser https://example.com` |
+| **프로세스 간 호출(IPC)** | `/agentlas-call` (또는 `/agentlas call`, `/hep-call`) | `/agentlas-call market-researcher, report-writer {draft a market report}` |
+| **Cloud / Hub 목적지 선택 게이트** | `/agentlas-upload` (또는 `/agentlas upload`, `/hep-upload`) | `/agentlas-upload ./agents/customer-support-hq` |
+| **메신저/채널 설정** | `/agentlas-connect` (또는 `/agentlas connect`, `/hep-connect`) | `/agentlas-connect Telegram for Marketing Agent Team` |
 
 각 명령은 원래 이름인 `/hep-*`로도 그대로 동작합니다. `/agentlas network`와
 `/hep-network`는 같은 명령입니다. 이름을 없앤 것이 아니므로 기존 스크립트와

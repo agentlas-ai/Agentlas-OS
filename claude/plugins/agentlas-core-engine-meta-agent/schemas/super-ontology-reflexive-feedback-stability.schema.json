@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-reflexive-feedback-stability.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "interventionTypes",
+    "loopSignalTypes",
+    "authoritySurfaces",
+    "requiredFeedbackEvidence",
+    "hardStops",
+    "researchBasis"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "agentlas-super-ontology-reflexive-feedback-stability"
+    },
+    "state": {
+      "const": "export_only"
+    },
+    "runtimePromotionAllowed": {
+      "const": false
+    },
+    "defaultDecision": {
+      "const": "feedback_stability_evidence_required_before_graph_memory_public_training_tool_route_release_financial_hiring_policy_customer_output_analytics_evaluation_physical_or_personalization_authority"
+    },
+    "interventionTypes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 12
+    },
+    "loopSignalTypes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 10
+    },
+    "authoritySurfaces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 12
+    },
+    "requiredFeedbackEvidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 16
+    },
+    "hardStops": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 18
+    },
+    "researchBasis": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 10
+    }
+  },
+  "additionalProperties": true
+}

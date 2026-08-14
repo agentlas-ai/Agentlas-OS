@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-assurance-case.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "claimTypes",
+    "evidenceKinds",
+    "validators",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-assurance-case" },
+    "state": {
+      "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"]
+    },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "const": "evidence_linked_claim_required" },
+    "claimTypes": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "scope_boundary",
+          "source_provenance",
+          "knowledge_integrity",
+          "memory_safety",
+          "action_safety",
+          "task_coverage",
+          "world_coverage",
+          "promotion_safety",
+          "sync_integrity",
+          "red_team_reporting",
+          "rejected_overclaim"
+        ]
+      },
+      "minItems": 1
+    },
+    "evidenceKinds": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "schema_check",
+          "fixture_check",
+          "public_safety_check",
+          "typecheck",
+          "build",
+          "sync_check",
+          "shadow_replay",
+          "canary_replay",
+          "rollback_drill",
+          "constraint_validation",
+          "provenance_standard",
+          "official_standard",
+          "red_team_report",
+          "human_review",
+          "rejected_claim"
+        ]
+      },
+      "minItems": 1
+    },
+    "validators": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "researchBasis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}

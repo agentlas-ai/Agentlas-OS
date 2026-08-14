@@ -25,7 +25,7 @@
       "minItems": 1,
       "description": "Command adapters this package exposes. Measured on the live corpus: 101 packages declare six, 68 declare exactly one, and the entry shape comes in four forms — the full {runtime, command, adapterPath, scope, status} record (100), {command, description, entry} (52), {name, entrypoint, description} (7), and that plus runtimeAdapters (4). The previous rule required four entries of the first form only, which made a package with one canonical command unpublishable forever. How many runtimes an author adapts to is their decision, not a schema constraint; the first form below stays the canonical one that generation writes.",
       "items": {
-        "anyOf": [
+        "oneOf": [
           {
             "type": "object",
             "required": [
@@ -48,14 +48,6 @@
               "globalInstallPath": {
                 "type": "string"
               },
-              "globalInstallPaths": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "minItems": 1,
-                "uniqueItems": true
-              },
               "scope": {
                 "type": "string",
                 "enum": [
@@ -67,27 +59,6 @@
               },
               "status": {
                 "type": "string"
-              },
-              "discoverableByDefault": {
-                "type": "boolean"
-              },
-              "compatibility": {
-                "type": "object",
-                "properties": {
-                  "codex": {
-                    "type": "object",
-                    "properties": {
-                      "minVersion": {
-                        "type": "string"
-                      },
-                      "maxVersionExclusive": {
-                        "type": "string"
-                      }
-                    },
-                    "additionalProperties": false
-                  }
-                },
-                "additionalProperties": false
               },
               "notes": {
                 "type": "string"

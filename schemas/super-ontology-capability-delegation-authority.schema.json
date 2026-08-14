@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-capability-delegation-authority.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "principalTypes",
+    "capabilityArtifactTypes",
+    "authoritySurfaces",
+    "requiredCapabilityEvidence",
+    "hardStops",
+    "researchBasis"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-capability-delegation-authority" },
+    "state": { "const": "export_only" },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": {
+      "const": "capability_evidence_required_before_graph_memory_public_training_tool_route_scheduled_permission_financial_release_customer_or_physical_authority"
+    },
+    "principalTypes": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "capabilityArtifactTypes": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "authoritySurfaces": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "requiredCapabilityEvidence": { "type": "array", "items": { "type": "string" }, "minItems": 20 },
+    "hardStops": { "type": "array", "items": { "type": "string" }, "minItems": 18 },
+    "researchBasis": { "type": "array", "items": { "type": "string" }, "minItems": 10 }
+  },
+  "additionalProperties": true
+}

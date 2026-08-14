@@ -540,7 +540,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.3
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.4
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -587,16 +587,19 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 
 | System Subsystem | Command | Example |
 | :--- | :--- | :--- |
-| **Agent / Team Builder** | `/agentlas build` | `/agentlas build create a customer support agent for Shopify refunds` |
-| **Workforce Federation (Local + Cloud + Hub)** | `/agentlas network` | `/agentlas network split this launch plan into research, copy, QA, and release agents` |
-| **Registered Local Agents Only** | `/agentlas local` | `/agentlas local use only agents registered on this machine` |
-| **Owned Cloud Agents Only** | `/agentlas cloud` | `/agentlas cloud use my saved finance analyst agent to review this report` |
-| **Public Hub Agents Only** | `/agentlas hub` | `/agentlas hub find public specialists for accessibility QA` |
-| **Directory Search** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
-| **Browser Hardpoint** | `/agentlas browser` | `/agentlas browser https://example.com` |
-| **Inter-Process Call (IPC)** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
-| **Cloud / Hub Destination Gate** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
-| **Telegram Setup** | `/agentlas connect` | `/agentlas connect Telegram for Marketing Agent Team` |
+| **Agent / Team Builder** | `/agentlas-build` (or `/agentlas build`, `/hep-build`) | `/agentlas-build create a customer support agent for Shopify refunds` |
+| **Workforce Federation (Local + Cloud + Hub)** | `/agentlas-network` (or `/agentlas network`, `/hep-network`) | `/agentlas-network split this launch plan into research, copy, QA, and release agents` |
+| **Stormbreaker Loop** | `/agentlas-storm` (or `/agentlas storm`, `/hep-storm`) | `/agentlas-storm build full-stack saas landing page` |
+| **Graph Automations** | `/agentlas-graph` (or `/agentlas graph`, `/hep-graph`) | `/agentlas-graph create daily market summary automation` |
+| **Personal Agent Mode** | `/agentlas-one on|off` (or `/agentlas one on|off`, `/hep-one on|off`) | `/agentlas-one on` |
+| **Registered Local Agents Only** | `/agentlas-local` (or `/agentlas local`, `/hep-local`) | `/agentlas-local use only agents registered on this machine` |
+| **Owned Cloud Agents Only** | `/agentlas-cloud` (or `/agentlas cloud`, `/hep-cloud`) | `/agentlas-cloud use my saved finance analyst agent to review this report` |
+| **Public Hub Agents Only** | `/agentlas-hub` (or `/agentlas hub`, `/hep-hub`) | `/agentlas-hub find public specialists for accessibility QA` |
+| **Directory Search** | `/agentlas-search` (or `/agentlas search`, `/hep-search`) | `/agentlas-search find agents for a market report workflow` |
+| **Browser Hardpoint** | `/agentlas-browser` (or `/agentlas browser`, `/hep-browser`) | `/agentlas-browser https://example.com` |
+| **Inter-Process Call (IPC)** | `/agentlas-call` (or `/agentlas call`, `/hep-call`) | `/agentlas-call market-researcher, report-writer {draft a market report}` |
+| **Cloud / Hub Destination Gate** | `/agentlas-upload` (or `/agentlas upload`, `/hep-upload`) | `/agentlas-upload ./agents/customer-support-hq` |
+| **Messenger / Channel Setup** | `/agentlas-connect` (or `/agentlas connect`, `/hep-connect`) | `/agentlas-connect Telegram for Marketing Agent Team` |
 
 Every row also answers to its original `/hep-*` name — `/agentlas network` and
 `/hep-network` are the same command. Nothing was renamed away, so existing
@@ -665,7 +668,7 @@ Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization]
 
 Features first-party Korean document parsing (HWPX and legacy HWP5) with zero GPL dependencies. Fully local and SQLite-backed; confidential and private chunks are isolated, preventing them from reaching external cloud hooks.
 
-The v1.2.3 release contract ships and verifies the dependency-free
+The v1.2.4 release contract ships and verifies the dependency-free
 `potion-multilingual-128M-int8` Model2Vec asset as the primary semantic
 adapter. Its pure-Python Unigram runtime returns a normalized 256-dimensional
 semantic vector. Runtime queries never download a model or call a hosted
@@ -673,7 +676,7 @@ embedding API. Hash-96 mode is an explicitly reported degraded fallback when
 the verified local asset is missing or rejected, not an alternative silent
 default.
 
-The v1.2.3 self-updater installs the complete one-touch runtime payload,
+The v1.2.4 self-updater installs the complete one-touch runtime payload,
 including Career Graph, templates, and the verified model under the versioned
 `models/model2vec/potion-multilingual-128M-int8` directory. It checks that payload before
 and after switching `~/.agentlas/runtime/current`, then repairs merge-safe

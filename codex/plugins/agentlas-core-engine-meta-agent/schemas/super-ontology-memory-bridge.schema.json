@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-memory-bridge.schema.json",
+  "title": "Agentlas Super Ontology Memory Bridge",
+  "description": "agentlas-super-ontology-memory-bridge candidate tickets from Super Ontology artifacts to Memory Curator review. No direct durable memory write is allowed.",
+  "type": "object",
+  "required": [
+    "bridge_id",
+    "source_artifact",
+    "memory_scope",
+    "ticket",
+    "redaction_policy",
+    "curation_decision",
+    "blocked_outputs",
+    "rollback_method"
+  ],
+  "properties": {
+    "bridge_id": { "type": "string" },
+    "source_artifact": {
+      "enum": [
+        "belief_ledger",
+        "knowledge_capsule",
+        "repair_ticket",
+        "affordance_binding",
+        "integration_contract",
+        "shadow_canary_replay"
+      ]
+    },
+    "memory_scope": {
+      "enum": ["user_identity", "team_memory", "project", "agent_repo", "session", "discard"]
+    },
+    "ticket": {
+      "type": "object",
+      "required": [
+        "idempotency_key",
+        "source_agent",
+        "task_id",
+        "source_map_ref",
+        "candidate_count",
+        "allowed_statuses"
+      ],
+      "properties": {
+        "idempotency_key": { "type": "string" },
+        "source_agent": { "type": "string" },
+        "task_id": { "type": "string" },
+        "source_map_ref": { "type": "string" },
+        "candidate_count": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "allowed_statuses": {
+          "type": "array",
+          "items": { "enum": ["ack", "deferred", "rejected"] },
+          "minItems": 3
+        }
+      },
+      "additionalProperties": true
+    },
+    "redaction_policy": {
+      "type": "object",
+      "required": ["raw_prompt_stored", "secret_values_stored", "private_paths_stored"],
+      "properties": {
+        "raw_prompt_stored": { "const": false },
+        "secret_values_stored": { "const": false },
+        "private_paths_stored": { "const": false }
+      },
+      "additionalProperties": true
+    },
+    "curation_decision": {
+      "type": "object",
+      "required": ["initial_status", "durable_write_enabled", "requires_policy_gate"],
+      "properties": {
+        "initial_status": { "enum": ["ack", "deferred", "rejected"] },
+        "durable_write_enabled": { "const": false },
+        "requires_policy_gate": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "blocked_outputs": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "raw_user_prompt",
+          "private_file_path",
+          "secret_value",
+          "direct_durable_memory_write",
+          "cross_scope_join",
+          "external_action"
+        ]
+      },
+      "minItems": 1
+    },
+    "rollback_method": { "type": "string" }
+  },
+  "additionalProperties": true
+}

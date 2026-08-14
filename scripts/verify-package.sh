@@ -426,13 +426,13 @@ for path in "${required_files[@]}"; do
   [[ -e "$path" ]] || fail "missing required file: $path"
 done
 
-rg -q 'assets/model2vec/potion-multilingual-128M-int8' scripts/install-all-runtimes.sh \
+grep -q 'assets/model2vec/potion-multilingual-128M-int8' scripts/install-all-runtimes.sh \
   || fail "one-touch installer does not copy the bundled Model2Vec asset"
-rg -q 'models/model2vec/potion-multilingual-128M-int8' scripts/install-all-runtimes.sh \
+grep -q 'models/model2vec/potion-multilingual-128M-int8' scripts/install-all-runtimes.sh \
   || fail "one-touch installer does not target the runtime Model2Vec path"
-rg -q -- '-m ontology.model_assets verify' scripts/install-all-runtimes.sh \
+grep -q -- '-m ontology.model_assets verify' scripts/install-all-runtimes.sh \
   || fail "one-touch installer does not verify the installed Model2Vec asset"
-rg -q 'install-memory-hooks.py' scripts/install-all-runtimes.sh \
+grep -q 'install-memory-hooks.py' scripts/install-all-runtimes.sh \
   || fail "one-touch installer does not activate global host memory hooks"
 
 agent_count="$(find agents -mindepth 2 -maxdepth 2 -name agent.md | wc -l | tr -d ' ')"
@@ -448,6 +448,7 @@ public_skill_names = {
     "hephaestus-cloud",
     "hephaestus-upload",
     "hephaestus-storm",
+    "hephaestus-graph",
     "routing-card-authoring",
 }
 codex_skill_root = Path("codex/plugins/agentlas-core-engine-meta-agent/skills")

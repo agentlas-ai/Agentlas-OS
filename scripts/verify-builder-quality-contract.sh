@@ -16,7 +16,7 @@ need_file() {
 need_pattern() {
   local path="$1"
   local pattern="$2"
-  rg -q "$pattern" "$path" || fail "missing pattern in $path: $pattern"
+  grep -E -q "$pattern" "$path" || fail "missing pattern in $path: $pattern"
 }
 
 required_files=(

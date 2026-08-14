@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-objective-proxy-validity.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "constructs",
+    "proxyMetrics",
+    "validityGaps",
+    "goodhartModes",
+    "requiredValidityEvidence",
+    "countermetrics",
+    "decisions",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-objective-proxy-validity" },
+    "state": { "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"] },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "constructs": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "proxyMetrics": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "validityGaps": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "goodhartModes": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "requiredValidityEvidence": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "countermetrics": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "decisions": { "type": "array", "items": { "type": "string" }, "minItems": 7 },
+    "researchBasis": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "hardStops": { "type": "array", "items": { "type": "string" }, "minItems": 12 }
+  },
+  "additionalProperties": false
+}

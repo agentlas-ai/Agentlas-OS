@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-open-world-coverage.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "worldFamilies",
+    "modalities",
+    "faultModels",
+    "authorityStates",
+    "coverageGaps",
+    "requiredGates",
+    "samplingActions",
+    "promotionDecisions",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-open-world-coverage" },
+    "state": { "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"] },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "worldFamilies": { "type": "array", "items": { "type": "string" }, "minItems": 15 },
+    "modalities": { "type": "array", "items": { "type": "string" }, "minItems": 15 },
+    "faultModels": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "authorityStates": { "type": "array", "items": { "type": "string" }, "minItems": 5 },
+    "coverageGaps": { "type": "array", "items": { "type": "string" }, "minItems": 5 },
+    "requiredGates": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "samplingActions": { "type": "array", "items": { "type": "string" }, "minItems": 6 },
+    "promotionDecisions": { "type": "array", "items": { "type": "string" }, "minItems": 4 },
+    "researchBasis": { "type": "array", "items": { "type": "string" }, "minItems": 5 },
+    "hardStops": { "type": "array", "items": { "type": "string" }, "minItems": 8 }
+  },
+  "additionalProperties": false
+}

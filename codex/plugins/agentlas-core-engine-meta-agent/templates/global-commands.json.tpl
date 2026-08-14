@@ -33,13 +33,9 @@
       "command": "/{{COMMAND_SLUG}}",
       "adapterPath": "antigravity/workflows/{{COMMAND_SLUG}}.md",
       "globalInstallPath": "~/.gemini/antigravity/global_workflows/{{COMMAND_SLUG}}.md",
-      "globalInstallPaths": [
-        "~/.gemini/antigravity/global_workflows/{{COMMAND_SLUG}}.md",
-        "~/.gemini/antigravity-ide/global_workflows/{{COMMAND_SLUG}}.md"
-      ],
       "scope": "global",
       "status": "workflow-slash-command",
-      "notes": "Install into every detected Antigravity or Antigravity IDE data root. Project-scope fallback ships at .agents/workflows/{{COMMAND_SLUG}}.md. Antigravity also auto-loads AGENTS.md and .agents/skills/."
+      "notes": "Project-scope fallback ships at .agents/workflows/{{COMMAND_SLUG}}.md. Antigravity also auto-loads AGENTS.md and .agents/skills/."
     },
     {
       "runtime": "generic-agents-md",

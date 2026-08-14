@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-resilience-control.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "controlLoopPhases",
+    "operatingModes",
+    "degradationSignals",
+    "hazardTypes",
+    "controlDecisions",
+    "requiredFeedback",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-resilience-control" },
+    "state": { "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"] },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "controlLoopPhases": { "type": "array", "items": { "type": "string" }, "minItems": 6 },
+    "operatingModes": { "type": "array", "items": { "type": "string" }, "minItems": 9 },
+    "degradationSignals": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "hazardTypes": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "controlDecisions": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "requiredFeedback": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "researchBasis": { "type": "array", "items": { "type": "string" }, "minItems": 6 },
+    "hardStops": { "type": "array", "items": { "type": "string" }, "minItems": 8 }
+  },
+  "additionalProperties": false
+}

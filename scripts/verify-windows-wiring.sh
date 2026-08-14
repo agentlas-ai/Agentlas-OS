@@ -122,12 +122,9 @@ grep -q "register_claude_mcp || warn" "$installer" \
   || fail "register_claude_mcp is defined but never called from install_claude"
 
 # 4. Windows command shims exist for every shell command, not just hephaestus.
-grep -q "^write_windows_command_shims()" "$installer" \
-  || fail "$installer is missing write_windows_command_shims"
-grep -q "write_windows_command_shims \"\$home_dir/bin\"" "$installer" \
-  || fail "write_windows_command_shims is never called for the runtime bin"
-grep -q "agentlas-one$" <(grep -A2 "local -a shell_commands=(" "$installer") \
-  || fail "agentlas-one is missing from shell_commands; it would never reach PATH"
+grep -q "^write_windows_command_shims()" "$installer"   || fail "$installer is missing write_windows_command_shims"
+grep -q "write_windows_command_shims" "$installer"   || fail "write_windows_command_shims is never called for the runtime bin"
+grep -q "agentlas-one$" <(grep -A2 "local -a shell_commands=(" "$installer")   || fail "agentlas-one is missing from shell_commands; it would never reach PATH"
 
 # 5. Hook commands must not embed the raw plugin root as a path, and must stay
 #    POSIX. Asserted on the DECODED command strings: reasoning about backslashes

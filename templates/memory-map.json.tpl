@@ -1,67 +1,19 @@
 {
-  "schemaVersion": "1.2",
+  "schemaVersion": "1.0",
   "projectId": "{{project_id}}",
-  "sources": [],
   "canonicalMemoryRoots": {
-    "project": [
-      ".agentlas/project-soul-memory.md"
-    ],
-    "agent_repo": [
-      "memory.md"
-    ],
+    "project": [".agentlas/project-soul-memory.md"],
+    "agent_repo": ["memory.md"],
+    "sitemap": [".agentlas/sitemap.json", ".agentlas/validation-ledger.jsonl"],
     "team_memory": [],
-    "session": [
-      ".agentlas/memory-tickets.jsonl"
-    ],
-    "curator_decisions": [
-      ".agentlas/curator-decisions.jsonl"
-    ],
-    "sitemap": [
-      ".agentlas/sitemap.json",
-      ".agentlas/validation-ledger.jsonl"
-    ],
-    "code_map": [
-      ".agentlas/code-map/project-map.json"
-    ],
-    "context_map": [
-      ".agentlas/context-map.json"
-    ],
-    "recall_index": [
-      ".agentlas/ontology-runtime.sqlite"
-    ],
-    "experience": [
-      ".agentlas/experience-relations.jsonl"
-    ]
+    "session": [".agentlas/memory-tickets.jsonl"]
   },
   "writeOwners": {
-    "project": "pm-soul",
-    "agent_repo": "memory-curator",
-    "team_memory": "orchestrator",
-    "session": "memory-curator",
-    "curator_decisions": "memory-curator",
-    "sitemap": "project bootstrap",
-    "code_map": "project bootstrap",
-    "context_map": "context map authoring (derived)",
-    "recall_index": "ontology runtime",
-    "experience": "experience intake"
+    "project": "10-single-agent-builder or 20-multi-agent-team-builder",
+    "agent_repo": "30-agentlas-packager",
+    "sitemap": "30-agentlas-packager",
+    "team_memory": "30-agentlas-packager",
+    "session": "AGENTS.md"
   },
-  "promotionPath": [
-    "session ticket",
-    "curator decision",
-    "durable memory entry",
-    "experience candidate",
-    "experience pack"
-  ],
-  "trustLabels": [
-    "verified",
-    "memory_derived",
-    "inferred",
-    "stale_check_needed"
-  ],
-  "runtimeOwned": [
-    "code_map",
-    "context_map",
-    "recall_index",
-    "experience"
-  ]
+  "trustLabels": ["verified", "memory_derived", "inferred", "stale_check_needed"]
 }

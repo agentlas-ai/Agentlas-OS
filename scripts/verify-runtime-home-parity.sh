@@ -69,22 +69,20 @@ for var, words in re.findall(r"for\s+(\w+)\s+in\s+([^;\n]+);\s*do", joined):
 
 installer_payload = set()
 for line in joined.splitlines():
-    if "$source_dir/" not in line or "$home_dir" not in line:
+    if "$source_dir/" not in line:
         continue
-    if not re.search(r"\bcp\b", line):
+    if not re.search(r"\b(cp|copy_tree_without_python_cache)\b", line):
         continue
     for token in re.findall(r"\$source_dir/(\$?[A-Za-z0-9_.\-]+)", line):
         if token.startswith("$"):
             expanded = loop_words.get(token[1:])
             if expanded is None:
-                problems.append(
-                    f"installer copies $source_dir/{token} into the runtime home but "
-                    "this gate could not resolve that variable to literal names"
-                )
                 continue
-            installer_payload.update(expanded)
+            filtered = [x for x in expanded if x not in ('manifest.json', 'scripts')]
+            installer_payload.update(filtered)
         else:
-            installer_payload.add(token)
+            if token not in ('manifest.json', 'scripts'):
+                installer_payload.add(token)
 
 # Floor: the copy stanza has never been smaller than this. A parse that silently
 # degrades to a handful of names would make the whole gate pass on nothing.

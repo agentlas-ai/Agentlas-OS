@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-observability-telemetry.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "eventTypes",
+    "failureModes",
+    "requiredTelemetry",
+    "traceStates",
+    "auditChannels",
+    "decisions",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-observability-telemetry" },
+    "state": { "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"] },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "eventTypes": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "failureModes": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "requiredTelemetry": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "traceStates": { "type": "array", "items": { "type": "string" }, "minItems": 5 },
+    "auditChannels": { "type": "array", "items": { "type": "string" }, "minItems": 6 },
+    "decisions": { "type": "array", "items": { "type": "string" }, "minItems": 6 },
+    "researchBasis": { "type": "array", "items": { "type": "string" }, "minItems": 7 },
+    "hardStops": { "type": "array", "items": { "type": "string" }, "minItems": 10 }
+  },
+  "additionalProperties": false
+}

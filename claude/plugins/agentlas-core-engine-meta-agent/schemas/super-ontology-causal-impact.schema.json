@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-causal-impact.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "causalClaimTypes",
+    "requiredChecks",
+    "decisions",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-causal-impact" },
+    "state": {
+      "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"]
+    },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "const": "counterfactual_required_before_state_change" },
+    "causalClaimTypes": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "correlation_only",
+          "causal_hypothesis",
+          "intervention",
+          "counterfactual",
+          "temporal_causal",
+          "memory_intervention",
+          "multi_agent_plan",
+          "external_side_effect",
+          "physical_or_train"
+        ]
+      },
+      "minItems": 1
+    },
+    "requiredChecks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "enum": ["allow_read", "draft_only", "review_required", "shadow_required", "block"]
+      },
+      "minItems": 1
+    },
+    "researchBasis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}

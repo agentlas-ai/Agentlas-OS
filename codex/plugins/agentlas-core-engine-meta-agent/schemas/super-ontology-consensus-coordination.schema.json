@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-consensus-coordination.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "coordinationTopologies",
+    "failureModes",
+    "requiredGates",
+    "consensusPolicies",
+    "conflictResolutions",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-consensus-coordination" },
+    "state": { "enum": ["export_only", "local_candidate", "shadow", "canary", "active", "archived"] },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "coordinationTopologies": { "type": "array", "items": { "type": "string" }, "minItems": 9 },
+    "failureModes": { "type": "array", "items": { "type": "string" }, "minItems": 12 },
+    "requiredGates": { "type": "array", "items": { "type": "string" }, "minItems": 10 },
+    "consensusPolicies": { "type": "array", "items": { "type": "string" }, "minItems": 9 },
+    "conflictResolutions": { "type": "array", "items": { "type": "string" }, "minItems": 8 },
+    "researchBasis": { "type": "array", "items": { "type": "string" }, "minItems": 5 },
+    "hardStops": { "type": "array", "items": { "type": "string" }, "minItems": 8 }
+  },
+  "additionalProperties": false
+}

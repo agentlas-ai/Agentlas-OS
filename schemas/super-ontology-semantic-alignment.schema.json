@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/super-ontology-semantic-alignment.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "state",
+    "runtimePromotionAllowed",
+    "defaultDecision",
+    "sourceContexts",
+    "artifactTypes",
+    "alignmentIntents",
+    "candidateRelations",
+    "alignmentScopes",
+    "ambiguityTypes",
+    "validationChecks",
+    "researchBasis",
+    "hardStops"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "agentlas-super-ontology-semantic-alignment" },
+    "state": { "const": "export_only" },
+    "runtimePromotionAllowed": { "const": false },
+    "defaultDecision": { "type": "string" },
+    "sourceContexts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 15,
+      "uniqueItems": true
+    },
+    "artifactTypes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 15,
+      "uniqueItems": true
+    },
+    "alignmentIntents": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 15,
+      "uniqueItems": true
+    },
+    "candidateRelations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 11,
+      "uniqueItems": true
+    },
+    "alignmentScopes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 9,
+      "uniqueItems": true
+    },
+    "ambiguityTypes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 15,
+      "uniqueItems": true
+    },
+    "validationChecks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 15,
+      "uniqueItems": true
+    },
+    "researchBasis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 12,
+      "uniqueItems": true
+    },
+    "hardStops": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 12,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}
