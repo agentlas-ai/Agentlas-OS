@@ -16,6 +16,7 @@ from .runtime import AgentlasMockStore, compile_runtime_bundle, read_agent_file,
 from .update import (
     UpdateUnavailableError,
     maybe_auto_update,
+    maybe_print_update_notice,
     reconcile_adapters,
     run_update,
     write_python_shims,
@@ -961,6 +962,14 @@ def main(argv: list[str] | None = None) -> int:
     # synchronous check below, so skip the duplicate spawn for it.
     if args.command not in {"hep-update", "update"}:
         maybe_auto_update()
+        # The background check above never prints anything (fail-silent by
+        # design), so a detected update was previously invisible until someone
+        # thought to run `hep-update --check` by hand. This reads the same
+        # 24h-TTL cached release file maybe_auto_update just touched — no
+        # extra network call on 23 of every 24 hours — and prints one line to
+        # stderr only when an update is actually pending, leaving stdout (JSON
+        # payloads, hook output) untouched.
+        maybe_print_update_notice()
     # Same fail-silent pattern for the recall corpus: any command run inside a
     # .agentlas project regenerates a stale project index, so recall freshness
     # never depends on which product (Desktop, terminal, plugin host) the

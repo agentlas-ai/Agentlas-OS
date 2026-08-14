@@ -42,23 +42,83 @@
 ## 붙여넣어 설치하기
 
 지금 쓰는 LLM, 예를 들어 Claude Code, Codex, Gemini CLI, Antigravity,
-Cursor에 아래 내용을 붙여넣으세요:
+Cursor에 아래 내용을 붙여넣으세요. 이 프롬프트는 (이걸 읽는 LLM인) 당신이
+무작정 신뢰하고 실행하는 게 아니라, 실행하기 전에 직접 확인할 수 있도록
+쓰여 있습니다:
 
 ```text
-이 GitHub 저장소에서 Agentlas OS / Hephaestus를 설치해줘:
+이 오픈소스 GitHub 저장소에서 Agentlas OS / Hephaestus를 설치하고 싶어:
 https://github.com/agentlas-ai/Agentlas-OS
 
-마켓플레이스 플러그인만 설치하고 끝내지 말고, 다음 세션에도 유지되는
-호스트 명령 어댑터까지 설치하도록 저장소의 정식 원터치 설치기를 실행해줘:
+뭔가 실행하기 전에, 먼저 설치 스크립트 내용을 가져와서 읽고 뭘 하는지 확인해줘:
+https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh
+
+이 스크립트는 같은 저장소의 GitHub Releases에서 릴리스 압축파일을 받아서
+~/.agentlas, ~/.local/bin, 그리고 이 호스트 자신의 플러그인/명령 어댑터
+디렉터리(예: Claude Code라면 ~/.claude)에만 파일을 씁니다 — 그 밖의
+경로는 건드리지 않습니다. 읽은 내용이 이것과 일치하면 실행해줘:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-설치기 자체 검증 출력을 보고해줘. 다음 세션에서 `/agentlas build`(또는 이
-호스트에 맞는 명령 표면)가 동작하지 않으면 설치 완료라고 하지 말고,
-확인되면 호스트를 재시작하거나 플러그인을 다시 불러오라고 알려줘.
+HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1을 추가하면 이 호스트의 전역 지침
+파일(예: ~/.claude/CLAUDE.md)에 라우팅 블록을 하나 더 써서, 규모가 큰
+작업을 Agentlas 에이전트 네트워크에 맡길 수 있게 합니다 — 비밀스러운
+내용이 아니니 나한테 그대로 읽어서 보여줘도 됩니다. 지금은 빼고 싶으면
+이 환경변수를 빼고 실행해도 되고, 나중에 `hephaestus global install`로
+따로 추가할 수 있습니다.
+
+끝나면 이 호스트에서 설치기 자체 검증 출력을 보여주고, 다음 세션에서
+`/agentlas build`(또는 이 호스트에 맞는 명령 표면)가 바로 동작할지,
+아니면 호스트를 재시작하거나 플러그인을 다시 불러와야 하는지 솔직하게
+알려줘.
 ```
 
 이미 쓰고 있는 LLM에서 Agentlas 명령 표면을 바로 활성화하고 싶을 때
 사용하세요. 셸에서 직접 설치하려면 아래 전체 설치 방법을 보세요.
+
+### AI 없이 직접 설치하기 (터미널이 처음이어도 괜찮습니다)
+
+AI 없이도 설치할 수 있습니다. 검은 화면(터미널) 하나 열어서 명령어 한 줄
+붙여넣으면 끝입니다. 운영체제에 맞는 순서를 그대로 따라 하세요.
+
+**윈도우 — Git Bash 열기**
+
+1. **Git Bash가 이미 있는지 먼저 확인하세요.** 화면 아래쪽 작업표시줄의
+   **돋보기(검색) 아이콘**을 클릭하거나 **윈도우 키**를 누른 뒤
+   **`git bash`** 라고 입력하세요.
+   - 검색 결과에 **"Git Bash"** 가 뜨면 클릭하고 바로 3번으로 가세요.
+   - 아무것도 안 뜨면 아직 설치가 안 된 것입니다. **[git-scm.com/download/win](https://git-scm.com/download/win)**
+     에 들어가서 내려받은 뒤 설치 파일을 실행하세요(설정은 그대로 두고
+     **Next**를 계속 눌러 **Install**까지 진행하면 됩니다).
+2. 설치가 끝나면 1번과 똑같이 **`git bash`** 를 다시 검색해서 **"Git Bash"**
+   결과를 클릭하세요.
+3. 검은 화면이 뜹니다 — 이게 Git Bash입니다. 화면 안을 한 번 클릭한 뒤,
+   아래 명령어를 **붙여넣고**(마우스 오른쪽 클릭 → 붙여넣기, 또는
+   `Shift+Insert`) **Enter**를 누르세요:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+   ```
+4. 설치 진행 상황이 화면에 쭉 뜨다가 다시 입력할 수 있는 상태로 돌아오면
+   끝난 것입니다. 쓰고 있던 AI 도구(Claude Code, Codex 등)를 껐다 다시
+   켜면 새로 생긴 명령어를 인식합니다.
+
+**맥 — 터미널 열기**
+
+1. **`Cmd + Space`** 를 눌러 Spotlight 검색을 연 뒤 **`terminal`**(또는
+   "터미널")이라고 입력하고 **Enter**를 누르세요.
+2. 창이 하나 뜹니다(맥에 기본 내장된 터미널이라 따로 설치할 필요 없습니다).
+   창 안을 클릭한 뒤 아래 명령어를 **붙여넣고**(`Cmd + V`) **Enter**를
+   누르세요:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+   ```
+   새로 산 맥이거나 오랜만에 `curl`/`git`을 쓰는 경우, macOS가 "커맨드 라인
+   도구(Command Line Tools)를 설치하시겠습니까?"라고 물어볼 수 있습니다 —
+   **설치**를 누르고 기다린 뒤, 위 명령어를 다시 입력하면 됩니다.
+3. 끝나면 쓰고 있던 AI 도구를 껐다 다시 켜서 새 명령어를 인식하게 하세요.
+
+실행 전에 스크립트 내용을 먼저 읽어보고 싶다면(보안이 걱정된다면 권장),
+브라우저에서 이 링크를 먼저 열어보세요:
+[install-all-runtimes.sh](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
 
 <p align="center">
   <img src="assets/hephaestus-network-mcp-demo.gif" alt="MCP를 통해 태스크를 실시간으로 올바른 에이전트에 라우팅하는 Hephaestus Network 2.0" width="760">
@@ -271,8 +331,10 @@ hep-global install
 ```
 이 명령은 `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`에 관리용 marker block을 추가합니다. 이것은 선택형 호스트 어댑터이며 Agentlas One 세션이나 Desktop Work 프로젝트의 주인이 아닙니다. 실질 작업에서 Network는 `local + cloud + hub`를 합친 하나의 명시적 탐색 범위입니다. 호스트 모델이 후보의 전체 의미를 보고 exact release를 선택·검증하며, 키워드 라우팅·다른 에이전트의 조용한 대체·Cloud/Hub/Local/스킬의 의미적 fallback 사다리는 사용하지 않습니다. 명령은 여러 번 실행해도 같은 block만 갱신하며, 수정 전 timestamp 백업을 남깁니다.
 
-설치된 router prompt는 상태 줄에 라우터 명령이 아니라 최종 작업자를 표시하도록
-지시합니다. 영어/한국어 세션용 status-line 계약을 명시적으로 포함합니다:
+설치된 router prompt는 라우팅 과정을 서술하는 대신 실제로 작업을 수행한
+워커를 보고하라고 지시합니다 — 이건 간결함을 위한 관례이지 숨기려는
+목적이 아니며, 프롬프트 자신이 그렇게 명시합니다. 영어/한국어 세션용
+status-line 계약을 명시적으로 포함합니다:
 
 | 세션 언어 | 에이전트 라우팅 예시 | 호스트 스킬 어댑터 예시 |
 | --- | --- | --- |

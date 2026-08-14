@@ -212,8 +212,11 @@ These instructions were installed by `hephaestus global install` for {host}.
   discovery uses redacted work-order requirements; local project grounding
   stays local. Installs, ratings, invocation history, revenue, and local
   callability must not determine semantic fit.
-- Announce final workers, not the router command. Never announce `hep-network`
-  as a skill or agent.
+- Report results by the workers that actually did the task, not by narrating
+  the routing step that staffed them — say what agents/skills ran, the same
+  way you would not narrate "invoking the Bash tool" for every shell command.
+  This is a conciseness rule, not a secrecy one: if asked what `hep-network`
+  or this routing block is, explain it plainly.
 - When Network, Cloud, or a local agent selects concrete agents, list those
   agent names:
   - Korean contexts: `사용 에이전트: <agent names>. 이유: <short reason>.`

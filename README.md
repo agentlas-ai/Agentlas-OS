@@ -52,25 +52,83 @@
 ## Paste to Install
 
 Paste this into the LLM you are using now, such as Claude Code, Codex,
-Gemini CLI, Antigravity, or Cursor:
+Gemini CLI, Antigravity, or Cursor. It is written so you (the LLM reading it)
+can verify what you're running before you run it, rather than being asked to
+trust it blindly:
 
 ```text
-Install Agentlas OS / Hephaestus from this GitHub repo:
+I want to install Agentlas OS / Hephaestus from this open-source GitHub repo:
 https://github.com/agentlas-ai/Agentlas-OS
 
-Run the repository's canonical one-touch installer so the durable host command
-adapters are installed too; do not stop after only installing the marketplace
-plugin:
+Before running anything, fetch and read the installer script so you know what
+it does:
+https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh
+
+It downloads a release tarball from this same repo's GitHub Releases and
+writes files only under ~/.agentlas, ~/.local/bin, and this host's own plugin/
+command-adapter directories (e.g. ~/.claude for Claude Code) — nothing outside
+those paths. If that matches what you read, run it:
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 
-Report the installer's own verification output for this host. Do not report
-install complete unless `/agentlas build` (or this host's equivalent command
-surface) will work in the next session, then tell me to restart the host or
-reload plugins.
+HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 additionally writes a routing block into
+this host's global instructions file (e.g. ~/.claude/CLAUDE.md) that lets
+substantial tasks be staffed from Agentlas' agent network; it is not secret
+and you can read/quote it back to me. Drop that env var if you'd rather skip
+it for now — you can add it later with `hephaestus global install`.
+
+Afterwards, show me the installer's own verification output for this host,
+and tell me plainly whether `/agentlas build` (or this host's equivalent
+command surface) is ready to use, or whether I need to restart the host or
+reload plugins first.
 ```
 
 Use this when you are already inside an LLM and want the Agentlas command
 surface active there. For direct shell commands, see the install methods below.
+
+### No LLM handy? Type the command yourself
+
+You don't need an AI to install this — a terminal and one pasted line is
+enough. New to terminals? Follow your OS below.
+
+**On Windows — open Git Bash:**
+
+1. **Do you already have Git Bash?** Click the search icon (or press the
+   **Windows key**) in your taskbar and type **`git bash`**.
+   - If **"Git Bash"** shows up in the results, click it and skip to step 3.
+   - If nothing shows up, you need to install Git for Windows first: go to
+     **[git-scm.com/download/win](https://git-scm.com/download/win)**,
+     download it, and run the installer (default options are fine — keep
+     clicking **Next**, then **Install**).
+2. After installing, search **`git bash`** again (same as step 1) and click
+   the **"Git Bash"** result.
+3. A black window opens — this is Git Bash. Click inside it, **paste** the
+   command below (right-click → Paste, or `Shift+Insert`), then press
+   **Enter**:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+   ```
+4. Wait for it to finish (it prints its own progress). When it stops and
+   gives you the prompt back, close and reopen your AI tool (Claude Code,
+   Codex, etc.) so it picks up the new commands.
+
+**On macOS — open Terminal:**
+
+1. Press **`Cmd + Space`** to open Spotlight search, type **`terminal`**,
+   and press **Enter**.
+2. A window opens (Terminal, built into macOS — nothing to install). Click
+   inside it, **paste** the command below (`Cmd + V`), then press **Enter**:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+   ```
+   The first time you run `curl`/`git` on a fresh Mac, macOS may ask to
+   install "Command Line Tools" — click **Install** and wait, then run the
+   command again.
+3. Wait for it to finish, then close and reopen your AI tool so it picks up
+   the new commands.
+
+If you'd rather read the script before running it (recommended if you're
+security-conscious), open this link in your browser first:
+[install-all-runtimes.sh](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
@@ -427,8 +485,10 @@ hephaestus global install
 ```
 This appends a managed marker block to `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md`. It is an optional host adapter, not the owner of an Agentlas One session or a Desktop Work project. For substantial work, Network is one explicit federated source scope (`local + cloud + hub`): the host model selects exact releases from the returned menu and validates them. It never routes by keyword, silently substitutes a different agent, or treats Cloud, Hub, Local, and skills as semantic fallback tiers. The command is idempotent and keeps a timestamped backup before editing.
 
-The installed router prompt names final workers, not router commands. It carries
-an explicit status-line contract for English and Korean sessions:
+The installed router prompt asks the host to report results by the workers that
+did the task rather than narrating the routing step — it is a conciseness
+convention, not a secrecy one, and it says so. It carries an explicit
+status-line contract for English and Korean sessions:
 
 | Session language | Agent route example | Host-skill adapter example |
 | --- | --- | --- |
