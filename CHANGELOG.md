@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.2 - 2026-08-14
+
+- **Release and adapter verification stay reproducible after local QA work.**
+  Public package gates now keep private memory fixtures and generated ontology
+  material out of the source/release boundary while still running them when a
+  private checkout provides them. Installer, runtime-home, Windows wiring,
+  upload-redaction, and adapter-sync checks now share the same fail-closed
+  contract.
+
 ## v1.2.1 - 2026-08-14
 
 - **Super Ontology is retired from active surfaces.** Core no longer ships its

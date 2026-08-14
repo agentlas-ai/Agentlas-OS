@@ -480,7 +480,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.1
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.2
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -605,7 +605,7 @@ Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization]
 
 Features first-party Korean document parsing (HWPX and legacy HWP5) with zero GPL dependencies. Fully local and SQLite-backed; confidential and private chunks are isolated, preventing them from reaching external cloud hooks.
 
-The v1.2.1 release contract ships and verifies the dependency-free
+The v1.2.2 release contract ships and verifies the dependency-free
 `potion-multilingual-128M-int8` Model2Vec asset as the primary semantic
 adapter. Its pure-Python Unigram runtime returns a normalized 256-dimensional
 semantic vector. Runtime queries never download a model or call a hosted
@@ -613,7 +613,7 @@ embedding API. Hash-96 mode is an explicitly reported degraded fallback when
 the verified local asset is missing or rejected, not an alternative silent
 default.
 
-The v1.2.1 self-updater installs the complete one-touch runtime payload,
+The v1.2.2 self-updater installs the complete one-touch runtime payload,
 including Career Graph, templates, and the verified model under the versioned
 `models/model2vec/potion-multilingual-128M-int8` directory. It checks that payload before
 and after switching `~/.agentlas/runtime/current`, then repairs merge-safe
