@@ -257,7 +257,11 @@ PY
 require_pattern() {
   local path="$1"
   local pattern="$2"
-  rg -q "$pattern" "$path" || fail "missing pattern in $path: $pattern"
+  if command -v rg >/dev/null 2>&1; then
+    rg -q "$pattern" "$path" || fail "missing pattern in $path: $pattern"
+  else
+    grep -E -q "$pattern" "$path" || fail "missing pattern in $path: $pattern"
+  fi
 }
 
 require_pattern AGENTS.md '\.agentlas/global-commands\.json'

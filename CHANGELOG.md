@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.2.3 - 2026-08-14
+
+- **Universal Command Parity across Claude Code and all Host Adapters.**
+  Both GitHub README full command names (`/agentlas <subcommand>`) and direct shorthand
+  aliases (`/hep-<subcommand>`) are cleanly unified and supported across Claude Code,
+  Codex, Antigravity, Gemini CLI, Cursor, and OpenCode.
+- **Support for `graph` and `one` in unified `/agentlas` dispatcher.**
+  `/agentlas graph` maps directly to `hep-graph.md` and `/agentlas one` / `/agentlas-one`
+  maps to `agentlas-one.md` across all prompt and workflow entrypoints.
+- **Zero adapter drift verification.**
+  Synchronized and validated all 14 canonical plugin commands, prompt templates, and
+  universal skills with standard grep-safe verification gates.
+
 ## v1.2.2 - 2026-08-14
 
 - **Release and adapter verification stay reproducible after local QA work.**
