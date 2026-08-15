@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.5 - 2026-08-15
+
+- **Project map is seeded on first contact from any tool.**
+  Bootstrapping previously ran only for a fixed set of routing tools, so a session
+  that opened with any other tool never received a project map. The seed now runs on
+  the first Agentlas tool call that resolves a folder, once per root per process.
+- **Wider read surface for the generated map**, reported through the MCP handshake.
+- **Adapter mirrors stay byte-identical** to the canonical source (Claude, Codex).
+
 ## v1.2.3 - 2026-08-14
 
 - **Universal Command Parity across Claude Code and all Host Adapters.**
