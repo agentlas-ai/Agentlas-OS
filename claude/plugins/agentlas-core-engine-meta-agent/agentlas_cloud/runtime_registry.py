@@ -128,6 +128,39 @@ def _expand(path: Optional[str], home: Path) -> Optional[Path]:
     return Path(os.path.expanduser(path))
 
 
+def _claude_plugin_channel_active(home: Path, settings_path: Path) -> bool:
+    """Mirror of bin/agentlas-one plugin_channel_active(): the Claude plugin
+    channel counts as the Stop hook when the hephaestus plugin is enabled and its
+    cached hooks.json wires agentlas-one. Without this, `status --runtimes`
+    reported claude-code hook=no on every machine where self-heal had (correctly)
+    removed the duplicate settings.json entry (measured 2026-08-15 isolated installs).
+    """
+
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.is_file() else {}
+    except Exception:  # noqa: BLE001
+        settings = {}
+    plugins = settings.get("enabledPlugins") if isinstance(settings, dict) else None
+    if not isinstance(plugins, dict) or not any(str(k).startswith("hephaestus@") and v is True for k, v in plugins.items()):
+        return False
+    cache_root = home / ".claude" / "plugins" / "cache" / "agentlas-core-engine" / "hephaestus"
+    try:
+        versions = sorted(os.listdir(cache_root))
+    except OSError:
+        return False
+    for version in reversed(versions):
+        base = cache_root / version
+        try:
+            if not os.access(base / "bin" / "agentlas-one", os.X_OK):
+                continue
+            hooks = json.loads((base / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        if "agentlas-one" in json.dumps((hooks.get("hooks") or {}).get("Stop", [])):
+            return True
+    return False
+
+
 def _hook_installed(hooks: Mapping[str, Any], home: Path) -> Optional[bool]:
     shape = hooks.get("shape")
     if shape == "none":
@@ -137,6 +170,8 @@ def _hook_installed(hooks: Mapping[str, Any], home: Path) -> Optional[bool]:
         return None
     if shape == "hookpack-dir":
         return target.is_dir()
+    if shape == "claude-settings" and _claude_plugin_channel_active(home, target):
+        return True
     if not target.is_file():
         return False
     try:
