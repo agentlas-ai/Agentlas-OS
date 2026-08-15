@@ -48,7 +48,8 @@ CONTEXT_IMPACT_RECEIPT_SCHEMA = "agentlas.context-impact-receipt.v2"
 CONTEXT_VERIFICATION_RECEIPT_SCHEMA = "agentlas.context-verification-receipt.v2"
 VERIFICATION_MAP_SCHEMA = "agentlas.verification-map.v2"
 
-MAX_MAP_BYTES = 24 * 1024 * 1024
+# Local-only maps: read from the project's own .agentlas/, never uploaded.
+MAX_MAP_BYTES = None
 MAX_TASK_CHARS = 12_000
 MAX_QUERY_TERMS = 96
 MAX_SELECTED_SYMBOLS = 12
@@ -108,7 +109,7 @@ def _project_root(value: str | Path) -> Path:
     return root
 
 
-def _regular_json(path: Path, *, max_bytes: int) -> dict[str, Any]:
+def _regular_json(path: Path, *, max_bytes: int | None = None) -> dict[str, Any]:
     try:
         metadata = path.stat(follow_symlinks=False)
     except OSError as exc:
@@ -117,7 +118,7 @@ def _regular_json(path: Path, *, max_bytes: int) -> dict[str, Any]:
         not stat.S_ISREG(metadata.st_mode)
         or path.is_symlink()
         or metadata.st_size <= 0
-        or metadata.st_size > max_bytes
+        or (max_bytes is not None and metadata.st_size > max_bytes)
     ):
         raise ContextMapError("context_map_unreadable")
     try:
@@ -355,15 +356,9 @@ def load_code_map(
         )
     ):
         raise ContextMapError("context_map_upgrade_required")
-    cache = _regular_json(
-        root / ".agentlas" / "code-map" / ".cache.json",
-        max_bytes=1024 * 1024,
-    )
+    cache = _regular_json(root / ".agentlas" / "code-map" / ".cache.json")
     try:
-        manifest = _regular_json(
-            root / ".agentlas" / "code-map" / "manifest.json",
-            max_bytes=1024 * 1024,
-        )
+        manifest = _regular_json(root / ".agentlas" / "code-map" / "manifest.json")
     except ContextMapError as exc:
         raise ContextMapError("context_map_integrity_failed") from exc
     expected_root_hash = "sha256:" + hashlib.sha256(str(root).encode("utf-8")).hexdigest()
@@ -418,7 +413,12 @@ def load_code_map(
         or stats.get("scanComplete") is not True
         or stats.get("budgetStop")
         or stats.get("outputTruncated") is not False
-        or int(stats.get("candidateCodeFiles") or 0) != int(stats.get("codeFiles") or 0)
+        # Oversized/unreadable files are skipped by policy, not by budget
+        # failure, so they count as covered here (see project_bootstrap).
+        or int(stats.get("candidateCodeFiles") or 0)
+        != int(stats.get("codeFiles") or 0)
+        + int(stats.get("skippedLarge") or 0)
+        + int(stats.get("skippedUnreadable") or 0)
     ):
         raise ContextMapError("context_map_incomplete")
     if not refresh:
@@ -464,7 +464,7 @@ def _load_declared_graph(
         if not path.exists():
             continue
         try:
-            payload = _regular_json(path, max_bytes=16 * 1024 * 1024)
+            payload = _regular_json(path)
         except ContextMapError as exc:
             raise ContextMapError("context_declared_map_invalid") from exc
         loaded_sources.append(relative)
@@ -592,16 +592,48 @@ def _module_of(path: str) -> str:
     return parts[0] if len(parts) > 1 else "."
 
 
+# Shorter tokens ("api", "db", "id") match hundreds of unrelated definitions.
+_MIN_FALLBACK_TERM = 4
+
+
+def _fallback_symbols(
+    definitions: Mapping[str, Any],
+    ref_count: Mapping[str, Any],
+    fallback_terms: Sequence[str],
+) -> list[str]:
+    """Find symbols by substring when no exact name was typed.
+
+    ``defIndex`` is keyed by exact symbol name, so prose like "runtime adapter
+    버그 고치기" matched nothing even though ``runtime_adapters`` was indexed.
+    Ranked by existing refCount — no embedding, no new index.
+    """
+
+    needles = [term for term in fallback_terms if len(term) >= _MIN_FALLBACK_TERM]
+    if not needles:
+        return []
+    hits = [key for key in definitions if any(needle in key for needle in needles)]
+    hits.sort(key=lambda key: (-int(ref_count.get(key) or 0), key))
+    return hits
+
+
 def _selected_symbols(
     code_map: Mapping[str, Any],
     *,
     terms: Sequence[str],
     files: Sequence[str],
-) -> list[str]:
+    fallback_terms: Sequence[str] = (),
+) -> tuple[list[str], str]:
+    """Return ``(symbols, match_mode)``.
+
+    ``match_mode`` travels with the slice so a reader can tell an exactly-named
+    symbol from one recovered by substring. Silent mixing would make the weaker
+    evidence indistinguishable from the stronger.
+    """
+
     definitions = code_map.get("defIndex")
     file_symbols = code_map.get("fileSymbols")
     if not isinstance(definitions, dict):
-        return []
+        return [], "none"
     exact = list(dict.fromkeys(term for term in terms if term in definitions))
     selected: list[str] = list(exact)
     if isinstance(file_symbols, dict):
@@ -619,7 +651,13 @@ def _selected_symbols(
         set(selected) - set(exact),
         key=lambda key: (-int(ref_count.get(key) or 0), key),
     )
-    return [*exact, *ranked][:MAX_SELECTED_SYMBOLS]
+    resolved = [*exact, *ranked][:MAX_SELECTED_SYMBOLS]
+    if resolved:
+        return resolved, ("exact" if exact else "file")
+    fallback = _fallback_symbols(definitions, ref_count, fallback_terms)
+    if fallback:
+        return fallback[:MAX_SELECTED_SYMBOLS], "substring"
+    return [], "none"
 
 
 def context_slice(
@@ -632,7 +670,12 @@ def context_slice(
     root, code_map, refresh_receipt = load_code_map(project, refresh=refresh)
     terms = _query_terms(task)
     selected_files = _task_path_hints(root, task, targets)
-    symbols = _selected_symbols(code_map, terms=_symbol_terms(task, code_map), files=selected_files)
+    symbols, symbol_match = _selected_symbols(
+        code_map,
+        terms=_symbol_terms(task, code_map),
+        files=selected_files,
+        fallback_terms=terms,
+    )
     definitions = code_map.get("defIndex", {})
     references = code_map.get("refIndex", {})
 
@@ -772,6 +815,7 @@ def context_slice(
         ],
         "relatedContextNodes": selected_nodes,
         "contextEdges": selected_edges,
+        "symbolMatch": symbol_match,
         "symbols": symbol_rows,
         "files": selected_files,
         "modules": selected_modules,

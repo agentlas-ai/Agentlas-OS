@@ -51,6 +51,23 @@ from .workforce.provenance import (
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.4"}
+
+# Roots this process has already seeded, so only the first tool call in a
+# session pays the bootstrap cost.
+_FIRST_CONTACT_ROOTS: set[str] = set()
+
+
+def _claim_first_contact(project_dir: str) -> bool:
+    """True once per resolved root per process."""
+
+    try:
+        key = str(Path(project_dir).expanduser().resolve())
+    except (OSError, ValueError):
+        key = project_dir
+    if key in _FIRST_CONTACT_ROOTS:
+        return False
+    _FIRST_CONTACT_ROOTS.add(key)
+    return True
 MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
 _HOST_MODEL_POLICY_FIELDS = frozenset({
     "pinnedModelId",
@@ -1449,18 +1466,17 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             )
         return response
 
+    # Any Agentlas tool touching a folder is first contact with that project, so
+    # the project map is seeded there regardless of which tool arrived first.
+    # Bootstrapping is per-process/per-root: the first call pays for it, the rest
+    # of the session skips it.
     bootstrap: dict[str, Any] | None = None
-    if name in {
-        "hephaestus_route",
-        "hephaestus_cloud_search",
-        "hephaestus_search",
-        "hephaestus_call",
-        "hephaestus_hub_invoke",
-    }:
+    _bootstrap_target = str(arguments.get("project_dir") or ".")
+    if _claim_first_contact(_bootstrap_target):
         from .project_bootstrap import auto_bootstrap_enabled, maybe_ensure_project
 
         bootstrap = maybe_ensure_project(
-            arguments.get("project_dir", "."),
+            _bootstrap_target,
             reason=f"mcp:{name}",
             enabled=auto_bootstrap_enabled(mcp=True),
             allow_unmarked_current_root=True,

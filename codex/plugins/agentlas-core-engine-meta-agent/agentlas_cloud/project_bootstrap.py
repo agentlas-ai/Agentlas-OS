@@ -30,24 +30,28 @@ from typing import Any, Iterable, Mapping, Sequence
 BOOTSTRAP_SCHEMA = "agentlas.project-bootstrap.v1"
 MANAGED_GITIGNORE_START = "# >>> agentlas local project state >>>"
 MANAGED_GITIGNORE_END = "# <<< agentlas local project state <<<"
-MAX_CODE_FILES = 12_000
-MAX_LOCAL_TEST_FILES = 4_000
+# Local-only index: nothing here is uploaded or served, so size/count ceilings
+# only truncated large workspaces. Scan scope is controlled by excludeRoots in
+# agentlas-context-map.json. Remaining guards: scan seconds, per-file bytes,
+# per-file symbols.
+MAX_CODE_FILES = 2_000_000
+MAX_LOCAL_TEST_FILES = 500_000
 MAX_CODE_FILE_BYTES = 1_500_000
-MAX_CODE_TOTAL_READ_BYTES = 32 * 1024 * 1024
-MAX_CODE_SCAN_SECONDS = 12.0
-MAX_CODE_MAP_BYTES = 24 * 1024 * 1024
-MAX_GIT_FILE_LIST_BYTES = 8 * 1024 * 1024
+MAX_CODE_TOTAL_READ_BYTES = 16 * 1024 * 1024 * 1024
+MAX_CODE_SCAN_SECONDS = 600.0
+MAX_CODE_MAP_BYTES = 8 * 1024 * 1024 * 1024
+MAX_GIT_FILE_LIST_BYTES = 1024 * 1024 * 1024
 MAX_GIT_PREFIX_BYTES = 64 * 1024
 MAX_GITIGNORE_BYTES = 1024 * 1024
-MAX_TRACKED_PATH_BYTES = 1024 * 1024
-MAX_TRACKED_PATHS = 10_000
-MAX_PERMISSION_PATHS = 20_000
+MAX_TRACKED_PATH_BYTES = 64 * 1024 * 1024
+MAX_TRACKED_PATHS = 2_000_000
+MAX_PERMISSION_PATHS = 2_000_000
 MAX_DISCOVERED_FILES = MAX_CODE_FILES * 3
 MAX_SYMBOLS_PER_FILE = 1_000
-MAX_TOTAL_SYMBOLS = 100_000
-MAX_UNIQUE_TOKENS = 50_000
-MAX_TOKEN_OCCURRENCES = 2_000_000
-MAX_REF_FILES_PER_SYMBOL = 1_024
+MAX_TOTAL_SYMBOLS = 5_000_000
+MAX_UNIQUE_TOKENS = 2_000_000
+MAX_TOKEN_OCCURRENCES = 200_000_000
+MAX_REF_FILES_PER_SYMBOL = 262_144
 POSIX_PRIVATE_MODE_ENFORCEMENT = os.name != "nt"
 AUTO_BOOTSTRAP_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_AUTO"
 MCP_AUTO_BOOTSTRAP_ENV = "AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO"
@@ -159,16 +163,12 @@ VERSION_CONTRACT_NAMES = {
     "cargo.toml",
     "gemini-extension.json",
 }
-MAX_VERIFICATION_FILE_BYTES = 512 * 1024
-MAX_VERIFICATION_NODES = 2_000
-# The Desktop repository currently produces more than 50k legitimate
-# source-to-test links. Keep the graph bounded, but high enough that the
-# completion gate can represent that real product instead of failing its own
-# refresh as incomplete. The 24 MiB serialized-map limit remains the final
-# memory/output guard.
-MAX_VERIFICATION_EDGES = 50_000
-MAX_DEPENDENCY_EDGES = 50_000
-MAX_SNAPSHOT_READ_BYTES = 1024 * 1024 * 1024
+MAX_VERIFICATION_FILE_BYTES = 8 * 1024 * 1024
+# Truncating these drops the Implementation->Verification edges entirely.
+MAX_VERIFICATION_NODES = 1_000_000
+MAX_VERIFICATION_EDGES = 5_000_000
+MAX_DEPENDENCY_EDGES = 5_000_000
+MAX_SNAPSHOT_READ_BYTES = 64 * 1024 * 1024 * 1024
 TEST_PATH_REFERENCE_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.-])"
     r"((?:test|tests|scripts)/[A-Za-z0-9_./@+-]+"
@@ -364,15 +364,20 @@ def _truthy_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def auto_bootstrap_enabled(*, mcp: bool = False) -> bool:
-    """Return trusted host policy; MCP and ordinary CLI use separate gates."""
+def _opted_out_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"0", "false", "no", "off"}
 
-    return _truthy_env(MCP_AUTO_BOOTSTRAP_ENV if mcp else AUTO_BOOTSTRAP_ENV)
+
+def auto_bootstrap_enabled(*, mcp: bool = False) -> bool:
+    """On by default: running an Agentlas command in a folder is the intent.
+
+    Set AGENTLAS_PROJECT_BOOTSTRAP_AUTO=0 (or the MCP variant) to opt out.
+    """
+
+    return not _opted_out_env(MCP_AUTO_BOOTSTRAP_ENV if mcp else AUTO_BOOTSTRAP_ENV)
 
 
 def _project_marker_present(root: Path) -> bool:
-    """Automatic writes require a real workspace marker, never a random cwd."""
-
     return any((root / marker).exists() for marker in (".git", ".hg", ".svn", ".agentlas"))
 
 
@@ -1563,7 +1568,10 @@ def _code_map_binding_complete(
         and stats.get("scanComplete") is True
         and not stats.get("budgetStop")
         and stats.get("outputTruncated") is False
-        and int(stats.get("candidateCodeFiles") or 0) == int(stats.get("codeFiles") or 0)
+        and int(stats.get("candidateCodeFiles") or 0)
+        == int(stats.get("codeFiles") or 0)
+        + int(stats.get("skippedLarge") or 0)
+        + int(stats.get("skippedUnreadable") or 0)
     )
 
 
@@ -1573,13 +1581,15 @@ def _code_map_incomplete_reasons(stats: dict[str, Any]) -> list[str]:
         reasons.append("budget_stop")
     if stats.get("scanComplete") is not True:
         reasons.append("scan_incomplete")
-    if int(stats.get("skippedLarge") or 0) > 0:
-        reasons.append("large_code_files")
-    if int(stats.get("skippedUnreadable") or 0) > 0:
-        reasons.append("unreadable_code_files")
+    # skippedLarge / skippedUnreadable are deliberate policy exclusions and do
+    # not make the map incomplete (see scan_complete). They remain in stats.
+    # Skipping *every* candidate is different: the map is empty, not filtered.
+    if int(stats.get("candidateCodeFiles") or 0) > 0 and int(stats.get("codeFiles") or 0) == 0:
+        reasons.append("all_code_files_skipped")
     if int(stats.get("fingerprintFailures") or 0) > 0:
         reasons.append("fingerprint_failures")
-    if int(stats.get("candidateCodeFiles") or 0) != int(stats.get("codeFiles") or 0):
+    policy_skipped = int(stats.get("skippedLarge") or 0) + int(stats.get("skippedUnreadable") or 0)
+    if int(stats.get("codeFiles") or 0) + policy_skipped != int(stats.get("candidateCodeFiles") or 0):
         reasons.append("code_file_coverage")
     if stats.get("refIndexTruncated") is True:
         reasons.append("reference_index_truncated")
@@ -1592,6 +1602,78 @@ def _code_map_incomplete_reasons(stats: dict[str, Any]) -> list[str]:
     if stats.get("snapshotComplete") is not True:
         reasons.append("snapshot_incomplete")
     return sorted(set(reasons))
+
+
+# Turns incompleteReasons codes into text a human can act on.
+CODE_MAP_REASON_TEXT = {
+    "budget_stop": "스캔이 예산 상한에 걸려 중단됨",
+    "scan_incomplete": "스캔이 끝까지 돌지 못함 (시간 상한 가능)",
+    "large_code_files": "너무 큰 코드 파일을 건너뜀",
+    "unreadable_code_files": "읽을 수 없는 코드 파일이 있음",
+    "fingerprint_failures": "파일 지문 계산 실패",
+    "code_file_coverage": "후보 코드 파일을 전부 색인하지 못함",
+    "all_code_files_skipped": "코드 파일이 전부 제외됨 — 지도가 비어 있음 (설정 확인)",
+    "reference_index_truncated": "참조 색인이 잘림 — 심볼 검색이 불완전",
+    "output_truncated": "산출물이 크기 상한에 걸려 잘림",
+    "verification_graph_truncated": "검증 그래프가 잘림 — coverage/drift 사용 불가",
+    "dependency_graph_truncated": "의존 그래프가 잘림 — impact 사용 불가",
+    "snapshot_incomplete": "스냅샷을 전부 읽지 못함",
+}
+
+# v2 contract keys. A map missing any of these is unusable regardless of the
+# schemaVersion it claims.
+CODE_MAP_REQUIRED_KEYS = (
+    "defIndex", "refIndex", "refCount", "fileSymbols", "indexedFiles",
+    "mappedFiles", "fileRoles", "dependencyEdges", "tombstones",
+    "verificationGraph",
+)
+
+
+def diagnose_code_map(project: str | Path) -> dict[str, Any]:
+    """Report code-map health as ``{"healthy", "lines", "stats"}``."""
+
+    root = Path(project).resolve()
+    path = root / ".agentlas" / "code-map" / "project-map.json"
+    lines: list[str] = []
+    if not path.exists():
+        return {"healthy": False, "lines": ["code-map 없음 — 생성 필요"], "stats": {}}
+
+    size = path.stat().st_size
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return {
+            "healthy": False,
+            "lines": [f"code-map을 읽을 수 없음 ({size:,} bytes): {type(exc).__name__}"],
+            "stats": {},
+        }
+
+    stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}
+    missing = [key for key in CODE_MAP_REQUIRED_KEYS if payload.get(key) is None]
+    if missing:
+        lines.append(f"필수 키 결손 {len(missing)}종: {', '.join(missing)}")
+    for reason in stats.get("incompleteReasons") or []:
+        lines.append(CODE_MAP_REASON_TEXT.get(reason, reason))
+    if stats.get("budgetStop"):
+        lines.append(f"중단 사유: {stats['budgetStop']}")
+
+    for sidecar in (".cache.json", "manifest.json"):
+        if not (root / ".agentlas" / "code-map" / sidecar).exists():
+            lines.append(f"{sidecar} 없음 — 무결성 검사 통과 불가")
+
+    return {
+        "healthy": not lines,
+        "lines": lines or ["정상"],
+        "stats": {
+            "bytes": size,
+            "generatedAt": payload.get("generatedAt"),
+            "codeFiles": stats.get("codeFiles"),
+            "candidateCodeFiles": stats.get("candidateCodeFiles"),
+            "symbols": stats.get("symbols"),
+            "missingKeys": missing,
+            "incompleteReasons": stats.get("incompleteReasons") or [],
+        },
+    }
 
 
 def _functional_sitemap_summary(root: Path) -> dict[str, Any]:
@@ -2488,14 +2570,18 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
     )
 
     generated_at = utc_now()
+    # Oversized/unreadable files are skipped by policy, not by budget failure,
+    # so they count as covered. Skipping every candidate is different: the map
+    # is empty, not filtered. Counts stay in stats either way.
+    policy_skipped = skipped_large + skipped_unreadable
+    indexed_nothing = bool(code_files) and not scanned_files
     scan_complete = (
         budget_stop is None
-        and skipped_large == 0
-        and skipped_unreadable == 0
         and fingerprint_failures == 0
         and snapshot_complete
         and not dependency_edges_truncated
-        and len(scanned_files) == len(code_files)
+        and not indexed_nothing
+        and len(scanned_files) + policy_skipped == len(code_files)
         and len(scanned_verification_test_files) == len(verification_test_code_files)
     )
     ref_files_omitted = sum(
@@ -2916,16 +3002,15 @@ def maybe_ensure_project(
     project: str | Path,
     *,
     reason: str,
-    enabled: bool = False,
+    enabled: bool = True,
     trusted_target: bool = False,
-    allow_unmarked_current_root: bool = False,
+    allow_unmarked_current_root: bool = True,
 ) -> dict[str, Any]:
-    """Gate host first-contact writes behind explicit host consent.
+    """Create .agentlas on first contact with a project folder.
 
-    Workload/tool arguments never enable this function on their own. Trusted
-    hosts opt in with a CLI flag or process environment. Automatic mode
-    requires a workspace marker, except for the exact MCP process cwd when the
-    host starts the plugin server with its dedicated bootstrap gate enabled.
+    Running an Agentlas command in a folder is the intent, so no separate
+    consent step is required. The boundary check below still refuses the home
+    directory and the filesystem root.
     """
 
     if not enabled:
