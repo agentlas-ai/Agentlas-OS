@@ -190,7 +190,7 @@ documented bare `/agentlas build` autocomplete के लिए ऊपर का
 
 अपने OS terminal से:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.5
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.6
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:agentlas` in-app entry है।*

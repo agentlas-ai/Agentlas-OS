@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v1.2.6 - 2026-08-15
+
+- **Project map (Perk) reaches the agent and grows from work.** The recall hook
+  no longer trims the whole slice at the layer budget; a project being edited by
+  another session serves its last complete map (`refreshStatus=stale_served`);
+  declared-graph load truncates after selection with per-node edge budgets;
+  non-ASCII query words are kept; empty matches hand over entry points instead of
+  nothing; one malformed sitemap no longer closes the library. A contact ledger
+  (touched paths + stated intent per session, no content, append-only) feeds
+  `co_edited` files into slices; `coverage()`/`drift()` diagnostics; every edge
+  carries its authority (A0–A3). `.agentlas` is never indexed; OS-owned roots are
+  refused before the bootstrap lock; Unicode identifiers become symbols.
+- **Behaviour change:** `project_bootstrap.py` `auto_bootstrap` now defaults **on**
+  — the three maps are seeded on a project's first contact from any tool, without
+  a consent prompt (owner decision 2026-08-15; opt out with
+  `AGENTLAS_PROJECT_BOOTSTRAP_AUTO=0`). `project_bootstrap.py` and
+  `memory_hook.py` join the runtime release asset.
 - **Phase B (2026-08-15 evening).**
   - `agentlas-one` reads `contracts/runtime-registry.json` for every runtime's
     instruction file, hook file and hook pack (hardcoded lists remain only as
