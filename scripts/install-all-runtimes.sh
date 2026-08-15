@@ -205,7 +205,21 @@ promote_runtime_home() {
 
   promoted_target="$(readlink "$current_link" 2>/dev/null || true)"
   promoted_release="$(cat "$current_link/RELEASE" 2>/dev/null || true)"
-  if [[ "$promoted_target" != "$home_dir" || "$promoted_release" != "$expected_release" ]]; then
+  # Git Bash without symlink privilege turns `ln -s` into a directory copy, so
+  # readlink is empty there while `current` is a complete runtime home. The
+  # RELEASE marker is the version truth (measured 2026-08-15 on windows-latest:
+  # every install verified-then-rolled-back on this exact check, so Windows
+  # never had a runtime home). Accept a non-symlink `current` when it carries
+  # the expected RELEASE and the runner.
+  promoted_ok=0
+  if [[ "$promoted_release" == "$expected_release" ]]; then
+    if [[ "$promoted_target" == "$home_dir" ]]; then
+      promoted_ok=1
+    elif [[ -z "$promoted_target" && ! -L "$current_link" && -d "$current_link" && -f "$current_link/bin/hephaestus" ]]; then
+      promoted_ok=1
+    fi
+  fi
+  if [[ "$promoted_ok" -ne 1 ]]; then
     warn "Runtime current verification failed after promotion; restoring the prior runtime."
     if [[ -L "$current_rollback" ]]; then
       atomic_replace_path "$current_rollback" "$current_link" "$py" 2>/dev/null || true
