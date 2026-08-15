@@ -15,6 +15,9 @@
 #   agentlas-one status         Show current state.
 #   agentlas-one status --runtimes [--json]
 #                               Per-runtime support matrix (registry + this machine).
+#   agentlas-one status --drift [--now]
+#                               Last runtime-drift report (pins vs ACP registry/matrix);
+#                               --now runs the check immediately.
 #   agentlas-one memory         Measure memory and experience chips.
 #   agentlas-one remember <text> Emit a memory-candidate ticket.
 #   agentlas-one curate         Curate tickets into durable memory candidates.
@@ -169,17 +172,114 @@ EOF
 # config directory exists; the entrypoint file is then created if the runtime has
 # not written one yet, because an absent file would silently mean no identity.
 # Never create a file for a runtime that is not installed.
+# ---- registry-driven paths (PRD 2026-08-15 Phase B-2) -----------------------
+# contracts/runtime-registry.json is the single truth for "which instruction
+# file / which hook file per runtime". This launcher reads it; the hardcoded
+# lists below survive only as the fallback when no registry is reachable (a
+# checkout without Python, a runtime home from before the registry existed).
+# Env overrides keep their historical names: AGENTLAS_ONE_<ID>_MD /
+# AGENTLAS_ONE_<ID>_HOOKS with ID = codex|gemini|opencode|openclaw|cursor and
+# AGY for antigravity (tests and users already set them).
+registry_json() {
+  local f
+  for f in "$HOME/.agentlas/runtime/current/contracts/runtime-registry.json" \
+           "$OS_ROOT/contracts/runtime-registry.json"; do
+    if [ -f "$f" ]; then printf '%s' "$f"; return 0; fi
+  done
+  return 1
+}
+
+# Emits: <id>\t<kind: entrypoint|hookfile|hookpack>\t<env-suffix>\t<expanded path>
+registry_paths() {
+  local reg; reg="$(registry_json)" || return 1
+  ONE_REG="$reg" ONE_HOME="$HOME" "$PY" - <<'PYEOF' 2>/dev/null
+import json, os
+ENV = {"antigravity": "AGY", "codex": "CODEX", "gemini": "GEMINI", "opencode": "OPENCODE",
+       "openclaw": "OPENCLAW", "cursor": "CURSOR", "goose": "GOOSE"}
+home = os.environ["ONE_HOME"]
+def expand(p):
+    return home + p[1:] if p.startswith("~/") else p
+try:
+    data = json.load(open(os.environ["ONE_REG"], encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+for row in data.get("runtimes", []):
+    rid = row.get("id")
+    if rid == "claude-code" or row.get("role") != "tier1":
+        continue
+    suffix = ENV.get(rid, rid.upper().replace("-", "_"))
+    ep = row.get("entrypoint")
+    if ep:
+        print("%s\tentrypoint\t%s\t%s" % (rid, suffix, expand(ep)))
+    hooks = row.get("hooks") or {}
+    shape, hf = hooks.get("shape"), hooks.get("file")
+    if hf and shape == "hookpack-dir":
+        print("%s\thookpack\t%s\t%s" % (rid, suffix, expand(hf)))
+    elif hf and shape not in (None, "none", "claude-settings"):
+        print("%s\thookfile\t%s\t%s" % (rid, suffix, expand(hf)))
+PYEOF
+}
+
+# Resolve one registry path through its env override (AGENTLAS_ONE_<SUFFIX>_MD / _HOOKS).
+registry_override() {  # $1=kind $2=suffix $3=default
+  local var
+  case "$1" in
+    entrypoint) var="AGENTLAS_ONE_${2}_MD" ;;
+    hookfile)   var="AGENTLAS_ONE_${2}_HOOKS" ;;
+    hookpack)   case "$2" in GOOSE) var="AGENTLAS_ONE_GOOSE_PLUGIN" ;; OPENCLAW) var="AGENTLAS_ONE_OPENCLAW_HOOK" ;; *) var="AGENTLAS_ONE_${2}_HOOKPACK" ;; esac ;;
+  esac
+  printf '%s' "${!var:-$3}"
+}
+
+registry_entrypoint_files() {
+  local id kind suffix path
+  while IFS=$'\t' read -r id kind suffix path; do
+    [ "$kind" = "entrypoint" ] || continue
+    registry_override entrypoint "$suffix" "$path"; printf '\n'
+  done < <(registry_paths)
+}
+
+registry_hook_files() {
+  local id kind suffix path
+  while IFS=$'\t' read -r id kind suffix path; do
+    [ "$kind" = "hookfile" ] || continue
+    registry_override hookfile "$suffix" "$path"; printf '\n'
+  done < <(registry_paths)
+}
+
 runtime_entrypoints() {
   printf '%s\n' "$CLAUDE_MD"
   local extra
-  for extra in "${AGENTLAS_ONE_CODEX_MD:-$HOME/.codex/AGENTS.md}" \
-               "${AGENTLAS_ONE_GEMINI_MD:-$HOME/.gemini/GEMINI.md}" \
-               "${AGENTLAS_ONE_OPENCODE_MD:-$HOME/.config/opencode/AGENTS.md}" \
-               "${AGENTLAS_ONE_OPENCLAW_MD:-$HOME/.openclaw/workspace/AGENTS.md}"; do
+  local list
+  if list="$(registry_entrypoint_files)" && [ -n "$list" ]; then
+    :
+  else
+    list="$(printf '%s\n' \
+      "${AGENTLAS_ONE_CODEX_MD:-$HOME/.codex/AGENTS.md}" \
+      "${AGENTLAS_ONE_GEMINI_MD:-$HOME/.gemini/GEMINI.md}" \
+      "${AGENTLAS_ONE_OPENCODE_MD:-$HOME/.config/opencode/AGENTS.md}" \
+      "${AGENTLAS_ONE_OPENCLAW_MD:-$HOME/.openclaw/workspace/AGENTS.md}")"
+  fi
+  while IFS= read -r extra; do
+    [ -n "$extra" ] || continue
     if [ -f "$extra" ] || [ -d "$(dirname "$extra")" ]; then
       printf '%s\n' "$extra"
     fi
-  done
+  done <<< "$list"
+}
+
+# Hook JSON files One may hold an entry in (Claude settings first).
+one_hook_files() {
+  printf '%s\n' "$SETTINGS"
+  local list
+  if list="$(registry_hook_files)" && [ -n "$list" ]; then
+    printf '%s\n' "$list"
+  else
+    printf '%s\n' \
+      "${AGENTLAS_ONE_CURSOR_HOOKS:-$HOME/.cursor/hooks.json}" \
+      "${AGENTLAS_ONE_CODEX_HOOKS:-$HOME/.codex/hooks.json}" \
+      "${AGENTLAS_ONE_AGY_HOOKS:-$HOME/.gemini/config/hooks.json}"
+  fi
 }
 
 block_install() {
@@ -255,7 +355,8 @@ cmd_statusline() {
   name="$(state_read name One)"
   since="$(state_read since '')"
 
-  ONE_PAYLOAD="$payload" ONE_NAME="$name" ONE_SINCE="$since" "$PY" <<'PYEOF'
+  local drift; drift="$(drift_summary)"
+  ONE_PAYLOAD="$payload" ONE_NAME="$name" ONE_SINCE="$since" ONE_DRIFT_LINE="$drift" "$PY" <<'PYEOF'
 import json, os, sys, time
 
 payload = os.environ.get("ONE_PAYLOAD", "")
@@ -283,6 +384,12 @@ if since:
             parts.append("\033[2menabled for %d days\033[0m" % days)
     except Exception:
         pass
+
+drift = os.environ.get("ONE_DRIFT_LINE", "").strip()
+if drift.startswith("runtime drift "):
+    # e.g. "runtime drift 2 (version 1, health 1) — …" → "⚠ drift 2"
+    count = drift.split()[2] if len(drift.split()) > 2 else "?"
+    parts.append("\033[33m⚠ drift %s\033[0m" % count)
 
 sys.stdout.write(" \033[2m·\033[0m ".join(parts))
 PYEOF
@@ -761,10 +868,8 @@ hook_asset_root() {
 # Each file is rewritten only to drop our own entry; everything else is kept.
 remove_stop_hooks() {
   local file
-  for file in "$SETTINGS" \
-              "${AGENTLAS_ONE_CURSOR_HOOKS:-$HOME/.cursor/hooks.json}" \
-              "${AGENTLAS_ONE_CODEX_HOOKS:-$HOME/.codex/hooks.json}" \
-              "${AGENTLAS_ONE_AGY_HOOKS:-$HOME/.gemini/config/hooks.json}"; do
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
     [ -f "$file" ] || continue
     cp "$file" "$file.one-backup-$(date +%s)" 2>/dev/null || true
     "$PY" - "$file" <<'PYEOF'
@@ -823,7 +928,7 @@ with open(tmp, "w", encoding="utf-8") as fh:
     fh.write("\n")
 os.replace(tmp, path)
 PYEOF
-  done
+  done < <(one_hook_files)
   rm -rf "${AGENTLAS_ONE_GOOSE_PLUGIN:-$HOME/.agents/plugins/agentlas-one}" 2>/dev/null || true
   rm -rf "${AGENTLAS_ONE_OPENCLAW_HOOK:-$HOME/.openclaw/hooks/agentlas-one}" 2>/dev/null || true
 }
@@ -860,11 +965,8 @@ PYEOF
 # exist are archived; the archive is written before any file is modified.
 uninstall_touchpoints() {
   runtime_entrypoints
-  printf '%s\n' "$SETTINGS" \
-    "${AGENTLAS_ONE_CURSOR_HOOKS:-$HOME/.cursor/hooks.json}" \
-    "${AGENTLAS_ONE_CODEX_HOOKS:-$HOME/.codex/hooks.json}" \
-    "${AGENTLAS_ONE_AGY_HOOKS:-$HOME/.gemini/config/hooks.json}" \
-    "$STATE_FILE" "$ONE_DIR/directive.md"
+  one_hook_files
+  printf '%s\n' "$STATE_FILE" "$ONE_DIR/directive.md"
 }
 
 # agentlas-one uninstall [--purge]
@@ -947,6 +1049,79 @@ registry_py() {
   return 1
 }
 
+# Runtime drift — checked on the user's machine, shown where the owner already
+# looks (PRD 2026-08-15 Phase B). No daemon: the session-end hook kicks one
+# background check per 24h (network, 20s cap, fail-open); the status line and
+# `status` read the last report. GitHub's daily job is only a backstop.
+drift_py() {
+  local mod
+  for mod in "$HOME/.agentlas/runtime/current/agentlas_cloud/runtime_drift.py" \
+             "$OS_ROOT/agentlas_cloud/runtime_drift.py"; do
+    if [ -f "$mod" ]; then printf '%s' "$mod"; return 0; fi
+  done
+  return 1
+}
+DRIFT_REPORT="$ONE_DIR/runtime-drift.json"
+
+drift_kick_daily() {
+  [ "${AGENTLAS_ONE_DRIFT_CHECK:-1}" = "1" ] || return 0
+  local mod; mod="$(drift_py)" || return 0
+  local stamp="$ONE_DIR/.runtime-drift.last"
+  if [ -f "$stamp" ]; then
+    local age; age=$(( $(date +%s) - $(stat -f %m "$stamp" 2>/dev/null || stat -c %Y "$stamp" 2>/dev/null || echo 0) ))
+    [ "$age" -ge 86400 ] || return 0
+  fi
+  mkdir -p "$ONE_DIR" 2>/dev/null || return 0
+  : > "$stamp"
+  # detached, quiet, bounded; never blocks the hook that called us
+  ( "$PY" "$mod" --write "$DRIFT_REPORT" --quiet --timeout 20 </dev/null >/dev/null 2>&1 & ) 2>/dev/null || true
+}
+
+drift_check_now() {
+  local mod; mod="$(drift_py)" || die "Cannot find runtime_drift.py"
+  mkdir -p "$ONE_DIR"
+  "$PY" "$mod" --write "$DRIFT_REPORT" "$@"
+}
+
+# One-line summary of the last report ("" when none / clean).
+drift_summary() {
+  [ -f "$DRIFT_REPORT" ] || return 0
+  ONE_DRIFT="$DRIFT_REPORT" "$PY" - <<'PYEOF' 2>/dev/null || true
+import json, os
+try:
+    r = json.load(open(os.environ["ONE_DRIFT"], encoding="utf-8"))
+except Exception:
+    raise SystemExit(0)
+f = r.get("findings") or []
+if r.get("status") != "ok":
+    print("runtime drift check unavailable (%s)" % (r.get("reason") or "?"))
+elif f:
+    kinds = {}
+    for x in f:
+        kinds[x.get("kind", "?")] = kinds.get(x.get("kind", "?"), 0) + 1
+    print("runtime drift %d (%s) — agentlas-one status --drift" % (len(f), ", ".join("%s %d" % kv for kv in sorted(kinds.items()))))
+PYEOF
+}
+
+cmd_status_drift() {
+  local mod; mod="$(drift_py)" || die "Cannot find runtime_drift.py"
+  if [ "${1:-}" = "--now" ]; then shift; drift_check_now "$@"; return $?; fi
+  if [ ! -f "$DRIFT_REPORT" ]; then
+    printf 'Runtime drift: no report yet (checked once a day from the session-end hook).\n'
+    printf '  Run now: agentlas-one status --drift --now\n'
+    return 0
+  fi
+  ONE_DRIFT="$DRIFT_REPORT" "$PY" - <<'PYEOF'
+import json, os
+r = json.load(open(os.environ["ONE_DRIFT"], encoding="utf-8"))
+print("Runtime drift (checked %s): %s" % (r.get("checkedAt", "?"), "unavailable — " + str(r.get("reason")) if r.get("status") != "ok" else ("none" if not r.get("findings") else "%d finding(s)" % len(r["findings"]))))
+for f in r.get("findings") or []:
+    print("  [%s] %s: %s" % (f.get("kind"), f.get("runtime"), f.get("detail")))
+if r.get("findings"):
+    print("  Review before adopting (cooldown 7 days). Pins live in contracts/runtime-registry.json.")
+PYEOF
+}
+
 cmd_status_runtimes() {
   local mod; mod="$(registry_py)" || die "Cannot find runtime_registry.py"
   "$PY" "$mod" status "$@"
@@ -954,6 +1129,7 @@ cmd_status_runtimes() {
 
 cmd_status() {
   if [ "${1:-}" = "--runtimes" ]; then shift; cmd_status_runtimes "$@"; return $?; fi
+  if [ "${1:-}" = "--drift" ]; then shift; cmd_status_drift "$@"; return $?; fi
   if [ ! -f "$STATE_FILE" ]; then
     printf 'One: disabled\n'
     printf '  Enable: agentlas-one on [name]\n'
@@ -975,6 +1151,9 @@ cmd_status() {
   else
     printf '  Status line: missing; run agentlas-one install\n'
   fi
+  local drift; drift="$(drift_summary)"
+  [ -n "$drift" ] && printf '  Drift     : %s\n' "$drift"
+  return 0
 }
 
 # ---------------------------------------------------------------- workspace delegation
@@ -1052,6 +1231,7 @@ case "${1:-status}" in
               # Session-end is the one moment every install passes through, so
               # legacy wiring heals here (fail-open; stdout stays hook-clean).
               self_heal_claude_settings >/dev/null 2>&1 || true
+              drift_kick_daily >/dev/null 2>&1 || true
               cmd_workspace stop-hook ${1:+--host "$1"} ;;
-  *)          die "Usage: agentlas-one {install|on [name]|off|uninstall [--purge]|name <name>|status [--runtimes]|memory|remember <text>|curate|seed|chips [status]|promote <chip> [reason]|reject <chip> [reason]|coverage}" ;;
+  *)          die "Usage: agentlas-one {install|on [name]|off|uninstall [--purge]|name <name>|status [--runtimes|--drift]|memory|remember <text>|curate|seed|chips [status]|promote <chip> [reason]|reject <chip> [reason]|coverage}" ;;
 esac

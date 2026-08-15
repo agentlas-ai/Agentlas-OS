@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Phase B (2026-08-15 evening).**
+  - `agentlas-one` reads `contracts/runtime-registry.json` for every runtime's
+    instruction file, hook file and hook pack (hardcoded lists remain only as
+    the registry-less fallback); registry grew to 18 rows (amp, warp, amazonq).
+    Installer/registry parity is a contract.
+  - Runtime drift now surfaces where the owner looks: the session-end hook runs
+    one background check per day (opt-out `AGENTLAS_ONE_DRIFT_CHECK=0`),
+    `agentlas-one status --drift [--now]`, a `Drift` line in `status`, and a
+    `⚠ drift N` marker in the Claude Code status line. Detector moved to
+    `agentlas_cloud/runtime_drift.py` (shipped in the runtime home).
+  - Cross-platform wiring CI is green again: runners get jsonschema/referencing,
+    and a Windows runtime home copied by `ln -s` is accepted instead of rolled back.
 - **Runtime × Model architecture (PRD 2026-08-15) — Core track.**
   - `agentlas-one uninstall [--purge]`: backs every touchpoint up to a timestamped
     tar.gz, then removes hook entries (Claude/Codex/Cursor/Antigravity), marker

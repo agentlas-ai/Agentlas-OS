@@ -85,6 +85,12 @@ run_gate OS-9 "installer: codex skills feature-detected (version only as fallbac
 run_gate OS-10 "drift detector: clean->0, version/health/capability drift->1" \
   "$PY" -m pytest -q -p no:cacheprovider tests/test_runtime_registry.py -k drift
 
+# B-2 (Phase B): One reads entrypoints/hook files from the registry; installer/registry parity; drift surface.
+run_gate B-2a "One reads the runtime registry (entrypoints, hook files) + installer/registry parity" \
+  "$PY" -m pytest -q -p no:cacheprovider tests/test_installer_registry_parity.py
+run_gate B-2b "runtime drift surfaces in agentlas-one status / statusline (no daemon; daily hook kick, opt-out)" \
+  "$PY" -m pytest -q -p no:cacheprovider tests/test_agentlas_one_drift.py
+
 # P-2 (OS part): installer default --ref tracks the manifest version.
 run_gate P-2 "verify-install-docs (installer HEPHAESTUS_REF == manifest version)" bash scripts/verify-install-docs.sh
 
