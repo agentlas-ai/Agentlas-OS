@@ -81,6 +81,13 @@ for pattern in "${bad_patterns[@]}"; do
 done
 
 stale_pins="$(grep -oI 'v0\.[0-9]+\.[0-9]+' "${scan_files[@]}" 2>/dev/null | sort -u | grep -v "^${expected_tag}$" || true)"
+# The installer's own default --ref must move with every release. It did not on
+# v1.2.5 (stayed v1.2.4, 2026-08-15) and nothing here noticed: the stale-pin
+# scan above only knows v0.x tags. Check the one pin that decides what a fresh
+# `curl … | bash` actually installs.
+installer_default_ref="$(sed -n 's/.*HEPHAESTUS_REF:-\(v[0-9.]*\)}.*/\1/p' scripts/install-all-runtimes.sh | head -1)"
+[[ "$installer_default_ref" == "$expected_tag" ]] \
+  || fail "install-all-runtimes.sh default HEPHAESTUS_REF is ${installer_default_ref:-unset}, manifest says ${expected_tag}"
 if [[ -n "$stale_pins" ]]; then
   fail "stale version pins in docs (expected only ${expected_tag}): $(printf '%s ' $stale_pins)"
 fi

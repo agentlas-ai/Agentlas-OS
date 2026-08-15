@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "hephaestus",
+  "version": "1.2.5",
+  "description": "Agentlas Core Engine (Hephaestus): runtime-neutral agent workspace, factory, and OS. Skills load from ./skills, the Workforce MCP server from ./mcp.json.",
+  "author": {
+    "name": "Agentlas",
+    "email": "appbridge@appbridge.co.kr",
+    "url": "https://agentlas.ai"
+  },
+  "homepage": "https://agentlas.ai",
+  "repository": "https://github.com/agentlas-ai/Agentlas-OS",
+  "license": "Apache-2.0",
+  "keywords": ["agentlas", "hephaestus", "workforce", "meta-agent", "acp", "mcp"]
+}

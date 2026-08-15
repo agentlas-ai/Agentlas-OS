@@ -16,7 +16,7 @@ from ..model_allocation import (
     resolve_model_allocation,
 )
 from .stormbreaker_harness import goal_ultracode_harness, harness_reference
-from .runtime_capabilities import descriptor_from_session
+from .runtime_capabilities import descriptor_from_session, scrub_identity_features
 
 
 STAGE_CAPABILITY_HINTS: dict[str, tuple[str, ...]] = {
@@ -35,6 +35,33 @@ def _family_from_session(raw: Any, session_id: str) -> str:
             return advertised
     prefix = re.split(r"[:/@-]", session_id.strip().lower(), maxsplit=1)[0]
     return prefix if re.fullmatch(r"[a-z0-9][a-z0-9._]{0,63}", prefix) else "host"
+
+
+# Access path is the ONLY thing the runtime x model matrix (PLAN 2026-08-14 §1.3)
+# is allowed to answer: does this (runtime, model) pair need runtime-specific
+# code (a subscription CLI) or the generic API/local path? Anything finer
+# (context window, price, tools) belongs to live discovery, never to this field.
+ACCESS_PATHS = ("subscription-cli", "api", "local", "unknown")
+
+
+def _provider_from_session(raw: Any, family: str) -> str:
+    """Opaque provider label for the inventory channel; never a capability."""
+
+    if isinstance(raw, Mapping):
+        advertised = str(raw.get("provider") or "").strip().lower()
+        if re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", advertised):
+            return advertised
+    return family
+
+
+def _access_path_from_session(raw: Any) -> str:
+    if isinstance(raw, Mapping):
+        advertised = str(raw.get("access_path") or raw.get("accessPath") or "").strip().lower()
+        if advertised in ACCESS_PATHS:
+            return advertised
+        if raw.get("local") is True:
+            return "local"
+    return "unknown"
 
 
 def _as_capabilities(value: Any) -> list[str]:
@@ -62,7 +89,9 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
             {
                 "session_id": "host:primary",
                 "family": "host",
+                "provider": "host",
                 "model": "host-runtime",
+                "access_path": "unknown",
                 "trust": "host",
                 "capabilities": ["route_selected_execution"],
                 "max_parallel": 1,
@@ -100,12 +129,19 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
         except (TypeError, ValueError):
             max_parallel = 1
         family = _family_from_session(raw, session_id)
-        capability_descriptor = descriptor_from_session(raw, session_id)
+        provider = _provider_from_session(raw, family)
+        capability_descriptor = scrub_identity_features(
+            descriptor_from_session(raw, session_id), [model, provider, family]
+        )
         sessions.append(
             {
                 "session_id": session_id,
                 "family": family,
+                # Separate inventory channel for provider/model identity — the
+                # capability descriptor below must never learn these values.
+                "provider": provider,
                 "model": model,
+                "access_path": _access_path_from_session(raw),
                 "trust": trust if trust in {"host", "local", "approved_external", "untrusted"} else "approved_external",
                 "capabilities": capabilities,
                 "max_parallel": max(1, max_parallel),

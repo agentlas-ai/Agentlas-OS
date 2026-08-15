@@ -248,11 +248,36 @@ def descriptor_from_session(raw: Any, session_id: str) -> dict[str, Any]:
     return descriptor
 
 
+def scrub_identity_features(descriptor: dict[str, Any], identities: list[str]) -> dict[str, Any]:
+    """Drop any feature that is really a model/provider identity.
+
+    The descriptor is a *capability* surface; provider/model names live in the
+    session inventory channel. A host that lists its model id under
+    ``planes.tools.features`` would otherwise smuggle vendor identity into
+    scoring. Matching is exact, case-insensitive, on the whole feature string.
+    """
+
+    banned = {str(value).strip().lower() for value in identities if isinstance(value, str) and value.strip()}
+    if not banned:
+        return descriptor
+    planes = descriptor.get("planes")
+    if not isinstance(planes, dict):
+        return descriptor
+    for plane in planes.values():
+        if not isinstance(plane, dict):
+            continue
+        features = plane.get("features")
+        if isinstance(features, list):
+            plane["features"] = [feature for feature in features if str(feature).lower() not in banned]
+    return descriptor
+
+
 __all__ = [
     "PLANE_NAMES",
     "SCHEMA_VERSION",
     "descriptor_from_session",
     "normalize_runtime_capability_descriptor",
+    "scrub_identity_features",
     "unknown_runtime_capability_descriptor",
     "validate_runtime_capability_descriptor",
 ]

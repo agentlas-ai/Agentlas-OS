@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.2.4}"
+version="${HEPHAESTUS_REF:-v1.2.5}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -940,7 +940,29 @@ remove_codex_existing() {
 # prompt copier only for older Codex releases and remove only our managed dead
 # prompt files on current releases so the installer does not advertise a
 # command the host rejects.
-codex_custom_prompts_supported() {
+#
+# Feature detection, not version sniffing (PRD 2026-08-15 OS-9). Version
+# strings freeze, lie, or get reused; the capability itself can be asked for:
+#   1. `codex features list` — a stable `plugins` / `skill_search` flag means
+#      the plugin-skills era (prompts gone). A table without them means the
+#      prompts era. Measured on codex-cli 0.147.0 (2026-08-15).
+#   2. No feature table (older CLI): a `plugin` subcommand in --help.
+#   3. Only then the historical 0.117 version threshold, as a last resort.
+codex_plugin_skills_supported() {
+  local table
+  table="$(codex features list 2>/dev/null || true)"
+  if [[ -n "$table" ]]; then
+    printf '%s\n' "$table" | grep -Eq '^(plugins|skill_search)[[:space:]]+.*[[:space:]]true[[:space:]]*$'
+    return $?
+  fi
+  if codex --help 2>/dev/null | grep -Eq '^[[:space:]]+plugin([[:space:]]|$)'; then
+    return 0
+  fi
+  ! codex_version_below_0_117
+}
+
+# Historical fallback only — never the first question asked.
+codex_version_below_0_117() {
   local raw parsed major minor rest
   raw="$(codex --version 2>/dev/null || true)"
   parsed="$(printf '%s\n' "$raw" | sed -nE 's/^[^0-9]*([0-9]+)\.([0-9]+)(\.[0-9]+)?.*/\1.\2/p' | head -1)"
@@ -949,6 +971,10 @@ codex_custom_prompts_supported() {
   rest="${parsed#*.}"
   minor="${rest%%.*}"
   [[ "$major" == "0" && "$minor" -lt 117 ]]
+}
+
+codex_custom_prompts_supported() {
+  ! codex_plugin_skills_supported
 }
 
 prune_managed_codex_prompts() {
@@ -1753,4 +1779,7 @@ if [[ "${AGENTLAS_INSTALLER_LIBRARY_ONLY:-0}" == "1" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-main "$@"
+# Allow `source` for contract tests without running the installer.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

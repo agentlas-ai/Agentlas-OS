@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "hephaestus-network": {
+      "type": "stdio",
+      "command": "./bin/hephaestus",
+      "args": ["mcp", "serve"],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

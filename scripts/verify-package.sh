@@ -41,6 +41,13 @@ required_files=(
   "docs/hephaestus-agentlas-gateway-architecture.md"
   "agent.md"
   "package-contract.json"
+  "plugin.json"
+  "mcp.json"
+  "scripts/verify-agent-plugins-manifest.sh"
+  "contracts/runtime-registry.json"
+  "schemas/runtime-registry.schema.json"
+  "agentlas_cloud/runtime_registry.py"
+  "agentlas_cloud/networking/acp_client.py"
   "schemas/package-contract.schema.json"
   "agents/10-single-agent-builder/agent.md"
   "agents/20-multi-agent-team-builder/agent.md"
@@ -637,6 +644,9 @@ scripts/sync-adapters.sh --check
 # at borrow. Check the templates against the schemas the contract binds them to.
 scripts/verify-contract-templates.sh
 scripts/verify-mcp-surface.sh
+# Agent Plugins 1.0 (agent-plugins.org): the vendor-neutral package surface —
+# plugin.json + skills/ + mcp.json. Its version must track the engine version.
+scripts/verify-agent-plugins-manifest.sh
 # Every name this product writes down must point at something that exists. Five
 # separate defects — a build command naming unshipped files, a CLI subcommand
 # missing from the dispatcher, a seed file with no writer, and two singular/plural

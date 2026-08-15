@@ -1,0 +1,54 @@
+name: Runtime drift (daily)
+
+# Detect automatically, apply by hand (PRD 2026-08-15 OS-10, coverage plan §6).
+#
+# The ACP registry runs a real `initialize` probe against every agent every day
+# and publishes the result (.protocol-matrix/latest.json). We do not rebuild that
+# monitor — we subscribe: compare our pins in contracts/runtime-registry.json to
+# the registry versions, flag agents whose initialize is no longer `success`, and
+# diff capabilities against yesterday's snapshot. Any change fails this job and
+# leaves a JSON artifact for a human to review. Nothing here edits the registry:
+# automatic upstream adoption is what the axios (5 min) / trivy-action (56 min)
+# supply-chain incidents punished. Cooldown before pin bumps: 7 days.
+
+on:
+  schedule:
+    - cron: "45 5 * * *"   # after the registry's own 05:15 UTC probe run
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Fetch yesterday's matrix snapshot (best effort)
+        run: |
+          d="$(date -u -d 'yesterday' +%Y-%m-%d)"
+          curl -fsSL -A "agentlas-runtime-drift/1.0" \
+            "https://raw.githubusercontent.com/agentclientprotocol/registry/main/.protocol-matrix/snapshots/${d}.json" \
+            -o previous-matrix.json || echo "no snapshot for ${d}"
+      - name: Compare pins, health, and capabilities
+        run: |
+          set +e
+          prev=""
+          [ -s previous-matrix.json ] && prev="--previous-matrix previous-matrix.json"
+          python3 scripts/check-runtime-drift.py --json $prev | tee runtime-drift.json
+          rc=${PIPESTATUS[0]}
+          python3 scripts/check-runtime-drift.py $prev >> "$GITHUB_STEP_SUMMARY" || true
+          exit $rc
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-drift-${{ github.run_id }}
+          path: |
+            runtime-drift.json
+            previous-matrix.json
+          if-no-files-found: ignore

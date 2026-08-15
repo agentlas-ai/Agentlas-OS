@@ -1,6 +1,6 @@
 ---
 description: Turn the persistent Agentlas One personal agent on or off, or rename it.
-argument-hint: '[on <name> | off | name <name> | status | install]'
+argument-hint: '[on <name> | off | uninstall [--purge] | name <name> | status [--runtimes] | install]'
 allowed-tools: Bash
 ---
 
@@ -37,4 +37,9 @@ Treat an empty argument list as `status`.
   status line exists, the script refuses to overwrite it. Show the existing command and ask how to proceed.
 - `off` removes the state file and the `AGENTLAS-ONE` block from `~/.claude/CLAUDE.md`.
   Backups are created automatically.
+- `uninstall [--purge]` removes every One footprint (hook entries in Claude/Codex/Cursor/
+  Antigravity, marker blocks, status line, state) after writing a timestamped tar.gz backup;
+  it is idempotent and prints the restore command. `--purge` also deletes the One workspace.
+- `status --runtimes [--json]` prints the per-runtime support matrix (grade, install level,
+  present/directive/hook on this machine, ACP transport, access path).
 - Never claim an action the script did not perform.

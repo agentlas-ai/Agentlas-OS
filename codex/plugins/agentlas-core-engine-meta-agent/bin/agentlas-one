@@ -7,8 +7,14 @@
 #   agentlas-one install        Wire the status line and Stop hook once.
 #   agentlas-one on [name]      Enable One and seed its workspace.
 #   agentlas-one off            Disable One.
+#   agentlas-one uninstall [--purge]
+#                               Back up, then remove every One footprint (hooks,
+#                               directive blocks, status line, state). --purge
+#                               also deletes the One workspace directory.
 #   agentlas-one name <name>    Rename One.
 #   agentlas-one status         Show current state.
+#   agentlas-one status --runtimes [--json]
+#                               Per-runtime support matrix (registry + this machine).
 #   agentlas-one memory         Measure memory and experience chips.
 #   agentlas-one remember <text> Emit a memory-candidate ticket.
 #   agentlas-one curate         Curate tickets into durable memory candidates.
@@ -822,6 +828,100 @@ PYEOF
   rm -rf "${AGENTLAS_ONE_OPENCLAW_HOOK:-$HOME/.openclaw/hooks/agentlas-one}" 2>/dev/null || true
 }
 
+# Remove ONLY a status line we installed (command contains "agentlas-one
+# statusline"). A user-owned status line is left exactly as found.
+remove_statusline() {
+  [ -f "$SETTINGS" ] || return 0
+  grep -q 'agentlas-one statusline' "$SETTINGS" 2>/dev/null || return 0
+  cp "$SETTINGS" "$SETTINGS.one-backup-$(date +%s)" 2>/dev/null || true
+  "$PY" - "$SETTINGS" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as fh:
+        settings = json.load(fh)
+except Exception:
+    raise SystemExit(0)              # Preserve an unreadable user-owned file.
+if not isinstance(settings, dict):
+    raise SystemExit(0)
+existing = settings.get("statusLine")
+if not (isinstance(existing, dict) and "agentlas-one statusline" in str(existing.get("command", ""))):
+    raise SystemExit(0)
+del settings["statusLine"]
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(settings, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+PYEOF
+}
+
+# Every file uninstall may touch, for the pre-flight backup. Only files that
+# exist are archived; the archive is written before any file is modified.
+uninstall_touchpoints() {
+  runtime_entrypoints
+  printf '%s\n' "$SETTINGS" \
+    "${AGENTLAS_ONE_CURSOR_HOOKS:-$HOME/.cursor/hooks.json}" \
+    "${AGENTLAS_ONE_CODEX_HOOKS:-$HOME/.codex/hooks.json}" \
+    "${AGENTLAS_ONE_AGY_HOOKS:-$HOME/.gemini/config/hooks.json}" \
+    "$STATE_FILE" "$ONE_DIR/directive.md"
+}
+
+# agentlas-one uninstall [--purge]
+#
+# Removal is restoration, not deletion: (1) archive every touchpoint that
+# exists to <one-parent>/backup/one-uninstall-<ts>.tar.gz, (2) drop our marker
+# blocks, our hook entries, our status line, and the state file — each rewrite
+# is atomic (tmp -> rename) and leaves everything we did not write untouched,
+# (3) with --purge also delete the One workspace directory. Idempotent: a
+# second run finds nothing to remove and still exits 0. Fail-open on a
+# missing/unreadable file: it is skipped and named in the receipt.
+cmd_uninstall() {
+  local purge=false arg
+  for arg in "$@"; do
+    case "$arg" in
+      --purge) purge=true ;;
+      *) die "Unknown option: $arg (usage: agentlas-one uninstall [--purge])" ;;
+    esac
+  done
+  local name; name="$(state_read name One)"
+  local backup_dir="${AGENTLAS_ONE_BACKUP_DIR:-$(dirname "$ONE_DIR")/backup}"
+  local ts; ts="$(date +%Y%m%dT%H%M%S)"
+  local archive="$backup_dir/one-uninstall-$ts.tar.gz"
+  mkdir -p "$backup_dir"
+  local archived
+  archived="$(uninstall_touchpoints | ONE_ARCHIVE="$archive" "$PY" -c '
+import os, sys, tarfile
+paths = [line.strip() for line in sys.stdin if line.strip()]
+seen, count = set(), 0
+with tarfile.open(os.environ["ONE_ARCHIVE"], "w:gz") as tar:
+    for path in paths:
+        if path in seen or not os.path.isfile(path):
+            continue
+        seen.add(path)
+        tar.add(path, arcname=path.lstrip("/"))
+        count += 1
+print(count)
+' 2>/dev/null || printf '0')"
+  block_remove
+  remove_stop_hooks
+  remove_statusline
+  rm -f "$STATE_FILE" "$ONE_DIR/directive.md"
+  local purged="kept"
+  if [ "$purge" = true ]; then
+    # Refuse to purge anything that is not clearly the One workspace.
+    case "$ONE_DIR" in
+      */.agentlas/one|*/one) rm -rf "$ONE_DIR"; purged="deleted" ;;
+      *) purged="refused (unexpected path: $ONE_DIR)" ;;
+    esac
+  fi
+  printf '%s uninstalled.\n' "${name:-One}"
+  printf '  Backup     : %s (%s files)\n' "$archive" "${archived:-0}"
+  printf '  Removed    : directive blocks, Stop hooks, status line, state file\n'
+  printf '  Workspace  : %s (%s)\n' "$ONE_DIR" "$purged"
+  printf '  Restore    : tar -xzf %s -C /\n' "$archive"
+}
+
 cmd_name() {
   local name="${1:-}"
   [ -n "$name" ] || die "Provide a name: agentlas-one name <name>"
@@ -835,7 +935,25 @@ cmd_name() {
   fi
 }
 
+# `status --runtimes`: the per-runtime support matrix (PRD 2026-08-15 OS-5).
+# Data comes from contracts/runtime-registry.json; presence/directive/hook are
+# measured on this machine, never assumed from the registry.
+registry_py() {
+  local mod
+  for mod in "$HOME/.agentlas/runtime/current/agentlas_cloud/runtime_registry.py" \
+             "$OS_ROOT/agentlas_cloud/runtime_registry.py"; do
+    if [ -f "$mod" ]; then printf '%s' "$mod"; return 0; fi
+  done
+  return 1
+}
+
+cmd_status_runtimes() {
+  local mod; mod="$(registry_py)" || die "Cannot find runtime_registry.py"
+  "$PY" "$mod" status "$@"
+}
+
 cmd_status() {
+  if [ "${1:-}" = "--runtimes" ]; then shift; cmd_status_runtimes "$@"; return $?; fi
   if [ ! -f "$STATE_FILE" ]; then
     printf 'One: disabled\n'
     printf '  Enable: agentlas-one on [name]\n'
@@ -913,8 +1031,9 @@ case "${1:-status}" in
   install)    cmd_install ;;
   on)         shift; cmd_on "${1:-}" ;;
   off)        cmd_off ;;
+  uninstall)  shift; cmd_uninstall "$@" ;;
   name)       shift; cmd_name "${1:-}" ;;
-  status)     cmd_status ;;
+  status)     shift; cmd_status "$@" ;;
   memory)     cmd_memory ;;
   seed)       shift; cmd_workspace seed --name "$(state_read name One)" "$@" ;;
   remember)   shift; [ -n "${1:-}" ] || die "Provide content to remember"; cmd_workspace emit --content "$*" ;;
@@ -934,5 +1053,5 @@ case "${1:-status}" in
               # legacy wiring heals here (fail-open; stdout stays hook-clean).
               self_heal_claude_settings >/dev/null 2>&1 || true
               cmd_workspace stop-hook ${1:+--host "$1"} ;;
-  *)          die "Usage: agentlas-one {install|on [name]|off|name <name>|status|memory|remember <text>|curate|seed|chips [status]|promote <chip> [reason]|reject <chip> [reason]|coverage}" ;;
+  *)          die "Usage: agentlas-one {install|on [name]|off|uninstall [--purge]|name <name>|status [--runtimes]|memory|remember <text>|curate|seed|chips [status]|promote <chip> [reason]|reject <chip> [reason]|coverage}" ;;
 esac

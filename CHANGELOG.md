@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+- **Runtime × Model architecture (PRD 2026-08-15) — Core track.**
+  - `agentlas-one uninstall [--purge]`: backs every touchpoint up to a timestamped
+    tar.gz, then removes hook entries (Claude/Codex/Cursor/Antigravity), marker
+    blocks, the status line and state atomically; idempotent.
+  - `agentlas-one status --runtimes [--json]`: per-runtime support matrix from the
+    new declarative registry `contracts/runtime-registry.json` (grade A–E, install
+    level L0–L3, access path, ACP command), measured on this machine.
+  - Stdlib-only ACP v1 client (`agentlas_cloud/networking/acp_client.py`):
+    initialize → authenticate (menu, not priority) → session/new model list with
+    zero text parsing; produces `transport=acp` capability descriptors.
+  - `session_inventory[]` now carries `provider` and `access_path` as its own
+    channel; provider/model identities are scrubbed from descriptor features.
+  - Agent Plugins 1.0 manifests (`plugin.json`, `mcp.json`) + gate.
+  - Installer: Codex prompts/skills decision is feature-detected
+    (`codex features list`), version threshold only as last resort.
+  - `scripts/check-runtime-drift.py` + daily workflow: pins vs ACP registry,
+    matrix health, capability diffs — detect only, never auto-apply.
+  - Fix: installer default `HEPHAESTUS_REF` had stayed at v1.2.4 after the v1.2.5
+    release; `verify-install-docs.sh` now checks that pin.
+  - `sync-adapters.sh --check` now enforces the builder canon and interview
+    contract mirrors (previously matched by luck, never compared).
+
+
 ## v1.2.5 - 2026-08-15
 
 - **Project map is seeded on first contact from any tool.**

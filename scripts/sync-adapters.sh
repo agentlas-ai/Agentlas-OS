@@ -58,6 +58,21 @@ code_files=(
   # repo: 5 of 18 required artifacts present, contract verify 23 blockers each.
   "AGENTS.md"
   ".agentlas/mode-map.json"
+  # Builder procedure canon + interview gate contract. These four files ARE the
+  # build: without them the deployed hephaestus:*-builder subagents are a 20-line
+  # metadata shell that improvises the interview (measured 2026-08-12: the plugin
+  # mirror had the shell but not the 187-line procedure, so no CLI runtime ever
+  # showed the interview). The mirrors happened to match on 2026-08-15, but
+  # --check never compared them — a drift here was undetectable. Listed as files,
+  # not as a directory: contracts/ carries untracked node_modules/ and test/ that
+  # must never be rsynced into a shipped bundle.
+  "contracts/builder-interview-research-gate.md"
+  # Runtime registry: `agentlas-one status --runtimes` reads it from the runtime
+  # home, so every mirror must carry the same rows.
+  "contracts/runtime-registry.json"
+  "agents/10-single-agent-builder/agent.md"
+  "agents/20-multi-agent-team-builder/agent.md"
+  "agents/30-agentlas-packager/agent.md"
   # NOT shipped into adapter mirrors. The release archive check refuses any
   # `docs/` path inside a plugin bundle, and it is right to: internal design
   # and research notes are not end-user install material. Added here earlier
