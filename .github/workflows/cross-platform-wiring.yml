@@ -70,6 +70,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The runtime-home installer refuses any Python that cannot import
+      # jsonschema + referencing (bin/agentlas-python-cache-boundary,
+      # agentlas_python_candidate_ok). A bare runner has neither, so every run
+      # since 2026-08-13 stopped at "Runtime home install failed" and the
+      # post-install contract below judged an install that never happened. Give
+      # the runner what a real machine gets from the one-touch preflight.
+      - name: Python contract-validator dependencies
+        run: python -m pip install --quiet --disable-pip-version-check jsonschema referencing
+
       # Static half: is the wiring written correctly. Cheap, and fails before an
       # install can mask the problem.
       - name: Static wiring contract
