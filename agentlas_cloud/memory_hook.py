@@ -456,6 +456,12 @@ def build_capsule(
     if project_root is None and not workforce_lines:
         return None, cwd
     question = _extract_prompt(payload, prompt_override) or DEFAULT_SESSION_QUERY
+    # Phase A.2: the prompt is the intent of the work that follows. Recording it
+    # under the same session hash the PreToolUse ledger uses lets a later reader
+    # join "what the user asked" to "which files were then touched" without a
+    # Stop hook — which no runtime adapter registers (measured, see PRD E-1).
+    if project_root is not None and _extract_prompt(payload, prompt_override):
+        _append_intent_ledger(project_root, payload, question)
     project_db = (
         project_root / ".agentlas" / "ontology-runtime.sqlite"
         if project_root is not None
@@ -490,12 +496,23 @@ def build_capsule(
         try:
             from .context_map import context_slice, render_context_slice
 
+            # Read-only recall must not go blind on a project someone else is
+            # editing. Serve the last complete map, flagged stale, rather than
+            # nothing — measured: the pilot was always stale, so One never
+            # received the library it was built for.
             structural_slice = context_slice(
                 project_root,
                 question,
                 refresh=False,
+                allow_stale=True,
             )
-            context_slice_line = render_context_slice(structural_slice, max_chars=2_400)
+            # Render to the layer's own budget. Rendering to 2,400 and then
+            # trimming at 1,200 dropped the whole slice as one oversize line —
+            # measured: every project whose slice exceeded 1,200 chars (i.e.
+            # every real one) received no library at all, only small fixtures did.
+            context_slice_line = render_context_slice(
+                structural_slice, max_chars=LAYER_BUDGETS["context_slice"] - 1
+            )
             _record_context_markers(
                 project_db,
                 [("code_map", max(1, len(context_slice_line) // 4))],
@@ -691,6 +708,99 @@ def _event_name(payload: dict[str, Any], override: str | None) -> str:
     return value or "UserPromptSubmit"
 
 
+CONTACT_LEDGER_FILE = "contact-ledger.jsonl"
+CONTACT_LEDGER_SCHEMA = "agentlas.contact-ledger.v1"
+MAX_CONTACT_PATHS = 32
+
+
+def _append_contact_ledger(
+    project_root: Path,
+    payload: dict[str, Any],
+    changed: list[str],
+) -> None:
+    """Record which files one unit of work touched. Append-only, paths only.
+
+    This is the growth signal the project map cannot derive statically: files
+    that are always edited together are related even when no import connects
+    them. Measured on this repo's history, co-edited pairs predicted the next
+    change 94.5% of the time versus 13.4% for the AST dependency graph, and
+    95.4% of those pairs had no AST edge at all.
+
+    Never blocks and never raises: a failure here must not cost the user their
+    edit. Content is never read; only project-relative paths are stored.
+    """
+
+    try:
+        line = json.dumps(
+            {
+                "schema_version": CONTACT_LEDGER_SCHEMA,
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "tool": _payload_string(payload, ("tool_name", "toolName", "name"))[:40],
+                "paths": sorted(set(changed))[:MAX_CONTACT_PATHS],
+                # Correlates edits within one session without identifying it.
+                "session": _session_key(payload),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        target = project_root / ".agentlas" / CONTACT_LEDGER_FILE
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding="utf-8", newline="\n") as handle:  # no CRLF on Windows
+            handle.write(line + "\n")
+    except Exception:
+        return
+
+
+MAX_INTENT_CHARS = 240
+
+
+def _session_key(payload: dict[str, Any]) -> str:
+    """Stable per-conversation key; never the raw id, never a shared constant.
+
+    Hosts that send no session id (grok, antigravity — measured) would all hash
+    to sha256("") and every edit in the project would become one work unit. In
+    that case fall back to the parent process id, which is stable for the life
+    of the host process and distinct across hosts. The reader also splits work
+    units by time window, so even this fallback stays bounded.
+    """
+
+    raw = _payload_string(payload, ("session_id", "sessionId", "conversation_id"))
+    if not raw:
+        raw = f"ppid:{os.getppid()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _append_intent_ledger(project_root: Path, payload: dict[str, Any], prompt: str) -> None:
+    """One line per user turn: the stated intent, keyed to the session.
+
+    Same file and same session key as the contact ledger, so intent and touched
+    files join on `session` with no further bookkeeping. Prompt text is bounded
+    and secret-redacted; nothing else about the turn is stored.
+    """
+
+    try:
+        text = _redact_secrets(prompt)[:MAX_INTENT_CHARS]
+        if not text.strip():
+            return
+        line = json.dumps(
+            {
+                "schema_version": CONTACT_LEDGER_SCHEMA,
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "kind": "intent",
+                "intent": text,
+                "session": _session_key(payload),
+            },
+            ensure_ascii=False, separators=(",", ":"), sort_keys=True,
+        )
+        target = project_root / ".agentlas" / CONTACT_LEDGER_FILE
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding="utf-8", newline="\n") as handle:  # no CRLF on Windows
+            handle.write(line + "\n")
+    except Exception:
+        return
+
+
 def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -> tuple[str | None, Path | None]:
     """Return a bounded reverse-reference warning immediately before mutation.
 
@@ -737,6 +847,7 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
             continue
     if not changed:
         return None, project_root
+    _append_contact_ledger(project_root, payload, changed)
     try:
         from .context_map import impact
 

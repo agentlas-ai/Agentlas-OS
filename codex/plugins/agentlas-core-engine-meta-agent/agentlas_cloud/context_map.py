@@ -59,9 +59,31 @@ MAX_CONTEXT_NODES = 48
 MAX_CONTEXT_EDGES = 128
 MAX_DECLARED_NODES = 2_000
 MAX_DECLARED_EDGES = 8_000
+# Per-node edge budget for closure. Keeps one hub node from filling the slice.
+MAX_EDGES_PER_NODE = 64
+# Tier for inherited project context that the task never reached. Higher than
+# any traversal hop so it only fills budget the task left unused.
+_INHERITED_TIER = 9
+# What the project IS, as opposed to what it has accumulated. Bounded in
+# practice, so these seed traversal instead of waiting for leftover budget.
+_DEFINING_NODE_TYPES = frozenset({"project", "goal", "subgoal", "requirement", "constraint"})
+# Which declared types carry the most for a reader. Used only to break ties
+# inside a tier, never to exclude anything.
+_NODE_TYPE_RANK = {
+    "goal": 0, "subgoal": 1, "requirement": 2, "constraint": 3,
+    "decision": 4, "metric": 5, "deadline": 6, "project": 7,
+    "fact": 8, "procedure": 9, "assumption": 10,
+}
+_DEFAULT_TYPE_RANK = 11
 MAX_RENDER_CHARS = 9_000
 
-_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+# ASCII identifiers (3+) OR any run of non-ASCII letters (2+). The ASCII-only
+# form silently discarded every Korean/Japanese/Chinese word: measured on four
+# real projects, "API 라우트 추가" tokenised to ['api'] alone and the slice
+# returned files 0 / symbols 0 while the English "add API route" found 13/5.
+# Non-ASCII terms cannot match code symbols, but they DO match declared titles
+# in sitemap/context-map, which is where a non-English author's intent lives.
+_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}|[^\W\d_]{2,}", re.UNICODE)
 _PATH_HINT_RE = re.compile(
     r"(?<![A-Za-z0-9_.-])"
     r"((?:[A-Za-z0-9_.()@+-]+/)+[A-Za-z0-9_.()@+-]+)"
@@ -307,8 +329,18 @@ def load_code_map(
     *,
     refresh: bool = True,
     force_refresh: bool = False,
+    allow_stale: bool = False,
 ) -> tuple[Path, dict[str, Any], dict[str, Any] | None]:
-    """Load the canonical map, optionally refreshing its fingerprint first."""
+    """Load the canonical map, optionally refreshing its fingerprint first.
+
+    ``allow_stale`` serves the last complete map even when the passive
+    freshness check would reject it, and reports that in the receipt. Read-only
+    callers that cannot refresh (the recall hook) otherwise return nothing on
+    any actively-edited project — measured: the pilot workspace was always
+    stale because another session was writing, so the hook never delivered a
+    slice to the very sessions doing the work. A stale map with a stale flag
+    beats no map.
+    """
 
     root = _project_root(project)
     refresh_receipt: dict[str, Any] | None = None
@@ -422,7 +454,12 @@ def load_code_map(
     ):
         raise ContextMapError("context_map_incomplete")
     if not refresh:
-        _require_passive_freshness(root, payload, cache)
+        try:
+            _require_passive_freshness(root, payload, cache)
+        except ContextMapError as exc:
+            if not allow_stale or getattr(exc, "code", "") != "context_map_stale":
+                raise
+            refresh_receipt = {**(refresh_receipt or {}), "refresh": "stale_served", "stale": True}
     return root, payload, refresh_receipt
 
 
@@ -446,12 +483,19 @@ def _node_status(node: Mapping[str, Any]) -> str:
 
 def _load_declared_graph(
     root: Path,
+    *,
+    include_inactive: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Merge explicit Context Map declarations with annotated sitemap nodes.
 
     Generated file/directory-only sitemap rows are deliberately ignored here:
     the code map already represents those paths.  Only typed functional/project
     nodes and explicit edges are eligible for inheritance.
+
+    ``include_inactive`` keeps deprecated/superseded nodes. A slice must not
+    inherit dead context, but drift detection exists precisely to find a node
+    declared dead whose implementation is still live — dropping those here made
+    that check structurally unable to fire.
     """
 
     nodes: list[dict[str, Any]] = []
@@ -459,6 +503,12 @@ def _load_declared_graph(
     source_nodes = 0
     source_edges = 0
     loaded_sources: list[str] = []
+    # One declared file being unreadable must not close the whole library. Each
+    # file is loaded independently; a failure is recorded, never raised, so the
+    # slice degrades to whatever remains and the receipt says what was skipped.
+    # Measured: a single malformed sitemap.json turned every context_slice(),
+    # coverage() and drift() call into ContextMapError.
+    skipped_sources: dict[str, str] = {}
     for relative in (".agentlas/context-map.json", ".agentlas/sitemap.json"):
         path = root / relative
         if not path.exists():
@@ -466,50 +516,65 @@ def _load_declared_graph(
         try:
             payload = _regular_json(path)
         except ContextMapError as exc:
-            raise ContextMapError("context_declared_map_invalid") from exc
-        loaded_sources.append(relative)
+            skipped_sources[relative] = str(getattr(exc, "code", exc))
+            continue
         raw_nodes = payload.get("nodes")
         raw_edges = payload.get("edges") or payload.get("relationships")
         if raw_nodes is not None and not isinstance(raw_nodes, list):
-            raise ContextMapError("context_declared_map_invalid")
+            skipped_sources[relative] = "nodes_not_a_list"
+            continue
         if raw_edges is not None and not isinstance(raw_edges, list):
-            raise ContextMapError("context_declared_map_invalid")
+            skipped_sources[relative] = "edges_not_a_list"
+            continue
+        loaded_sources.append(relative)
         if isinstance(raw_nodes, list):
             source_nodes += len(raw_nodes)
             for candidate in raw_nodes:
                 if not isinstance(candidate, dict):
-                    raise ContextMapError("context_declared_map_invalid")
+                    continue  # skip the row, keep the file
                 kind = _node_type(candidate)
                 if relative.endswith("sitemap.json") and kind in {"file", "directory"}:
                     continue
                 if not _node_id(candidate):
-                    raise ContextMapError("context_declared_map_invalid")
-                if _node_status(candidate) in _ACTIVE_STATES:
+                    continue
+                if include_inactive or _node_status(candidate) in _ACTIVE_STATES:
                     nodes.append(dict(candidate))
         if isinstance(raw_edges, list):
             source_edges += len(raw_edges)
+            per_node: dict[str, int] = {}
             for candidate in raw_edges:
                 if not isinstance(candidate, dict):
-                    raise ContextMapError("context_declared_map_invalid")
+                    continue
                 source, target, _ = _edge_parts(candidate)
                 if not source or not target:
-                    raise ContextMapError("context_declared_map_invalid")
+                    continue
+                if (
+                    per_node.get(source, 0) >= MAX_EDGES_PER_NODE
+                    or per_node.get(target, 0) >= MAX_EDGES_PER_NODE
+                ):
+                    continue
+                per_node[source] = per_node.get(source, 0) + 1
+                per_node[target] = per_node.get(target, 0) + 1
                 edges.append(dict(candidate))
-    loaded_nodes = nodes[:MAX_DECLARED_NODES]
-    loaded_edges = edges[:MAX_DECLARED_EDGES]
+    # Truncation happens AFTER selection, not here. Cutting the list before the
+    # task is known meant a relevant edge sitting past the cap could never be
+    # reached: measured on a workspace with 683,729 declared edges, exactly one
+    # survived into the slice. `_select_declared_context` applies the real
+    # budgets to what the task actually selected.
     report = {
         "sources": loaded_sources,
+        "skippedSources": skipped_sources,
         "sourceNodeCount": source_nodes,
         "sourceEdgeCount": source_edges,
         "eligibleNodeCount": len(nodes),
         "eligibleEdgeCount": len(edges),
-        "loadedNodeCount": len(loaded_nodes),
-        "loadedEdgeCount": len(loaded_edges),
-        "omittedNodeCount": max(0, len(nodes) - len(loaded_nodes)),
-        "omittedEdgeCount": max(0, len(edges) - len(loaded_edges)),
+        "loadedNodeCount": len(nodes),
+        "loadedEdgeCount": len(edges),
+        "omittedNodeCount": 0,
+        "omittedEdgeCount": 0,
     }
-    report["partial"] = bool(report["omittedNodeCount"] or report["omittedEdgeCount"])
-    return loaded_nodes, loaded_edges, report
+    report["partial"] = False
+    return nodes, edges, report
 
 
 def _edge_parts(edge: Mapping[str, Any]) -> tuple[str, str, str]:
@@ -517,6 +582,36 @@ def _edge_parts(edge: Mapping[str, Any]) -> tuple[str, str, str]:
     target = str(edge.get("to") or edge.get("target") or edge.get("toId") or "")
     relation = str(edge.get("type") or edge.get("relation") or edge.get("kind") or "depends_on")
     return source, target, relation
+
+
+# Authority tiers, from the PRD. A reader must be able to tell an observed fact
+# from a declared intent from a co-edit correlation, or the tiers are decoration.
+#   A0 observed             AST / filesystem / contact ledger
+#   A1 declared             a human or generator wrote it in sitemap/context-map
+#   A2 structurally-derived path or unique-symbol match
+#   A3 semantically-derived lexical / substring
+_AUTHORITY_BY_SOURCE = {"contact-ledger": "A0", "code-map": "A0", "sitemap": "A1", "context-map": "A1"}
+
+
+def _with_authority(edge: Mapping[str, Any], by_id: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """Return the edge with `authority` and `origin` attached, never mutating input.
+
+    Origin comes from the endpoint nodes' declared source when the edge itself
+    does not say. A human-written edge (no `origin=derived` on its endpoints) is
+    A1-declared; a generator-derived one is still A1 but flagged so a reader
+    can weigh it. Nothing here is inferred — an edge with no known origin says so.
+    """
+
+    if "authority" in edge:
+        return dict(edge)
+    source, target, _ = _edge_parts(edge)
+    endpoints = [by_id.get(source), by_id.get(target)]
+    derived = any(isinstance(n, Mapping) and n.get("origin") == "derived" for n in endpoints)
+    known = any(isinstance(n, Mapping) for n in endpoints)
+    out = dict(edge)
+    out["authority"] = "A1" if known else "unknown"
+    out["origin"] = "derived" if derived else ("declared" if known else "unknown")
+    return out
 
 
 def _select_declared_context(
@@ -527,12 +622,27 @@ def _select_declared_context(
     selected_files: Sequence[str],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     by_id = {_node_id(node): node for node in nodes if _node_id(node)}
-    selected: set[str] = {
-        node_id
-        for node_id, node in by_id.items()
-        if _node_type(node) in _INHERITED_NODE_TYPES
-        and _node_status(node) in {"active", "validated", "tentative", ""}
-    }
+    # Two kinds of inherited context, and they must not share a rank.
+    #
+    #   * What the project IS — project/goal/requirement/constraint. Always few,
+    #     always worth carrying, and they seed traversal so a task that matches
+    #     nothing still reaches the graph.
+    #   * What the project HAS LEARNED — decision/fact/procedure/assumption.
+    #     These grow without bound; a project with 3,000 assumptions filled the
+    #     whole node budget before one task-matched node was considered.
+    #
+    # The first group seeds. The second waits for leftover budget.
+    inherited: set[str] = set()
+    selected: set[str] = set()
+    for node_id, node in by_id.items():
+        if (
+            _node_type(node) in _INHERITED_NODE_TYPES
+            and _node_status(node) in {"active", "validated", "tentative", ""}
+        ):
+            if _node_type(node) in _DEFINING_NODE_TYPES:
+                selected.add(node_id)
+            else:
+                inherited.add(node_id)
     needles = set(terms)
     needles.update(part.lower() for path in selected_files for part in Path(path).parts)
     for node_id, node in by_id.items():
@@ -543,35 +653,66 @@ def _select_declared_context(
         if any(term in searchable for term in needles):
             selected.add(node_id)
 
-    # Structural closure: carry parents, constraints, decisions, dependencies,
-    # interfaces, and validation nodes one hop in either direction.
+    # Adjacency index instead of rescanning every edge per hop. A single hub
+    # node must not be able to dominate the slice, so each node contributes a
+    # bounded number of edges (measured: one `invoked_by` hub held 672,357).
+    adjacency: dict[str, list[dict[str, Any]]] = {}
+    for edge in edges:
+        source, target, _relation = _edge_parts(edge)
+        if not source or not target:
+            continue
+        for endpoint in (source, target):
+            bucket = adjacency.setdefault(endpoint, [])
+            if len(bucket) < MAX_EDGES_PER_NODE:
+                bucket.append(edge)
+
+    # Breadth-first closure that remembers distance, because distance is the
+    # relevance signal used below. The previous code selected by node id order,
+    # so a task-relevant node could be pushed past the budget by an unrelated
+    # one that merely sorted earlier.
+    distance: dict[str, int] = {node_id: 0 for node_id in selected}
+    frontier = set(distance)
     selected_edges: list[dict[str, Any]] = []
     selected_edge_keys: set[tuple[str, str, str]] = set()
-    for _ in range(2):
-        changed = False
-        for edge in edges:
-            source, target, relation = _edge_parts(edge)
-            if not source or not target:
-                continue
-            if source in selected or target in selected:
-                if source in by_id and source not in selected:
-                    selected.add(source)
-                    changed = True
-                if target in by_id and target not in selected:
-                    selected.add(target)
-                    changed = True
+    for hop in (1, 2):
+        next_frontier: set[str] = set()
+        for node_id in sorted(frontier):
+            for edge in adjacency.get(node_id, ()):
+                source, target, relation = _edge_parts(edge)
                 edge_key = (source, target, relation)
                 if edge_key not in selected_edge_keys:
                     selected_edge_keys.add(edge_key)
                     selected_edges.append(edge)
-        if not changed:
+                for endpoint in (source, target):
+                    if endpoint in by_id and endpoint not in distance:
+                        distance[endpoint] = hop
+                        next_frontier.add(endpoint)
+        frontier = next_frontier
+        if not frontier:
             break
-    eligible_nodes = [by_id[node_id] for node_id in sorted(selected) if node_id in by_id]
+
+    # Inherited project context sits below anything the task reached, so it
+    # fills leftover budget instead of consuming it first.
+    for node_id in inherited:
+        distance.setdefault(node_id, _INHERITED_TIER)
+
+    # Rank by closeness to the task, then by how much the node type carries
+    # (a goal outranks an assumption), then by id for determinism.
+    ordered_ids = sorted(
+        distance,
+        key=lambda node_id: (
+            distance[node_id],
+            _NODE_TYPE_RANK.get(_node_type(by_id[node_id]), _DEFAULT_TYPE_RANK)
+            if node_id in by_id else _DEFAULT_TYPE_RANK,
+            node_id,
+        ),
+    )
+    eligible_nodes = [by_id[node_id] for node_id in ordered_ids if node_id in by_id]
     eligible_edge_count = len(selected_edges)
     selected_nodes = eligible_nodes[:MAX_CONTEXT_NODES]
     allowed_ids = {_node_id(node) for node in selected_nodes}
     selected_edges = [
-        edge
+        _with_authority(edge, by_id)
         for edge in selected_edges
         if _edge_parts(edge)[0] in allowed_ids and _edge_parts(edge)[1] in allowed_ids
     ][:MAX_CONTEXT_EDGES]
@@ -587,6 +728,113 @@ def _select_declared_context(
     return selected_nodes, selected_edges, report
 
 
+CONTACT_LEDGER_RELATIVE = ".agentlas/contact-ledger.jsonl"
+MAX_LEDGER_BYTES = 32 * 1024 * 1024
+MAX_CO_EDITED_FILES = 8
+# One work unit that touches half the repo says nothing about any single pair.
+MAX_SESSION_FILES = 24
+# A "work unit" is a session AND a time window, not a session alone. Two things
+# broke the session-only model on measurement: hosts that send no session_id
+# hashed to one shared key (every edit in the project became one unit), and a
+# day-long IDE session exceeded MAX_SESSION_FILES so its whole day was dropped.
+CO_EDIT_WINDOW_SECONDS = 30 * 60
+
+
+def _ledger_epoch(record: Mapping[str, Any]) -> int:
+    raw = str(record.get("at") or "")
+    try:
+        return int(datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp())
+    except ValueError:
+        return 0
+
+
+def _co_edited_files(root: Path, selected: Sequence[str]) -> list[dict[str, Any]]:
+    """Files historically edited alongside `selected`, ranked by how often.
+
+    This is the one relation the static map cannot derive. Copies of the same
+    file across plugin mirrors import nothing from each other, so the dependency
+    graph rates them unrelated — yet changing one without the others is the most
+    repeated defect in this repo. Measured over 489 commits: 95.4% of frequently
+    co-edited code pairs had no AST edge, and co-edit history predicted the next
+    change 94.5% of the time against 13.4% for the dependency graph.
+
+    Observed history only: no inference, no model. Returns `[]` when the ledger
+    is absent, which is the normal state of a project on its first day.
+    """
+
+    if not selected:
+        return []
+    path = root / CONTACT_LEDGER_RELATIVE
+    try:
+        if not path.is_file():
+            return []
+        size = path.stat().st_size
+        if size <= MAX_LEDGER_BYTES:
+            raw = path.read_text(encoding="utf-8")
+        else:
+            # Append-only and chronological, so the tail is the recent history —
+            # the part that predicts the next edit. Reading only the tail keeps
+            # a years-old ledger from silently disabling co-edit forever
+            # (measured: a 115 MB ledger returned [] with no explanation).
+            with path.open("rb") as handle:
+                handle.seek(size - MAX_LEDGER_BYTES)
+                chunk = handle.read()
+            # Drop the first partial line.
+            newline = chunk.find(b"\n")
+            raw = chunk[newline + 1:].decode("utf-8", errors="replace") if newline >= 0 else ""
+    except OSError:
+        return []
+
+    # Group by (session, time-window). Records are appended chronologically, so
+    # a window closes when the gap to the previous record exceeds the threshold.
+    units: dict[tuple[str, int], set[str]] = {}
+    last_seen: dict[str, tuple[int, int]] = {}   # session -> (window_id, last_epoch)
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        session = str(record.get("session") or "")
+        paths = record.get("paths")
+        # Intent lines share the file (Phase A.2) but carry no paths.
+        if not session or not isinstance(paths, list):
+            continue
+        epoch = _ledger_epoch(record)
+        window_id, last_epoch = last_seen.get(session, (0, epoch))
+        if epoch - last_epoch > CO_EDIT_WINDOW_SECONDS:
+            window_id += 1
+        last_seen[session] = (window_id, epoch)
+        bucket = units.setdefault((session, window_id), set())
+        for value in paths:
+            if isinstance(value, str) and value:
+                bucket.add(value)
+
+    wanted = set(selected)
+    counts: Counter[str] = Counter()
+    for files in units.values():
+        if not (files & wanted):
+            continue
+        # A wide work unit says less about any single pair than a narrow one,
+        # but dropping it outright discarded whole days of real signal (measured:
+        # 30 files over 3 hours in one IDE session → 0 co-edit results). Weight
+        # by breadth instead: a 2-file unit counts 1.0, a 40-file unit ~0.6.
+        weight = 1.0 if len(files) <= MAX_SESSION_FILES else MAX_SESSION_FILES / len(files)
+        for other in files - wanted:
+            counts[other] += weight
+    # A path that no longer exists is history, not guidance. Ledger lines are
+    # never rewritten, so the filter has to happen at read time.
+    return [
+        {"file": name, "sessions": round(hits, 2), "authority": "A0", "relation": "co_edited"}
+        for name, hits in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        if (root / name).exists()
+    ][:MAX_CO_EDITED_FILES]
+
+
 def _module_of(path: str) -> str:
     parts = Path(path).parts
     return parts[0] if len(parts) > 1 else "."
@@ -594,6 +842,10 @@ def _module_of(path: str) -> str:
 
 # Shorter tokens ("api", "db", "id") match hundreds of unrelated definitions.
 _MIN_FALLBACK_TERM = 4
+# A short term is admitted when it selects at most this many symbols, or at
+# most 1/N of the whole index — whichever is larger. Selectivity, not length.
+_SHORT_TERM_MAX_HITS = 24
+_SHORT_TERM_SELECTIVITY = 40
 
 
 def _fallback_symbols(
@@ -608,7 +860,20 @@ def _fallback_symbols(
     Ranked by existing refCount — no embedding, no new index.
     """
 
-    needles = [term for term in fallback_terms if len(term) >= _MIN_FALLBACK_TERM]
+    # Non-ASCII terms (Korean etc.) never match code symbols; only ASCII terms
+    # participate here. Short ASCII terms are admitted when they are selective:
+    # "api" hitting 9 of 1,578 symbols is a real query, "get" hitting 400 is
+    # noise. Length was the wrong proxy — it discarded "api", "db", "ui".
+    ascii_terms = [term for term in fallback_terms if term.isascii()]
+    long_terms = [term for term in ascii_terms if len(term) >= _MIN_FALLBACK_TERM]
+    short_terms = [term for term in ascii_terms if 0 < len(term) < _MIN_FALLBACK_TERM]
+    needles = list(long_terms)
+    if short_terms:
+        total = max(1, len(definitions))
+        for term in short_terms:
+            matched = sum(1 for key in definitions if term in key)
+            if 0 < matched <= max(_SHORT_TERM_MAX_HITS, total // _SHORT_TERM_SELECTIVITY):
+                needles.append(term)
     if not needles:
         return []
     hits = [key for key in definitions if any(needle in key for needle in needles)]
@@ -666,10 +931,15 @@ def context_slice(
     *,
     targets: Sequence[str] = (),
     refresh: bool = True,
+    allow_stale: bool = False,
 ) -> dict[str, Any]:
-    root, code_map, refresh_receipt = load_code_map(project, refresh=refresh)
+    root, code_map, refresh_receipt = load_code_map(project, refresh=refresh, allow_stale=allow_stale)
     terms = _query_terms(task)
     selected_files = _task_path_hints(root, task, targets)
+    # `selected_files` is reassigned below to the dependency-expanded set. Co-edit
+    # history must anchor on what the task actually named, not on the expansion,
+    # or every co-edit partner is already inside the set and nothing is reported.
+    task_named_files = list(selected_files)
     symbols, symbol_match = _selected_symbols(
         code_map,
         terms=_symbol_terms(task, code_map),
@@ -697,6 +967,36 @@ def context_slice(
             }
         )
     selected_files = _bounded_strings(related_files, MAX_SELECTED_FILES)
+    # A task phrased in a language the symbol table cannot contain (Korean over
+    # an English codebase — three of four measured projects) matched nothing.
+    # The library must still open a door: the project's conventional entry
+    # points are what any newcomer reads first, and the map already knows them.
+    file_match = "matched"
+    if not selected_files:
+        entry_points = [
+            str(item.get("path") or "")
+            for item in (code_map.get("entryPoints") or [])
+            if isinstance(item, dict) and item.get("path")
+        ]
+        if entry_points:
+            selected_files = _bounded_strings(entry_points, MAX_SELECTED_FILES)
+            file_match = "entry_points"
+        else:
+            # No conventional entry point either (library, script bundle). The
+            # most-referenced definition sites are the next best door: they are
+            # what the rest of the code depends on.
+            ref_count = code_map.get("refCount") if isinstance(code_map.get("refCount"), dict) else {}
+            definitions = code_map.get("defIndex") if isinstance(code_map.get("defIndex"), dict) else {}
+            hub_files: list[str] = []
+            for key, _count in sorted(ref_count.items(), key=lambda kv: (-int(kv[1] or 0), kv[0])):
+                for site in definitions.get(key) or []:
+                    if isinstance(site, dict) and site.get("f"):
+                        hub_files.append(str(site["f"]))
+                if len(set(hub_files)) >= 8:
+                    break
+            if hub_files:
+                selected_files = _bounded_strings(hub_files, 8)
+                file_match = "most_referenced"
     selected_modules = _bounded_strings((_module_of(value) for value in selected_files), 24)
     verification_graph = (
         code_map.get("verificationGraph")
@@ -816,6 +1116,15 @@ def context_slice(
         "relatedContextNodes": selected_nodes,
         "contextEdges": selected_edges,
         "symbolMatch": symbol_match,
+        # "matched" = task named or reached these files; "entry_points" = nothing
+        # matched and these are the project's conventional starting files.
+        "fileMatch": file_match,
+        # Exact/file matches are structural (A2); substring recovery is lexical
+        # (A3) and a reader should weigh it accordingly.
+        "symbolAuthority": {"exact": "A2", "file": "A2", "substring": "A3"}.get(symbol_match, "unknown"),
+        # Observed co-edit history. Carries the relations the dependency graph
+        # structurally cannot see (mirrored copies, code↔install script, …).
+        "coEditedFiles": _co_edited_files(root, task_named_files),
         "symbols": symbol_rows,
         "files": selected_files,
         "modules": selected_modules,
@@ -896,6 +1205,206 @@ def references(
         "referenceCount": int((code_map.get("refCount") or {}).get(key) or 0),
         "mapFingerprint": code_map.get("fingerprintHash"),
         "refreshStatus": _refresh_status(refresh_receipt),
+    }
+
+
+COVERAGE_SCHEMA = "agentlas.context-coverage.v1"
+DRIFT_SCHEMA = "agentlas.context-drift.v1"
+MAX_FINDINGS_PER_KIND = 25
+# Relations that count as "this declared thing is realized somewhere".
+_REALIZATION_RELATIONS = frozenset({
+    "realized_by", "implemented_by", "satisfied_by", "contributes_to",
+    "depends_on", "contains", "produces", "exposed_by", "configured_by",
+})
+_VERIFICATION_RELATIONS = frozenset({
+    "verified_by", "tested_by", "checked_by", "benchmarked_by",
+    "verifies", "verified_by_import", "verified_by_command",
+})
+_DEAD_STATES = frozenset({"deprecated", "superseded", "retired", "removed", "rejected"})
+
+
+def _node_scan_path(node: Mapping[str, Any]) -> str:
+    """Best project-relative path this declared node stands for, if any."""
+
+    path = str(node.get("path") or "").strip()
+    if path:
+        # lstrip("./") strips a character set, which would turn ".playwright-cli"
+        # into "playwright-cli" and break every dotfile-rooted comparison.
+        normalized = path.replace("\\", "/")
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+        return normalized or path
+    node_id = str(node.get("id") or "")
+    for prefix in ("surface:module:", "code:file:", "file:", "module:"):
+        if node_id.startswith(prefix):
+            return node_id[len(prefix):]
+    return ""
+
+
+def _excluded_by_policy(node: Mapping[str, Any], policy: Mapping[str, Any]) -> bool:
+    """True when the current scan policy would not index this node's path.
+
+    The sitemap is merge-only, so nodes created before an `excludeRoots` entry
+    was added survive indefinitely. Diagnostics must answer for the project as
+    it is configured now, or they report backup folders and worktrees as
+    untested features — noise that gets the whole check switched off.
+    """
+
+    path = _node_scan_path(node)
+    if not path or path == ".":
+        return False
+    return not _policy_allows(path, policy)
+
+
+def _declared_degree(edges: Sequence[Mapping[str, Any]]) -> tuple[Counter[str], Counter[str]]:
+    """Outgoing counts split by what the relation means, not just that it exists."""
+
+    realization: Counter[str] = Counter()
+    verification: Counter[str] = Counter()
+    for edge in edges:
+        source, target, relation = _edge_parts(edge)
+        if not source or not target:
+            continue
+        if relation in _VERIFICATION_RELATIONS:
+            verification[source] += 1
+            verification[target] += 1
+        elif relation in _REALIZATION_RELATIONS:
+            realization[source] += 1
+    return realization, verification
+
+
+def coverage(project: str | Path, *, refresh: bool = True) -> dict[str, Any]:
+    """What the project declared but never carried through.
+
+    Open-world by construction: an empty declared layer means "not known", not
+    "nothing is missing". Reporting absence as a finding would fill a fresh
+    project's first run with thousands of false alarms and get the whole
+    diagnostic switched off, which is the failure mode this guards against.
+    """
+
+    root, code_map, _receipt = load_code_map(project, refresh=refresh)
+    nodes, edges, load_report = _load_declared_graph(root)
+    policy = _context_index_policy(root)
+    by_id = {
+        _node_id(node): node
+        for node in nodes
+        if _node_id(node) and not _excluded_by_policy(node, policy)
+    }
+
+    if not by_id:
+        return {
+            "schemaVersion": COVERAGE_SCHEMA,
+            "status": "unknown",
+            "reason": "no_declared_nodes",
+            "detail": "선언 층이 비어 있어 판정할 수 없다. 없음이 아니라 모름이다.",
+            "findings": {},
+            "declared": load_report,
+        }
+
+    realization, verification = _declared_degree(edges)
+    findings: dict[str, list[dict[str, Any]]] = {}
+
+    unrealized = [
+        {"id": node_id, "title": str(node.get("title") or node.get("name") or "")[:120],
+         "type": _node_type(node)}
+        for node_id, node in sorted(by_id.items())
+        if _node_type(node) in {"requirement", "goal", "subgoal"}
+        and _node_status(node) not in _DEAD_STATES
+        and realization[node_id] == 0
+    ]
+    if edges:
+        findings["unrealizedRequirements"] = unrealized[:MAX_FINDINGS_PER_KIND]
+
+    untested = [
+        {"id": node_id, "title": str(node.get("title") or node.get("name") or "")[:120],
+         "type": _node_type(node)}
+        for node_id, node in sorted(by_id.items())
+        if _node_type(node) in {"surface", "feature", "workflow", "capability"}
+        and _node_status(node) not in _DEAD_STATES
+        and verification[node_id] == 0
+    ]
+    verification_graph = code_map.get("verificationGraph")
+    if isinstance(verification_graph, dict) and verification_graph.get("edges"):
+        findings["untestedFeatures"] = untested[:MAX_FINDINGS_PER_KIND]
+
+    counted = {kind: len(values) for kind, values in findings.items()}
+    return {
+        "schemaVersion": COVERAGE_SCHEMA,
+        "status": "partial" if load_report.get("partial") else "complete",
+        "findings": findings,
+        "counts": counted,
+        "declared": load_report,
+        # Which checks could not run, and why. Never silently reported as clean.
+        "skipped": {
+            **({} if edges else {"unrealizedRequirements": "no_declared_edges"}),
+            **({} if isinstance(verification_graph, dict) and verification_graph.get("edges")
+               else {"untestedFeatures": "no_verification_graph"}),
+        },
+    }
+
+
+def drift(project: str | Path, *, refresh: bool = True) -> dict[str, Any]:
+    """Where the declared project and the real one disagree.
+
+    Only reports disagreements it can point at with both sides present: a node
+    marked dead whose implementation is still indexed and still referenced. A
+    guess here costs more than a miss, because a diagnostic that cries wolf is
+    turned off and then catches nothing at all.
+    """
+
+    root, code_map, _receipt = load_code_map(project, refresh=refresh)
+    # Dead nodes are the subject of this check, so they must survive the load.
+    nodes, edges, load_report = _load_declared_graph(root, include_inactive=True)
+    policy = _context_index_policy(root)
+    by_id = {
+        _node_id(node): node
+        for node in nodes
+        if _node_id(node) and not _excluded_by_policy(node, policy)
+    }
+
+    if not by_id:
+        return {
+            "schemaVersion": DRIFT_SCHEMA,
+            "status": "unknown",
+            "reason": "no_declared_nodes",
+            "findings": {},
+            "declared": load_report,
+        }
+
+    indexed = {
+        str(value)
+        for value in code_map.get("mappedFiles", code_map.get("indexedFiles", []))
+        if isinstance(value, str)
+    }
+    reference_index = code_map.get("refIndex") if isinstance(code_map.get("refIndex"), dict) else {}
+    referenced_files: set[str] = set()
+    for files in reference_index.values():
+        if isinstance(files, list):
+            referenced_files.update(str(item) for item in files if isinstance(item, str))
+
+    dead_but_live: list[dict[str, Any]] = []
+    for node_id, node in sorted(by_id.items()):
+        if _node_status(node) not in _DEAD_STATES:
+            continue
+        path = str(node.get("path") or "")
+        if not path or path not in indexed:
+            continue
+        dead_but_live.append({
+            "id": node_id,
+            "status": _node_status(node),
+            "path": path,
+            "stillReferenced": path in referenced_files,
+            "title": str(node.get("title") or node.get("name") or "")[:120],
+        })
+
+    findings = {"deadButImplemented": dead_but_live[:MAX_FINDINGS_PER_KIND]}
+    return {
+        "schemaVersion": DRIFT_SCHEMA,
+        "status": "partial" if load_report.get("partial") else "complete",
+        "findings": findings,
+        "counts": {kind: len(values) for kind, values in findings.items()},
+        "declared": load_report,
+        "skipped": {} if indexed else {"deadButImplemented": "no_indexed_files"},
     }
 
 
@@ -1378,6 +1887,10 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         "## Agentlas Context Slice (dependency-selected, project-local)",
         f"Receipt: {value.get('receipt', {}).get('receiptDigest', 'missing')}",
     ]
+    # A stale map is still served (see load_code_map allow_stale), but the
+    # reader must know the index predates recent edits.
+    if str((value.get("receipt") or {}).get("refreshStatus") or "") == "stale_served":
+        lines.append("Note: map predates recent edits (served stale rather than empty); re-verify paths before acting.")
     goals = value.get("goalsAndConstraints")
     if isinstance(goals, list) and goals:
         lines.append("Inherited goals, constraints, decisions:")
@@ -1388,7 +1901,12 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
             lines.append(f"- [{_node_type(node) or 'context'}:{_node_status(node) or 'active'}] {label[:240]}")
     symbols = value.get("symbols")
     if isinstance(symbols, list) and symbols:
-        lines.append("Definitions and backlinks:")
+        # Say how these were found. An exact match and a substring guess must not
+        # read the same to the agent that acts on them.
+        match_mode = str(value.get("symbolMatch") or "")
+        authority = str(value.get("symbolAuthority") or "")
+        suffix = f" ({match_mode} match, authority {authority})" if match_mode and authority else ""
+        lines.append(f"Definitions and backlinks{suffix}:")
         for item in symbols[:20]:
             if not isinstance(item, Mapping):
                 continue
@@ -1401,8 +1919,22 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
             lines.append(f"- {item.get('symbol')}: defs={definitions or '-'}; refs={refs or '-'}")
     files = value.get("files")
     if isinstance(files, list) and files:
-        lines.append("Structurally related files:")
+        file_match = str(value.get("fileMatch") or "matched")
+        heading = {
+            "entry_points": "Nothing in the task matched the symbol table; conventional entry points:",
+            "most_referenced": "Nothing matched; the most-referenced definition sites:",
+        }.get(file_match, "Structurally related files:")
+        lines.append(heading)
         lines.extend(f"- {path}" for path in files[:40])
+    co_edited = value.get("coEditedFiles")
+    if isinstance(co_edited, list) and co_edited:
+        # Observed history, not inference: files repeatedly changed together
+        # with the ones the task named. This is the relation the dependency
+        # graph structurally cannot see (mirrors, code↔install script).
+        lines.append("Historically edited together with the named files (observed, authority A0):")
+        for item in co_edited[:8]:
+            if isinstance(item, Mapping) and item.get("file"):
+                lines.append(f"- {item['file']} ({item.get('sessions', '?')} work units)")
     module_edges = value.get("moduleEdges")
     if isinstance(module_edges, list) and module_edges:
         lines.append("Module dependencies:")

@@ -163,6 +163,8 @@ required_runtime_paths=(
   "bin/agentlas-python-cache-boundary"
   "agentlas_cloud/mcp_stdio.py"
   "agentlas_cloud/context_map.py"
+  "agentlas_cloud/project_bootstrap.py"
+  "agentlas_cloud/memory_hook.py"
   "agentlas_cloud/auto_update_service.py"
   "agentlas_cloud/host_update.py"
   "agentlas_cloud/update.py"

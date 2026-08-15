@@ -200,6 +200,12 @@ SKIP_DIRS = {
 # when they are rooted directly under the selected project.
 ROOT_OUTPUT_DIRS = {"build", "out", "release", "release-local"}
 
+# The project's own generated state is never indexable. Indexing `.agentlas/`
+# makes the map change every time it is written, so its own freshness check
+# fails immediately afterwards and `refresh=False` can never succeed. This is
+# enforced regardless of user policy — a project cannot opt back in.
+ALWAYS_EXCLUDED_ROOTS = (".agentlas",)
+
 DEFAULT_CONTEXT_INDEX_POLICY = {
     "schemaVersion": CONTEXT_INDEX_POLICY_SCHEMA,
     "excludeRoots": [],
@@ -234,25 +240,53 @@ PYTHON_IMPORT_SPECIFIER_PATTERNS = (
     re.compile(r"(?m)^\s*import\s+([A-Za-z_][\w.]*)"),
 )
 
+# Identifier start: any Unicode letter, `_`, or `$`. The ASCII-only start class
+# silently dropped every non-ASCII symbol name — measured: `def 한글함수()` was
+# counted as a code file but never entered defIndex, so the file was invisible
+# to every symbol-driven query. Python, JS, Rust, Go all allow Unicode idents.
+_IDENT = r"[^\W\d$]|[_$]"  # a Unicode letter, or _ or $
 SYMBOL_PATTERNS = (
-    ("class", re.compile(r"^\s*(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_$][\w$]*)")),
-    ("function", re.compile(r"^\s*(?:export\s+)?(?:async\s+)?(?:def|function|func|fn)\s+([A-Za-z_$][\w$]*)")),
-    ("type", re.compile(r"^\s*(?:export\s+)?(?:interface|type|enum|struct|trait)\s+([A-Za-z_$][\w$]*)")),
-    ("function", re.compile(r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(")),
+    ("class", re.compile(rf"^\s*(?:export\s+)?(?:default\s+)?class\s+((?:{_IDENT})[\w$]*)")),
+    ("function", re.compile(rf"^\s*(?:export\s+)?(?:async\s+)?(?:def|function|func|fn)\s+((?:{_IDENT})[\w$]*)")),
+    ("type", re.compile(rf"^\s*(?:export\s+)?(?:interface|type|enum|struct|trait)\s+((?:{_IDENT})[\w$]*)")),
+    ("function", re.compile(rf"^\s*(?:export\s+)?(?:const|let|var)\s+((?:{_IDENT})[\w$]*)\s*=\s*(?:async\s*)?\(")),
 )
-TOKEN_PATTERN = re.compile(r"[A-Za-z_$][\w$]{2,}")
+TOKEN_PATTERN = re.compile(rf"(?:{_IDENT})[\w$]{{2,}}")
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+# Filesystem-root children that are OS-owned and can never hold a user project.
+# Refusing them here matters because the bootstrap lock is created before the
+# permission check — measured: one contact on /Applications left
+# /Applications/.agentlas/.project-bootstrap.lock behind on a system folder the
+# user could write to. /System and /usr only escaped because they were read-only.
+# Deliberately NOT listed: Users, home, Volumes, private, tmp, var, opt, mnt,
+# media, srv — real projects live under those.
+_OS_ONLY_ROOT_NAMES = frozenset({
+    "Applications", "Library", "System", "Network", "cores",
+    "usr", "bin", "sbin", "etc", "dev", "proc", "sys", "boot", "lib", "lib64", "run",
+    "Windows", "Program Files", "Program Files (x86)", "ProgramData",
+})
+
+
 def _project_root(project: str | Path) -> Path:
     root = Path(project).expanduser().resolve()
     if not root.is_dir():
         raise ValueError("project_directory_does_not_exist")
-    unsafe = {Path.home().resolve(), Path(root.anchor).resolve()}
-    if root in unsafe:
+    anchor = Path(root.anchor).resolve()
+    if root in {Path.home().resolve(), anchor}:
+        raise ValueError("unsafe_project_root")
+    parts = root.relative_to(anchor).parts
+    if parts and parts[0] in _OS_ONLY_ROOT_NAMES:
+        raise ValueError("unsafe_project_root")
+    # /private/{etc,var} on macOS are OS-owned, but /private/var/folders is the
+    # per-user temp root and /private/tmp is scratch — both legitimate. Only the
+    # exact OS directories are refused; anything nested under them stays
+    # subject to the ordinary permission check.
+    if len(parts) == 2 and parts[0] == "private" and parts[1] in {"etc", "var"}:
         raise ValueError("unsafe_project_root")
     return root
 
@@ -298,6 +332,8 @@ def _matches_test_policy(relative: str, policy: Mapping[str, Any]) -> bool:
 
 
 def _policy_allows(relative: str, policy: Mapping[str, Any]) -> bool:
+    if _matches_root(relative, ALWAYS_EXCLUDED_ROOTS):
+        return False
     return not _matches_root(relative, policy.get("excludeRoots") or ()) and not _matches_root(
         relative,
         policy.get("mirrorRoots") or (),
@@ -3030,13 +3066,12 @@ def maybe_ensure_project(
             "detail": _redacted_error(exc),
             "writeAttempted": False,
         }
-    current_root_is_host_workspace = False
-    if allow_unmarked_current_root:
-        try:
-            current_root_is_host_workspace = root == Path.cwd().resolve()
-        except OSError:
-            current_root_is_host_workspace = False
-    if not _project_marker_present(root) and not current_root_is_host_workspace:
+    # A folder the host explicitly named is a project folder. Requiring a VCS
+    # marker on top of that refused every un-git-initialised project: measured
+    # on a real game project (507 files, no .git) — first contact returned
+    # `workspace_marker_missing` and no map was ever built. The unsafe-root
+    # check below (home, filesystem root) is the boundary that still holds.
+    if not allow_unmarked_current_root and not _project_marker_present(root):
         return {
             "action": "project_bootstrap",
             "status": "skipped",
