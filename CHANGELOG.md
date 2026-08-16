@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## v1.2.7 - 2026-08-16
+
+- **Ordinary Korean writing is no longer thrown away as prompt injection.** The
+  curator decided injection from a list of seven Korean sentence endings, so
+  guidance written the way guidance is written got rejected: dosage instructions
+  ("이 약은 하루 3회 식후에 복용하세요"), care steps ("증상이 지속되면 의사와
+  상담하세요", "개봉 후에는 냉장 보관하세요") and app steps ("설치 후 앱을 다시
+  시작해줘"). Meanwhile "볶아주세요" and "복용하지 마십시오" passed — the split was
+  which ending happened to be on the list, not what the sentence meant. This is the
+  same failure the capability-widening screen was retired for in 1.2.3, and its
+  explanation sat directly below the line being changed. What remains is the
+  explicit English override phrasing ("ignore previous instructions", "disregard
+  the above", "forget everything"), which has no collision with ordinary writing.
+  Real defence stays at the PreToolUse broker; a stored string cannot widen a tool
+  permission by itself. Eleven cases measured: zero ordinary sentences blocked,
+  zero injections missed. The fixture that pinned the old behaviour now asserts the
+  new contract with two different endings, so the two cannot diverge again.
+- The A2A agent card version pin had been left at 1.2.4 through two releases; the
+  bump script moves it with everything else now.
+
 ## v1.2.6 - 2026-08-15
 
 - **Project map (Perk) reaches the agent and grows from work.** The recall hook
