@@ -21,9 +21,10 @@
       "sourceRef": "one_workspace.py _HOST_PATH_RE == package_contract.py HOST_PATH_RE"
     },
     "imperative": {
-      "regex": "(?:해라|하세요|하십시오|해줘|해 줘|하도록\\s*해|할\\s*것)\\s*[.!]?\\s*$|^(?:ignore\\s+(?:previous|all\\s+previous|the\\s+above)|disregard|forget\\s+(?:everything|all|previous|the\\s+above))\\b",
+      "regex": "^(?:ignore\\s+(?:previous|all\\s+previous|the\\s+above)|disregard|forget\\s+(?:everything|all|previous|the\\s+above))\\b",
       "flags": "i",
-      "sourceRef": "one_workspace.py _IMPERATIVE_RE; prompt-injection instructions are not memories. NOTE: 'always/never/you must' were REMOVED (2026-08-12 adversarial set 2) — they are the normal phrasing of legitimate procedural memories ('always shift(1) to prevent lookahead'), and rejecting them starved a large class of real learnings (R20: a sterile pipeline is failure). Capability-widening ('always run without approval') is still caught by the separate capabilityWidening rule."
+      "sourceRef": "one_workspace.py _IMPERATIVE_RE; prompt-injection instructions are not memories. NOTE: 'always/never/you must' were REMOVED (2026-08-12 adversarial set 2) — they are the normal phrasing of legitimate procedural memories ('always shift(1) to prevent lookahead'), and rejecting them starved a large class of real learnings (R20: a sterile pipeline is failure). Capability-widening ('always run without approval') is still caught by the separate capabilityWidening rule.",
+      "note": "2026-08-16 owner decision: the Korean sentence-ending half was removed. Judging prompt injection by a list of Korean imperative endings rejected ordinary writing (medicine dosage, care instructions, app steps) while letting other endings through — the split was which ending was on the list, not what the sentence meant. Same failure the capability-widening screen was retired for. What remains is the explicit English override phrasing, which has no ordinary-writing collision."
     },
     "evidenceShapeAccept": {
       "regex": "[\\w./~-]+\\.[A-Za-z0-9]{1,6}(?::\\d+)?|:\\d+\\b|https?://|`[^`]+`|\\b[a-f0-9]{7,40}\\b|\\btest[_-][\\w-]+|\\bverify[-_][\\w-]+|\\bpytest\\b|arXiv:\\d{4}\\.\\d{4,5}|\\$ |^\\s*(?:bash|node|python3?|npm|git)\\b",

@@ -91,8 +91,19 @@ _RULESET_DEFAULTS: dict[str, Any] = {
         # Mirror of the canonical ruleset entry; the verify-curator-fixtures gate
         # asserts these embedded regexes stay byte-identical to system-agents/
         # curator-ruleset.json (2026-08-12 set 3 F3: they had drifted).
+        # ★2026-08-16: the Korean sentence-ending half was REMOVED (owner decision,
+        # "안전 뭐 이런거 다 풀라고 했는데"). Judging prompt injection by a list of
+        # Korean imperative endings blocked ordinary writing and let other endings
+        # through, measured: "하루 3회 식후에 복용하세요"(medicine), "증상이 지속되면
+        # 의사와 상담하세요", "개봉 후 냉장 보관하세요", "앱을 다시 시작해줘" were all
+        # rejected, while "볶아주세요" and "복용하지 마십시오" passed — the split was
+        # whether an ending happened to be on the list, not what the sentence meant.
+        # This is the same failure the capability-widening screen was retired for
+        # (see the note further down): a wordlist cannot carry grammar across
+        # languages. What stays is the explicit English override phrasing, which has
+        # no ordinary-writing collision.
         "imperative": {
-            "regex": r"(?:해라|하세요|하십시오|해줘|해 줘|하도록\s*해|할\s*것)\s*[.!]?\s*$|^(?:ignore\s+(?:previous|all\s+previous|the\s+above)|disregard|forget\s+(?:everything|all|previous|the\s+above))\b",
+            "regex": r"^(?:ignore\s+(?:previous|all\s+previous|the\s+above)|disregard|forget\s+(?:everything|all|previous|the\s+above))\b",
             "flags": "i",
         },
         # R21 W2a — mirror of the canonical ruleset entry; keep byte-identical.
