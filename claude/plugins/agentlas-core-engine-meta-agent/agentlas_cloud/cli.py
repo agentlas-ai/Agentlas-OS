@@ -304,6 +304,27 @@ def main(argv: list[str] | None = None) -> int:
         help="Refuse unless package hash, visibility, slug, and destination match the dry-run receipt",
     )
     publish_cmd.add_argument("--overwrite-cloud-id", help="Authorize overwrite of this exact server-reported Cloud asset")
+    # Prices for a public Hub listing. Omitting one means that kind is not sold;
+    # omitting all three publishes an agent that is callable for free, which is
+    # a supported state and not an error.
+    publish_cmd.add_argument(
+        "--rent-credits",
+        type=int,
+        default=None,
+        help="Credits per work order (a 24h lease), 1-100. Omit to not sell rentals.",
+    )
+    publish_cmd.add_argument(
+        "--ingest-credits",
+        type=int,
+        default=None,
+        help="Credits per project per day, 1-2000. Omit to not sell project ingest.",
+    )
+    publish_cmd.add_argument(
+        "--fork-credits",
+        type=int,
+        default=None,
+        help="Credits for one copy, 1 or more. Omit to not sell forks.",
+    )
 
     read = sub.add_parser("read-agent-file", help="Lazy file read with manifest gates")
     read.add_argument("folder")
@@ -1044,6 +1065,9 @@ def main(argv: list[str] | None = None) -> int:
                 expected_package_hash=args.expected_package_hash,
                 expected_upload_receipt=args.expected_upload_receipt,
                 overwrite_cloud_id=args.overwrite_cloud_id,
+                rent_credits=args.rent_credits,
+                ingest_credits=args.ingest_credits,
+                fork_credits=args.fork_credits,
             )
         except UploadError as exc:
             return emit({"status": "error", "code": exc.code, "error": str(exc)}) or 1

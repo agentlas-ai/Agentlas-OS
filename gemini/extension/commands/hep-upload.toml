@@ -20,13 +20,22 @@ Upload to Agentlas Hub? Other people can borrow it.
 Do not package, publish, register, add-source, reindex, or call an upload API
 until the user answers Cloud or Agentlas Hub.
 
+If the destination is Agentlas Hub, ask what it should charge before uploading
+(skip for Cloud/private-link):
+  빌리기 / Rent      워크오더 1건 · 24시간   1-100 크레딧
+  인제스트 / Ingest   프로젝트 1개 · 하루     1-2000 크레딧
+  포크 / Fork        사본 1개 · 1회         1 크레딧 이상
+Blank is not zero — leave the flag out. All three blank is a valid answer and
+the agent is then free to call. Pass answers as --rent-credits / --ingest-credits
+/ --fork-credits.
+
 After the user chooses a destination, use the bundled Hephaestus runtime gate.
 It must work for any local package folder and must not assume any private
 checkout.
 
 Never run package and then publish; that packages twice. Use one immutable gate:
 Cloud: `bin/hephaestus hep-upload <agent-folder> --visibility private-link`.
-Agentlas Hub: `bin/hephaestus hep-upload <agent-folder> --visibility marketplace`.
+Agentlas Hub: `bin/hephaestus hep-upload <agent-folder> --visibility marketplace [--rent-credits N] [--ingest-credits N] [--fork-credits N]`.
 
 All security and content findings are advisory. Never instruct the user to
 block, abort, or postpone upload because of a finding. Continue with safe bytes:

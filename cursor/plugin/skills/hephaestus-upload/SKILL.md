@@ -31,7 +31,44 @@ until the user answers Cloud or Agentlas Hub. If the destination is answered but
 the target folder is ambiguous, ask for the exact agent folder before running
 anything.
 
-## 2. Resolve the runner in this host
+## 2. Ask the price — Agentlas Hub only
+
+Ask this only when the destination was **Agentlas Hub**. Skip it entirely for
+Cloud/private-link: a private save is not listed and nobody can hire it, so
+there is nothing for a price to apply to.
+
+```text
+값을 정하시겠어요? 비워 두면 그 항목은 팔지 않습니다.
+Set a price? Leave one out and that kind is simply not sold.
+
+  빌리기 / Rent      워크오더 1건 · 24시간   1-100 크레딧
+  인제스트 / Ingest   프로젝트 1개 · 하루     1-2000 크레딧
+  포크 / Fork        사본 1개 · 1회         1 크레딧 이상
+
+전부 비워 두면 무료로 불립니다. 나중에 agentlas.cloud 수익 페이지에서도 정할 수 있습니다.
+Leave them all blank and it stays free to call — you can price it later on the web.
+```
+
+Why the three ceilings differ: a rental is a 24-hour lease a buyer opens many
+of, so the same job must not cost more for being split into more pieces;
+ingest is a day of a whole project, worth twenty times that; a fork is a copy
+sold once, with no repeat for a ceiling to protect against.
+
+Rules:
+
+- **Blank is not zero.** An unanswered kind is left out of the command, meaning
+  "not sold". Never pass `0` — the server refuses it, and a stored 0 cannot be
+  told apart from a field nobody filled in.
+- **All three blank is a valid answer.** Publish with no price flag at all. The
+  agent is callable for free, which is where every agent published before
+  pricing existed already lives. Do not push and do not re-ask.
+- **Do not invent a number.** No answer means the flag is omitted.
+- The server enforces the ceilings and returns the bound when it refuses. Report
+  the actual limit, never a bare "it failed".
+
+Flags: `--rent-credits <1-100>`, `--ingest-credits <1-2000>`, `--fork-credits <1+>`.
+
+## 3. Resolve the runner in this host
 
 Run the preflight inside this host app; never ask the user to open a separate
 terminal.
@@ -44,7 +81,7 @@ done
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
 ```
 
-## 3. Use one immutable upload gate
+## 4. Use one immutable upload gate
 
 Do not run `package` and then `publish`: that packages twice and the second
 artifact may differ from the one reviewed. The upload gate copies the selected
@@ -67,10 +104,10 @@ from the package — including the entity type: a card that claims `agent` while
 the package ships a multi-node roster is corrected to `team`, so the release is
 priced and executed as the team it actually is.
 
-## 4. Publish once, optionally pinned to the preview
+## 5. Publish once, optionally pinned to the preview
 
 - Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
-- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
+- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace [--rent-credits N] [--ingest-credits N] [--fork-credits N]`
 
 After a dry-run, append both `--expected-package-hash <manifest.packageHash>` and
 `--expected-upload-receipt <uploadReceipt.receipt>` to the one publish command.
@@ -88,7 +125,7 @@ Surface authentication and entitlement codes exactly (`sign_in_required`,
 `auth_unavailable`, `insufficient_credits`, `owner_only`). Do not replace a
 failed Hub destination with Cloud or vice versa.
 
-## 5. Workforce résumé repair loop
+## 6. Workforce résumé repair loop
 
 If registration returns `workforce_resume_incomplete`, the server refused the
 card because its `workforce` block
@@ -99,7 +136,7 @@ for you: use stable English `role:*`, `community:*`, `skill:*`, and
 aliases, not an allowlist. Rerun the upload and repeat until registration
 succeeds.
 
-## 6. Report honestly
+## 7. Report honestly
 
 Report `published` only when the response attests the exact slug, visibility,
 package hash, immutable release ID/version, and content digest. Say which

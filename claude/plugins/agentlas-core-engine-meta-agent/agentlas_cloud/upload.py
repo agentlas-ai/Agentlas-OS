@@ -17,6 +17,7 @@ from typing import Any
 
 from . import content_guard
 from .auth import AgentlasAuthError, ensure_access_token, normalize_base_url, same_origin_urlopen
+from .pricing import PriceError, build_patch, set_prices
 from .networking.card_lint import lint_card
 from .package_contract import (
     is_generated_runtime_path,
@@ -1329,9 +1330,32 @@ def publish_agent(
     expected_package_hash: str | None = None,
     expected_upload_receipt: str | None = None,
     overwrite_cloud_id: str | None = None,
+    rent_credits: int | None = None,
+    ingest_credits: int | None = None,
+    fork_credits: int | None = None,
 ) -> dict[str, Any]:
     if visibility not in {"marketplace", "private-link"}:
         raise UploadError("Choose exactly one upload visibility: marketplace or private-link.", code="visibility_required")
+    # Checked before anything is packaged or uploaded. A ceiling violation found
+    # after the upload would leave a live free listing and an error message,
+    # which reads as "the publish failed" when it did not.
+    price_patch: dict[str, int] = {}
+    if visibility == "marketplace":
+        try:
+            price_patch = build_patch(
+                rent=rent_credits, ingest=ingest_credits, fork=fork_credits
+            )
+        except PriceError as exc:
+            raise UploadError(str(exc), code=f"price_{exc.code}") from exc
+    elif rent_credits is not None or ingest_credits is not None or fork_credits is not None:
+        # A private save is not on the Hub and nobody can hire it, so there is
+        # nothing for a price to apply to. Refused rather than ignored: silently
+        # dropping a number someone typed is how they find out months later.
+        raise UploadError(
+            "Prices apply to a public Hub listing. Use --visibility marketplace, or drop the price flags.",
+            code="price_requires_marketplace",
+        )
+
     destination_base_url = _normalize_destination_base_url(base_url)
     requested_source = Path(folder).expanduser()
     source_link_resolved = requested_source.is_symlink()
@@ -1426,6 +1450,20 @@ def publish_agent(
     packaged["status"] = "registered"
     packaged["registration"] = registration
     registered_slug = registration.get("slug") or packaged["manifest"]["slug"]
+
+    # Priced only after the listing exists, and never allowed to fail the
+    # publish. If this does not go through, the agent is on the Hub and free —
+    # the same state every agent published before pricing existed is in — and
+    # the result says so instead of claiming the upload broke.
+    if price_patch and not dry_run:
+        packaged["pricing"] = set_prices(
+            registered_slug,
+            price_patch,
+            base_url=destination_base_url,
+            interactive=interactive,
+        )
+    elif price_patch:
+        packaged["pricing"] = {"status": "skipped", "reason": "dry_run", "prices": {}}
     removed_lines = packaged.get("manifest", {}).get("sanitizedLineCount") or 0
     if removed_lines:
         # What shipped is not what the author wrote. Say it at the top level, on
@@ -1436,6 +1474,17 @@ def publish_agent(
         )
     else:
         packaged["summary"] = f"Registered {registered_slug}."
+    pricing = packaged.get("pricing")
+    if isinstance(pricing, dict) and pricing.get("status") == "priced":
+        priced = ", ".join(f"{kind} {value}" for kind, value in (pricing.get("prices") or {}).items())
+        packaged["summary"] += f" Priced: {priced}."
+    elif isinstance(pricing, dict) and pricing.get("status") == "failed":
+        # Stated in the summary, not only in a nested field. A pricing failure
+        # that only appears three keys deep is a failure nobody reads.
+        packaged["summary"] += (
+            f" WARNING: the price was NOT set ({pricing.get('reason')}) — "
+            "the agent is published and currently free to call."
+        )
     return packaged
 
 

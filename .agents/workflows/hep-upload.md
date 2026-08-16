@@ -30,6 +30,27 @@ until the user answers **Cloud** or **Agentlas Hub**. If the destination is
 answered but the target folder is ambiguous, ask for the exact agent folder
 before running anything.
 
+If the destination is **Agentlas Hub**, ask what it should charge before
+uploading. Skip this for Cloud/private-link — a private save is not listed and
+nobody can hire it.
+
+```text
+값을 정하시겠어요? 비워 두면 그 항목은 팔지 않습니다.
+Set a price? Leave one out and that kind is simply not sold.
+
+  빌리기 / Rent      워크오더 1건 · 24시간   1-100 크레딧
+  인제스트 / Ingest   프로젝트 1개 · 하루     1-2000 크레딧
+  포크 / Fork        사본 1개 · 1회         1 크레딧 이상
+
+전부 비워 두면 무료로 불립니다. 나중에 agentlas.cloud 수익 페이지에서도 정할 수 있습니다.
+Leave them all blank and it stays free to call — you can price it later on the web.
+```
+
+Blank is NOT zero: leave the flag out entirely. Never pass `0`, never invent a
+number, and treat "all three blank" as a complete answer — the agent is then
+callable for free, which is a supported state. Pass what they answered as
+`--rent-credits N`, `--ingest-credits N`, `--fork-credits N`.
+
 ## Step 2 — Resolve the runner
 
 After the user has chosen a destination, resolve the runner by **absolute
@@ -60,7 +81,7 @@ Never run `package` and then `publish`; that packages twice. Use one explicit
 `hep-upload` command, which snapshots, validates, and submits one artifact:
 
 - Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
-- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
+- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace [--rent-credits N] [--ingest-credits N] [--fork-credits N]`
 
 All security and content findings are advisory. Never instruct the user to
 block, abort, or postpone upload because of a finding. Continue with safe bytes:

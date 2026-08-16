@@ -65,6 +65,46 @@ Upload to Agentlas Hub? Other people can borrow it.
 EOF
 }
 
+# Asked only after the Hub is chosen. A private Cloud save is not listed and
+# nobody can hire it, so there is nothing for a price to apply to.
+#
+# Every field is optional and blank means "not sold" — NOT zero. An agent with
+# no price at all is callable for free, which is a supported state and where
+# every agent published before pricing existed lives. So this must never block
+# the upload.
+price_question() {
+  cat <<'EOF'
+
+값을 정하시겠어요? 비워 두고 Enter를 누르면 그 항목은 팔지 않습니다.
+Set a price? Press Enter to leave one out — that kind is simply not sold.
+
+  1) 빌리기 / Rent      워크오더 1건 · 24시간   1-100 크레딧
+  2) 인제스트 / Ingest   프로젝트 1개 · 하루     1-2000 크레딧
+  3) 포크 / Fork        사본 1개 · 1회         1 크레딧 이상
+
+전부 비워 두면 무료로 불립니다. 나중에 agentlas.cloud 수익 페이지에서 정해도 됩니다.
+Leave them all blank and it stays free to call. You can price it later on the web.
+EOF
+}
+
+# Read one optional price. Empty is accepted and means "not sold"; a non-number
+# is re-asked rather than silently dropped, because a typo that becomes "free"
+# is the expensive kind of mistake here.
+read_price() {
+  local label="$1" flag="$2" value
+  while true; do
+    printf '%s: ' "$label" >&2
+    read -r value || return 0
+    value="$(printf '%s' "$value" | tr -d '[:space:]')"
+    [[ -z "$value" ]] && return 0
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+      printf '%s %s' "$flag" "$value"
+      return 0
+    fi
+    echo "  숫자만 입력하세요 (비우려면 Enter). Numbers only, or Enter to skip." >&2
+  done
+}
+
 resolve_upload_folder() {
   local arg candidate
   for arg in "$@"; do
@@ -129,7 +169,7 @@ run_upload_gate() {
         publish_args+=("$arg")
         shift
         ;;
-      --slug|--base-url|--expected-package-hash|--expected-upload-receipt|--overwrite-cloud-id)
+      --slug|--base-url|--expected-package-hash|--expected-upload-receipt|--overwrite-cloud-id|--rent-credits|--ingest-credits|--fork-credits)
         if [[ "$#" -lt 2 || "${2:-}" == --* ]]; then
           echo "Missing value for $arg." >&2
           return 2
@@ -137,7 +177,7 @@ run_upload_gate() {
         publish_args+=("$arg" "${2:-}")
         shift 2
         ;;
-      --slug=*|--base-url=*|--expected-package-hash=*|--expected-upload-receipt=*|--overwrite-cloud-id=*)
+      --slug=*|--base-url=*|--expected-package-hash=*|--expected-upload-receipt=*|--overwrite-cloud-id=*|--rent-credits=*|--ingest-credits=*|--fork-credits=*)
         publish_args+=("$arg")
         shift
         ;;
@@ -166,6 +206,11 @@ run_upload_gate() {
     echo "No upload performed. Choose Cloud or Agentlas Hub in the chat, then run one explicit command:" >&2
     echo "  hep-upload <agent-folder> --visibility private-link   # Cloud" >&2
     echo "  hep-upload <agent-folder> --visibility marketplace    # Agentlas Hub" >&2
+    echo "For the Hub, also ask what it should charge and pass what they answer:" >&2
+    echo "  --rent-credits <1-100>      per work order (24h lease)" >&2
+    echo "  --ingest-credits <1-2000>   per project per day" >&2
+    echo "  --fork-credits <1+>         one copy, once" >&2
+    echo "Omit a flag and that kind is not sold. Omit all three and the agent is free to call." >&2
     return 3
   fi
   printf 'Select 1 or 2: ' >&2
@@ -179,6 +224,19 @@ run_upload_gate() {
       run_python_module agentlas_cloud publish "$target" --visibility private-link ${publish_args[@]+"${publish_args[@]}"}
       ;;
     2|hub|agentlas\ hub|agentlas|h)
+      # Prices are only asked when they were not already given on the command
+      # line, so a scripted call is never interrupted by a prompt.
+      if [[ ! " ${publish_args[*]-} " =~ (--rent-credits|--ingest-credits|--fork-credits) ]]; then
+        price_question
+        local -a price_args=()
+        # shellcheck disable=SC2207
+        price_args+=($(read_price "빌리기 / Rent (1-100)" --rent-credits))
+        # shellcheck disable=SC2207
+        price_args+=($(read_price "인제스트 / Ingest (1-2000)" --ingest-credits))
+        # shellcheck disable=SC2207
+        price_args+=($(read_price "포크 / Fork (1+)" --fork-credits))
+        publish_args+=(${price_args[@]+"${price_args[@]}"})
+      fi
       run_python_module agentlas_cloud publish "$target" --visibility marketplace ${publish_args[@]+"${publish_args[@]}"}
       ;;
     *)
