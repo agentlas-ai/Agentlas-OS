@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hephaestus",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "description": "Agentlas Core Engine (Hephaestus): runtime-neutral agent workspace, factory, and OS. Skills load from ./skills, the Workforce MCP server from ./mcp.json.",
   "author": {
     "name": "Agentlas",
