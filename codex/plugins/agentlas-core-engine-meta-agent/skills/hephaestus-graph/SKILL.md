@@ -1,6 +1,6 @@
 ---
 name: hephaestus-graph
-description: "Use when the user types /hep-graph or asks to create, list, inspect, or request a run of an Agentlas automation graph."
+description: "Use when the user types /hep-graph or /agentlas-graph, or asks to create, list, inspect, or request a run of an Agentlas automation graph."
 ---
 
 # Hephaestus Graph

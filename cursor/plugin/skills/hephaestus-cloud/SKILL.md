@@ -1,6 +1,6 @@
 ---
 name: hephaestus-cloud
-description: "Use when the user types /hep-cloud or asks to staff from THEIR OWN Agentlas cloud packages only. Cloud is one exact source scope; Network means Local + owner Cloud + public Hub."
+description: "Use when the user types /hep-cloud or /agentlas-cloud, or asks to staff from THEIR OWN Agentlas cloud packages only. Cloud is one exact source scope; Network means Local + owner Cloud + public Hub."
 ---
 
 # Hephaestus Cloud Routing (my own cloud / 보관함)

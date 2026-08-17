@@ -1,0 +1,10 @@
+description = "Use the Agentlas browser hardpoint for browser-required work."
+prompt = """
+# /agentlas-browser
+
+Argument: {{args}}
+
+Identical to `/hep-browser` and `/agentlas browser <request>`. Locate the file named `hep-browser.toml` in the exact same directory this file was loaded from, read its `prompt` value, and follow those instructions exactly — treating the argument above as that command's request.
+
+Do not improvise a separate workflow and do not summarize `hep-browser.toml` from memory; that file is the sole authority for this command's behavior.
+"""

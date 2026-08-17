@@ -908,6 +908,27 @@ def _format_output(host: str, event: str, capsule: str | None, workspace: Path |
     return capsule
 
 
+def _one_enabled() -> bool:
+    """Cheap, fail-silent check of Agentlas One's on/off state.
+
+    `agentlas-one on/off` persists state as ``on: true|false`` in
+    ``~/.agentlas/one/state.json`` (see bin/agentlas-one). This is a local
+    file-existence + single-key read, so it is safe to call on every
+    UserPromptSubmit without adding meaningful latency.
+    """
+
+    try:
+        one_dir = Path(os.environ.get("AGENTLAS_ONE_DIR") or (Path.home() / ".agentlas" / "one"))
+        state_path = one_dir / "state.json"
+        if not state_path.is_file():
+            return False
+        with state_path.open("r", encoding="utf-8") as fh:
+            state = json.load(fh)
+        return bool(state.get("on"))
+    except Exception:
+        return False
+
+
 def _maybe_start_runtime_auto_update() -> None:
     """Start the TTL-gated, fail-silent runtime auto-update from hook context.
 
@@ -972,6 +993,15 @@ def main(argv: list[str] | None = None) -> int:
             maybe_refresh_project_index(_resolve_cwd(payload, args.cwd))
         except Exception:
             pass
+    elif event == "UserPromptSubmit" and _one_enabled():
+        # One turns "check once a day" into "check on any prompt" instead of
+        # only at SessionStart: a long-lived session that never restarts would
+        # otherwise never re-check. Runs after the capsule above is already
+        # written, and reuses the same 24h marker/lock — 23 of every 24 calls
+        # here are a single cheap marker read, not a network round trip. With
+        # One off, the CLI-side trigger in cli.py (any hep-* command) already
+        # covers the update path, so no separate call is needed here.
+        _maybe_start_runtime_auto_update()
     return 0
 
 

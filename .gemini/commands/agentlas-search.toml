@@ -1,0 +1,10 @@
+description = "Search Agentlas Cloud and Hub candidates without invoking agents."
+prompt = """
+# /agentlas-search
+
+Argument: {{args}}
+
+Identical to `/hep-search` and `/agentlas search <request>`. Locate the file named `hep-search.toml` in the exact same directory this file was loaded from, read its `prompt` value, and follow those instructions exactly — treating the argument above as that command's request.
+
+Do not improvise a separate workflow and do not summarize `hep-search.toml` from memory; that file is the sole authority for this command's behavior.
+"""

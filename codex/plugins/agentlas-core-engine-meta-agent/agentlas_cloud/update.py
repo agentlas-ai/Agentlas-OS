@@ -83,6 +83,7 @@ HOST_ADAPTER_DIRS = (
     "grok",
     "hermes",
     "hooks",
+    "kimi",
     "openclaw",
     "opencode",
     "skills",
@@ -787,6 +788,10 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
             updated.append(str(dest))
         except Exception as exc:
             failed.append({"path": str(dest), "error": str(exc)})
+
+    grok_result = _sync_grok_marketplace_cache(home_dir)
+    updated.extend(grok_result["updated"])
+    failed.extend(grok_result["failed"])
 
     return {
         "updated": updated,
@@ -1498,6 +1503,79 @@ def _installed_plugin_cache_targets(source: Path, home: Path) -> list[tuple[Path
             if child.is_dir() and not child.is_symlink() and (child / "bin" / "hephaestus").exists():
                 targets.append((src_rel, child))
     return targets
+
+
+# Grok Build has no background auto-refresh of its own: `grok marketplace add`
+# git-clones this repo into a hash-named directory under
+# ~/.grok/marketplace-cache/ and only re-reads it when the user runs
+# `grok marketplace update`. Without this, new commands (including this one)
+# only reach Grok after a manual update the user is unlikely to know to run.
+def _grok_marketplace_cache_targets(home: Path) -> list[Path]:
+    """Find Grok marketplace-cache clones of this repo by origin remote URL.
+
+    Only directories whose ``origin`` remote points at this project are
+    returned, so unrelated cached marketplaces (Firebase, Claude's official
+    marketplace, xAI's own, ...) are never touched.
+    """
+
+    cache_root = home / ".grok" / "marketplace-cache"
+    targets: list[Path] = []
+    try:
+        children = list(cache_root.iterdir())
+    except OSError:
+        return targets
+    for child in children:
+        if not child.is_dir() or child.is_symlink() or not (child / ".git").is_dir():
+            continue
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(child), "remote", "get-url", "origin"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except Exception:
+            continue
+        url = (result.stdout or "").strip().lower()
+        if "agentlas-ai/agentlas-os" in url:
+            targets.append(child)
+    return targets
+
+
+def _sync_grok_marketplace_cache(home: Path) -> dict[str, Any]:
+    """Fast-forward any Grok marketplace-cache clone of this repo to latest.
+
+    This stays git-native (fetch + hard reset) instead of replacing the
+    directory wholesale, because Grok may rely on the clone's ``.git``
+    metadata for its own integrity checks. It never invokes the ``grok``
+    binary itself: the exact marketplace name Grok registers this repo under
+    is not something this codebase controls, so guessing at a
+    ``grok marketplace update <name>`` invocation would be a fragile
+    assumption. Refreshing the git checkout directly is the conservative
+    option — it is exactly what a marketplace update would do internally.
+    """
+
+    updated: list[str] = []
+    failed: list[dict[str, str]] = []
+    for cache_dir in _grok_marketplace_cache_targets(home):
+        try:
+            subprocess.run(
+                ["git", "-C", str(cache_dir), "fetch", "--quiet", "origin", "main"],
+                capture_output=True,
+                timeout=20,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(cache_dir), "reset", "--quiet", "--hard", "FETCH_HEAD"],
+                capture_output=True,
+                timeout=20,
+                check=True,
+            )
+            updated.append(str(cache_dir))
+        except Exception as exc:
+            failed.append({"path": str(cache_dir), "error": str(exc)})
+    return {"updated": updated, "failed": failed}
 
 
 def _replace_directory(src: Path, dest: Path) -> None:

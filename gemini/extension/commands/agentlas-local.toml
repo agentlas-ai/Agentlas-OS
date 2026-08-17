@@ -1,0 +1,10 @@
+description = "Staff a task only from Agentlas agents registered on this machine."
+prompt = """
+# /agentlas-local
+
+Argument: {{args}}
+
+Identical to `/hep-local` and `/agentlas local <request>`. Locate the file named `hep-local.toml` in the exact same directory this file was loaded from, read its `prompt` value, and follow those instructions exactly — treating the argument above as that command's request.
+
+Do not improvise a separate workflow and do not summarize `hep-local.toml` from memory; that file is the sole authority for this command's behavior.
+"""

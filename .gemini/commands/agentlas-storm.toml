@@ -1,0 +1,10 @@
+description = "Run a force-robust Stormbreaker loop — route to real agents, execute a verified pipeline to completion."
+prompt = """
+# /agentlas-storm
+
+Argument: {{args}}
+
+Identical to `/hep-storm` and `/agentlas storm <request>`. Locate the file named `hep-storm.toml` in the exact same directory this file was loaded from, read its `prompt` value, and follow those instructions exactly — treating the argument above as that command's request.
+
+Do not improvise a separate workflow and do not summarize `hep-storm.toml` from memory; that file is the sole authority for this command's behavior.
+"""

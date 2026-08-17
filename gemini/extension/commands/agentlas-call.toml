@@ -1,0 +1,10 @@
+description = "Prepare explicitly named Agentlas Hub or Cloud agents."
+prompt = """
+# /agentlas-call
+
+Argument: {{args}}
+
+Identical to `/hep-call` and `/agentlas call <request>`. Locate the file named `hep-call.toml` in the exact same directory this file was loaded from, read its `prompt` value, and follow those instructions exactly — treating the argument above as that command's request.
+
+Do not improvise a separate workflow and do not summarize `hep-call.toml` from memory; that file is the sole authority for this command's behavior.
+"""

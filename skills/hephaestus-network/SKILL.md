@@ -1,6 +1,6 @@
 ---
 name: hephaestus-network
-description: "Use when the user types $hephaestus-network or /hep-network, mentions @Hephaestus, or asks Agentlas to staff a durable goal from registered Local, owner Cloud, and public Hub agents or teams. The active host LLM staffs each turn; the exact roster remains goal-bound until explicit completion."
+description: "Use when the user types $hephaestus-network, /hep-network, or /agentlas-network, mentions @Hephaestus, or asks Agentlas to staff a durable goal from registered Local, owner Cloud, and public Hub agents or teams. The active host LLM staffs each turn; the exact roster remains goal-bound until explicit completion."
 ---
 
 # Hephaestus Agent Workforce Network

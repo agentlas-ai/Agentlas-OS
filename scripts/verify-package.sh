@@ -457,6 +457,12 @@ public_skill_names = {
     "hephaestus-storm",
     "hephaestus-graph",
     "routing-card-authoring",
+    "agentlas-build",
+    "agentlas-network",
+    "agentlas-cloud",
+    "agentlas-upload",
+    "agentlas-storm",
+    "agentlas-graph",
 }
 codex_skill_root = Path("codex/plugins/agentlas-core-engine-meta-agent/skills")
 actual = {path.parent.name for path in codex_skill_root.glob("*/SKILL.md")}

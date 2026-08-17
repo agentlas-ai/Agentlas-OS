@@ -171,6 +171,29 @@ def package_agent(
     if not base.is_dir():
         raise UploadError(f"agent folder not found: {folder}")
 
+    # An installed copy is never published to the Hub.
+    #
+    # The server refuses a fork two ways -- declared lineage on the submission,
+    # and identical bytes already listed by another account. A local round trip
+    # defeats both: restore the copy, edit one line, and the hash no longer
+    # matches anything while the folder carries no lineage of its own. The
+    # restore marker is what survives that round trip, so the refusal has to
+    # read it here, before a minute is spent packaging an upload the server
+    # would reject anyway.
+    #
+    # Only the public Hub upload is blocked. A private re-upload of your own
+    # copy is ordinary use and stays allowed.
+    if visibility == "marketplace":
+        fork = _read_restore_fork(base)
+        if fork:
+            origin = fork.get("originSlug") or "another creator"
+            raise UploadError(
+                f"this folder is an installed copy of {origin}; it can be run, edited, "
+                "and staffed into work orders, but the Hub listing belongs to the "
+                "original creator",
+                code="fork_cannot_publish",
+            )
+
     # Deferred until after the derivations below. Refreshing here recorded a
     # `source.package_hash` over a package that had not been completed yet, so
     # the card lagged one round: the first upload of any package whose content
@@ -599,6 +622,28 @@ def package_agent(
             )
         ),
     }
+
+
+# Written by Desktop when it restores a Cloud package into a local folder.
+# Shared filename, deliberately: the two products have to agree on it or the
+# lineage is invisible to whichever one did not write it.
+_RESTORE_MARKER = ".agentlas-cloud-package.json"
+
+
+def _read_restore_fork(base: Path) -> dict[str, Any] | None:
+    """Fork lineage from the restore marker, or None when this is original work.
+
+    A malformed or unreadable marker returns None rather than raising. The
+    marker is not the security boundary -- the server checks are -- and failing
+    an upload over a corrupt local file would block ordinary work for no gain.
+    """
+    marker = base / _RESTORE_MARKER
+    try:
+        raw = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    fork = raw.get("fork") if isinstance(raw, dict) else None
+    return fork if isinstance(fork, dict) else None
 
 
 def _dry_run_summary(packaged: dict[str, Any]) -> str:

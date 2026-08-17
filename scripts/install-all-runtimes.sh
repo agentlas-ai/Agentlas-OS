@@ -52,7 +52,7 @@ HOST_ADAPTER_BUNDLE_DIR="host_adapters"
 host_adapter_dirs=(
   ".agents" ".claude" ".claude-plugin" ".gemini"
   amazonq amp antigravity claude codex copilot-cli cursor gemini goose grok
-  hermes hooks openclaw opencode skills warp
+  hermes hooks kimi openclaw opencode skills warp
 )
 
 ok=0
@@ -1473,6 +1473,33 @@ install_hermes() {
   ok=$((ok + 1))
 }
 
+# Kimi Code CLI (Moonshot AI) reads AgentSkills from ~/.kimi/skills; each
+# folder's `name:` field (already "hep-<verb>" or "agentlas-<verb>", not a
+# "hephaestus-" prefix) is what Kimi's own picker shows, so both spellings
+# surface natively without any alias trick.
+install_kimi() {
+  if ! have kimi && [[ ! -d "$HOME/.kimi" ]]; then
+    warn "Kimi Code CLI not detected; skipped Kimi skill install."
+    return 0
+  fi
+  log "== Kimi Code CLI skills =="
+  ensure_downloaded_source || return 1
+  local skills_src="$source_dir/kimi/skills"
+  [[ -d "$skills_src" ]] || { warn "release is missing kimi/skills; cannot install Kimi skills."; return 1; }
+  mkdir -p "$HOME/.kimi/skills"
+  local dir name installed=0
+  for dir in "$skills_src"/*; do
+    [[ -d "$dir" ]] || continue
+    name="$(basename "$dir")"
+    rm -rf "$HOME/.kimi/skills/$name"
+    copy_tree_without_python_cache "$dir" "$HOME/.kimi/skills/$name" || return 1
+    installed=$((installed + 1))
+  done
+  [[ "$installed" -gt 0 ]] || { warn "No managed skills matched $skills_src."; return 1; }
+  log "Installed $installed Kimi skills (hep-* and agentlas-* both native) to ~/.kimi/skills."
+  ok=$((ok + 1))
+}
+
 # goose (Block) reads the project AGENTS.md natively; its only global surface
 # is the MCP extension table in ~/.config/goose/config.yaml. YAML cannot be
 # merged safely without extra dependencies, so only a missing config is
@@ -1744,6 +1771,7 @@ main() {
   install_memory_hooks || { warn "Local ontology memory hook install failed."; failed=$((failed + 1)); }
   install_openclaw || { warn "OpenClaw install failed."; failed=$((failed + 1)); }
 	  install_hermes || { warn "Hermes install failed."; failed=$((failed + 1)); }
+	  install_kimi || { warn "Kimi install failed."; failed=$((failed + 1)); }
 	  install_goose || { warn "goose install failed."; failed=$((failed + 1)); }
 	  install_amp || { warn "Amp install failed."; failed=$((failed + 1)); }
 	  install_copilot_cli || { warn "Copilot CLI install failed."; failed=$((failed + 1)); }

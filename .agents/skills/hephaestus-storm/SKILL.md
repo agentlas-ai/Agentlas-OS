@@ -1,6 +1,6 @@
 ---
 name: hephaestus-storm
-description: "Use when the user types /hep-storm, says @Hephaestus storm <goal>, or asks to drive a goal to verified completion through a force-robust Stormbreaker loop. Stormbreaker routes the goal to real Agentlas specialists, materializes a dependency-ordered pipeline fabric, and runs each work packet as a verifier-first hardened loop that does not stall, run away, or claim false success. Use it for loop-worthy work — apps, sites, agents, automations, debugging, multi-step research, data/report generation. Trivial questions are answered directly, not stormed."
+description: "Use when the user types /hep-storm or /agentlas-storm, says @Hephaestus storm <goal>, or asks to drive a goal to verified completion through a force-robust Stormbreaker loop. Stormbreaker routes the goal to real Agentlas specialists, materializes a dependency-ordered pipeline fabric, and runs each work packet as a verifier-first hardened loop that does not stall, run away, or claim false success. Use it for loop-worthy work — apps, sites, agents, automations, debugging, multi-step research, data/report generation. Trivial questions are answered directly, not stormed."
 ---
 
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.

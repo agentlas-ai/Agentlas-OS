@@ -1,6 +1,6 @@
 ---
 name: hephaestus-upload
-description: "Use when the user types $hephaestus-upload or /hep-upload, or asks to upload, publish, or list an Agentlas agent or team. Ask Cloud (private) vs Agentlas Hub (public) FIRST, then publish through the bundled Hephaestus gate."
+description: "Use when the user types $hephaestus-upload, /hep-upload, or /agentlas-upload, or asks to upload, publish, or list an Agentlas agent or team. Ask Cloud (private) vs Agentlas Hub (public) FIRST, then publish through the bundled Hephaestus gate."
 ---
 
 # Hephaestus Upload (Cloud or Agentlas Hub)
