@@ -94,6 +94,31 @@ def _has_placeholders(path: Path) -> bool:
         return False
 
 
+# The scaffolded AGENTS.md announces itself. Recognising a stencil by "does it
+# still contain {{...}}" is a proxy that fails the moment the last placeholder
+# in a file gets a legitimate answer — which is what happened when single-agent
+# packages stopped being asked to name a team roster: `{{TEAM_ROLES}}` was the
+# only placeholder left in single mode, so filling it made an untouched stencil
+# look like an authored document and the real `agent.md` was never promoted
+# into it (measured 2026-08-17).
+#
+# These lines come from templates/AGENTS.md.tpl and are not something a person
+# writing about their own agent produces.
+_STENCIL_MARKERS = (
+    "Return status, evidence, output, global_commands, interview_research, and",
+    "Research official sources,",
+)
+
+
+def _is_untouched_scaffold(path: Path) -> bool:
+    """True when this file is still the contract stencil, placeholders or not."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return all(marker in text for marker in _STENCIL_MARKERS)
+
+
 def _first_paragraph(text: str, limit: int = 300) -> str:
     for block in re.split(r"\n\s*\n", text):
         line = " ".join(block.split())
@@ -1235,7 +1260,7 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
     # The upload pass still withdraws any stencil that survives to publish time —
     # that guard is what the original 2026-08-07 measurement needed, and it is
     # unaffected here.
-    core_is_stencil = core.is_file() and _has_placeholders(core)
+    core_is_stencil = core.is_file() and (_has_placeholders(core) or _is_untouched_scaffold(core))
     if (not core.is_file()) or core_is_stencil:
         # The canonical core is missing or still a stencil, but a real body may
         # exist under another name. AGENTS.md is the entry every runtime reads

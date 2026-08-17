@@ -64,3 +64,38 @@ done
 /hep-browser --setup
 /hep-browser --check
 ```
+
+## Rules carried from the other runtime copies
+
+These lines existed in one runtime's hand-maintained copy and not in the
+longest one. They are kept verbatim rather than dropped — a rule that only
+one runtime enforced was still a rule someone wrote on purpose.
+
+- `the request typed after the command` Codex plugins cannot register slash commands, so this custom prompt is the explicit entrypoint:
+- Use this when the task needs a real browser, page rendering, login-visible state, click/form behavior, or JS-heavy evidence.
+- Prefer the Agentlas browser hardpoint first.
+- - `/prompts:hep-browser <url>` reads a rendered browser snapshot.
+- - `/prompts:hep-browser <url> "<instruction>"` or `/prompts:hep-browser <url> --act "<instruction>"` performs browser automation through `browser.agent_cli`, then captures a snapshot.
+- - Use `--click @e1` or `--click-text "Compose"` for LLM-free browser primitives after the host has selected a ref/text target.
+- ```bash RUNNER="" for c in "$HOME/.agentlas/runtime/current/bin/hephaestus" ./bin/hephaestus; do [ -x "$c" ] && RUNNER="$c" && break done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
+- Run the installer first." >&2; exit 1; } "$RUNNER" hep-browser "the request typed after the command" ``` Report whether `browser.agent_cli` mounted, whether setup is needed, and the receipt id.
+- For automation, also report the action, whether CDP/profile flags were used, and the final snapshot status.
+- # Hephaestus Browser Use this for browser-required work:
+- rendered pages, JS-heavy sites, click/form flows, or login-visible evidence.
+- With a URL plus an explicit instruction, `hep-browser` runs browser automation through `browser.agent_cli` before taking the final snapshot.
+- Use `--read` to force snapshot-only mode.
+- Resolve the runner (`~/.agentlas/runtime/current/bin/hephaestus`, then `./bin/hephaestus`) and run:
+- `"$RUNNER" hep-browser "<url-or-query>"` Report whether `browser.agent_cli` mounted, whether setup is needed, and the receipt id.
+- For automation, also report the action and final snapshot status.
+- `the request typed after the command` ```bash RUNNER="" for c in "$HOME/.agentlas/runtime/current/bin/hephaestus" ./bin/hephaestus; do [ -x "$c" ] && RUNNER="$c" && break done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
+- Run the installer first." >&2; exit 1; } "$RUNNER" hep-browser "the request typed after the command" ``` Use this for rendered/browser-required work and report the `browser.agent_cli` status plus receipt id.
+- With a URL and an explicit instruction, this performs browser automation before taking the final snapshot:
+- ```text /hep-browser https://example.com "click the Docs link and report what changed" /hep-browser https://example.com --act "open pricing" --cdp 9222 --keep-open /hep-browser https://example.com "extra context only" --read ``` If setup is needed, show `hep-browser --setup` and `hep-browser --check`.
+- # /hep-browser Use this for rendered pages, JS-heavy sites, click/form flows, login-visible state, or browser evidence.
+- The request is the exact text the user typed after `/hep-browser`.
+- - `<url>` reads a rendered browser snapshot.
+- - `<url> "<instruction>"` or `<url> --act "<instruction>"` performs browser automation through `browser.agent_cli`, then captures a snapshot.
+- - Add `--read` to force snapshot-only mode when extra text is context.
+- ## How to run Run the shell block below verbatim, replacing only the `REQUEST` value.
+- ```bash REQUEST="<replace with the exact text the user typed after /hep-browser>" case "$REQUEST" in "<replace"*) echo "REQUEST placeholder not filled -- substitute the user's request first." >&2; exit 2 ;; esac RUNNER="" for candidate in \ "$HOME/.agentlas/runtime/current/bin/hephaestus" \ "./bin/hephaestus" do if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi done if [ -z "$RUNNER" ]; then for cache in "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus" \ "${CODEX_HOME:-$HOME/.codex}/plugins/cache/agentlas-core-engine/hephaestus"; do newest="$(ls -d "$cache"/*/bin/hephaestus 2>/dev/null | sort -V | tail -1)" if [ -n "$newest" ] && [ -x "$newest" ]; then RUNNER="$newest"; break; fi done fi [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
+- Run the installer first." >&2; exit 1; } "$RUNNER" hep-browser "$REQUEST" ``` Report whether `browser.agent_cli` mounted, whether setup is needed, the module chain, the receipt id, and the action/snapshot result for automation runs.

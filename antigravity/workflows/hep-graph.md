@@ -125,3 +125,26 @@ and its reason rather than retrying.
 
 If the CLI exits non-zero, show its message verbatim and stop. Do not
 substitute a guess about why, and do not retry a run request.
+
+## Rules carried from the other runtime copies
+
+These lines existed in one runtime's hand-maintained copy and not in the
+longest one. They are kept verbatim rather than dropped — a rule that only
+one runtime enforced was still a rule someone wrote on purpose.
+
+- # Hephaestus Graph Saved automation graphs live in the local Agentlas database, shared with the desktop app.
+- Four marks must survive into your summary:
+- # /hep-graph Treat the text after `/hep-graph` as one of:
+- `new <request>`, `list`, `show <name>`, or `run <name>`.
+- Saved graphs live in the local Agentlas database shared with Agentlas Desktop.
+- This workflow requests work from the independent Agentlas CLI; it must not substitute Gemini CLI, Hephaestus routing, or Hub search.
+- ## Resolve the Agentlas CLI ```bash CLI="" for candidate in \ "$(command -v agentlas 2>/dev/null)" \ "$HOME/.agentlas/runtime/current/bin/agentlas" \ "./bin/agentlas" do if [ -n "$candidate" ] && [ -x "$candidate" ]; then CLI="$candidate"; break; fi done [ -n "$CLI" ] || { echo "Agentlas CLI not found.
+- npm i -g agentlas" >&2; exit 1; } ``` ## Behavior - No arguments or `list`:
+- run `"$CLI" graph list` and report trigger, step count, and on/off state.
+- run `"$CLI" graph show "<name>"` and preserve the tree wiring, external-effect and ask-first marks, branch sides, repeat edges, verification checklist, code steps, and required input.
+- Relay every unanswered question and never invent schedule, external-effect, repetition, or checklist answers.
+- The final save confirmation is the graph's approval.
+- the direct command is authority to request the run; do not ask for a second approval.
+- If a value is required, obtain that missing input without guessing, then run `"$CLI" graph run "<name>" -y` with `--input "<value>"` when needed.
+- The CLI only requests execution from Agentlas Desktop.
+- On non-zero exit, relay the exact refusal and stop.
