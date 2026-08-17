@@ -1334,10 +1334,32 @@ def _attest_registration(
 
     if not isinstance(registration, dict):
         raise UploadError("Registration response was not an object.", code="registration_attestation_failed")
+    # ★ 응답의 visibility 는 요청 어휘가 아니라 **저장 스코프 어휘**다.
+    #     요청 marketplace  → 응답 marketplace   (그대로)
+    #     요청 private-link → 응답 owner-private (번역됨)
+    #   서버가 한쪽만 번역하는 비대칭이라, 이 검증은 marketplace 만 통과시키고
+    #   비공개 저장은 항상 실패시켰다 — 2026-08-14(v1.2.1)에 이 함수가 들어온 뒤
+    #   모든 `--visibility private-link` 발행이 **서버가 이미 쓴 뒤에** 실패로
+    #   보고됐다. Desktop 클라이언트는 처음부터 같은 매핑을 하고 있었고,
+    #   그래서 Desktop 만 멀쩡했다.
+    #
+    #   서버 값을 바꾸면 이미 배포된 Desktop 이 전부 깨지므로, 맞추는 쪽은 여기다.
+    #   양쪽 어휘를 다 받는다: 서버가 나중에 요청 어휘를 그대로 돌려주게 되어도
+    #   이 검증은 계속 맞다.
+    accepted_visibility = {
+        "marketplace": {"marketplace"},
+        "private-link": {"private-link", "owner-private"},
+    }.get(visibility, {visibility})
+    if registration.get("visibility") not in accepted_visibility:
+        raise UploadError(
+            "Registration response did not attest visibility={!r} (got {!r}).".format(
+                visibility, registration.get("visibility")
+            ),
+            code="registration_attestation_failed",
+        )
     expected = {
         "status": "registered",
         "slug": str(manifest.get("slug") or ""),
-        "visibility": visibility,
     }
     for field, value in expected.items():
         if registration.get(field) != value:
