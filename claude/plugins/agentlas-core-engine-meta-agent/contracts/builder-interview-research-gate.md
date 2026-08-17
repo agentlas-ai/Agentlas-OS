@@ -58,17 +58,87 @@ than mechanically finishing a wave. The anti-scope, done-signal, and
 stop-criterion lenses are mandatory. Preserve the user's own anti-scope words
 as routing-card anti-triggers.
 
-After each round, score goal, constraints, success, and context ambiguity. End
-only after overall ambiguity is at most 0.2, every dimension clears its floor,
-and both conditions hold for two rounds. Every interim risk must become the
-next concrete question or a named deferral. Close with a coverage question,
-restate the goal in one sentence, and confirm that sentence is sufficient.
+### Every question is derived, never templated
+
+A fixed question list is not an interview. If the same batch would be sent for
+"plan a resort's mid-term management strategy" and for "tidy my inbox", the
+batch is measuring nothing and the answers cannot make the agent specialist.
+Before writing a batch, restate what the request ALREADY settles, then ask only
+about what it leaves open. A question whose answer is already in the request, or
+whose wording would be identical for any other agent, is a defect: drop it and
+ask the next real unknown instead.
+
+Ground every question in the request's own subject matter. Use the domain's
+vocabulary, name the actual artifacts and decisions the agent will handle, and
+offer options that are concrete choices in THAT domain rather than abstract
+categories. Where the domain has known method families, ask which one applies;
+where it has known failure modes, ask which ones matter here.
+
+### Score, then let the score choose the next questions
+
+After each round, score four dimensions from 0.0 to 1.0 and combine them:
+
+| dimension | weight | reaches 1.0 when |
+|---|---|---|
+| goal clarity | 0.35 | the outcome is stated as a concrete artifact or decision, not a topic |
+| constraint clarity | 0.25 | scope, anti-scope, authority, and non-negotiables are explicit |
+| success criteria | 0.25 | acceptance is checkable by someone other than the author |
+| context clarity | 0.15 | existing material, audience, cadence, and environment are known |
+
+`ambiguity = 1 - Σ(clarity_i × weight_i)`. Score deterministically (a fixed low
+temperature) so the same answers reproduce the same number; report the vector,
+never a bare total. **The lowest-scoring dimension decides what the next batch
+asks about** — questions follow the gap, not a checklist order, and a dimension
+already at its floor gets no further questions.
+
+Continue until overall ambiguity is at most 0.2, every dimension clears its
+floor, and both hold for two consecutive rounds. Every interim risk must become
+the next concrete question or a named deferral. Close with one coverage
+question, restate the goal in one sentence, and confirm that sentence is
+sufficient. Record the final vector and total in the Work Brief; a build that
+cannot show its dimension scores did not run this gate.
+
+Stop early only on an explicit user override, and record the override and the
+ambiguity it stopped at.
 
 If the user cannot answer, propose a conservative default, label it
 `assumption`, and ask for confirmation. Never hide an unknown in generated
 instructions. For an underspecified team, ask in plain language whether one
 expert can own the work end-to-end or multiple experts must divide and combine
 it; do not begin generation until the shape is known.
+
+### The interview record is written by the host, not by you
+
+`docs/builder-interview.md` and the work brief's `source: user` tags are YOUR
+claim that an interview happened. They are not evidence of it. Measured
+2026-08-17: three packages carried `source: "user"` assumptions and a fully
+written interview document, and their owner had never been asked a single
+question — the model that skipped the interview also wrote the record saying it
+had not.
+
+So the host writes `.agentlas/interview-receipt.json` from the exchange it
+actually transported:
+
+```json
+{
+  "schemaVersion": "agentlas.interview-receipt/1.0",
+  "observedBy": "<host id>",
+  "batchesAsked": 2,
+  "answersReceived": 2,
+  "recordedAt": "<iso8601>"
+}
+```
+
+Never write, edit, or fabricate this file — a host that sees you author it must
+treat the build as unverified. A batch counts as asked only when the host parsed
+real questions out of your turn, and as answered only when a human turn followed
+it. `answersReceived: 0` means no interview happened, whatever the documents say,
+and a standard-profile build in that state is `blocked`, not `completed`. A
+`minimal-private` build carrying the complete user-confirmed opt-out receipt is
+the only exception.
+
+A host with no question transport cannot satisfy this gate by asking in prose:
+add the transport, or declare the build minimal-private and say so in the receipt.
 
 Write `docs/builder-interview.md` and `.agentlas/work-brief.json`
 (`schemaVersion: work-brief/1.0`). The Work Brief must contain the one-line
@@ -104,6 +174,23 @@ rejected alternative when one exists. Record account state, secrets needed,
 permission scope, cost, fallback, and smoke test. Reject integrations whose
 credentials, account entitlement, permission model, or behavior cannot be
 verified. Write `docs/tool-selection.md`.
+
+### A plugin without an MCP server is a skill, not a failure
+
+Some Hub plugins ship skills instead of a server. Their manifest says so:
+`mcp: []` with `architecture.packageShape.mcpReference: "none"` and
+`skills: "bundled"`. There is nothing to connect, so connecting is not the test.
+
+Bundle them as package skills and record them in `docs/tool-selection.md` with the
+same permission/fallback notes as any other capability. Never report them as a
+failed or unavailable connection, never invent an MCP server for them, and never
+drop the capability just because no server appeared — measured 2026-08-17:
+Documents, Presentations and Spreadsheets were approved by the user, had no server
+by design, and the build reported "Failed · 3", losing three approved capabilities
+and telling the user the product was broken.
+
+Read `agents[].intent` and `capabilities` from the manifest for what the skill
+actually does; do not restate the marketing tagline as behavior.
 
 ## Gate 4 — Domain-expert synthesis
 

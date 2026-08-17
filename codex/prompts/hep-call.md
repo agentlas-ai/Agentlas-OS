@@ -1,23 +1,29 @@
 ---
 description: Prepare explicitly named Agentlas Hub or Cloud agents.
-argument-hint: agent-a, agent-b {context}
+argument-hint: 'agent-a, agent-b {context}'
 ---
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
-# Hephaestus Call
+# /hep-call
 
+
+Call the exact agents named by the user. This prepares BYOM runtime bundles and
+receipts; Claude still performs the actual model/tool execution.
 
 Raw arguments: `$ARGUMENTS`
 
-Codex plugins cannot register slash commands, so this custom prompt is the
-explicit entrypoint: `/prompts:hep-call`.
-
-1. Resolve the runner and prepare the named agents:
+## Call
 
 ```bash
 RUNNER=""
-for c in "$HOME/.agentlas/runtime/current/bin/hephaestus" ./bin/hephaestus; do
-  [ -x "$c" ] && RUNNER="$c" && break
+for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
+  "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
+  "${GEMINI_EXTENSION_ROOT:+$GEMINI_EXTENSION_ROOT/bin/hephaestus}" \
+  "./bin/hephaestus"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
 if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
@@ -34,12 +40,28 @@ else
 fi
 AGENTS="$(printf '%s' "$AGENTS" | sed 's/[[:space:]]*$//')"
 CONTEXT="$(printf '%s' "$CONTEXT" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-"$RUNNER" call "$AGENTS" "$CONTEXT" --runtime codex
+"$RUNNER" call "$AGENTS" "$CONTEXT" --runtime claude-code
 ```
 
-2. For each prepared agent, follow its returned `output.entry_excerpt` and
-   `output.grounding.directive`. The Hub returns BYOM instructions; Codex
-   executes with the current model and permission model.
+## Answer Shape
 
-3. Report failures separately and include the top-level `receipt_id` plus every
-   prepared agent `execution_id`.
+1. Report each requested agent slug and status.
+2. If `status: "prepared"`, use the returned `output.entry_excerpt` and
+   `output.grounding.directive` as the agent's runtime instructions.
+3. If `status: "insufficient_credits"`, tell the user the credits `needed` vs.
+   `have` and point to `upgrade`; do NOT run the agent. Sign-in is automatic — if
+   a call still reports an auth/sign-in status, relay it and stop.
+4. If an agent fails for any other reason, continue with prepared agents and
+   clearly list each failure with its `status`.
+5. NEVER substitute for a blocked, failed, or metered agent by reading its local
+   source files and role-playing the persona yourself. A Hub agent runs only
+   through the server's metered bundle; if it did not return `prepared`, report
+   why — never fabricate a run.
+6. Include `receipt_id` and each prepared `execution_id`.
+
+## Examples
+
+```text
+/hep-call market-researcher, report-writer {시장 리포트 초안 만들어줘}
+/hep-call cloud:my-finance-agent {이 리포트 리스크 검토}
+```

@@ -1,6 +1,6 @@
 ---
-description: Upload an Agentlas agent after asking Cloud vs Hub first.
-argument-hint: <agent folder or request>
+description: Publish an Agentlas package to Agent Cloud or the public Hub.
+argument-hint: <package folder>
 ---
 # /agentlas-upload
 

@@ -1,16 +1,45 @@
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
-# Hephaestus Search
+# /hep-search
 
 
-Search Agentlas Cloud and public Hub candidates without invoking agents.
+Find matching agents without calling them. Return two sections: my Agentlas
+Cloud packages and the public Agentlas Hub.
 
-First run the `hephaestus-network` skill's app-host auto-update preflight inside
-Cursor; do not ask the user to open a separate terminal. Resolve the runner
-(`~/.agentlas/runtime/current/bin/hephaestus`, then `./bin/hephaestus`), run
-`"$RUNNER" auth ensure --timeout 180`, then run
-`"$RUNNER" search "<request>" --runtime cursor --limit 10`.
+Raw arguments: `the request typed after the command`
 
-Show `cloud` and `hub` sections with rank, name, slug, description,
-callable/routing status, why, and `receipt_id`. Do not invoke candidates from
-this command.
+## Search
+
+```bash
+RUNNER=""
+for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
+  "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
+  "${GEMINI_EXTENSION_ROOT:+$GEMINI_EXTENSION_ROOT/bin/hephaestus}" \
+  "./bin/hephaestus"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
+done
+[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
+if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
+  "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+fi
+"$RUNNER" search "the request typed after the command" --runtime claude-code --limit 10
+```
+
+## Answer Shape
+
+1. Show `sections.cloud.results` first, then `sections.hub.results`.
+2. For each candidate include rank, name, slug, description, callable/routing
+   status, and why it matched.
+3. Do not invoke any agent. If the user wants to run exact agents next, use
+   `/hep-call agent-slug-1, agent-slug-2 {context}`.
+4. Include `receipt_id` in the final line.
+
+## Examples
+
+```text
+/hep-search 시장 리포트 써야 하는데 쓸만한 에이전트 찾아줘
+/hep-search find agents for ASO review replies
+```

@@ -5,15 +5,20 @@ description: "Use when verifying that a generated agent package can be installed
 
 # Install Verification
 
-## Checks
+Run:
 
-- Required files exist.
-- JSON files parse.
-- `SKILL.md` files have YAML frontmatter.
-- Runtime adapters point back to `AGENTS.md`.
-- Public safety scan passes.
-- Install script supports explicit target directory.
+```bash
+scripts/verify-package.sh
+scripts/public_safety_check.sh
+```
 
-## Output
+Then inspect:
 
-Return pass/fail, commands run, and exact missing files.
+- root `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`;
+- `.agents/`;
+- `.agentlas/`;
+- `.claude/`;
+- `codex/`;
+- `scripts/install.sh`.
+
+Do not claim completion if any required file is missing.

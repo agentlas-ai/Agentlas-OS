@@ -5,8 +5,11 @@
 # be byte-identical in every runtime adapter directory — adapters mirror the
 # canonical core, they are never a second source. The large Model2Vec payload is
 # a canonical runtime-release asset and is intentionally not duplicated into
-# plugin mirrors. SKILL.md adapters are intentionally condensed per runtime and
-# are NOT byte-checked here.
+# plugin mirrors. SKILL.md bodies are NOT checked here either, but not because
+# they may differ — scripts/render-host-skills.py owns them, keeping each host's
+# frontmatter and one shared body. They were believed to be "intentionally
+# condensed per runtime" until 2026-08-17, when that turned out to mean openclaw
+# shipped the upload skill without its irreversibility warning.
 #
 # Usage:
 #   scripts/sync-adapters.sh           # render core into adapter mirrors
@@ -35,6 +38,7 @@ code_dirs=(
   "modes"
 )
 
+# NOTE: SKILL.md bodies are now rendered by scripts/render-host-skills.py.
 # Hook commands are host-specific: Claude and Codex expose different plugin
 # root variables and should report their own host identity. Keep their source
 # directories separate while still enforcing exact adapter mirrors.

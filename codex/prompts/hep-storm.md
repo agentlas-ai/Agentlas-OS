@@ -4,58 +4,65 @@ argument-hint: '<goal>'
 ---
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
-# Hephaestus Stormbreaker loop
+# /hep-storm
 
-
-Raw arguments: `$ARGUMENTS`
-
-Codex plugins cannot register slash commands, so this custom prompt is the
-explicit entrypoint (`/prompts:hep-storm`). The same contract is also available
-implicitly via the `hep-storm` skill. Also triggered by
-`@Hephaestus storm <goal>`.
 
 Drive a goal through the **Stormbreaker Loop** — Hephaestus' force-robust,
 verifier-first execution loop. Unlike a one-shot answer or a generic parallel
 fan-out, Stormbreaker **routes the goal to real Agentlas specialists**, structures
 the work as a dependency-ordered pipeline fabric, drives each work packet as a
 **hardened goal loop** (it does not stall, run away, or claim false success), and
-**refuses to report success without evidence**. In an agentic runtime **you are
-the executor** — the engine gives you the verified plan; you carry it out with
-your own tools.
+**refuses to report success without evidence**. Also triggered by
+`@Hephaestus storm <goal>`.
 
 Use it for loop-worthy work: apps, sites, agents, automations, debugging,
 multi-step research, data/report generation — anything with files, tools, tests,
 or external verification. Trivial questions should be answered directly, not
 stormed.
 
+Raw arguments: `$ARGUMENTS`
+
 ## Core-owned Goal + UltraCode harness
 
 Every result includes `execution_harness`. Apply
 `execution_harness.system_prompt` **verbatim** before planning or executing any
 packet, and retain its `prompt_sha256` in the goal ledger. Do not redefine,
-summarize, or replace Goal mode or UltraCode mode in this Codex adapter. If live
-session JSON is available, expose it as `AGENTLAS_SESSION_INVENTORY`; otherwise
-use Core's explicit `host:primary` fallback and do not invent workers or models.
+summarize, or replace Goal mode or UltraCode mode in this Claude Code adapter. If
+live session JSON is available, expose it as `AGENTLAS_SESSION_INVENTORY`;
+otherwise use Core's explicit `host:primary` fallback and do not invent workers
+or models.
 With no external executor, `status: materialized` plus
-`final_gate.can_report_success: false` is the expected handoff to Codex's native
-tools, never a completed run.
+`final_gate.can_report_success: false` is the expected handoff to Claude Code's
+native tools, never a completed run.
 
 ## 1. Resolve the runner and materialize the execution fabric
 
-Resolve the runner — first executable wins; runtime cache fallback:
+The Stormbreaker engine routes the goal and materializes a pipeline fabric
+(packets, parallel groups, dependency gates, goal loops, a final gate, and a
+resumable journal). In an agentic runtime **you are the executor** — the engine
+gives you the verified plan; you carry it out with your own tools.
+
+1. Find the first executable Hephaestus runner:
 
 ```bash
 RUNNER=""
-for c in \
+CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
+for candidate in \
   "$HOME/.agentlas/runtime/current/bin/hephaestus" \
-  ./bin/hephaestus
-do [ -x "$c" ] && RUNNER="$c" && break; done
+  "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
+  "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
+  "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
+  "${GEMINI_EXTENSION_ROOT:+$GEMINI_EXTENSION_ROOT/bin/hephaestus}" \
+  "./bin/hephaestus" \
+  "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
+done
 if [ -z "$RUNNER" ]; then
-  for cache in \
-    "${CODEX_HOME:-$HOME/.codex}/plugins/cache/agentlas-core-engine/hephaestus" \
-    "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus"; do
+  for cache in "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus" \
+               "${CODEX_HOME:-$HOME/.codex}/plugins/cache/agentlas-core-engine/hephaestus"; do
     newest="$(ls -d "$cache"/*/bin/hephaestus 2>/dev/null | sort -V | tail -1)"
-    [ -n "$newest" ] && [ -x "$newest" ] && RUNNER="$newest" && break
+    if [ -n "$newest" ] && [ -x "$newest" ]; then RUNNER="$newest"; break; fi
   done
 fi
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
@@ -65,11 +72,11 @@ fi
 # Route + materialize the pipeline fabric for THIS goal. No --executor-command:
 # the host model (you) executes each packet natively. --research-evidence grounds
 # plan/research packets with Research Engine receipts.
-FABRIC="$("$RUNNER" hep-storm "$ARGUMENTS" --research-evidence --runtime codex)"
+FABRIC="$("$RUNNER" hep-storm "$ARGUMENTS" --research-evidence --runtime claude-code)"
 printf '%s\n' "$FABRIC"
 ```
 
-Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
+2. Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
 auto-materializes a full fabric for a **pipeline**; other actions still start a
 storm, just with the workforce the router chose:
 
@@ -85,8 +92,8 @@ storm, just with the workforce the router chose:
 - **`hub_fallback` / `hub_candidates`** — Hub lookup used redacted keywords only.
   If an `execution` block lists `recommended_agents`, borrow each in stage order
   via `"$RUNNER" hep-call "<agent>" "<goal>" --project .` and run them attached to
-  this repo; otherwise report candidates and offer `/prompts:hep-build`.
-- **`propose_new`** — no fit exists; offer to build one via `/prompts:hep-build`.
+  this repo; otherwise report candidates and offer `/hep-build`.
+- **`propose_new`** — no fit exists; offer to build one via `/hep-build`.
 - **`refuse`** — explain `reasons` (e.g. loop guard) and stop. Do not retry around
   it.
 
@@ -109,10 +116,10 @@ a required user approval.
    as the plan. Open a **visible goal ledger**: packet, owner, verification gate,
    status, resume point.
 4. **act** — Execute the next unblocked group. Run independent packets in the
-   group concurrently where this runtime supports delegation. When a packet's
-   `card` names an Agentlas specialist, **borrow and run it attached to this
-   project** via `"$RUNNER" hep-call "<card>" "<goal>" --project .` rather than
-   role-playing it. Write artifacts to each packet's `write_scope`.
+   group concurrently (delegate with the Task tool where the runtime supports it).
+   When a packet's `card` names an Agentlas specialist, **borrow and run it
+   attached to this project** via `"$RUNNER" hep-call "<card>" "<goal>" --project .`
+   rather than role-playing it. Write artifacts to each packet's `write_scope`.
 5. **verify** — A packet passes only with separately attributable, validated
    verification. A `loop.goal_command` exiting 0 may end the goal loop, but it
    cannot verify the executor's own output or self-attest success. Require an
@@ -155,7 +162,7 @@ progress, evidence, decisions, and final status only.
 ## Examples
 
 ```text
-/prompts:hep-storm ship a working waitlist landing page with a verified signup flow
-/prompts:hep-storm 이 리포 결제 버그를 재현 PoC까지 만들어서 고치고 회귀 테스트로 검증해줘
+/hep-storm ship a working waitlist landing page with a verified signup flow
+/hep-storm 이 리포 결제 버그를 재현 PoC까지 만들어서 고치고 회귀 테스트로 검증해줘
 @Hephaestus storm turn this research question into a cited report with evidence
 ```

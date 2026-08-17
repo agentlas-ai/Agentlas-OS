@@ -1,5 +1,5 @@
 ---
-description: Search Agentlas Cloud and Hub candidates without invoking agents.
+description: Search Agentlas Cloud and Hub agent candidates without invoking.
 ---
 # /agentlas-search
 

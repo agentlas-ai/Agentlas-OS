@@ -1,6 +1,6 @@
 ---
 description: Build an Agentlas automation by describing it, list saved ones, or request a run.
-argument-hint: [list | show <name> | run <name>]
+argument-hint: '[new <what you want> | list | show <name> | run <name>]'
 ---
 # /agentlas-graph
 

@@ -37,6 +37,7 @@ for candidate in \
   "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
   "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
   "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
+  "${GEMINI_EXTENSION_ROOT:+$GEMINI_EXTENSION_ROOT/bin/hephaestus}" \
   "./bin/hephaestus" \
   "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus" \
   "./codex/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
@@ -83,6 +84,7 @@ for candidate in \
   "${CLAUDE_PLUGIN_ROOT:-}" \
   "${CODEX_PLUGIN_ROOT:-}" \
   "${PLUGIN_ROOT:-}" \
+  "${GEMINI_EXTENSION_ROOT:-}" \
   "$HOME/.agentlas/runtime/current/host_adapters/claude/plugins/agentlas-core-engine-meta-agent" \
   "$HOME/.agentlas/runtime/current/host_adapters/codex/plugins/agentlas-core-engine-meta-agent" \
   "$HOME/.agentlas/runtime/current" \

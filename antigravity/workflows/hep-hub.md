@@ -5,20 +5,31 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 # /hep-hub
 
-Use local MCP server `hephaestus-network` and exact `sourceScope: "hub"` for
-the request after `/hep-hub`. Author a redacted WorkOrder, call
-`workforce.search_candidates` with `{workOrder, sourceScope: "hub"}`. Retain
-the projected menu's `selectionSessionId` and every source receipt; do not echo
-the projected menu as `federationResult`. Core resolves the complete federation
-state locally from that session. Author the final host-LLM Selection; call
-`workforce.validate_selection` with
-`{workOrder, selection}` and keep `federatedSelection`; then call
-`workforce.prepare_execution` with
-`{workOrder, selection, federatedSelection, projectDir}`. Retain
-source `hub` and every immutable pin; execute planner/manager, workers,
-synthesis, and verifier as distinct invocations.
+Raw request: `the request typed after the command`
 
-For `partial` or `failed`, report each source receipt's exact `failureCode`;
-never collapse, substitute, or relabel it. Never
-search Local or Cloud, bypass Core with direct remote search, accept a
-deterministic picker, or claim execution from preparation alone.
+Act as the temporary top-level workforce orchestrator. Use the local Agentlas
+OS MCP server `hephaestus-network` and call the Workforce tools with exact
+`sourceScope: "hub"`. This is public Hub only; it must not add registered Local
+or owner Cloud candidates.
+
+1. Author a redacted `agentlas.workforce-work-order.v1`; private project
+   grounding stays on-host.
+2. Call `workforce.search_candidates` with
+   `{workOrder, sourceScope: "hub"}` and keep the complete response as
+   `federationResult`, including the Hub source receipt.
+3. Author the final `agentlas.workforce-selection.v1` as the active host LLM,
+   then call `workforce.validate_selection` with
+   `{workOrder, selection}` and keep the response as `federatedSelection`. Revise on
+   rejection; do not accept a
+   deterministic picker or unrelated fallback.
+4. Call `workforce.prepare_execution` with
+   `{workOrder, selection, federatedSelection, projectDir}`. Require every
+   selected row to remain pinned to source `hub`, exact release, package hash,
+   content digest, runtime bundle, permission policy, and context digest.
+5. Execute distinct planner/manager, worker, synthesis, and verifier calls with
+   explicit artifact handoffs. Preserve packaged Team graphs.
+
+If the Hub source is unavailable or refuses the call, report its exact refusal;
+do not silently search Local or Cloud. Core owns the Hub upstream transport;
+do not expose a direct remote `agentlas` MCP alongside it. A prepared roster
+is not proof of execution.

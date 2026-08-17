@@ -270,7 +270,13 @@ def check_scaffold_runs(engine: Path, label: str) -> None:
         }
         with tempfile.TemporaryDirectory() as workdir:
             result = subprocess.run(
-                [sys.executable, "-m", "agentlas_cloud.cli", "contract", "scaffold", workdir, "--mode", mode],
+                # The scaffold gate refuses to lay down a package without interview
+                # evidence, which is right for a person building an agent and wrong
+                # for this check: nothing here is a package, it is a throwaway
+                # directory used to prove every required template has a file behind
+                # it. Declare the exemption instead of weakening the gate.
+                [sys.executable, "-m", "agentlas_cloud.cli", "contract", "scaffold", workdir, "--mode", mode,
+                 "--minimal-private-reason", "template coverage check, not a built package"],
                 cwd=engine,
                 capture_output=True,
                 text=True,

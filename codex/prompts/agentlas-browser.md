@@ -1,6 +1,6 @@
 ---
 description: Use the Agentlas browser hardpoint for browser-required work.
-argument-hint: <url-or-query>
+argument-hint: '<url-or-query>'
 ---
 # /agentlas-browser
 

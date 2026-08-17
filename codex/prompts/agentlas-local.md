@@ -1,6 +1,6 @@
 ---
 description: Staff a task only from Agentlas agents registered on this machine.
-argument-hint: <natural-language request>
+argument-hint: '<request>'
 ---
 # /agentlas-local
 

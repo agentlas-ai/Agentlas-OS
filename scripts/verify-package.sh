@@ -644,6 +644,21 @@ scripts/verify-windows-wiring.sh
 # both times every consumer degraded silently instead of failing.
 scripts/verify-runtime-home-parity.sh
 scripts/sync-adapters.sh --check
+# Every /hep-<verb> body across 10 runtime formats used to be a separate
+# hand-maintained file. Measured 2026-08-17: 23 of 25 commands had drifted,
+# `hep-call` into six bodies between 19 and 89 lines, and only the Claude copy
+# still forbade reporting `completed` with blockers outstanding. A user on
+# Cursor and a user on Claude Code were running different products under the
+# same command name. Bodies render first because the aliases below read their
+# frontmatter live from the rendered file next to them.
+python3 scripts/render-host-commands.py --check
+# Same disease, one layer down. sync-adapters.sh deliberately skipped SKILL.md
+# because those adapters were believed to be "intentionally condensed per
+# runtime". They were not: openclaw's hephaestus-upload had lost the paragraph
+# saying a Hub upload is public and irreversible, so one runtime shipped the
+# publish surface without its safety rule. Frontmatter stays per-host; the body
+# does not.
+python3 scripts/render-host-skills.py --check
 # The 133 /agentlas-<verb> alias files across 9 runtime formats used to be
 # hand-copied, and one (.agents/workflows/agentlas-connect.md) was silently
 # missing for a full session before anyone noticed. A generator with no

@@ -1,6 +1,7 @@
 ---
 description: Staff a task only from Agentlas agents registered on this machine.
 argument-hint: '<request>'
+allowed-tools: Bash, Read, Glob, Grep
 ---
 # /agentlas-local
 

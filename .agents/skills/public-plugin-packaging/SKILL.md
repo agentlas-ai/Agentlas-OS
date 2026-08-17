@@ -5,18 +5,24 @@ description: "Use when packaging an Agentlas agent repo for public GitHub releas
 
 # Public Plugin Packaging
 
-## Procedure
+## Checklist
 
-1. Separate public operating-system files from private hosted service code.
-2. Include `README.md`, `LICENSE`, `SECURITY.md`, `AGENTS.md`, `agents/`,
-   `skills/`, `.agentlas/global-commands.json`, schemas, templates, install
-   scripts, runtime command files, and verification.
-3. Keep private research, credentials, raw logs, and local paths out of the
-   package.
-4. Run `scripts/public_safety_check.sh`.
-5. Run runtime-specific plugin validation when available.
+- `codex/marketplace.json` exists.
+- Codex plugin has `.codex-plugin/plugin.json`.
+- Codex plugin includes at least one `SKILL.md`.
+- Codex plugin includes `commands/<slug>.md` for the package command.
+- `.claude/commands/meta-agent.md` exists.
+- `.claude/commands/<slug>.md` exists for the package command.
+- `.claude/agents/agentlas-core-engine-meta-agent.md` exists.
+- `.claude/skills/agentlas-core-engine-meta-agent/SKILL.md` exists.
+- `.gemini/commands/<slug>.toml` exists for Gemini CLI custom commands.
+- `.agentlas/global-commands.json` exists and final handoff includes
+  `global_commands`.
+- `scripts/install.sh` supports one-line installation.
+- `scripts/verify-package.sh` passes.
+- `scripts/public_safety_check.sh` passes.
 
-## Output
+## Public Boundary
 
-Return release surface, install command, global_commands, validation commands,
-and blockers.
+Publish schemas, templates, prompts, and adapters. Do not publish hosted service
+secrets, private research notes, raw logs, or local machine paths.

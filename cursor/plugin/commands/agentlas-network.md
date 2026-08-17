@@ -1,6 +1,3 @@
----
-description: Staff a task from registered Local, owner Cloud, and public Hub agents.
----
 # /agentlas-network
 
 Identical to `/hep-network` and `/agentlas network <request>`. Locate the file named `hep-network.md` in the exact same directory this file was loaded from, read it, and follow its instructions exactly — treating everything typed after `/agentlas-network` as that command's request.

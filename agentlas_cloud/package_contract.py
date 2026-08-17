@@ -107,6 +107,19 @@ def _default_substitutions(package_id: str, name: str, command: str, mode: str) 
         "draft_id": f"{package_id}-draft",
         "AGENT_NAME": name,
         "AGENTLAS_MODE": mode,
+        # AGENTS.md carries a `## Team` section for every mode, and a single
+        # agent has no team to list. Leaving `{{TEAM_ROLES}}` for the builder to
+        # fill asked it to invent colleagues that do not exist, and every single
+        # build failed verify on this one placeholder until it wrote something
+        # untrue (measured 2026-08-17). Answer it here, correctly, for the modes
+        # where the answer is already known.
+        **(
+            {}
+            if mode == "team"
+            else {"TEAM_ROLES": "This package is one agent. It has no internal roster;"
+                                " collaboration happens through Agentlas staffing, not through"
+                                " roles declared inside this package."}
+        ),
     }
 
 
@@ -284,6 +297,53 @@ def resolve_package_target(target: str, *, base: str | Path | None = None) -> di
     }
 
 
+def _interview_evidence_problem(
+    work_brief: str | Path | None,
+    minimal_private_reason: str,
+) -> dict[str, Any] | None:
+    """Refuse to lay down package files before the interview happened.
+
+    The interview was a request written in prose, and prose is optional: measured
+    2026-08-17, two packages built through the same command came out 0 and 30
+    blockers apart, and neither owner had been asked a question — one of them
+    shipped a fully written `docs/builder-interview.md` for an interview that never
+    took place. Blocking at `verify` is too late; by then the model has already
+    written a package around answers nobody gave.
+
+    Scaffold is the only sanctioned way to create the contract artifacts, so it is
+    the chokepoint. No brief, no files.
+    """
+    if minimal_private_reason.strip():
+        return None
+    if not work_brief:
+        return {
+            "error": "interview_required",
+            "message": (
+                "Scaffold needs the interview result. Run the Builder Interview and "
+                "Research Gate first, write the answers to a work-brief JSON, and pass "
+                "--work-brief <path>. For an explicit user-confirmed minimal scaffold "
+                "pass --minimal-private-reason \"<the user's own words>\"."
+            ),
+        }
+    brief_path = Path(work_brief).expanduser()
+    if not brief_path.is_file():
+        return {"error": "work_brief_missing", "message": f"work brief not found: {brief_path}"}
+    try:
+        brief = json.loads(brief_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - the caller needs the reason verbatim
+        return {"error": "work_brief_unreadable", "message": str(exc)}
+    if not isinstance(brief, dict):
+        return {"error": "work_brief_invalid", "message": "work brief must be a JSON object"}
+    goal = str(brief.get("goal") or "").strip()
+    acceptance = brief.get("acceptance_criteria") or brief.get("acceptanceCriteria") or []
+    if not goal or not isinstance(acceptance, list) or len(acceptance) == 0:
+        return {
+            "error": "work_brief_incomplete",
+            "message": "work brief needs a non-empty `goal` and at least one `acceptance_criteria` entry",
+        }
+    return None
+
+
 def scaffold(
     folder: str | Path,
     mode: str = "single",
@@ -291,10 +351,25 @@ def scaffold(
     name: str = "",
     command: str = "",
     root: str | Path | None = None,
+    work_brief: str | Path | None = None,
+    minimal_private_reason: str = "",
 ) -> dict[str, Any]:
     """Copy contract templates into ``folder`` (never overwriting existing
     files) and substitute the identity placeholders we already know. Model
-    placeholders ({{TRIGGER_KO_1}}...) stay for the fill step."""
+    placeholders ({{TRIGGER_KO_1}}...) stay for the fill step.
+
+    Refuses without interview evidence — see ``_interview_evidence_problem``."""
+    gate = _interview_evidence_problem(work_brief, minimal_private_reason)
+    if gate:
+        return {
+            "workspace": str(Path(folder).expanduser()),
+            "mode": mode,
+            "package_id": package_id,
+            "created": [],
+            "skipped_existing": [],
+            "missing_templates": [],
+            **gate,
+        }
     base = Path(root) if root else engine_root()
     requested_workspace = Path(folder).expanduser()
     workspace = requested_workspace.resolve(strict=False)
@@ -362,6 +437,26 @@ def scaffold(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
         created.append(artifact["path"])
+    # The work brief is both the evidence that an interview happened and a
+    # required artifact of the package. Scaffold used to read it only as
+    # evidence and then throw it away, so a build that answered every question
+    # still failed verify on `.agentlas/work-brief.json: missing` and the model
+    # was asked to rewrite, from memory, the answers the host already had on
+    # disk (measured 2026-08-17). Copy it in — it is never overwritten, so a
+    # brief the builder has since improved always wins.
+    if work_brief:
+        brief_target = workspace / ".agentlas" / "work-brief.json"
+        if not brief_target.exists():
+            try:
+                brief_doc = json.loads(Path(work_brief).expanduser().read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                brief_doc = None
+            if isinstance(brief_doc, dict):
+                brief_target.parent.mkdir(parents=True, exist_ok=True)
+                brief_target.write_text(
+                    json.dumps(brief_doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
+                created.append(".agentlas/work-brief.json")
     adapter_report = materialize_declared_command_adapters(workspace, package_id)
     report: dict[str, Any] = {
         "workspace": str(workspace),
@@ -848,7 +943,20 @@ def _schema_shape_errors(doc: Any, schema_path: Path) -> list[str]:
             ),
         )
     except ImportError as error:
-        return [f"schema validation unavailable: {error.name or error}"]
+        # This stays a blocker: a schema nobody checked is not a schema that
+        # passed. But the user is not the one who broke it, and the old message
+        # ("schema validation unavailable: rpds") named a transitive dependency
+        # and left them nothing to do — measured 2026-08-17 on a build where
+        # three of the remaining blockers were this line and the package itself
+        # was fine. Say which interpreter is missing what, and how to fix it.
+        import sys as _sys
+
+        missing = error.name or str(error)
+        return [
+            f"schema validation unavailable: {_sys.executable} cannot import '{missing}'."
+            f" Install it for that interpreter (`{_sys.executable} -m pip install jsonschema`)"
+            " and run this check again — the package is not being judged until it can run."
+        ]
     except (OSError, ValueError, SchemaError) as error:
         return [f"schema invalid or unreadable: {schema_path.name}: {error}"]
     except Exception as error:
@@ -1241,7 +1349,22 @@ def _restamp_package_hashes(workspace: Path) -> None:
     """
     manifest_path = workspace / "agentlas.json"
     manifest = _read_json(manifest_path)
-    if manifest is None or _unfilled(manifest):
+    if manifest is None:
+        return
+    # `packageHash` is the one placeholder this function exists to fill, so it
+    # must not be a reason to skip. The template ships
+    # `"packageHash": "sha256:{{PACKAGE_HASH}}"`, `_unfilled()` saw that token and
+    # returned early, and the only code able to replace it never ran — so every
+    # locally built package carried an unfillable blocker forever, and the model
+    # was left to invent a sixty-four character hash by hand (measured
+    # 2026-08-17: `agentlas.json: unfilled placeholders: {{PACKAGE_HASH}}` on a
+    # package whose every other file was complete).
+    #
+    # Any OTHER placeholder still means the package is mid-build: hashing a tree
+    # with unfilled prose in it would stamp a number that stops describing the
+    # package the moment someone finishes writing it.
+    without_hash = {key: value for key, value in manifest.items() if key != "packageHash"}
+    if _unfilled(without_hash):
         return
     # Card first, manifest second — the card refresh WRITES the routing card,
     # so stamping the manifest before it would hash a tree that is about to

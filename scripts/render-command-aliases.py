@@ -9,10 +9,17 @@ Codex "Agent Skills" family — see NON_REDIRECT_FAMILIES below).
 Every other target's alias is derived, not duplicated: its frontmatter is read
 live from the sibling canonical hep-<verb> file at render time (never copied
 into a manifest), and its body is one of the fixed redirect templates below.
-This is deliberately narrow in scope: the canonical hep-<verb> FILES
-THEMSELVES (the real instructions) are never touched by this script — runtimes
-have already hand-tuned that body content differently on purpose, and
-unifying it would be a content decision, not a packaging one.
+This script still does not touch the hep-<verb> bodies, but the reason has
+changed. It used to say those bodies were hand-tuned per runtime on purpose.
+That was not true. Measured 2026-08-17: `hep-call` existed in six different
+bodies between 19 and 89 lines, and only the Claude copy still carried "a
+non-empty blocker list means you may not report `completed`" — every other
+runtime was free to call a failed build finished. Nobody chose that; it is what
+maintaining ten copies by hand does.
+
+Those bodies now come from `contracts/commands/*.body.md` via
+`scripts/render-host-commands.py`. Run that first, then this — aliases read
+their frontmatter live from the rendered hep-<verb> file next to them.
 
 Usage:
     scripts/render-command-aliases.py           # write aliases to disk

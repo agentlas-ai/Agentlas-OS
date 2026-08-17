@@ -25,7 +25,7 @@
       "minItems": 1,
       "description": "Command adapters this package exposes. Measured on the live corpus: 101 packages declare six, 68 declare exactly one, and the entry shape comes in four forms — the full {runtime, command, adapterPath, scope, status} record (100), {command, description, entry} (52), {name, entrypoint, description} (7), and that plus runtimeAdapters (4). The previous rule required four entries of the first form only, which made a package with one canonical command unpublishable forever. How many runtimes an author adapts to is their decision, not a schema constraint; the first form below stays the canonical one that generation writes.",
       "items": {
-        "oneOf": [
+        "anyOf": [
           {
             "type": "object",
             "required": [
@@ -100,7 +100,8 @@
               "runtimeAdapters": {}
             }
           }
-        ]
+        ],
+        "$comment": "anyOf, not oneOf. These are three ACCEPTED SHAPES, not mutually exclusive types: a full runtime-adapter entry also satisfies the minimal {command} shape, so oneOf rejected every complete entry with 'is valid under each of ...'. Measured 2026-08-17: 6 blockers per package on every generated package, including ones that were otherwise contract-complete. Adding additionalProperties:false instead would reject forward-compatible fields."
       }
     },
     "postCreationUserMessage": {

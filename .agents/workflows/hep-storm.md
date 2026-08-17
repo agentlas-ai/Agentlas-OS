@@ -1,61 +1,59 @@
 ---
 description: Run a force-robust Stormbreaker loop — route to real agents, execute a verified pipeline to completion.
 ---
-
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
+
 # /hep-storm
 
+
 Drive a goal through the **Stormbreaker Loop** — Hephaestus' force-robust,
-verifier-first execution loop — inside this Antigravity workspace. Unlike a
-one-shot answer or a generic parallel fan-out, Stormbreaker **routes the goal to
-real Agentlas specialists**, structures the work as a dependency-ordered pipeline
-fabric, drives each work packet as a **hardened goal loop** (it does not stall,
-run away, or claim false success), and **refuses to report success without
-evidence**. Also triggered by `@Hephaestus storm <goal>`.
+verifier-first execution loop. Unlike a one-shot answer or a generic parallel
+fan-out, Stormbreaker **routes the goal to real Agentlas specialists**, structures
+the work as a dependency-ordered pipeline fabric, drives each work packet as a
+**hardened goal loop** (it does not stall, run away, or claim false success), and
+**refuses to report success without evidence**. Also triggered by
+`@Hephaestus storm <goal>`.
 
 Use it for loop-worthy work: apps, sites, agents, automations, debugging,
 multi-step research, data/report generation — anything with files, tools, tests,
 or external verification. Trivial questions should be answered directly, not
 stormed.
 
+Raw arguments: `the request typed after the command`
+
 ## Core-owned Goal + UltraCode harness
 
 Every result includes `execution_harness`. Apply
-`execution_harness.system_prompt` verbatim before planning or executing packets,
-retain its `prompt_sha256`, and never redefine Goal mode or UltraCode mode in
-this adapter. Pass live session JSON with `AGENTLAS_SESSION_INVENTORY` when the
-host provides it; otherwise use Core's explicit `host:primary` fallback.
+`execution_harness.system_prompt` **verbatim** before planning or executing any
+packet, and retain its `prompt_sha256` in the goal ledger. Do not redefine,
+summarize, or replace Goal mode or UltraCode mode in this Claude Code adapter. If
+live session JSON is available, expose it as `AGENTLAS_SESSION_INVENTORY`;
+otherwise use Core's explicit `host:primary` fallback and do not invent workers
+or models.
+With no external executor, `status: materialized` plus
+`final_gate.can_report_success: false` is the expected handoff to Claude Code's
+native tools, never a completed run.
 
-The goal is the exact text the user typed after `/hep-storm`.
+## 1. Resolve the runner and materialize the execution fabric
 
-## How to run
+The Stormbreaker engine routes the goal and materializes a pipeline fabric
+(packets, parallel groups, dependency gates, goal loops, a final gate, and a
+resumable journal). In an agentic runtime **you are the executor** — the engine
+gives you the verified plan; you carry it out with your own tools.
 
-Run the shell block below **verbatim**, replacing only the `GOAL` value with the
-user's exact goal text. The block resolves the Hephaestus runner by **absolute
-path** and runs it — there is nothing to install and nothing to add to `PATH`.
-In an agentic runtime **you are the executor**: the engine gives you the verified
-plan (the execution fabric); you carry it out with your own tools.
-
-> Guardrails — do NOT do any of these. They are not how this workflow works and
-> have caused fabricated reports before:
-> - Do NOT diagnose `command not found` or `PATH`, and do NOT edit `~/.zshrc`.
->   The runner is resolved by absolute path inside the block.
-> - Do NOT claim a packet, gate, or external action succeeded without the
->   verifier's evidence. A materialized or scheduled run is not proof.
-> - If the runner is genuinely missing, say so and stop. Never fabricate a fix
->   or a run.
+1. Find the first executable Hephaestus runner:
 
 ```bash
-GOAL="<replace with the exact text the user typed after /hep-storm>"
-
-case "$GOAL" in
-  "<replace"*) echo "GOAL placeholder not filled — substitute the user's goal first." >&2; exit 2 ;;
-esac
-
 RUNNER=""
+CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 for candidate in \
   "$HOME/.agentlas/runtime/current/bin/hephaestus" \
-  "./bin/hephaestus"
+  "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
+  "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
+  "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
+  "${GEMINI_EXTENSION_ROOT:+$GEMINI_EXTENSION_ROOT/bin/hephaestus}" \
+  "./bin/hephaestus" \
+  "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
 do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
@@ -73,35 +71,32 @@ fi
 # Route + materialize the pipeline fabric for THIS goal. No --executor-command:
 # the host model (you) executes each packet natively. --research-evidence grounds
 # plan/research packets with Research Engine receipts.
-FABRIC="$("$RUNNER" hep-storm "$GOAL" --research-evidence --runtime antigravity)"
+FABRIC="$("$RUNNER" hep-storm "the request typed after the command" --research-evidence --runtime claude-code)"
 printf '%s\n' "$FABRIC"
 ```
 
-## Act on the route decision
-
-Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
+2. Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
 auto-materializes a full fabric for a **pipeline**; other actions still start a
 storm, just with the workforce the router chose:
 
-- `action: "pipeline"` — the result carries the `execution_fabric` (`packets`,
+- **`pipeline`** — the result carries the `execution_fabric` (`packets`,
   `parallel_groups`, `sessions`, `resume_policy`), per-packet `write_scope` and
   `goal`/verifier, a `pipeline_id`, a `journal` path, and `final_gate` criteria.
-  Run the full loop in "Run the Stormbreaker Loop" below.
-- `action: "clarify"` — the goal is ambiguous. Ask `clarify_question` with the
-  candidate list as ONE batch, then re-run the block with the refined goal. This
-  is the scope-lock ambiguity gate; do not guess past it.
-- `action: "route"` (single card) — a one-agent storm: borrow and run that card
-  attached to this project, then still apply the verify → repair → final-gate
-  steps.
-- `action: "hub_fallback"` / `"hub_candidates"` — Hub lookup used redacted
-  keywords only. If an `execution` block lists `recommended_agents`, borrow each
-  in stage order via `"$RUNNER" hep-call "<agent>" "<goal>" --project .` and run
-  them attached to this repo; otherwise report candidates and offer `/hep-build`.
-- `action: "propose_new"` — no fit exists; offer to build one via `/hep-build`.
-- `action: "refuse"` — explain `reasons` (e.g. loop guard) and stop. Do not retry
-  around it.
+  Run the full loop in §2.
+- **`clarify`** — the goal is ambiguous. Ask `clarify_question` with the candidate
+  list as ONE batch, then re-run `"$RUNNER" hep-storm "<refined goal>"`. This is
+  the scope-lock ambiguity gate; do not guess past it.
+- **`route`** (single card) — a one-agent storm: borrow and run that card attached
+  to this project, then still apply the verify → repair → final-gate steps.
+- **`hub_fallback` / `hub_candidates`** — Hub lookup used redacted keywords only.
+  If an `execution` block lists `recommended_agents`, borrow each in stage order
+  via `"$RUNNER" hep-call "<agent>" "<goal>" --project .` and run them attached to
+  this repo; otherwise report candidates and offer `/hep-build`.
+- **`propose_new`** — no fit exists; offer to build one via `/hep-build`.
+- **`refuse`** — explain `reasons` (e.g. loop guard) and stop. Do not retry around
+  it.
 
-## Run the Stormbreaker Loop over the fabric
+## 2. Run the Stormbreaker Loop over the fabric
 
 Execute the goal to completion under this protocol. **Do not stop to ask for
 confirmation** — this is a force-robust run. Only halt when the goal is verified,
@@ -120,10 +115,10 @@ a required user approval.
    as the plan. Open a **visible goal ledger**: packet, owner, verification gate,
    status, resume point.
 4. **act** — Execute the next unblocked group. Run independent packets in the
-   group concurrently where the runtime supports it. When a packet's `card` names
-   an Agentlas specialist, **borrow and run it attached to this project** via
-   `"$RUNNER" hep-call "<card>" "<goal>" --project .` rather than role-playing it.
-   Write artifacts to each packet's `write_scope`.
+   group concurrently (delegate with the Task tool where the runtime supports it).
+   When a packet's `card` names an Agentlas specialist, **borrow and run it
+   attached to this project** via `"$RUNNER" hep-call "<card>" "<goal>" --project .`
+   rather than role-playing it. Write artifacts to each packet's `write_scope`.
 5. **verify** — A packet passes only with separately attributable, validated
    verification. A `loop.goal_command` exiting 0 may end the goal loop, but it
    cannot verify the executor's own output or self-attest success. Require an
@@ -141,7 +136,7 @@ Keep visible progress concise: what was attempted, what was **verified**, and
 exactly where to resume if blocked. Never expose hidden reasoning — show
 progress, evidence, decisions, and final status only.
 
-## Loop invariants (why this beats a one-shot loop)
+## 3. Loop invariants (why this beats a one-shot loop)
 
 - **Don't break (안 끊기게):** a transient packet failure is journaled and retried
   with backoff, not fatal. Only a genuine streak of hard failures stops the run.
@@ -152,7 +147,7 @@ progress, evidence, decisions, and final status only.
 - **Survive a hard stop:** every packet is a journal step, so a killed run resumes
   its numbering from the journal instead of colliding or restarting from zero.
 
-## Hard rules
+## 4. Hard rules
 
 - **No fake pass.** If the engine is unavailable, an account/tool/connector/browser
   session is missing, or a gate did not run, report the run as **blocked or
@@ -170,8 +165,3 @@ progress, evidence, decisions, and final status only.
 /hep-storm 이 리포 결제 버그를 재현 PoC까지 만들어서 고치고 회귀 테스트로 검증해줘
 @Hephaestus storm turn this research question into a cited report with evidence
 ```
-
----
-
-Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요.
-업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.

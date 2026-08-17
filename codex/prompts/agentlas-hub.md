@@ -1,6 +1,6 @@
 ---
 description: Staff a task only from public Agentlas Hub agents.
-argument-hint: <natural-language request>
+argument-hint: '<request>'
 ---
 # /agentlas-hub
 

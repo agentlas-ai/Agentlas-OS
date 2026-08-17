@@ -1,6 +1,6 @@
 ---
-description: Search Agentlas Cloud and Hub candidates without invoking agents.
-argument-hint: <request>
+description: Search Agentlas Cloud and Hub agent candidates without invoking.
+argument-hint: '<request>'
 ---
 # /agentlas-search
 

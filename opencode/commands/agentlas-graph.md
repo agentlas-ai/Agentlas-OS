@@ -1,5 +1,5 @@
 ---
-description: Create, list, inspect, or request a run of an Agentlas automation graph.
+description: Build an Agentlas automation by describing it, list saved ones, or request a run.
 ---
 # /agentlas-graph
 

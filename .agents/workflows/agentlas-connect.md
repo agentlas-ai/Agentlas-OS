@@ -1,5 +1,5 @@
 ---
-description: Start the Agentlas Telegram Connect workflow.
+description: Connect Agentlas agents or teams to Telegram.
 ---
 # /agentlas-connect
 

@@ -1,6 +1,6 @@
 ---
 description: Prepare explicitly named Agentlas Hub or Cloud agents.
-argument-hint: agent-a, agent-b {context}
+argument-hint: 'agent-a, agent-b {context}'
 ---
 # /agentlas-call
 

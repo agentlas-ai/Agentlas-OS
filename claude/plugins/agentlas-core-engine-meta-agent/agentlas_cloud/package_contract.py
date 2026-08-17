@@ -284,6 +284,53 @@ def resolve_package_target(target: str, *, base: str | Path | None = None) -> di
     }
 
 
+def _interview_evidence_problem(
+    work_brief: str | Path | None,
+    minimal_private_reason: str,
+) -> dict[str, Any] | None:
+    """Refuse to lay down package files before the interview happened.
+
+    The interview was a request written in prose, and prose is optional: measured
+    2026-08-17, two packages built through the same command came out 0 and 30
+    blockers apart, and neither owner had been asked a question — one of them
+    shipped a fully written `docs/builder-interview.md` for an interview that never
+    took place. Blocking at `verify` is too late; by then the model has already
+    written a package around answers nobody gave.
+
+    Scaffold is the only sanctioned way to create the contract artifacts, so it is
+    the chokepoint. No brief, no files.
+    """
+    if minimal_private_reason.strip():
+        return None
+    if not work_brief:
+        return {
+            "error": "interview_required",
+            "message": (
+                "Scaffold needs the interview result. Run the Builder Interview and "
+                "Research Gate first, write the answers to a work-brief JSON, and pass "
+                "--work-brief <path>. For an explicit user-confirmed minimal scaffold "
+                "pass --minimal-private-reason \"<the user's own words>\"."
+            ),
+        }
+    brief_path = Path(work_brief).expanduser()
+    if not brief_path.is_file():
+        return {"error": "work_brief_missing", "message": f"work brief not found: {brief_path}"}
+    try:
+        brief = json.loads(brief_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - the caller needs the reason verbatim
+        return {"error": "work_brief_unreadable", "message": str(exc)}
+    if not isinstance(brief, dict):
+        return {"error": "work_brief_invalid", "message": "work brief must be a JSON object"}
+    goal = str(brief.get("goal") or "").strip()
+    acceptance = brief.get("acceptance_criteria") or brief.get("acceptanceCriteria") or []
+    if not goal or not isinstance(acceptance, list) or len(acceptance) == 0:
+        return {
+            "error": "work_brief_incomplete",
+            "message": "work brief needs a non-empty `goal` and at least one `acceptance_criteria` entry",
+        }
+    return None
+
+
 def scaffold(
     folder: str | Path,
     mode: str = "single",
@@ -291,10 +338,25 @@ def scaffold(
     name: str = "",
     command: str = "",
     root: str | Path | None = None,
+    work_brief: str | Path | None = None,
+    minimal_private_reason: str = "",
 ) -> dict[str, Any]:
     """Copy contract templates into ``folder`` (never overwriting existing
     files) and substitute the identity placeholders we already know. Model
-    placeholders ({{TRIGGER_KO_1}}...) stay for the fill step."""
+    placeholders ({{TRIGGER_KO_1}}...) stay for the fill step.
+
+    Refuses without interview evidence — see ``_interview_evidence_problem``."""
+    gate = _interview_evidence_problem(work_brief, minimal_private_reason)
+    if gate:
+        return {
+            "workspace": str(Path(folder).expanduser()),
+            "mode": mode,
+            "package_id": package_id,
+            "created": [],
+            "skipped_existing": [],
+            "missing_templates": [],
+            **gate,
+        }
     base = Path(root) if root else engine_root()
     requested_workspace = Path(folder).expanduser()
     workspace = requested_workspace.resolve(strict=False)

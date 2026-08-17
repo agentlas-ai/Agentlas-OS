@@ -18,17 +18,20 @@ multi-step research, data/report generation — anything with files, tools, test
 or external verification. Trivial questions should be answered directly, not
 stormed.
 
-Raw arguments:
-{{args}}
+Raw arguments: `{{args}}`
 
 ## Core-owned Goal + UltraCode harness
 
 Every result includes `execution_harness`. Apply
-`execution_harness.system_prompt` verbatim before planning or executing packets,
-retain its `prompt_sha256`, and never redefine Goal mode or UltraCode mode in
-this Gemini adapter. Pass live session JSON with
-`AGENTLAS_SESSION_INVENTORY` when available; otherwise use Core's explicit
-`host:primary` fallback.
+`execution_harness.system_prompt` **verbatim** before planning or executing any
+packet, and retain its `prompt_sha256` in the goal ledger. Do not redefine,
+summarize, or replace Goal mode or UltraCode mode in this Claude Code adapter. If
+live session JSON is available, expose it as `AGENTLAS_SESSION_INVENTORY`;
+otherwise use Core's explicit `host:primary` fallback and do not invent workers
+or models.
+With no external executor, `status: materialized` plus
+`final_gate.can_report_success: false` is the expected handoff to Claude Code's
+native tools, never a completed run.
 
 ## 1. Resolve the runner and materialize the execution fabric
 
@@ -37,19 +40,41 @@ The Stormbreaker engine routes the goal and materializes a pipeline fabric
 resumable journal). In an agentic runtime **you are the executor** — the engine
 gives you the verified plan; you carry it out with your own tools.
 
-Find the Hephaestus runner — first executable wins:
-`~/.agentlas/runtime/current/bin/hephaestus`, `./bin/hephaestus`, or the
-newest `~/.claude/plugins/cache/agentlas-core-engine/hephaestus/*/bin/hephaestus`
-(sort -V). First ensure the local Agentlas sign-in (this opens the browser
-only on first use):
-`hephaestus auth ensure --timeout 180`
-Then route + materialize the pipeline fabric for THIS goal. No
-`--executor-command`: the host model (you) executes each packet natively.
-`--research-evidence` grounds plan/research packets with Research Engine
-receipts:
-`hephaestus hep-storm "{{args}}" --research-evidence --runtime gemini`
+1. Find the first executable Hephaestus runner:
 
-Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
+```bash
+RUNNER=""
+CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
+for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
+  "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
+  "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
+  "${GEMINI_EXTENSION_ROOT:+$GEMINI_EXTENSION_ROOT/bin/hephaestus}" \
+  "./bin/hephaestus" \
+  "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
+done
+if [ -z "$RUNNER" ]; then
+  for cache in "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus" \
+               "${CODEX_HOME:-$HOME/.codex}/plugins/cache/agentlas-core-engine/hephaestus"; do
+    newest="$(ls -d "$cache"/*/bin/hephaestus 2>/dev/null | sort -V | tail -1)"
+    if [ -n "$newest" ] && [ -x "$newest" ]; then RUNNER="$newest"; break; fi
+  done
+fi
+[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
+if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
+  "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+fi
+# Route + materialize the pipeline fabric for THIS goal. No --executor-command:
+# the host model (you) executes each packet natively. --research-evidence grounds
+# plan/research packets with Research Engine receipts.
+FABRIC="$("$RUNNER" hep-storm "{{args}}" --research-evidence --runtime claude-code)"
+printf '%s\n' "$FABRIC"
+```
+
+2. Read `route_decision.action` (or `route_action`) and branch — Stormbreaker only
 auto-materializes a full fabric for a **pipeline**; other actions still start a
 storm, just with the workforce the router chose:
 
@@ -58,13 +83,13 @@ storm, just with the workforce the router chose:
   `goal`/verifier, a `pipeline_id`, a `journal` path, and `final_gate` criteria.
   Run the full loop in §2.
 - **`clarify`** — the goal is ambiguous. Ask `clarify_question` with the candidate
-  list as ONE batch, then re-run `hephaestus hep-storm "<refined goal>"`. This is
+  list as ONE batch, then re-run `"$RUNNER" hep-storm "<refined goal>"`. This is
   the scope-lock ambiguity gate; do not guess past it.
 - **`route`** (single card) — a one-agent storm: borrow and run that card attached
   to this project, then still apply the verify → repair → final-gate steps.
 - **`hub_fallback` / `hub_candidates`** — Hub lookup used redacted keywords only.
   If an `execution` block lists `recommended_agents`, borrow each in stage order
-  via `hephaestus hep-call "<agent>" "<goal>" --project .` and run them attached to
+  via `"$RUNNER" hep-call "<agent>" "<goal>" --project .` and run them attached to
   this repo; otherwise report candidates and offer `/hep-build`.
 - **`propose_new`** — no fit exists; offer to build one via `/hep-build`.
 - **`refuse`** — explain `reasons` (e.g. loop guard) and stop. Do not retry around
@@ -89,10 +114,10 @@ a required user approval.
    as the plan. Open a **visible goal ledger**: packet, owner, verification gate,
    status, resume point.
 4. **act** — Execute the next unblocked group. Run independent packets in the
-   group concurrently where the runtime supports it. When a packet's `card` names
-   an Agentlas specialist, **borrow and run it attached to this project** via
-   `hephaestus hep-call "<card>" "<goal>" --project .` rather than role-playing it.
-   Write artifacts to each packet's `write_scope`.
+   group concurrently (delegate with the Task tool where the runtime supports it).
+   When a packet's `card` names an Agentlas specialist, **borrow and run it
+   attached to this project** via `"$RUNNER" hep-call "<card>" "<goal>" --project .`
+   rather than role-playing it. Write artifacts to each packet's `write_scope`.
 5. **verify** — A packet passes only with separately attributable, validated
    verification. A `loop.goal_command` exiting 0 may end the goal loop, but it
    cannot verify the executor's own output or self-attest success. Require an
@@ -129,7 +154,7 @@ progress, evidence, decisions, and final status only.
   materialized run is not proof that an external action succeeded.
 - The router only chooses agents and fetches BYOM bundles. Actual tool execution
   follows this runtime's own safety and permission model.
-- Report the `receipt_id`, `pipeline_id`, and `journal` path in your final response
+- Report the `receipt_id`, `pipeline_id`, and `journal` path in your final message
   so the run is auditable and resumable.
 
 ## Examples

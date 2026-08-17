@@ -1,6 +1,6 @@
 ---
-description: Start the Agentlas Connect flow for Telegram.
-argument-hint: [telegram] [agent/team/group name]
+description: Connect Agentlas agents or teams to Telegram.
+argument-hint: "[telegram] [agent/team/group name]"
 ---
 # /agentlas-connect
 

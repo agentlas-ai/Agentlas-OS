@@ -1,6 +1,6 @@
 ---
 description: Staff a task from registered Local, owner Cloud, and public Hub agents.
-argument-hint: <natural-language request>
+argument-hint: '<request>'
 ---
 # /agentlas-network
 

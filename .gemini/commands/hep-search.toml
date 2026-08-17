@@ -1,21 +1,48 @@
-description = "Search Agentlas Cloud and Hub candidates without invoking agents."
+description = "Search Agentlas Cloud and Hub agent candidates without invoking."
 prompt = """
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
 # /hep-search
 
 
-Raw arguments:
-{{args}}
+Find matching agents without calling them. Return two sections: my Agentlas
+Cloud packages and the public Agentlas Hub.
 
-Find the Hephaestus runner at `~/.agentlas/runtime/current/bin/hephaestus` or
-`./bin/hephaestus`, ensure Agentlas sign-in with `hephaestus auth ensure
---timeout 180`, then run:
+Raw arguments: `{{args}}`
 
-`hephaestus search "{{args}}" --runtime gemini-cli --limit 10`
+## Search
 
-Present the result as two sections: `cloud` (my own Agentlas Cloud packages)
-and `hub` (public Agentlas Hub). Include rank, name, slug, description,
-callable/routing status, why it matched, and the `receipt_id`. Do not invoke
-agents from this command.
+```bash
+RUNNER=""
+for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
+  "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
+  "${GEMINI_EXTENSION_ROOT:+$GEMINI_EXTENSION_ROOT/bin/hephaestus}" \
+  "./bin/hephaestus"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
+done
+[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
+if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
+  "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+fi
+"$RUNNER" search "{{args}}" --runtime claude-code --limit 10
+```
+
+## Answer Shape
+
+1. Show `sections.cloud.results` first, then `sections.hub.results`.
+2. For each candidate include rank, name, slug, description, callable/routing
+   status, and why it matched.
+3. Do not invoke any agent. If the user wants to run exact agents next, use
+   `/hep-call agent-slug-1, agent-slug-2 {context}`.
+4. Include `receipt_id` in the final line.
+
+## Examples
+
+```text
+/hep-search 시장 리포트 써야 하는데 쓸만한 에이전트 찾아줘
+/hep-search find agents for ASO review replies
+```
 """

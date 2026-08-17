@@ -1,6 +1,6 @@
 ---
 description: Staff a task only from the signed-in owner's Agent Cloud agents.
-argument-hint: <natural-language request>
+argument-hint: '<request>'
 ---
 # /agentlas-cloud
 

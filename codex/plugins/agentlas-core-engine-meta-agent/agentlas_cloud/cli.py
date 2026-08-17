@@ -464,6 +464,19 @@ def main(argv: list[str] | None = None) -> int:
     contract_scaffold.add_argument("--id", default="", help="Package id/slug (default: folder name)")
     contract_scaffold.add_argument("--name", default="", help="Display name (default: package id)")
     contract_scaffold.add_argument("--command-slug", dest="command_slug", default="", help="Canonical slash command slug (default: package id)")
+    # 인터뷰 증거 없이는 파일을 만들지 않는다. 부탁이 아니라 관문이다.
+    contract_scaffold.add_argument(
+        "--work-brief",
+        dest="work_brief",
+        default=None,
+        help="Path to the interview's work-brief JSON (goal + acceptance_criteria). Required unless --minimal-private-reason is given.",
+    )
+    contract_scaffold.add_argument(
+        "--minimal-private-reason",
+        dest="minimal_private_reason",
+        default="",
+        help="The user's own words confirming an explicit minimal private scaffold (skips the interview requirement).",
+    )
     contract_verify = contract_sub.add_parser("verify", help="Verify a workspace against the package contract; JSON blockers for self-repair")
     contract_verify.add_argument("folder")
     contract_verify.add_argument("--mode", choices=["single", "team", "package"], default="single")
@@ -1404,7 +1417,15 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.contract_command == "scaffold":
             telemetry = _build_telemetry_tracker("scaffold", mode=args.mode)
-            report = scaffold(args.folder, mode=args.mode, package_id=args.id, name=args.name, command=args.command_slug)
+            report = scaffold(
+                args.folder,
+                mode=args.mode,
+                package_id=args.id,
+                name=args.name,
+                command=args.command_slug,
+                work_brief=args.work_brief,
+                minimal_private_reason=args.minimal_private_reason,
+            )
             emit(report)
             failed = bool(report.get("error"))
             # report["error"] is a machine code. This includes path refusals

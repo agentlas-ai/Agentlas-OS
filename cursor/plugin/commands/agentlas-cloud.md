@@ -1,6 +1,3 @@
----
-description: Staff a task only from the signed-in owner's Agent Cloud agents.
----
 # /agentlas-cloud
 
 Identical to `/hep-cloud` and `/agentlas cloud <request>`. Locate the file named `hep-cloud.md` in the exact same directory this file was loaded from, read it, and follow its instructions exactly — treating everything typed after `/agentlas-cloud` as that command's request.

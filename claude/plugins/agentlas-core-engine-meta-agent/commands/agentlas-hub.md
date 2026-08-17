@@ -1,6 +1,7 @@
 ---
 description: Staff a task only from public Agentlas Hub agents.
 argument-hint: '<request>'
+allowed-tools: Bash, Read, Glob, Grep
 ---
 # /agentlas-hub
 
