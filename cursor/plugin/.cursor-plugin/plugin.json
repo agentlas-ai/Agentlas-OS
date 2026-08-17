@@ -1,5 +1,5 @@
 {
   "name": "hephaestus",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "Open Agent OS for Claude Code, Codex, and Cursor: meta-agent builder, A2A Hub routing, local ontology, memory/security gates."
 }

@@ -107,6 +107,19 @@ def _default_substitutions(package_id: str, name: str, command: str, mode: str) 
         "draft_id": f"{package_id}-draft",
         "AGENT_NAME": name,
         "AGENTLAS_MODE": mode,
+        # AGENTS.md carries a `## Team` section for every mode, and a single
+        # agent has no team to list. Leaving `{{TEAM_ROLES}}` for the builder to
+        # fill asked it to invent colleagues that do not exist, and every single
+        # build failed verify on this one placeholder until it wrote something
+        # untrue (measured 2026-08-17). Answer it here, correctly, for the modes
+        # where the answer is already known.
+        **(
+            {}
+            if mode == "team"
+            else {"TEAM_ROLES": "This package is one agent. It has no internal roster;"
+                                " collaboration happens through Agentlas staffing, not through"
+                                " roles declared inside this package."}
+        ),
     }
 
 
@@ -424,6 +437,26 @@ def scaffold(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
         created.append(artifact["path"])
+    # The work brief is both the evidence that an interview happened and a
+    # required artifact of the package. Scaffold used to read it only as
+    # evidence and then throw it away, so a build that answered every question
+    # still failed verify on `.agentlas/work-brief.json: missing` and the model
+    # was asked to rewrite, from memory, the answers the host already had on
+    # disk (measured 2026-08-17). Copy it in — it is never overwritten, so a
+    # brief the builder has since improved always wins.
+    if work_brief:
+        brief_target = workspace / ".agentlas" / "work-brief.json"
+        if not brief_target.exists():
+            try:
+                brief_doc = json.loads(Path(work_brief).expanduser().read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                brief_doc = None
+            if isinstance(brief_doc, dict):
+                brief_target.parent.mkdir(parents=True, exist_ok=True)
+                brief_target.write_text(
+                    json.dumps(brief_doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
+                created.append(".agentlas/work-brief.json")
     adapter_report = materialize_declared_command_adapters(workspace, package_id)
     report: dict[str, Any] = {
         "workspace": str(workspace),
@@ -910,7 +943,20 @@ def _schema_shape_errors(doc: Any, schema_path: Path) -> list[str]:
             ),
         )
     except ImportError as error:
-        return [f"schema validation unavailable: {error.name or error}"]
+        # This stays a blocker: a schema nobody checked is not a schema that
+        # passed. But the user is not the one who broke it, and the old message
+        # ("schema validation unavailable: rpds") named a transitive dependency
+        # and left them nothing to do — measured 2026-08-17 on a build where
+        # three of the remaining blockers were this line and the package itself
+        # was fine. Say which interpreter is missing what, and how to fix it.
+        import sys as _sys
+
+        missing = error.name or str(error)
+        return [
+            f"schema validation unavailable: {_sys.executable} cannot import '{missing}'."
+            f" Install it for that interpreter (`{_sys.executable} -m pip install jsonschema`)"
+            " and run this check again — the package is not being judged until it can run."
+        ]
     except (OSError, ValueError, SchemaError) as error:
         return [f"schema invalid or unreadable: {schema_path.name}: {error}"]
     except Exception as error:
@@ -1303,7 +1349,22 @@ def _restamp_package_hashes(workspace: Path) -> None:
     """
     manifest_path = workspace / "agentlas.json"
     manifest = _read_json(manifest_path)
-    if manifest is None or _unfilled(manifest):
+    if manifest is None:
+        return
+    # `packageHash` is the one placeholder this function exists to fill, so it
+    # must not be a reason to skip. The template ships
+    # `"packageHash": "sha256:{{PACKAGE_HASH}}"`, `_unfilled()` saw that token and
+    # returned early, and the only code able to replace it never ran — so every
+    # locally built package carried an unfillable blocker forever, and the model
+    # was left to invent a sixty-four character hash by hand (measured
+    # 2026-08-17: `agentlas.json: unfilled placeholders: {{PACKAGE_HASH}}` on a
+    # package whose every other file was complete).
+    #
+    # Any OTHER placeholder still means the package is mid-build: hashing a tree
+    # with unfilled prose in it would stamp a number that stops describing the
+    # package the moment someone finishes writing it.
+    without_hash = {key: value for key, value in manifest.items() if key != "packageHash"}
+    if _unfilled(without_hash):
         return
     # Card first, manifest second — the card refresh WRITES the routing card,
     # so stamping the manifest before it would hash a tree that is about to

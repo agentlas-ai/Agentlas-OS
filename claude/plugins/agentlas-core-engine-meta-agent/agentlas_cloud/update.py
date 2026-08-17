@@ -1101,6 +1101,24 @@ def _safe_python_cache_prefix(executable: str, home: Path | None = None) -> Path
     return resolved_prefix
 
 
+def _is_shipped_interpreter(executable: str) -> bool:
+    """Whether this interpreter travels with Agentlas rather than with the user.
+
+    Only these may ignore user site-packages — see the comment in
+    ``write_python_shims``.
+    """
+    try:
+        resolved = str(Path(executable).resolve(strict=False))
+    except (OSError, ValueError):
+        return False
+    markers = (
+        f"{os.sep}python-runtime{os.sep}",
+        f"{os.sep}.agentlas{os.sep}runtime{os.sep}",
+        f"{os.sep}Agentlas.app{os.sep}",
+    )
+    return any(marker in resolved for marker in markers)
+
+
 def write_python_shims(bin_dir: Path, executable: str) -> None:
     bin_dir.mkdir(parents=True, exist_ok=True)
     shell_shim = bin_dir / "python3"
@@ -1120,11 +1138,23 @@ def write_python_shims(bin_dir: Path, executable: str) -> None:
         )
     # The bash shim keeps LF and stays on write_text; only .cmd files need the
     # CRLF-preserving writer.
+    # A shipped interpreter brings its own libraries and must not read the
+    # user's. Measured 2026-08-17: the bundled 3.12 runtime loaded
+    # ~/.local/lib/python3.12/site-packages ahead of its own, found an x86_64
+    # `rpds` left there by some earlier install, and `import jsonschema` died on
+    # an architecture mismatch — so every package build reported "schema
+    # validation unavailable" blockers no user could act on.
+    #
+    # This applies ONLY to an interpreter we ship. A system Python resolved from
+    # PATH belongs to the user, and its jsonschema most likely lives in exactly
+    # the directory this would hide.
+    isolate_user_site = "PYTHONNOUSERSITE=1" if _is_shipped_interpreter(executable_text) else ""
     shell_shim.write_text(
         '#!/usr/bin/env bash\n'
         'export PYTHONDONTWRITEBYTECODE=1\n'
         f"export PYTHONPYCACHEPREFIX={shell_cache_prefix}\n"
-        f'exec {shell_executable} "$@"\n',
+        + (f"export {isolate_user_site}\n" if isolate_user_site else "")
+        + f'exec {shell_executable} "$@"\n',
         encoding="utf-8",
     )
     shell_shim.chmod(0o755)
