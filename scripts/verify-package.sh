@@ -644,6 +644,11 @@ scripts/verify-windows-wiring.sh
 # both times every consumer degraded silently instead of failing.
 scripts/verify-runtime-home-parity.sh
 scripts/sync-adapters.sh --check
+# The 133 /agentlas-<verb> alias files across 9 runtime formats used to be
+# hand-copied, and one (.agents/workflows/agentlas-connect.md) was silently
+# missing for a full session before anyone noticed. A generator with no
+# --check wired into a gate is just a manual tool nobody remembers to run.
+python3 scripts/render-command-aliases.py --check
 # The routing-card gate below lints the cards already checked into this repo. It
 # cannot see the templates every built package is scaffolded from, which is how a
 # template pinned to the wrong schemaVersion shipped green here and was rejected
