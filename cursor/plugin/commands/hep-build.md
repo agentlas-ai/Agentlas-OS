@@ -2,7 +2,6 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 # /hep-build
 
-
 Use Hephaestus as the Agentlas builder surface:
 
 - create a new single agent
@@ -282,9 +281,7 @@ one runtime enforced was still a rule someone wrote on purpose.
 - run `"$RUNNER" cards migrate "$PACKAGE_ROOT" --tier local --overwrite` (or the same `hephaestus` runner in cache if local binary is unavailable), and include migration result in `evidence`.
 - If runtime discovery migration isn't needed, still validate that the package has `./.agentlas/routing-card.json` and include that local-card artifact in `evidence` when skipping migration.
 - After the package is verified and saved locally, use the host's structured choice UI when available and ask exactly one final question:
-- - **Cloud에 올리기** — owner-private Agent Cloud storage, restorable on the same account's other Desktops.
 - Mobile can use it only through a paired Desktop after that Desktop restores/installs it; this is not hosted model execution.
-- - **로컬에만 저장** — keep the completed package on this computer with no network mutation.
 - A missing answer or non-interactive host defaults to local-only.
 - On explicit Cloud consent, run the resolved Hephaestus runner as `"$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link`, where `PACKAGE_ROOT` is the exact verified package root, never a guessed parent.
 - Cloud auth/offline/CAS/security failure must not delete or roll back the local package; report the failure and exact retry command.
@@ -297,7 +294,6 @@ one runtime enforced was still a rule someone wrote on purpose.
 - Never infer this profile; malformed receipts remain strict.
 - After the routing card exists, run `"$RUNNER" contract complete "$PACKAGE_ROOT" --mode single|team|package` before verification.
 - This repairs derivable contract shapes and materializes the runtime adapters declared by `.agentlas/global-commands.json` without overwriting authored bodies.
-- Public or marketplace intent also requires `public_marketplace_ready:
 - true` in the verify receipt; never promote a `minimal-private` result.
 - Expose this as the public build command next to `/hep-network` and `/hep-cloud`.
 - If a package was created or repaired in the current workspace, register it to local discovery immediately so it is searchable in local routing:
@@ -307,7 +303,6 @@ one runtime enforced was still a rule someone wrote on purpose.
 - Missing input or non-interactive execution is local-only.
 - Only after explicit Cloud consent run `"$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link`.
 - Keep the local package on every auth, offline, CAS, quota, or scan failure and report the exact retry command.
-- Public Hub publication remains a separate explicit action.
 - `the request typed after the command` Resolve the installed engine before reading contracts or invoking the runner:
 - If the arguments are `ontology`, run `"$RUNNER" ontology --gui .`.
 - This is the clearer build-focused name for the older Hephaestus command.
@@ -340,11 +335,8 @@ one runtime enforced was still a rule someone wrote on purpose.
 - ```bash "$RUNNER" cards migrate "$PACKAGE_ROOT" --tier local --overwrite ``` 9.
 - After verification and local discovery registration, ask exactly one final two-choice storage question, using structured choice controls when the host provides them:
 - - **Cloud에 올리기** — owner-private Agent Cloud storage that the same account can restore on other Desktops.
-- Mobile uses it only after a paired Desktop restores/installs it; Agent Cloud does not run the LLM.
-- - **로컬에만 저장** — keep the completed package on this computer and make no network change.
 - Missing input or non-interactive execution defaults to local-only.
 - Only after explicit Cloud consent, resolve the trusted runner and execute `"$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link` against the exact verified package root.
 - Auth, offline, CAS, quota, or scan failure leaves the local package intact and must be reported with an exact retry command.
-- Public Hub publishing remains a separate explicit action.
 - ## If no engine root was found Tell the user to run the one-touch installer from an OS terminal, then reopen the workspace in Antigravity:
 - ```bash curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash ```

@@ -70,7 +70,6 @@ one runtime enforced was still a rule someone wrote on purpose.
 - Author the final `agentlas.workforce-selection.v1` yourself, call `workforce.validate_selection` with `{workOrder, selection}`, keep its response as `federatedSelection`, then call `workforce.prepare_execution` with `{workOrder, selection, federatedSelection, projectDir}`.
 - Require every row to retain source `cloud` plus its exact release/package/content/runtime/permission/context identity.
 - Run planner/manager, selected workers, synthesis, and verifier as distinct invocations with artifact handoffs and preserve Team graphs.
-- Report the exact finite Core refusal (`source_unauthorized`, `source_forbidden`, `source_rate_limited`, `insufficient_credits`, `owner_only`, `no_cloud_package`, `agent_not_found`, `source_not_supported`, or `source_unavailable`) with the source receipt.
 - Never search Local or public Hub, invoke legacy routing, accept a deterministic picker, or treat a prepared bundle as execution proof.
 - Use local MCP server `hephaestus-network` with exact `sourceScope:
 - Author a redacted WorkOrder; call `workforce.search_candidates` with `{workOrder, sourceScope:

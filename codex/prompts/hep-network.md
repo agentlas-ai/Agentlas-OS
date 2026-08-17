@@ -121,7 +121,6 @@ longest one. They are kept verbatim rather than dropped — a rule that only
 one runtime enforced was still a rule someone wrote on purpose.
 
 - # Hephaestus Workforce Network Raw request:
-- `$ARGUMENTS` Act as the active top-level workforce orchestrator.
 - Use MCP server `hephaestus-network`, the local Agentlas OS Core and only host-visible Workforce MCP.
 - Network means registered Local + signed-in owner Cloud + public Hub.
 - First read `workforce.goal_context(projectDir)` and reuse an active binding for the same ongoing work before considering recruitment.
@@ -131,24 +130,19 @@ one runtime enforced was still a rule someone wrote on purpose.
 - tools, authorities, and modalities attach to the executing runtime, not the agent card, so those gates only exclude real candidates — put ordinary inputs/outputs in the task text and handoffs in edges.
 - Write every discovery-facing field in English, faithfully translating a non-English request (the candidate corpus is English and cross-lingual matching buries the correct agent — measured 1st vs 144th for one query); keep an untranslatable term with a short English gloss.
 - `languages` is the delivery language, not the search language — keep it as the required output language even though the order is authored in English.
-- Call `workforce.search_candidates` with `{workOrder, sourceScope:
 - "network"}` and preserve source receipts plus `selectionSessionId`.
 - The default response is a projected menu, not a complete `federationResult`; do not echo it as one.
 - From content and qualification evidence, author `agentlas.workforce-selection.v1` yourself.
-- Deterministic code may enforce governance but may not pick, rerank, or silently substitute.
 - `projectDir` is mandatory; pass the incumbent `goalId` when continuing.
 - Otherwise Core derives it from the WorkOrder id and automatically binds the successful plan before execution.
 - Every later turn reads `workforce.goal_context`, reuses the incumbent roster plus local skills when sufficient, and recruits only a real additive gap using the same `goalId`.
 - Record the turn posture through `workforce.record_goal_turn`.
 - Spawn only the useful bound planner/manager, worker, synthesis, and verifier invocations with explicit artifact handoffs; preserve authoritative Team graphs.
-- Keep the roster bound across turns, sessions, runtime restarts, and context compaction until explicit whole-goal completion/cancellation via `workforce.complete_goal(explicitCompletion=true)`.
 - Lease expiry affects only the next Hub charge; it never dismisses the roster.
 - Memory/Experience accrue on actual invocations.
 - Report `executed` only from a receipt proving every child invocation, handoff, synthesis, and a passing independent verifier.
 - Do not call legacy `hephaestus_route`, bypass Core with direct remote search, or use popularity/history/price/availability as semantic fit.
 - Exact duplicate releases collapse Local > Cloud > Hub only with verified identical lineage.
-- Act as the active top-level workforce orchestrator.
-- Use the local Agentlas OS MCP server `hephaestus-network`, the only host-visible Workforce MCP.
 - first read `workforce.goal_context(projectDir)` and reuse any active binding for the same ongoing work.
 - Author a redacted WorkOrder — Fill a slot with task/cardinality/criticality plus only the communities/skills/knowledge, runtimes, and languages that genuinely constrain the hire; omit every other list field (absent = empty — the wire normalizes) and never fill requiredToolCapabilities, requiredAuthorities, forbiddenAuthorities, consumes, produces, requiredRoles, or modalities:
 - Write its discovery-facing fields in English, faithfully translating a non-English request (the candidate corpus is English; cross-lingual matching buries the right agent, measured 1st vs 144th for one query), while keeping `languages` as the required delivery language — and call `workforce.search_candidates` with exact `sourceScope:
@@ -164,7 +158,6 @@ one runtime enforced was still a rule someone wrote on purpose.
 - A 24-hour lease controls only the next Hub charge; standby is not a continuously running model.
 - For `partial` or `failed`, report each source receipt's exact `failureCode`; never collapse, substitute, or relabel it.
 - Never call legacy `hephaestus_route`, bypass Core, accept deterministic staffing, silently substitute, or claim execution without complete receipts.
-- Use local MCP server `hephaestus-network`, the only host-visible Workforce MCP.
 - Author the final Selection yourself, call `workforce.validate_selection` with `{workOrder, selection}`, keep `federatedSelection`, then call `workforce.prepare_execution` with `{workOrder, selection, federatedSelection, projectDir, goalId?}`.
 - Preserve source receipts/provenance and all immutable pins.
 - Execute planner/manager, workers, synthesis, and verifier as distinct invocations with handoffs and preserved Team graphs.

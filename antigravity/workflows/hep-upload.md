@@ -125,22 +125,15 @@ These lines existed in one runtime's hand-maintained copy and not in the
 longest one. They are kept verbatim rather than dropped — a rule that only
 one runtime enforced was still a rule someone wrote on purpose.
 
-- `the request typed after the command` Always ask the destination question before doing anything else, even if the arguments already say upload, publish, add, Cloud, Hub, or a target folder:
-- ``` Do not package, publish, register, add-source, reindex, or call an upload API until the user answers Cloud or Agentlas Hub.
 - After the user chooses a destination, run the app-host auto-update preflight inside this host app and resolve the runner.
 - Run the installer first." >&2; exit 1; } ``` Use one explicit `hep-upload` command.
 - Never run `package` and then `publish`, because that packages twice and can submit bytes different from the review:
 - `"$RUNNER" hep-upload <agent-folder> --visibility private-link` - Agentlas Hub/marketplace:
-- `"$RUNNER" hep-upload <agent-folder> --visibility marketplace` All security and content findings are advisory.
 - If the user asks for a preview, add `--dry-run`, retain both `manifest.packageHash` and `uploadReceipt.receipt`, and append `--expected-package-hash <manifest.packageHash> --expected-upload-receipt <uploadReceipt.receipt>` to the later one-shot publish.
 - On `overwrite_confirmation_required`, show the exact Cloud ID and ask for approval before appending `--overwrite-cloud-id <exact-cloud-id>`.
-- Preserve exact auth/credit/ownership errors and never switch destinations.
-- Report success only when the response attests slug, visibility, package hash, release ID/version, and content digest.
 - # Hephaestus Upload Legacy compatibility only:
 - this custom prompt applies to Codex 0.116 and earlier.
 - Codex 0.117 and later use the installed `$hephaestus-upload` skill.
 - Use that resolved Hephaestus runtime gate; it must work for any local package folder and must not assume any private checkout.
-- For a preview, add `--dry-run`, retain `manifest.packageHash` and `uploadReceipt.receipt`, then append `--expected-package-hash <manifest.packageHash> --expected-upload-receipt <uploadReceipt.receipt>` to the later one-shot publish.
-- # /hep-upload Always ask the destination question before doing anything else, even if the arguments already say upload, publish, add, Cloud, Hub, or a target folder:
 - After the user chooses a destination, first run the `hephaestus-network` skill's app-host auto-update preflight inside Cursor, then resolve `RUNNER`.
 - Never run `package` and then `publish`; that packages twice.

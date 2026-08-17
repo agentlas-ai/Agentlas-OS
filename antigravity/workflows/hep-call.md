@@ -94,10 +94,8 @@ These lines existed in one runtime's hand-maintained copy and not in the
 longest one. They are kept verbatim rather than dropped — a rule that only
 one runtime enforced was still a rule someone wrote on purpose.
 
-- This prepares BYOM runtime bundles and receipts; Claude still performs the actual model/tool execution.
 - `the request typed after the command` ## Call ```bash RUNNER="" for candidate in \ "$HOME/.agentlas/runtime/current/bin/hephaestus" \ "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \ "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \ "./bin/hephaestus" do if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
 - Sign-in is automatic — if a call still reports an auth/sign-in status, relay it and stop.
-- Include `receipt_id` and each prepared `execution_id`.
 - `the request typed after the command` Codex plugins cannot register slash commands, so this custom prompt is the explicit entrypoint:
 - Resolve the runner and prepare the named agents:
 - ```bash RUNNER="" for c in "$HOME/.agentlas/runtime/current/bin/hephaestus" ./bin/hephaestus; do [ -x "$c" ] && RUNNER="$c" && break done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
@@ -110,4 +108,3 @@ one runtime enforced was still a rule someone wrote on purpose.
 - For each prepared agent, follow `output.entry_excerpt` and `output.grounding.directive`.
 - Report failures separately and include `receipt_id` plus every prepared `execution_id`.
 - `the request typed after the command` ```bash RUNNER="" for c in "$HOME/.agentlas/runtime/current/bin/hephaestus" ./bin/hephaestus; do [ -x "$c" ] && RUNNER="$c" && break done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
-- Include `receipt_id` plus every prepared `execution_id`.

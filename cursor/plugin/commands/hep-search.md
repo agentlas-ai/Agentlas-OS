@@ -73,11 +73,9 @@ These lines existed in one runtime's hand-maintained copy and not in the
 longest one. They are kept verbatim rather than dropped — a rule that only
 one runtime enforced was still a rule someone wrote on purpose.
 
-- my Agentlas Cloud packages and the public Agentlas Hub.
 - `the request typed after the command` ## Search ```bash RUNNER="" for candidate in \ "$HOME/.agentlas/runtime/current/bin/hephaestus" \ "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \ "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \ "./bin/hephaestus" do if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
 - `the request typed after the command` Codex plugins cannot register slash commands, so this custom prompt is the explicit entrypoint:
 - ```bash RUNNER="" for c in "$HOME/.agentlas/runtime/current/bin/hephaestus" ./bin/hephaestus; do [ -x "$c" ] && RUNNER="$c" && break done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
-- Include rank, name, slug, description, callable/routing status, and why.
 - Use `/prompts:hep-call` next when the user names exact slugs.
 - # Hephaestus Search Search Agentlas Cloud and public Hub candidates without invoking agents.
 - First run the `hephaestus-network` skill's app-host auto-update preflight inside Cursor; do not ask the user to open a separate terminal.
