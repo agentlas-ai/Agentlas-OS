@@ -128,8 +128,23 @@ class OntologyRuntime:
             conn = sqlite3.connect(f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True)
         else:
             conn = sqlite3.connect(self.db_path)
+            # Default (rollback-journal) mode makes a writer's transaction take
+            # an exclusive lock that blocks every reader for its duration. The
+            # UserPromptSubmit hook opens a fresh read-only connection on every
+            # prompt, so a concurrent writer (auto-update, another session, a
+            # background index refresh) stalls it for as long as that write
+            # takes — measured as the dominant source of multi-second hook
+            # latency, not raw Python cost. WAL lets readers see a consistent
+            # snapshot without waiting on writers at all. It is a one-time,
+            # persistent, file-level setting, so only the writable connection
+            # needs to request it.
+            conn.execute("PRAGMA journal_mode = WAL")
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
+        # A bounded wait beats the sqlite3 default (fail immediately with
+        # "database is locked"); 5s matches WorkforceGoalStore's existing
+        # sqlite3.connect(timeout=5) convention elsewhere in this codebase.
+        conn.execute("PRAGMA busy_timeout = 5000")
         return conn
 
     def _load_read_only_state(self) -> None:

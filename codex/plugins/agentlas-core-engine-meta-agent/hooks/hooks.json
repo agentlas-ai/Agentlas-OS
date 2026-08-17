@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "root=$(printf %s \"${CODEX_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\" | tr '\\\\' '/'); if [ -x \"${root}/bin/agentlas-memory-hook\" ]; then \"${root}/bin/agentlas-memory-hook\" --host codex --event UserPromptSubmit; else printf '{}\\n'; fi",
-            "timeout": 15
+            "timeout": 20
           }
         ]
       }

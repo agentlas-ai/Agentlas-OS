@@ -17,7 +17,7 @@
           {
             "type": "command",
             "command": "\"${HOME}/.agentlas/runtime/current/bin/agentlas-memory-hook\" --host grok --event UserPromptSubmit",
-            "timeout": 15
+            "timeout": 20
           }
         ]
       }

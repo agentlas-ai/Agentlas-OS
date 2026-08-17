@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "1.0",
+  "description": "Generator config for scripts/render-command-aliases.py. Everything except verbatimSkills is derived live from the sibling canonical hep-<verb> file at render time — this file does not duplicate their content.",
+  "canonicalVerbs": [
+    "build",
+    "network",
+    "storm",
+    "graph",
+    "local",
+    "cloud",
+    "hub",
+    "search",
+    "browser",
+    "call",
+    "upload",
+    "connect"
+  ],
+  "note": "verbatimSkills holds the Codex Agent Skills family (codex/plugins/.../skills/agentlas-<verb>), which is hand-authored richer content (a mini workflow doc), not a mechanical hep-<verb> redirect. Regenerating writes back exactly this snapshot so --check still catches accidental drift, without the renderer inventing new prose. Edit the SKILL.md files directly, then re-run this script to refresh the snapshot (see scripts/refresh-command-alias-manifest.py).",
+  "verbatimSkills": [
+    {
+      "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-build/SKILL.md",
+      "content": "---\nname: agentlas-build\ndescription: \"Use when the user types /agentlas-build, /agentlas build, or /hep-build to design, build, and package a single agent or multi-agent team.\"\n---\n\n# Agentlas Build (/agentlas-build, /hep-build)\n\nDesign, assemble, and package installable single agents or multi-agent teams.\nAlias for `/agentlas build` and `/hep-build`.\n\nGuides the workflow through:\n1. Mode classification (`single-agent-creator`, `team-builder`, `agentlas-packager`)\n2. Interview/research gate\n3. Routing card and soul authoring\n4. Runtime adapter generation (Codex, Claude, Gemini, Antigravity)\n5. Package verification\n"
+    },
+    {
+      "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-cloud/SKILL.md",
+      "content": "---\nname: agentlas-cloud\ndescription: \"Use when the user types /agentlas-cloud, /agentlas cloud, or /hep-cloud to staff only from the signed-in owner's private Cloud packages.\"\n---\n\n# Agentlas Cloud Workforce (/agentlas-cloud, /hep-cloud)\n\nStaff specialist roles specifically from the owner's private Agentlas Cloud repository.\nAlias for `hephaestus-cloud` and `/agentlas cloud`.\n\nSee [hephaestus-cloud](hephaestus-cloud/SKILL.md) for full execution protocol.\n"
+    },
+    {
+      "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-graph/SKILL.md",
+      "content": "---\nname: agentlas-graph\ndescription: \"Use when the user types /agentlas-graph, /agentlas graph, or /hep-graph to create, list, inspect, or run Agentlas automation graphs.\"\n---\n\n# Agentlas Graph Automations (/agentlas-graph, /hep-graph)\n\nCreate, inspect, schedule, and execute Agentlas DAG automation graphs.\nAlias for `hephaestus-graph` and `/agentlas graph`.\n\nSee [hephaestus-graph](hephaestus-graph/SKILL.md) for full execution protocol.\n"
+    },
+    {
+      "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-network/SKILL.md",
+      "content": "---\nname: agentlas-network\ndescription: \"Use when the user types /agentlas-network, /agentlas network, $hephaestus-network, or /hep-network to staff a durable goal from registered Local, owner Cloud, and public Hub agents or teams.\"\n---\n\n# Agentlas Network Workforce (/agentlas-network, /hep-network)\n\nFederated Local + Cloud + Hub workforce staffing orchestrator.\nAlias for `hephaestus-network` and `/agentlas network`.\n\n## Required MCP sequence\n```text\nworkforce.search_candidates(sourceScope=\"network\")\nworkforce.validate_selection(workOrder=..., selection=...)\nworkforce.prepare_execution(workOrder=..., selection=..., federatedSelection=..., projectDir=..., goalId=activeGoalId?)\nworkforce.validate_execution_receipt(receipt=..., executionPlan=..., toolInventory=...)\n```\n\nSee [hephaestus-network](hephaestus-network/SKILL.md) for full execution protocol.\n"
+    },
+    {
+      "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-storm/SKILL.md",
+      "content": "---\nname: agentlas-storm\ndescription: \"Use when the user types /agentlas-storm, /agentlas storm, /hep-storm, or says @Hephaestus storm <goal> to drive a goal through the force-robust Stormbreaker loop with real Agentlas specialists.\"\n---\n\n# Agentlas Stormbreaker Loop (/agentlas-storm, /hep-storm)\n\nDrive a goal through the **Stormbreaker Loop** — Hephaestus' force-robust, verifier-first execution loop.\nAlias for `hephaestus-storm` and `/agentlas storm`.\n\nSee [hephaestus-storm](hephaestus-storm/SKILL.md) for full execution protocol.\n"
+    },
+    {
+      "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-upload/SKILL.md",
+      "content": "---\nname: agentlas-upload\ndescription: \"Use when the user types /agentlas-upload, /agentlas upload, $hephaestus-upload, or /hep-upload to scan, gate, and publish an agent/team package to Agentlas Cloud (private) or Agentlas Hub (public).\"\n---\n\n# Agentlas Upload (/agentlas-upload, /hep-upload)\n\nPackage security scan and distribution gate for Agentlas agents and teams.\nAlias for `hephaestus-upload` and `/agentlas upload`.\n\nSee [hephaestus-upload](hephaestus-upload/SKILL.md) for full execution protocol.\n"
+    }
+  ]
+}

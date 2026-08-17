@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-memory-hook\" ]; then \"$R/bin/agentlas-memory-hook\" --host claude --event UserPromptSubmit; else printf '{}\\n'; fi",
-            "timeout": 15
+            "timeout": 20
           }
         ]
       }
