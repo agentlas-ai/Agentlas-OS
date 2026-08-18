@@ -105,6 +105,13 @@ def main() -> int:
             ]
 
             if not target.is_file():
+                # 저장소 정책상 로컬 전용(gitignored)인 게이트/테스트 파일은 새
+                # 체크아웃에 없는 것이 정상이다 — 거짓 FAIL 대신 사유 있는 SKIP.
+                if surface.get("localOnly"):
+                    skips.append(
+                        f"feature {feature_id}: local-only file absent in this checkout — {target}"
+                    )
+                    continue
                 failures.append(
                     "\n".join(
                         [

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "agentlas.feature-map.v1",
   "updatedAt": "2026-08-18",
-  "note": "Cross-surface FEATURE-INTENT registry. One row = one product feature, keyed by intent, not by spelling — the same feature legitimately carries different code names per surface (wire INGEST vs UI 장기대여; workspaceId that means creator workspace). Rationale and usage rules live in the sibling contracts/feature-map.md. Gate: scripts/verify-feature-map.py resolves each surface's repo as a sibling checkout (../<repo> relative to this repo; 'Agentlas-OS' is this repo itself), requires the file to exist and to contain the identifier verbatim (rename alarm, not semantics proof), and prints an honest SKIP when a sibling checkout is absent. 'kind' is one of code|endpoint|screen|method|table|wireId. 'identifier' must be the EXACT symbol/route/table/string as it exists in the file today. Alias status: wire-legacy (still on the wire, name is historical), retired (must not reappear in new copy), display (user-facing label, translated per surface).",
+  "note": "Cross-surface FEATURE-INTENT registry. One row = one product feature, keyed by intent, not by spelling — the same feature legitimately carries different code names per surface (wire INGEST vs UI 장기대여; workspaceId that means creator workspace). Rationale and usage rules live in the sibling contracts/feature-map.md. Gate: scripts/verify-feature-map.py resolves each surface's repo as a sibling checkout (../<repo> relative to this repo; 'Agentlas-OS' is this repo itself), requires the file to exist and to contain the identifier verbatim (rename alarm, not semantics proof), and prints an honest SKIP when a sibling checkout is absent. 'kind' is one of code|endpoint|screen|method|table|wireId|gate (gate = a dedicated parity/spelling gate that already guards this feature; the map points at it so renaming the gate also alarms). 'identifier' must be the EXACT symbol/route/table/string as it exists in the file today. Alias status: wire-legacy (still on the wire, name is historical), retired (must not reappear in new copy), display (user-facing label, translated per surface).",
   "features": [
     {
       "featureId": "oneshot-rent",
@@ -55,9 +55,20 @@
         }
       ],
       "aliases": [
-        { "name": "WORK_ORDER_24H", "status": "wire-legacy", "note": "RENT's unit token predates the auto-lease retirement; a charge no longer opens a 24h window." },
-        { "name": "24시간 자동 리스", "status": "retired", "note": "Retired 2026-08-18; must not reappear in new copy." },
-        { "name": "빌리기 / Rent · 작업 1건당 / per work order", "status": "display" }
+        {
+          "name": "WORK_ORDER_24H",
+          "status": "wire-legacy",
+          "note": "RENT's unit token predates the auto-lease retirement; a charge no longer opens a 24h window."
+        },
+        {
+          "name": "24시간 자동 리스",
+          "status": "retired",
+          "note": "Retired 2026-08-18; must not reappear in new copy."
+        },
+        {
+          "name": "빌리기 / Rent · 작업 1건당 / per work order",
+          "status": "display"
+        }
       ],
       "lastVerified": "2026-08-18"
     },
@@ -120,9 +131,20 @@
         }
       ],
       "aliases": [
-        { "name": "INGEST", "status": "wire-legacy", "note": "Wire price-kind id; kept because clients parse it. New copy must say 장기대여 / long-term lease." },
-        { "name": "장기대여 / Long-term lease", "status": "display" },
-        { "name": "프로젝트 인제스트", "status": "retired", "note": "Old product framing (project ingest). Still literally present in Agentlas-OS agentlas_cloud/pricing.py PRICE_LABELS — stale copy, do not propagate." }
+        {
+          "name": "INGEST",
+          "status": "wire-legacy",
+          "note": "Wire price-kind id; kept because clients parse it. New copy must say 장기대여 / long-term lease."
+        },
+        {
+          "name": "장기대여 / Long-term lease",
+          "status": "display"
+        },
+        {
+          "name": "프로젝트 인제스트",
+          "status": "retired",
+          "note": "Old product framing (project ingest). Still literally present in Agentlas-OS agentlas_cloud/pricing.py PRICE_LABELS — stale copy, do not propagate."
+        }
       ],
       "lastVerified": "2026-08-18"
     },
@@ -171,8 +193,15 @@
         }
       ],
       "aliases": [
-        { "name": "포크", "status": "display" },
-        { "name": "install", "status": "display", "note": "Web UI says install; the wire price kind is FORK, unit ONE_COPY." }
+        {
+          "name": "포크",
+          "status": "display"
+        },
+        {
+          "name": "install",
+          "status": "display",
+          "note": "Web UI says install; the wire price kind is FORK, unit ONE_COPY."
+        }
       ],
       "lastVerified": "2026-08-18"
     },
@@ -214,7 +243,10 @@
         }
       ],
       "aliases": [
-        { "name": "렌트허용", "status": "display" }
+        {
+          "name": "렌트허용",
+          "status": "display"
+        }
       ],
       "lastVerified": "2026-08-18"
     },
@@ -263,7 +295,11 @@
         }
       ],
       "aliases": [
-        { "name": "invocationLedger", "status": "wire-legacy", "note": "In-code store key for the invocation_ledger collection." }
+        {
+          "name": "invocationLedger",
+          "status": "wire-legacy",
+          "note": "In-code store key for the invocation_ledger collection."
+        }
       ],
       "lastVerified": "2026-08-18"
     },
@@ -359,8 +395,736 @@
         }
       ],
       "aliases": [
-        { "name": "구독 계좌 (A) / 렌트수익 계좌 (B)", "status": "display" }
+        {
+          "name": "구독 계좌 (A) / 렌트수익 계좌 (B)",
+          "status": "display"
+        }
       ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "hep-build-pipeline",
+      "intent": {
+        "ko": "에이전트 빌드(/hep-build)의 프롬프트 본문은 OS 정본 하나이며, 데스크탑 Build GUI는 같은 바이트를 그대로 싣고 터미널은 설치된 hephaestus 바이너리로 패스스루한다 — 토씨 하나라도 다르면 안 된다(오너 규칙 2026-08-16).",
+        "en": "Agent build (/hep-build) has ONE canonical prompt body in OS; the Desktop Build GUI ships the same bytes verbatim and the terminal passes through to the installed hephaestus binary — not one word may differ (owner rule 2026-08-16)."
+      },
+      "ownerSurface": "Agentlas-OS",
+      "surfaces": [
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "contracts/commands/hep-build.body.md",
+          "identifier": "# /hep-build",
+          "meaning": "Canonical /hep-build command body every host renders from."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "Hephaestus/contracts/commands/hep-build.body.md",
+          "identifier": "# /hep-build",
+          "meaning": "Vendored engine copy of the canonical body that composeBuilderPrompt actually reads at build time."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/hephaestus/builder.ts",
+          "identifier": "composeBuilderPrompt",
+          "meaning": "Desktop Build system-prompt composer; must embed each canonical source verbatim for all three modes."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "gate",
+          "path": "scripts/hep-build-parity.mjs",
+          "identifier": "composeBuilderPrompt",
+          "meaning": "Byte-parity gate (npm run parity:hep-build): builds the real Desktop prompt and asserts each canonical source appears verbatim; $ARGUMENTS is substituted, never deleted."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/hephaestus/runtime.cjs",
+          "identifier": "hephaestusBin",
+          "meaning": "Terminal passthrough: resolves HEPHAESTUS_BIN → ~/.agentlas/runtime/current/bin/hephaestus and delegates, so the terminal never re-renders the body."
+        }
+      ],
+      "aliases": [
+        {
+          "name": "빌드 / Build",
+          "status": "display"
+        }
+      ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "command-bodies",
+      "intent": {
+        "ko": "hep-* 명령 본문은 OS contracts/commands/*.body.md 가 유일 정본이고, 133개 별칭과 런타임별 포맷(9-10종)은 렌더 스크립트가 매니페스트에서 파생한다 — 손 사본은 곧 드리프트다(hep-* 10 런타임 드리프트 사고).",
+        "en": "hep-* command bodies have a single canonical source in OS contracts/commands/*.body.md; the 133 aliases and per-runtime formats are derived by render scripts from the manifest — any hand copy is drift (the hep-* ten-runtime drift incident)."
+      },
+      "ownerSurface": "Agentlas-OS",
+      "surfaces": [
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "contracts/commands/hep-network.body.md",
+          "identifier": "# /hep-network",
+          "meaning": "One of the 12 canonical bodies; the file set contracts/commands/*.body.md is the whole universe."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "scripts/render-host-commands.py",
+          "identifier": ".body.md",
+          "meaning": "Renders each canonical body into every host command format; true host differences are file format and args token only."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "scripts/render-command-aliases.py",
+          "identifier": "command-alias-manifest.json",
+          "meaning": "Renders the alias redirect files across runtimes from the manifest; aliases never carry their own body."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "schemas/command-alias-manifest.json",
+          "identifier": "canonicalVerbs",
+          "meaning": "Generator config: canonical verbs plus runtime targets; derives everything else live from the sibling canonical hep-<verb> file."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "gate",
+          "path": "scripts/verify-global-command-contract.sh",
+          "identifier": "required_files",
+          "meaning": "Contract gate over the rendered command surface."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "Hephaestus/contracts/commands/hep-network.body.md",
+          "identifier": "# /hep-network",
+          "meaning": "Vendored engine copy of the canonical bodies shipped inside Desktop."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/ui/commands-catalog.cjs",
+          "identifier": "hep-network",
+          "meaning": "Terminal command catalog listing the hep-* aliases it exposes; names must track the canonical verbs."
+        }
+      ],
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "upload-publish",
+      "intent": {
+        "ko": "에이전트 폴더를 클라우드/허브에 올리는 발행 파이프라인 — 패키징·검토·등록(registered upload)은 어느 표면에서 시작해도 같은 등록 규약(packageHash 기준 판정, registry 슬러그 ≠ 발행 신원)을 지켜야 한다.",
+        "en": "The publish pipeline that uploads an agent folder to Cloud/Hub — packaging, review, and registered upload must honor the same registration contract from every surface (verdicts key on packageHash; a local registry slug is not a publishing identity)."
+      },
+      "ownerSurface": "agentlas",
+      "surfaces": [
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "agentlas_cloud/upload.py",
+          "identifier": "publish_agent",
+          "meaning": "OS/CLI publisher (hep-upload path)."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/cloud-agents/package.ts",
+          "identifier": "packageAndReviewCloudAgent",
+          "meaning": "Desktop packaging + review entry; also enforces the fork-lineage publish refusal (see featureId fork)."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/cloud-agents/registered-upload.ts",
+          "identifier": "publishSlugFromRegistrySlug",
+          "meaning": "Maps local registry slugs to publishing identities — the 409 incident: firm-local-… slugs must never be sent as cloud identity."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "endpoint",
+          "path": "AgentsAtlas/app/src/app/api/cloud-agents/v1/register/route.ts",
+          "identifier": "hubPublicManifestsByPackageHash",
+          "meaning": "Hub registration endpoint; duplicate/lineage verdicts key on packageHash, not scope. AgentDefinition (pricing/settlement key) exists only after this succeeds."
+        }
+      ],
+      "note": "Mobile's surface of this feature is registered under featureId mobile-hub-publish (agents.cloudPublishHub via the desktop bridge) — cross-link, intentionally not duplicated here.",
+      "aliases": [
+        {
+          "name": "발행 / Publish · 업로드 / Upload",
+          "status": "display"
+        }
+      ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "workforce-staffing",
+      "intent": {
+        "ko": "워크포스 편성 3단계 규약 — 호스트 LLM이 redacted work order로 search_candidates → validate_selection → prepare_execution 을 밟고, 런타임 번들 문서 하나를 웹(발행자)·OS·터미널(독자 둘)이 같은 필드 철자로 읽는다.",
+        "en": "The three-step workforce staffing contract — the host LLM walks search_candidates → validate_selection → prepare_execution with a redacted work order, and ONE runtime-bundle document is written by Web and read by OS and Terminal with identical field spellings."
+      },
+      "ownerSurface": "Agentlas-OS",
+      "surfaces": [
+        {
+          "repo": "Agentlas-OS",
+          "kind": "wireId",
+          "path": "schemas/workforce-work-order.schema.json",
+          "identifier": "agentlas.workforce-work-order.v1",
+          "meaning": "Canonical redacted work-order schema every discovery call sends."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "agentlas_cloud/workforce/execution.py",
+          "identifier": "project_permission_policy",
+          "meaning": "OS reader of the runtime bundle (pip/runtime-update cadence); fails CLOSED on unknown permission fields — the 2026-07-27 P0."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "code",
+          "path": "AgentsAtlas/app/src/lib/mcp/workforce.ts",
+          "identifier": "workforce.search_candidates",
+          "meaning": "Web MCP workforce tool definitions (search/validate/prepare)."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "code",
+          "path": "AgentsAtlas/app/src/lib/agentlas-cloud/runtime-bundle.ts",
+          "identifier": "compileRuntimeBundle",
+          "meaning": "The emitter of the runtime-bundle document; deploys on merge, days ahead of both readers."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/mcp/workforce-orchestrator.ts",
+          "identifier": "WORKFORCE_SOURCE_PIN_SCHEMA",
+          "meaning": "Desktop federation orchestrator: source pins, canonical_identity_no_rerank, Local>Cloud>Hub shadowing."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "gate",
+          "path": "scripts/sync-runtime-bundle-contract.sh",
+          "identifier": "runtime-bundle.ts",
+          "meaning": "Runtime-bundle contract parity gate across the one emitter and two readers."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/agentlas-workforce.cjs",
+          "identifier": "workforce.search_candidates",
+          "meaning": "Terminal reader/driver of the same staffing wire contract (npm, user-paced cadence)."
+        }
+      ],
+      "aliases": [
+        {
+          "name": "편성 / Staffing",
+          "status": "display"
+        }
+      ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "worker-memory-directive",
+      "intent": {
+        "ko": "워커 메모리 지시문은 system-agents/worker-memory-protocol.md 의 fenced block 이 정본이며, OS runtime.py 와 웹 runtime-bundle.ts 의 WORKER_MEMORY_DIRECTIVE 는 그와 바이트 동일해야 한다.",
+        "en": "The worker memory directive's canonical text is the fenced block in system-agents/worker-memory-protocol.md; WORKER_MEMORY_DIRECTIVE in OS runtime.py and web runtime-bundle.ts must stay byte-identical to it."
+      },
+      "ownerSurface": "Agentlas-OS",
+      "surfaces": [
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "system-agents/worker-memory-protocol.md",
+          "identifier": "# Worker Memory Protocol",
+          "meaning": "Canonical protocol document; the fenced block is the directive text."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "agentlas_cloud/runtime.py",
+          "identifier": "WORKER_MEMORY_DIRECTIVE",
+          "meaning": "OS copy injected into worker prompts; skipped when the bundle already carries pm/learnings."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "code",
+          "path": "AgentsAtlas/app/src/lib/agentlas-cloud/runtime-bundle.ts",
+          "identifier": "WORKER_MEMORY_DIRECTIVE",
+          "meaning": "Web copy compiled into runtime bundles; same pm/learnings suppression rule."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "gate",
+          "path": "scripts/sync-worker-memory-directive.sh",
+          "identifier": "worker-memory-protocol.md",
+          "meaning": "Byte-parity gate across the canonical block and both copies (the gate whose false SKIP once hid real drift — gate scripts live inside the repo)."
+        }
+      ],
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "agent-control-block-stripping",
+      "intent": {
+        "ko": "에이전트 답변 속 제어블록(<<agentlas-ask>> 등)을 표시 전에 벗기는 규칙은 와이어 포맷 계약이다 — 데스크탑·모바일은 공유 픽스처에 대해 바이트 동일 출력을 내야 하고, 터미널은 데스크탑 공유 모듈을 재사용한다.",
+        "en": "Stripping agent control blocks (<<agentlas-ask>> etc.) before display is a wire-format contract — Desktop and Mobile must produce byte-identical output over the shared fixtures, and the terminal reuses the Desktop shared module."
+      },
+      "ownerSurface": "agentlas_desktop",
+      "surfaces": [
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "shared/agent-control-blocks.ts",
+          "identifier": "stripAgentControlBlocks",
+          "meaning": "Canonical TS implementation (also defines the block markers)."
+        },
+        {
+          "repo": "mobile",
+          "kind": "code",
+          "path": "app/lib/core/chat/agent_control_blocks.dart",
+          "identifier": "stripAgentControlBlocks",
+          "meaning": "Dart mirror; must match Desktop byte-for-byte on every fixture case."
+        },
+        {
+          "repo": "mobile",
+          "kind": "code",
+          "path": "contracts/agent-control-blocks.fixtures.json",
+          "identifier": "Agent control-block stripping parity fixtures",
+          "meaning": "Shared fixture file owned by neither surface — change only when the wire format itself changes."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "gate",
+          "path": "scripts/agent-control-block-parity-contract.cjs",
+          "identifier": "agent-control-blocks.fixtures.json",
+          "meaning": "Desktop-side parity gate over the shared fixtures."
+        },
+        {
+          "repo": "mobile",
+          "kind": "gate",
+          "path": "app/test/agent_control_blocks_parity_test.dart",
+          "identifier": "agent-control-blocks.fixtures.json",
+          "meaning": "Mobile-side parity test over the same fixtures."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/ui/shell.cjs",
+          "identifier": "stripControlBlocksForDisplay",
+          "meaning": "Terminal display strip; wraps the shared module rather than re-implementing (three hand-rolled strippers was the defect)."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/core/desktop-core.cjs",
+          "identifier": "loadCoreShared",
+          "meaning": "Loader that gives the terminal the compiled Desktop shared module."
+        }
+      ],
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "tool-access-notice",
+      "intent": {
+        "ko": "도구 접근 고지문(어느 도구가 왜 열리는지)은 데스크탑 정본 빌더와 터미널 미러가 같은 입력에 같은 문장을 내야 한다.",
+        "en": "The tool-access notice (which tools open and why) must come out identical from the Desktop canonical builder and the terminal mirror for the same input."
+      },
+      "ownerSurface": "agentlas_desktop",
+      "surfaces": [
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "shared/tool-access-notice.ts",
+          "identifier": "buildToolAccessNotice",
+          "meaning": "Canonical notice builder."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/tools/access-notice.cjs",
+          "identifier": "buildToolAccessNotice",
+          "meaning": "Terminal mirror of the builder."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "gate",
+          "path": "test/tool-access-notice-parity.cjs",
+          "identifier": "buildToolAccessNotice",
+          "meaning": "Parity test comparing canonical vs mirror output (local-only: tests are gitignored in this repo).",
+          "localOnly": true
+        }
+      ],
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "model-workload-allocation",
+      "intent": {
+        "ko": "모델·워크로드 배분 결정(tier/effort/phase)은 OS 파이썬 정본, 데스크탑 TS, 터미널 CJS 세 벌로 존재한다 — 현재 3-way 드리프트가 알려진 부채다.",
+        "en": "Model/workload allocation decisions (tier/effort/phase) exist in three copies — OS Python canonical, Desktop TS, terminal CJS — with a KNOWN three-way drift carried as debt."
+      },
+      "ownerSurface": "Agentlas-OS",
+      "surfaces": [
+        {
+          "repo": "Agentlas-OS",
+          "kind": "wireId",
+          "path": "agentlas_cloud/model_allocation.py",
+          "identifier": "agentlas.model-allocation-decision.v1",
+          "meaning": "Canonical decision schema + tier/effort/phase vocabularies."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/runtime/workload-routing.ts",
+          "identifier": "resolveWorkloadAllocation",
+          "meaning": "Desktop resolver across runtimes."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/agentlas-workload-routing.cjs",
+          "identifier": "normalizeAllocation",
+          "meaning": "Terminal normalizer of the same allocation payloads."
+        }
+      ],
+      "note": "KNOWN DEBT (registered 2026-08-18): the three implementations have drifted from each other; no parity gate exists yet. This row carries the debt so the drift is at least rename-alarmed until a real sync gate lands.",
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "runtime-kinds-backends",
+      "intent": {
+        "ko": "런타임 종류(claude/codex/…)와 백엔드 어휘의 정본은 하나여야 한다 — OS 라우팅 어휘·런타임 레지스트리, 데스크탑 shared 유니온, 터미널 kinds 스펙이 같은 구성원을 가져야 하며, 유니온에 멤버를 더하면 손 허용목록 전수를 쓸어야 한다.",
+        "en": "Runtime kinds (claude/codex/…) and backend vocabularies must share one canon — OS routing vocabulary + runtime registry, Desktop shared unions, and terminal kind specs must carry the same members; adding a member means sweeping every hand allowlist."
+      },
+      "ownerSurface": "agentlas_desktop",
+      "surfaces": [
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "shared/runtime-kinds.ts",
+          "identifier": "RUNTIME_KINDS",
+          "meaning": "Desktop canonical kind array (satisfies-checked)."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "shared/runtime-backends.ts",
+          "identifier": "RUNTIME_BACKENDS",
+          "meaning": "Desktop canonical backend array."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/runtimes/kinds.cjs",
+          "identifier": "RUNTIME_KIND_SPECS",
+          "meaning": "Terminal kind specs (kind, bin, driver native|acp, capture)."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "agentlas_cloud/routing_vocabulary.py",
+          "identifier": "CANONICAL_RUNTIMES",
+          "meaning": "OS canonical runtime tuple + alias normalisation."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "contracts/runtime-registry.json",
+          "identifier": "agentlas.runtime-registry.v1",
+          "meaning": "Declarative runtime x model matrix seed (live rows merge over it)."
+        }
+      ],
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "acp-runner",
+      "intent": {
+        "ko": "ACP(에이전트 클라이언트 프로토콜) 러너 — cursor/grok/kimi 등의 실행은 데스크탑 acp.ts 를 지나며, 터미널은 같은 컴파일된 러너를 vendored core 로 로드한다. 대상 선정은 이름·타입이 아니라 행동으로.",
+        "en": "The ACP (agent client protocol) runner — cursor/grok/kimi executions pass through Desktop acp.ts, and the terminal loads the same compiled runner via the vendored core. Targets are picked by behavior, not by name/type."
+      },
+      "ownerSurface": "agentlas_desktop",
+      "surfaces": [
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/runtime/acp.ts",
+          "identifier": "ACP_AGENTS",
+          "meaning": "Runner + agent specs; the path all ACP-kind executions actually take (fix-lived-on-a-path-not-taken incident)."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/runtime/acp-protocol.ts",
+          "identifier": "ACP_PROTOCOL_VERSION",
+          "meaning": "Protocol layer (stdio JSON-RPC, auth method choice, model options)."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/runtimes/acp-driver.cjs",
+          "identifier": "runAcpTurn",
+          "meaning": "Terminal driver delegating to the vendored Desktop ACP runtime."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/core/desktop-core.cjs",
+          "identifier": "loadCoreAcpRuntime",
+          "meaning": "Loader that reuses the compiled Desktop ACP runtime instead of re-implementing it (SPEC T-08 refuted: vendored runtime is not dead code)."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "gate",
+          "path": "scripts/test-acp-runner-contract.cjs",
+          "identifier": "ACP runner contract",
+          "meaning": "Contract test against a real fake ACP agent subprocess (local-only: scripts/test-*.cjs is gitignored in this repo).",
+          "localOnly": true
+        }
+      ],
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "mobile-bridge-contract",
+      "intent": {
+        "ko": "모바일↔데스크탑 브리지 프로토콜 v1 — 정확히 60개 메서드(쓰기 30개)가 정본이며, 데스크탑 allowlist·서버와 모바일 transport·PROTOCOL.md 가 같은 메서드 집합을 가져야 한다.",
+        "en": "The mobile↔desktop bridge protocol v1 — exactly 60 methods (30 writes) form the contract; the Desktop allowlist/server and the Mobile transport/PROTOCOL.md must carry the same method set."
+      },
+      "ownerSurface": "agentlas_desktop",
+      "surfaces": [
+        {
+          "repo": "agentlas_desktop",
+          "kind": "method",
+          "path": "shared/mobile-bridge.ts",
+          "identifier": "MOBILE_BRIDGE_METHODS",
+          "meaning": "Canonical method allowlist + write set + event names; dependency-free so mobile tooling can parse it."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/mobile-bridge/server.ts",
+          "identifier": "AgentlasMobileBridgeServer",
+          "meaning": "Host-side bridge server enforcing the allowlist."
+        },
+        {
+          "repo": "mobile",
+          "kind": "code",
+          "path": "app/lib/core/transport/desktop_transport.dart",
+          "identifier": "DesktopMethods",
+          "meaning": "Mobile transport's method constants mirroring the contract."
+        },
+        {
+          "repo": "mobile",
+          "kind": "method",
+          "path": "PROTOCOL.md",
+          "identifier": "exactly 60 methods",
+          "meaning": "Human contract doc pinning the 60/30 counts and capability gating."
+        },
+        {
+          "repo": "mobile",
+          "kind": "gate",
+          "path": "app/test/desktop_method_parity_test.dart",
+          "identifier": "DesktopMethods.supported",
+          "meaning": "Parity test: mobile constants == desktop v1 method/write sets (60/30)."
+        }
+      ],
+      "note": "featureId mobile-hub-publish registers the hub-publish subset of this contract (capability hub-publish-v1); this row owns the method-set parity itself.",
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "hub-bookmarks",
+      "intent": {
+        "ko": "허브 북마크 — 웹 계정의 에이전트 북마크를 데스크탑이 동기화해 로컬 호출 가능 목록으로 쓰고, 모바일에는 브리지 메서드 hub.borrowable.list 로 투영된다(모바일 이름은 borrowable).",
+        "en": "Hub bookmarks — Desktop syncs the web account's agent bookmarks into the local callable set, and Mobile sees them through the bridge method hub.borrowable.list (mobile-side name: borrowable)."
+      },
+      "ownerSurface": "agentlas_desktop",
+      "surfaces": [
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/hub-bookmark-sync.ts",
+          "identifier": "syncHubBookmarks",
+          "meaning": "Desktop sync engine against /api/agent-cloud/bookmarks; fails closed on auth loss."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "endpoint",
+          "path": "AgentsAtlas/app/src/app/api/agent-cloud/bookmarks/route.ts",
+          "identifier": "AgentCloudBookmarkRecord",
+          "meaning": "Web bookmarks API (list/add; [slug] route deletes)."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/mobile-bridge/authority.ts",
+          "identifier": "callableHubBookmarksForMobile",
+          "meaning": "Projects the bookmark set into the mobile borrowable list."
+        },
+        {
+          "repo": "mobile",
+          "kind": "method",
+          "path": "app/lib/core/transport/desktop_transport.dart",
+          "identifier": "hub.borrowable.list",
+          "meaning": "Mobile bridge method reading the projected list."
+        },
+        {
+          "repo": "mobile",
+          "kind": "method",
+          "path": "PROTOCOL.md",
+          "identifier": "hub.borrowable.list",
+          "meaning": "Contract doc row for the same method."
+        }
+      ],
+      "aliases": [
+        {
+          "name": "borrowable",
+          "status": "wire-legacy",
+          "note": "Mobile-facing name for bookmark-callable hub agents; the desktop/web feature is 'bookmarks'."
+        }
+      ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "terminal-vendored-core",
+      "intent": {
+        "ko": "터미널의 무거운 기능(그래프 실행 등)은 재구현이 아니라 데스크탑의 컴파일된 코어를 정적 require 그래프 순회로 통째로 vendored 해 재사용한다 — npm install -g agentlas 만으로 데스크탑 없이 돈다.",
+        "en": "The terminal's heavy features (graph runs etc.) REUSE Desktop's compiled core, vendored wholesale via static require-graph traversal — npm install -g agentlas works with no Desktop app installed."
+      },
+      "ownerSurface": "agentlas_terminal",
+      "surfaces": [
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "scripts/vendor-desktop-core.cjs",
+          "identifier": "vendor-desktop-core",
+          "meaning": "The vendoring script: static require-graph traversal from run-graph.js (no hand-picked partial closures, no whole-dist copies)."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/vendor/desktop-core/VENDORED.json",
+          "identifier": "rootEntry",
+          "meaning": "Provenance receipt: source desktop root, root entry, file count, external deps."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/core/desktop-core.cjs",
+          "identifier": "desktop-core",
+          "meaning": "Runtime loader resolving the vendored (or live sibling) Desktop core."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/workflow/run-graph.ts",
+          "identifier": "planGraphLoops",
+          "meaning": "Source of the vendored closure's root entry (compiled to dist/electron/workflow/run-graph.js)."
+        }
+      ],
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "graph-automation",
+      "intent": {
+        "ko": "그래프 자동화 — 실행 엔진은 데스크탑 run-graph 하나이고, 그래프 어휘는 shared/graph-registry/*.json 정본에서 데스크탑 TS·터미널 CJS 로 생성된다(손 사본 금지). 터미널은 sync:architecture 로 뒤따라온다.",
+        "en": "Graph automation — the one execution engine is Desktop run-graph, and the graph vocabulary is GENERATED from shared/graph-registry/*.json into Desktop TS and terminal CJS (no hand copies). The terminal catches up via sync:architecture."
+      },
+      "ownerSurface": "agentlas_desktop",
+      "surfaces": [
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/workflow/run-graph.ts",
+          "identifier": "parseGraphCheckpoint",
+          "meaning": "The single graph execution engine (checkpoints, loops, workforce prepare receipts)."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "shared/graph-vocabulary.generated.ts",
+          "identifier": "shared/graph-registry/*.json",
+          "meaning": "Generated vocabulary; canonical data is shared/graph-registry/*.json via gen-graph-registry.cjs --check."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/graph/vocabulary.generated.cjs",
+          "identifier": "agentlas_desktop/shared/graph-registry/*.json",
+          "meaning": "Terminal generated mirror; unknown values demote that entry only, never the run."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "scripts/sync-architecture-from-desktop.cjs",
+          "identifier": "compiledManifest",
+          "meaning": "Sync script pulling the desktop-compiled architecture data into the terminal package."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "package.json",
+          "identifier": "sync:architecture",
+          "meaning": "npm script wiring for that sync."
+        }
+      ],
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "memory-curator-ruleset",
+      "intent": {
+        "ko": "메모리 큐레이터의 판정값(승급·강등·admission 규칙 데이터)은 curator-ruleset.json 한 벌이 정본이며, 데스크탑 curator.ts 와 OS one_workspace.py 등 모든 실행기는 값을 여기서 로드한다 — 실행기에 판정값을 하드코딩하면 결함이다.",
+        "en": "The Memory Curator's judgment values (promotion/demotion/admission rule data) have ONE canonical file, curator-ruleset.json; every executor (Desktop curator.ts, OS one_workspace.py, …) loads values from it — hard-coding a judgment value in an executor is a defect."
+      },
+      "ownerSurface": "Agentlas-OS",
+      "surfaces": [
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "system-agents/curator-ruleset.json",
+          "identifier": "agentlas.curator-ruleset.v1",
+          "meaning": "Canonical ruleset (rulesetVersion pins the revision)."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "agentlas_cloud/one_workspace.py",
+          "identifier": "curator-ruleset",
+          "meaning": "OS executor; loads judgment values from the canonical ruleset (they had drifted before 2026-08-12 set 3 F3)."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/memory/curator-ruleset.json",
+          "identifier": "agentlas.curator-ruleset.v1",
+          "meaning": "Desktop copy shipped with the app; must track the canonical rulesetVersion."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/memory/curator.ts",
+          "identifier": "curator-ruleset.json",
+          "meaning": "Desktop executor reading the ruleset instead of inline constants."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "Hephaestus/system-agents/curator-ruleset.json",
+          "identifier": "agentlas.curator-ruleset.v1",
+          "meaning": "Vendored engine copy inside Desktop (release payload path — the half-repaired set3→set4 incident)."
+        }
+      ],
+      "note": "Distribution reminder: reaching the installed runtime requires BOTH the release allowlist and the installer copy step; a repo-only fix silently falls back to embedded values on updated machines.",
+      "aliases": [],
       "lastVerified": "2026-08-18"
     }
   ]
