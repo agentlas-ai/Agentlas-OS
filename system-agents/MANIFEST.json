@@ -60,7 +60,7 @@
       "packageTypes": "none",
       "copyMode": "platform-injected",
       "teamDestination": null,
-      "runtimeChokepoint": "both runtime bundle emitters prepend the fenced directive to the entry (Agentlas-OS agentlas_cloud/runtime.py WORKER_MEMORY_DIRECTIVE, Hub runtime-bundle.ts WORKER_MEMORY_DIRECTIVE); scripts/sync-worker-memory-directive.sh byte-compares all three",
+      "runtimeChokepoint": "both runtime bundle emitters prepend the fenced directive to the entry (Agentlas-OS agentlas_cloud/runtime.py WORKER_MEMORY_DIRECTIVE, Hub runtime-bundle.ts WORKER_MEMORY_DIRECTIVE); scripts/sync-worker-memory-directive.sh (wired into scripts/verify-package.sh) byte-compares all three, skipping the Hub leg only when the sibling agentlas checkout is absent",
       "notes": "Never copied into packages. Recall reaches an agent through the host capsule, but emission is the agent's job, and an agent borrowed onto a host without the Agentlas hook was never told to emit - it left a request hash and lost the learning. Injecting from the emitter reaches every borrowed agent from one place instead of asking 178 packages to each carry the same text."
     },
     {

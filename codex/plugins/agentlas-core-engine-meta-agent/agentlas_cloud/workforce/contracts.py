@@ -48,6 +48,16 @@ WORKFORCE_V1_PUBLIC_AUTHORITY_IDS = frozenset({
     "authority:payment",
     "authority:shell",
 })
+# WIRE-level enum for public v1 workforce contracts — it names the surface a
+# candidate runs on, not the canonical runtime vocabulary. It intentionally
+# differs from agentlas_cloud/routing_vocabulary.py: "desktop" and "hub" are
+# the wire spellings the vocabulary treats as ALIASES of its canonical ids
+# ("agentlas-desktop", "agentlas-web"), while "claude", "cloud", "local", and
+# "ollama" have no routing-vocabulary meaning at all. Do NOT respell these to
+# match CANONICAL_RUNTIMES: the values are frozen into published v1 fixtures
+# and selections. tests/test_workforce_ontology.py asserts the overlap between
+# this enum and the vocabulary stays exactly the known subset, so drift on
+# either side fails loudly instead of silently forking the spellings.
 WORKFORCE_V1_PUBLIC_RUNTIME_IDS = frozenset({
     "claude",
     "cloud",

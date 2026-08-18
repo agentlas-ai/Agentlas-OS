@@ -664,6 +664,12 @@ python3 scripts/render-host-skills.py --check
 # missing for a full session before anyone noticed. A generator with no
 # --check wired into a gate is just a manual tool nobody remembers to run.
 python3 scripts/render-command-aliases.py --check
+# The worker memory directive ships from two emitters (runtime.py here, the Hub's
+# runtime-bundle.ts in the sibling web checkout) and is specified once in
+# system-agents/worker-memory-protocol.md. A drifted copy is worse than none: the
+# spec describes behaviour nothing asks for. Byte-compare all three; the sibling
+# leg SKIPs only when that checkout is absent entirely.
+scripts/sync-worker-memory-directive.sh
 # The routing-card gate below lints the cards already checked into this repo. It
 # cannot see the templates every built package is scaffolded from, which is how a
 # template pinned to the wrong schemaVersion shipped green here and was rejected

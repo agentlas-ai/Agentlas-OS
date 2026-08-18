@@ -28,7 +28,7 @@ started.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 # ── runtimes ────────────────────────────────────────────────────────────────
 CANONICAL_RUNTIMES: tuple[str, ...] = (
@@ -181,6 +181,31 @@ def normalise_runtimes(values: Any) -> list[str]:
         if token and token not in seen:
             seen.append(token)
     return seen
+
+
+def require_canonical_runtimes(values: Iterable[str]) -> list[str]:
+    """Normalise a hand-written runtime list, refusing silent drops.
+
+    ``normalise_runtimes`` is for corpus data, where an unknown word must be
+    tolerated. Module-level declared lists (catalog ``SUPPORTED_RUNTIMES``,
+    card_migrate ``DEFAULT_RUNTIMES``) are the opposite case: every entry was
+    typed by a maintainer, so an unknown word is a typo and must fail at
+    import instead of quietly shrinking the published list.
+    """
+
+    resolved: list[str] = []
+    unknown: list[str] = []
+    for value in values:
+        token = normalise_runtime(value)
+        if token is None:
+            unknown.append(str(value))
+        elif token not in resolved:
+            resolved.append(token)
+    if unknown:
+        raise ValueError(
+            "runtime id(s) unknown to routing_vocabulary: " + ", ".join(unknown)
+        )
+    return resolved
 
 
 def normalise_risk_capabilities(values: Any) -> list[str]:

@@ -15,10 +15,14 @@ from .bootstrap import read_json, utc_now
 from ..interview.schema import resolve_work_brief
 from .card_store import save_card
 from .domains import DOMAIN_IDS, classify_domains
+from ..routing_vocabulary import require_canonical_runtimes
 from ..runtime import collect_package_files, package_hash
 
 SCHEMA = "routing-card/2.0"
-DEFAULT_RUNTIMES = ["claude-code", "codex", "gemini-cli", "agents-md"]
+# Fallback runtime set for packages that declare none. Normalised through
+# routing_vocabulary so a typo fails at import instead of silently diverging
+# from CANONICAL_RUNTIMES.
+DEFAULT_RUNTIMES = require_canonical_runtimes(("claude-code", "codex", "gemini-cli", "agents-md"))
 
 # The only directories a package's globalInstallPath may write into. Packages
 # declare their own install destination, so without this allowlist a hostile

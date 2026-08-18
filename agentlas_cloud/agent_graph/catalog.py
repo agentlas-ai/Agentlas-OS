@@ -13,11 +13,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..routing_vocabulary import require_canonical_runtimes
 from .agentos import build_pack
 from .okf import FORMAT as OKF_FORMAT
 from .okf import to_okf_bundle
 
-SUPPORTED_RUNTIMES = ["claude-code", "codex", "gemini-cli", "antigravity", "agents-md", "okf-aware"]
+# Runtimes that can consume the pack, published into the A2A card below. The
+# set is intentionally narrower than routing_vocabulary.CANONICAL_RUNTIMES,
+# but every entry is normalised through the vocabulary so a typo fails at
+# import instead of silently diverging. "okf-aware" is not a runtime id at
+# all — it is the open marker for any other OKF-aware consumer — so it is
+# appended verbatim after the check.
+SUPPORTED_RUNTIMES = require_canonical_runtimes(
+    ("claude-code", "codex", "gemini-cli", "antigravity", "agents-md")
+) + ["okf-aware"]
 
 
 def knowledge_catalog_descriptor(

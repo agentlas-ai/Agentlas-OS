@@ -85,12 +85,15 @@ from agentlas_cloud.desktop_repair import (
 from agentlas_cloud.desktop_updater_cleanup import (
     repair_installed_desktop_updater_cache as run_desktop_updater_cleanup_bridge,
 )
+from agentlas_cloud.memory_hosts import INSTALLABLE_HOSTS, MEMORY_HOOK_HOSTS
 from agentlas_cloud.update import _safe_python_cache_prefix
 
 
 BEGIN_MARKER = "<!-- AGENTLAS:MEMORY-HOOK:BEGIN -->"
 END_MARKER = "<!-- AGENTLAS:MEMORY-HOOK:END -->"
-SUPPORTED_HOSTS = ("antigravity", "grok", "opencode")
+# Derived from the shared host table (agentlas_cloud/memory_hosts.py) so this
+# installer and the hook's own host dispatch can never disagree by hand.
+SUPPORTED_HOSTS = INSTALLABLE_HOSTS
 DESKTOP_REPAIR_MARKER = "desktop-update-bridge-v1.json"
 DESKTOP_REPAIR_VERSIONS = {"0.8.58", "0.8.59"}
 DESKTOP_BUNDLE_ID = "com.agentlas.desktop"
@@ -850,17 +853,15 @@ def install_opencode(source_dir: Path, home: Path) -> list[str]:
 
 def _detected_hosts(home: Path) -> list[str]:
     hosts: list[str] = []
-    if (
-        os.environ.get("HEPHAESTUS_FORCE_ANTIGRAVITY")
-        or (home / ".gemini" / "antigravity").is_dir()
-        or (home / ".gemini" / "antigravity-ide").is_dir()
-        or (home / ".gemini" / "antigravity-cli").is_dir()
-    ):
-        hosts.append("antigravity")
-    if shutil.which("grok") or (home / ".grok").is_dir():
-        hosts.append("grok")
-    if shutil.which("opencode") or (home / ".config" / "opencode").is_dir():
-        hosts.append("opencode")
+    for spec in MEMORY_HOOK_HOSTS:
+        if not spec.installable:
+            continue
+        if (
+            any(os.environ.get(name) for name in spec.detect_env)
+            or any(shutil.which(binary) for binary in spec.detect_binaries)
+            or any((home / relative).is_dir() for relative in spec.detect_dirs)
+        ):
+            hosts.append(spec.id)
     return hosts
 
 
@@ -871,7 +872,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--hosts",
         default="auto",
-        help="auto, all, or a comma-separated subset of antigravity,grok,opencode",
+        help=f"auto, all, or a comma-separated subset of {','.join(SUPPORTED_HOSTS)}",
     )
     args = parser.parse_args(argv)
     source_dir = args.source_dir.expanduser().resolve()
@@ -885,11 +886,10 @@ def main(argv: list[str] | None = None) -> int:
         unknown = sorted(set(hosts) - set(SUPPORTED_HOSTS))
         if unknown:
             parser.error(f"unsupported hosts: {', '.join(unknown)}")
-    installers = {
-        "antigravity": install_antigravity,
-        "grok": install_grok,
-        "opencode": install_opencode,
-    }
+    # Derived from the shared host table: a host marked installable there
+    # without an install_<host>() here fails loudly at startup instead of
+    # silently missing from `--hosts all`.
+    installers = {host: globals()[f"install_{host}"] for host in SUPPORTED_HOSTS}
     installed: dict[str, list[str]] = {}
     errors: dict[str, str] = {}
     runtime_shim_repair = repair_managed_runtime_python_shims(source_dir, home)

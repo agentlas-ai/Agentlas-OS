@@ -14,6 +14,7 @@ from typing import Any, Iterable
 from ontology import OntologyRuntime, RuntimeConfig
 
 from . import context_markers, evolution_proposals
+from .memory_hosts import HOST_CHOICES, host_spec
 
 
 CAPSULE_VERSION = "1"
@@ -883,17 +884,18 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
 
 
 def _empty_output(host: str) -> str:
-    return "{}" if host in {"claude", "codex", "antigravity", "grok"} else ""
+    return host_spec(host).empty_output
 
 
 def _format_output(host: str, event: str, capsule: str | None, workspace: Path | None) -> str:
-    if host == "grok":
+    spec = host_spec(host)
+    if spec.capsule_style == "cache-file":
         if workspace is not None:
-            write_cache("grok", workspace, capsule)
-        return "{}"
+            write_cache(host, workspace, capsule)
+        return spec.empty_output
     if not capsule:
-        return _empty_output(host)
-    if host in {"claude", "codex"}:
+        return spec.empty_output
+    if spec.capsule_style == "hook-specific-output":
         return json.dumps(
             {
                 "hookSpecificOutput": {
@@ -903,7 +905,7 @@ def _format_output(host: str, event: str, capsule: str | None, workspace: Path |
             },
             ensure_ascii=False,
         )
-    if host == "antigravity":
+    if spec.capsule_style == "inject-steps":
         return json.dumps({"injectSteps": [{"ephemeralMessage": capsule}]}, ensure_ascii=False)
     return capsule
 
@@ -954,7 +956,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fail-open, local-only Agentlas memory recall hook")
     parser.add_argument(
         "--host",
-        choices=("claude", "codex", "antigravity", "grok", "opencode", "raw"),
+        choices=HOST_CHOICES,
         default="raw",
     )
     parser.add_argument("--event")

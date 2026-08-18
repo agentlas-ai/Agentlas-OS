@@ -350,6 +350,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Report whether a retired periodic update service is still installed",
     )
 
+    from .global_router import ROUTER_TARGET_IDS
+
     global_router = sub.add_parser("global", help="Install or remove Hephaestus global router prompt blocks")
     global_sub = global_router.add_subparsers(dest="global_command", required=True)
     for global_name in ("install", "remove", "status"):
@@ -358,9 +360,9 @@ def main(argv: list[str] | None = None) -> int:
         global_cmd.add_argument(
             "--target",
             action="append",
-            choices=["codex", "claude", "antigravity"],
+            choices=list(ROUTER_TARGET_IDS),
             default=[],
-            help="Target host prompt file. Repeatable; defaults to codex, claude, and antigravity.",
+            help=f"Target host prompt file. Repeatable; defaults to {', '.join(ROUTER_TARGET_IDS)}.",
         )
         if global_name in {"install", "remove"}:
             global_cmd.add_argument("--no-backup", action="store_true", help="Do not write a timestamped backup before editing")

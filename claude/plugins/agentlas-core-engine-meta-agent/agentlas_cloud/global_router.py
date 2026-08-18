@@ -19,12 +19,85 @@ class Target:
     label: str
 
 
+@dataclass(frozen=True)
+class _TargetSpec:
+    """Everything host-specific about one router target, in one row."""
+
+    file: str  # home-relative prompt file
+    label: str
+    host: str
+    browser_instruction: str
+    network_instruction: str
+    scope_instruction: str
+    call_instruction: str
+    host_surface_note: str
+
+
+# Claude Code and Antigravity share the /hep-* slash-command surface verbatim.
+_HEP_SLASH_COMMANDS = {
+    "browser_instruction": "Use `/hep-browser <url-or-query>`",
+    "network_instruction": "Use `/hep-network <request>`",
+    "scope_instruction": "Use `/hep-local`, `/hep-cloud`, or `/hep-hub`",
+    "call_instruction": "Use `/hep-call <agent-slugs> <context>`",
+}
+
+# One row per supported router target. _router_block, default_targets,
+# _select_targets, and the CLI's --target choices all derive from this table,
+# so adding a host is one new row here — before this, the per-host strings
+# lived in an if/elif chain whose bare else silently meant Antigravity for any
+# unknown id, and the three-target list was typed out in three more places.
+ROUTER_TARGETS: dict[str, _TargetSpec] = {
+    "codex": _TargetSpec(
+        file=".codex/AGENTS.md",
+        label="Codex AGENTS.md",
+        host="Codex",
+        browser_instruction=(
+            "Ask for Agentlas Browser in plain language; Codex dispatches it through "
+            "the typed MCP surface"
+        ),
+        network_instruction="Use `$hephaestus-network <request>`",
+        scope_instruction=(
+            "Use `$hephaestus-cloud <request>` for owner Cloud. Request exact Local "
+            "or public Hub scope in plain language through typed Workforce MCP"
+        ),
+        call_instruction=(
+            "Request the exact named Cloud or Hub agents in plain language through typed MCP"
+        ),
+        host_surface_note="""
+- Codex 0.117 and later use installed `$hephaestus-build`,
+  `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload`,
+  `$hephaestus-storm`, and `$hephaestus-graph` skills. Request Browser, Local,
+  Hub, Search, and Call actions in plain language through typed MCP. Custom
+  `/prompts:hep-*` commands are legacy surfaces limited to Codex versions before
+  0.117; do not direct current Codex users to them.""",
+    ),
+    "claude": _TargetSpec(
+        file=".claude/CLAUDE.md",
+        label="Claude CLAUDE.md",
+        host="Claude Code",
+        host_surface_note="",
+        **_HEP_SLASH_COMMANDS,
+    ),
+    "antigravity": _TargetSpec(
+        file=".gemini/GEMINI.md",
+        label="Antigravity GEMINI.md",
+        host="Antigravity",
+        host_surface_note="""
+- Antigravity is an independent runtime target, not a Gemini CLI mode. The two
+  may read the same configuration path, but installation and runtime selection
+  remain separate.""",
+        **_HEP_SLASH_COMMANDS,
+    ),
+}
+
+ROUTER_TARGET_IDS: tuple[str, ...] = tuple(ROUTER_TARGETS)
+
+
 def default_targets(home: Path | None = None) -> dict[str, Target]:
     root = home or Path.home()
     return {
-        "codex": Target("codex", root / ".codex" / "AGENTS.md", "Codex AGENTS.md"),
-        "claude": Target("claude", root / ".claude" / "CLAUDE.md", "Claude CLAUDE.md"),
-        "antigravity": Target("antigravity", root / ".gemini" / "GEMINI.md", "Antigravity GEMINI.md"),
+        target_id: Target(target_id, root / spec.file, spec.label)
+        for target_id, spec in ROUTER_TARGETS.items()
     }
 
 
@@ -106,7 +179,7 @@ def global_router_status(*, home: Path | None = None, targets: list[str] | None 
 
 def _select_targets(*, home: Path | None, targets: list[str] | None) -> list[Target]:
     available = default_targets(home)
-    ids = targets or ["codex", "claude", "antigravity"]
+    ids = targets or list(ROUTER_TARGET_IDS)
     unknown = [item for item in ids if item not in available]
     if unknown:
         raise ValueError(f"unknown global router target(s): {', '.join(unknown)}")
@@ -114,44 +187,17 @@ def _select_targets(*, home: Path | None, targets: list[str] | None) -> list[Tar
 
 
 def _router_block(target_id: str) -> str:
-    if target_id == "codex":
-        host = "Codex"
-        browser_instruction = (
-            "Ask for Agentlas Browser in plain language; Codex dispatches it through "
-            "the typed MCP surface"
-        )
-        network_instruction = "Use `$hephaestus-network <request>`"
-        scope_instruction = (
-            "Use `$hephaestus-cloud <request>` for owner Cloud. Request exact Local "
-            "or public Hub scope in plain language through typed Workforce MCP"
-        )
-        call_instruction = (
-            "Request the exact named Cloud or Hub agents in plain language through typed MCP"
-        )
-        host_surface_note = """
-- Codex 0.117 and later use installed `$hephaestus-build`,
-  `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload`,
-  `$hephaestus-storm`, and `$hephaestus-graph` skills. Request Browser, Local,
-  Hub, Search, and Call actions in plain language through typed MCP. Custom
-  `/prompts:hep-*` commands are legacy surfaces limited to Codex versions before
-  0.117; do not direct current Codex users to them."""
-    elif target_id == "claude":
-        host = "Claude Code"
-        browser_instruction = "Use `/hep-browser <url-or-query>`"
-        network_instruction = "Use `/hep-network <request>`"
-        scope_instruction = "Use `/hep-local`, `/hep-cloud`, or `/hep-hub`"
-        call_instruction = "Use `/hep-call <agent-slugs> <context>`"
-        host_surface_note = ""
-    else:
-        host = "Antigravity"
-        browser_instruction = "Use `/hep-browser <url-or-query>`"
-        network_instruction = "Use `/hep-network <request>`"
-        scope_instruction = "Use `/hep-local`, `/hep-cloud`, or `/hep-hub`"
-        call_instruction = "Use `/hep-call <agent-slugs> <context>`"
-        host_surface_note = """
-- Antigravity is an independent runtime target, not a Gemini CLI mode. The two
-  may read the same configuration path, but installation and runtime selection
-  remain separate."""
+    spec = ROUTER_TARGETS.get(target_id)
+    if spec is None:
+        # Unknown ids used to fall through a bare else into the Antigravity
+        # copy; a typo must fail loudly, not install the wrong host's block.
+        raise ValueError(f"unknown global router target: {target_id}")
+    host = spec.host
+    browser_instruction = spec.browser_instruction
+    network_instruction = spec.network_instruction
+    scope_instruction = spec.scope_instruction
+    call_instruction = spec.call_instruction
+    host_surface_note = spec.host_surface_note
     return f"""{BEGIN}
 # Hephaestus Global Router ({VERSION})
 
