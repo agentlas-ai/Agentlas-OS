@@ -18,6 +18,15 @@
   the channel ladder — desktop sheet, host-native question tool, numbered
   markdown list, or `NEEDS-INPUT:` for unattended runs — so a plugin-surface
   interview degrades honestly instead of leaving a raw fence nothing renders.
+- **Context capsules now reach the host AND carry real relations.** The recall
+  freshness check runs under a budget (SessionStart 21.1s → 4.2s, PreToolUse
+  17.1s → 0.4s), and the slice renders the edges its traversal already walked
+  (capsule edge lines 0 → 8, measured) with the relation arrow kept legible.
+- **Five shipped contracts tell the truth again**: the package-contract schema
+  accepts its own `text` kind, scaffolded packages can read all of their own
+  required artifacts, generated-package verification honors minimal-private,
+  the workforce-skills-root gate exists, and the source-bundle public schema
+  accepts the runtime's idempotency fields.
 
 ## v1.2.7 - 2026-08-16
 
