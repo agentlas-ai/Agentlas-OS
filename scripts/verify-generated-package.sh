@@ -54,7 +54,15 @@ except ImportError:
     print("- install it (pip install jsonschema) or the contract's `schema` bindings go unchecked")
     raise SystemExit(1)
 
+from agentlas_cloud.package_contract import _minimal_private_profile_active
 from agentlas_cloud.team_shape import check_team_shape
+
+# The runtime's verify() honours the user-confirmed minimal-private opt-out
+# (`.agentlas/build-profile.json`) and the contract's per-artifact
+# `optionalWhen`. This gate did not, so the same workspace was ok=True in the
+# runtime and FAIL here — the strict receipt check is shared with the runtime
+# so a model-asserted or incomplete opt-out still verifies as standard.
+build_profile = "minimal-private" if _minimal_private_profile_active(root) else "standard"
 
 shape = check_team_shape(str(root))
 mode = (
@@ -143,6 +151,8 @@ def check_body(path: Path, artifact: dict) -> None:
 for artifact in contract["artifacts"]:
     if mode not in artifact.get("modes", []):
         continue
+    if build_profile in (artifact.get("optionalWhen") or []):
+        continue
     if not artifact.get("required"):
         continue
     matches = resolve(artifact["path"])
@@ -155,11 +165,14 @@ for artifact in contract["artifacts"]:
 
 if errors:
     print(f"verify-generated-package: FAIL {root}")
-    print(f"mode={mode}; artifacts checked={checked}; problems={len(errors)}")
+    print(f"mode={mode}; artifacts checked={checked}; problems={len(errors)}; build_profile={build_profile}")
     for message in errors:
         print(f"- {message}")
     raise SystemExit(1)
 
 print(f"verify-generated-package: PASS {root}")
-print(f"mode={mode}; artifacts checked={checked}")
+print(
+    f"mode={mode}; artifacts checked={checked}; build_profile={build_profile}; "
+    f"public_marketplace_ready={'true' if build_profile == 'standard' else 'false'}"
+)
 PY

@@ -22,7 +22,7 @@
             "minItems": 1
           },
           "required": { "type": "boolean", "default": true },
-          "format": { "enum": ["json", "jsonl", "markdown"] },
+          "format": { "enum": ["json", "jsonl", "markdown", "text"] },
           "fill": {
             "enum": ["static", "fill", "generate"],
             "description": "static: scaffolder copies the template verbatim (no model). fill: model fills template placeholders only (extraction-shaped; safe for schema-constrained decoding). generate: model writes free-form content first, then structures it — never constrain decoding here (reasoning degrades under premature serialization)."

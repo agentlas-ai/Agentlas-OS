@@ -15,8 +15,8 @@
     "publicCopy": "reset"
   },
   "memory": [".agentlas/memory-map.json", ".agentlas/agent-card.json"],
-  "allowRead": ["README.md", "AGENTS.md", "agent.md", "skills/**", ".agentlas/*.json"],
-  "denyRead": [".env", ".env.*", "**/secrets/**", "**/credentials/**", "**/cookies/**", "**/*token*", "**/*secret*"],
+  "allowRead": ["README.md", "AGENTS.md", "agent.md", "skills/**", "agents/**", ".agents/**", "docs/**", "benchmarks/**", "contracts/**", ".agentlas/*.json", ".agentlas/*.jsonl", "provenance.json", "A2A/**", "tools/**", "permissions/**", "hooks/**", "evals/**", "experience/**", "knowledge/**", "schemas/**", "sandbox/**", "examples/**"],
+  "denyRead": [".env", ".env.*", "secrets/**", "**/secrets/**", "credentials/**", "**/credentials/**", "cookies/**", "**/cookies/**"],
   "publicExportPolicy": "clean-copy",
   "requiredRuntime": ["mcp-client"],
   "license": "call-only-default",

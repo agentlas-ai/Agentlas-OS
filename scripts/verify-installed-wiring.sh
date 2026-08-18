@@ -36,6 +36,37 @@ fail() {
 }
 ok() { echo "  ok  $*"; }
 
+# --workforce-skills-root <dir>: scoped mode. Verify ONLY that the staged
+# workforce skills never teach the model to echo the projected candidateSet /
+# federationResult back into validate_selection — the session-based protocol
+# passes selectionSessionId and Core restores the pinned federation result
+# itself; a skill that shows `candidateSet=` / `federationResult=` arguments
+# reintroduces the projected-echo defect on every machine it installs to.
+# Scoped on purpose: the caller is checking a staging directory before install,
+# so this machine's own wiring state must not decide the verdict.
+if [[ "${1:-}" == "--workforce-skills-root" ]]; then
+  skills_root="${2:-}"
+  [[ -n "$skills_root" && -d "$skills_root" ]] || {
+    echo "verify-installed-wiring: --workforce-skills-root requires an existing directory" >&2
+    exit 1
+  }
+  for scope in network cloud; do
+    skill_file="$skills_root/hephaestus-$scope/SKILL.md"
+    [[ -f "$skill_file" ]] || { fail "staged workforce skill missing: $skill_file"; continue; }
+    if grep -nE '\b(candidateSet|federationResult)[[:space:]]*=' "$skill_file" >/dev/null; then
+      fail "staged skill hephaestus-$scope would echo projected candidateSet/federationResult into validate_selection: $skill_file"
+    else
+      ok "staged skill hephaestus-$scope passes session-based identifiers only"
+    fi
+  done
+  if [[ "$failures" -gt 0 ]]; then
+    echo "verify-installed-wiring: $failures failure(s)." >&2
+    exit 1
+  fi
+  echo "verify-installed-wiring: staged workforce skills verified."
+  exit 0
+fi
+
 is_windows=0
 if agentlas_is_windows; then
   is_windows=1

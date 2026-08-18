@@ -20,22 +20,77 @@
     "receiptDigest"
   ],
   "properties": {
-    "schemaVersion": { "const": "agentlas.workforce-source-bundle-verification.v1" },
-    "status": { "const": "verified" },
-    "verification": { "enum": ["verified_transport", "verified_signature"] },
-    "source": { "enum": ["cloud", "hub"] },
-    "sourceSelectionSessionId": { "$ref": "#/$defs/id" },
-    "sourceCandidateSetDigest": { "$ref": "#/$defs/hash" },
-    "agentDefinitionId": { "$ref": "#/$defs/id" },
-    "agentReleaseId": { "$ref": "#/$defs/id" },
-    "releaseVersion": { "type": "string", "minLength": 1, "maxLength": 100 },
-    "packageHash": { "$ref": "#/$defs/hash" },
-    "contentDigest": { "$ref": "#/$defs/hash" },
-    "entityKind": { "enum": ["agent", "team"] },
-    "receiptDigest": { "$ref": "#/$defs/hash" }
+    "schemaVersion": {
+      "const": "agentlas.workforce-source-bundle-verification.v1"
+    },
+    "status": {
+      "const": "verified"
+    },
+    "verification": {
+      "enum": [
+        "verified_transport",
+        "verified_signature"
+      ]
+    },
+    "source": {
+      "enum": [
+        "cloud",
+        "hub"
+      ]
+    },
+    "sourceSelectionSessionId": {
+      "$ref": "#/$defs/id"
+    },
+    "sourceCandidateSetDigest": {
+      "$ref": "#/$defs/hash"
+    },
+    "agentDefinitionId": {
+      "$ref": "#/$defs/id"
+    },
+    "agentReleaseId": {
+      "$ref": "#/$defs/id"
+    },
+    "releaseVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "packageHash": {
+      "$ref": "#/$defs/hash"
+    },
+    "contentDigest": {
+      "$ref": "#/$defs/hash"
+    },
+    "entityKind": {
+      "enum": [
+        "agent",
+        "team"
+      ]
+    },
+    "prepareAttemptDigest": {
+      "$ref": "#/$defs/hash"
+    },
+    "selectedSourcePinDigest": {
+      "$ref": "#/$defs/hash"
+    },
+    "sourceFetchBindingDigest": {
+      "$ref": "#/$defs/hash"
+    },
+    "sourceFetchIdempotencyKey": {
+      "$ref": "#/$defs/hash"
+    },
+    "receiptDigest": {
+      "$ref": "#/$defs/hash"
+    }
   },
   "$defs": {
-    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$" },
-    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
   }
 }
