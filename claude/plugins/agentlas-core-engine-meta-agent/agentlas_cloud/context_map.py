@@ -2035,7 +2035,10 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
             source, target, relation = _edge_parts(edge)
             if not source or not target:
                 continue
-            rendered_edges.append(f"{_label(source)} -{relation or 'relates_to'}-> {_label(target)}")
+            # A plain `->` is HTML-escaped into `-&gt;` by the capsule builder,
+            # which is what the reader would actually receive. Use the arrow
+            # character so the relation stays legible in the prompt.
+            rendered_edges.append(f"{_label(source)} —{relation or 'relates_to'}→ {_label(target)}")
         if rendered_edges:
             lines.append("How that context connects (observed edges, 2-hop):")
             lines.extend(f"- {item}" for item in rendered_edges)
