@@ -107,6 +107,30 @@ instructions. For an underspecified team, ask in plain language whether one
 expert can own the work end-to-end or multiple experts must divide and combine
 it; do not begin generation until the shape is known.
 
+### Question transport is a channel, not a UI
+
+The ask fence (`<<agentlas-ask>>`) is a wire format, and the Agentlas Desktop
+bottom sheet is only one renderer of it. Before the first batch, detect the
+surface and pick the strongest channel available, in this order:
+
+1. **Agentlas Desktop renderer** — emit the fence; the desktop renders its
+   question sheet (existing behavior).
+2. **Host with a native structured-question tool** (for example Claude Code's
+   `AskUserQuestion`) — ask through that tool so the person gets real buttons.
+   Batch the questions per call with concrete options; free-text answers must
+   stay possible.
+3. **Plain conversational host** (a CLI or chat surface with no structured
+   tool) — render the batch as a numbered markdown list with lettered options
+   and wait for the reply. Never leave a raw `<<agentlas-ask>>` fence in a
+   surface that cannot render it.
+4. **Unattended run** (automation, graph, headless) — do not ask. Stop with a
+   `NEEDS-INPUT:` line describing exactly what is missing, per the runner
+   contract.
+
+Degrading a channel is acceptable; hiding the degradation is not. When the
+host records the interview receipt it should also record which channel carried
+the exchange, so a plugin-surface interview is not mistaken for a desktop one.
+
 ### The interview record is written by the host, not by you
 
 `docs/builder-interview.md` and the work brief's `source: user` tags are YOUR
