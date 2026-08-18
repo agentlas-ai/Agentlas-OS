@@ -79,6 +79,8 @@ required_files=(
   "scripts/verify-mcp-surface.sh"
   "scripts/verify-builder-quality-contract.sh"
   "scripts/verify-experience-assets-contract.sh"
+  "contracts/feature-map.json"
+  "scripts/verify-feature-map.py"
   ".agents/agentlas-core-engine-meta-agent/agent.md"
   ".agents/plugins/marketplace.json"
   ".agentlas/mode-map.json"
@@ -670,6 +672,14 @@ python3 scripts/render-command-aliases.py --check
 # spec describes behaviour nothing asks for. Byte-compare all three; the sibling
 # leg SKIPs only when that checkout is absent entirely.
 scripts/sync-worker-memory-directive.sh
+# One feature lives under different code names per surface (wire INGEST vs UI
+# 장기대여 vs retired 프로젝트 인제스트; workspaceId that means creator workspace),
+# so spelling-comparison gates treated it as different features and never aligned
+# them (owner diagnosis 2026-08-18). contracts/feature-map.json binds each
+# surface's exact current identifier to one featureId + intent; this gate is the
+# rename alarm over those bindings. Sibling checkouts that are absent SKIP with
+# the reason; a present sibling with a missing identifier FAILs.
+python3 scripts/verify-feature-map.py
 # The routing-card gate below lints the cards already checked into this repo. It
 # cannot see the templates every built package is scaffolded from, which is how a
 # template pinned to the wrong schemaVersion shipped green here and was rejected

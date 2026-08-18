@@ -1,0 +1,367 @@
+{
+  "schemaVersion": "agentlas.feature-map.v1",
+  "updatedAt": "2026-08-18",
+  "note": "Cross-surface FEATURE-INTENT registry. One row = one product feature, keyed by intent, not by spelling — the same feature legitimately carries different code names per surface (wire INGEST vs UI 장기대여; workspaceId that means creator workspace). Rationale and usage rules live in the sibling contracts/feature-map.md. Gate: scripts/verify-feature-map.py resolves each surface's repo as a sibling checkout (../<repo> relative to this repo; 'Agentlas-OS' is this repo itself), requires the file to exist and to contain the identifier verbatim (rename alarm, not semantics proof), and prints an honest SKIP when a sibling checkout is absent. 'kind' is one of code|endpoint|screen|method|table|wireId. 'identifier' must be the EXACT symbol/route/table/string as it exists in the file today. Alias status: wire-legacy (still on the wire, name is historical), retired (must not reappear in new copy), display (user-facing label, translated per surface).",
+  "features": [
+    {
+      "featureId": "oneshot-rent",
+      "intent": {
+        "ko": "허브 에이전트 호출은 작업(work order) 1건당 RENT 크레딧을 매번 과금한다 — 24시간 자동 리스는 폐지(오너 결정 2026-08-18).",
+        "en": "Every Hub agent call bills RENT credits per work order, on every call; the 24-hour auto-lease is retired (owner decision 2026-08-18)."
+      },
+      "ownerSurface": "agentlas",
+      "surfaces": [
+        {
+          "repo": "agentlas",
+          "kind": "code",
+          "path": "AgentsAtlas/app/src/lib/billing/price-kinds.ts",
+          "identifier": "PRICE_KIND_SPEC",
+          "meaning": "Canonical price-kind table. RENT: per work order, recurring, ceiling 100 credits; the unit token stays the legacy literal WORK_ORDER_24H because clients parse it."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "code",
+          "path": "AgentsAtlas/app/src/lib/mcp/agent-runtime.ts",
+          "identifier": "buildNetworkEconomyPayload",
+          "meaning": "Charge path: every runtime call resolves priceKind RENT and commits the wallet charge + ledger payload in one transaction before the bundle is released."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "shared/types.ts",
+          "identifier": "CloudAgentPriceKind",
+          "meaning": "Desktop mirror of the wire price-kind union RENT|INGEST|FORK."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "screen",
+          "path": "renderer/components/ChatInput.tsx",
+          "identifier": "flashCostNotice",
+          "meaning": "Flash notice: per-work-order estimated cost shown for 8s before a paid auto-hire, suppressed only when every hub hire is rent-allowed or day-leased."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/commands/call.cjs",
+          "identifier": "크레딧이 소모됩니다",
+          "meaning": "Terminal notice before public Hub calls: credits are consumed per work order, 0 while a day lease is active."
+        },
+        {
+          "repo": "mobile",
+          "kind": "screen",
+          "path": "app/lib/features/screens/agentlas_screen.dart",
+          "identifier": "estCredits",
+          "meaning": "Mobile shows the per-call estimated credits next to the agent's source label."
+        }
+      ],
+      "aliases": [
+        { "name": "WORK_ORDER_24H", "status": "wire-legacy", "note": "RENT's unit token predates the auto-lease retirement; a charge no longer opens a 24h window." },
+        { "name": "24시간 자동 리스", "status": "retired", "note": "Retired 2026-08-18; must not reappear in new copy." },
+        { "name": "빌리기 / Rent · 작업 1건당 / per work order", "status": "display" }
+      ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "agent-day-lease",
+      "intent": {
+        "ko": "선불 일 단위 장기대여 — 대여 기간 중 그 에이전트 호출은 0크레딧이며, 와이어 id INGEST는 레거시 표기다.",
+        "en": "Prepaid per-day long-term lease of one agent; calls cost 0 credits while active. The wire id INGEST is legacy spelling."
+      },
+      "ownerSurface": "agentlas",
+      "surfaces": [
+        {
+          "repo": "agentlas",
+          "kind": "wireId",
+          "path": "AgentsAtlas/app/src/lib/billing/price-kinds.ts",
+          "identifier": "AGENT_DAY",
+          "meaning": "Unit token for the INGEST price kind: one agent for one day, ceiling 2000 credits/day."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "endpoint",
+          "path": "AgentsAtlas/app/src/app/api/account/agent-leases/route.ts",
+          "identifier": "agent-leases",
+          "meaning": "POST /api/account/agent-leases buys/extends a lease (priceKind INGEST via commitNetworkEconomyCharge); GET quotes/lists leases."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "code",
+          "path": "AgentsAtlas/app/src/lib/billing/agent-leases.ts",
+          "identifier": "AGENT_DAY",
+          "meaning": "Web lease domain logic (per-day pricing and lease windows)."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "screen",
+          "path": "AgentsAtlas/app/src/components/marketplace/AgentLeaseButton.tsx",
+          "identifier": "AgentLeaseButton",
+          "meaning": "Web purchase entry point on marketplace/agent pages."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/cloud-agents/leases.ts",
+          "identifier": "purchaseAgentLease",
+          "meaning": "Desktop client of the agent-leases endpoints, with the lease cache the rent gate reads."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "screen",
+          "path": "renderer/components/AgentLeaseDialog.tsx",
+          "identifier": "AgentLeaseDialog",
+          "meaning": "Desktop lease/extend dialog (일 단위 선불 대여)."
+        },
+        {
+          "repo": "mobile",
+          "kind": "screen",
+          "path": "app/lib/features/screens/agentlas_screen.dart",
+          "identifier": "장기대여 — 에이전트 1일당",
+          "meaning": "Mobile price-setting copy for the per-day lease (1–2,000 credits/day)."
+        }
+      ],
+      "aliases": [
+        { "name": "INGEST", "status": "wire-legacy", "note": "Wire price-kind id; kept because clients parse it. New copy must say 장기대여 / long-term lease." },
+        { "name": "장기대여 / Long-term lease", "status": "display" },
+        { "name": "프로젝트 인제스트", "status": "retired", "note": "Old product framing (project ingest). Still literally present in Agentlas-OS agentlas_cloud/pricing.py PRICE_LABELS — stale copy, do not propagate." }
+      ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "fork",
+      "intent": {
+        "ko": "포크 = 허브 에이전트 사본을 1회 구매해 내 워크스페이스 소유로 설치한다; 획득은 웹 단일 진입점이고 사본은 출처 계보(lineage)를 영구히 지닌다.",
+        "en": "A fork is a one-time purchase of a Hub agent copy installed into the buyer's workspace; acquisition is web-only, and the copy carries its origin lineage forever."
+      },
+      "ownerSurface": "agentlas",
+      "surfaces": [
+        {
+          "repo": "agentlas",
+          "kind": "endpoint",
+          "path": "AgentsAtlas/app/src/app/api/account/install-cloud-agent/route.ts",
+          "identifier": "install-cloud-agent",
+          "meaning": "The ONLY acquisition path (owner decision: one entry point so lineage cannot be forgotten). Charges priceKind FORK via commitNetworkEconomyCharge and stamps the origin at install time."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "screen",
+          "path": "AgentsAtlas/app/src/components/marketplace/InstallAgentButton.tsx",
+          "identifier": "InstallAgentButton",
+          "meaning": "Web buy-a-copy button."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "code",
+          "path": "AgentsAtlas/app/src/types.ts",
+          "identifier": "CloudAgentForkOrigin",
+          "meaning": "Lineage record: originPackageHash is load-bearing; originOwnerUserId makes forked self-calls detectable."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/cloud-agents/package.ts",
+          "identifier": "forkLineage",
+          "meaning": "Desktop refusal: a folder carrying fork lineage cannot be published to the public Hub; saves carry the lineage forward."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/cloud-agents/restore.ts",
+          "identifier": "readCloudAgentRestoreMarker",
+          "meaning": "Reads the local restore marker whose .fork field is the desktop-side source of the lineage refusals."
+        }
+      ],
+      "aliases": [
+        { "name": "포크", "status": "display" },
+        { "name": "install", "status": "display", "note": "Web UI says install; the wire price kind is FORK, unit ONE_COPY." }
+      ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "project-rent-allow",
+      "intent": {
+        "ko": "프로젝트별로 '이 Hub 에이전트를 고지 없이 작업당 자동 고용해도 된다'는 명시적 동의를 (projectId × slug)로 기록한다 — 행이 없으면 기본 OFF, 자동 고용 후보에서 제외.",
+        "en": "Per-project explicit consent (projectId × slug) that a Hub agent may be auto-hired per work order without a per-send notice; no row means OFF and the agent is excluded from auto-hire."
+      },
+      "ownerSurface": "agentlas_desktop",
+      "surfaces": [
+        {
+          "repo": "agentlas_desktop",
+          "kind": "table",
+          "path": "electron/store/db.ts",
+          "identifier": "project_agent_rent_allow",
+          "meaning": "SQLite table added in migration v97 (appended to the ladder end), PK (project_id, slug), allowed default 0."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/store/project-agent-rent.ts",
+          "identifier": "listRentAllowedSlugs",
+          "meaning": "Store module; slugs are lowercased so lookups match the lease cache. Explicit user calls (/hep-call, @mention) are NOT gated here."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/mcp/client.ts",
+          "identifier": "gateHubSpecsByProjectRentPolicy",
+          "meaning": "Main-process gate: a Hub spec passes if rent-allowed in this project, day-leased, or explicitly named."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "screen",
+          "path": "renderer/components/ChatInput.tsx",
+          "identifier": "listRentAllowed",
+          "meaning": "Composer filter: non-allowed hub agents are dropped from the auto-hire preview; cost notice suppressed only when every kept hub hire is allowed or leased."
+        }
+      ],
+      "aliases": [
+        { "name": "렌트허용", "status": "display" }
+      ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "invocation-ledger-ranking",
+      "intent": {
+        "ko": "모든 MCP 호출의 최소 메타데이터 원장 — 크리에이터 수익배분과 공개 신뢰 랭킹의 근거이며, 자기호출은 랭킹에서 제외된다.",
+        "en": "Minimal-metadata ledger of every MCP call — the basis for creator revenue share and public trust rankings, with self-calls excluded from ranking."
+      },
+      "ownerSurface": "agentlas",
+      "surfaces": [
+        {
+          "repo": "agentlas",
+          "kind": "table",
+          "path": "AgentsAtlas/app/src/lib/store/index.ts",
+          "identifier": "invocation_ledger",
+          "meaning": "Mongo collection (store key invocationLedger), receiptId-keyed with an outbox retry so lost rows don't undercount creators."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "code",
+          "path": "AgentsAtlas/app/src/types.ts",
+          "identifier": "InvocationLedgerEvent",
+          "meaning": "FIELD MEANINGS — callerId: caller workspace identity ('mcp-anonymous' when unauthenticated). creatorId: agent creator's workspace. workspaceId: CURRENTLY ALSO the creator workspace, NOT the caller — writer quirk, see recordLedger. Readers must not treat workspaceId as the caller."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "code",
+          "path": "AgentsAtlas/app/src/lib/mcp/agent-runtime.ts",
+          "identifier": "recordLedger",
+          "meaning": "The writer: sets BOTH workspaceId and creatorId to profile.workspaceId (creator). This quirk is why the reader-side self-call rule uses one comparison only."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "endpoint",
+          "path": "AgentsAtlas/app/src/app/api/marketplace/build-competition/route.ts",
+          "identifier": "invocation_ledger",
+          "meaning": "Consumer. Self-call exclusion is exactly callerId ≠ creatorId; the old second condition workspaceId ≠ creatorId was removed because the writer stores the same value in both."
+        },
+        {
+          "repo": "agentlas",
+          "kind": "endpoint",
+          "path": "AgentsAtlas/app/src/app/api/marketplace/top-trusted/route.ts",
+          "identifier": "invocation_ledger",
+          "meaning": "Consumer, same self-call rule; non-public sourceScope fails closed out of public trust."
+        }
+      ],
+      "aliases": [
+        { "name": "invocationLedger", "status": "wire-legacy", "note": "In-code store key for the invocation_ledger collection." }
+      ],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "mobile-hub-publish",
+      "intent": {
+        "ko": "모바일에서 데스크탑 브리지를 통해 내 에이전트를 허브에 공개 발행하고 가격을 설정한다 — hub-publish-v1 호스트 능력이 있을 때만 제공한다.",
+        "en": "Mobile publishes the user's agent to the public Hub and sets prices through the desktop bridge — offered only when the host advertises the hub-publish-v1 capability."
+      },
+      "ownerSurface": "agentlas_desktop",
+      "surfaces": [
+        {
+          "repo": "agentlas_desktop",
+          "kind": "method",
+          "path": "shared/mobile-bridge.ts",
+          "identifier": "agents.cloudPublishHub",
+          "meaning": "Bridge method (with cloud.setHubPrices) in the production allowlist; validators bound prices to RENT/INGEST/FORK."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/mobile-bridge/authority.ts",
+          "identifier": "cloud.setHubPrices",
+          "meaning": "Host-side handlers executing the publish and price patch with desktop authority."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/mobile-bridge/projector.ts",
+          "identifier": "hub-publish-v1",
+          "meaning": "Capability advertisement. Older Desktops advertise only cloud-agent-actions; Mobile must not offer publishing against them."
+        },
+        {
+          "repo": "mobile",
+          "kind": "method",
+          "path": "PROTOCOL.md",
+          "identifier": "agents.cloudPublishHub",
+          "meaning": "Contract doc: exactly 60 methods including 30 writes; Hub publish methods gated on hub-publish-v1. A pricing failure after a committed publish is never a failed publish."
+        },
+        {
+          "repo": "mobile",
+          "kind": "code",
+          "path": "app/lib/core/models/cloud_action_models.dart",
+          "identifier": "cloudPublishHub",
+          "meaning": "Typed result models for the publish and price-set replies."
+        }
+      ],
+      "aliases": [],
+      "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "credits-balance",
+      "intent": {
+        "ko": "두 계좌 크레딧 잔액 조회 — 구독 계좌(A) remainingCredits(사용 가능)와 렌트수익 계좌(B) earningsCredits(내 업로드가 벌어들인 몫), 전송은 B→A 한 방향.",
+        "en": "Two-account credit balance: subscription account (A) remainingCredits, spendable, and rental-earnings account (B) earningsCredits; transfers flow B→A only."
+      },
+      "ownerSurface": "agentlas",
+      "surfaces": [
+        {
+          "repo": "agentlas",
+          "kind": "endpoint",
+          "path": "AgentsAtlas/app/src/app/api/billing/credits/route.ts",
+          "identifier": "remainingCredits",
+          "meaning": "GET /api/billing/credits — the single source every surface reads."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "code",
+          "path": "electron/billing.ts",
+          "identifier": "getBillingCredits",
+          "meaning": "Desktop main-process reader (cached ~60s); the paywall and mobile projection both consume it."
+        },
+        {
+          "repo": "agentlas_desktop",
+          "kind": "method",
+          "path": "shared/mobile-bridge.ts",
+          "identifier": "billing.credits",
+          "meaning": "Read-only bridge method exposing the balance to Mobile."
+        },
+        {
+          "repo": "agentlas_terminal",
+          "kind": "code",
+          "path": "engine/commands/billing.cjs",
+          "identifier": "/api/billing/credits",
+          "meaning": "agentlas billing command; honest exit 1 on auth failure — never fakes a 0 balance."
+        },
+        {
+          "repo": "mobile",
+          "kind": "code",
+          "path": "app/lib/core/transport/desktop_transport.dart",
+          "identifier": "billingCredits",
+          "meaning": "Transport constant for the billing.credits RPC; client mirrors the 60s re-ask cadence."
+        }
+      ],
+      "aliases": [
+        { "name": "구독 계좌 (A) / 렌트수익 계좌 (B)", "status": "display" }
+      ],
+      "lastVerified": "2026-08-18"
+    }
+  ]
+}
