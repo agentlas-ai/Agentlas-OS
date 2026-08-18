@@ -6,6 +6,7 @@ import html
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -136,7 +137,27 @@ def _resolve_cwd(payload: dict[str, Any], override: str | None = None) -> Path |
 
 
 def _agentlas_project_root(cwd: Path) -> Path | None:
+    """Nearest enclosing project. The home directory is never one.
+
+    `~/.agentlas` is the runtime's own home (runtime/, one/, cache/), not
+    project state, and this walk used to accept it: every folder under $HOME
+    resolved to the home directory as its "project", so a fresh project looked
+    already-seeded and never got a map. project_bootstrap has always refused
+    home and the filesystem root as bootstrap targets — the same boundary has
+    to hold when we go looking for one, or the two disagree and the gap is
+    exactly where first contact disappears.
+    """
+
+    try:
+        unsafe = {Path.home().resolve(), Path(cwd.anchor).resolve()}
+    except (OSError, RuntimeError):
+        unsafe = set()
     for root in (cwd, *cwd.parents):
+        try:
+            if root.resolve() in unsafe:
+                continue
+        except (OSError, RuntimeError):
+            continue
         agentlas_dir = root / ".agentlas"
         ontology_db = agentlas_dir / "ontology-runtime.sqlite"
         if (ontology_db.is_file() and not ontology_db.is_symlink()) or (
@@ -992,6 +1013,72 @@ def _maybe_start_runtime_auto_update() -> None:
         return
 
 
+def _maybe_seed_project(cwd: Path | None) -> None:
+    """Create .agentlas on first contact, without making the user wait for it.
+
+    The project requirement is that touching a folder from any runtime sets its
+    maps up. Recall never did it: the hook only READ maps, and the only producer
+    was an MCP tool call, so a user who just talked to their agent in a fresh
+    folder never got a project map at all — measured on a clean repository, a
+    prompt left no .agentlas behind.
+
+    Doing it inline is not an option either. Bootstrap costs 0.34s on a small
+    project but 33s on a large one, against hook contracts of 15s and 20s — the
+    exact failure mode that made the whole capsule disappear before. So first
+    contact is handed to a detached process (the same shape
+    project_index_backstop already uses for ingest): this turn proceeds without
+    a map, the next one has it. Re-contact is not re-seeded; the marker below is
+    the presence of .agentlas itself, and project_bootstrap holds its own lock.
+    """
+
+    if cwd is None:
+        return
+    try:
+        root = _agentlas_project_root(cwd)
+        if root is not None:
+            return  # already seeded; refresh is a separate, budgeted concern
+        from .project_bootstrap import (
+            _within_auto_boundary,
+            _project_root,
+            auto_bootstrap_enabled,
+        )
+
+        if not auto_bootstrap_enabled():
+            return
+        target = _project_root(cwd)
+        if not _within_auto_boundary(target):
+            return
+        runtime_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        existing = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
+        with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentlas_cloud.cli",
+                    "project",
+                    "ensure",
+                    "--project",
+                    str(target),
+                    "--reason",
+                    "hook-first-contact",
+                ],
+                cwd=str(target),
+                env=env,
+                stdin=stdin,
+                stdout=out,
+                stderr=out,
+                close_fds=True,
+                start_new_session=True,
+            )
+    except Exception:
+        # First contact is supplemental. A folder that cannot be seeded must
+        # still get its turn answered.
+        return
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fail-open, local-only Agentlas memory recall hook")
     parser.add_argument(
@@ -1027,6 +1114,8 @@ def main(argv: list[str] | None = None) -> int:
     if output:
         sys.stdout.write(output + "\n")
         sys.stdout.flush()
+    if event in {"SessionStart", "UserPromptSubmit"}:
+        _maybe_seed_project(_resolve_cwd(payload, args.cwd))
     if event == "SessionStart":
         _maybe_start_runtime_auto_update()
         try:
