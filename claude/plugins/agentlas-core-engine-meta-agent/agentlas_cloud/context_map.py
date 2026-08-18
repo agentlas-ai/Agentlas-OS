@@ -63,6 +63,7 @@ MAX_DECLARED_NODES = 2_000
 # ontology + One + workforce), and against Desktop's 4s slice kill. Small
 # projects finish the real check well inside it and stay fully verified; only
 # large ones fall back to the labelled path.
+MAX_RENDERED_CONTEXT_EDGES = 12
 RECALL_FRESHNESS_BUDGET_SECONDS = 1.5
 # Recall runs inside a host hook whose contract is measured in seconds: the
 # tightest shipped budget is PreToolUse at 10s (host_adapters/hooks/*/hooks.json),
@@ -1963,6 +1964,23 @@ def verify_impact(
     }
 
 
+def _rendered_edge_endpoints(value: Mapping[str, Any]) -> set[str]:
+    """Node ids that a rendered edge line already names."""
+
+    edges = value.get("contextEdges")
+    if not isinstance(edges, list):
+        return set()
+    endpoints: set[str] = set()
+    for edge in edges[:MAX_RENDERED_CONTEXT_EDGES]:
+        if not isinstance(edge, Mapping):
+            continue
+        source, target, _relation = _edge_parts(edge)
+        if source and target:
+            endpoints.add(source)
+            endpoints.add(target)
+    return endpoints
+
+
 def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDER_CHARS) -> str:
     """Compact prompt representation; source paths only, never source contents."""
 
@@ -1977,11 +1995,57 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         lines.append("Note: map predates recent edits (served stale rather than empty); re-verify paths before acting.")
     elif refresh_status == "unverified_served":
         lines.append("Note: map freshness was not verified within the recall budget; it may predate recent edits — re-verify paths before acting.")
+    # An edge line names both of its endpoints, so a node that appears in one is
+    # already stated — listing it again as a bare bullet spends the capsule
+    # budget twice on the same fact. Measured: at the 1,200-char context_slice
+    # layer budget the bullet list consumed everything and zero edges survived,
+    # which is how a 680,119-edge graph reached the model as a flat list. Edges
+    # are rendered first and their endpoints are dropped from the list below.
+    edge_endpoint_ids = _rendered_edge_endpoints(value)
+    # The selection stage walks two hops out from the task and returns both the
+    # nodes it reached and the edges it walked — and until now the renderer
+    # printed neither, so the whole traversal ended in a field nobody read.
+    # Measured on the pilot: 680,119 declared edges in the sitemap, 32,048
+    # loaded, up to 128 selected for a task, and 0 rendered. The edges are the
+    # only part that says HOW two pieces of context relate; goals alone read as
+    # an unordered list. Kept compact and placed after the defining nodes, so a
+    # tight capsule budget still spends its first characters on what the
+    # project IS.
+    related = value.get("relatedContextNodes")
+    context_edges = value.get("contextEdges")
+    if isinstance(context_edges, list) and context_edges:
+        by_id = {
+            _node_id(node): node
+            for node in (related if isinstance(related, list) else [])
+            if isinstance(node, Mapping) and _node_id(node)
+        }
+
+        def _label(node_id: str) -> str:
+            node = by_id.get(node_id)
+            if isinstance(node, Mapping):
+                title = str(node.get("title") or node.get("name") or "").strip()
+                if title:
+                    return title[:60]
+            return node_id[:60]
+
+        rendered_edges: list[str] = []
+        for edge in context_edges[:MAX_RENDERED_CONTEXT_EDGES]:
+            if not isinstance(edge, Mapping):
+                continue
+            source, target, relation = _edge_parts(edge)
+            if not source or not target:
+                continue
+            rendered_edges.append(f"{_label(source)} -{relation or 'relates_to'}-> {_label(target)}")
+        if rendered_edges:
+            lines.append("How that context connects (observed edges, 2-hop):")
+            lines.extend(f"- {item}" for item in rendered_edges)
     goals = value.get("goalsAndConstraints")
     if isinstance(goals, list) and goals:
         lines.append("Inherited goals, constraints, decisions:")
         for node in goals[:20]:
             if not isinstance(node, Mapping):
+                continue
+            if _node_id(node) in edge_endpoint_ids:
                 continue
             label = str(node.get("title") or node.get("name") or _node_id(node))
             lines.append(f"- [{_node_type(node) or 'context'}:{_node_status(node) or 'active'}] {label[:240]}")
