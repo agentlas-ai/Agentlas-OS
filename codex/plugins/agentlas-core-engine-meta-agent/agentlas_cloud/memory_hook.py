@@ -137,6 +137,81 @@ def _resolve_cwd(payload: dict[str, Any], override: str | None = None) -> Path |
     return path if path.is_dir() else None
 
 
+# Owner decision 2026-08-19: a project boundary ends the upward search. A
+# project living inside another project's folder is its own project; without
+# this the walk kept climbing and adopted the enclosing map — measured: asking
+# about calcTrade in a fresh checkout answered with a different project's
+# economy.js, a confidently wrong path.
+#
+# The boundary cannot be .git alone, because plenty of real projects never use
+# git: on the first pass a package.json app, a pyproject.toml library and an .hg
+# checkout were all still swallowed by whatever folder sat above them.
+#
+# But a manifest alone cannot be the boundary either, and that is the trap this
+# has to avoid. Every package in a monorepo has its own package.json; treating
+# that as a boundary cut packages/web loose from the repository that owns it —
+# measured, on the very first attempt. So the two kinds of marker are ranked:
+#
+#   VCS marker (.git/.hg/.svn)  a repository. Always a boundary.
+#   manifest (package.json …)   a project root ONLY when no enclosing
+#                               repository claims it first.
+#
+# The walk therefore looks for a VCS root above the directory before honouring
+# a manifest. A monorepo package finds the repository and keeps using its map;
+# a standalone folder finds nothing and becomes its own project.
+_VCS_BOUNDARY_MARKERS = (".git", ".hg", ".svn")
+_MANIFEST_BOUNDARY_MARKERS = (
+    "package.json",
+    "pyproject.toml",
+    "go.mod",
+    "Cargo.toml",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "Gemfile",
+    "composer.json",
+    "pubspec.yaml",
+    "*.xcodeproj",
+)
+
+
+def _has_marker(root: Path, markers: tuple[str, ...]) -> bool:
+    for marker in markers:
+        try:
+            if marker.startswith("*"):
+                if any(root.glob(marker)):
+                    return True
+            elif (root / marker).exists():
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _enclosed_by_repository(root: Path) -> bool:
+    """Is some directory ABOVE `root` a VCS repository root?"""
+
+    for parent in root.parents:
+        try:
+            if parent.resolve() == Path(parent.anchor).resolve():
+                break
+        except (OSError, RuntimeError):
+            break
+        if _has_marker(parent, _VCS_BOUNDARY_MARKERS):
+            return True
+    return False
+
+
+def _project_boundary(root: Path) -> bool:
+    """Does this directory look like the root of its own project?"""
+
+    if _has_marker(root, _VCS_BOUNDARY_MARKERS):
+        return True
+    if _has_marker(root, _MANIFEST_BOUNDARY_MARKERS):
+        return not _enclosed_by_repository(root)
+    return False
+
+
 def _agentlas_project_root(cwd: Path) -> Path | None:
     """Nearest enclosing project. The home directory is never one.
 
@@ -167,14 +242,7 @@ def _agentlas_project_root(cwd: Path) -> Path | None:
             agentlas_dir / "code-map" / "project-map.json"
         ).is_file():
             return root
-        # Owner decision 2026-08-19: a repository boundary ends the search. A
-        # project checked out inside another project's folder is its own
-        # project, and without this the walk kept climbing and adopted the
-        # enclosing map — measured: asking about calcTrade in a fresh checkout
-        # answered with a different project's economy.js. A monorepo is
-        # unaffected because its sub-packages share the one .git at the top;
-        # only a nested checkout, which has its own, is cut loose.
-        if (root / ".git").exists():
+        if _project_boundary(root):
             return None
     return None
 
