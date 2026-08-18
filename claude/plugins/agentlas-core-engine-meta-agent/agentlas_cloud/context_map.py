@@ -832,6 +832,55 @@ def _ledger_epoch(record: Mapping[str, Any]) -> int:
         return 0
 
 
+def _recently_touched_files(root: Path, limit: int) -> list[str]:
+    """Files this project actually worked on, most recent session first.
+
+    The slice had exactly two doors into the graph and both were textual: a
+    path written in the task, or a symbol name written in the task. A question
+    that describes rather than names — which every non-English question does by
+    construction — opened neither, and the fallback offered the project's
+    conventional entry points. Measured on a real game project, asking "전투
+    계산 로직 어디 있어" returned sim/package.json: a correct answer to a
+    question nobody asked.
+
+    This is the third door, and it needs no language at all. The contact ledger
+    records which files the tools actually edited; those files are where the
+    work is, and once the traversal has them the dependency, co-edit and
+    verification graphs expand from there exactly as they do for a named
+    symbol. Observed events only — no parsing, no model.
+    """
+
+    path = root / CONTACT_LEDGER_RELATIVE
+    try:
+        if not path.is_file() or path.is_symlink():
+            return []
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    ranked: dict[str, int] = {}
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, Mapping):
+            continue
+        epoch = _ledger_epoch(record)
+        for value in record.get("paths") or []:
+            if not isinstance(value, str):
+                continue
+            normalized = _normalize_file(root, value)
+            if normalized and epoch >= ranked.get(normalized, -1):
+                ranked[normalized] = epoch
+    return [
+        name
+        for name, _epoch in sorted(ranked.items(), key=lambda row: (-row[1], row[0]))
+    ][:limit]
+
+
 def _co_edited_files(root: Path, selected: Sequence[str]) -> list[dict[str, Any]]:
     """Files historically edited alongside `selected`, ranked by how often.
 
@@ -1063,6 +1112,15 @@ def context_slice(
     # points are what any newcomer reads first, and the map already knows them.
     file_match = "matched"
     if not selected_files:
+        # Third door: what this project was actually being worked on. Tried
+        # before the conventional entry points, because "where the work is"
+        # beats "where a newcomer starts reading" for every task that is not
+        # the first one.
+        recent = _recently_touched_files(root, 12)
+        if recent:
+            selected_files = _bounded_strings(recent, MAX_SELECTED_FILES)
+            file_match = "recent_work"
+    if not selected_files:
         entry_points = [
             str(item.get("path") or "")
             for item in (code_map.get("entryPoints") or [])
@@ -1087,6 +1145,36 @@ def context_slice(
             if hub_files:
                 selected_files = _bounded_strings(hub_files, 8)
                 file_match = "most_referenced"
+    # Expansion used to run through symbols only: a file-seeded slice (a task
+    # that named a path, or the recent-work door below) stopped at its seed
+    # while `impact` on the very same file reached its dependents. Measured on
+    # a real game project: seed sim/web/app.js -> slice showed 1 file, impact
+    # showed sim/harness/web-runtime.mjs as well. Whatever door was used, the
+    # graph is the point — walk one dependency hop from every seeded file.
+    if selected_files:
+        seeds = set(selected_files)
+        neighbours: list[str] = []
+        for edge in code_map.get("dependencyEdges") or []:
+            if not isinstance(edge, Mapping):
+                continue
+            source = str(edge.get("from") or "")
+            target = str(edge.get("to") or "")
+            if source in seeds and target:
+                neighbours.append(target)
+            elif target in seeds and source:
+                neighbours.append(source)
+        file_symbols_index = code_map.get("fileSymbols")
+        if isinstance(file_symbols_index, Mapping):
+            for name in list(seeds):
+                for item in file_symbols_index.get(name) or []:
+                    if not isinstance(item, Mapping):
+                        continue
+                    key = str(item.get("n") or "").lower()
+                    for value in (references.get(key) or []) if isinstance(references, Mapping) else []:
+                        if isinstance(value, str):
+                            neighbours.append(value)
+        if neighbours:
+            selected_files = _bounded_strings([*selected_files, *neighbours], MAX_SELECTED_FILES)
     selected_modules = _bounded_strings((_module_of(value) for value in selected_files), 24)
     verification_graph = (
         code_map.get("verificationGraph")

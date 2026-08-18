@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import html
 import json
+from datetime import datetime, timezone
 import os
 import re
 import subprocess
@@ -1013,6 +1014,104 @@ def _maybe_start_runtime_auto_update() -> None:
         return
 
 
+def _spawn_project_ensure(target: Path, *, reason: str) -> bool:
+    """Run `project ensure` detached. True when the spawn was issued.
+
+    Inline is not an option: bootstrap costs 0.34s on a small project and 33s
+    on a large one, against hook contracts of 15s and 20s.
+    """
+
+    try:
+        runtime_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        existing = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
+        with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentlas_cloud.cli",
+                    "project",
+                    "ensure",
+                    "--project",
+                    str(target),
+                    "--reason",
+                    reason,
+                ],
+                cwd=str(target),
+                env=env,
+                stdin=stdin,
+                stdout=out,
+                stderr=out,
+                close_fds=True,
+                start_new_session=True,
+            )
+    except Exception:
+        return False
+    return True
+
+
+# A shipped map-format change has to reach the projects that already exist, not
+# only the ones created after it. First-contact seeding returns early on any
+# folder that already has .agentlas, so without this ladder a project seeded
+# before a format landed keeps the old layout forever — measured: a v1 sitemap
+# stayed v1 across repeated sessions. Each id runs at most once per project and
+# leaves a receipt, so a machine already migrated costs one small file read.
+PROJECT_MIGRATIONS = ("sitemap-packed-edges.v1",)
+MIGRATION_LEDGER = "migrations.jsonl"
+
+
+def _applied_migrations(root: Path) -> set[str]:
+    path = root / ".agentlas" / MIGRATION_LEDGER
+    applied: set[str] = set()
+    try:
+        if not path.is_file() or path.is_symlink():
+            return applied
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    record = json.loads(stripped)
+                except ValueError:
+                    continue
+                identifier = str(record.get("id") or "")
+                if identifier:
+                    applied.add(identifier)
+    except OSError:
+        return applied
+    return applied
+
+
+def _record_migrations(root: Path, identifiers: list[str]) -> None:
+    path = root / ".agentlas" / MIGRATION_LEDGER
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        with path.open("a", encoding="utf-8") as handle:
+            for identifier in identifiers:
+                handle.write(
+                    json.dumps({"id": identifier, "at": stamp}, ensure_ascii=False) + "\n"
+                )
+    except OSError:
+        return
+
+
+def _maybe_migrate_project(root: Path) -> None:
+    """Bring an already-seeded project up to the current map formats."""
+
+    try:
+        applied = _applied_migrations(root)
+        pending = [name for name in PROJECT_MIGRATIONS if name not in applied]
+        if not pending:
+            return
+        if _spawn_project_ensure(root, reason="hook-format-migration"):
+            _record_migrations(root, pending)
+    except Exception:
+        return
+
+
 def _maybe_seed_project(cwd: Path | None) -> None:
     """Create .agentlas on first contact, without making the user wait for it.
 
@@ -1036,43 +1135,24 @@ def _maybe_seed_project(cwd: Path | None) -> None:
     try:
         root = _agentlas_project_root(cwd)
         if root is not None:
-            return  # already seeded; refresh is a separate, budgeted concern
-        from .project_bootstrap import (
-            _within_auto_boundary,
-            _project_root,
-            auto_bootstrap_enabled,
-        )
+            _maybe_migrate_project(root)
+            return
+        from .project_bootstrap import _project_root, auto_bootstrap_enabled
 
         if not auto_bootstrap_enabled():
             return
         target = _project_root(cwd)
-        if not _within_auto_boundary(target):
+        # Deliberately NOT _within_auto_boundary: with no AGENTLAS_AUTO_ROOTS
+        # set that boundary is the *hook process's* cwd, which the host picks
+        # and which has nothing to do with the folder the user works in. It
+        # made seeding depend on where the runtime happened to launch the hook.
+        # The host names the workspace in its payload; that is the intent. The
+        # real boundary is the one bootstrap always enforced: never home, never
+        # the filesystem root.
+        resolved = target.resolve()
+        if resolved in {Path.home().resolve(), Path(resolved.anchor).resolve()}:
             return
-        runtime_root = Path(__file__).resolve().parent.parent
-        env = os.environ.copy()
-        existing = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
-        with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
-            subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "agentlas_cloud.cli",
-                    "project",
-                    "ensure",
-                    "--project",
-                    str(target),
-                    "--reason",
-                    "hook-first-contact",
-                ],
-                cwd=str(target),
-                env=env,
-                stdin=stdin,
-                stdout=out,
-                stderr=out,
-                close_fds=True,
-                start_new_session=True,
-            )
+        _spawn_project_ensure(target, reason="hook-first-contact")
     except Exception:
         # First contact is supplemental. A folder that cannot be seeded must
         # still get its turn answered.
