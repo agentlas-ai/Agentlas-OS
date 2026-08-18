@@ -560,18 +560,29 @@ def build_capsule(
     # picked by question overlap with a current-project boost, budgeted by the
     # curator ruleset. Facts stay with the self-correcting project layer.
     # Fail-open: personal recall must never break project recall.
+    # `agentlas-one off` has to actually turn the drawer off. This layer read it
+    # unconditionally, so a user who switched One off still received personal
+    # recall on every prompt — measured: state.json {"on": false} still produced
+    # 5 one[...] lines. The switch was only consulted by the auto-update branch.
     one_lines: list[str] = []
-    try:
-        from .one_workspace import record_recall_receipt, select_one_recall_detailed
+    one_hashes: list[str] = []
+    one_root = _one_root()
+    if _one_enabled():
+        try:
+            from .one_workspace import record_recall_receipt, select_one_recall_detailed
 
-        one_lines, one_hashes = select_one_recall_detailed(question, workspace=str(context_root))
-    except Exception:
-        one_lines = []
+            one_lines, one_hashes = select_one_recall_detailed(
+                question, workspace=str(context_root), root=one_root
+            )
+        except Exception:
+            one_lines = []
     if one_lines:
         # Record what recall actually delivered. Without this the reach of the
         # drawer is unmeasurable, and a ranking change cannot be shown to help.
         try:
-            record_recall_receipt(Path("~/.agentlas/one").expanduser(), one_hashes)
+            # Honour AGENTLAS_ONE_DIR: a hard-coded home path wrote personal
+            # receipts into the real drawer even under an isolated override.
+            record_recall_receipt(one_root, one_hashes)
         except Exception:
             pass
         _record_context_markers(
@@ -972,6 +983,13 @@ def _format_output(host: str, event: str, capsule: str | None, workspace: Path |
     return capsule
 
 
+def _one_root() -> Path:
+    """The One drawer this process should use (AGENTLAS_ONE_DIR wins)."""
+
+    override = os.environ.get("AGENTLAS_ONE_DIR")
+    return Path(override).expanduser() if override else (Path.home() / ".agentlas" / "one")
+
+
 def _one_enabled() -> bool:
     """Cheap, fail-silent check of Agentlas One's on/off state.
 
@@ -982,8 +1000,7 @@ def _one_enabled() -> bool:
     """
 
     try:
-        one_dir = Path(os.environ.get("AGENTLAS_ONE_DIR") or (Path.home() / ".agentlas" / "one"))
-        state_path = one_dir / "state.json"
+        state_path = _one_root() / "state.json"
         if not state_path.is_file():
             return False
         with state_path.open("r", encoding="utf-8") as fh:
