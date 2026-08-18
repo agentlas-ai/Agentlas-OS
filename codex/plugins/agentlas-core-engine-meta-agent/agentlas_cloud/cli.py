@@ -427,6 +427,24 @@ def main(argv: list[str] | None = None) -> int:
     context_verify.add_argument("--waived", action="append", default=[])
     context_verify.add_argument("--no-refresh", action="store_true", help=argparse.SUPPRESS)
 
+    feature_map_cmd = sub.add_parser(
+        "feature-map",
+        help="Feature-intent map: which feature owns an identifier, and its sibling surfaces",
+    )
+    feature_map_sub = feature_map_cmd.add_subparsers(dest="feature_map_command", required=True)
+    feature_map_lookup = feature_map_sub.add_parser(
+        "lookup",
+        help="Look up an identifier/featureId/alias in the project's feature map",
+    )
+    feature_map_lookup.add_argument("identifier")
+    feature_map_lookup.add_argument("--project", default=".")
+    feature_map_lookup.add_argument(
+        "--map",
+        dest="feature_map_path",
+        default=None,
+        help="Explicit map path (default: <project>/.agentlas/feature-map.json, then <project>/contracts/feature-map.json)",
+    )
+
     network = sub.add_parser("network", help="Hephaestus Network 2.0 (~/.agentlas/networking)")
     network_sub = network.add_subparsers(dest="network_command", required=True)
     network_sub.add_parser("init", help="Create or migrate the global networking structure (idempotent)")
@@ -1375,6 +1393,40 @@ def main(argv: list[str] | None = None) -> int:
             return emit(payload) or 2
         except (OSError, TimeoutError, ValueError):
             return emit({"action": "context", "status": "error", "error": "context_operation_failed"}) or 2
+    if args.command == "feature-map":
+        from .feature_map import FeatureMapError, locate_map, lookup
+
+        if args.feature_map_command == "lookup":
+            try:
+                map_path = (
+                    Path(args.feature_map_path).expanduser().resolve()
+                    if args.feature_map_path
+                    else locate_map(args.project)
+                )
+                if map_path is None:
+                    return emit({
+                        "action": "feature_map.lookup",
+                        "status": "error",
+                        "error": "feature_map_not_found",
+                        "project": str(args.project),
+                        "hint": "No .agentlas/feature-map.json (or contracts/feature-map.json) in this project. "
+                        "Run `agentlas project init` to seed one, or pass --map.",
+                    }) or 2
+                result = lookup(args.identifier, map_path=map_path)
+                return emit(result)
+            except FeatureMapError as exc:
+                return emit({
+                    "action": "feature_map.lookup",
+                    "status": "error",
+                    "error": exc.code,
+                    "detail": exc.detail,
+                }) or 2
+            except OSError:
+                return emit({
+                    "action": "feature_map.lookup",
+                    "status": "error",
+                    "error": "feature_map_io_error",
+                }) or 2
     if args.command == "network":
         from . import networking
 

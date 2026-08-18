@@ -413,7 +413,7 @@ case "$command" in
 	    printf '{"status":"error","error":"host_llm_required","command":"hep-build","request":"%s","message":"hep-build requires a connected host LLM; run /hep-build in an installed Hephaestus host adapter"}\n' "$escaped_request" >&2
 	    exit 3
 	    ;;
-	  network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract)
+	  network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract|feature-map)
 	    # `contract` was the one subcommand the Python CLI exposed that this
 	    # dispatcher never listed. It fell through to the natural-language
 	    # router, which read the package path as a private path and refused

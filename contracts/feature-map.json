@@ -1126,6 +1126,66 @@
       "note": "Distribution reminder: reaching the installed runtime requires BOTH the release allowlist and the installer copy step; a repo-only fix silently falls back to embedded values on updated machines.",
       "aliases": [],
       "lastVerified": "2026-08-18"
+    },
+    {
+      "featureId": "feature-map-project-layer",
+      "intent": {
+        "ko": "기능-의도 맵은 사이트맵과 같은 급의 프로젝트 맵이다 — 모든 활성 프로젝트에 .agentlas/feature-map.json 이 첫-접촉 부트스트랩으로 시드되고, 게이트와 에이전트는 철자가 아니라 의도로 정렬한다.",
+        "en": "The feature-intent map is a first-class project map next to the sitemap: every activated project gets .agentlas/feature-map.json seeded on first contact, and gates/agents align by intent, not spelling."
+      },
+      "ownerSurface": "Agentlas-OS",
+      "lastVerified": "2026-08-18",
+      "surfaces": [
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "schemas/feature-map.schema.json",
+          "identifier": "agentlas.feature-map.v1",
+          "meaning": "Formal schema for the v1 map shape; the verifier validates against it when jsonschema is importable."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "templates/feature-map.json.tpl",
+          "identifier": "agentlas.feature-map.v1",
+          "meaning": "Empty per-project seed with a usage pointer at the discipline doc."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "agentlas_cloud/project_bootstrap.py",
+          "identifier": "feature-map.json.tpl",
+          "meaning": "First-contact bootstrap seeds .agentlas/feature-map.json through the same merge-only template path as the sitemap; also listed in PRIVACY_PATTERNS and project_status required files."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "agentlas_cloud/feature_map.py",
+          "identifier": "FEATURE_MAP_SCHEMA",
+          "meaning": "Engine query API: locate_map/load_map/lookup — which feature owns an identifier, and its sibling surfaces."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "code",
+          "path": "agentlas_cloud/cli.py",
+          "identifier": "feature_map_lookup",
+          "meaning": "CLI surface `feature-map lookup <identifier>` reachable from every runtime adapter via bin/hephaestus."
+        },
+        {
+          "repo": "Agentlas-OS",
+          "kind": "gate",
+          "path": "scripts/verify-feature-map.py",
+          "identifier": "workspace_root",
+          "meaning": "Rename-alarm gate; --map runs it against any project map, resolving siblings relative to the map's parent workspace."
+        }
+      ],
+      "aliases": [
+        {
+          "name": "기능-의도 맵",
+          "status": "display",
+          "note": "Doc name in contracts/feature-map.md."
+        }
+      ]
     }
   ]
 }

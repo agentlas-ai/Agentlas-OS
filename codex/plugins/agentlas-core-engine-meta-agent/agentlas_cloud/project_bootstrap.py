@@ -66,6 +66,7 @@ PRIVACY_PATTERNS = (
     ".agentlas/",
     ".agentlas/project-soul-memory.md",
     ".agentlas/sitemap.json",
+    ".agentlas/feature-map.json",
     ".agentlas/memory-map.json",
     ".agentlas/memory-tickets.jsonl",
     ".agentlas/vault-references.json",
@@ -781,6 +782,11 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
 
     template_targets = {
         "activation.json.tpl": ".agentlas/activation.json",
+        # Feature-intent map: a first-class project map next to sitemap.json.
+        # One row per product feature keyed by intent, with per-surface
+        # identifier pointers, so gates and agents align by intent, not
+        # spelling. Same consent rules as every other seeded map — none asked.
+        "feature-map.json.tpl": ".agentlas/feature-map.json",
         "memory-map.json.tpl": ".agentlas/memory-map.json",
         "project-soul-memory.md.tpl": ".agentlas/project-soul-memory.md",
         "skill-registry.json.tpl": ".agentlas/skill-registry.json",
@@ -2881,6 +2887,7 @@ def project_status(project: str | Path) -> dict[str, Any]:
     required = (
         "project-soul-memory.md",
         "sitemap.json",
+        "feature-map.json",
         "context-map.json",
         "memory-map.json",
         "memory-tickets.jsonl",

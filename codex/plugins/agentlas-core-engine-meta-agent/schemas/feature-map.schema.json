@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/feature-map.schema.json",
+  "title": "Agentlas Feature-Intent Map",
+  "description": "Cross-surface FEATURE-INTENT registry (agentlas.feature-map.v1). One row = one product feature keyed by intent, not spelling; each surface binds the exact current identifier so the rename gate (scripts/verify-feature-map.py) can alarm. The engine workspace's own instance is contracts/feature-map.json; every activated project carries its own at .agentlas/feature-map.json.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "features"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "agentlas.feature-map.v1"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string"
+    },
+    "note": {
+      "type": "string"
+    },
+    "usage": {
+      "type": "string",
+      "description": "Seeded pointer at the discipline doc (contracts/feature-map.md) for per-project maps."
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "featureId",
+          "intent",
+          "surfaces"
+        ],
+        "properties": {
+          "featureId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "intent": {
+            "type": "object",
+            "required": [
+              "ko",
+              "en"
+            ],
+            "properties": {
+              "ko": {
+                "type": "string",
+                "minLength": 1
+              },
+              "en": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": true
+          },
+          "ownerSurface": {
+            "type": "string",
+            "description": "The repo/surface that owns the canonical definition of this feature."
+          },
+          "lastVerified": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "repo",
+                "kind",
+                "path",
+                "identifier"
+              ],
+              "properties": {
+                "repo": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Sibling checkout name resolved relative to the map's parent workspace; the workspace's own name resolves to itself."
+                },
+                "kind": {
+                  "enum": [
+                    "code",
+                    "endpoint",
+                    "screen",
+                    "method",
+                    "table",
+                    "wireId",
+                    "gate"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The EXACT symbol/route/table/string as it exists in the file today."
+                },
+                "meaning": {
+                  "type": "string"
+                },
+                "localOnly": {
+                  "type": "boolean",
+                  "description": "File is gitignored by repo policy; absent in a fresh checkout is a SKIP, not a FAIL."
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "status"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "enum": [
+                    "wire-legacy",
+                    "retired",
+                    "display"
+                  ]
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
