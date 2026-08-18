@@ -115,10 +115,12 @@ surface and pick the strongest channel available, in this order:
 
 1. **Agentlas Desktop renderer** — emit the fence; the desktop renders its
    question sheet (existing behavior).
-2. **Host with a native structured-question tool** (for example Claude Code's
-   `AskUserQuestion`) — ask through that tool so the person gets real buttons.
-   Batch the questions per call with concrete options; free-text answers must
-   stay possible.
+2. **A synchronous question tool** — `ask_user` when Agentlas provides it, or the
+   host's own equivalent (Claude Code's `AskUserQuestion`). These block until the
+   person answers, so the interview can continue in the same turn. Batch the
+   questions per call with concrete options; free-text answers must stay possible.
+   If such a tool reports that nobody can answer, treat that as a real signal —
+   do not substitute a default and carry on as if the person had chosen.
 3. **Plain conversational host** (a CLI or chat surface with no structured
    tool) — render the batch as a numbered markdown list with lettered options
    and wait for the reply. Never leave a raw `<<agentlas-ask>>` fence in a
