@@ -906,6 +906,115 @@ def _apply_additive_memory_migrations(root: Path) -> tuple[list[str], list[str]]
     return migrated, warnings
 
 
+SITEMAP_PACKED_EDGES_SCHEMA = "agentlas.sitemap-packed-edges.v1"
+
+
+def _pack_sitemap_edges(edges: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Columnar encoding for machine-generated sitemap edges.
+
+    A generated edge repeated its full path-string endpoints in every row:
+    measured on the pilot, 683,729 edges cost 223.6MB of a 229MB sitemap at
+    ~327 bytes each, which pushed the file past its own maintainer's read
+    bound — the functional projection silently froze at its last write (the
+    merge returned `sitemap_context_merge_deferred` from 2026-08-15 onward).
+    Packing stores each endpoint id and edge type once and references them by
+    index. Human-authored edges are NOT packed: they stay as plain dicts in
+    `edges`, readable and mergeable by hand.
+    """
+
+    node_index: dict[str, int] = {}
+    node_ids: list[str] = []
+    type_index: dict[str, int] = {}
+    types: list[str] = []
+    rows: list[list[Any]] = []
+    for edge in edges:
+        source = str(edge.get("from") or "")
+        target = str(edge.get("to") or "")
+        relation = str(edge.get("type") or "")
+        if not source or not target:
+            continue
+        si = node_index.get(source)
+        if si is None:
+            si = len(node_ids)
+            node_index[source] = si
+            node_ids.append(source)
+        ti = node_index.get(target)
+        if ti is None:
+            ti = len(node_ids)
+            node_index[target] = ti
+            node_ids.append(target)
+        ri = type_index.get(relation)
+        if ri is None:
+            ri = len(types)
+            type_index[relation] = ri
+            types.append(relation)
+        row: list[Any] = [si, ti, ri]
+        weight = edge.get("weight")
+        if isinstance(weight, (int, float)) and not isinstance(weight, bool):
+            row.append(weight)
+        rows.append(row)
+    return {
+        "schemaVersion": SITEMAP_PACKED_EDGES_SCHEMA,
+        "source": "code-map",
+        "generated": True,
+        "nodeIds": node_ids,
+        "types": types,
+        "rows": rows,
+    }
+
+
+def unpack_sitemap_edges(payload: Mapping[str, Any]) -> tuple[int, "Iterable[dict[str, Any]]"]:
+    """Yield every sitemap edge as a plain dict, decoding `edgesPacked` lazily.
+
+    Returns (count, iterator). Plain `edges` dicts pass through unchanged, so a
+    v1 file keeps reading exactly as before. Decoding is a generator: 683,729
+    materialized dicts would cost hundreds of MB for a consumer that keeps at
+    most a few tens of thousands after its own per-node caps.
+    """
+
+    plain = [edge for edge in payload.get("edges") or [] if isinstance(edge, dict)]
+    packed = payload.get("edgesPacked")
+    rows: list[Any] = []
+    node_ids: list[str] = []
+    types: list[str] = []
+    if (
+        isinstance(packed, Mapping)
+        and packed.get("schemaVersion") == SITEMAP_PACKED_EDGES_SCHEMA
+        and isinstance(packed.get("rows"), list)
+        and isinstance(packed.get("nodeIds"), list)
+        and isinstance(packed.get("types"), list)
+    ):
+        rows = packed["rows"]
+        node_ids = [str(value) for value in packed["nodeIds"]]
+        types = [str(value) for value in packed["types"]]
+
+    def _iterate() -> "Iterable[dict[str, Any]]":
+        yield from plain
+        bound_nodes = len(node_ids)
+        bound_types = len(types)
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 3:
+                continue
+            try:
+                si, ti, ri = int(row[0]), int(row[1]), int(row[2])
+            except (TypeError, ValueError):
+                continue
+            if not (0 <= si < bound_nodes and 0 <= ti < bound_nodes and 0 <= ri < bound_types):
+                continue
+            edge: dict[str, Any] = {
+                "from": node_ids[si],
+                "to": node_ids[ti],
+                "type": types[ri],
+                "source": "code-map",
+                "generated": True,
+            }
+            if len(row) > 3 and isinstance(row[3], (int, float)):
+                edge["weight"] = row[3]
+            yield edge
+
+    return len(plain) + len(rows), _iterate()
+
+
 def _merge_managed_sitemap_context(
     root: Path,
     code_map: dict[str, Any] | None = None,
@@ -914,7 +1023,11 @@ def _merge_managed_sitemap_context(
 
     path = root / ".agentlas" / "sitemap.json"
     try:
-        raw = _read_bounded_regular_text(path, 32 * 1024 * 1024)
+        # Local-only index: the project constraint forbids size caps here, and
+        # the old 32MB bound proved the point — the pilot sitemap outgrew it
+        # (219MB) and this function silently stopped refreshing the functional
+        # projection for three days. 1GB is a corruption guard, not a policy.
+        raw = _read_bounded_regular_text(path, 1024 * 1024 * 1024)
         payload = json.loads(raw)
     except (OSError, ValueError, json.JSONDecodeError):
         return "sitemap_context_merge_deferred"
@@ -1161,12 +1274,25 @@ def _merge_managed_sitemap_context(
         for edge in edges
         if isinstance(edge, dict)
     }
+    # Machine-generated code-map edges go to the packed column store; only
+    # human-scale intent edges stay as plain dicts (see _pack_sitemap_edges).
+    generated_managed = [
+        edge
+        for edge in managed_edges
+        if edge.get("generated") is True and edge.get("source") == "code-map"
+    ]
     for edge in managed_edges:
+        if edge.get("generated") is True and edge.get("source") == "code-map":
+            continue
         key = (edge["from"], edge["to"], edge["type"])
         if key not in existing_edges:
             edges.append(edge)
             existing_edges.add(key)
             changed = True
+    next_packed = _pack_sitemap_edges(generated_managed)
+    if payload.get("edgesPacked") != next_packed:
+        payload["edgesPacked"] = next_packed
+        changed = True
     if isinstance(code_map, dict):
         next_projection = {
             "schemaVersion": "agentlas.functional-sitemap-projection.v1",
@@ -1742,7 +1868,7 @@ def diagnose_code_map(project: str | Path) -> dict[str, Any]:
 def _functional_sitemap_summary(root: Path) -> dict[str, Any]:
     payload = _read_json_object(root / ".agentlas" / "sitemap.json")
     nodes = [node for node in payload.get("nodes") or [] if isinstance(node, dict)]
-    edges = [edge for edge in payload.get("edges") or [] if isinstance(edge, dict)]
+    _edge_count, edge_iter = unpack_sitemap_edges(payload)
     functional_nodes = [
         node
         for node in nodes
@@ -1753,16 +1879,16 @@ def _functional_sitemap_summary(root: Path) -> dict[str, Any]:
         for node in functional_nodes
         if node.get("source") == "code-map" and node.get("generated") is True
     ]
-    dependency_edges = [
-        edge
-        for edge in edges
+    dependency_edge_count = sum(
+        1
+        for edge in edge_iter
         if str(edge.get("type") or edge.get("relation") or "").lower() == "depends_on"
-    ]
+    )
     return {
         "schemaVersion": "agentlas.functional-sitemap-receipt.v1",
         "functionalNodes": len(functional_nodes),
         "generatedFunctionalNodes": len(generated_nodes),
-        "dependencyEdges": len(dependency_edges),
+        "dependencyEdges": dependency_edge_count,
         "mapFingerprint": str((payload.get("functionalProjection") or {}).get("mapFingerprint") or ""),
     }
 

@@ -8,6 +8,7 @@ content-free receipts for later impact verification.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -20,6 +21,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .project_bootstrap import (
     CODE_EXTENSIONS,
+    unpack_sitemap_edges,
     CODE_MAP_CACHE_SCHEMA,
     CODE_MAP_MANIFEST_SCHEMA,
     CODE_MAP_POLICY_VERSION,
@@ -597,6 +599,16 @@ def _load_declared_graph(
         if raw_edges is not None and not isinstance(raw_edges, list):
             skipped_sources[relative] = "edges_not_a_list"
             continue
+        packed_edge_count = 0
+        packed_edge_iter: Iterable[Mapping[str, Any]] = ()
+        if relative.endswith("sitemap.json") and isinstance(payload.get("edgesPacked"), Mapping):
+            # v2 sitemaps keep machine-generated edges in a packed column store
+            # (see project_bootstrap._pack_sitemap_edges); decode lazily and
+            # let the same per-node cap below bound what is kept.
+            total, combined = unpack_sitemap_edges(payload)
+            plain_count = len(raw_edges) if isinstance(raw_edges, list) else 0
+            packed_edge_count = total - plain_count
+            packed_edge_iter = (edge for index, edge in enumerate(combined) if index >= plain_count)
         loaded_sources.append(relative)
         if isinstance(raw_nodes, list):
             source_nodes += len(raw_nodes)
@@ -610,10 +622,11 @@ def _load_declared_graph(
                     continue
                 if include_inactive or _node_status(candidate) in _ACTIVE_STATES:
                     nodes.append(dict(candidate))
-        if isinstance(raw_edges, list):
-            source_edges += len(raw_edges)
+        if isinstance(raw_edges, list) or packed_edge_count:
+            source_edges += (len(raw_edges) if isinstance(raw_edges, list) else 0) + packed_edge_count
             per_node: dict[str, int] = {}
-            for candidate in raw_edges:
+            candidates: Iterable[Any] = raw_edges if isinstance(raw_edges, list) else ()
+            for candidate in itertools.chain(candidates, packed_edge_iter):
                 if not isinstance(candidate, dict):
                     continue
                 source, target, _ = _edge_parts(candidate)
