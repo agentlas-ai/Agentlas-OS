@@ -58,6 +58,39 @@ expected_version="$(python3 -c 'import json;print(json.load(open("manifest.json"
 expected_tag="v${expected_version}"
 expected_tag_re="${expected_tag//./\\.}"
 
+# ── 마켓플레이스 매니페스트 버전 = 릴리스 버전 ────────────────────────────────
+# bump-version.sh는 "직전 버전 문자열을 찾아 치환"한다. 그래서 한 파일이 한 번
+# 뒤처지면 다음 bump의 grep에 걸리지 않아 **영원히** 뒤처진다. 실측(2026-08-18):
+# claude/.claude-plugin/marketplace.json이 1.2.1에 멈춘 채 런타임은 1.2.11이었고,
+# Claude Code는 "새 버전 없음"으로 읽어 사용자 머신의 플러그인이 1.2.4에 고정됐다.
+# 호스트 마켓플레이스가 읽는 version은 곧 업데이트 신호이므로 릴리스와 못박는다.
+for manifest in \
+  .claude-plugin/marketplace.json \
+  claude/.claude-plugin/marketplace.json \
+  claude/plugins/agentlas-core-engine-meta-agent/.claude-plugin/plugin.json \
+  codex/plugins/agentlas-core-engine-meta-agent/.codex-plugin/plugin.json \
+  gemini/extension/gemini-extension.json
+do
+  [[ -e "$manifest" ]] || continue
+  bad="$(python3 - "$manifest" "$expected_version" <<'PYEOF'
+import json, sys
+path, expected = sys.argv[1], sys.argv[2]
+data = json.load(open(path))
+found = []
+meta = data.get("metadata")
+if isinstance(meta, dict) and "version" in meta:
+    found.append(("metadata.version", str(meta["version"])))
+if "version" in data:
+    found.append(("version", str(data["version"])))
+for i, plugin in enumerate(data.get("plugins") or []):
+    if isinstance(plugin, dict) and "version" in plugin:
+        found.append((f"plugins[{i}].version", str(plugin["version"])))
+print("\n".join(f"{k}={v}" for k, v in found if v.lstrip("vV") != expected))
+PYEOF
+)"
+  [[ -z "$bad" ]] || fail "$manifest is behind the release ($expected_version): $bad — a stale marketplace version tells the host there is no update, and bump-version.sh will never match it again"
+done
+
 bad_patterns=(
   '/plugin marketplace add agentlas-ai/Agentlas-OS'
   '/plugin install agentlas-meta-agent'

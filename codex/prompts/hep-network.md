@@ -90,6 +90,13 @@ done
    invocation. Model pins and ceilings come only from the MCP server's operator
    policy, never from the task or tool arguments. A missing worker policy
    inherits orchestrator; orchestrator never falls through to worker.
+   Each advertised session carries `session_id`, `model`, `provider`, and —
+   when the host knows them — `tier`, `supported_efforts`, and `context_window`.
+   Send what the host actually reports and never invent a field: an omitted
+   context window is assumed at a conservative floor and the receipt says so
+   (`inventory_context_window_assumed`), whereas a fabricated one would be read
+   as measured. Operators set the orchestrator/worker policy with
+   `hep-orch orchestrator=<tier|model> worker=<tier|model>`.
 7. Run only the bound workers useful for this turn. For a selected team,
    preserve its authoritative manager/worker graph. Run planner/manager,
    workers, synthesis, and verifier as distinct invocations with explicit

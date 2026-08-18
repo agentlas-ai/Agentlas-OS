@@ -19,6 +19,15 @@ description: Agentlas 시스템 운용 절차 — hep-network 편성, hep-graph 
 4. 준비 성공은 자동으로 로스터에 바인딩된다. 바인딩은 명시적 `workforce.complete_goal`까지 유지
    — 24시간 Hub 리스는 과금 단위지 바인딩 종료가 아니다.
 5. 소스 스코프는 정확하게: network=전체, local/cloud/hub는 제한 스코프이지 폴백 계층이 아니다.
+6. **워커를 띄우기 직전마다** 살아 있는 세션을 알리고 `model.resolve_allocation`을 부른다
+   (stage=`planner`/`worker`/`synthesis`/`verifier`). 영수증의 provider·model·effort를 그대로 쓴다.
+   - 이건 편성뿐 아니라 **One이 스스로 워커를 나눌 때도** 적용된다. 한 모델로 다 하는 턴은
+     배정할 것이 없으니 부르지 않는다 — 역할이 갈리는 순간에만 부른다.
+   - 세션에는 `session_id`·`model`·`provider`를, 호스트가 아는 경우에만 `tier`·
+     `supported_efforts`·`context_window`를 싣는다. **없는 값을 지어내지 않는다** —
+     빠진 컨텍스트 창은 보수적 하한으로 가정되고 영수증이 그 사실을 밝힌다
+     (`inventory_context_window_assumed`).
+   - 오케스트레이터/워커 등급은 오퍼레이터가 `hep-orch orchestrator=<tier|model> worker=<tier|model>`로 정한다. 작업이나 도구 인자가 그 상한을 올릴 수 없다.
 
 ## 2. 자동화 (hep-graph)
 

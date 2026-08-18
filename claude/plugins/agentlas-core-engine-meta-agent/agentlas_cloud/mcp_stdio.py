@@ -301,7 +301,20 @@ def _host_model_allocation_policy() -> dict[str, Any]:
 
     raw = os.environ.get(MODEL_ALLOCATION_POLICY_ENV, "").strip()
     if not raw:
-        return {}
+        # Fall back to the file `agentlas-one orch` writes. The env var is the
+        # operator override and still wins; without this file the policy was
+        # empty on every host because nobody hand-writes JSON into a launch
+        # environment, so every worker silently inherited the orchestrator's
+        # frontier model — the opposite of why the allocator exists.
+        policy_file = Path(
+            os.environ.get("AGENTLAS_ONE_DIR") or (Path.home() / ".agentlas" / "one")
+        ) / "model-policy.json"
+        try:
+            raw = policy_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            return {}
+        if not raw:
+            return {}
     try:
         parsed = json.loads(raw)
     except (TypeError, ValueError) as exc:

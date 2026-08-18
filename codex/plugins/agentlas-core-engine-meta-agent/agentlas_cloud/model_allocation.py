@@ -28,6 +28,10 @@ TIERS = ("economy", "balanced", "frontier")
 # contract) — see normalize_effort/_bounded_effort below.
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 EFFORT_TOKEN_RE = re.compile(r"^[a-z][a-z0-9-]{0,23}$")
+# Floor used when a host advertises a session without a context window. Chosen
+# below every current CLI-served model so the assumption cannot silently promise
+# more room than the model has; operators can lower it further.
+ASSUMED_CONTEXT_WINDOW = 128_000
 PHASES = ("plan", "execute", "verify", "synthesize", "route", "clarify")
 MODEL_ROLES = ("orchestrator", "worker")
 ORCHESTRATOR_PHASES = frozenset({"plan", "verify", "synthesize", "route", "clarify"})
@@ -380,11 +384,16 @@ def _normalize_inventory(raw_inventory: list[Any] | None) -> list[dict[str, Any]
             if (effort := normalize_effort(item))
         ]
         raw_context_window = raw.get("context_window")
-        context_window = (
-            raw_context_window
-            if _is_integer(raw_context_window) and raw_context_window >= 0
-            else None
-        )
+        context_window_known = _is_integer(raw_context_window) and raw_context_window >= 0
+        # Hosts advertise a session by model id; almost none of them report a
+        # context window, and an unknown window used to fail EVERY compatibility
+        # check ("requested_exact_model_unavailable" for a model sitting right
+        # there in the inventory). Measured 2026-08-18: adding this one field was
+        # the difference between unresolved and resolved on an otherwise valid
+        # decision. Assume a conservative floor instead of refusing, and mark the
+        # assumption so the receipt never presents it as a measured fact — a
+        # relaxation you cannot announce is not one we take.
+        context_window = raw_context_window if context_window_known else ASSUMED_CONTEXT_WINDOW
         supports_tools = raw.get("supports_tools")
         supports_multimodal = raw.get("supports_multimodal")
         inventory.append(
@@ -397,6 +406,7 @@ def _normalize_inventory(raw_inventory: list[Any] | None) -> list[dict[str, Any]
                 "supported_efforts": efforts or ["none"],
                 "supported_efforts_known": efforts_known,
                 "context_window": context_window,
+                "context_window_assumed": not context_window_known,
                 "supports_tools": supports_tools if isinstance(supports_tools, bool) else None,
                 "supports_multimodal": supports_multimodal if isinstance(supports_multimodal, bool) else None,
                 "capabilities": [str(item).lower() for item in (raw.get("capabilities") or [])],
@@ -742,6 +752,11 @@ def resolve_model_allocation(
         parent_reason_codes = [code for code in parent_reason_codes if code != "escalated-after-failure"]
     if escalation_request is not None:
         reasons.append("escalated-after-failure")
+    # An assumed context window must never read as a measured one. If the chosen
+    # session came in without that field, say so on the receipt — the consumer
+    # can then treat a near-limit workload as unverified instead of proven.
+    if selected is not None and selected.get("context_window_assumed"):
+        reasons.append("inventory_context_window_assumed")
     receipt = {
         "schemaVersion": "agentlas.model-allocation-receipt.v1",
         "decisionId": decision["decisionId"] if decision else None,

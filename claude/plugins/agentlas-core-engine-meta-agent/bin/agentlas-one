@@ -356,7 +356,8 @@ cmd_statusline() {
   since="$(state_read since '')"
 
   local drift; drift="$(drift_summary)"
-  ONE_PAYLOAD="$payload" ONE_NAME="$name" ONE_SINCE="$since" ONE_DRIFT_LINE="$drift" "$PY" <<'PYEOF'
+  ONE_PAYLOAD="$payload" ONE_NAME="$name" ONE_SINCE="$since" ONE_DRIFT_LINE="$drift" \
+  ONE_ORCH_FILE="$ORCH_FILE" "$PY" <<'PYEOF'
 import json, os, sys, time
 
 payload = os.environ.get("ONE_PAYLOAD", "")
@@ -385,6 +386,22 @@ if since:
     except Exception:
         pass
 
+# Orchestrator/worker model policy. Showing it here is the difference between
+# a setting that exists and one the operator can see is in force — the policy
+# was invisible before, which is why it stayed empty on every machine.
+try:
+    with open(os.environ.get("ONE_ORCH_FILE", ""), encoding="utf-8") as fh:
+        policy = json.load(fh)
+except Exception:
+    policy = {}
+if isinstance(policy, dict) and policy:
+    def _label(role):
+        scope = policy.get(role) or {}
+        return scope.get("pinnedModelId") or scope.get("maxTier") or ""
+    orch, worker = _label("orchestrator"), _label("worker")
+    if orch or worker:
+        parts.append("\033[36m⚙ %s→%s\033[0m" % (orch or "auto", worker or "auto"))
+
 drift = os.environ.get("ONE_DRIFT_LINE", "").strip()
 if drift.startswith("runtime drift "):
     # e.g. "runtime drift 2 (version 1, health 1) — …" → "⚠ drift 2"
@@ -392,6 +409,96 @@ if drift.startswith("runtime drift "):
     parts.append("\033[33m⚠ drift %s\033[0m" % count)
 
 sys.stdout.write(" \033[2m·\033[0m ".join(parts))
+PYEOF
+}
+
+# ---------------------------------------------------------------- orchestration
+
+# Which model runs the orchestrator, and which runs the workers.
+#
+# Before this existed the only way to set a model policy was to hand-write
+# AGENTLAS_MODEL_ALLOCATION_POLICY_JSON into the MCP server's launch
+# environment. Nobody ever did, so `model.resolve_allocation` ran with an empty
+# policy on every host and every worker silently inherited the orchestrator's
+# frontier model — the exact opposite of why the allocator exists.
+#
+# The file is the single source both the MCP server and the status line read.
+ORCH_FILE="$ONE_DIR/model-policy.json"
+
+cmd_orch() {
+  mkdir -p "$ONE_DIR"
+  ORCH_FILE="$ORCH_FILE" "$PY" - "$@" <<'PYEOF'
+import json, os, sys
+
+path = os.environ["ORCH_FILE"]
+ROLES = ("orchestrator", "worker")
+TIERS = ("economy", "balanced", "frontier")
+
+def load():
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def show(policy):
+    if not policy:
+        print("no model policy set — every role runs on the host's active model")
+        print('set one with:  agentlas-one orch orchestrator=frontier worker=economy')
+        return
+    for role in ROLES:
+        scope = policy.get(role) or {}
+        if not scope:
+            print(f"{role:14} (inherits)")
+            continue
+        bits = []
+        if scope.get("pinnedModelId"): bits.append(f"model={scope['pinnedModelId']}")
+        if scope.get("maxTier"): bits.append(f"maxTier={scope['maxTier']}")
+        if scope.get("maxEffort"): bits.append(f"maxEffort={scope['maxEffort']}")
+        print(f"{role:14} {' '.join(bits) or '(inherits)'}")
+
+args = sys.argv[1:]
+policy = load()
+
+if not args or args[0] in ("show", "status"):
+    show(policy)
+    raise SystemExit(0)
+
+if args[0] in ("clear", "reset"):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    print("model policy cleared")
+    raise SystemExit(0)
+
+# role=value pairs. A bare tier name is a ceiling; anything else is an exact
+# model pin, because a model id is the only value a host can act on directly.
+for arg in args:
+    if "=" not in arg:
+        raise SystemExit(f"expected role=value, got: {arg}")
+    role, _, value = arg.partition("=")
+    role, value = role.strip().lower(), value.strip()
+    if role not in ROLES:
+        raise SystemExit(f"unknown role: {role} (use {' or '.join(ROLES)})")
+    if not value:
+        policy.pop(role, None)
+        continue
+    scope = dict(policy.get(role) or {})
+    if value.lower() in TIERS:
+        scope["maxTier"] = value.lower()
+        scope.pop("pinnedModelId", None)
+    else:
+        scope["pinnedModelId"] = value
+        scope.pop("maxTier", None)
+    policy[role] = scope
+
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(policy, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+os.chmod(path, 0o600)
+show(policy)
 PYEOF
 }
 
@@ -1226,6 +1333,7 @@ case "${1:-status}" in
   reject)     shift; [ -n "${1:-}" ] || die "Provide a chip id to reject"
               chip="$1"; shift; cmd_workspace reject --chip "$chip" ${1:+--reason "$*"} ;;
   coverage)   cmd_workspace recall-coverage ;;
+  orch)       shift; cmd_orch "$@" ;;
   statusline) cmd_statusline ;;
   stop-hook)  shift
               # Session-end is the one moment every install passes through, so
@@ -1233,5 +1341,5 @@ case "${1:-status}" in
               self_heal_claude_settings >/dev/null 2>&1 || true
               drift_kick_daily >/dev/null 2>&1 || true
               cmd_workspace stop-hook ${1:+--host "$1"} ;;
-  *)          die "Usage: agentlas-one {install|on [name]|off|uninstall [--purge]|name <name>|status [--runtimes|--drift]|memory|remember <text>|curate|seed|chips [status]|promote <chip> [reason]|reject <chip> [reason]|coverage}" ;;
+  *)          die "Usage: agentlas-one {install|on [name]|off|uninstall [--purge]|name <name>|status [--runtimes|--drift]|memory|remember <text>|curate|seed|chips [status]|promote <chip> [reason]|reject <chip> [reason]|coverage|orch [role=value...]}" ;;
 esac

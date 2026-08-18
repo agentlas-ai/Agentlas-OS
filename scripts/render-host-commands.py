@@ -67,6 +67,11 @@ FRONTMATTER = {
         "argument-hint": "'<package folder> [--visibility private-link|marketplace]'",
         "codex-argument-hint": "<package folder>",
     },
+    "hep-orch": {
+        "description": "Set or show which model runs the orchestrator and which runs the workers.",
+        "argument-hint": "'[orchestrator=<tier|model>] [worker=<tier|model>] | show | clear'",
+        "codex-argument-hint": "<orchestrator=tier worker=tier>",
+    },
     "hep-network": {
         "description": "Staff a task from registered Local, owner Cloud, and public Hub agents.",
         "argument-hint": "'<request>'",
