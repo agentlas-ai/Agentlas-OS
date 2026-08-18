@@ -48,7 +48,7 @@ PRICE_KIND_BOUNDS: dict[str, dict[str, int | None]] = {
 
 KIND_LABEL: dict[str, tuple[str, str]] = {
     "RENT": ("빌리기 (워크오더 1건 · 24시간)", "Rent (per work order, 24h)"),
-    "INGEST": ("장기대여 (에이전트 1일당)", "Project ingest (per day)"),
+    "INGEST": ("장기대여 (에이전트 1일당)", "Long-term lease (per agent-day)"),
     "FORK": ("포크 (사본 1개)", "Fork (one copy)"),
 }
 
