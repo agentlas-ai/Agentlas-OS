@@ -1014,6 +1014,32 @@ def _maybe_start_runtime_auto_update() -> None:
         return
 
 
+def _refresh_declared_context(root: Path | None) -> None:
+    """Fold what the project has learned back into its map, every turn.
+
+    The declared half of the map is derived from ledgers this project already
+    keeps, but nothing re-derived it after bootstrap: on this machine the
+    curator ledger's last entry was eleven days old and the learnings folder
+    four, while the personal One drawer had grown to 1,199 tickets of which 917
+    were already scope="project". The knowledge was being written; it simply
+    never reached the audience it was written for.
+
+    Turn granularity, not session: a session can run for hours and an agent
+    starting work mid-session must see what the previous turn concluded.
+    Measured at 0.22s and idempotent, so it is cheap enough to run on every
+    prompt; failures are silent because a stale map still beats a lost turn.
+    """
+
+    if root is None:
+        return
+    try:
+        from .context_map_authoring import refresh_declared_context
+
+        refresh_declared_context(root)
+    except Exception:
+        return
+
+
 def _spawn_project_ensure(target: Path, *, reason: str) -> bool:
     """Run `project ensure` detached. True when the spawn was issued.
 
@@ -1195,7 +1221,13 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(output + "\n")
         sys.stdout.flush()
     if event in {"SessionStart", "UserPromptSubmit"}:
-        _maybe_seed_project(_resolve_cwd(payload, args.cwd))
+        turn_cwd = _resolve_cwd(payload, args.cwd)
+        _maybe_seed_project(turn_cwd)
+        # Runs after the capsule is already written: this turn is served from
+        # the map as it stood, and the fold-in lands for the next one.
+        _refresh_declared_context(
+            _agentlas_project_root(turn_cwd) if turn_cwd is not None else None
+        )
     if event == "SessionStart":
         _maybe_start_runtime_auto_update()
         try:

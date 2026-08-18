@@ -1830,6 +1830,11 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "refresh": project_receipt.get("codeMap") or {},
                 }
             elif name == "context.locate":
+                # Deliberately NOT allow_stale: a tool call is an explicit ask,
+                # and the passive contract is to report context_map_stale with
+                # retryArguments so the caller can decide. That differs from the
+                # recall hook, where the user is waiting and a labelled stale
+                # map beats nothing.
                 result = locate(project_dir, str(arguments.get("query") or ""), refresh=refresh)
             elif name == "context.refs":
                 result = references(project_dir, str(arguments.get("symbol") or ""), refresh=refresh)

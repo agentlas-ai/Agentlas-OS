@@ -832,6 +832,61 @@ def _ledger_epoch(record: Mapping[str, Any]) -> int:
         return 0
 
 
+MAX_LAYOUT_DIRECTORIES = 14
+MAX_LAYOUT_NAMES_PER_DIRECTORY = 14
+
+
+def _project_layout(code_map: Mapping[str, Any]) -> list[str]:
+    """Where things live, by directory, most load-bearing first.
+
+    A request usually names a domain, not an identifier: "무역 로직 고쳐줘",
+    "이 페이지 디자인 바꿔줘". Neither opens a symbol door, and no amount of
+    string or vector matching over one-to-three word identifiers closes that
+    gap — both were measured and reverted. But the answer is already written in
+    the tree: this project keeps combat.js, economy.js, contracts.js and
+    save-manager.js side by side, and any reader who sees those names knows
+    which one "무역" means. The map simply never showed them.
+
+    So the slice states the shape of the project and lets the agent choose.
+    Directories are ranked by how much of the codebase depends on what they
+    define, so the load-bearing ones survive the budget. Measured on a 629-file
+    game project: 11 code directories in 1,007 characters.
+    """
+
+    files = [value for value in code_map.get("mappedFiles") or [] if isinstance(value, str)]
+    if not files:
+        return []
+    reference_count = code_map.get("refCount") if isinstance(code_map.get("refCount"), Mapping) else {}
+    definitions = code_map.get("defIndex") if isinstance(code_map.get("defIndex"), Mapping) else {}
+    weight: Counter[str] = Counter()
+    for symbol, sites in definitions.items():
+        incoming = int(reference_count.get(symbol) or 0)
+        if not incoming:
+            continue
+        for site in sites or []:
+            if isinstance(site, Mapping) and site.get("f"):
+                weight[str(Path(str(site["f"])).parent)] += incoming
+    grouped: dict[str, set[str]] = {}
+    for relative in files:
+        path = Path(relative)
+        if path.suffix.lower() not in CODE_EXTENSIONS:
+            continue
+        grouped.setdefault(str(path.parent), set()).add(path.stem)
+    if not grouped:
+        return []
+    ordered = sorted(
+        grouped.items(),
+        key=lambda row: (-weight.get(row[0], 0), -len(row[1]), row[0]),
+    )[:MAX_LAYOUT_DIRECTORIES]
+    lines: list[str] = []
+    for directory, names in ordered:
+        listed = sorted(names)
+        shown = listed[:MAX_LAYOUT_NAMES_PER_DIRECTORY]
+        suffix = f" +{len(listed) - len(shown)}" if len(listed) > len(shown) else ""
+        lines.append(f"{directory}/ ({len(listed)}): " + ", ".join(shown) + suffix)
+    return lines
+
+
 def _recently_touched_files(root: Path, limit: int) -> list[str]:
     """Files this project actually worked on, most recent session first.
 
@@ -1302,6 +1357,7 @@ def context_slice(
         "symbolAuthority": {"exact": "A2", "file": "A2", "substring": "A3"}.get(symbol_match, "unknown"),
         # Observed co-edit history. Carries the relations the dependency graph
         # structurally cannot see (mirrored copies, code↔install script, …).
+        "projectLayout": _project_layout(code_map),
         "coEditedFiles": _co_edited_files(root, task_named_files),
         "symbols": symbol_rows,
         "files": selected_files,
@@ -1333,12 +1389,35 @@ def locate(
     query: str,
     *,
     refresh: bool = True,
+    allow_stale: bool = False,
+    freshness_budget_seconds: float | None = None,
 ) -> dict[str, Any]:
-    root, code_map, refresh_receipt = load_code_map(project, refresh=refresh)
+    root, code_map, refresh_receipt = load_code_map(
+        project,
+        refresh=refresh,
+        allow_stale=allow_stale,
+        freshness_budget_seconds=freshness_budget_seconds,
+    )
     terms = _query_terms(query)
     definitions = code_map.get("defIndex", {})
     references = code_map.get("refIndex", {})
     matches: list[dict[str, Any]] = []
+    # An agent asking this tool has already read the request and decided what to
+    # look for; the answer it needs is a place, and a place is as often a file
+    # as a function. Symbols-only made the tool useless for exactly the terms an
+    # agent derives from a domain request — measured on a game project, the
+    # queries "economy", "contracts" and "goods" each returned 0 matches while
+    # sim/src/economy.js, contracts.js and goods.js sat in the map. Files are
+    # matched on their stem so a caller need not know the extension or path.
+    files = [value for value in code_map.get("mappedFiles") or [] if isinstance(value, str)]
+    lowered_terms = [term for term in terms if term]
+    file_hits: list[dict[str, Any]] = []
+    for relative in files:
+        stem = Path(relative).stem.lower()
+        if any(term == stem or term in stem for term in lowered_terms):
+            file_hits.append({"file": relative, "stem": Path(relative).stem})
+        if len(file_hits) >= MAX_SELECTED_FILES:
+            break
     for term in terms:
         if term not in definitions:
             continue
@@ -1359,6 +1438,7 @@ def locate(
         "mapFingerprint": code_map.get("fingerprintHash"),
         "refreshStatus": _refresh_status(refresh_receipt),
         "matches": matches,
+        "files": file_hits,
     }
 
 
@@ -2153,6 +2233,10 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         for item in co_edited[:8]:
             if isinstance(item, Mapping) and item.get("file"):
                 lines.append(f"- {item['file']} ({item.get('sessions', '?')} work units)")
+    layout = value.get("projectLayout")
+    if isinstance(layout, list) and layout:
+        lines.append("Where things live (directories by how much depends on them):")
+        lines.extend(f"- {item}" for item in layout)
     # An edge line names both of its endpoints, so a node that appears in one is
     # already stated — listing it again as a bare bullet spends the capsule
     # budget twice on the same fact. Measured: at the 1,200-char context_slice

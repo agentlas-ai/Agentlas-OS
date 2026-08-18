@@ -134,6 +134,15 @@ def _learning_nodes(root: Path) -> list[dict[str, Any]]:
                 summary = _clip(" ".join(line for line in body if line.strip()), MAX_SUMMARY_CHARS)
                 if summary:
                     current["summary"] = summary
+                # `evidence` names the document this claim came from; the body
+                # names the code it was recorded against. Keeping only the
+                # former left every learning node unconnected to the codebase —
+                # 101 derived nodes and 9 edges on the pilot. Both are needed:
+                # the document proves provenance, the cited paths are what
+                # derive_context_edges verifies against the code map.
+                cited = " ".join(body)
+                if cited.strip():
+                    current["citedPaths"] = _clip(cited, MAX_SUMMARY_CHARS * 2)
                 nodes.append(current)
             current = None
             body = []
@@ -258,13 +267,94 @@ def _work_brief_nodes(root: Path) -> list[dict[str, Any]]:
     return nodes
 
 
+ONE_DRAWER_TICKETS = "~/.agentlas/one/.agentlas/memory-tickets.jsonl"
+MAX_ONE_PROJECT_NODES = 120
+
+
+def _one_drawer_project_nodes(root: Path) -> list[dict[str, Any]]:
+    """Project-scoped learnings the personal drawer already holds for THIS project.
+
+    One and the project map are the same machine pointed at two audiences: One
+    remembers for the person across every project, the project map hints to
+    whichever agent works here next. A turn that produces a project learning
+    belongs in both — measured on this machine, the drawer held 1,199 tickets
+    of which 917 (76%) were already scope="project", and none of them had ever
+    reached a project map. The knowledge existed; only the second audience was
+    missing.
+
+    The boundary is strict and one-way: only tickets whose scope is exactly
+    "project" AND whose workspace is this project cross over. Personal identity,
+    agent-repo and session scopes never do, and nothing is written back to the
+    drawer.
+    """
+
+    path = Path(ONE_DRAWER_TICKETS).expanduser()
+    try:
+        if not path.is_file() or path.is_symlink():
+            return []
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    project_names = {root.name, _slug(root.name)}
+    nodes: list[dict[str, Any]] = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, Mapping):
+            continue
+        candidate = record.get("candidate")
+        if not isinstance(candidate, Mapping):
+            continue
+        if str(candidate.get("scope") or "") != "project":
+            continue
+        workspace = str(record.get("workspace") or record.get("projectSlug") or "")
+        if workspace not in project_names and _slug(workspace) not in project_names:
+            continue
+        content = str(candidate.get("content") or "").strip()
+        if not content:
+            continue
+        node_type = _SECTION_TYPES.get(str(candidate.get("type") or "").lower())
+        if node_type is None:
+            continue
+        ticket_id = str(record.get("ticketId") or record.get("ticket_id") or "")
+        evidence_values = [
+            str(value)
+            for value in (candidate.get("evidence") or [])
+            if isinstance(value, str)
+        ]
+        nodes.append(
+            {
+                "id": f"one:{_slug(ticket_id or content[:40])}",
+                "type": node_type,
+                "title": _clip(content, MAX_TITLE_CHARS),
+                "status": "active",
+                "origin": DERIVED_ORIGIN,
+                "evidence": "one-drawer",
+                "citedPaths": _clip(" ".join(evidence_values), MAX_SUMMARY_CHARS * 2),
+                "recordedAt": str(record.get("createdAt") or record.get("created_at") or ""),
+            }
+        )
+    nodes.sort(key=lambda node: str(node.get("recordedAt") or ""), reverse=True)
+    return nodes[:MAX_ONE_PROJECT_NODES]
+
+
 def derive_context_nodes(root: Path) -> list[dict[str, Any]]:
     """Every derived node, newest evidence first, de-duplicated by id."""
 
     _SKIPPED.clear()
     seen: set[str] = set()
     ordered: list[dict[str, Any]] = []
-    candidates = _work_brief_nodes(root) + _curator_decision_nodes(root) + _learning_nodes(root)
+    candidates = (
+        _work_brief_nodes(root)
+        + _curator_decision_nodes(root)
+        + _learning_nodes(root)
+        + _one_drawer_project_nodes(root)
+    )
     for index, node in enumerate(candidates):
         node_id = str(node.get("id") or "")
         if not node_id or node_id in seen:
@@ -281,6 +371,71 @@ def last_derive_skipped() -> dict[str, int]:
     """Non-zero counts of what the bounds dropped on the last derive."""
 
     return {key: value for key, value in _SKIPPED.items() if value}
+
+
+_EVIDENCE_PATH_RE = re.compile(r"[A-Za-z0-9_.\-/]+\.[A-Za-z0-9]{1,8}")
+
+
+def derive_context_edges(
+    root: Path,
+    nodes: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Link each derived decision to the code it was recorded against.
+
+    Nodes alone are a list, not a graph. This file carried 101 derived nodes
+    and 9 edges, so a slice could say what the project had decided but never
+    which code that decision governs — and the owner's question ("고쳤을 때
+    다른 데 문제 생기나") lives exactly in that link.
+
+    The link is observed, not interpreted. A learning is written with its
+    evidence, and evidence names paths; a path is kept only when the code map
+    confirms that file actually exists in this project. No parsing of prose, no
+    similarity, no model: a decision points at a file when the person or agent
+    who recorded it cited that file, and the file is really there.
+    """
+
+    try:
+        payload = json.loads(
+            (root / ".agentlas" / "code-map" / "project-map.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return []
+    known = {
+        str(value)
+        for value in payload.get("mappedFiles") or payload.get("indexedFiles") or []
+        if isinstance(value, str)
+    }
+    if not known:
+        return []
+    edges: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for node in nodes:
+        node_id = str(node.get("id") or "")
+        sources = [
+            value
+            for value in (node.get("evidence"), node.get("citedPaths"))
+            if isinstance(value, str) and value
+        ]
+        if not node_id or not sources:
+            continue
+        for candidate in _EVIDENCE_PATH_RE.findall(" ".join(sources)):
+            relative = candidate.split("#", 1)[0].split(":", 1)[0].strip()
+            if relative not in known:
+                continue
+            key = (node_id, relative)
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append(
+                {
+                    "from": node_id,
+                    "to": relative,
+                    "type": "recorded_against",
+                    "origin": DERIVED_ORIGIN,
+                    "evidence": relative,
+                }
+            )
+    return edges
 
 
 def refresh_declared_context(project: str | Path) -> dict[str, Any]:
@@ -337,7 +492,7 @@ def refresh_declared_context(project: str | Path) -> dict[str, Any]:
     )
     payload["mergeOnly"] = True
     payload["nodes"] = [*preserved, *derived]
-    payload["edges"] = preserved_edges
+    payload["edges"] = [*preserved_edges, *derive_context_edges(root, derived)]
     payload["note"] = (
         "Nodes with origin=derived are regenerated from .agentlas/work-brief.json, "
         "curator-decisions.jsonl and pm/learnings/*.md. Anything without that flag "
