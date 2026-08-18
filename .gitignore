@@ -39,6 +39,7 @@ docs/agent-os-redesign.md
 .agentlas/
 .agentlas/project-soul-memory.md
 .agentlas/sitemap.json
+.agentlas/feature-map.json
 .agentlas/memory-map.json
 .agentlas/memory-tickets.jsonl
 .agentlas/vault-references.json
@@ -203,3 +204,4 @@ scripts/verify-install-sh-delegation.sh
 **/.agentlas/ontology-runtime.json
 **/.agentlas/ontology-runtime.sqlite
 **/.agentlas/ontology-sources.json
+scripts/test-orch-policy.py
