@@ -1,0 +1,10 @@
+description = "Set or show which model runs the orchestrator and which runs the workers."
+prompt = """
+# /agentlas-orch
+
+Argument: {{args}}
+
+Identical to `/hep-orch` and `/agentlas orch <request>`. Locate the file named `hep-orch.toml` in the exact same directory this file was loaded from, read its `prompt` value, and follow those instructions exactly — treating the argument above as that command's request.
+
+Do not improvise a separate workflow and do not summarize `hep-orch.toml` from memory; that file is the sole authority for this command's behavior.
+"""
