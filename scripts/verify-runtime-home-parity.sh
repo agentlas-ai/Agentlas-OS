@@ -124,6 +124,16 @@ match = re.search(r"^runtime_paths=\(([^)]*)\)", release_text, re.MULTILINE)
 if not match:
     die(f"could not find runtime_paths=( ... ) in {release}")
 release_paths = set(re.findall(r'"([^"]+)"', match.group(1)))
+# The host-adapter directories are no longer literals here: the release script
+# expands "${host_adapter_paths[@]}", derived from contracts/runtime-registry.json
+# at the tag being built. Read the same contract, or this gate reports every
+# adapter as missing from the archive.
+if "host_adapter_paths[@]" in match.group(1):
+    import json as _json
+    release_paths |= set(
+        (_json.loads((root / "contracts" / "runtime-registry.json").read_text(encoding="utf-8"))
+         .get("hostAdapters") or {}).get("dirs") or []
+    )
 release_tops = {path.split("/", 1)[0] for path in release_paths}
 
 for name in sorted(installer_payload):

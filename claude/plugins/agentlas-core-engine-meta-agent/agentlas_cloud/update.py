@@ -66,6 +66,13 @@ RUNTIME_BRIDGE_FILES = (
     "scripts/install-memory-hooks.py",
 )
 HOST_ADAPTER_BUNDLE_DIR = "host_adapters"
+# Fallback only. The bundle set is declared once, in
+# contracts/runtime-registry.json -> hostAdapters, and _host_adapter_dirs()
+# reads it out of the release source being installed. This tuple exists because
+# an archive built before that block was added still has to be installable, and
+# a hard requirement here would turn one stale archive into a total update
+# outage. tests/test_installer_registry_parity.py fails when it stops matching
+# the contract, so the fallback can never become a second source of truth.
 HOST_ADAPTER_DIRS = (
     ".agents",
     ".claude",
@@ -86,6 +93,40 @@ HOST_ADAPTER_DIRS = (
     "opencode",
     "skills",
 )
+HOST_ADAPTER_CONTRACT_PATH = Path("contracts") / "runtime-registry.json"
+_HOST_ADAPTER_NAME_RE = re.compile(r"^\.?[a-z0-9][a-z0-9._-]*$")
+
+
+def _host_adapter_dirs(source: Path) -> tuple[str, ...]:
+    """The host-adapter bundle set declared by the release being installed.
+
+    Reads contracts/runtime-registry.json out of ``source`` so the updater
+    stages exactly what that release declares, and falls back to
+    HOST_ADAPTER_DIRS for archives predating the contract. A malformed or
+    unsafe entry is dropped rather than staged: names go straight into a path
+    join, so traversal and absolute components must never survive.
+    """
+    try:
+        block = json.loads(
+            (source / HOST_ADAPTER_CONTRACT_PATH).read_text(encoding="utf-8")
+        ).get("hostAdapters")
+    except (OSError, ValueError):
+        return HOST_ADAPTER_DIRS
+    if not isinstance(block, dict):
+        return HOST_ADAPTER_DIRS
+    dirs = block.get("dirs")
+    if not isinstance(dirs, list):
+        return HOST_ADAPTER_DIRS
+    names = tuple(
+        name
+        for name in dirs
+        if isinstance(name, str)
+        and name not in (".", "..")
+        and _HOST_ADAPTER_NAME_RE.match(name)
+    )
+    return names or HOST_ADAPTER_DIRS
+
+
 MODEL2VEC_ASSET_NAME = "potion-multilingual-128M-int8"
 LEGACY_MODEL2VEC_ASSET_NAME = "potion-base-8M-int8"
 MODEL2VEC_ASSET_NAMES = (MODEL2VEC_ASSET_NAME, LEGACY_MODEL2VEC_ASSET_NAME)
@@ -682,7 +723,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
                 shutil.copy2(src, dest)
             adapter_bundle = staged_target / HOST_ADAPTER_BUNDLE_DIR
             adapter_bundle.mkdir()
-            for name in HOST_ADAPTER_DIRS:
+            for name in _host_adapter_dirs(source):
                 src = source / name
                 if src.is_dir():
                     shutil.copytree(src, adapter_bundle / name, ignore=PYTHON_CACHE_IGNORE)

@@ -30,6 +30,9 @@ ACCESS_PATHS = {"subscription-cli", "api", "local", "unknown"}
 HOOK_SHAPES = {"claude-settings", "codex-hooks", "cursor-flat", "agy-namemap", "hookpack-dir", "none"}
 ACP_SOURCES = {"native", "adapter", "opt-in", "client", "none"}
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+INSTALLER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+ADAPTER_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+ADAPTER_DIR_RE = re.compile(r"^\.?[a-z0-9][a-z0-9._-]*$")
 DIRECTIVE_MARK = "<!-- AGENTLAS-ONE:BEGIN -->"
 
 
@@ -113,10 +116,32 @@ def validate_registry(data: Any) -> list[str]:
             problems.append(where + ".acp.command required for source " + str(acp.get("source")))
         if not isinstance(row.get("pin"), Mapping):
             problems.append(where + ".pin must be an object")
+        if "installer" in row and not INSTALLER_RE.fullmatch(str(row.get("installer") or "")):
+            problems.append(where + ".installer invalid")
         for key in row.keys():
-            if key not in {"id", "label", "role", "grade", "installLevel", "vendors", "accessPath", "binary",
-                           "configDir", "entrypoint", "hooks", "acp", "pin", "notes"}:
+            if key not in {"id", "installer", "label", "role", "grade", "installLevel", "vendors", "accessPath",
+                           "binary", "configDir", "entrypoint", "hooks", "acp", "pin", "notes"}:
                 problems.append(where + " has unknown key " + str(key))
+    # The host-adapter bundle set: one declaration read by the installer, the
+    # updater, and the release-asset allowlist. Names go straight into path
+    # joins and into `git archive` pathspecs, so validate the shape here too —
+    # this validator, not jsonschema, is what runs on an installed machine.
+    adapters = data.get("hostAdapters")
+    if adapters is not None:
+        if not isinstance(adapters, Mapping):
+            problems.append("hostAdapters must be an object")
+        else:
+            if not ADAPTER_NAME_RE.fullmatch(str(adapters.get("bundleDir") or "")):
+                problems.append("hostAdapters.bundleDir invalid")
+            dirs = adapters.get("dirs")
+            if not isinstance(dirs, list) or not dirs:
+                problems.append("hostAdapters.dirs must be a non-empty array")
+            else:
+                for name in dirs:
+                    if not isinstance(name, str) or name in (".", "..") or not ADAPTER_DIR_RE.fullmatch(name):
+                        problems.append("hostAdapters.dirs has an unsafe name: " + str(name))
+                if len(set(dirs)) != len(dirs):
+                    problems.append("hostAdapters.dirs has duplicates")
     return problems
 
 

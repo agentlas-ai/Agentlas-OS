@@ -107,8 +107,8 @@ done
 #    previous `grep -c >= 8` was satisfied by a comment mentioning the name while
 #    a real registration hand-rolled its own JSON.
 render_sites="$(grep -cE '^[^#]*runtime_mcp_launch_render (json|toml|yaml)' "$installer" || true)"
-[[ "$render_sites" -ge 8 ]] \
-  || fail "only $render_sites host registration(s) render from runtime_mcp_launch_render; expected >= 8 (codex, claude/gemini, goose, cursor, opencode, amp, copilot, amazonq)"
+[[ "$render_sites" -ge 6 ]] \
+  || fail "only $render_sites host registration(s) render from runtime_mcp_launch_render; expected >= 6 (codex, claude/gemini/cursor/opencode via antigravity, goose, copilot)"
 # Any MCP registration must take its command from the rendered entry. Catch the
 # bare runner path reaching a config writer under ANY variable name.
 bare_runner="$(grep -nE '^[^#]*(AGENTLAS_LOCAL_MCP|[A-Za-z_]+)="\$HOME/\.agentlas/runtime/current/bin/hephaestus"' "$installer" || true)"
@@ -175,20 +175,31 @@ import re
 import sys
 from pathlib import Path
 
+import json
+
 problems = []
 installer = Path("scripts/install-all-runtimes.sh").read_text(encoding="utf-8")
 updater = Path("agentlas_cloud/update.py").read_text(encoding="utf-8")
+contract = (json.loads(Path("contracts/runtime-registry.json").read_text(encoding="utf-8"))
+            .get("hostAdapters") or {})
+bundle_dir = contract.get("bundleDir") or ""
+declared = set(contract.get("dirs") or [])
 
-if 'HOST_ADAPTER_BUNDLE_DIR="host_adapters"' not in installer:
+if not declared:
+    problems.append("contracts/runtime-registry.json declares no hostAdapters.dirs")
+if bundle_dir and f'HOST_ADAPTER_BUNDLE_DIR="{bundle_dir}"' not in installer:
     problems.append("scripts/install-all-runtimes.sh does not declare HOST_ADAPTER_BUNDLE_DIR")
 if "host_adapter_dirs=(" not in installer:
     problems.append("scripts/install-all-runtimes.sh does not build the host-adapter bundle")
-
-def bash_set(text):
-    match = re.search(r"host_adapter_dirs=\(\n(.*?)\n\)", text, re.S)
-    if not match:
-        return set()
-    return set(re.findall(r'[.\w-]+', match.group(1).replace('"', " ")))
+# The installer reads the contract now. A repopulated literal means someone
+# restated the set by hand again, which is how amp/warp/amazonq survived here
+# after they were deleted from the registry and the adapter tree.
+restated = re.search(r"host_adapter_dirs=\((?P<body>[^)]*)\)", installer)
+if restated is not None and restated.group("body").strip():
+    problems.append("scripts/install-all-runtimes.sh restates the host-adapter set "
+                    "instead of reading contracts/runtime-registry.json")
+if "contracts/runtime-registry.json" not in installer:
+    problems.append("scripts/install-all-runtimes.sh does not read the host-adapter contract")
 
 def python_set(text):
     match = re.search(r"HOST_ADAPTER_DIRS = \(\n(.*?)\n\)", text, re.S)
@@ -196,15 +207,13 @@ def python_set(text):
         return set()
     return set(re.findall(r'"([^"]+)"', match.group(1)))
 
-installer_set, updater_set = bash_set(installer), python_set(updater)
+updater_set = python_set(updater)
 if not updater_set:
-    problems.append("agentlas_cloud/update.py no longer declares HOST_ADAPTER_DIRS")
-elif installer_set != updater_set:
-    only_installer = sorted(installer_set - updater_set)
-    only_updater = sorted(updater_set - installer_set)
+    problems.append("agentlas_cloud/update.py no longer declares its HOST_ADAPTER_DIRS fallback")
+elif declared and updater_set != declared:
     problems.append(
-        "host-adapter bundle sets disagree between the two install paths; "
-        f"installer-only={only_installer} updater-only={only_updater}"
+        "the updater fallback disagrees with contracts/runtime-registry.json; "
+        f"fallback-only={sorted(updater_set - declared)} contract-only={sorted(declared - updater_set)}"
     )
 
 for problem in problems:

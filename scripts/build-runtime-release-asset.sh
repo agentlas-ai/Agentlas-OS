@@ -26,11 +26,80 @@ tmp="$archive.tmp.$$"
 manifest_tmp="$archive.manifest.tmp.$$"
 trap 'rm -f "$tmp" "$manifest_tmp"' EXIT
 
+# The host-adapter directories are NOT restated here. They used to be, and the
+# copy went stale: amp/warp/amazonq stayed in this allowlist after the commit
+# that deleted them, so `git archive` was handed three pathspecs that no longer
+# resolve and the next release build would have died with
+# `fatal: pathspec 'amp' did not match any files`; in the other direction `kimi`
+# was in the installer's bundle set but never here, so a runtime installed from
+# the tarball had no Kimi adapter while a clone install did. Read the set from
+# contracts/runtime-registry.json AT THE TAG being built — an older tag then
+# still builds with the adapter set it actually shipped.
+#
+# This stays an allowlist: every derived name must be a bare, lowercase
+# directory name (no slashes, no traversal) that really is a directory at the
+# tag, so widening the contract cannot smuggle a path into a public archive.
+host_adapter_paths=()
+while IFS= read -r adapter_dir; do
+  [[ -n "$adapter_dir" ]] && host_adapter_paths+=("$adapter_dir")
+done <<< "$(python3 - "$tag" <<'PY'
+import json, re, subprocess, sys
+
+tag = sys.argv[1]
+
+
+def block_at(ref: str):
+    """hostAdapters as declared at that ref, or None when the ref predates it."""
+    read = subprocess.run(["git", "show", f"{ref}:contracts/runtime-registry.json"],
+                          capture_output=True, text=True)
+    if read.returncode != 0:
+        return None
+    try:
+        found = json.loads(read.stdout).get("hostAdapters")
+    except ValueError:
+        return None
+    return found if isinstance(found, dict) and found.get("dirs") else None
+
+
+# Tags cut before the contract existed must still rebuild, so fall back to the
+# working-tree declaration; the tree filter below keeps that honest.
+declared = block_at(tag)
+if declared is None:
+    try:
+        found = json.load(open("contracts/runtime-registry.json", encoding="utf-8")).get("hostAdapters")
+    except (OSError, ValueError):
+        found = None
+    declared = found if isinstance(found, dict) and found.get("dirs") else None
+    if declared is None:
+        raise SystemExit("no hostAdapters contract at the tag or in the working tree")
+    print(f"note: {tag} predates the hostAdapters contract; using the working-tree declaration", file=sys.stderr)
+
+safe = re.compile(r"^\.?[a-z0-9][a-z0-9._-]*$")
+resolved = []
+for name in declared["dirs"]:
+    if not isinstance(name, str) or name in (".", "..") or not safe.match(name):
+        raise SystemExit(f"refusing unsafe host-adapter directory name for a public archive: {name!r}")
+    kind = subprocess.run(["git", "cat-file", "-t", f"{tag}:{name}"],
+                          capture_output=True, text=True).stdout.strip()
+    if kind != "tree":
+        # Never hand git archive a pathspec that matches nothing: that is the
+        # failure this replaces. Say which adapter the tag does not carry.
+        print(f"note: host adapter {name!r} does not exist at {tag}; excluded", file=sys.stderr)
+        continue
+    resolved.append(name)
+if not resolved:
+    raise SystemExit(f"no declared host-adapter directory exists at {tag}")
+print("\n".join(resolved))
+PY
+)"
+[[ ${#host_adapter_paths[@]} -gt 0 ]] || { echo "no host-adapter directories resolved at $tag" >&2; exit 2; }
+
 # Public releases are install/runtime artifacts, not repository snapshots.
 # Keep this as an explicit allowlist: tests, benchmarks, internal docs, local
 # state, credentials, signing material, and maintainer-only verification
 # scripts must never enter the downloadable archive.
 runtime_paths=(
+  "${host_adapter_paths[@]}"
   "AGENTS.md"
   "CLAUDE.md"
   "GEMINI.md"
@@ -49,37 +118,17 @@ runtime_paths=(
   "plugin.json"
   "mcp.json"
   ".agentlas/global-commands.json"
-  ".agents"
-  ".claude"
-  ".claude-plugin"
-  ".gemini"
   "agentlas_cloud"
   "agents"
-  "amazonq"
-  "amp"
-  "antigravity"
   "assets/model2vec/potion-base-8M-int8"
   "assets/model2vec/potion-multilingual-128M-int8"
   "bin"
   "career_graph"
-  "claude"
-  "codex"
-  "copilot-cli"
   "contracts"
-  "cursor"
-  "gemini"
-  "goose"
-  "grok"
-  "hermes"
-  "hooks"
   "modes"
   "ontology"
-  "openclaw"
-  "opencode"
   "schemas"
-  "skills"
   "templates"
-  "warp"
   "system-agents/curator-ruleset.json"
   "scripts/install-all-runtimes.sh"
   "scripts/install-memory-hooks.py"

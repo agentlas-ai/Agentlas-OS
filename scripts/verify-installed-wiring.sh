@@ -120,9 +120,7 @@ targets = {
     "cursor": (home / ".cursor/mcp.json", ("mcpServers",)),
     "opencode": (home / ".config/opencode/opencode.json", ("mcp",)),
     "antigravity": (home / ".gemini/config/mcp_config.json", ("mcpServers",)),
-    "amp": (home / ".config/amp/settings.json", ("amp.mcpServers",)),
     "copilot": (home / ".copilot/mcp-config.json", ("mcpServers",)),
-    "amazonq": (home / ".aws/amazonq/mcp.json", ("mcpServers",)),
 }
 problems, checked, present = [], 0, 0
 for label, (path, keys) in targets.items():

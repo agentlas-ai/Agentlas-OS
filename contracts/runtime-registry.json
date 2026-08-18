@@ -15,9 +15,34 @@
     "L2": "L1 + Stop hook / observation",
     "L3": "full code mirror + live event hooks"
   },
+  "hostAdapters": {
+    "note": "The one list of host-adapter source directories, and the name of the bundle they are staged into. Three copies used to restate it by hand — scripts/install-all-runtimes.sh, scripts/build-runtime-release-asset.sh and agentlas_cloud/update.py — and when amp/warp/amazonq were dropped only the last one was updated: the release asset build then handed git archive three paths that no longer exist, and `kimi` was in the installer bundle but never in the release allowlist, so a runtime installed from the tarball had no Kimi adapter. All three now read this list; tests/test_installer_registry_parity.py fails when any of them stops agreeing.",
+    "bundleDir": "host_adapters",
+    "dirs": [
+      ".agents",
+      ".claude",
+      ".claude-plugin",
+      ".gemini",
+      "antigravity",
+      "claude",
+      "codex",
+      "copilot-cli",
+      "cursor",
+      "gemini",
+      "goose",
+      "grok",
+      "hermes",
+      "hooks",
+      "kimi",
+      "openclaw",
+      "opencode",
+      "skills"
+    ]
+  },
   "runtimes": [
     {
       "id": "claude-code",
+      "installer": "claude",
       "label": "Claude Code",
       "role": "tier1",
       "grade": "A",
@@ -49,6 +74,7 @@
     },
     {
       "id": "codex",
+      "installer": "codex",
       "label": "Codex CLI",
       "role": "tier1",
       "grade": "A",
@@ -80,6 +106,7 @@
     },
     {
       "id": "antigravity",
+      "installer": "antigravity",
       "label": "Antigravity (agy)",
       "role": "tier1",
       "grade": "D",
@@ -107,6 +134,7 @@
     },
     {
       "id": "gemini",
+      "installer": "gemini",
       "label": "Gemini CLI (enterprise)",
       "role": "tier1",
       "grade": "B",
@@ -136,6 +164,7 @@
     },
     {
       "id": "cursor",
+      "installer": "cursor",
       "label": "Cursor (cursor-agent CLI, spawned as a child)",
       "role": "tier1",
       "grade": "B",
@@ -200,6 +229,7 @@
     },
     {
       "id": "kimi",
+      "installer": "kimi",
       "label": "Kimi CLI",
       "role": "tier1",
       "grade": "B",
@@ -229,6 +259,7 @@
     },
     {
       "id": "opencode",
+      "installer": "opencode",
       "label": "OpenCode",
       "role": "tier1",
       "grade": "C",
@@ -259,6 +290,7 @@
     },
     {
       "id": "goose",
+      "installer": "goose",
       "label": "Goose",
       "role": "tier1",
       "grade": "C",
@@ -289,6 +321,7 @@
     },
     {
       "id": "github-copilot-cli",
+      "installer": "copilot_cli",
       "label": "GitHub Copilot CLI",
       "role": "tier1",
       "grade": "C",
@@ -319,6 +352,7 @@
     },
     {
       "id": "openclaw",
+      "installer": "openclaw",
       "label": "OpenClaw",
       "role": "tier1",
       "grade": "D",
@@ -341,6 +375,7 @@
     },
     {
       "id": "hermes",
+      "installer": "hermes",
       "label": "Hermes Agent",
       "role": "tier1",
       "grade": "D",
