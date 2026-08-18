@@ -73,6 +73,24 @@ UPLOAD_DERIVED_EVIDENCE_PATHS = frozenset(
         ".agentlas/brief.json",
     }
 )
+# Private per-machine project memory the product's own generated .gitignore
+# declares "describes THEM rather than the product" and keeps out of git —
+# Desktop's `isMachineLocalStatePath` mirrors this exact set so one folder
+# hashes identically no matter which channel uploads it. Installers lose
+# nothing: project bootstrap regenerates every one of these on first contact.
+# (memory-tickets.jsonl / ticket-slugs.json stay: teams ship authored seed
+# memories and One's memory-map consumes them.)
+UPLOAD_PRIVATE_PROJECT_STATE_PATHS = frozenset(
+    {
+        ".agentlas/sitemap.json",
+        ".agentlas/project-soul-memory.md",
+        ".agentlas/memory-log.jsonl",
+        ".agentlas/curator-decisions.jsonl",
+        ".agentlas/skill-trials.jsonl",
+        ".agentlas/local-credentials.map.json",
+    }
+)
+UPLOAD_PRIVATE_PROJECT_STATE_DIRS = (".agentlas/code-map/",)
 BLOCKED_FILE_PATTERNS = [
     re.compile(r"^\.env(?:\..*)?$", re.I),
     re.compile(r"^id_rsa(?:\.pub)?$", re.I),
@@ -158,6 +176,70 @@ def _is_unfinished_artifact(finding: dict[str, Any]) -> bool:
             "agent.md",
         }
     return False
+
+
+def _trim_upload_files_to_limits(
+    files: list[UploadFile],
+    findings: list[dict[str, Any]],
+) -> list[UploadFile]:
+    """Drop the least essential files, largest first, until the package fits.
+
+    Mirrors Desktop's `trimPackageToLimits`. Without it a package over either
+    whole-package limit was packaged in full and refused by the server with a
+    413 the author could do nothing about — hep-upload softens every local
+    blocker to a warning precisely so an author is never handed a refusal, and
+    that made the size blockers travel all the way to the server instead of
+    being fixed here. Rank 0 (agent definitions, .agentlas cards, manifests) is
+    never dropped; each drop is recorded as a finding.
+    """
+    def rank(item: UploadFile) -> int:
+        lower = item.path.lower()
+        base = lower.rsplit("/", 1)[-1]
+        if base in {name.lower() for name in AGENT_DEFINITION_FILES}:
+            return 0
+        if lower.startswith(".agentlas/"):
+            return 0
+        if lower in {"agentlas.json", "manifest.json", "package.json"}:
+            return 0
+        if re.search(r"(^|/)(node_modules|dist|build|out|coverage|\.next|\.venv|__pycache__|\.git)/", lower):
+            return 1
+        if re.search(r"\.(png|jpe?g|gif|webp|svg|mp4|mov|mp3|wav|pdf|zip|tar|gz|tgz|bin|so|dylib|dll|wasm|sqlite|db)$", lower):
+            return 2
+        if re.search(r"(^|/)(tests?|__tests__|fixtures?|benchmarks?|logs?|samples?|examples?)/", lower):
+            return 3
+        if re.search(r"\.(log|jsonl|csv|tsv|lock)$", lower):
+            return 4
+        return 5 if item.bytes > 64 * 1024 else 6
+
+    def over_limit(current: list[UploadFile]) -> bool:
+        return len(current) > MAX_FILES or sum(item.bytes for item in current) > MAX_TOTAL_BYTES
+
+    if not over_limit(files):
+        return files
+    kept = list(files)
+    # Least essential first; within a rank the biggest file buys the most room.
+    order = sorted(
+        (item for item in files if rank(item) > 0),
+        key=lambda item: (rank(item), -item.bytes),
+    )
+    dropped: list[str] = []
+    for item in order:
+        if not over_limit(kept):
+            break
+        kept.remove(item)
+        dropped.append(item.path)
+    for path_value in dropped:
+        findings.append(
+            _finding(
+                "trimmed-for-package-limits",
+                "warning",
+                "size",
+                "Left out of the uploaded package so it fits the Agent Cloud limits.",
+                path_value,
+                "Nothing to do. Keep large assets outside the agent folder to control what ships.",
+            )
+        )
+    return kept
 
 
 def package_agent(
@@ -484,6 +566,9 @@ def package_agent(
             )
         )
 
+    # Fit the package to the server's limits before its identity is computed:
+    # the hash, fileCount and totalBytes must describe what actually ships.
+    files = _trim_upload_files_to_limits(files, findings)
     package_hash_hex = hash_upload_files(files)
     manifest = {
         "version": "0.1",
@@ -1770,12 +1855,119 @@ def register_package(
                     '"What concrete work should this agent complete, and what should the finished result look like?"',
                 ])
                 raise UploadError("\n".join(lines), code="workforce_resume_incomplete") from exc
+        # ★ 중복과 포크는 결함이 아니라 서버의 결정이다 (오너 지시 2026-08-18).
+        #   자가수리는 "패키지를 고쳐 다시 올리는 것"(위 422 경로)이지, 거절을
+        #   우회해 두 번째 항목을 만들거나 지목하지 않은 항목을 덮어쓰는 것이
+        #   아니다. 이 셋은 전부 아래 generic 분기로 떨어져 HTTP 상태와 JSON
+        #   원문만 남겼다 — 무엇이 왜 막혔는지 한 줄도 없이.
+        refusal = _publication_refusal(exc.code, detail)
+        if refusal is not None:
+            message, code = refusal
+            raise UploadError(message, code=code) from exc
         raise UploadError(
             f"Agentlas Cloud registration failed HTTP {exc.code}: {detail[:800]}",
             code=_registration_error_code(detail, "registration_http_error"),
         ) from exc
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
         raise UploadError(f"Agentlas Cloud registration failed: {exc}", code="registration_transport_error") from exc
+
+
+def _publication_refusal(status: int, detail: str) -> tuple[str, str] | None:
+    """A publication the server declined on purpose, in one plain sentence.
+
+    Returns ``(message, code)`` for the refusals that are decisions rather than
+    defects, and ``None`` for everything else so the caller keeps its existing
+    behaviour. Nothing here is retried, repackaged, renamed, or overwritten:
+    a duplicate stays a duplicate and a fork stays a fork.
+    """
+    # 428 stays with the overwrite-confirmation flow above; everything else is
+    # matched on its code so the author reads a sentence instead of an HTTP
+    # status and a JSON body. Same set Desktop's result card explains.
+    if status == 428:
+        return None
+    try:
+        body = json.loads(detail)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(body, dict):
+        return None
+    code = body.get("code")
+    conflict = body.get("conflict") if isinstance(body.get("conflict"), dict) else {}
+    existing = conflict.get("existingSlug") if isinstance(conflict, dict) else None
+    canonical = conflict.get("canonicalSlug") if isinstance(conflict, dict) else None
+    named = canonical or existing
+    if code == "slug_identity_conflict":
+        return (
+            "This agent is already in your Agent Cloud"
+            + (f' as "{named}"' if isinstance(named, str) and named else "")
+            + ", so a second listing for the same agent was not created. Nothing was uploaded. "
+            + (
+                f'Upload it under "{named}" to update that listing.'
+                if isinstance(named, str) and named
+                else "Upload it under its existing name to update that listing."
+            ),
+            "slug_identity_conflict",
+        )
+    if code in ("cloud_agent_duplicate", "duplicate_hub_package"):
+        return (
+            "This agent is already listed on the Agentlas Hub"
+            + (f' as "{existing}"' if isinstance(existing, str) and existing else "")
+            + " by another account. Nothing was uploaded.",
+            str(code),
+        )
+    if code == "cloud_agent_limit_reached":
+        used = body.get("usedAgents")
+        limit = body.get("limitAgents")
+        counts = f" ({used} of {limit} used)" if isinstance(used, int) and isinstance(limit, int) else ""
+        return (
+            f"Uploading does not spend credits. Your plan's Agent Cloud seats are full{counts}, "
+            "and nothing was uploaded. Delete a cloud agent you no longer need, or move to a "
+            "larger plan, then upload again.",
+            "cloud_agent_limit_reached",
+        )
+    if code == "cloud_mutations_maintenance":
+        return (
+            "Writes to Agent Cloud are paused for maintenance. Nothing was uploaded and nothing "
+            "changed. Try the same folder again shortly.",
+            "cloud_mutations_maintenance",
+        )
+    if code in (
+        "registration_commit_failed",
+        "cloud_save_commit_failed",
+        "workforce_projection_pending",
+        "workforce_identity_missing",
+        "base_release_materialization_failed",
+    ):
+        return (
+            "Nothing is wrong with the package — the Cloud side could not finish the write, and "
+            "the previous version is still live. Upload the same folder again shortly.",
+            str(code),
+        )
+    if code == "localized_metadata_required":
+        return (
+            "The Hub listing still needs verified Korean and English title/description text, and "
+            "the package could not be completed automatically. Nothing was uploaded. Fill "
+            "localized.titleEn/titleKo/descriptionEn/descriptionKo in .agentlas/agent-card.json "
+            "and upload again.",
+            "localized_metadata_required",
+        )
+    if code in ("bundle_too_large", "file_limit", "file_too_large", "request_too_large"):
+        return (
+            "Even after leaving out the less essential files, this package is over the Agent "
+            "Cloud size or file-count limit. Nothing was uploaded. Publish just the agent folder, "
+            "or split the team into smaller packages.",
+            str(code),
+        )
+    if code == "fork_cannot_publish":
+        origin = body.get("originSlug")
+        return (
+            "This is an installed copy"
+            + (f' of "{origin}"' if isinstance(origin, str) and origin else "")
+            + ". Run it and staff it into work orders, but the Hub listing belongs to its creator. "
+            + "Nothing was uploaded.",
+            "fork_cannot_publish",
+        )
+    return None
 
 
 def _registration_error_code(detail: str, fallback: str) -> str:
@@ -2312,6 +2504,8 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             continue
         if (
             rel in UPLOAD_DERIVED_EVIDENCE_PATHS
+            or rel in UPLOAD_PRIVATE_PROJECT_STATE_PATHS
+            or any(rel.startswith(prefix) for prefix in UPLOAD_PRIVATE_PROJECT_STATE_DIRS)
             or is_local_experience_lineage_path(rel)
             or is_generated_runtime_path(rel)
         ):

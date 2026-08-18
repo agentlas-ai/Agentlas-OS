@@ -817,7 +817,8 @@ class WorkforceIndex:
             "historyInfluence": "none",
             "slots": slot_results,
             "issuedAt": clock.isoformat().replace("+00:00", "Z"),
-            "expiresAt": (clock + timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),
+            # 발급 창은 federation._MAX_TTL 상한과 같아야 한다(오너 결정 2026-08-17: 1시간).
+            "expiresAt": (clock + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
         }
         validate_candidate_set_coverage_gaps(candidate_set)
         return candidate_set

@@ -64,7 +64,11 @@ _FEDERATION_PASSTHROUGH_GAP_PREFIXES = (
 _FAILURES = frozenset(WORKFORCE_SOURCE_FAILURE_CODES)
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$")
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-_MAX_TTL = timedelta(minutes=10)
+# 오너 결정 2026-08-17: 편성은 search→validate→prepare 3콜이고 그 사이에 호스트
+# LLM 이 선택을 작성한다. 10분은 그 작업보다 짧아서 실제 편성이 중간에 만료되고
+# source_unavailable 로 돌아왔다 — 허브가 죽은 것처럼 읽히지만 시계가 끝난 것이다.
+# 세트는 불변이고 digest 로 고정돼 있어, 창을 늘려도 고를 수 있는 것은 안 바뀐다.
+_MAX_TTL = timedelta(hours=1)
 _MAX_SOURCE_CANDIDATE_SET_BYTES = 16 * 1024 * 1024
 _MAX_SOURCE_CANDIDATES = 500
 _MAX_FEDERATION_RESULT_BYTES = 24 * 1024 * 1024
