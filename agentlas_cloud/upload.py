@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import hashlib
 import json
 import os
@@ -39,6 +40,17 @@ from .runtime import (
 
 MAX_TOTAL_BYTES = 3 * 1024 * 1024
 MAX_FILE_BYTES = 512 * 1024
+# THE CEILING MEASURES WHAT IS STORED, NOT WHAT WAS AUTHORED.
+#
+# Packages travel as base64 with no compression, inflating text by a third on
+# the way to a 3 MB ceiling. Measured on the published teams, a text-heavy
+# package compresses 1.5x-3.6x, so the ceiling was costing authors most of
+# their room and knowledge files were being dropped to save space compression
+# gives back for free. Limits apply to the COMPRESSED bytes; the original keeps
+# a bound of its own so a small archive cannot declare an enormous original.
+# Desktop (cloud-agents/package.ts) and the register route enforce this pair.
+MAX_UNCOMPRESSED_FILE_BYTES = 4 * MAX_FILE_BYTES
+MAX_UNCOMPRESSED_TOTAL_BYTES = 4 * MAX_TOTAL_BYTES
 # Walk bound so a pathological tree terminates; the package ceiling is MAX_FILES,
 # measured on the files actually uploaded.
 MAX_WALKED_ENTRIES = 20_000
@@ -91,6 +103,63 @@ UPLOAD_PRIVATE_PROJECT_STATE_PATHS = frozenset(
     }
 )
 UPLOAD_PRIVATE_PROJECT_STATE_DIRS = (".agentlas/code-map/",)
+# A RESULT IS NOT A CAPABILITY (owner decision 2026-08-18). What an agent
+# produces while it works -- the rendered page, the screenshot it took to check
+# itself, the deck it exported, the page dump its browser tool left behind -- is
+# the output of one run on one machine. What ships is the script/prompt/preset
+# that makes it again on the installer's machine. Measured across the published
+# teams: every folder over the 3 MB ceiling was over it because of outputs, and
+# not one of those files was read by the agent that carried it.
+# `.agentlas/work/` is the declared home for run outputs so authors have a
+# correct place to write. Mirrors Desktop's WORK_OUTPUT_DIRS file-for-file.
+UPLOAD_WORK_OUTPUT_DIRS = (
+    ".agentlas/work/",
+    ".agentlas/chat-attachments/",
+    ".agentlas/runs/",
+    ".playwright-mcp/",
+    ".studio-runtime/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    ".mypy_cache/",
+    ".gradle/",
+    ".venv/",
+    "venv/",
+    ".cache/",
+    "tmp/",
+    "temp/",
+    ".tmp/",
+)
+# WHAT THE PRODUCT REFUSES TO COMMIT, THE PRODUCT MUST REFUSE TO PUBLISH.
+# The generated project .gitignore keeps `signing/*` and `credentials/*` out of
+# git, exempting only each folder's README. Upload screened file NAMES only, so
+# `credentials/google-services.json` shipped. Mirrored folder-for-folder here.
+UPLOAD_PRODUCT_PRIVATE_DIRS = ("credentials/", "signing/")
+UPLOAD_PRODUCT_PRIVATE_KEPT_FILES = frozenset({"readme.md"})
+
+
+def is_work_output_path(relative_path: str) -> bool:
+    """Return whether a package path is a run output that regenerates on install."""
+
+    normalized = relative_path.replace("\\", "/").lower()
+    return any(
+        normalized == candidate.rstrip("/")
+        or normalized.startswith(candidate)
+        or f"/{candidate}" in normalized
+        for candidate in UPLOAD_WORK_OUTPUT_DIRS
+    )
+
+
+def is_product_private_folder_path(relative_path: str) -> bool:
+    """Return whether a package path sits in a folder the product keeps out of git."""
+
+    normalized = relative_path.replace("\\", "/").lower()
+    inside = any(
+        normalized.startswith(candidate) or f"/{candidate}" in normalized
+        for candidate in UPLOAD_PRODUCT_PRIVATE_DIRS
+    )
+    if not inside:
+        return False
+    return normalized.rsplit("/", 1)[-1] not in UPLOAD_PRODUCT_PRIVATE_KEPT_FILES
 BLOCKED_FILE_PATTERNS = [
     re.compile(r"^\.env(?:\..*)?$", re.I),
     re.compile(r"^id_rsa(?:\.pub)?$", re.I),
@@ -132,10 +201,30 @@ class UploadError(RuntimeError):
 @dataclass
 class UploadFile:
     path: str
+    #: Size of the ORIGINAL file. packageHash is built from this and sha256, so
+    #: it does not move with the encoding.
     bytes: int
+    #: sha256 of the ORIGINAL bytes.
     sha256: str
     contentBase64: str
     executable: bool
+    #: None means identity -- exactly what packages written before compression say.
+    encoding: str | None = None
+    #: Bytes that actually travel. Set only alongside ``encoding``.
+    encodedBytes: int | None = None
+
+
+def encode_upload_content(raw: bytes) -> tuple[str, str | None, int | None]:
+    """Compress when it helps and say so; otherwise ship the bytes unchanged.
+
+    Text shrinks 2-3x, already-compressed media does not, and a "compressed"
+    file that grew would cost the author room for nothing.
+    """
+
+    compressed = gzip.compress(raw, 9)
+    if len(compressed) >= len(raw):
+        return base64.b64encode(raw).decode("ascii"), None, None
+    return base64.b64encode(compressed).decode("ascii"), "gzip", len(compressed)
 
 
 @dataclass(frozen=True)
@@ -178,6 +267,30 @@ def _is_unfinished_artifact(finding: dict[str, Any]) -> bool:
     return False
 
 
+def referenced_file_names(files: list[UploadFile]) -> set[str]:
+    """Every file name mentioned inside the package's own text.
+
+    A shotplan naming ``/samples/angle-frontal.jpg``, a prompt naming
+    ``lens-24.jpg``, a skill naming ``dossier.md`` -- each of those makes the
+    named file part of the agent. Names only, never paths, so ``./samples/x.jpg``
+    and ``samples/x.jpg`` both count.
+    """
+
+    name_re = re.compile(r"[A-Za-z0-9._-]+\.[A-Za-z0-9]{1,8}")
+    names: set[str] = set()
+    for item in files:
+        if item.bytes > MAX_UNCOMPRESSED_FILE_BYTES:
+            continue
+        try:
+            raw = base64.b64decode(item.contentBase64)
+            if item.encoding == "gzip":
+                raw = gzip.decompress(raw)
+            text = raw.decode("utf-8")
+        except (ValueError, UnicodeDecodeError, OSError):
+            continue
+        names.update(match.group(0).lower() for match in name_re.finditer(text))
+    return names
+
 def _trim_upload_files_to_limits(
     files: list[UploadFile],
     findings: list[dict[str, Any]],
@@ -192,6 +305,18 @@ def _trim_upload_files_to_limits(
     being fixed here. Rank 0 (agent definitions, .agentlas cards, manifests) is
     never dropped; each drop is recorded as a finding.
     """
+    # TRIMMING MUST NOT COST THE AGENT ITS ABILITIES (owner decision 2026-08-18).
+    #
+    # Ranking by size and file type alone knows nothing about what the agent
+    # needs. Two consequences, both measured on shipped teams: `knowledge/`,
+    # `skills/`, `prompts/` and `presets/` counted as ordinary content, so the
+    # biggest knowledge file went before any build output; and `samples/` was
+    # dropped early as "examples" while photo-studio-agent-team's shotplans name
+    # `/samples/angle-frontal.jpg` on every cut -- those samples ARE the
+    # capability. Mirrors Desktop's rankOf in cloud-agents/package.ts.
+    capability_dir = re.compile(r"(^|/)(knowledge|skills?|prompts?|presets?|agents|workers|contracts|shotplans|playbooks|templates)/")
+    referenced = referenced_file_names(files)
+
     def rank(item: UploadFile) -> int:
         lower = item.path.lower()
         base = lower.rsplit("/", 1)[-1]
@@ -201,18 +326,27 @@ def _trim_upload_files_to_limits(
             return 0
         if lower in {"agentlas.json", "manifest.json", "package.json"}:
             return 0
+        if capability_dir.search(lower):
+            return 0
+        # Named by something else in the package -- part of the agent, wherever it sits.
+        if base in referenced:
+            return 0
         if re.search(r"(^|/)(node_modules|dist|build|out|coverage|\.next|\.venv|__pycache__|\.git)/", lower):
             return 1
         if re.search(r"\.(png|jpe?g|gif|webp|svg|mp4|mov|mp3|wav|pdf|zip|tar|gz|tgz|bin|so|dylib|dll|wasm|sqlite|db)$", lower):
             return 2
-        if re.search(r"(^|/)(tests?|__tests__|fixtures?|benchmarks?|logs?|samples?|examples?)/", lower):
+        if re.search(r"(^|/)(tests?|__tests__|fixtures?|benchmarks?|logs?|examples?)/", lower):
             return 3
         if re.search(r"\.(log|jsonl|csv|tsv|lock)$", lower):
             return 4
         return 5 if item.bytes > 64 * 1024 else 6
 
     def over_limit(current: list[UploadFile]) -> bool:
-        return len(current) > MAX_FILES or sum(item.bytes for item in current) > MAX_TOTAL_BYTES
+        # The ceiling is about what is stored, so it counts the bytes that
+        # actually travel -- the same rule the packer and the server apply.
+        return len(current) > MAX_FILES or sum(
+            (item.encodedBytes if item.encodedBytes is not None else item.bytes) for item in current
+        ) > MAX_TOTAL_BYTES
 
     if not over_limit(files):
         return files
@@ -612,7 +746,13 @@ def package_agent(
 
     bundle = {
         "manifest": manifest,
-        "files": [item.__dict__ for item in files],
+        # Drop the encoding keys when there is nothing to say. Emitting
+        # `"encoding": null` is not the same as omitting it: the register route
+        # accepts "gzip", "identity" or absent, and refuses null.
+        "files": [
+            {key: value for key, value in item.__dict__.items() if value is not None or key not in {"encoding", "encodedBytes"}}
+            for item in files
+        ],
         "source": {"packagedBy": "hephaestus-runtime", "packagedAt": manifest["createdAt"], "costOwner": "none"},
         "sanitization": {"removedLineCount": sanitized_line_count},
     }
@@ -2492,7 +2632,10 @@ def portable_relative_path_problem(value: str) -> str | None:
 def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[str, Any]]]:
     files: list[UploadFile] = []
     findings: list[dict[str, Any]] = []
+    # `total_bytes` is what the folder weighs; `transport_bytes` is what the
+    # package costs to send and store, and that is what the ceiling is about.
     total_bytes = 0
+    transport_bytes = 0
     file_count = 0
     walked = 0
     shipped_paths: dict[str, str] = {}
@@ -2508,6 +2651,8 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             or any(rel.startswith(prefix) for prefix in UPLOAD_PRIVATE_PROJECT_STATE_DIRS)
             or is_local_experience_lineage_path(rel)
             or is_generated_runtime_path(rel)
+            or is_work_output_path(rel)
+            or is_product_private_folder_path(rel)
         ):
             continue
         walked += 1
@@ -2547,11 +2692,13 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
         # both counts below tally survivors only, so the author saw "Ready" with
         # matching fileCount/includedFileCount and shipped an agent missing its
         # own files. Every path that now refuses a file names that file.
-        if metadata.st_size > MAX_FILE_BYTES:
+        # Refuse early only what cannot fit even at a good compression ratio.
+        # Anything smaller is read, compressed, and judged on what it costs.
+        if metadata.st_size > MAX_UNCOMPRESSED_FILE_BYTES:
             # Blocker, not "high": the file is dropped from the bundle, and a
             # "high" finding never fails static_review, so publish_agent went on
             # to register the truncated package and answered "Registered <slug>."
-            findings.append(_finding("large-file", "blocker", "size", f"File exceeds {MAX_FILE_BYTES} bytes and cannot be shipped in the package.", rel, "Move the large asset out of the package folder, or split it below the limit."))
+            findings.append(_finding("large-file", "blocker", "size", f"File exceeds {MAX_UNCOMPRESSED_FILE_BYTES} bytes and cannot be shipped in the package.", rel, "Move the large asset out of the package folder, or split it below the limit."))
             continue
         # Path portability boundary. Agent Cloud refuses the entire bundle when
         # any path breaks its contract, so decide it here and withhold the exact
@@ -2646,9 +2793,20 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
         if file_count > MAX_FILES:
             findings.append(_finding("file-count-limit", "blocker", "size", f"Package has more than {MAX_FILES} files.", rel, "Publish a focused agent/team folder."))
             break
-        total_bytes += len(raw)
-        if total_bytes > MAX_TOTAL_BYTES:
+        content_base64, encoding, encoded_bytes = encode_upload_content(raw)
+        stored = encoded_bytes if encoded_bytes is not None else len(raw)
+        if stored > MAX_FILE_BYTES:
+            findings.append(_finding("large-file", "blocker", "size", f"File is {stored} bytes even after compression, over the {MAX_FILE_BYTES} byte limit.", rel, "Move the large asset out of the package folder, or split it below the limit."))
+            continue
+        # What travelled is what counts against the ceiling; an uncompressed
+        # package is unaffected because for it the two numbers are the same.
+        transport_bytes += stored
+        if transport_bytes > MAX_TOTAL_BYTES:
             findings.append(_finding("package-size-limit", "blocker", "size", f"Package exceeds {MAX_TOTAL_BYTES} bytes at {rel}.", rel, "Publish a smaller package."))
+            break
+        total_bytes += len(raw)
+        if total_bytes > MAX_UNCOMPRESSED_TOTAL_BYTES:
+            findings.append(_finding("package-uncompressed-size-limit", "blocker", "size", f"Package contents exceed {MAX_UNCOMPRESSED_TOTAL_BYTES} bytes before compression at {rel}.", rel, "Publish a focused agent/team folder."))
             break
         digest = _sha256_bytes(raw)
         shipped_paths[shipped_rel] = rel
@@ -2657,8 +2815,10 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
                 path=shipped_rel,
                 bytes=len(raw),
                 sha256=digest,
-                contentBase64=base64.b64encode(raw).decode("ascii"),
+                contentBase64=content_base64,
                 executable=bool(metadata.st_mode & 0o111),
+                encoding=encoding,
+                encodedBytes=encoded_bytes,
             )
         )
     files.sort(key=lambda item: item.path.encode("utf-16-be"))
