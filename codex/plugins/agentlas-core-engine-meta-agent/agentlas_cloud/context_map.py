@@ -1684,19 +1684,26 @@ def impact(
     )
     seen_entities = set(frontier)
     verification_targets: dict[tuple[str, str, str], dict[str, Any]] = {}
+    # An advisory edge is a name-based match ("context_map.py" <-> the test
+    # called test_context_map.py) rather than a proven import or command. It was
+    # dropped outright, and on this repository that meant dropping the answer:
+    # 1,497 of the code->test links are advisory against 403 proven imports, so
+    # asking "what breaks if I change context_map.py" returned an empty list
+    # while the graph plainly held `context_map.py --advisory_by_name-->
+    # test:tests/test_context_map.py`. Advisory targets are now reported with
+    # their confidence attached instead of silently discarded — a labelled
+    # maybe is what the reader can act on; an empty list reads as "nothing to
+    # check". They still do NOT extend the frontier: a guess must not propagate
+    # into further hops and inflate the blast radius.
     for _ in range(4):
         next_frontier: set[str] = set()
         for edge in verification_edges:
             source = str(edge.get("from") or "")
             target = str(edge.get("to") or "")
             relation = str(edge.get("relation") or "verifies")
-            if (
-                source not in frontier
-                or not target
-                or relation.startswith("advisory_")
-                or relation == "released_by"
-            ):
+            if source not in frontier or not target or relation == "released_by":
                 continue
+            advisory = relation.startswith("advisory_")
             node = verification_nodes.get(target)
             if node and node["path"]:
                 target_key = (node["id"], node["kind"], relation)
@@ -1705,8 +1712,11 @@ def impact(
                     "path": node["path"],
                     "kind": node["kind"],
                     "relation": relation,
+                    "confidence": "advisory" if advisory else "exact",
                     "from": source,
                 }
+            if advisory:
+                continue
             if target not in seen_entities:
                 seen_entities.add(target)
                 next_frontier.add(target)
@@ -1724,6 +1734,7 @@ def impact(
                 "path": node["path"],
                 "kind": node["kind"],
                 "relation": "structural_impact",
+                "confidence": "exact",
                 "from": node_id,
             },
         )

@@ -895,6 +895,24 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
             lines.append(f"- ... and {len(impacted) - 24} more from context impact")
     else:
         lines.append("No additional reverse-reference files were found in the current map.")
+    # Reverse references say what else reads this file; they do not say what
+    # proves it still works. The verification graph knows — measured on the
+    # pilot, changing context_map.py points at test_context_map.py,
+    # test_mcp_stdio.py and test_memory_hook.py, which are exactly the suites a
+    # human runs afterwards. Advisory rows are name-based matches and say so;
+    # an unlabelled guess and a proven import must not read the same.
+    targets = result.get("verificationTargets")
+    if isinstance(targets, list) and targets:
+        exact = [t for t in targets if isinstance(t, dict) and t.get("confidence") != "advisory"]
+        advisory = [t for t in targets if isinstance(t, dict) and t.get("confidence") == "advisory"]
+        lines.append("Checks that cover this change:")
+        for target in (exact + advisory)[:12]:
+            path = str(target.get("path") or target.get("id") or "")
+            if not path:
+                continue
+            kind = str(target.get("kind") or "check")
+            mark = " (name match, verify it applies)" if target.get("confidence") == "advisory" else ""
+            lines.append(f"- [{kind}] {path}{mark}")
     lines.extend(
         (
             f"Impact receipt: {receipt.get('receiptDigest', 'missing')}",
