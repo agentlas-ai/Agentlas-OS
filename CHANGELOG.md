@@ -2,6 +2,66 @@
 
 ## Unreleased
 
+## v1.2.13 - 2026-08-19
+
+The project map stopped being something the product built and started being
+something an agent works from.
+
+- **Recall reached the model again.** The freshness check walked the whole
+  repository on every prompt and outlived its own hook contract, so the host
+  discarded the entire capsule — measured on a 25,453-file project:
+  SessionStart 21.1s against 15s, UserPromptSubmit 22.9s against 20s,
+  PreToolUse 17.1s against 10s. Freshness now runs under a budget and serves
+  the last complete map labelled `unverified_served` when it runs out
+  (4.4s / 4.3s / 0.6s after). Desktop's slice went from an outright error to
+  1.9s.
+- **The capsule spends its budget on where the code is.** Three different
+  coding questions used to produce byte-identical slices carrying zero file
+  paths, because standing goals consumed the layer budget first. Definitions,
+  related files and co-edit history now render before them.
+- **The edges the traversal already walked are rendered.** 680,119 declared
+  edges reached the model as 0 lines; they now reach it as 8 within the same
+  budget.
+- **"What breaks if I change this" answers.** Verification traversal discarded
+  every name-matched edge, which on a real repository is the majority
+  (advisory_by_name 1,497 vs verified_by_import 403), so the answer was always
+  an empty list. Advisory targets are reported with their confidence, and the
+  PreToolUse warning carries them.
+- **The graph opens without words.** Its only two entry points were a path or
+  a symbol spelled in the task, so a question that describes rather than names
+  fell through to conventional entry points. The contact ledger's edit history
+  is now a third entry point, and one dependency hop follows every seeded file.
+  A slice also states where things live, directory by directory.
+- **First contact seeds the project.** Recall only ever read maps; a user who
+  simply talked to their agent in a fresh folder never got one. Seeding is
+  detached (0.34s small, 33s large — far past any hook contract), and already
+  seeded projects are brought to the current formats through an idempotent
+  migration ledger.
+- **A subagent starts with the map.** SubagentStart wrote an observation and
+  returned nothing, so every spawned explorer began by grepping for what the
+  map already knew.
+- **The sitemap stopped blocking its own refresh.** Machine-generated edges
+  repeated full path strings per row: 223.6MB of a 229MB file, past the read
+  bound of the function that maintains it, so the functional projection had
+  been frozen since 2026-08-15. Packed into a column store: 219MB -> 11MB,
+  declared-graph load 0.8s -> 0.07s.
+- **Project learnings fold back in every turn.** Nothing re-derived the
+  declared map after bootstrap, while the personal One drawer held 1,199
+  tickets of which 917 were already project-scoped. Those cross over (scope and
+  workspace must both match; nothing is written back), the derivation now emits
+  edges as well as nodes, and it runs per turn. Measured: 111 -> 234 nodes,
+  9 -> 65 edges, 0 -> 56 decision-to-code links.
+- **`context.locate` answers with files, not only symbols.**
+- **`agentlas-one off` actually stops personal recall.** The switch was
+  consulted by one unrelated branch while the layer that puts personal
+  memories into the prompt never asked, and it hard-coded the drawer path so
+  `AGENTLAS_ONE_DIR` was ignored for reads and receipt writes alike.
+- **A project inside another project is its own project.** The upward search
+  adopted the enclosing map, answering with a different project's files. A VCS
+  root always ends the search; a manifest ends it only when no repository
+  encloses it, so monorepo packages keep their repository's map.
+
+
 ## v1.2.12 - 2026-08-18
 
 - **One host-adapter catalog for the installer, the updater and the release
