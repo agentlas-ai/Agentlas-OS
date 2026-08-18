@@ -495,17 +495,28 @@ def build_capsule(
     context_slice_line: str | None = None
     if project_root is not None:
         try:
-            from .context_map import context_slice, render_context_slice
+            from .context_map import (
+                RECALL_FRESHNESS_BUDGET_SECONDS,
+                context_slice,
+                render_context_slice,
+            )
 
             # Read-only recall must not go blind on a project someone else is
             # editing. Serve the last complete map, flagged stale, rather than
             # nothing — measured: the pilot was always stale, so One never
             # received the library it was built for.
+            # The freshness check walks the whole repository; on a large project
+            # it outlives the hook contract itself, and the host then discards
+            # the entire capsule — measured on the pilot: SessionStart 21.1s
+            # against a 15s timeout, UserPromptSubmit 22.9s against 20s,
+            # PreToolUse 17.1s against 10s. Recall now asks under a budget and
+            # accepts an `unverified_served` label instead of dying.
             structural_slice = context_slice(
                 project_root,
                 question,
                 refresh=False,
                 allow_stale=True,
+                freshness_budget_seconds=RECALL_FRESHNESS_BUDGET_SECONDS,
             )
             # Render to the layer's own budget. Rendering to 2,400 and then
             # trimming at 1,200 dropped the whole slice as one oversize line —
@@ -850,9 +861,20 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
         return None, project_root
     _append_contact_ledger(project_root, payload, changed)
     try:
-        from .context_map import impact
+        from .context_map import RECALL_FRESHNESS_BUDGET_SECONDS, impact
 
-        result = impact(project_root, changed, refresh=False)
+        # PreToolUse has the tightest contract of all (10s). Warning about a
+        # reverse dependency is worth more than proving the index is current,
+        # so this path takes the same budget-and-label deal as recall — before
+        # this it ran unbounded and the host discarded the warning entirely
+        # (measured 17.1s on the pilot).
+        result = impact(
+            project_root,
+            changed,
+            refresh=False,
+            allow_stale=True,
+            freshness_budget_seconds=RECALL_FRESHNESS_BUDGET_SECONDS,
+        )
     except Exception:
         return None, project_root
     impacted = [

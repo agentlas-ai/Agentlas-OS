@@ -58,6 +58,21 @@ MAX_IMPACT_FILES = 2_048
 MAX_CONTEXT_NODES = 48
 MAX_CONTEXT_EDGES = 128
 MAX_DECLARED_NODES = 2_000
+# Default recall budget. Chosen against the tightest shipped hook contract
+# (PreToolUse 10s) minus what the rest of the capsule costs (measured 2.2s for
+# ontology + One + workforce), and against Desktop's 4s slice kill. Small
+# projects finish the real check well inside it and stay fully verified; only
+# large ones fall back to the labelled path.
+RECALL_FRESHNESS_BUDGET_SECONDS = 1.5
+# Recall runs inside a host hook whose contract is measured in seconds: the
+# tightest shipped budget is PreToolUse at 10s (host_adapters/hooks/*/hooks.json),
+# and Desktop kills its slice subprocess at 4s. The passive freshness receipt
+# walks the whole repository, so on a large project it cannot fit — measured on
+# the pilot: 29.6s before the _safe_file repair, 11.0s after. Recall therefore
+# asks for freshness under a budget and, when the budget runs out, serves the
+# last complete map labelled `unverified` instead of returning nothing. An
+# unverified map with an honest label beats an empty capsule; the same trade
+# already exists for `stale_served`.
 MAX_DECLARED_EDGES = 8_000
 # Per-node edge budget for closure. Keeps one hub node from filling the slice.
 MAX_EDGES_PER_NODE = 64
@@ -238,16 +253,38 @@ def _task_path_hints(root: Path, task: str, targets: Sequence[str]) -> list[str]
     return _bounded_strings(paths, MAX_SELECTED_FILES)
 
 
-def _passive_code_map_fingerprint(root: Path) -> tuple[str, str, int, int, str]:
-    """Recompute only the bounded freshness receipt without writing a map."""
+def _passive_code_map_fingerprint(
+    root: Path,
+    *,
+    budget_seconds: float | None = None,
+) -> tuple[str, str, int, int, str]:
+    """Recompute only the bounded freshness receipt without writing a map.
 
-    deadline = time.monotonic() + MAX_CODE_SCAN_SECONDS
+    ``budget_seconds`` caps the wall clock a caller is willing to spend. Running
+    out raises ``context_freshness_budget_exceeded``, which is deliberately a
+    different code from ``context_freshness_incomplete``: the first means "we
+    stopped asking", the second means "the answer itself is unusable". Callers
+    that can serve a labelled map treat only the first as recoverable.
+    """
+
+    started = time.monotonic()
+    scan_deadline = started + MAX_CODE_SCAN_SECONDS
+    budget_deadline = started + budget_seconds if budget_seconds is not None else None
+    deadline = min(scan_deadline, budget_deadline) if budget_deadline is not None else scan_deadline
+
+    def _check_budget() -> None:
+        if budget_deadline is not None and time.monotonic() >= budget_deadline:
+            raise ContextMapError("context_freshness_budget_exceeded")
+
     all_files, list_stop, _ = _git_file_list(root, deadline)
     source = "git" if all_files is not None else "filesystem"
     if all_files is None:
         all_files, list_stop, _ = _walk_file_list(root, deadline)
     if list_stop is not None:
+        # A stop under a budget is the budget, not a broken scan.
+        _check_budget()
         raise ContextMapError("context_freshness_incomplete")
+    _check_budget()
 
     policy = _context_index_policy(root)
     listed_relative_files = {
@@ -256,9 +293,12 @@ def _passive_code_map_fingerprint(root: Path) -> tuple[str, str, int, int, str]:
         if _safe_file(root, path)
         and _policy_allows(path.relative_to(root).as_posix(), policy)
     }
+    _check_budget()
     local_test_files, local_test_stop, _ = _walk_local_test_files(root, deadline, policy)
     if local_test_stop is not None:
+        _check_budget()
         raise ContextMapError("context_freshness_incomplete")
+    _check_budget()
     local_test_relative_files = {
         path.relative_to(root).as_posix()
         for path in local_test_files
@@ -291,7 +331,9 @@ def _passive_code_map_fingerprint(root: Path) -> tuple[str, str, int, int, str]:
     ]
     fingerprint_files = relative_files
     fingerprints: dict[str, dict[str, int]] = {}
-    for relative in fingerprint_files:
+    for index, relative in enumerate(fingerprint_files):
+        if budget_deadline is not None and index % 1024 == 0:
+            _check_budget()
         try:
             metadata = os.stat(root / relative, follow_symlinks=False)
         except OSError as exc:
@@ -301,6 +343,7 @@ def _passive_code_map_fingerprint(root: Path) -> tuple[str, str, int, int, str]:
             "ctimeNs": metadata.st_ctime_ns,
             "size": metadata.st_size,
         }
+    _check_budget()
     try:
         snapshot_id, _hashes, _read_bytes = _content_snapshot(root, relative_files, policy)
     except OSError as exc:
@@ -312,8 +355,12 @@ def _require_passive_freshness(
     root: Path,
     payload: Mapping[str, Any],
     cache: Mapping[str, Any],
+    *,
+    budget_seconds: float | None = None,
 ) -> None:
-    _fingerprint, snapshot_id, code_files, mapped_files, source = _passive_code_map_fingerprint(root)
+    _fingerprint, snapshot_id, code_files, mapped_files, source = _passive_code_map_fingerprint(
+        root, budget_seconds=budget_seconds
+    )
     if (
         snapshot_id != str(payload.get("snapshotId") or "")
         or int(cache.get("candidateCodeFiles", -1)) != code_files
@@ -330,6 +377,7 @@ def load_code_map(
     refresh: bool = True,
     force_refresh: bool = False,
     allow_stale: bool = False,
+    freshness_budget_seconds: float | None = None,
 ) -> tuple[Path, dict[str, Any], dict[str, Any] | None]:
     """Load the canonical map, optionally refreshing its fingerprint first.
 
@@ -340,6 +388,14 @@ def load_code_map(
     stale because another session was writing, so the hook never delivered a
     slice to the very sessions doing the work. A stale map with a stale flag
     beats no map.
+
+    ``freshness_budget_seconds`` caps that passive check. Exhausting it is not
+    an error for a caller that already accepts stale data: the map is served
+    with ``refresh: "unverified_served"``, which says "this map may be current,
+    we did not have time to prove it" — distinct from ``stale_served``, which
+    says "we proved it is behind". Measured on the pilot repository the check
+    costs 11.0s against a 10s PreToolUse contract and a 4s Desktop kill, so
+    without a budget every recall on a large project silently produced nothing.
     """
 
     root = _project_root(project)
@@ -455,11 +511,25 @@ def load_code_map(
         raise ContextMapError("context_map_incomplete")
     if not refresh:
         try:
-            _require_passive_freshness(root, payload, cache)
+            _require_passive_freshness(
+                root, payload, cache, budget_seconds=freshness_budget_seconds
+            )
         except ContextMapError as exc:
-            if not allow_stale or getattr(exc, "code", "") != "context_map_stale":
+            code = getattr(exc, "code", "")
+            if not allow_stale or code not in {
+                "context_map_stale",
+                "context_freshness_budget_exceeded",
+            }:
                 raise
-            refresh_receipt = {**(refresh_receipt or {}), "refresh": "stale_served", "stale": True}
+            if code == "context_freshness_budget_exceeded":
+                refresh_receipt = {
+                    **(refresh_receipt or {}),
+                    "refresh": "unverified_served",
+                    "freshnessVerified": False,
+                    "freshnessBudgetSeconds": freshness_budget_seconds,
+                }
+            else:
+                refresh_receipt = {**(refresh_receipt or {}), "refresh": "stale_served", "stale": True}
     return root, payload, refresh_receipt
 
 
@@ -932,8 +1002,14 @@ def context_slice(
     targets: Sequence[str] = (),
     refresh: bool = True,
     allow_stale: bool = False,
+    freshness_budget_seconds: float | None = None,
 ) -> dict[str, Any]:
-    root, code_map, refresh_receipt = load_code_map(project, refresh=refresh, allow_stale=allow_stale)
+    root, code_map, refresh_receipt = load_code_map(
+        project,
+        refresh=refresh,
+        allow_stale=allow_stale,
+        freshness_budget_seconds=freshness_budget_seconds,
+    )
     terms = _query_terms(task)
     selected_files = _task_path_hints(root, task, targets)
     # `selected_files` is reassigned below to the dependency-expanded set. Co-edit
@@ -1413,8 +1489,15 @@ def impact(
     changed: Sequence[str],
     *,
     refresh: bool = True,
+    allow_stale: bool = False,
+    freshness_budget_seconds: float | None = None,
 ) -> dict[str, Any]:
-    root, code_map, refresh_receipt = load_code_map(project, refresh=refresh)
+    root, code_map, refresh_receipt = load_code_map(
+        project,
+        refresh=refresh,
+        allow_stale=allow_stale,
+        freshness_budget_seconds=freshness_budget_seconds,
+    )
     definitions = code_map.get("defIndex", {})
     references_index = code_map.get("refIndex", {})
     file_symbols = code_map.get("fileSymbols", {})
@@ -1889,8 +1972,11 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
     ]
     # A stale map is still served (see load_code_map allow_stale), but the
     # reader must know the index predates recent edits.
-    if str((value.get("receipt") or {}).get("refreshStatus") or "") == "stale_served":
+    refresh_status = str((value.get("receipt") or {}).get("refreshStatus") or "")
+    if refresh_status == "stale_served":
         lines.append("Note: map predates recent edits (served stale rather than empty); re-verify paths before acting.")
+    elif refresh_status == "unverified_served":
+        lines.append("Note: map freshness was not verified within the recall budget; it may predate recent edits — re-verify paths before acting.")
     goals = value.get("goalsAndConstraints")
     if isinstance(goals, list) and goals:
         lines.append("Inherited goals, constraints, decisions:")

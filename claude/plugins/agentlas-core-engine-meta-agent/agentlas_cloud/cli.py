@@ -415,6 +415,8 @@ def main(argv: list[str] | None = None) -> int:
     context_slice.add_argument("--target", action="append", default=[])
     context_slice.add_argument("--no-refresh", action="store_true", help=argparse.SUPPRESS)
     context_slice.add_argument("--render", action="store_true")
+    context_slice.add_argument("--allow-stale", action="store_true", help=argparse.SUPPRESS)
+    context_slice.add_argument("--freshness-budget", type=float, default=None, help=argparse.SUPPRESS)
     context_impact = context_sub.add_parser("impact", help="Find files affected by changed files or symbols")
     context_impact.add_argument("--project", default=".")
     context_impact.add_argument("--changed", action="append", required=True)
@@ -1354,6 +1356,8 @@ def main(argv: list[str] | None = None) -> int:
                     task,
                     targets=args.target,
                     refresh=False,
+                    allow_stale=bool(args.allow_stale),
+                    freshness_budget_seconds=args.freshness_budget,
                 )
                 if args.render:
                     result["rendered"] = render_context_slice(result)
