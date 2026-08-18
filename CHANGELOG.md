@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v1.2.12 - 2026-08-18
+
+- **One host-adapter catalog for the installer, the updater and the release
+  build.** The three programs each carried their own list of adapter payloads,
+  so a path retired in one place kept being requested by another — the release
+  asset build passed deleted paths to `git archive` and failed outright.
+- **`/hep-orch` and `/hep-update` ship as commands**, and the orchestration
+  allocator now receives the two inputs it never had.
+- **Uploads exclude run outputs, protect capability samples, and compress
+  packages** — knowledge files no longer die to the transport limit.
+- **Recall freshness checks run under a budget**, so the host stops discarding
+  every capsule when verification is slow.
+- **Interview questions are a channel, not a UI.** The builder gate now names
+  the channel ladder — desktop sheet, host-native question tool, numbered
+  markdown list, or `NEEDS-INPUT:` for unattended runs — so a plugin-surface
+  interview degrades honestly instead of leaving a raw fence nothing renders.
+
 ## v1.2.7 - 2026-08-16
 
 - **Ordinary Korean writing is no longer thrown away as prompt injection.** The
