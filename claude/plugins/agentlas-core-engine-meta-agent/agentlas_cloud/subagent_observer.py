@@ -213,18 +213,78 @@ def observe(
     return {}
 
 
+# A subagent is the part of a session most likely to go looking for code, and
+# it starts with none of the parent's context. Until now this hook only wrote
+# an observation line and returned `{}`, so every spawned explorer began by
+# grepping for what the code map already knew exactly — measured on the pilot,
+# the map answers "where is context_slice" with a file and line plus 13
+# backlinks in under a second. Handing it that slice up front is strictly
+# cheaper than the search it replaces.
+SUBAGENT_SLICE_BUDGET_SECONDS = 0.4
+SUBAGENT_SLICE_CHARS = 1_400
+
+
+def _subagent_slice(payload: Mapping[str, Any], root: Path | None) -> str | None:
+    """Best-effort location slice for a starting subagent. Never raises."""
+
+    if root is None:
+        return None
+    task = _payload_value(
+        payload,
+        "message",
+        "prompt",
+        "description",
+        "task",
+        "agent_prompt",
+        "agentPrompt",
+    )
+    if not isinstance(task, str) or not task.strip():
+        return None
+    try:
+        from .context_map import context_slice, render_context_slice
+
+        result = context_slice(
+            root,
+            task[:MAX_TEXT_CHARS],
+            refresh=False,
+            allow_stale=True,
+            freshness_budget_seconds=SUBAGENT_SLICE_BUDGET_SECONDS,
+        )
+        rendered = render_context_slice(result, max_chars=SUBAGENT_SLICE_CHARS)
+    except Exception:
+        # Same fail-open contract as the observation itself: a subagent must
+        # never fail to start because its map was unavailable.
+        return None
+    return rendered.strip() or None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event", default=None)
     parser.add_argument("--host", default=None)
     args = parser.parse_args(argv)
+    payload: Mapping[str, Any] = {}
     try:
-        observe(_read_payload(), event=args.event, host=args.host)
+        payload = _read_payload()
+        observe(payload, event=args.event, host=args.host)
     except Exception:
         # Observation is supplemental. Never turn a hook exception into a host
         # runtime failure or a blocked native subagent.
         pass
-    print("{}")
+    response: dict[str, Any] = {}
+    if _event_value(payload, args.event) == "SubagentStart":
+        try:
+            rendered = _subagent_slice(payload, _project_root(payload))
+        except Exception:
+            rendered = None
+        if rendered:
+            response = {
+                "hookSpecificOutput": {
+                    "hookEventName": "SubagentStart",
+                    "additionalContext": rendered,
+                }
+            }
+    print(json.dumps(response, ensure_ascii=False))
     return 0
 
 

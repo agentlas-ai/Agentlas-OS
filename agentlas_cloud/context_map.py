@@ -2008,6 +2008,52 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         lines.append("Note: map predates recent edits (served stale rather than empty); re-verify paths before acting.")
     elif refresh_status == "unverified_served":
         lines.append("Note: map freshness was not verified within the recall budget; it may predate recent edits — re-verify paths before acting.")
+    # Order is a budget decision, not a style one. The capsule layer gives this
+    # slice ~1,200 chars; measured on a real "fix context_slice" turn the
+    # sections cost: edges 852, goals 1,036, definitions 737, related files 649.
+    # Background-first spent the whole budget before saying WHERE anything is,
+    # so three different coding questions produced byte-identical slices with
+    # zero file paths — the map knew `context_slice` was at context_map.py:1012
+    # and had 13 backlinks, and the reader never saw it. What the agent needs to
+    # start working (where the symbol lives, what calls it, what moves with it)
+    # goes first; the project's standing goals and their edges follow and take
+    # what is left. Both still render in full when no budget is applied.
+    symbols = value.get("symbols")
+    if isinstance(symbols, list) and symbols:
+        # Say how these were found. An exact match and a substring guess must not
+        # read the same to the agent that acts on them.
+        match_mode = str(value.get("symbolMatch") or "")
+        authority = str(value.get("symbolAuthority") or "")
+        suffix = f" ({match_mode} match, authority {authority})" if match_mode and authority else ""
+        lines.append(f"Definitions and backlinks{suffix}:")
+        for item in symbols[:20]:
+            if not isinstance(item, Mapping):
+                continue
+            definitions = ", ".join(
+                f"{row.get('f')}:{row.get('l')}"
+                for row in item.get("definitions", [])[:4]
+                if isinstance(row, Mapping)
+            )
+            refs = ", ".join(str(path) for path in item.get("referencedBy", [])[:12])
+            lines.append(f"- {item.get('symbol')}: defs={definitions or '-'}; refs={refs or '-'}")
+    files = value.get("files")
+    if isinstance(files, list) and files:
+        file_match = str(value.get("fileMatch") or "matched")
+        heading = {
+            "entry_points": "Nothing in the task matched the symbol table; conventional entry points:",
+            "most_referenced": "Nothing matched; the most-referenced definition sites:",
+        }.get(file_match, "Structurally related files:")
+        lines.append(heading)
+        lines.extend(f"- {path}" for path in files[:40])
+    co_edited = value.get("coEditedFiles")
+    if isinstance(co_edited, list) and co_edited:
+        # Observed history, not inference: files repeatedly changed together
+        # with the ones the task named. This is the relation the dependency
+        # graph structurally cannot see (mirrors, code↔install script).
+        lines.append("Historically edited together with the named files (observed, authority A0):")
+        for item in co_edited[:8]:
+            if isinstance(item, Mapping) and item.get("file"):
+                lines.append(f"- {item['file']} ({item.get('sessions', '?')} work units)")
     # An edge line names both of its endpoints, so a node that appears in one is
     # already stated — listing it again as a bare bullet spends the capsule
     # budget twice on the same fact. Measured: at the 1,200-char context_slice
@@ -2065,42 +2111,6 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
                 continue
             label = str(node.get("title") or node.get("name") or _node_id(node))
             lines.append(f"- [{_node_type(node) or 'context'}:{_node_status(node) or 'active'}] {label[:240]}")
-    symbols = value.get("symbols")
-    if isinstance(symbols, list) and symbols:
-        # Say how these were found. An exact match and a substring guess must not
-        # read the same to the agent that acts on them.
-        match_mode = str(value.get("symbolMatch") or "")
-        authority = str(value.get("symbolAuthority") or "")
-        suffix = f" ({match_mode} match, authority {authority})" if match_mode and authority else ""
-        lines.append(f"Definitions and backlinks{suffix}:")
-        for item in symbols[:20]:
-            if not isinstance(item, Mapping):
-                continue
-            definitions = ", ".join(
-                f"{row.get('f')}:{row.get('l')}"
-                for row in item.get("definitions", [])[:4]
-                if isinstance(row, Mapping)
-            )
-            refs = ", ".join(str(path) for path in item.get("referencedBy", [])[:12])
-            lines.append(f"- {item.get('symbol')}: defs={definitions or '-'}; refs={refs or '-'}")
-    files = value.get("files")
-    if isinstance(files, list) and files:
-        file_match = str(value.get("fileMatch") or "matched")
-        heading = {
-            "entry_points": "Nothing in the task matched the symbol table; conventional entry points:",
-            "most_referenced": "Nothing matched; the most-referenced definition sites:",
-        }.get(file_match, "Structurally related files:")
-        lines.append(heading)
-        lines.extend(f"- {path}" for path in files[:40])
-    co_edited = value.get("coEditedFiles")
-    if isinstance(co_edited, list) and co_edited:
-        # Observed history, not inference: files repeatedly changed together
-        # with the ones the task named. This is the relation the dependency
-        # graph structurally cannot see (mirrors, code↔install script).
-        lines.append("Historically edited together with the named files (observed, authority A0):")
-        for item in co_edited[:8]:
-            if isinstance(item, Mapping) and item.get("file"):
-                lines.append(f"- {item['file']} ({item.get('sessions', '?')} work units)")
     module_edges = value.get("moduleEdges")
     if isinstance(module_edges, list) and module_edges:
         lines.append("Module dependencies:")
