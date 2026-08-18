@@ -600,6 +600,16 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 | **Inter-Process Call (IPC)** | `/agentlas-call` (or `/agentlas call`, `/hep-call`) | `/agentlas-call market-researcher, report-writer {draft a market report}` |
 | **Cloud / Hub Destination Gate** | `/agentlas-upload` (or `/agentlas upload`, `/hep-upload`) | `/agentlas-upload ./agents/customer-support-hq` |
 | **Messenger / Channel Setup** | `/agentlas-connect` (or `/agentlas connect`, `/hep-connect`) | `/agentlas-connect Telegram for Marketing Agent Team` |
+| **Orchestrator / Worker Models** | `/agentlas-orch` (or `/agentlas orch`, `/hep-orch`) | `/agentlas-orch orchestrator=frontier worker=economy` |
+| **Runtime + Adapter Update** | `/agentlas-update` (or `/agentlas update`, `/hep-update`) | `/agentlas-update` |
+
+`/hep-orch` sets which model runs the orchestrator and which runs the workers,
+so a fan-out of mechanical work does not bill frontier runs. **The split only
+puts two models to work on Claude Code**, which is the one host that spawns a
+real subagent and takes a model per subagent. Codex, Gemini/Antigravity, Cursor,
+and OpenCode have no subagent of their own: one model plays every role in
+sequence there, the allocation receipt is still written, and the ceiling still
+bounds what that model may request — but no second, cheaper model appears.
 
 Every row also answers to its original `/hep-*` name — `/agentlas network` and
 `/hep-network` are the same command. Nothing was renamed away, so existing

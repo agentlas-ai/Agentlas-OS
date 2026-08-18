@@ -167,4 +167,28 @@ ok("hep-orch 슬래시 명령이 모든 호스트에 있다")
 assert (ROOT / "bin" / "hep-orch").is_file(), "bin/hep-orch 실행 파일이 없다"
 ok("bin/hep-orch 실행 파일이 있다")
 
+# 역할 분리가 실제로 두 모델을 띄우는 호스트는 Claude Code뿐이다. 그 한계를 말하지
+# 않으면 순차 호스트 사용자가 아낀 줄로 오해한다 — 영수증이 하지 않는 거짓말이다.
+orch_body = (ROOT / "contracts/commands/hep-orch.body.md").read_text()
+assert "Claude Code" in orch_body and "sequence" in orch_body, \
+    "hep-orch가 호스트별 실행 한계를 말하지 않는다"
+ok("hep-orch가 Claude Code 전용 한계를 명시한다")
+
+readme = (ROOT / "README.md").read_text()
+assert "/hep-orch" in readme and "/hep-update" in readme, "README 명령표에 빠졌다"
+# 줄바꿈에 걸리지 않도록 공백을 접어서 검사한다(문단 재배치에 깨지지 않게).
+readme_flat = " ".join(readme.split())
+assert "only puts two models to work on Claude Code" in readme_flat, \
+    "README가 호스트 한계를 말하지 않는다"
+ok("README가 두 명령과 그 한계를 담는다")
+
+for name in ("hep-update",):
+    hosts_missing = [d for d, kind, *_ in
+                     [("claude/plugins/agentlas-core-engine-meta-agent/commands", "md"),
+                      (".claude/commands", "md"), ("codex/prompts", "md"),
+                      ("opencode/commands", "md"), ("antigravity/workflows", "md")]
+                     if not (ROOT / d / f"{name}.{kind}").is_file()]
+    assert not hosts_missing, f"{name}이 없는 호스트: {hosts_missing}"
+ok("hep-update 슬래시 명령이 호스트에 있다")
+
 print(f"\north-policy: {passed} checks passed")

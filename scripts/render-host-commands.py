@@ -67,6 +67,11 @@ FRONTMATTER = {
         "argument-hint": "'<package folder> [--visibility private-link|marketplace]'",
         "codex-argument-hint": "<package folder>",
     },
+    "hep-update": {
+        "description": "Update the installed Agentlas runtime and every host adapter on this machine.",
+        "argument-hint": "''",
+        "codex-argument-hint": "",
+    },
     "hep-orch": {
         "description": "Set or show which model runs the orchestrator and which runs the workers.",
         "argument-hint": "'[orchestrator=<tier|model>] [worker=<tier|model>] | show | clear'",

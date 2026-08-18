@@ -31,6 +31,23 @@ Do not edit `~/.agentlas/one/model-policy.json` by hand and do not export
 variable is the operator override and outranks this file; say so if it is set,
 because the policy the user just wrote will not be the one in force.
 
+## Which hosts can actually act on it
+
+The policy is read on every host, but only a host that can run a worker as a
+separate invocation can put two different models to work at once.
+
+- **Claude Code** spawns real subagents and takes a model per subagent, so an
+  orchestrator/worker split runs as written — this is the only host where the
+  split is verified end to end today.
+- **Codex, Gemini/Antigravity, Cursor, OpenCode** have no subagent of their own.
+  One model plays every role in sequence. The allocation receipt is still
+  produced and the ceiling still applies to what that model may request, but a
+  worker tier does not put a second, cheaper model on the machine.
+
+Say which of the two the current host is when you report. A user who set
+`worker=economy` on a sequential host has a correct policy and no second model;
+letting that read as a cost split would be a lie the receipt does not tell.
+
 ## What it changes
 
 - `model.resolve_allocation` reads this policy before every role-split
