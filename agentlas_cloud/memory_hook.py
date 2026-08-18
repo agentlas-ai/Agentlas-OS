@@ -167,6 +167,15 @@ def _agentlas_project_root(cwd: Path) -> Path | None:
             agentlas_dir / "code-map" / "project-map.json"
         ).is_file():
             return root
+        # Owner decision 2026-08-19: a repository boundary ends the search. A
+        # project checked out inside another project's folder is its own
+        # project, and without this the walk kept climbing and adopted the
+        # enclosing map — measured: asking about calcTrade in a fresh checkout
+        # answered with a different project's economy.js. A monorepo is
+        # unaffected because its sub-packages share the one .git at the top;
+        # only a nested checkout, which has its own, is cut loose.
+        if (root / ".git").exists():
+            return None
     return None
 
 
