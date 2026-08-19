@@ -328,10 +328,12 @@ def _preparation_projection(result: dict[str, Any]) -> dict[str, Any]:
 
     menu.v2 와 같은 규율이다: 이 투영은 MCP 표면 전용이고, goal binding 은
     투영 **이전의** 원본을 저장하며, bundleDigest 는 저장 원본에 대해 계산된
-    값이라 여기서 행을 줄여도 권위는 불변이다. 데스크탑은 행 전체로
-    bundleDigest 를 재계산하는 하드 검증자라 ``fullDossier=true`` 로 원형을
-    받는다(search 의 탈출구와 동일). 터미널은 cloud HTTP MCP 를 쓰므로 이
-    경로를 지나지 않는다.
+    값이라 여기서 행을 줄여도 권위는 불변이다. search 와 달리 기본값은
+    원형이고 투영은 ``fullDossier=false`` 명시 옵트인이다 — 행 전체로
+    bundleDigest 를 재계산하는 데스크탑 검증자가 이 런타임과 **독립적으로**
+    업데이트되므로(런타임 홈은 설치기·업데이터 소유), 기본값을 바꾸면
+    신 런타임 + 구 데스크탑 스큐에서 편성이 죽는다. 터미널은 cloud HTTP
+    MCP 를 쓰므로 이 경로를 지나지 않는다.
     """
     plan = result.get("executionPlan")
     if not isinstance(plan, dict):
@@ -1065,11 +1067,13 @@ TOOLS: list[dict[str, Any]] = [
                 "fullDossier": {
                     "type": "boolean",
                     "description": (
-                        "Default false: executionRoster rows carry identifiers and digests, with "
-                        "directiveBundle/executionGraph shipped once per contentDigest in bundleContents "
-                        "(projection prepare.v2 — a same-agent-two-slots roster otherwise repeats them "
-                        "byte-identically). true returns the legacy self-contained rows; machine "
-                        "verifiers that recompute bundleDigest over whole rows need this."
+                        "Host LLMs should pass false: executionRoster rows then carry identifiers and "
+                        "digests, with directiveBundle/executionGraph shipped once per contentDigest in "
+                        "bundleContents (projection prepare.v2 — a same-agent-two-slots roster otherwise "
+                        "repeats them byte-identically; measured 28.3KB duplicate). Omitted or true "
+                        "returns the legacy self-contained rows — the compatible default, because "
+                        "machine verifiers recompute bundleDigest over whole rows and update "
+                        "independently of this runtime."
                     ),
                 },
             },
@@ -2672,9 +2676,15 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             "preparedButUnbound": True,
                         }
                     final_result = {**prepared_result, "goalBinding": goal_binding}
-                    if arguments.get("fullDossier") is True:
-                        return final_result
-                    return _preparation_projection(final_result)
+                    # 투영은 명시 옵트인(fullDossier=False)이다. search 와 달리
+                    # prepare 소비자에는 행 전체로 bundleDigest 를 재계산하는 구
+                    # 데스크탑 검증자가 있고, 런타임(~/.agentlas)과 데스크탑은
+                    # 서로 독립적으로 업데이트되므로 기본값을 바꾸면 "신 런타임 +
+                    # 구 데스크탑" 스큐에서 편성이 죽는다. 정본 명령이 호스트에게
+                    # fullDossier:false 를 가르치므로 호스트는 다이어트를 받는다.
+                    if arguments.get("fullDossier") is False:
+                        return _preparation_projection(final_result)
+                    return final_result
                 except (FederatedProvenanceError, WorkforceSourceError, ValueError) as exc:
                     # Third route to the same code-only refusal, this one on the
                     # borrow side: `local_registry.runtime_bundle` re-hashes the
@@ -2737,9 +2747,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "preparedButUnbound": True,
             }
         final_remote = {**remote_result, "goalBinding": goal_binding}
-        if arguments.get("fullDossier") is True:
-            return final_remote
-        return _preparation_projection(final_remote)
+        # 위 로컬 경로와 같은 이유로 명시 옵트인.
+        if arguments.get("fullDossier") is False:
+            return _preparation_projection(final_remote)
+        return final_remote
     if name == "hephaestus_route":
         allow_local_routing = bool(arguments.get("allow_local_routing", False))
         hub_only = True if not allow_local_routing else bool(arguments.get("hub_only", False))
