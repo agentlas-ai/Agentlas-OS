@@ -206,6 +206,120 @@ _FIT_TERM_STOPWORDS = frozenset({
 })
 
 
+def _shortlist_projection(result: dict[str, Any]) -> dict[str, Any]:
+    """menu.v3 — 훑기용 요약 카드. 결정은 여전히 풀카드로 내린다.
+
+    ★실측 2026-08-19 (로컬 1슬롯 20후보, menu.v2 39,095B):
+    카드 무게의 68%가 semanticSnapshot 이고 그 안이 skills 10.1KB + summaries
+    8.8KB 다. 신원 해시류는 10% 밖에 안 되므로 "의례 필드 빼기"로는 안 줄어든다.
+    같은 20장을 요약만 실으면 **8,508B (-78%)**.
+
+    이 투영은 **되돌릴 수 없는 절단이 아니다.** 세션 저장소가 원본을 그대로 갖고
+    있고, 호스트는 좁힌 뒤 `workforce.expand_candidates` 로 그 후보들의 풀카드를
+    받는다. 그래서 "메뉴에 정답이 있으면 LLM 이 100% 골랐다"(2026-07-26 ARB 실측)의
+    전제인 '풀카드를 보고 고른다'가 유지된다 — 다만 60장이 아니라 좁힌 N장에 대해서만.
+
+    무엇을 남기는가는 "이 후보를 더 볼지 말지"를 가르는 최소 재료로 정했다:
+    서수(참조), 이름, 종류, 소속, 소개 1벌, 지금 부를 수 있는지, 결격.
+    """
+
+    projected = dict(result)
+    candidate_set = projected.get("candidateSet")
+    if not isinstance(candidate_set, dict):
+        return projected
+    candidate_set = dict(candidate_set)
+    slots = []
+    for slot in candidate_set.get("slots", []):
+        slot = dict(slot)
+        cards = []
+        for ordinal, candidate in enumerate(slot.get("candidates", []), start=1):
+            snapshot = candidate.get("semanticSnapshot")
+            snapshot = snapshot if isinstance(snapshot, Mapping) else {}
+            summaries = snapshot.get("summaries")
+            operational = candidate.get("operational")
+            operational = operational if isinstance(operational, Mapping) else {}
+            card = {
+                "candidateOrdinal": candidate.get("candidateOrdinal") or ordinal,
+                "name": candidate.get("name") or (snapshot.get("names") or [None])[0],
+                "entityKind": candidate.get("entityKind"),
+                "communities": candidate.get("communities"),
+                "summary": summaries[0] if isinstance(summaries, list) and summaries else None,
+                "callable": operational.get("callable"),
+            }
+            missing = candidate.get("missingMandatory")
+            if missing:
+                card["missingMandatory"] = missing
+            # 발행자 문장으로 구조석에 앉은 후보는 요약에서도 그 사실이 보여야 한다.
+            if "fit:publisher-trigger" in (candidate.get("fitEvidence") or []):
+                card["publisherTriggerMatch"] = True
+            cards.append(card)
+        slot["candidates"] = cards
+        slots.append(slot)
+    candidate_set["slots"] = slots
+    candidate_set["projection"] = "menu.v3-shortlist"
+    projected["candidateSet"] = candidate_set
+    projected["expand"] = (
+        "These are summary cards. Narrow to the candidates worth a closer look, then call "
+        "workforce.expand_candidates with the selectionSessionId and their slotId/candidateOrdinal "
+        "pairs to read the full cards before deciding. Nothing is lost: the session store holds "
+        "the complete menu."
+    )
+    return projected
+
+
+def _expand_candidates(
+    result: Mapping[str, Any],
+    requested: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return the full (menu.v2) cards for the shortlisted ordinals only."""
+
+    candidate_set = result.get("candidateSet")
+    if not isinstance(candidate_set, Mapping):
+        return {"status": "rejected", "error": "federation_candidate_set_unavailable"}
+    wanted: dict[str, set[int]] = {}
+    for item in requested:
+        if not isinstance(item, Mapping):
+            continue
+        slot_id = str(item.get("slotId") or "")
+        ordinal = item.get("candidateOrdinal")
+        if not slot_id or not isinstance(ordinal, int) or isinstance(ordinal, bool) or ordinal < 1:
+            continue
+        wanted.setdefault(slot_id, set()).add(ordinal)
+    if not wanted:
+        return {
+            "status": "rejected",
+            "error": "workforce_expand_selection_invalid",
+            "hint": "Send candidates as [{slotId, candidateOrdinal}] — ordinals restart at 1 within each slot.",
+        }
+    projected = _menu_projection({"candidateSet": dict(candidate_set)})
+    expanded_slots = []
+    missing: list[str] = []
+    for slot in (projected.get("candidateSet") or {}).get("slots", []):
+        slot_id = str(slot.get("slotId") or "")
+        ordinals = wanted.get(slot_id)
+        if not ordinals:
+            continue
+        cards = slot.get("candidates") or []
+        by_ordinal = {int(card.get("candidateOrdinal") or 0): card for card in cards}
+        picked = []
+        for ordinal in sorted(ordinals):
+            card = by_ordinal.get(ordinal)
+            if card is None:
+                missing.append(f"{slot_id}:{ordinal}")
+                continue
+            picked.append(card)
+        expanded_slots.append({"slotId": slot_id, "candidates": picked})
+    unknown_slots = sorted(set(wanted) - {str(s.get("slotId")) for s in expanded_slots})
+    return {
+        "status": "expanded",
+        "selectionSessionId": candidate_set.get("selectionSessionId"),
+        "candidateSetDigest": candidate_set.get("candidateSetDigest"),
+        "slots": expanded_slots,
+        **({"unresolvedOrdinals": missing} if missing else {}),
+        **({"unknownSlots": unknown_slots} if unknown_slots else {}),
+    }
+
+
 def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
     """Projects a search response into a decision-ready summary menu — a
     drop-list approach.
@@ -905,6 +1019,18 @@ TOOLS: list[dict[str, Any]] = [
                         "Set true only for a legacy full-echo flow."
                     ),
                 },
+                "shortlist": {
+                    "type": "boolean",
+                    "description": (
+                        "Recommended true for a multi-slot search: the response carries summary cards "
+                        "(ordinal, name, entityKind, communities, one summary, callable, missingMandatory) "
+                        "instead of full dossiers — measured 39,095B -> 8,508B for one 20-candidate slot. "
+                        "Narrow to the candidates worth a closer look, then call "
+                        "workforce.expand_candidates for their full cards and decide from those. "
+                        "Nothing is discarded: the session store keeps the complete menu. Ignored when "
+                        "fullDossier is true."
+                    ),
+                },
                 "turnId": {
                     "type": "string",
                     "minLength": 1,
@@ -916,6 +1042,43 @@ TOOLS: list[dict[str, Any]] = [
                 },
             },
             "required": ["workOrder", "sourceScope"],
+        },
+        "_meta": workforce_tool_meta(),
+    },
+    {
+        "name": "workforce.expand_candidates",
+        "description": (
+            "Return the full candidate cards for a shortlist, after a shortlist=true search. "
+            "Core resolves them from the pinned session, so send only the selectionSessionId and "
+            "the slotId/candidateOrdinal pairs worth a closer look. This is a read: it does not "
+            "select, rank, or change the pinned menu, and the ordinals stay the ones you select with."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "selectionSessionId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "description": "The selectionSessionId printed on the shortlist menu.",
+                },
+                "candidates": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "slotId": {"type": "string", "minLength": 1, "maxLength": 256},
+                            "candidateOrdinal": {"type": "integer", "minimum": 1},
+                        },
+                        "required": ["slotId", "candidateOrdinal"],
+                    },
+                    "description": "Ordinals restart at 1 within each slot — pair every ordinal with its slotId.",
+                },
+            },
+            "required": ["selectionSessionId", "candidates"],
         },
         "_meta": workforce_tool_meta(),
     },
@@ -2143,6 +2306,26 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "status": "error",
                 "error": getattr(exc, "code", "workforce_goal_binding_failed"),
             }
+    if name == "workforce.expand_candidates":
+        # 읽기 전용 — 핀된 메뉴에서 shortlist 서수의 풀카드를 되돌려준다.
+        # 선택·랭킹·변형 없음이라 경계 검사 대상이 아니고, 세션 해석 실패는
+        # 그 사유(만료·없음)를 그대로 말한다.
+        from .workforce.federation_store import FederationSessionError, FederationSessionStore
+
+        session_id = str(arguments.get("selectionSessionId") or "").strip()
+        try:
+            stored = FederationSessionStore().get(session_id)
+        except FederationSessionError as exc:
+            return {
+                "action": name,
+                "status": "rejected",
+                "error": str(getattr(exc, "args", ["federation_session_unavailable"])[0]),
+                "repairable": True,
+                "hint": "Run workforce.search_candidates again — a candidate set expires one hour after it is issued.",
+                "hubCalls": 0,
+            }
+        expanded = _expand_candidates(stored, arguments.get("candidates") or [])
+        return {"action": name, **expanded}
     if name in {
         "workforce.search_candidates",
         "workforce.validate_selection",
@@ -2326,6 +2509,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             # the legacy full-echo flow gets the original shape via fullDossier=true.
             if arguments.get("fullDossier") is True:
                 return search_result
+            if arguments.get("shortlist") is True:
+                return _shortlist_projection(_menu_projection(search_result))
             return _menu_projection(search_result)
         if name != "workforce.search_candidates":
             candidate_set = arguments.get("candidateSet")

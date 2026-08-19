@@ -206,6 +206,120 @@ _FIT_TERM_STOPWORDS = frozenset({
 })
 
 
+def _shortlist_projection(result: dict[str, Any]) -> dict[str, Any]:
+    """menu.v3 — 훑기용 요약 카드. 결정은 여전히 풀카드로 내린다.
+
+    ★실측 2026-08-19 (로컬 1슬롯 20후보, menu.v2 39,095B):
+    카드 무게의 68%가 semanticSnapshot 이고 그 안이 skills 10.1KB + summaries
+    8.8KB 다. 신원 해시류는 10% 밖에 안 되므로 "의례 필드 빼기"로는 안 줄어든다.
+    같은 20장을 요약만 실으면 **8,508B (-78%)**.
+
+    이 투영은 **되돌릴 수 없는 절단이 아니다.** 세션 저장소가 원본을 그대로 갖고
+    있고, 호스트는 좁힌 뒤 `workforce.expand_candidates` 로 그 후보들의 풀카드를
+    받는다. 그래서 "메뉴에 정답이 있으면 LLM 이 100% 골랐다"(2026-07-26 ARB 실측)의
+    전제인 '풀카드를 보고 고른다'가 유지된다 — 다만 60장이 아니라 좁힌 N장에 대해서만.
+
+    무엇을 남기는가는 "이 후보를 더 볼지 말지"를 가르는 최소 재료로 정했다:
+    서수(참조), 이름, 종류, 소속, 소개 1벌, 지금 부를 수 있는지, 결격.
+    """
+
+    projected = dict(result)
+    candidate_set = projected.get("candidateSet")
+    if not isinstance(candidate_set, dict):
+        return projected
+    candidate_set = dict(candidate_set)
+    slots = []
+    for slot in candidate_set.get("slots", []):
+        slot = dict(slot)
+        cards = []
+        for ordinal, candidate in enumerate(slot.get("candidates", []), start=1):
+            snapshot = candidate.get("semanticSnapshot")
+            snapshot = snapshot if isinstance(snapshot, Mapping) else {}
+            summaries = snapshot.get("summaries")
+            operational = candidate.get("operational")
+            operational = operational if isinstance(operational, Mapping) else {}
+            card = {
+                "candidateOrdinal": candidate.get("candidateOrdinal") or ordinal,
+                "name": candidate.get("name") or (snapshot.get("names") or [None])[0],
+                "entityKind": candidate.get("entityKind"),
+                "communities": candidate.get("communities"),
+                "summary": summaries[0] if isinstance(summaries, list) and summaries else None,
+                "callable": operational.get("callable"),
+            }
+            missing = candidate.get("missingMandatory")
+            if missing:
+                card["missingMandatory"] = missing
+            # 발행자 문장으로 구조석에 앉은 후보는 요약에서도 그 사실이 보여야 한다.
+            if "fit:publisher-trigger" in (candidate.get("fitEvidence") or []):
+                card["publisherTriggerMatch"] = True
+            cards.append(card)
+        slot["candidates"] = cards
+        slots.append(slot)
+    candidate_set["slots"] = slots
+    candidate_set["projection"] = "menu.v3-shortlist"
+    projected["candidateSet"] = candidate_set
+    projected["expand"] = (
+        "These are summary cards. Narrow to the candidates worth a closer look, then call "
+        "workforce.expand_candidates with the selectionSessionId and their slotId/candidateOrdinal "
+        "pairs to read the full cards before deciding. Nothing is lost: the session store holds "
+        "the complete menu."
+    )
+    return projected
+
+
+def _expand_candidates(
+    result: Mapping[str, Any],
+    requested: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return the full (menu.v2) cards for the shortlisted ordinals only."""
+
+    candidate_set = result.get("candidateSet")
+    if not isinstance(candidate_set, Mapping):
+        return {"status": "rejected", "error": "federation_candidate_set_unavailable"}
+    wanted: dict[str, set[int]] = {}
+    for item in requested:
+        if not isinstance(item, Mapping):
+            continue
+        slot_id = str(item.get("slotId") or "")
+        ordinal = item.get("candidateOrdinal")
+        if not slot_id or not isinstance(ordinal, int) or isinstance(ordinal, bool) or ordinal < 1:
+            continue
+        wanted.setdefault(slot_id, set()).add(ordinal)
+    if not wanted:
+        return {
+            "status": "rejected",
+            "error": "workforce_expand_selection_invalid",
+            "hint": "Send candidates as [{slotId, candidateOrdinal}] — ordinals restart at 1 within each slot.",
+        }
+    projected = _menu_projection({"candidateSet": dict(candidate_set)})
+    expanded_slots = []
+    missing: list[str] = []
+    for slot in (projected.get("candidateSet") or {}).get("slots", []):
+        slot_id = str(slot.get("slotId") or "")
+        ordinals = wanted.get(slot_id)
+        if not ordinals:
+            continue
+        cards = slot.get("candidates") or []
+        by_ordinal = {int(card.get("candidateOrdinal") or 0): card for card in cards}
+        picked = []
+        for ordinal in sorted(ordinals):
+            card = by_ordinal.get(ordinal)
+            if card is None:
+                missing.append(f"{slot_id}:{ordinal}")
+                continue
+            picked.append(card)
+        expanded_slots.append({"slotId": slot_id, "candidates": picked})
+    unknown_slots = sorted(set(wanted) - {str(s.get("slotId")) for s in expanded_slots})
+    return {
+        "status": "expanded",
+        "selectionSessionId": candidate_set.get("selectionSessionId"),
+        "candidateSetDigest": candidate_set.get("candidateSetDigest"),
+        "slots": expanded_slots,
+        **({"unresolvedOrdinals": missing} if missing else {}),
+        **({"unknownSlots": unknown_slots} if unknown_slots else {}),
+    }
+
+
 def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
     """Projects a search response into a decision-ready summary menu — a
     drop-list approach.
@@ -315,6 +429,64 @@ def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
         candidate_set["projection"] = "menu.v2"
         projected["candidateSet"] = candidate_set
     return projected
+
+
+def _preparation_projection(result: dict[str, Any]) -> dict[str, Any]:
+    """Projects a prepared execution response for the MCP surface.
+
+    ★로스터 중복 제거 — 실측 2026-08-19: 같은 에이전트가 두 슬롯에 배정된
+    prepare 응답 219KB에서 executionGraph(18.3KB)+directiveBundle(10KB)이
+    **바이트 동일하게 두 번** 실렸다(중복 28.3KB). 내용은 contentDigest 가 이미
+    지목하므로, 무거운 두 필드를 digest 당 한 번만 ``bundleContents`` 로 싣고
+    행에는 식별자·digest 만 남긴다.
+
+    menu.v2 와 같은 규율이다: 이 투영은 MCP 표면 전용이고, goal binding 은
+    투영 **이전의** 원본을 저장하며, bundleDigest 는 저장 원본에 대해 계산된
+    값이라 여기서 행을 줄여도 권위는 불변이다. search 와 달리 기본값은
+    원형이고 투영은 ``fullDossier=false`` 명시 옵트인이다 — 행 전체로
+    bundleDigest 를 재계산하는 데스크탑 검증자가 이 런타임과 **독립적으로**
+    업데이트되므로(런타임 홈은 설치기·업데이터 소유), 기본값을 바꾸면
+    신 런타임 + 구 데스크탑 스큐에서 편성이 죽는다. 터미널은 cloud HTTP
+    MCP 를 쓰므로 이 경로를 지나지 않는다.
+    """
+    plan = result.get("executionPlan")
+    if not isinstance(plan, dict):
+        return result
+    roster = plan.get("executionRoster")
+    if not isinstance(roster, list) or not roster:
+        return result
+    bundle_contents: dict[str, dict[str, Any]] = {}
+    projected_rows: list[dict[str, Any]] = []
+    for row in roster:
+        if not isinstance(row, Mapping):
+            projected_rows.append(row)
+            continue
+        digest = str(row.get("contentDigest") or "")
+        heavy = {
+            key: row[key]
+            for key in ("directiveBundle", "executionGraph")
+            if key in row and row[key] is not None
+        }
+        if not digest or not heavy:
+            projected_rows.append(dict(row))
+            continue
+        bundle_contents.setdefault(digest, heavy)
+        projected_rows.append(
+            {key: value for key, value in row.items() if key not in heavy}
+        )
+    projected_plan = dict(plan, executionRoster=projected_rows)
+    return {
+        **result,
+        "executionPlan": projected_plan,
+        "bundleContents": bundle_contents,
+        "projection": "prepare.v2",
+        "projectionNote": (
+            "executionRoster rows reference their directiveBundle/executionGraph "
+            "by contentDigest in bundleContents (one copy per digest). The bound "
+            "preparation stores the unprojected original; pass fullDossier=true "
+            "for the legacy self-contained rows."
+        ),
+    }
 
 
 def _resolve_ordinal_assignments(
@@ -847,6 +1019,18 @@ TOOLS: list[dict[str, Any]] = [
                         "Set true only for a legacy full-echo flow."
                     ),
                 },
+                "shortlist": {
+                    "type": "boolean",
+                    "description": (
+                        "Recommended true for a multi-slot search: the response carries summary cards "
+                        "(ordinal, name, entityKind, communities, one summary, callable, missingMandatory) "
+                        "instead of full dossiers — measured 39,095B -> 8,508B for one 20-candidate slot. "
+                        "Narrow to the candidates worth a closer look, then call "
+                        "workforce.expand_candidates for their full cards and decide from those. "
+                        "Nothing is discarded: the session store keeps the complete menu. Ignored when "
+                        "fullDossier is true."
+                    ),
+                },
                 "turnId": {
                     "type": "string",
                     "minLength": 1,
@@ -858,6 +1042,43 @@ TOOLS: list[dict[str, Any]] = [
                 },
             },
             "required": ["workOrder", "sourceScope"],
+        },
+        "_meta": workforce_tool_meta(),
+    },
+    {
+        "name": "workforce.expand_candidates",
+        "description": (
+            "Return the full candidate cards for a shortlist, after a shortlist=true search. "
+            "Core resolves them from the pinned session, so send only the selectionSessionId and "
+            "the slotId/candidateOrdinal pairs worth a closer look. This is a read: it does not "
+            "select, rank, or change the pinned menu, and the ordinals stay the ones you select with."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "selectionSessionId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "description": "The selectionSessionId printed on the shortlist menu.",
+                },
+                "candidates": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "slotId": {"type": "string", "minLength": 1, "maxLength": 256},
+                            "candidateOrdinal": {"type": "integer", "minimum": 1},
+                        },
+                        "required": ["slotId", "candidateOrdinal"],
+                    },
+                    "description": "Ordinals restart at 1 within each slot — pair every ordinal with its slotId.",
+                },
+            },
+            "required": ["selectionSessionId", "candidates"],
         },
         "_meta": workforce_tool_meta(),
     },
@@ -1004,6 +1225,18 @@ TOOLS: list[dict[str, Any]] = [
                     "description": (
                         "Optional local turn/session identity used only to short-circuit repeated dead remote calls; "
                         "it is hashed locally and never sent to Cloud or Hub."
+                    ),
+                },
+                "fullDossier": {
+                    "type": "boolean",
+                    "description": (
+                        "Host LLMs should pass false: executionRoster rows then carry identifiers and "
+                        "digests, with directiveBundle/executionGraph shipped once per contentDigest in "
+                        "bundleContents (projection prepare.v2 — a same-agent-two-slots roster otherwise "
+                        "repeats them byte-identically; measured 28.3KB duplicate). Omitted or true "
+                        "returns the legacy self-contained rows — the compatible default, because "
+                        "machine verifiers recompute bundleDigest over whole rows and update "
+                        "independently of this runtime."
                     ),
                 },
             },
@@ -2073,6 +2306,26 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "status": "error",
                 "error": getattr(exc, "code", "workforce_goal_binding_failed"),
             }
+    if name == "workforce.expand_candidates":
+        # 읽기 전용 — 핀된 메뉴에서 shortlist 서수의 풀카드를 되돌려준다.
+        # 선택·랭킹·변형 없음이라 경계 검사 대상이 아니고, 세션 해석 실패는
+        # 그 사유(만료·없음)를 그대로 말한다.
+        from .workforce.federation_store import FederationSessionError, FederationSessionStore
+
+        session_id = str(arguments.get("selectionSessionId") or "").strip()
+        try:
+            stored = FederationSessionStore().get(session_id)
+        except FederationSessionError as exc:
+            return {
+                "action": name,
+                "status": "rejected",
+                "error": str(getattr(exc, "args", ["federation_session_unavailable"])[0]),
+                "repairable": True,
+                "hint": "Run workforce.search_candidates again — a candidate set expires one hour after it is issued.",
+                "hubCalls": 0,
+            }
+        expanded = _expand_candidates(stored, arguments.get("candidates") or [])
+        return {"action": name, **expanded}
     if name in {
         "workforce.search_candidates",
         "workforce.validate_selection",
@@ -2256,6 +2509,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             # the legacy full-echo flow gets the original shape via fullDossier=true.
             if arguments.get("fullDossier") is True:
                 return search_result
+            if arguments.get("shortlist") is True:
+                return _shortlist_projection(_menu_projection(search_result))
             return _menu_projection(search_result)
         if name != "workforce.search_candidates":
             candidate_set = arguments.get("candidateSet")
@@ -2605,7 +2860,16 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             "executionAllowed": False,
                             "preparedButUnbound": True,
                         }
-                    return {**prepared_result, "goalBinding": goal_binding}
+                    final_result = {**prepared_result, "goalBinding": goal_binding}
+                    # 투영은 명시 옵트인(fullDossier=False)이다. search 와 달리
+                    # prepare 소비자에는 행 전체로 bundleDigest 를 재계산하는 구
+                    # 데스크탑 검증자가 있고, 런타임(~/.agentlas)과 데스크탑은
+                    # 서로 독립적으로 업데이트되므로 기본값을 바꾸면 "신 런타임 +
+                    # 구 데스크탑" 스큐에서 편성이 죽는다. 정본 명령이 호스트에게
+                    # fullDossier:false 를 가르치므로 호스트는 다이어트를 받는다.
+                    if arguments.get("fullDossier") is False:
+                        return _preparation_projection(final_result)
+                    return final_result
                 except (FederatedProvenanceError, WorkforceSourceError, ValueError) as exc:
                     # Third route to the same code-only refusal, this one on the
                     # borrow side: `local_registry.runtime_bundle` re-hashes the
@@ -2667,7 +2931,11 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "executionAllowed": False,
                 "preparedButUnbound": True,
             }
-        return {**remote_result, "goalBinding": goal_binding}
+        final_remote = {**remote_result, "goalBinding": goal_binding}
+        # 위 로컬 경로와 같은 이유로 명시 옵트인.
+        if arguments.get("fullDossier") is False:
+            return _preparation_projection(final_remote)
+        return final_remote
     if name == "hephaestus_route":
         allow_local_routing = bool(arguments.get("allow_local_routing", False))
         hub_only = True if not allow_local_routing else bool(arguments.get("hub_only", False))

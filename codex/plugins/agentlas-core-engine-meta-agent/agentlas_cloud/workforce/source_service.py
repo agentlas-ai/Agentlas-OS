@@ -622,6 +622,24 @@ class WorkforceSourceService:
                 return f"bundle {field} is {bundle.get(field)!r} but the pin says {pin.get(field)!r}"
         return None
 
+    def _local_retrieval_hints(self) -> dict[str, dict[str, Any]]:
+        """Fail open: a hint is an extra chance, never a precondition.
+
+        `local_registry` is injectable, so a substitute that predates this
+        method must keep working — the first version only caught OSError/
+        ValueError and an AttributeError took the whole local source down,
+        which is the opposite of what an optional retrieval hint may do.
+        """
+
+        reader = getattr(self.local_registry, "retrieval_hints", None)
+        if not callable(reader):
+            return {}
+        try:
+            hints = reader()
+        except (OSError, ValueError, AttributeError, KeyError, TypeError):
+            return {}
+        return hints if isinstance(hints, Mapping) else {}
+
     def _search_remote(
         self,
         source: str,
@@ -744,7 +762,12 @@ class WorkforceSourceService:
                 try:
                     if self.reconcile_local:
                         self.local_registry.reconcile()
-                    index = WorkforceIndex(self.local_registry.active_profiles())
+                    index = WorkforceIndex(
+                        self.local_registry.active_profiles(),
+                        # 발행자 문장은 프로필 밖 회수 힌트다 — 읽기 실패는 구조석이
+                        # 안 도는 것으로 끝나야지 로컬 소스를 통째로 죽여선 안 된다.
+                        retrieval_hints=self._local_retrieval_hints(),
+                    )
                     candidate_sets["local"] = index.search_candidates(
                         accepted_work_order,
                         now=now,

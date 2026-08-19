@@ -192,6 +192,17 @@ SKIP_DIRS = {
     "coverage",
     "dist",
     "node_modules",
+    # Vendored interpreter payloads shipped inside a product tree (for example
+    # agentlas_desktop/build-resources/python-runtime with a full CPython
+    # stdlib). Indexing one poisons the symbol table with 164 stdlib modules
+    # and keyword-shaped symbols ("from"), and a prepare-time context slice
+    # then spends its weight on definitions nobody selected — measured
+    # 2026-08-19: symbols 20KB of a 113KB slice pointed into python-runtime.
+    # The directory NAME is the contract here, same as "vendor"/"target":
+    # build-resources itself stays indexed because its root holds maintained
+    # packaging hooks (after-pack-clean.cjs, embedded-core-contract.cjs).
+    "node-runtime",
+    "python-runtime",
     "target",
     "vendor",
 }

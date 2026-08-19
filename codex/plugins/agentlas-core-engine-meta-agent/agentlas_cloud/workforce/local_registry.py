@@ -17,7 +17,7 @@ from typing import Any, Callable, Iterator, Mapping
 from ..networking.bootstrap import append_jsonl, atomic_write_json, networking_home, read_json, utc_now
 from ..networking.card_lint import effective_status, routing_ineligibility_reasons
 from .compiler import compile_workforce_profile
-from .contracts import canonical_digest, verify_profile_integrity
+from .contracts import canonical_digest, content_tokens, verify_profile_integrity
 from .execution import WORKFORCE_EXECUTION_GRAPH_SCHEMA
 from .federation import (
     WORKFORCE_LINEAGE_ATTESTATION_SCHEMA,
@@ -883,6 +883,47 @@ class LocalWorkforceRegistry:
             profiles.append(dict(profile))
         self.last_integrity_drops = dropped
         return profiles
+
+    def retrieval_hints(self) -> dict[str, dict[str, Any]]:
+        """Publisher-written trigger sentences, keyed by release id.
+
+        These are read from the STAGED package copy under the registry, not from
+        the folder the user imported: the original can move or be deleted, and
+        the staged copy is the one `packageHash` covers.
+
+        They deliberately never enter the profile. `contentDigest` is computed
+        over `semantic` + `qualification` (compiler.py), so folding retrieval
+        hints into the profile would move 143 of 149 local digests and with them
+        the session id, the goal roster key, and every pin equality check.
+        A hint that changes nothing durable can be added, dropped, or corrected
+        at any time; a profile field cannot.
+        """
+
+        hints: dict[str, dict[str, Any]] = {}
+        for record in self._records():
+            if record.get("status") != "active":
+                continue
+            release_id = str(record.get("currentReleaseId") or "")
+            if not release_id:
+                continue
+            release_dir = self._release_dir(str(record["agentDefinitionId"]), release_id)
+            card = read_json(release_dir / "package" / ".agentlas" / "routing-card.json", default=None)
+            if not isinstance(card, Mapping):
+                continue
+            sentences: list[str] = []
+            for item in card.get("trigger_examples") or []:
+                text = item.get("text") if isinstance(item, Mapping) else item
+                if isinstance(text, str) and text.strip():
+                    sentences.append(text.strip())
+            for item in card.get("capabilities") or []:
+                if isinstance(item, str) and item.strip():
+                    sentences.append(item.strip())
+            if not sentences:
+                continue
+            hints[release_id] = {
+                "triggerTokens": [content_tokens(sentence) for sentence in sentences[:64]]
+            }
+        return hints
 
     def lineage_attestations(self) -> dict[str, dict[str, str]]:
         result: dict[str, dict[str, str]] = {}

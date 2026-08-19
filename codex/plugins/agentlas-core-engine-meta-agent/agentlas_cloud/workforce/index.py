@@ -588,6 +588,95 @@ def _diverse_window(rows: list[tuple[dict[str, Any], float]], limit: int) -> lis
     return result
 
 
+# ★발행자 신호 구조석 — 실측 2026-08-19 (발행자가 쓴 trigger 1,306질의 / 후보 149).
+#
+# 라우팅 카드의 `trigger_examples` 는 발행자가 직접 쓴 "이럴 때 나를 불러라" 문장이고,
+# 마켓플레이스 회수를 hit@30 100% 로 만든 신호다. 워크포스 컴파일러는 이 문장을
+# 프로필로 옮기지 않으므로 편성 회수에서는 통째로 버려지고 있었다.
+#
+# 되살리는 방법이 결과를 가른다 — 둘 다 측정했다:
+#   · 4번째 RRF 점수 채널로 추가  → hit@1 73.1% -> 57.0% (약한 매치가 3채널 합의를
+#     희석한다). 문턱 0.15~0.4 스윕도 전부 hit@1 손실. **기각.**
+#   · 메뉴 끝 R석 예약(아래)      → hit@1 73.1% 그대로, hit@20 95.6% -> 96.4%,
+#     기존 실패 58건 중 12건 구제 / 신규 실패 1건. **채택.**
+#
+# 즉 이 신호는 "순위를 바꿀 권한"이 아니라 "명단에서 지워지지 않을 권리"만 갖는다.
+# 점수 계산에 손대지 않으므로 기존 순위는 정의상 불변이고, 되돌리기는 R=0 이다.
+_TRIGGER_RESCUE_SEATS = 3
+# 자카드 하한. 이 값 미만은 우연한 낱말 겹침이라 구조석을 낭비한다.
+_TRIGGER_RESCUE_MIN_AFFINITY = 0.15
+
+
+def _trigger_affinity(hint: Mapping[str, Any] | None, slot_tokens: frozenset[str]) -> float:
+    """발행자 문장 중 이 슬롯 요청과 가장 가까운 것의 자카드."""
+
+    if not hint or not slot_tokens:
+        return 0.0
+    best = 0.0
+    for sentence in hint.get("triggerTokens") or []:
+        if not sentence:
+            continue
+        union = len(slot_tokens | sentence)
+        if not union:
+            continue
+        score = len(slot_tokens & sentence) / union
+        if score > best:
+            best = score
+    return best
+
+
+def _with_rescued_candidates(
+    cards: list[dict[str, Any]],
+    pool: list[dict[str, Any]],
+    affinity: Mapping[str, float],
+    limit: int,
+) -> list[dict[str, Any]]:
+    """메뉴 끝 R석을 '발행자 문장이 딱 맞는데 잘린 후보'에게 예약한다.
+
+    ★구제 대상은 `pool`(자격을 통과한 전원)이지 `cards`(이미 뽑힌 메뉴)가 아니다.
+    첫 구현이 메뉴 안에서만 골라 라이브 효과가 정확히 0.0pp 였다 — 자리만 바꾸고
+    아무도 들여보내지 않았다. 구제는 정의상 **밖에 있는 후보를 넣는 일**이다.
+
+    앞자리(limit - R)는 기존 선정 그대로다. 구제 대상이 없으면 원래 메뉴와
+    바이트 동일하게 돌아간다 — 효과가 없을 때 아무것도 하지 않는 것이 정상 동작이다.
+    """
+
+    if limit <= _TRIGGER_RESCUE_SEATS or len(cards) < limit or not affinity:
+        return cards
+    head = cards[: limit - _TRIGGER_RESCUE_SEATS]
+    seated = {str(card.get("agentReleaseId")) for card in head}
+    outside = [
+        card
+        for card in pool
+        if str(card.get("agentReleaseId")) not in seated
+        and affinity.get(str(card.get("agentReleaseId")), 0.0) >= _TRIGGER_RESCUE_MIN_AFFINITY
+    ]
+    outside.sort(
+        key=lambda card: (
+            -affinity.get(str(card.get("agentReleaseId")), 0.0),
+            str(card.get("agentReleaseId")),
+        )
+    )
+    result = list(head)
+    for card in outside:
+        if len(result) >= limit:
+            break
+        release_id = str(card.get("agentReleaseId"))
+        if release_id in seated:
+            continue
+        seated.add(release_id)
+        result.append(card)
+    for card in cards:
+        if len(result) >= limit:
+            break
+        release_id = str(card.get("agentReleaseId"))
+        if release_id in seated:
+            continue
+        seated.add(release_id)
+        result.append(card)
+    return result
+
+
 def _descending_ranks(
     rows: list[dict[str, Any]],
     score_key: str,
@@ -619,7 +708,21 @@ class WorkforceIndex:
         *,
         ontology: Mapping[str, Any] | None = None,
         vector_adapter: Any | None = None,
+        retrieval_hints: Mapping[str, Mapping[str, Any]] | None = None,
     ):
+        # 발행자 문장(trigger_examples)은 프로필 밖의 회수 힌트다. 프로필에 넣으면
+        # contentDigest 가 움직여 핀·세션·roster 전체가 흔들리므로(실측: 143/149
+        # 다이제스트 변경) 인덱스 옆에 둔다. 없으면 구조석이 그냥 안 도는 것뿐이다.
+        self.retrieval_hints: dict[str, dict[str, Any]] = {
+            str(key): {
+                "triggerTokens": [
+                    frozenset(tokens)
+                    for tokens in (value or {}).get("triggerTokens") or []
+                    if tokens
+                ]
+            }
+            for key, value in (retrieval_hints or {}).items()
+        }
         self.ontology = dict(ontology or load_ontology())
         if vector_adapter is None:
             try:
@@ -728,6 +831,8 @@ class WorkforceIndex:
                 slot_vector = self.vector_adapter.embed(slot_text)
             except Exception:
                 slot_vector = None
+            slot_tokens = frozenset(content_tokens(slot.get("title"), slot.get("task")))
+            trigger_affinity: dict[str, float] = {}
             for profile in self.profiles.values():
                 forbidden = _strings(work_order.get("forbiddenCommunities"))
                 if forbidden & _profile_sets(profile)["communities"]:
@@ -752,6 +857,11 @@ class WorkforceIndex:
                     evidence.append("fit:retrieval:lexical")
                 if vector_available and vector_score > 0.15:
                     evidence.append(stable_id("fit-retrieval", str(getattr(self.vector_adapter, "name", "local"))))
+                affinity = _trigger_affinity(self.retrieval_hints.get(release_id), slot_tokens)
+                if affinity >= _TRIGGER_RESCUE_MIN_AFFINITY:
+                    trigger_affinity[release_id] = affinity
+                    # 왜 이 후보가 메뉴에 있는지 호스트가 읽을 수 있어야 한다.
+                    evidence.append("fit:publisher-trigger")
                 ranked_inputs.append(
                     {
                         "card": _candidate_card(
@@ -783,7 +893,12 @@ class WorkforceIndex:
                     rrf_score += 1.0 / (_RRF_K + vector_rank[release_id])
                 rows.append((row["card"], rrf_score))
             slot_limit = min(100, maximum * 2) if str(slot["slotId"]) in expanded else maximum
-            cards = _diverse_window(rows, slot_limit)
+            cards = _with_rescued_candidates(
+                _diverse_window(rows, slot_limit),
+                [card for card, _score in sorted(rows, key=lambda item: -item[1])],
+                trigger_affinity,
+                slot_limit,
+            )
             gaps: list[str] = []
             if len(cards) < minimum:
                 gaps.append("gap:minimum-candidate-count")

@@ -78,6 +78,16 @@ done
    `federationResult` and must not be echoed as one. An
    unavailable source is explicit; it is not permission to pretend that source
    participated.
+2b. For a multi-slot search, call it with `shortlist: true`. The response then
+   carries summary cards (ordinal, name, entityKind, communities, one summary,
+   `callable`, `missingMandatory`, and `publisherTriggerMatch` when the
+   publisher's own trigger sentences match this request) instead of full
+   dossiers — measured 40,873B -> 10,087B for one 20-candidate slot. Narrow to
+   the candidates worth a closer look, then call `workforce.expand_candidates`
+   with `{selectionSessionId, candidates:[{slotId, candidateOrdinal}]}` and
+   **decide from those full cards**, never from the summary alone. Keep the
+   shortlist generous (six to eight per slot): the summary is for discarding
+   the obviously wrong, not for picking the winner.
 3. As the active host LLM, author `agentlas.workforce-selection.v1` from the
    returned content and qualification evidence. Call
    `workforce.validate_selection` with `{selection}` only —
