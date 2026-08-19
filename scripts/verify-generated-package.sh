@@ -170,9 +170,37 @@ if errors:
         print(f"- {message}")
     raise SystemExit(1)
 
+# ★"올릴 수 있다"는 **재는 것**이지 선언하는 것이 아니다.
+#
+#   예전에는 build_profile 이 standard 이기만 하면 public_marketplace_ready=true 라고
+#   찍었다. 절대경로 스캔도, 블로커도 보지 않았다. 그래서 빌드는 "마켓플레이스 준비
+#   완료"라고 말하고 업로드는 같은 패키지를 거절했다 — 실측 2026-08-19:
+#   drug-discovery-research-agent 가 여기서는 PASS/ready=true, upload 가 쓰는
+#   package_contract.verify() 에서는 ok=False/ready=False (tools/ 파일에 박힌
+#   /Users/... 절대경로). 만든 사람은 올릴 때가 되어서야 안다.
+#
+#   판정 규칙을 여기 다시 쓰지 않는다 — 업로드가 쓰는 그 함수를 그대로 부른다.
+#   두 벌을 두면 오늘과 같은 불일치가 다시 생긴다.
+try:
+    from agentlas_cloud.package_contract import verify as _canonical_verify
+    canonical = _canonical_verify(str(root), mode=mode)
+except Exception as exc:  # noqa: BLE001 - 검사를 못 하면 통과가 아니라 실패다
+    print(f"verify-generated-package: FAIL {root}")
+    print(f"- canonical contract check could not run: {exc}")
+    raise SystemExit(1)
+
+canonical_blockers = list(canonical.get("blockers") or [])
+if canonical_blockers:
+    print(f"verify-generated-package: FAIL {root}")
+    print(f"mode={mode}; artifacts checked={checked}; problems={len(canonical_blockers)}; build_profile={build_profile}")
+    for message in canonical_blockers:
+        print(f"- {message}")
+    raise SystemExit(1)
+
+ready = bool(canonical.get("public_marketplace_ready"))
 print(f"verify-generated-package: PASS {root}")
 print(
     f"mode={mode}; artifacts checked={checked}; build_profile={build_profile}; "
-    f"public_marketplace_ready={'true' if build_profile == 'standard' else 'false'}"
+    f"public_marketplace_ready={'true' if ready else 'false'}"
 )
 PY
