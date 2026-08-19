@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -34,15 +35,47 @@ def launcher_path() -> Path:
     return Path(os.path.expanduser("~")) / ".agentlas" / "agentlas-browser-cdp.mjs"
 
 
+LAUNCHER_CONTRACT_RE = re.compile(rb"@agentlas-browser-cdp-contract\s+(\d+)")
+# This bundle predates the contract marker, so it is contract 1. Desktop ships 2.
+BUNDLED_LAUNCHER_CONTRACT = 1
+
+
+def _launcher_contract(source: bytes) -> int | None:
+    """Read the contract number a launcher file declares, or None if it predates the marker."""
+    match = LAUNCHER_CONTRACT_RE.search(source)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
 def materialize_launcher() -> Path:
-    """Copy the bundled launcher to ~/.agentlas if missing or out of date (idempotent)."""
+    """Install the bundled launcher only when it would not downgrade what is already there.
+
+    ~/.agentlas/agentlas-browser-cdp.mjs has two writers: this one and Agentlas Desktop's
+    materializeBrowserCdpLauncher. Both used to overwrite on any byte difference, so whichever
+    ran last won and the user's browser rail silently flipped between two behaviours — the
+    versions differ in whether they seed the personal Chrome profile (cookies and the saved
+    password store) into the dedicated one. Now the file carries a contract number and neither
+    writer downgrades: we install only over a missing file, an unmarked older file, or a lower
+    contract.
+    """
     dest = launcher_path()
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         src_bytes = BUNDLED_LAUNCHER.read_bytes() if BUNDLED_LAUNCHER.exists() else b""
+        if not src_bytes:
+            return dest
         cur = dest.read_bytes() if dest.exists() else None
-        if src_bytes and cur != src_bytes:
-            dest.write_bytes(src_bytes)
+        if cur == src_bytes:
+            return dest
+        if cur is not None:
+            installed = _launcher_contract(cur)
+            if installed is not None and installed >= BUNDLED_LAUNCHER_CONTRACT:
+                return dest
+        dest.write_bytes(src_bytes)
     except OSError:
         pass
     return dest
