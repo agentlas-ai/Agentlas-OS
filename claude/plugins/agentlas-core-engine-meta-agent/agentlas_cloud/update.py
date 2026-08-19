@@ -579,6 +579,17 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
         if current is not None and not _is_comparable_release(current):
             return
         base = _runtime_base()
+        # ★업데이트할 런타임이 없으면 아무것도 만들지 않는다.
+        #
+        #   설치본이 없는 호스트(플러그인만 쓰는 경우, 격리 실행)에서도 이 검사가
+        #   `~/.agentlas/runtime/` 에 마커를 써서 디렉터리를 만들어 냈다. 업데이트할
+        #   대상이 없는데 그 대상의 집을 짓는 셈이고, "격리 실행은 런타임 홈을 만들지
+        #   않는다"는 계약이 그 자리에서 깨진다(tests/test_memory_hook.py 의
+        #   isolated-home 단언이 이것을 잡고 있었다).
+        #
+        #   검사 자체가 무의미하지도 않다 — 런타임이 없으면 올릴 것도 없다.
+        if not base.is_dir():
+            return
         lock_path = base / ".update.lock"
         recovered_stale_lock = False
         if _path_present(lock_path):
@@ -647,7 +658,11 @@ def fetch_latest_release(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SEC
     if not isinstance(release, dict) or not release.get("tag_name"):
         raise ValueError("latest release response missing tag_name")
     try:
-        _write_json(cache_path, {"epoch": int(time.time()), "release": release})
+        # ★캐시는 최적화일 뿐이므로, 그것 때문에 런타임 홈을 새로 만들지 않는다.
+        #   설치본이 없는 호스트에서 이 한 줄이 `~/.agentlas/runtime/` 을 지어 냈고,
+        #   "격리 실행은 런타임 홈을 만들지 않는다"는 계약이 거기서 깨졌다.
+        if cache_path.parent.is_dir():
+            _write_json(cache_path, {"epoch": int(time.time()), "release": release})
     except OSError:
         # The TTL cache is an optimization, never part of the answer. Host
         # sandboxes (Claude Code, Codex, Cursor, ...) deny writes outside the
