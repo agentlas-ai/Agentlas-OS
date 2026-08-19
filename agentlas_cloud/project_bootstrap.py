@@ -183,6 +183,11 @@ SKIP_DIRS = {
     ".hg",
     ".svn",
     ".next",
+    # `.next` was listed but the renderer writes `.next-build`, so a live build
+    # was being indexed: measured 2026-08-19, the freshness scan died with
+    # FileNotFoundError on `.next-build/404.html` while a peer build replaced it.
+    # Indexing an output directory races with whatever is writing it.
+    ".next-build",
     ".nuxt",
     ".pytest_cache",
     ".turbo",
@@ -1445,7 +1450,15 @@ def _safe_file(root: Path, path: Path) -> bool:
 
 def _should_skip_relative_parts(parts: Sequence[str]) -> bool:
     if not parts or any(
-        part == ".." or part in SKIP_DIRS or part.lower().endswith(".app")
+        part == ".."
+        or part in SKIP_DIRS
+        or part.lower().endswith(".app")
+        # Scratch trees a build wrote and forgot: `.tmp-agentlas-build-qa.GUR70b/`,
+        # `.tmp-agentlas-current-build.RKVznm/`. They are byte-for-byte copies of
+        # real source, so they double every symbol and — because a dot sorts
+        # first — they led the selected-file list for every task measured
+        # 2026-08-19. A temporary copy is never the file someone means.
+        or part.startswith(".tmp-")
         for part in parts
     ):
         return True

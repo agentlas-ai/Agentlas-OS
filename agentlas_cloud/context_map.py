@@ -190,6 +190,39 @@ def _bounded_strings(values: Iterable[str], limit: int) -> list[str]:
     return sorted({value for value in values if value})[:limit]
 
 
+def _bounded_by_relevance(values: Iterable[str], limit: int) -> list[str]:
+    """Dedupe and cap while KEEPING the order relevance produced.
+
+    ``_bounded_strings`` sorts alphabetically and then truncates, which is the
+    right shape for a report but the wrong one for a selection: the cap lands on
+    the alphabet, not on the ranking, so whatever the caller worked out about
+    relevance is thrown away at the last step.
+
+    Measured 2026-08-19 on this repository: three unrelated tasks — "research
+    published sources", "fix the workforce ranking in
+    agentlas_cloud/workforce/index.py", "write marketing copy for a landing
+    page" — each received 64 files and **63 of the 64 were identical**, headed
+    by `.codex-memory-bench.cjs` and two `.tmp-agentlas-build-qa.*` scratch
+    trees, because dot-paths sort first. Every prepared worker inherited ~100KB
+    of grounding that had almost nothing to do with its task, and `fileMatch`
+    still reported "matched".
+
+    Same disease as the declared-graph cap recorded earlier: select first,
+    truncate second — never truncate on a key that has no relation to the task.
+    """
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+        if len(result) >= limit:
+            break
+    return result
+
+
 def _query_terms(task: str) -> list[str]:
     terms: list[str] = []
     seen: set[str] = set()
@@ -1160,15 +1193,33 @@ def context_slice(
         reference_files = [str(item) for item in (refs or []) if isinstance(item, str)][:64]
         related_files.extend(str(item.get("f") or "") for item in definition_rows)
         related_files.extend(reference_files)
+        # A symbol row exists to say "here is the thing, here is where it lives,
+        # and here is how widely it is used". The definition sites and the count
+        # answer all three; listing 64 referencing paths per symbol does not add
+        # a fourth answer, and it was the single widest row in the slice
+        # (4,768B for one symbol, measured 2026-08-19). The paths worth reading
+        # are already in `files`, chosen by relevance — this list repeated them
+        # and then some. Keep a short sample so the shape stays legible, and say
+        # how many were left out rather than truncating in silence.
+        reference_sample = reference_files[:8]
         symbol_rows.append(
             {
                 "symbol": key,
                 "definitions": definition_rows,
-                "referencedBy": reference_files,
+                "referencedBy": reference_sample,
+                **(
+                    {"referencedBySampled": len(reference_files)}
+                    if len(reference_files) > len(reference_sample)
+                    else {}
+                ),
                 "referenceCount": int((code_map.get("refCount") or {}).get(key) or len(reference_files)),
             }
         )
-    selected_files = _bounded_strings(related_files, MAX_SELECTED_FILES)
+    # `related_files` is already in relevance order: the files the task named
+    # first, then each matched symbol's definition sites, then its references.
+    # Sorting that alphabetically before the cap is what made every task return
+    # the same dot-prefixed files.
+    selected_files = _bounded_by_relevance(related_files, MAX_SELECTED_FILES)
     # A task phrased in a language the symbol table cannot contain (Korean over
     # an English codebase — three of four measured projects) matched nothing.
     # The library must still open a door: the project's conventional entry
@@ -1237,7 +1288,11 @@ def context_slice(
                         if isinstance(value, str):
                             neighbours.append(value)
         if neighbours:
-            selected_files = _bounded_strings([*selected_files, *neighbours], MAX_SELECTED_FILES)
+            # Seeds keep their places; neighbours fill what is left. An
+            # alphabetical cap here evicted the seeds themselves.
+            selected_files = _bounded_by_relevance(
+                [*selected_files, *neighbours], MAX_SELECTED_FILES
+            )
     selected_modules = _bounded_strings((_module_of(value) for value in selected_files), 24)
     verification_graph = (
         code_map.get("verificationGraph")
@@ -1257,6 +1312,12 @@ def context_slice(
     )
     selected_verification_edges: list[dict[str, Any]] = []
     selected_verification_ids: set[str] = set()
+    # Each round re-scans the whole graph, so an edge whose source was already
+    # reachable matched again and was appended again — measured 2026-08-19:
+    # 256 emitted edges, 181 distinct, 75 duplicates. The duplicates are not
+    # merely 31% of wasted bytes; they consume the 256 cap below and evict real
+    # edges, so the map both repeats itself and goes short.
+    emitted_edges: set[tuple[str, str, str]] = set()
     for _ in range(4):
         next_entities: set[str] = set()
         for edge in verification_graph.get("edges", []):
@@ -1266,7 +1327,10 @@ def context_slice(
             target = str(edge.get("to") or "")
             if source not in verification_entities or not target:
                 continue
-            selected_verification_edges.append(dict(edge))
+            identity = (source, target, str(edge.get("relation") or ""))
+            if identity not in emitted_edges:
+                emitted_edges.add(identity)
+                selected_verification_edges.append(dict(edge))
             if target in verification_nodes:
                 selected_verification_ids.add(target)
             next_entities.add(target)
