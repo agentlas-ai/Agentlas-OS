@@ -17,7 +17,7 @@
         "tier": { "type": ["string", "null"], "maxLength": 32 },
         "modelClass": { "type": ["string", "null"], "maxLength": 32 },
         "modelId": { "type": ["string", "null"], "maxLength": 255 },
-        "effort": { "type": "string", "maxLength": 24 }
+        "effort": { "type": ["string", "null"], "maxLength": 24 }
       }
     },
     "resolved": {
@@ -27,7 +27,7 @@
         "provider": { "type": ["string", "null"], "maxLength": 80 },
         "modelId": { "type": ["string", "null"], "maxLength": 255 },
         "sessionId": { "type": ["string", "null"], "maxLength": 255 },
-        "effort": { "type": "string", "maxLength": 24 }
+        "effort": { "type": ["string", "null"], "maxLength": 24 }
       }
     },
     "reasonCodes": { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 120 } },

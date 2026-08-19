@@ -734,12 +734,30 @@ def resolve_model_allocation(
         else:
             reasons.append("no_compatible_requested_model")
 
-    requested_effort = decision["selection"]["effort"] if decision and not issues else "none"
-    resolved_effort = "none"
+    # ★"none" is an effort level; the absence of a decision is not.
+    #
+    # Writing `"none"` when nothing was decided makes the receipt claim the
+    # host deliberately ran at the lowest effort, which is a different fact
+    # from "nobody chose, so we do not know". Measured on the desktop twin of
+    # this receipt (46 live receipts, 2026-08-19): 17 asked for medium or high
+    # and recorded `resolved.effort: "none"`, and all 17 carry no effort-*
+    # reason code at all — the effort path never ran for them. Read literally,
+    # the receipt said the opposite of what happened.
+    #
+    # This file already states the rule two blocks down: "An assumed context
+    # window must never read as a measured one." Same rule, same shape — an
+    # unknown is None, and a reason code says why.
+    requested_effort = decision["selection"]["effort"] if decision and not issues else None
+    resolved_effort = None
+    if requested_effort is None:
+        reasons.append("effort_not_requested")
     if selected:
-        resolved_effort, effort_changed = _bounded_effort(requested_effort, selected["supported_efforts"], max_effort)
-        if effort_changed:
-            reasons.append("effort_clamped_to_host_support")
+        if requested_effort is None:
+            reasons.append("effort_unresolved_without_request")
+        else:
+            resolved_effort, effort_changed = _bounded_effort(requested_effort, selected["supported_efforts"], max_effort)
+            if effort_changed:
+                reasons.append("effort_clamped_to_host_support")
 
     risk = decision["features"]["risk"] if decision else "unknown"
     parent_reason_codes = list(decision["reasonCodes"]) if decision else []
