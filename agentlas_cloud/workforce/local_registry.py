@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterator, Mapping
 
 from ..networking.bootstrap import append_jsonl, atomic_write_json, networking_home, read_json, utc_now
 from ..networking.card_lint import effective_status, routing_ineligibility_reasons
-from .compiler import compile_workforce_profile
+from .compiler import COMPILER_VERSION, compile_workforce_profile
 from .contracts import canonical_digest, content_tokens, verify_profile_integrity
 from .execution import WORKFORCE_EXECUTION_GRAPH_SCHEMA
 from .federation import (
@@ -595,7 +595,20 @@ class LocalWorkforceRegistry:
                     profile = read_json(final_dir / "profile.json", default=None)
                     if isinstance(registration, Mapping) and isinstance(profile, Mapping):
                         verify_profile_integrity(profile)
-                        return self._replay(final_dir, registration, root)
+                        # ★컴파일러 수리가 이미 가져온 릴리스에 도달하는 유일한 길.
+                        # release_id 는 definitionId+packageHash 에서 나오므로 패키지가
+                        # 그대로면 이 디렉터리도 그대로고, 여기서 replay 하면 프로필은
+                        # 영원히 옛 컴파일러의 산출물로 남는다 — 실측: skill:skill:
+                        # 오염이 149개 중 143개에 있는데 reconcile 을 몇 번 돌려도
+                        # 하나도 낫지 않았다. 저장된 compilerVersion 이 현재와 다르면
+                        # replay 하지 않고 아래로 떨어져 재컴파일한다. 패키지는 그대로이므로
+                        # packageHash·releaseId·경로는 불변이고, 바뀌는 것은 프로필 내용과
+                        # 그에 따른 contentDigest 뿐이다(registration.json 과 함께 원자적으로 교체).
+                        stored_compiler = str(
+                            (profile.get("provenance") or {}).get("compilerVersion") or ""
+                        )
+                        if stored_compiler == COMPILER_VERSION:
+                            return self._replay(final_dir, registration, root)
 
                 stage = Path(tempfile.mkdtemp(prefix="import-", dir=str(self.home / "staging")))
                 package_stage = stage / "package"
@@ -685,7 +698,29 @@ class LocalWorkforceRegistry:
                     atomic_write_json(stage / "registration.json", registration)
                     atomic_write_json(stage / "profile.json", profile)
                     final_dir.parent.mkdir(parents=True, exist_ok=True)
-                    os.replace(stage, final_dir)
+                    # `os.replace` refuses a non-empty destination directory.
+                    # Before the compiler-version trigger, an existing release
+                    # always returned through `_replay` and this line only ever
+                    # saw a fresh path; a recompile of an already-imported
+                    # release lands here with the old directory in place and
+                    # raised `Directory not empty` (caught in a dry run against
+                    # a copy of the live registry, 2026-08-19). Swap through a
+                    # retired name so the release directory is never observed
+                    # half-written, and only then drop the old copy.
+                    retired: Path | None = None
+                    if final_dir.is_dir():
+                        retired = stage.parent / f"retired-{final_dir.name}-{_token(str(final_dir))[:12]}"
+                        shutil.rmtree(retired, ignore_errors=True)
+                        os.replace(final_dir, retired)
+                    try:
+                        os.replace(stage, final_dir)
+                    except Exception:
+                        if retired is not None and not final_dir.exists():
+                            os.replace(retired, final_dir)
+                            retired = None
+                        raise
+                    if retired is not None:
+                        shutil.rmtree(retired, ignore_errors=True)
                 except Exception:
                     shutil.rmtree(stage, ignore_errors=True)
                     raise

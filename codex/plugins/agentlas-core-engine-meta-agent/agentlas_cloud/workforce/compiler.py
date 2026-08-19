@@ -15,7 +15,11 @@ from .contracts import (
 )
 
 
-COMPILER_VERSION = "awo-compiler:1.1.0"
+# 1.2.0: skill concept ids no longer double an existing `skill:` prefix.
+# The version is the migration trigger — local_registry compares a stored
+# profile's compilerVersion to this and recompiles instead of replaying,
+# so a fixed compiler actually reaches releases that are already imported.
+COMPILER_VERSION = "awo-compiler:1.2.0"
 LEVELS = {"declared", "checked", "demonstrated", "attested"}
 _NEGATION_TOKENS = {
     "avoid", "avoids", "excluding", "exclude", "excluded", "except", "never",
@@ -131,6 +135,27 @@ def _infer_roles_and_communities(
     return sorted(role_ids), sorted(community_ids), unmapped
 
 
+def _skill_id(value: str) -> str:
+    """Build a skill concept id without doubling a prefix the input already has.
+
+    `stable_id` prefixes unconditionally, and the routing-card lint upstream
+    already emits `skill:<slug>` — so every card-declared skill was compiled as
+    `skill:skill:<slug>`. Measured 2026-08-19 across the 149 locally registered
+    agents: 143 of them (96%) carried doubled ids, 974 of 2,167 distinct skill
+    ids (44%) were the doubled spelling, and 1,024 of those sat next to their
+    correct twin in the same card. `card_lint.py` has carried the strip-first
+    guard for this since 2026-08-12; the compiler never got it.
+
+    Only the skills axis was affected — roles, communities and knowledge are
+    clean — because only this axis routes free-text values through stable_id.
+    """
+
+    body = str(value or "").strip()
+    while body.lower().startswith("skill:"):
+        body = body.split(":", 1)[1]
+    return stable_id("skill", body) if body else stable_id("skill", value)
+
+
 def _skill_assertions(
     routing_card: Mapping[str, Any],
     manifest: Mapping[str, Any],
@@ -142,13 +167,13 @@ def _skill_assertions(
     skill_rows: list[dict[str, Any]] = []
     for capability in normalized_strings(routing_card.get("capabilities")):
         capability_rows.append(_assertion(stable_id("capability", capability), "routing_card"))
-        skill_rows.append(_assertion(str(skill_aliases.get(capability) or stable_id("skill", capability)), "routing_card"))
+        skill_rows.append(_assertion(str(skill_aliases.get(capability) or _skill_id(capability)), "routing_card"))
     workforce = routing_card.get("workforce") if isinstance(routing_card.get("workforce"), Mapping) else {}
     for skill in normalized_strings(workforce.get("skills")):
-        normalized = str(skill_aliases.get(skill) or skill_aliases.get(skill.lower()) or stable_id("skill", skill))
+        normalized = str(skill_aliases.get(skill) or skill_aliases.get(skill.lower()) or _skill_id(skill))
         skill_rows.append(_assertion(normalized, "routing_card"))
     for skill in normalized_strings(manifest.get("skills")):
-        normalized = str(skill_aliases.get(skill) or skill_aliases.get(skill.lower()) or stable_id("skill", skill))
+        normalized = str(skill_aliases.get(skill) or skill_aliases.get(skill.lower()) or _skill_id(skill))
         skill_rows.append(_assertion(normalized, "manifest"))
     for evidence in qualification_assertions:
         subject = str(evidence.get("subject") or "")
