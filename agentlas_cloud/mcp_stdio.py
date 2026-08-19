@@ -317,6 +317,62 @@ def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
     return projected
 
 
+def _preparation_projection(result: dict[str, Any]) -> dict[str, Any]:
+    """Projects a prepared execution response for the MCP surface.
+
+    ★로스터 중복 제거 — 실측 2026-08-19: 같은 에이전트가 두 슬롯에 배정된
+    prepare 응답 219KB에서 executionGraph(18.3KB)+directiveBundle(10KB)이
+    **바이트 동일하게 두 번** 실렸다(중복 28.3KB). 내용은 contentDigest 가 이미
+    지목하므로, 무거운 두 필드를 digest 당 한 번만 ``bundleContents`` 로 싣고
+    행에는 식별자·digest 만 남긴다.
+
+    menu.v2 와 같은 규율이다: 이 투영은 MCP 표면 전용이고, goal binding 은
+    투영 **이전의** 원본을 저장하며, bundleDigest 는 저장 원본에 대해 계산된
+    값이라 여기서 행을 줄여도 권위는 불변이다. 데스크탑은 행 전체로
+    bundleDigest 를 재계산하는 하드 검증자라 ``fullDossier=true`` 로 원형을
+    받는다(search 의 탈출구와 동일). 터미널은 cloud HTTP MCP 를 쓰므로 이
+    경로를 지나지 않는다.
+    """
+    plan = result.get("executionPlan")
+    if not isinstance(plan, dict):
+        return result
+    roster = plan.get("executionRoster")
+    if not isinstance(roster, list) or not roster:
+        return result
+    bundle_contents: dict[str, dict[str, Any]] = {}
+    projected_rows: list[dict[str, Any]] = []
+    for row in roster:
+        if not isinstance(row, Mapping):
+            projected_rows.append(row)
+            continue
+        digest = str(row.get("contentDigest") or "")
+        heavy = {
+            key: row[key]
+            for key in ("directiveBundle", "executionGraph")
+            if key in row and row[key] is not None
+        }
+        if not digest or not heavy:
+            projected_rows.append(dict(row))
+            continue
+        bundle_contents.setdefault(digest, heavy)
+        projected_rows.append(
+            {key: value for key, value in row.items() if key not in heavy}
+        )
+    projected_plan = dict(plan, executionRoster=projected_rows)
+    return {
+        **result,
+        "executionPlan": projected_plan,
+        "bundleContents": bundle_contents,
+        "projection": "prepare.v2",
+        "projectionNote": (
+            "executionRoster rows reference their directiveBundle/executionGraph "
+            "by contentDigest in bundleContents (one copy per digest). The bound "
+            "preparation stores the unprojected original; pass fullDossier=true "
+            "for the legacy self-contained rows."
+        ),
+    }
+
+
 def _resolve_ordinal_assignments(
     selection: Mapping[str, Any],
     candidate_set: Mapping[str, Any],
@@ -1004,6 +1060,16 @@ TOOLS: list[dict[str, Any]] = [
                     "description": (
                         "Optional local turn/session identity used only to short-circuit repeated dead remote calls; "
                         "it is hashed locally and never sent to Cloud or Hub."
+                    ),
+                },
+                "fullDossier": {
+                    "type": "boolean",
+                    "description": (
+                        "Default false: executionRoster rows carry identifiers and digests, with "
+                        "directiveBundle/executionGraph shipped once per contentDigest in bundleContents "
+                        "(projection prepare.v2 — a same-agent-two-slots roster otherwise repeats them "
+                        "byte-identically). true returns the legacy self-contained rows; machine "
+                        "verifiers that recompute bundleDigest over whole rows need this."
                     ),
                 },
             },
@@ -2605,7 +2671,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             "executionAllowed": False,
                             "preparedButUnbound": True,
                         }
-                    return {**prepared_result, "goalBinding": goal_binding}
+                    final_result = {**prepared_result, "goalBinding": goal_binding}
+                    if arguments.get("fullDossier") is True:
+                        return final_result
+                    return _preparation_projection(final_result)
                 except (FederatedProvenanceError, WorkforceSourceError, ValueError) as exc:
                     # Third route to the same code-only refusal, this one on the
                     # borrow side: `local_registry.runtime_bundle` re-hashes the
@@ -2667,7 +2736,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "executionAllowed": False,
                 "preparedButUnbound": True,
             }
-        return {**remote_result, "goalBinding": goal_binding}
+        final_remote = {**remote_result, "goalBinding": goal_binding}
+        if arguments.get("fullDossier") is True:
+            return final_remote
+        return _preparation_projection(final_remote)
     if name == "hephaestus_route":
         allow_local_routing = bool(arguments.get("allow_local_routing", False))
         hub_only = True if not allow_local_routing else bool(arguments.get("hub_only", False))

@@ -232,6 +232,14 @@ def _symbol_terms(task: str, code_map: Mapping[str, Any] | None = None) -> list[
         normalized = raw.lower()
         shaped = "_" in raw or re.search(r"[a-z][A-Z]", raw) or len(raw) >= 12
         if not shaped:
+            # Rarity does not rescue a function word. "from published sources"
+            # matched a helper literally named `from` (one definition site, so
+            # the rarity gate passed) and dragged its 3,998 references into the
+            # slice — measured 2026-08-19. A prose stopword names nothing,
+            # however rarely someone defined it; shaped identifiers
+            # (`from_wire`) remain eligible above.
+            if normalized in _STOP_TERMS:
+                continue
             sites = definitions.get(raw) or definitions.get(normalized)
             if not isinstance(sites, list) or not 0 < len(sites) <= _RARE_SYMBOL_SITES:
                 continue

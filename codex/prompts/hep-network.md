@@ -81,17 +81,27 @@ done
    participated.
 3. As the active host LLM, author `agentlas.workforce-selection.v1` from the
    returned content and qualification evidence. Call
-   `workforce.validate_selection` with
-   `{workOrder, selection}` and keep its accepted response as `federatedSelection`.
-   Revise on rejection. Deterministic code may
+   `workforce.validate_selection` with `{selection}` only —
+   `selection.selectionSessionId` lets Core load the pinned menu and the pinned
+   WorkOrder itself; echoing either back adds bytes but no information (Core
+   only byte-compares echoes to its own store). Keep the accepted response's
+   `federatedSelectionDigest`. Revise on rejection. Deterministic code may
    enforce governance but must not choose, rerank, or silently substitute the
    roster.
 4. Call `workforce.prepare_execution` with
-   `{workOrder, selection, federatedSelection, projectDir, goalId?}`. `projectDir` is
+   `{selection, federatedSelectionDigest, projectDir, goalId?}`. `projectDir` is
    mandatory. Pass the incumbent `goalId` when continuing; otherwise Core
    derives one from the WorkOrder id. Core must automatically bind a successful
    preparation before execution, so continuity cannot be skipped because no
    explicit goal mode was requested.
+   The prepared response is projected (`projection: "prepare.v2"`):
+   `executionRoster` rows carry identifiers and digests, and each worker's
+   `directiveBundle`/`executionGraph` is shipped once per `contentDigest` in
+   top-level `bundleContents` — resolve a row's content by its `contentDigest`
+   there (a same-agent-two-slots roster would otherwise repeat the bundle
+   byte-identically). The bound preparation stores the unprojected original;
+   only a machine verifier that recomputes `bundleDigest` over whole rows
+   needs `fullDossier: true`.
    Require each worker to retain its exact source plus release, package hash,
    content digest, runtime-bundle digest, permission policy, and execution
    context pins. Recompute digests and fail closed on drift.
@@ -173,7 +183,7 @@ one runtime enforced was still a rule someone wrote on purpose.
 - "network"` (registered Local + owner Cloud + public Hub).
 - Retain the projected menu's `selectionSessionId` and every source receipt; do not echo the projected menu as `federationResult`.
 - Core resolves the complete federation state locally from that session.
-- Author the final Selection yourself from content/qualification evidence, call `workforce.validate_selection` with `{workOrder, selection}`, keep `federatedSelection`, then call `workforce.prepare_execution` with `{workOrder, selection, federatedSelection, projectDir, goalId?}`.
+- Author the final Selection yourself from content/qualification evidence, call `workforce.validate_selection` with `{selection}` (Core restores the pinned WorkOrder and menu from `selection.selectionSessionId`), keep the accepted `federatedSelectionDigest`, then call `workforce.prepare_execution` with `{selection, federatedSelectionDigest, projectDir, goalId?}`; resolve each prepared roster row's content from `bundleContents` by its `contentDigest` (projection prepare.v2).
 - Otherwise Core derives one from the WorkOrder id and automatically binds the successful plan.
 - Preserve source receipts, provenance, immutable source/release/package/content/runtime/ permission/context pins, and authoritative Team graphs.
 - Execute distinct planner/manager, worker, synthesis, and verifier invocations with handoffs.
@@ -182,14 +192,14 @@ one runtime enforced was still a rule someone wrote on purpose.
 - A 24-hour lease controls only the next Hub charge; standby is not a continuously running model.
 - For `partial` or `failed`, report each source receipt's exact `failureCode`; never collapse, substitute, or relabel it.
 - Never call legacy `hephaestus_route`, bypass Core, accept deterministic staffing, silently substitute, or claim execution without complete receipts.
-- Author the final Selection yourself, call `workforce.validate_selection` with `{workOrder, selection}`, keep `federatedSelection`, then call `workforce.prepare_execution` with `{workOrder, selection, federatedSelection, projectDir, goalId?}`.
+- Author the final Selection yourself, call `workforce.validate_selection` with `{selection}`, keep the accepted `federatedSelectionDigest`, then call `workforce.prepare_execution` with `{selection, federatedSelectionDigest, projectDir, goalId?}`.
 - Preserve source receipts/provenance and all immutable pins.
 - Execute planner/manager, workers, synthesis, and verifier as distinct invocations with handoffs and preserved Team graphs.
 - Never use legacy `hephaestus_route`, direct remote search, deterministic staffing, silent substitution, or preparation as execution proof.
 - # /hep-network Use the exact request after `/hep-network`.
 - Act as the active top-level workforce orchestrator and use local MCP server `hephaestus-network`, the only host-visible Workforce MCP.
 - Author a redacted `agentlas.workforce-work-order.v1`; keep private project grounding on-host.
-- Author `agentlas.workforce-selection.v1` yourself from content and qualification evidence; call `workforce.validate_selection` with `{workOrder, selection}` and keep `federatedSelection`.
+- Author `agentlas.workforce-selection.v1` yourself from content and qualification evidence; call `workforce.validate_selection` with `{selection}` and keep the accepted `federatedSelectionDigest`.
 - `projectDir` is mandatory; pass an incumbent `goalId` when continuing.
 - Execute only useful bound planner/manager, worker, synthesis, and verifier invocations with explicit artifact handoffs and preserved Team graphs.
 - Keep the roster across turns, sessions, restarts, compaction, and Hub lease expiry.
