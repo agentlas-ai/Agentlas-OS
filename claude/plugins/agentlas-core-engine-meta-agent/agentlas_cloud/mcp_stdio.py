@@ -241,12 +241,57 @@ def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
                         if isinstance(value, list):
                             snapshot.pop(field)
                             snapshot[f"{field}Count"] = len(value)
+                    # ★skills 압축 — 실측(2026-08-19, 로컬 20후보 1슬롯): skills 가
+                    # 17,694B로 후보 무게의 최대 단일 항목이었는데, 전 항목이
+                    # {"concept": …, "level": "declared"} 반복이었다. "declared" 는
+                    # 정보가 0이므로 concept 문자열만 남기고, declared 가 아닌 수준만
+                    # skillLevels 로 따로 싣는다. 실매칭은 Core 가 세션 저장 원본으로
+                    # 하므로(위 produces/consumes 와 같은 근거) 결정력 손실이 없다.
+                    skills = snapshot.get("skills")
+                    if isinstance(skills, list):
+                        concepts: list[str] = []
+                        elevated: dict[str, str] = {}
+                        for item in skills:
+                            if isinstance(item, Mapping) and isinstance(item.get("concept"), str):
+                                concepts.append(item["concept"])
+                                level = item.get("level")
+                                if isinstance(level, str) and level != "declared":
+                                    elevated[item["concept"]] = level
+                            elif isinstance(item, str):
+                                concepts.append(item)
+                        snapshot["skills"] = concepts
+                        if elevated:
+                            snapshot["skillLevels"] = elevated
+                    # ★summaries 캡 — 같은 실측에서 10,398B. 내용이 같은 문장의 언어·
+                    # 표현 변형 3~4벌이었다. 결정에는 두 벌이면 충분하다(첫 항목 +
+                    # 다른 언어 첫 항목). 잘랐다는 사실은 개수로 남긴다 — 조용한
+                    # 절단 금지(원문은 세션 저장소에 그대로 있다).
+                    summaries = snapshot.get("summaries")
+                    if isinstance(summaries, list) and len(summaries) > 2:
+                        def _is_hangul(text: Any) -> bool:
+                            return isinstance(text, str) and any("가" <= ch <= "힣" for ch in text)
+                        first = summaries[0]
+                        other = next(
+                            (item for item in summaries[1:] if _is_hangul(item) != _is_hangul(first)),
+                            summaries[1],
+                        )
+                        snapshot["summaries"] = [first, other]
+                        snapshot["summariesCount"] = len(summaries)
                     candidate["semanticSnapshot"] = snapshot
+                # ★fit-retrieval:* 는 "Core 가 어떤 검색기로 찾았나"이지 "왜 맞나"가
+                # 아니다 — 20후보 전원에 동일하게 붙어 정보가 0이다. 이유 코드
+                # 허용집합은 저장 원본에서 계산되므로 메뉴에서 걷어도 selection 의
+                # reasonCodes 검증은 영향이 없다.
+                fit = candidate.get("fitEvidence")
+                if isinstance(fit, list):
+                    kept = [item for item in fit if not (isinstance(item, str) and item.startswith("fit-retrieval:"))]
+                    if len(kept) != len(fit):
+                        candidate["fitEvidence"] = kept
                 candidates.append(candidate)
             slot["candidates"] = candidates
             slots.append(slot)
         candidate_set["slots"] = slots
-        candidate_set["projection"] = "menu.v1"
+        candidate_set["projection"] = "menu.v2"
         projected["candidateSet"] = candidate_set
     return projected
 

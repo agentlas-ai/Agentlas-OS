@@ -192,21 +192,46 @@ def validate_host_selection(
         "requestExpansionForSlots": expansion,
         "selectionDigest": selection_digest,
     }
+    rejected = bool(issues)
+    if rejected:
+        """★거절 수령증은 팀 배열을 싣지 않는다 — 실측 2026-08-19.
+
+        세 슬롯짜리 거절 응답이 ~10KB였는데 실정보는 issues 문자열 하나였다. 같은
+        배정 행이 idealTeam·executableTeam·receipt.assignments 로 세 번 반복돼
+        실렸고, 거절을 읽는 소비자는 어디에도 없다(전수 확인: 데스크탑은
+        status!=="accepted" 면 팀 행을 읽기 전에 던지고, provenance 핀 계산과
+        prepare 의 executableTeam 소비는 전부 accepted 전용이다). 수리 루프의 매
+        왕복마다 그 무게를 다시 내는 것은 순수 낭비다.
+
+        스칼라 식별자(digest·세션·수령증 id)와 receipt 의 결합 필드는 남긴다 —
+        provenance 가 receipt.selectionDigest 로 정확 결합을 검사한다. 비운 것은
+        사실이 아니라 생략임을 omitted 로 말한다(조용한 절단 금지).
+        """
+        receipt_payload = dict(
+            receipt_payload,
+            assignments=[],
+            edges=[],
+        )
     return {
         "schemaVersion": "agentlas.workforce-selection-validation.v1",
-        "status": "rejected" if issues else "accepted",
+        "status": "rejected" if rejected else "accepted",
         "issues": sorted(set(issues)),
         "selectionReceiptId": "workforce-selection:" + canonical_digest(receipt_payload).split(":", 1)[1][:32],
         "decisionOwner": "host_llm",
         "historyInfluence": "none",
         "ontologyVersion": candidate_set.get("ontologyVersion"),
         "candidateSetDigest": candidate_set.get("candidateSetDigest"),
-        "idealTeam": ideal_team,
-        "executableTeam": executable_team,
+        "idealTeam": [] if rejected else ideal_team,
+        "executableTeam": [] if rejected else executable_team,
         "unfilledPosts": unfilled_posts,
         "substitutions": [],
-        "edges": edges,
+        "edges": [] if rejected else edges,
         "receipt": receipt_payload,
+        **(
+            {"omitted": "team arrays are omitted from rejected receipts — repair the issues and revalidate"}
+            if rejected
+            else {}
+        ),
     }
 
 

@@ -44,7 +44,19 @@ done
    forbiddenAuthorities, consumes, produces, requiredRoles, or modalities —
    tools, authorities, and modalities attach to the executing runtime, not the
    agent card, so those gates only exclude real candidates; describe ordinary
-   inputs/outputs in the task text and inter-slot handoffs in `edges`. Keep private
+   inputs/outputs in the task text and inter-slot handoffs in `edges`. Hand-off
+   edges must be acyclic: a review or feedback edge that points back to an
+   earlier slot is rejected as `task_force_cycle:<the loop path>` — model review
+   as a forward hand-off to the reviewer, not a back-edge (measured 2026-08-19:
+   a researcher→research→quality-engineer order with a `reviews` back-edge was
+   refused, and because edges live inside the WorkOrder the repair changed
+   `workOrderDigest` and forced the whole three-source federation to run again).
+   Set `selectionPolicy.maximumCandidatesPerSlot` to what you will actually
+   read — 6 to 8 is enough for one decision; 20 per slot triples the menu you
+   must parse (measured: ~1.9KB per candidate even in the compact menu) without
+   changing who wins. In the returned menu, `candidateOrdinal` restarts at 1
+   inside every slot — it is a per-slot position, not a running number across
+   the menu. Keep private
    files, memory, secrets, direct identifiers, and raw local context on-host.
    Write every discovery-facing field (statement, role descriptions, required
    skills/knowledge, artifacts) in English, faithfully translating a
