@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+Staffing stopped throwing away the publisher's own words, and the grounding a
+worker inherits stopped being the same 64 files for every task.
+
+- **The menu keeps three seats for the publisher's own trigger sentences.**
+  A routing card's `trigger_examples` are what the publisher wrote about when
+  to call them, and the marketplace path reaches hit@30 100% with them; the
+  workforce compiler never copied them into a profile, so staffing discarded
+  them. Adding them as a fourth ranking channel makes things worse — hit@1
+  73.1% -> 57.0%, and every significance threshold from 0.15 to 0.4 lost
+  ground — because weak matches dilute the agreement of the other three.
+  Reserving the last three menu seats instead touches no arithmetic and only
+  decides who cannot be cut: menu entry 60.1% -> 66.2% with first-place
+  accuracy unchanged. Measured over 1,306 publisher-written sentences against
+  the 149 locally registered agents.
+- **A search can hand back summary cards and be asked for the rest.**
+  `shortlist: true` returns ordinal, name, kind, communities, one summary,
+  callable and missing requirements — 40,873B to 10,087B for a 20-candidate
+  slot, since 68% of a card is the semantic snapshot rather than the
+  identifiers. `workforce.expand_candidates` returns the full cards for the
+  ordinals worth a closer look, so the decision is still made on full cards.
+  End to end with three expansions: 40,873B -> 16,124B.
+- **Prepared execution ships each worker's bundle once per digest.** A roster
+  with the same agent in two slots repeated its directive bundle and execution
+  graph byte for byte. Roster wire weight 95,673B -> 3,640B. Opt in with
+  `fullDossier: false`; machine verifiers that recompute a digest over whole
+  rows keep the self-contained shape by default.
+- **Project grounding answers the task it was given.** Three unrelated
+  requests used to receive 64 files of which 63 were identical, led by scratch
+  build trees, because the selection was sorted alphabetically before being
+  capped — so relevance was discarded at the last step and dot-paths won. The
+  three now share 10 of 64, and a task that names a file gets that file first.
+- **The verification map stopped repeating itself.** Each traversal round
+  re-scanned the graph and re-emitted edges it had already emitted: 256 edges,
+  181 distinct. The duplicates also consumed the cap and evicted real edges.
+- **A symbol row is a summary, not a listing.** It carried up to 64 referencing
+  paths — 4,768B for one symbol — while `files` already holds the paths worth
+  reading. Sampled to eight, with the sample size reported. 9,296B -> 1,498B.
+- **Skill ids stop doubling their own prefix.** `skill:skill:<slug>` appeared
+  in 143 of 149 local agents and in 974 of 2,167 distinct skill ids; the card
+  lint has stripped a leading prefix since 2026-08-12 and the compiler never
+  did. Fixing the compiler alone would have healed nobody: an unchanged
+  package resolves to the same release directory and registration replayed it
+  unconditionally. `COMPILER_VERSION` is now the migration trigger, so the
+  next reconcile recompiles a release whose stored profile predates the fix.
+  Verified on a copy of the live registry: polluted profiles 143 -> 0.
+- **Vendored interpreter payloads and scratch build trees are not indexed.**
+  A desktop build tree carried a full CPython stdlib, and `.tmp-*` copies are
+  byte-for-byte duplicates of real source that led every selection. Indexing a
+  live build output also raced with the build that was writing it.
+
 ## v1.2.13 - 2026-08-19
 
 The project map stopped being something the product built and started being
