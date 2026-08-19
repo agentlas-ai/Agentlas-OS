@@ -899,7 +899,11 @@ TOOLS: list[dict[str, Any]] = [
                     "Complete agentlas.workforce-selection.v1 authored by the host LLM; use the exact canonical schema declared in x-agentlas-contract. Each assignment may name the candidate by candidateOrdinal from the menu instead of copying the 48-hex agentReleaseId — Core resolves the ordinal against its pinned menu.",
                 ),
             },
-            "required": ["workOrder", "selection"],
+            # workOrder 는 더 이상 필수가 아니다 — 세션에 핀된 저장본이 항상
+            # 권위이고(assert_work_order_binding 이 바이트 동일을 요구), 생략 시
+            # Core 가 selectionSessionId 로 복원한다. 판별식: 안 보내도 복원
+            # 가능하면 그 필드는 인자가 아니라 의례다(2026-08-19).
+            "required": ["selection"],
         },
         "_meta": workforce_tool_meta(),
     },
@@ -1003,9 +1007,12 @@ TOOLS: list[dict[str, Any]] = [
                     ),
                 },
             },
+            # workOrder 와 federatedSelection 은 더 이상 필수가 아니다 — 둘 다
+            # 세션 저장본이 권위라 생략 시 Core 가 복원한다: workOrder 는
+            # selectionSessionId 로, federatedSelection 은 federatedSelectionDigest 로.
+            # projectDir 는 진짜 인자다(호스트만 아는 값), selection 도 그렇다.
             "required": [
-                "workOrder", "selection",
-                "federatedSelection", "projectDir",
+                "selection", "projectDir",
             ],
         },
         "_meta": workforce_tool_meta(),
@@ -2117,8 +2124,22 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     work_order = normalize_work_order(
                         FederationSessionStore().work_order(pinned_session.strip())
                     )
-                except FederationSessionError:
-                    work_order = None  # 아래의 기존 거절이 사유를 말한다.
+                except FederationSessionError as exc:
+                    # 진짜 사유를 삼키지 않는다 — "워크오더가 이상함"이 아니라
+                    # "그 세션이 없음/만료됨"이 호스트가 고칠 수 있는 사실이다.
+                    return {
+                        "action": name,
+                        "status": "rejected",
+                        "error": str(getattr(exc, "args", ["federation_session_unavailable"])[0]),
+                        "repairable": True,
+                        "hubCalls": 0,
+                        "detail": {
+                            "hint": (
+                                "the session-pinned workOrder could not be resolved — start a fresh "
+                                "search_candidates, or send the workOrder explicitly"
+                            ),
+                        },
+                    }
         if not isinstance(work_order, Mapping):
             return {
                 "action": name,
