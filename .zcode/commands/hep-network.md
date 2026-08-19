@@ -52,10 +52,15 @@ done
    a researcher→research→quality-engineer order with a `reviews` back-edge was
    refused, and because edges live inside the WorkOrder the repair changed
    `workOrderDigest` and forced the whole three-source federation to run again).
-   Set `selectionPolicy.maximumCandidatesPerSlot` to what you will actually
-   read — 6 to 8 is enough for one decision; 20 per slot triples the menu you
-   must parse (measured: ~1.9KB per candidate even in the compact menu) without
-   changing who wins. In the returned menu, `candidateOrdinal` restarts at 1
+   Size `selectionPolicy.maximumCandidatesPerSlot` generously (the schema
+   allows up to 30) and NEVER to save tokens: the menu is ordered by
+   `canonical_identity_no_rerank`, not by fit — federation performs no scoring
+   by design — so truncating the candidate count discards candidates
+   arbitrarily, not worst-first. Measured 2026-08-19: the only domain-fit
+   candidate for each of three slots sat at ordinals 13-17 behind twelve
+   unrelated agents, so a cap of 8 would have made the order un-staffable.
+   Token savings come from the menu's compact per-row projection, never from
+   fewer rows. In the returned menu, `candidateOrdinal` restarts at 1
    inside every slot — it is a per-slot position, not a running number across
    the menu. Keep private
    files, memory, secrets, direct identifiers, and raw local context on-host.

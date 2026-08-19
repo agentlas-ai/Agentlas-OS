@@ -197,6 +197,14 @@ _MENU_AUDIT_FIELDS = ("qualificationEvidence", "packageHash", "contentDigest")
 # original data. So the menu keeps only the count.
 _MENU_SNAPSHOT_HEAVY_FIELDS = ("produces", "consumes")
 
+# fit:text:term:<단어> 노이즈 컷용 영어 불용어 — bio-research 전수(2026-08-19)에서
+# 실제로 관측된 것들 + 같은 급의 최소 확장. 도메인어(binding, molecular …)는 남긴다.
+_FIT_TERM_STOPWORDS = frozenset({
+    "a", "an", "and", "are", "as", "at", "be", "between", "by", "can", "each",
+    "for", "from", "in", "into", "is", "it", "its", "of", "on", "one", "or",
+    "that", "the", "then", "this", "to", "with",
+})
+
 
 def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
     """Projects a search response into a decision-ready summary menu — a
@@ -278,13 +286,26 @@ def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
                         snapshot["summaries"] = [first, other]
                         snapshot["summariesCount"] = len(summaries)
                     candidate["semanticSnapshot"] = snapshot
-                # ★fit-retrieval:* 는 "Core 가 어떤 검색기로 찾았나"이지 "왜 맞나"가
-                # 아니다 — 20후보 전원에 동일하게 붙어 정보가 0이다. 이유 코드
-                # 허용집합은 저장 원본에서 계산되므로 메뉴에서 걷어도 selection 의
-                # reasonCodes 검증은 영향이 없다.
+                # ★fitEvidence 노이즈 컷. 두 종류를 걷는다(허용 이유코드 집합은 저장
+                # 원본에서 계산되므로 메뉴에서 걷어도 reasonCodes 검증은 불변):
+                #  · fit-retrieval:* — "Core 가 어떤 검색기로 찾았나"이지 "왜 맞나"가
+                #    아니다. 전 후보 동일 부착 = 정보 0.
+                #  · fit:text:term:<불용어> — bio-research 60행 전수(2026-08-19):
+                #    240개 중 174개(72%)가 and/is/the 류였고, 심지어 **부호가
+                #    뒤집혔다** — 무관한 CLI 가 불용어 9개로 정답(도메인어 7개,
+                #    불용어 3개)보다 증거가 많아 보였다. 남는 도메인어만이 신호다.
                 fit = candidate.get("fitEvidence")
                 if isinstance(fit, list):
-                    kept = [item for item in fit if not (isinstance(item, str) and item.startswith("fit-retrieval:"))]
+                    kept = []
+                    for item in fit:
+                        if not isinstance(item, str):
+                            kept.append(item)
+                            continue
+                        if item.startswith("fit-retrieval:"):
+                            continue
+                        if item.startswith("fit:text:term:") and item.rsplit(":", 1)[-1].lower() in _FIT_TERM_STOPWORDS:
+                            continue
+                        kept.append(item)
                     if len(kept) != len(fit):
                         candidate["fitEvidence"] = kept
                 candidates.append(candidate)
@@ -922,7 +943,11 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "federatedSelection": {
                     "type": "object",
-                    "description": "Exact accepted result returned by federated workforce.validate_selection.",
+                    "description": "Exact accepted result returned by federated workforce.validate_selection. Prefer sending only federatedSelectionDigest instead — Core holds the accepted wrapper it issued and loads it by digest, so echoing the whole object back adds bytes but no information.",
+                },
+                "federatedSelectionDigest": {
+                    "type": "string",
+                    "description": "The federatedSelectionDigest from the accepted validate_selection result. Core resolves the pinned wrapper from its own session store — send this instead of the full federatedSelection object.",
                 },
                 "prepareAttempt": {
                     "type": "object",
@@ -2379,12 +2404,63 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             session_store=store,
                         )
                     if not isinstance(federated_selection, Mapping):
+                        """★참조 해석 — wrapper 에코는 정보 0의 왕복세다.
+
+                        prepare 는 오랫동안 accepted wrapper **전체**를 되돌려 받기를
+                        요구했는데, Core 는 받자마자 자기 저장소의 같은 wrapper 를
+                        digest 로 꺼내 바이트 대조만 한다(provenance.py:303,
+                        source_service.py:867). 즉 에코된 본문은 한 번도 신뢰된 적이
+                        없다 — 저장본이 항상 권위다. 그렇다면 호스트가 증명해야 할
+                        것은 "어느 accepted 결정을 실행하려는가" 하나이고, 그것은
+                        digest 로 충분하다. validate 의 resolve-by-session 과 같은
+                        결이며, 결합 검증은 저장소 get_federated_selection 이
+                        그대로 수행한다(디이제스트 불일치는 여전히 거절).
+                        """
+                        supplied_digest = arguments.get("federatedSelectionDigest")
+                        pinned_session = (
+                            selection.get("selectionSessionId")
+                            if isinstance(selection, Mapping)
+                            else None
+                        ) or (
+                            candidate_set.get("selectionSessionId")
+                            if isinstance(candidate_set, Mapping)
+                            else None
+                        )
+                        if (
+                            isinstance(supplied_digest, str)
+                            and supplied_digest.strip()
+                            and isinstance(pinned_session, str)
+                            and pinned_session.strip()
+                        ):
+                            try:
+                                federated_selection = store.get_federated_selection(
+                                    pinned_session.strip(),
+                                    supplied_digest.strip(),
+                                )
+                            except FederationSessionError as exc:
+                                return {
+                                    "action": name,
+                                    "status": "rejected",
+                                    "error": str(
+                                        getattr(exc, "args", ["federated_selection_not_pinned"])[0]
+                                    ),
+                                    "repairable": True,
+                                    "hubCalls": 0,
+                                }
+                    if not isinstance(federated_selection, Mapping):
                         return {
                             "action": name,
                             "status": "rejected",
                             "error": "federated_selection_required",
                             "repairable": True,
                             "hubCalls": 0,
+                            "detail": {
+                                "hint": (
+                                    "send federatedSelectionDigest from the accepted validate_selection "
+                                    "result — Core resolves the pinned wrapper from its session store; "
+                                    "echoing the full federatedSelection object is also accepted"
+                                ),
+                            },
                         }
                     # prepareAttempt's idempotencyKey is the canonical sha256
                     # of the entire payload — a value a host LLM cannot
