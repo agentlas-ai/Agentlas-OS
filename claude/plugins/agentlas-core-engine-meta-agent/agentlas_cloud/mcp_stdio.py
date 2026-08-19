@@ -866,8 +866,8 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "Validate a team selected by the calling host LLM against an exact candidate set. "
             "Core holds the federated session it issued, so send only selection.selectionSessionId "
-            "and it loads the pinned menu itself — echoing a wide candidate set back does not fit "
-            "in one call. It never sends the merged menu to a remote source or "
+            "and it loads the pinned menu AND the pinned workOrder itself — echoing either back "
+            "adds bytes but no information (Core only ever byte-compares them to its own store). It never sends the merged menu to a remote source or "
             "selects/reranks/substitutes agents."
         ),
         "inputSchema": {
@@ -2095,6 +2095,30 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         # an author that omits an empty field and one that spells [] are
         # byte-identical from here on.
         work_order = normalize_work_order(arguments.get("workOrder"))
+        if not isinstance(work_order, Mapping) and name != "workforce.search_candidates":
+            """★workOrder 에코도 의례였다 — 저장본이 항상 권위다.
+
+            validate/prepare 는 받은 workOrder 를 신뢰하지 않는다:
+            assert_work_order_binding 이 세션에 핀된 저장본을 꺼내 **바이트 동일**을
+            요구한다(federation_store.py:439). 즉 호스트가 보낼 수 있는 유일하게
+            유효한 값은 저장본과 같은 바이트뿐이고, 그렇다면 안 보내도 된다.
+            search 가 핀해 둔 workOrder 를 세션 id 로 해석한다 — federatedSelection
+            digest 참조·candidateSet resolve-by-session 과 같은 결이다. search 는
+            제외한다: 그때는 아직 핀할 저장본이 없다.
+            """
+            selection_argument = arguments.get("selection")
+            pinned_session = (
+                selection_argument.get("selectionSessionId")
+                if isinstance(selection_argument, Mapping)
+                else None
+            ) or arguments.get("selectionSessionId")
+            if isinstance(pinned_session, str) and pinned_session.strip():
+                try:
+                    work_order = normalize_work_order(
+                        FederationSessionStore().work_order(pinned_session.strip())
+                    )
+                except FederationSessionError:
+                    work_order = None  # 아래의 기존 거절이 사유를 말한다.
         if not isinstance(work_order, Mapping):
             return {
                 "action": name,
