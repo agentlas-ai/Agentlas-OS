@@ -1265,6 +1265,26 @@ def _ingest_drawer_notes(drawer: Path) -> str:
         return f"failed:{type(exc).__name__}"
 
 
+def _evidence_points_into(event: dict[str, Any], slug: str) -> bool:
+    """이 학습의 근거가 그 에이전트 패키지 안을 가리키는가.
+
+    대여 원장은 "빌렸다" 까지만 안다. 누가 이 문장을 배웠는지는 근거가 말한다 —
+    그 패키지의 파일을 인용하면 그 에이전트의 학습이고, 엔진이나 다른 저장소를
+    인용하면 아니다. 근거가 없으면 가져가지 않는다(모르는 것을 근거로 옮기지 않는다).
+    """
+    evidence = event.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        return False
+    needle = slug.strip().lower()
+    if not needle:
+        return False
+    for item in evidence:
+        text = str(item or "").lower()
+        if needle and needle in text:
+            return True
+    return False
+
+
 def _route_borrowed_agent_events(
     events: list[dict[str, Any]],
     *,
@@ -1313,7 +1333,16 @@ def _route_borrowed_agent_events(
         scope = str(event.get("scope") or "")
         if not slug and scope != "user_identity":
             # 사람에 대한 사실은 에이전트의 것이 아니다 — 언제나 One 에 남는다.
-            if observed_slug:
+            if observed_slug and _evidence_points_into(event, observed_slug):
+                # ★"이 에이전트를 빌렸다"는 "이 학습을 그 에이전트가 만들었다"가 아니다.
+                #   원장은 대여 사실만 안다. 같은 세션에서 One 이 직접 한 일까지 넘기면
+                #   그건 귀속이 아니라 절도다(실측: 무균 파이프라인 시험에서 One 층이
+                #   자라지 못했다 — 그 세션의 학습이 전부 빌린 에이전트에게 갔다).
+                #
+                #   실제로 잴 수 있는 근거 하나만 쓴다: 그 학습이 **그 에이전트 패키지
+                #   안의 파일을 근거로 대는가**. 신약개발 채점기 이야기는 그 패키지의
+                #   tools/ 를 인용하고, 엔진 이야기는 agentlas_cloud/ 를 인용한다.
+                #   근거가 그 밖을 가리키면 One 에 남긴다 — 모르면 가져가지 않는다.
                 slug = observed_slug
                 event = {**event, "agent_slug": slug, "attribution": "host-observed"}
             elif scope == "agent_repo" and started_epoch > 0 and len(active) > 1:
