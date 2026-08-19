@@ -457,6 +457,18 @@ def scaffold(
                     json.dumps(brief_doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
                 )
                 created.append(".agentlas/work-brief.json")
+    # ★어느 엔진으로 지었는지를 패키지에 남긴다. 이게 없으면 그 패키지는 나중에
+    #   자기가 낡았다고 말할 수 없다 — 실측 2026-08-19: 로컬 에이전트 7개 중 6개가
+    #   지금 계약에 떨어지는데, 어느 것도 언제 지어졌는지 몰라 리패징 대상인지
+    #   판단할 근거가 없었다. 엔진 버전을 모르면 찍지 않는다("unknown" 을 찍으면
+    #   그 값이 나중에 거짓 드리프트를 만든다).
+    try:
+        from .engine_stamp import STAMP_REL, write_stamp  # noqa: PLC0415
+
+        if write_stamp(workspace):
+            created.append(str(STAMP_REL))
+    except Exception:
+        pass  # 스탬프 실패가 빌드를 막지는 않는다 — 없으면 unstamped 로 보고된다
     adapter_report = materialize_declared_command_adapters(workspace, package_id)
     report: dict[str, Any] = {
         "workspace": str(workspace),
@@ -1390,6 +1402,17 @@ def _restamp_package_hashes(workspace: Path) -> None:
     )
 
 
+def _engine_drift(workspace: Path) -> dict[str, Any]:
+    """엔진 스탬프 판정. 이 검사가 실패해도 계약 검증 전체를 죽이지 않는다."""
+    try:
+        from .engine_stamp import drift  # noqa: PLC0415
+
+        return drift(workspace)
+    except Exception as exc:  # noqa: BLE001
+        return {"state": "unknown_engine", "builtWith": None, "engineVersion": None,
+                "action": f"엔진 스탬프를 읽지 못했습니다: {exc}"}
+
+
 def verify(folder: str | Path, mode: str = "single", root: str | Path | None = None) -> dict[str, Any]:
     """Machine-readable completeness gate. ``blockers`` is the list a model
     consumes for targeted self-repair; ``ok`` means routing-ready package."""
@@ -1463,4 +1486,9 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
         "cleanup": cleanup,
         "build_profile": build_profile,
         "public_marketplace_ready": bool(not blockers and build_profile == "standard"),
+        # ★이 패키지가 어느 엔진으로 지어졌는지, 지금 엔진과 어긋나는지. 판정만 싣고
+        #   자동으로 고치지 않는다 — 무엇을 고칠지는 위 blockers 가 이미 말한다.
+        #   실측 2026-08-19: 로컬 에이전트 7개 중 6개가 계약에 떨어졌는데, 어느 것도
+        #   자기가 낡았다고 말할 수 없었다(패키지에 엔진 버전이 없었다).
+        "engine_drift": _engine_drift(workspace),
     }

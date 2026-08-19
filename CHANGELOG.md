@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+## v1.2.14
+
+Two things a package could not say about itself, and a gate that disagreed with
+the one it hands off to.
+
+- **A built agent now records the engine it was built with.** None of the seven
+  local agent packages on the test machine carried an engine version anywhere,
+  and six of them fail today's contract — five missing
+  `.agentlas/build-profile.json`, which became required after they were built,
+  and one carrying an absolute host path in a generated tool. Not one could say
+  it was old, so the person finds out at upload time. `verify` now reports
+  `engine_drift` (current / drifted / unstamped / unknown_engine) beside its
+  blockers. Unstamped stays distinct from drifted, and an engine we cannot
+  identify stamps nothing rather than writing "unknown" and manufacturing a
+  false drift later.
+- **A package the build gate passes is one the upload gate accepts.** The build
+  gate printed `public_marketplace_ready=true` whenever the profile was
+  `standard`, reading neither the host-path scan nor the blocker list, while the
+  function upload calls refused the same package. It now defers to that function
+  instead of keeping a second copy of the rule, and fails when it cannot run it.
+- **One sweep over the installed agents.** Opening one package says "this one is
+  missing a file"; sweeping all of them says six of seven fail, five missing the
+  same file, three carrying a summary copied verbatim from another agent, and
+  one declaring three command adapters nobody wrote. The sweep judges and does
+  not repair — filling those in would hide the builder defect that produced them.
+- **A learning is attributed to the agent that made it, from what the host
+  observed.** Routing into a borrowed agent's drawer turned on `agent_slug`
+  being present in the model's envelope, and that field does not exist in the
+  contract the model reads. One's drawer held 1,278 tickets, 1,273 of them
+  stamped as One's own, while seven local agents had zero experience between
+  them. The invocation ledger already knows who ran; with exactly one borrowed
+  agent and a certain session window, its learnings go to it. Two or more and we
+  do not guess. `project` scope deliberately stays in the drawer — it is already
+  clustered by project and feeds the project map.
+
+
 Staffing stopped throwing away the publisher's own words, and the grounding a
 worker inherits stopped being the same 64 files for every task.
 

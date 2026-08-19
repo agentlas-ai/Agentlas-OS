@@ -35,6 +35,19 @@ MEMORY_MAP_FILE = "memory-map.json"
 MEMORY_TICKETS_FILE = "memory-tickets.jsonl"
 CURATOR_DECISIONS_FILE = "curator-decisions.jsonl"
 PROJECT_SOUL_FILE = "project-soul-memory.md"
+
+# One 서랍이 자기 기억으로 받는 스코프 (오너 결정 2026-08-19).
+#
+# ★`project` 는 **일부러 여기 남는다.** 서랍은 project_scope_key 로 이미 프로젝트별
+#   클러스터를 이루고 있고(실측: Agentlas_F 67 · agentlas-desktop 45 · Rareleecopy 45
+#   · global 60 …), One 의 다차원 회수는 그 축을 쓴다. 프로젝트 맵과 겹치는 것은
+#   중복이 아니라 **같은 파이프의 두 청중**이다 — 서랍은 사람의 비서가 쓰고, 맵은 그
+#   프로젝트의 다음 에이전트가 쓴다. 여기서 끊으면 클러스터의 입력이 사라진다.
+#
+# 여기서 막는 것은 **누구 것인지 못 정한 에이전트 학습** 하나뿐이다. 그건 아래
+# _route_borrowed_agent_events 가 `attribution="ambiguous"` 로 표시해 보내고,
+# 추측해서 One 의 기억으로 만들지 않는다.
+_ONE_OWNED_SCOPES = frozenset({"user_identity", "agent_repo", "project"})
 INVOCATION_LEDGER_FILE = "invocation-ledger.jsonl"
 VAULT_REFERENCES_FILE = "vault-references.json"
 WORK_BRIEF_FILE = "work-brief.json"
@@ -1275,8 +1288,41 @@ def _route_borrowed_agent_events(
     routed_by_slug: dict[str, int] = {}
     blocked_by_slug: dict[str, int] = {}
     attributed_by_slug: dict[str, int] = {}
+    # ★귀속은 모델의 자진신고가 아니라 **호스트 관측**이다.
+    #
+    #   예전에는 `agent_slug` 를 모델이 봉투에 적어야만 그 에이전트 서랍으로 갔다. 그런데
+    #   모델이 읽는 계약(agentlas.memory-ticket.v1)에는 그 필드가 **아예 없다** — 아무도
+    #   적을 수 없는 필드를 라우팅 조건으로 삼은 것이다. 실측 2026-08-19: One 서랍의 티켓
+    #   1,278건이 전부 `agentId=builtin-agentlas-one` 이었고, 그중 agent_repo 253건과
+    #   project 990건이 남의 자리에 쌓여 있었다(다른 코드베이스의 지식까지). 로컬 에이전트
+    #   7개는 experience 0개였다 — 원인이 아니라 결과다.
+    #
+    #   호스트는 어느 에이전트가 돌았는지 이미 안다(invocation ledger, 대여 시점에
+    #   결정론적으로 기록된다). 이 세션에서 **정확히 하나**가 돌았다면 그 세션의 학습은
+    #   그 에이전트의 것이다. 둘 이상이면 누구 것인지 관측만으로는 못 정하므로 추측하지
+    #   않는다 — 모델이 스스로 적은 slug 가 있으면 그것만 쓴다.
+    # ★관측 귀속은 **세션 창이 확실할 때만** 한다.
+    #   started_epoch 이 0이면(트랜스크립트 생성시각 없음) 창이 6시간 폴백으로 넓어져,
+    #   그 사이 아무 때나 빌린 에이전트가 "이번 세션에 돌았다"로 보인다. 그 상태에서
+    #   귀속하면 무관한 학습이 남의 서랍에 들어간다. 같은 이유로 아래 gap 판정도
+    #   started_epoch>0 일 때만 한다 — 그 규칙을 여기서도 지킨다.
+    #   모델이 스스로 적은 slug 는 이 제한과 무관하게 예전처럼 존중된다.
+    observed_slug = active[0] if (len(active) == 1 and started_epoch > 0) else ""
     for event in events:
         slug = str(event.get("agent_slug") or "")
+        scope = str(event.get("scope") or "")
+        if not slug and scope != "user_identity":
+            # 사람에 대한 사실은 에이전트의 것이 아니다 — 언제나 One 에 남는다.
+            if observed_slug:
+                slug = observed_slug
+                event = {**event, "agent_slug": slug, "attribution": "host-observed"}
+            elif scope == "agent_repo" and started_epoch > 0 and len(active) > 1:
+                # ★"주인이 여럿이라 못 정한다"와 "세션 창을 몰라 못 정한다"는 다른 상황이다.
+                #   전자만 표시한다 — 빌린 에이전트가 둘 이상 확실히 돌았으므로 이 학습을
+                #   One 의 기억으로 삼으면 남의 도메인 지식을 자기 것으로 기억하게 된다.
+                #   후자(창 불확실)는 아무 판단도 하지 않고 예전 그대로 One 에 남긴다 —
+                #   모르는 것을 근거로 거절하면 멀쩡한 학습이 사라진다.
+                event = {**event, "attribution": "ambiguous"}
         if slug not in active:
             remaining.append(event)
             continue
@@ -1476,8 +1522,24 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         pass  # migration must never block a session; curate() retries it
 
     harvested = 0
+    declined: dict[str, int] = {}
     project_slug = resolve_project_slug(workspace)
     for event in events:
+        # ★거절은 **누구 것인지 못 정한 에이전트 학습** 하나뿐이다.
+        #
+        #   귀속에 성공한 agent_repo 는 위 라우팅에서 이미 그 에이전트 서랍으로 갔고,
+        #   여기 남은 것은 빌린 에이전트가 여럿이라 관측만으로 주인을 못 정한 경우다.
+        #   추측해서 One 의 기억으로 만들면, 그 사람의 비서가 남의 도메인 지식을
+        #   자기 것으로 기억하게 된다.
+        #
+        #   조용히 버리지는 않는다 — 무엇을 왜 안 받았는지 영수증에 남겨, 잘못
+        #   라우팅된 학습이 "없었던 일"이 되지 않게 한다.
+        scope = str(event.get("scope") or "")
+        ambiguous = str(event.get("attribution") or "") == "ambiguous"
+        if scope not in _ONE_OWNED_SCOPES or ambiguous:
+            reason = "ambiguous_agent" if ambiguous else (scope or "unknown")
+            declined[reason] = declined.get(reason, 0) + 1
+            continue
         if emit_ticket(
             root,
             content=event["content"],
@@ -1494,7 +1556,7 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
 
     capsule = _capsule_written_since(workspace, started)
 
-    if not substantial and harvested == 0 and not borrowed_receipt:
+    if not substantial and harvested == 0 and not borrowed_receipt and not declined:
         return {"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits}
 
     receipt = record_session_receipt(
@@ -1505,6 +1567,10 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         detail=f"host={host or 'claude'} tool_uses={tool_uses} edits={edits} harvested={harvested}",
     )
     receipt["harvested"] = harvested
+    # 거절한 것은 반드시 보인다 — "안 받았다"가 조용하면 잘못 라우팅된 학습이
+    # 없었던 일이 된다(P0: 알릴 수 없으면 완화하지 마라).
+    if declined:
+        receipt["declinedByScope"] = declined
     if borrowed_receipt:
         receipt["borrowedAgents"] = borrowed_receipt
     # A missing learning capsule is a fact about the session, so it belongs on the
