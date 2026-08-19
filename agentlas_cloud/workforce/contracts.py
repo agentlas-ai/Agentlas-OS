@@ -402,6 +402,58 @@ def workforce_public_slot_ids() -> frozenset[str]:
     })
 
 
+def find_cycle(edges: list[Mapping[str, Any]], slot_ids: set[str]) -> list[str] | None:
+    """Return the slot path that closes a cycle, or None.
+
+    ★Why it returns the path and not a bool. Measured 2026-08-19: a three-slot
+    task force was rejected with the bare string `task_force_cycle` and nothing
+    else — no edge, no slots, no path. The caller had to deduce which of its
+    edges was the back edge by reading its own request. Boundary rejections in
+    this same engine carry `{code, path}`; this one carried a word. A rejection
+    that does not say what to change is a rejection the caller answers by
+    guessing.
+
+    The path reads source-first and repeats the entry node last, e.g.
+    ["researcher", "research", "quality-engineer", "researcher"], so the closing
+    (back) edge is the last hop.
+    """
+    graph: dict[str, list[str]] = {slot_id: [] for slot_id in slot_ids}
+    for edge in edges:
+        source = str(edge.get("fromSlot") or "")
+        target = str(edge.get("toSlot") or "")
+        if source in graph and target in graph and source != target:
+            if target not in graph[source]:
+                graph[source].append(target)
+        elif source == target and source:
+            return [source, source]  # a self-edge is its own cycle
+    visiting: list[str] = []
+    on_stack: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> list[str] | None:
+        if node in on_stack:
+            # 여기서부터 지금 노드까지가 순환이다. 진입 노드를 끝에 한 번 더 붙여 닫는다.
+            return visiting[visiting.index(node):] + [node]
+        if node in visited:
+            return None
+        on_stack.add(node)
+        visiting.append(node)
+        for child in graph[node]:
+            found = visit(child)
+            if found is not None:
+                return found
+        visiting.pop()
+        on_stack.discard(node)
+        visited.add(node)
+        return None
+
+    for node in graph:
+        found = visit(node)
+        if found is not None:
+            return found
+    return None
+
+
 def validate_work_order_semantics(work_order: Mapping[str, Any]) -> list[dict[str, str]]:
     """Validate ontology identity and bounded host IDs in a WorkOrder.
 
@@ -501,7 +553,51 @@ def validate_work_order_semantics(work_order: Mapping[str, Any]) -> list[dict[st
                 WORKFORCE_V1_PUBLIC_ARTIFACT_IDS,
                 "artifact_concept_not_public_finite",
             )
+        _add_work_order_cycle_issue(work_order, add)
     return issues
+
+
+def _add_work_order_cycle_issue(
+    work_order: Mapping[str, Any],
+    add: Any,
+) -> None:
+    """Refuse a task force whose hand-offs loop, at the cheapest possible moment.
+
+    ★Why this check moved here (measured 2026-08-19). The cycle rule lived only
+    in Selection validation, on `selection.edges`. But `selection.edges` is in
+    practice a copy of `workOrder.edges`, so a looping work order sailed through
+    `search_candidates` — three sources federated, 60 local + 15 cloud + 60 hub
+    candidates returned, all with success receipts — and only then did
+    `validate_selection` refuse it.
+
+    The cost of catching it late is not one wasted call. `edges` live inside the
+    WorkOrder, so repairing the loop changes `workOrderDigest`, which invalidates
+    the pinned candidate set, which forces a **complete re-run of
+    search_candidates** for a new selectionSessionId. That is the entire
+    three-source federation, paid twice, for a defect visible in the request
+    before the first outbound byte.
+
+    A rejection here costs nothing and names the loop.
+    """
+    edges = work_order.get("edges")
+    if not isinstance(edges, list):
+        return
+    slot_ids = {
+        str(slot.get("slotId"))
+        for slot in work_order.get("roleSlots") or []
+        if isinstance(slot, Mapping) and isinstance(slot.get("slotId"), str)
+    }
+    # WorkOrder edges name slots with `from`/`to`; Selection edges use
+    # `fromSlot`/`toSlot`. Same graph, two spellings — translate rather than
+    # duplicating the traversal (that split is why this was never checked here).
+    translated = [
+        {"fromSlot": edge.get("from"), "toSlot": edge.get("to")}
+        for edge in edges
+        if isinstance(edge, Mapping)
+    ]
+    cycle_path = find_cycle(translated, slot_ids)
+    if cycle_path:
+        add("edges", "task_force_cycle:" + ">".join(cycle_path))
 
 # Exact finite aggregate codes emitted by the Hub workforce search boundary.
 # These codes describe eligibility classes only. They must never embed a

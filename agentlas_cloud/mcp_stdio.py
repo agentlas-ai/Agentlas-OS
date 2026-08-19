@@ -254,12 +254,21 @@ def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
 def _resolve_ordinal_assignments(
     selection: Mapping[str, Any],
     candidate_set: Mapping[str, Any],
-) -> tuple[dict[str, Any] | None, str | None]:
+) -> tuple[dict[str, Any] | None, str | None, dict[str, Any] | None]:
     """Resolves each assignment's candidateOrdinal against the stored menu into an exact release ID.
 
-    Returns: (selection normalized to canonical shape, None) or (None, a
-    refusal code). If both an ordinal and a release ID were given and they
-    disagree, this refuses rather than silently picking one.
+    Returns: (selection normalized to canonical shape, None, None) or
+    (None, a refusal code, a detail object naming what was wrong). If both an
+    ordinal and a release ID were given and they disagree, this refuses rather
+    than silently picking one.
+
+    ★The detail object exists because a bare code is not repairable. Ordinals
+    restart at 1 **inside each slot**, so a host that read the menu as one flat
+    list picks numbers far past the end of a slot — measured 2026-08-19, a
+    3-slot Selection sent 13/14/17. Answering only "ordinal_out_of_range" tells
+    that host nothing it did not already know, and it guesses again. This is the
+    same disease the shape_issues block below was written for: name the thing
+    that is actually wrong, and say what would be right.
     """
     slots_by_id: dict[str, list[Mapping[str, Any]]] = {}
     for slot in candidate_set.get("slots", []) or []:
@@ -267,27 +276,53 @@ def _resolve_ordinal_assignments(
             slots_by_id[str(slot.get("slotId"))] = list(slot.get("candidates", []) or [])
     resolved = dict(selection)
     assignments = []
-    for assignment in selection.get("assignments", []) or []:
+    for index, assignment in enumerate(selection.get("assignments", []) or []):
         if not isinstance(assignment, Mapping):
-            return None, "selection_assignment_invalid"
+            return None, "selection_assignment_invalid", {"path": f"assignments[{index}]"}
         assignment = dict(assignment)
         ordinal = assignment.pop("candidateOrdinal", None)
         if ordinal is not None:
-            candidates = slots_by_id.get(str(assignment.get("slotId")))
+            slot_id = str(assignment.get("slotId"))
+            candidates = slots_by_id.get(slot_id)
             if candidates is None:
-                return None, "ordinal_slot_not_in_menu"
+                return None, "ordinal_slot_not_in_menu", {
+                    "path": f"assignments[{index}].slotId",
+                    "slotId": slot_id,
+                    "slotsInMenu": sorted(slots_by_id),
+                }
             if not isinstance(ordinal, int) or not 1 <= ordinal <= len(candidates):
-                return None, "ordinal_out_of_range"
+                return None, "ordinal_out_of_range", {
+                    "path": f"assignments[{index}].candidateOrdinal",
+                    "slotId": slot_id,
+                    "given": ordinal,
+                    "validRange": [1, len(candidates)] if candidates else [],
+                    "candidatesInSlot": len(candidates),
+                    "hint": (
+                        "candidateOrdinal restarts at 1 within each slot — it is not a running "
+                        "number across the whole menu. Count this candidate's position inside "
+                        f"candidateSet.slots[slotId={slot_id}].candidates, or send its "
+                        "agentReleaseId instead."
+                    ),
+                }
             release_id = (candidates[ordinal - 1] or {}).get("agentReleaseId")
             if not isinstance(release_id, str) or not release_id:
-                return None, "ordinal_candidate_unresolvable"
+                return None, "ordinal_candidate_unresolvable", {
+                    "path": f"assignments[{index}].candidateOrdinal",
+                    "slotId": slot_id,
+                    "given": ordinal,
+                }
             existing = assignment.get("agentReleaseId")
             if isinstance(existing, str) and existing and existing != release_id:
-                return None, "ordinal_release_conflict"
+                return None, "ordinal_release_conflict", {
+                    "path": f"assignments[{index}]",
+                    "slotId": slot_id,
+                    "ordinalResolvesTo": release_id,
+                    "agentReleaseIdGiven": existing,
+                }
             assignment["agentReleaseId"] = release_id
         assignments.append(assignment)
     resolved["assignments"] = assignments
-    return resolved, None
+    return resolved, None, None
 
 
 def _host_model_allocation_policy() -> dict[str, Any]:
@@ -2177,7 +2212,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     for row in selection.get("assignments", []) or []
                 )
             ):
-                resolved_selection, ordinal_error = _resolve_ordinal_assignments(selection, candidate_set)
+                resolved_selection, ordinal_error, ordinal_detail = _resolve_ordinal_assignments(
+                    selection, candidate_set
+                )
                 if ordinal_error is not None:
                     return {
                         "action": name,
@@ -2185,6 +2222,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         "error": ordinal_error,
                         "repairable": True,
                         "hubCalls": 0,
+                        # Say which assignment, what was given, and what would be
+                        # accepted. Without this the caller only learns that it was
+                        # wrong, which is exactly what it already knew.
+                        **({"detail": ordinal_detail} if ordinal_detail else {}),
                     }
                 selection = resolved_selection
             # Name the argument that is actually wrong. This check covers two

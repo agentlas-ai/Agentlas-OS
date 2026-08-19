@@ -6,7 +6,12 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
-from .contracts import canonical_digest, normalized_strings, validate_candidate_set_coverage_gaps
+from .contracts import (
+    canonical_digest,
+    find_cycle,
+    normalized_strings,
+    validate_candidate_set_coverage_gaps,
+)
 
 
 def _candidate_maps(candidate_set: Mapping[str, Any]) -> tuple[dict[str, dict[str, dict[str, Any]]], set[str]]:
@@ -35,31 +40,6 @@ def _slot_specs(work_order: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def _has_cycle(edges: list[Mapping[str, Any]], slot_ids: set[str]) -> bool:
-    graph: dict[str, set[str]] = {slot_id: set() for slot_id in slot_ids}
-    for edge in edges:
-        source = str(edge.get("fromSlot") or "")
-        target = str(edge.get("toSlot") or "")
-        if source in graph and target in graph and source != target:
-            graph[source].add(target)
-        elif source == target and source:
-            return True
-    visiting: set[str] = set()
-    visited: set[str] = set()
-
-    def visit(node: str) -> bool:
-        if node in visiting:
-            return True
-        if node in visited:
-            return False
-        visiting.add(node)
-        if any(visit(child) for child in graph[node]):
-            return True
-        visiting.remove(node)
-        visited.add(node)
-        return False
-
-    return any(visit(node) for node in graph)
 
 
 def validate_host_selection(
@@ -175,8 +155,11 @@ def validate_host_selection(
     for edge in edges:
         if str(edge.get("fromSlot") or "") not in specs or str(edge.get("toSlot") or "") not in specs:
             issues.append("edge_references_unknown_slot")
-    if _has_cycle(edges, set(specs)):
-        issues.append("task_force_cycle")
+    cycle_path = find_cycle(edges, set(specs))
+    if cycle_path:
+        # 같은 파일의 다른 issue 들과 같은 형식(콜론 구분)으로 경로를 싣는다.
+        # 예: task_force_cycle:researcher>research>quality-engineer>researcher
+        issues.append("task_force_cycle:" + ">".join(cycle_path))
 
     alternatives = normalized_strings(selection.get("alternativesConsidered"))
     for release_id in alternatives:
