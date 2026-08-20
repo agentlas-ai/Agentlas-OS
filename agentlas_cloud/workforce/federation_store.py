@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -23,6 +23,7 @@ from .privacy import WorkOrderHubBoundaryError, assert_hub_work_order_boundary
 
 
 WORKFORCE_SOURCE_PIN_SCHEMA = "agentlas.workforce-source-pin.v1"
+WORKFORCE_WORK_ORDER_PREFLIGHT_TTL = timedelta(hours=1)
 
 
 class FederationSessionError(ValueError):
@@ -103,6 +104,15 @@ class FederationSessionStore:
                     FOREIGN KEY(federated_selection_session_id)
                       REFERENCES workforce_federation_sessions(selection_session_id)
                       ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS workforce_work_order_preflights (
+                    work_order_ref TEXT PRIMARY KEY,
+                    work_order_id TEXT NOT NULL,
+                    ontology_version TEXT NOT NULL,
+                    work_order_digest TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    work_order_json TEXT NOT NULL,
+                    stored_digest TEXT NOT NULL
                 );
                 """
             )
@@ -335,6 +345,148 @@ class FederationSessionStore:
             "federationDigest": federation_digest,
             "workOrderDigest": work_order_digest,
         }
+
+    def save_work_order_preflight(
+        self,
+        work_order: Mapping[str, Any],
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Pin one locally accepted WorkOrder behind a compact expiring handle.
+
+        Search can resolve this handle without asking the host to echo the full
+        contract.  The record is private, content-addressed and revalidated on
+        every load; it is not a remote Hub session.
+        """
+
+        clock = now or datetime.now(timezone.utc)
+        if clock.tzinfo is None or clock.utcoffset() is None:
+            raise FederationSessionError("federation_clock_must_be_timezone_aware")
+        accepted = normalize_work_order(work_order)
+        if not isinstance(accepted, Mapping):
+            raise FederationSessionError("work_order_preflight_not_accepted")
+        try:
+            boundary = assert_hub_work_order_boundary(accepted)
+            payload = canonical_json(accepted)
+            digest = canonical_digest(accepted)
+        except (WorkOrderHubBoundaryError, TypeError, ValueError):
+            raise FederationSessionError("work_order_preflight_not_accepted") from None
+        if boundary.get("workOrderDigest") != digest:
+            raise FederationSessionError("work_order_preflight_not_accepted")
+        work_order_ref = f"work-order-ref:{digest.removeprefix('sha256:')}"
+        expires_at = (clock.astimezone(timezone.utc) + WORKFORCE_WORK_ORDER_PREFLIGHT_TTL).isoformat().replace(
+            "+00:00", "Z"
+        )
+        self.purge_work_order_preflights(now=clock)
+        with closing(self._connect()) as connection, connection:
+            existing = connection.execute(
+                """
+                SELECT work_order_id, ontology_version, work_order_digest,
+                       expires_at, work_order_json, stored_digest
+                FROM workforce_work_order_preflights
+                WHERE work_order_ref = ?
+                """,
+                (work_order_ref,),
+            ).fetchone()
+            if existing is not None:
+                if (
+                    existing["work_order_id"] != accepted.get("workOrderId")
+                    or existing["ontology_version"] != accepted.get("ontologyVersion")
+                    or existing["work_order_digest"] != digest
+                    or existing["work_order_json"] != payload
+                    or existing["stored_digest"] != digest
+                ):
+                    raise FederationSessionError("work_order_preflight_immutable")
+                expires_at = str(existing["expires_at"])
+                status = "already_pinned"
+            else:
+                connection.execute(
+                    """
+                    INSERT INTO workforce_work_order_preflights(
+                        work_order_ref, work_order_id, ontology_version,
+                        work_order_digest, expires_at, work_order_json,
+                        stored_digest
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        work_order_ref,
+                        accepted["workOrderId"],
+                        accepted["ontologyVersion"],
+                        digest,
+                        expires_at,
+                        payload,
+                        digest,
+                    ),
+                )
+                status = "pinned"
+        return {
+            "status": status,
+            "workOrderRef": work_order_ref,
+            "workOrderDigest": digest,
+            "expiresAt": expires_at,
+            "roleSlotCount": len(accepted.get("roleSlots") or []),
+        }
+
+    def preflight_work_order(
+        self,
+        work_order_ref: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Resolve and revalidate an exact WorkOrder preflight handle."""
+
+        with closing(self._connect()) as connection, connection:
+            row = connection.execute(
+                """
+                SELECT work_order_id, ontology_version, work_order_digest,
+                       expires_at, work_order_json, stored_digest
+                FROM workforce_work_order_preflights
+                WHERE work_order_ref = ?
+                """,
+                (work_order_ref,),
+            ).fetchone()
+        if row is None:
+            raise FederationSessionError("work_order_preflight_not_found")
+        clock = now or datetime.now(timezone.utc)
+        if clock.tzinfo is None or clock.utcoffset() is None:
+            raise FederationSessionError("federation_clock_must_be_timezone_aware")
+        try:
+            expiry = datetime.fromisoformat(str(row["expires_at"]).replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise FederationSessionError("stored_work_order_preflight_expiry_invalid") from exc
+        if expiry <= clock.astimezone(timezone.utc):
+            raise FederationSessionError("work_order_preflight_expired")
+        try:
+            work_order = normalize_work_order(json.loads(row["work_order_json"]))
+            boundary = assert_hub_work_order_boundary(work_order)
+            payload = canonical_json(work_order)
+            digest = canonical_digest(work_order)
+        except (json.JSONDecodeError, WorkOrderHubBoundaryError, TypeError, ValueError) as exc:
+            raise FederationSessionError("stored_work_order_preflight_invalid") from exc
+        expected_ref = f"work-order-ref:{digest.removeprefix('sha256:')}"
+        if (
+            expected_ref != work_order_ref
+            or row["work_order_id"] != work_order.get("workOrderId")
+            or row["ontology_version"] != work_order.get("ontologyVersion")
+            or row["work_order_digest"] != digest
+            or row["stored_digest"] != digest
+            or row["work_order_json"] != payload
+            or boundary.get("workOrderDigest") != digest
+        ):
+            raise FederationSessionError("stored_work_order_preflight_digest_mismatch")
+        return dict(work_order)
+
+    def purge_work_order_preflights(self, *, now: datetime | None = None) -> int:
+        clock = now or datetime.now(timezone.utc)
+        if clock.tzinfo is None or clock.utcoffset() is None:
+            raise FederationSessionError("federation_clock_must_be_timezone_aware")
+        cutoff = clock.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        with closing(self._connect()) as connection, connection:
+            cursor = connection.execute(
+                "DELETE FROM workforce_work_order_preflights WHERE expires_at <= ?",
+                (cutoff,),
+            )
+        return int(cursor.rowcount)
 
     @staticmethod
     def _accepted_work_order(

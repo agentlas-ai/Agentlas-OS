@@ -212,10 +212,26 @@ def validate_host_selection(
             assignments=[],
             edges=[],
         )
+    # ★"mandatory" 라는 이름과 그 효력이 달랐다 — 실측 2026-08-20: 배정된 후보
+    # 전원이 요건 미충족인데도 status=accepted, issues=[] 였고, 미충족 사실은
+    # 행 안에 묻혀 있었다. Core 는 대신 고르지 않는다는 원칙은 유지하되(따라서
+    # 여전히 거절하지 않는다), 호스트가 못 보고 지나칠 수 없게 수락 영수증
+    # 최상단에 집계로 올린다. 이름과 효력을 일치시키는 쪽은 이름이다.
+    unmet = [
+        {
+            "slotId": row["slotId"],
+            "agentReleaseId": row["agentReleaseId"],
+            "unmetRequirements": row["candidateMissingMandatory"],
+        }
+        for row in ideal_team
+        if row.get("candidateMissingMandatory")
+    ]
     return {
         "schemaVersion": "agentlas.workforce-selection-validation.v1",
         "status": "rejected" if rejected else "accepted",
         "issues": sorted(set(issues)),
+        "unmetRequirementCount": 0 if rejected else len(unmet),
+        **({"unmetRequirements": unmet} if unmet and not rejected else {}),
         "selectionReceiptId": "workforce-selection:" + canonical_digest(receipt_payload).split(":", 1)[1][:32],
         "decisionOwner": "host_llm",
         "historyInfluence": "none",

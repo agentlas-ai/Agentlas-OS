@@ -1511,14 +1511,32 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     # Record receipts only for edits or sufficiently tool-heavy work, not casual chat.
     substantial = edits > 0 or tool_uses >= SUBSTANTIAL_TOOL_USES
 
+    # ★Workforce 연속성 점검은 이 체크포인트의 어떤 조기 종료보다 앞선다.
+    # "준비만 하고 끝난 세션"은 정의상 편집도 도구 사용도 적어서, 기억 기준의
+    # not_substantial/one_off 분기에 먼저 걸려 조용히 빠져나가던 바로 그 경우다.
+    # 계산은 한 번, 출구는 하나로 모은다.
+    workforce_notice = ""
+    if workspace:
+        try:
+            from .workforce.goal_binding import prepared_not_executed_notice
+
+            workforce_notice = prepared_not_executed_notice(workspace)
+        except Exception:
+            workforce_notice = ""
+
+    def _out(payload: dict[str, Any]) -> dict[str, Any]:
+        if workforce_notice:
+            payload["workforceNotice"] = workforce_notice
+        return payload
+
     # Nothing in this checkpoint can affect a drawer or the One curator. Return
     # before consulting the fallback borrowed-agent window: transcriptless hosts
     # otherwise attach unrelated recently active agents, manufacture a non-empty
     # receipt, and turn an idle Stop event into curation work.
     if not events and not substantial:
         if not enabled:
-            return {"skipped": "one_off"}
-        return {"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits}
+            return _out({"skipped": "one_off"})
+        return _out({"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits})
 
     # R21 W1c/W1d — learnings attributed to a borrowed/built agent land in that
     # agent's own drawer (ticket + ingestable note + gap fallback); everything
@@ -1542,7 +1560,7 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         result: dict[str, Any] = {"skipped": "one_off"}
         if borrowed_receipt:
             result["borrowedAgents"] = borrowed_receipt
-        return result
+        return _out(result)
 
     # M-1 — first-touch self-migration of legacy workspaces (idempotent).
     try:
@@ -1586,7 +1604,7 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     capsule = _capsule_written_since(workspace, started)
 
     if not substantial and harvested == 0 and not borrowed_receipt and not declined:
-        return {"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits}
+        return _out({"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits})
 
     receipt = record_session_receipt(
         root,
@@ -1619,7 +1637,7 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         receipt["curated"] = curate(root)["decisions"]
     except Exception as exc:
         receipt["curated"] = {"error": str(exc)[:120]}
-    return receipt
+    return _out(receipt)
 
 
 WORKSPACE_CONTRACT_VERSION = "1.1.0"
@@ -2902,7 +2920,12 @@ def _main(argv: list[str]) -> int:
             out = stop_hook(root, payload, args.host)
         except Exception as exc:  # The hook must never block the session.
             out = {"error": str(exc)[:200], "blocked": False}
-        print(json.dumps({}))          # Keep Claude Code session flow unchanged.
+        # Session flow stays unblocked. The one thing that is surfaced is a
+        # fact the user cannot otherwise see: a Workforce roster that was
+        # prepared and never executed. A warning, never a block — the decision
+        # is the person's; only the silence is removed.
+        notice = out.get("workforceNotice") if isinstance(out, dict) else ""
+        print(json.dumps({"systemMessage": notice} if notice else {}, ensure_ascii=False))
         sys.stderr.write(json.dumps(out, ensure_ascii=False) + "\n")
         return 0
     else:

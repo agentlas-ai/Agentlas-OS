@@ -264,6 +264,7 @@ required_files=(
   "agentlas_cloud/model_allocation.py"
   "agentlas_cloud/workforce/__init__.py"
   "agentlas_cloud/workforce/compiler.py"
+  "agentlas_cloud/workforce/work_order_adapter.py"
   "agentlas_cloud/workforce/index.py"
   "agentlas_cloud/workforce/selection.py"
   "agentlas_cloud/workforce/execution.py"

@@ -13,8 +13,13 @@ Core reaches Cloud and Hub through its internal upstream client. Network means a
 Local agents, the signed-in owner's Cloud agents, and public Hub agents.
 
 The user does not need to say `goal`. First call `workforce.goal_context` for
-the current project. If it returns an active binding for this ongoing work,
-reuse that exact roster and `goalId` before considering recruitment.
+the current project, passing `knownRevisions` with any `goalId -> rosterRevision`
+pairs already in this conversation so unchanged goals come back as one line. If
+it returns an active binding for this ongoing work, reuse that exact roster and
+`goalId` before considering recruitment. If it returns `pendingExecution`, those
+releases were prepared and never run: either run them now or say so plainly —
+preparation is not delivery, and the session-end checkpoint reports the same
+fact to the user.
 
 Before the first Cloud or Hub source call, reuse the installed Agentlas
 sign-in. Resolve the runner in this order and use it only for authentication;
@@ -34,8 +39,15 @@ done
 [ -n "$RUNNER" ] && "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
 ```
 
-1. Author a redacted `agentlas.workforce-work-order.v1` with distinct role
-   slots: a specific `task`, `cardinality`, `criticality`, and — only when they
+1. Call `workforce.preflight_work_order` with a compact draft: `taskBrief`,
+   one `roles` entry per materially distinct responsibility, and `edges` by
+   1-based role ordinal. Core compiles the exact redacted
+   `agentlas.workforce-work-order.v1`, generates every transaction/slot/artifact
+   id, fills omitted arrays, validates the privacy boundary and returns a
+   one-hour `workOrderRef`. Write required skills as plain English phrases when
+   no ontology id is obvious — Core normalizes them and reports each rewrite as
+   `normalizedConcepts`. Give each role a specific `task`, `cardinality`,
+   `criticality`, and — only when they
    genuinely constrain the hire — required communities/skills/knowledge,
    runtimes, and `languages`. Leave every other slot field out entirely: an
    absent list field IS the empty constraint (the wire normalizes absent to
@@ -43,7 +55,9 @@ done
    forbiddenAuthorities, consumes, produces, requiredRoles, or modalities —
    tools, authorities, and modalities attach to the executing runtime, not the
    agent card, so those gates only exclude real candidates; describe ordinary
-   inputs/outputs in the task text and inter-slot handoffs in `edges`. Hand-off
+   inputs/outputs in the task text and inter-slot handoffs in `edges`. An edge
+   is a declaration of handoff and never a qualification requirement — only what
+   you actually write as a required skill/role/tool narrows the menu. Hand-off
    edges must be acyclic: a review or feedback edge that points back to an
    earlier slot is rejected as `task_force_cycle:<the loop path>` — model review
    as a forward hand-off to the reviewer, not a back-edge (measured 2026-08-19:
@@ -73,7 +87,7 @@ done
    it to the language the work product must be produced in (e.g. `ko`) even
    though the order itself is written in English.
 2. Call `workforce.search_candidates` on `hephaestus-network` with
-   `{workOrder, sourceScope: "network"}`. Preserve every source receipt and
+   `{workOrderRef, sourceScope: "network"}`. Preserve every source receipt and
    `selectionSessionId`; the default projected menu is not a complete
    `federationResult` and must not be echoed as one. An
    unavailable source is explicit; it is not permission to pretend that source
@@ -88,19 +102,25 @@ done
    **decide from those full cards**, never from the summary alone. Keep the
    shortlist generous (six to eight per slot): the summary is for discarding
    the obviously wrong, not for picking the winner.
-3. As the active host LLM, author `agentlas.workforce-selection.v1` from the
-   returned content and qualification evidence. Call
-   `workforce.validate_selection` with `{selection}` only —
-   `selection.selectionSessionId` lets Core load the pinned menu and the pinned
-   WorkOrder itself; echoing either back adds bytes but no information (Core
-   only byte-compares echoes to its own store). Keep the accepted response's
+3. As the active host LLM, decide the staffing from the returned content and
+   qualification evidence, then call `workforce.validate_selection` with
+   `{decision}`: `selectionSessionId`, `decisionAuthor` (your real model id),
+   and one `assignments` row per post naming the candidate by its per-slot
+   `candidateOrdinal` with `reasonCodes`. Core loads the pinned menu and the
+   pinned WorkOrder from that session, supplies the candidate-set digest and the
+   arrays that are empty in a normal decision, and compiles the exact
+   `agentlas.workforce-selection.v1`. Keep the accepted response's
    `federatedSelectionDigest`. Revise on rejection. Deterministic code may
    enforce governance but must not choose, rerank, or silently substitute the
-   roster.
+   roster. An accepted result may still carry `unmetRequirementCount` — that is
+   not a rejection, but read `selectionValidation.unmetRequirements` and either
+   accept the gap deliberately or reselect. Never report an accepted validation
+   as if nothing were unmet.
 4. Call `workforce.prepare_execution` with
    `{selection, federatedSelectionDigest, projectDir, goalId?, fullDossier: false}`.
    `projectDir` is mandatory. Pass the incumbent `goalId` when continuing;
-   otherwise Core derives one from the WorkOrder id. Core must automatically
+   otherwise Core joins this project's incumbent active automatic goal, and
+   opens a new one only when there is none. Core must automatically
    bind a successful preparation before execution, so continuity cannot be
    skipped because no explicit goal mode was requested.
    `fullDossier: false` requests the projected response

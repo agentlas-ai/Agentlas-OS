@@ -34,6 +34,7 @@ WORKFORCE_GOAL_TURN_SCHEMA = "agentlas.workforce-goal-turn.v1"
 _GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$")
 _DECISIONS = frozenset({"reuse", "recruit", "local-only", "blocked", "standby"})
 _TERMINAL_STATUSES = frozenset({"completed", "cancelled"})
+_OPAQUE_LABEL_RE = re.compile(r"^(release|agr_|definition)[:_]?[0-9a-f]{8,}", re.IGNORECASE)
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
@@ -158,6 +159,42 @@ def implicit_goal_id(
         raise WorkforceGoalBindingError("workforce_goal_seed_missing")
     digest = hashlib.sha256(work_order_id.encode("utf-8")).hexdigest()[:40]
     return f"goal:auto:{digest}"
+
+
+def resolve_continuity_goal_id(
+    *,
+    project_dir: str | Path,
+    work_order: Mapping[str, Any] | None = None,
+    requested_goal_id: str | None = None,
+    store: "WorkforceGoalStore | None" = None,
+) -> str:
+    """Resolve the goal a preparation belongs to, preferring the incumbent.
+
+    ★암묵 goal 은 WorkOrder 마다가 아니라 프로젝트 연속성마다 하나다.
+
+    implicit_goal_id 는 workOrderId 에서 파생되므로 새 작업마다 새 goal 이
+    생겼다. SKILL.md 4절은 "이후 준비는 incumbent goalId 로 새 릴리스만
+    덧붙인다"고 규정하는데, incumbent 를 **찾는** 단계가 어디에도 구현돼 있지
+    않아 호스트가 goalId 를 직접 넘겨야만 성립했다. 실측 2026-08-21: 프로젝트
+    하나에 활성 goal 3개·로스터 21행이 쌓였고 그중 19행(90%)은 한 번도 쓰인
+    적이 없다. 읽기 상한이 8이라 조회 비용도 함께 자란다. 명시 goalId 가
+    없으면 이 프로젝트의 현직 자동 goal 에 추가한다 — "recruitment is additive"
+    를 정책 문장이 아니라 코드로.
+    """
+
+    if isinstance(requested_goal_id, str) and requested_goal_id.strip():
+        return _assert_goal_id(requested_goal_id)
+    try:
+        incumbent = (store or WorkforceGoalStore()).context(project_dir=project_dir)
+    except (OSError, sqlite3.Error, WorkforceGoalBindingError):
+        incumbent = {"goals": []}
+    for candidate in incumbent.get("goals") or []:
+        if not isinstance(candidate, Mapping):
+            continue
+        candidate_id = str(candidate.get("goalId") or "")
+        if candidate.get("status") == "active" and candidate_id.startswith("goal:auto:"):
+            return candidate_id
+    return implicit_goal_id(work_order=work_order, requested_goal_id=None)
 
 
 def workforce_preparation_ready(result: Any) -> bool:
@@ -931,6 +968,66 @@ class WorkforceGoalStore:
         }
 
 
+def _readable_roster_name(row: Mapping[str, Any]) -> str:
+    """A roster line a person can read.
+
+    Automatic binding used to store no label at all, so `display_label` fell
+    back to a release id. Those rows still exist, and a warning made of hashes
+    is a warning nobody acts on. Prefer the stored name; otherwise name the
+    post plus a short id so the row is still identifiable.
+    """
+
+    label = str(row.get("label") or "").strip()
+    release_id = str(row.get("agentReleaseId") or "").strip()
+    if label and label != release_id and not _OPAQUE_LABEL_RE.match(label):
+        return label[:80]
+    slot = str(row.get("slotId") or "slot").removeprefix("slot:")
+    return f"{slot}({release_id[-8:] or 'unknown'})"
+
+
+def prepared_not_executed_notice(project_dir: str | Path) -> str:
+    """One user-facing sentence when a bound roster was prepared and never run.
+
+    ★"내는 결과에는 유저가 볼 수 있는 사실이 있어야 한다" 의 실행판.
+
+    실행 단계(SKILL.md 6·7절)는 전부 모델에게 주는 지시였고, 그것을 관측하는
+    호스트 장치가 하나도 없었다. 그래서 "준비만 하고 종료"가 명백한 계약 위반인데
+    아무도 못 잡았다 — 실측 2026-08-21: 이 프로젝트 로스터 21행 중 19행(90%)이
+    lastUsedAt=null, 즉 실행됐다는 주장조차 없었다. 세션 종료는 모든 설치가
+    반드시 지나는 한 지점이므로, 새 훅 이벤트를 등록하지 않고 여기서 사실을
+    말한다. 막지는 않는다 — 판단은 사람이 하고, 침묵만 없앤다.
+    """
+
+    try:
+        context = WorkforceGoalStore().context(project_dir=project_dir)
+    except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError):
+        return ""
+    names: list[str] = []
+    goals = 0
+    for goal in context.get("goals") or []:
+        if not isinstance(goal, Mapping) or goal.get("status") != "active":
+            continue
+        pending = [
+            _readable_roster_name(row)
+            for row in goal.get("roster") or []
+            if isinstance(row, Mapping) and not row.get("lastUsedAt")
+        ]
+        if pending:
+            goals += 1
+            names.extend(pending)
+    if not names:
+        return ""
+    unique = list(dict.fromkeys(names))
+    shown = ", ".join(unique[:6])
+    if len(unique) > 6:
+        shown += f", +{len(unique) - 6} more"
+    return (
+        f"Agentlas Workforce: {len(names)} prepared agent(s) across {goals} active goal(s) "
+        f"have never been executed — {shown}. Preparation is not delivery. Either run them and record "
+        "the turn with workforce.record_goal_turn, or tell the user the roster is prepared but not executed."
+    )
+
+
 def compact_goal_context(
     project_dir: str | Path,
     *,
@@ -976,11 +1073,14 @@ def bind_prepared_goal(
 ) -> dict[str, Any]:
     """Mandatory post-prepare gate used by CLI/MCP/Desktop/Terminal adapters."""
 
-    resolved_goal_id = implicit_goal_id(
+    goal_store = store or WorkforceGoalStore()
+    resolved_goal_id = resolve_continuity_goal_id(
+        project_dir=project_dir,
         work_order=work_order,
         requested_goal_id=requested_goal_id,
+        store=goal_store,
     )
-    return (store or WorkforceGoalStore()).bind(
+    return goal_store.bind(
         goal_id=resolved_goal_id,
         project_dir=project_dir,
         preparation=preparation,
@@ -996,12 +1096,14 @@ __all__ = [
     "WorkforceGoalBindingError",
     "WorkforceGoalStore",
     "compact_goal_context",
+    "prepared_not_executed_notice",
     "bind_prepared_goal",
     "account_partition_for_subject",
     "current_account_partition",
     "default_goal_store_path",
     "default_goal_runtime_root",
     "implicit_goal_id",
+    "resolve_continuity_goal_id",
     "workforce_preparation_ready",
     "workforce_preparation_refusal",
 ]

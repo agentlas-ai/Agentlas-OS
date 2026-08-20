@@ -37,6 +37,7 @@ from .project_bootstrap import (
     _is_version_contract_path,
     _safe_file,
     _policy_allows,
+    _regular_file_digest,
     _walk_file_list,
     _walk_local_test_files,
     generate_code_map,
@@ -388,11 +389,13 @@ def _passive_code_map_fingerprint(
             "size": metadata.st_size,
         }
     _check_budget()
-    try:
-        snapshot_id, _hashes, _read_bytes = _content_snapshot(root, relative_files, policy)
-    except OSError as exc:
-        raise ContextMapError("context_freshness_incomplete") from exc
-    return _fingerprint_hash(fingerprints), snapshot_id, len(code_files), len(fingerprints), source
+    # Passive freshness is metadata-addressed. mtime+ctime+size and the complete
+    # relative path set catch ordinary writes, replacements, deletes, policy
+    # edits and renames without re-reading the repository. generate_code_map
+    # still creates the content-addressed snapshot once after this proves stale.
+    # Measured on the owner workspace: the old passive check read 7.74 GB on
+    # every Context Map call.
+    return _fingerprint_hash(fingerprints), "", len(code_files), len(fingerprints), source
 
 
 def _require_passive_freshness(
@@ -402,11 +405,11 @@ def _require_passive_freshness(
     *,
     budget_seconds: float | None = None,
 ) -> None:
-    _fingerprint, snapshot_id, code_files, mapped_files, source = _passive_code_map_fingerprint(
+    fingerprint, _snapshot_id, code_files, mapped_files, source = _passive_code_map_fingerprint(
         root, budget_seconds=budget_seconds
     )
     if (
-        snapshot_id != str(payload.get("snapshotId") or "")
+        fingerprint != str(payload.get("fingerprintHash") or cache.get("fingerprintHash") or "")
         or int(cache.get("candidateCodeFiles", -1)) != code_files
         or int(cache.get("candidateMappedFiles", -1)) != mapped_files
         or cache.get("completeListing") is not True
@@ -433,12 +436,12 @@ def load_code_map(
     slice to the very sessions doing the work. A stale map with a stale flag
     beats no map.
 
-    ``freshness_budget_seconds`` caps that passive check. Exhausting it is not
+    ``freshness_budget_seconds`` caps that metadata-only passive check. Exhausting it is not
     an error for a caller that already accepts stale data: the map is served
     with ``refresh: "unverified_served"``, which says "this map may be current,
     we did not have time to prove it" — distinct from ``stale_served``, which
-    says "we proved it is behind". Measured on the pilot repository the check
-    costs 11.0s against a 10s PreToolUse contract and a 4s Desktop kill, so
+    says "we proved it is behind". Before the metadata fast path, the pilot
+    repository check cost 11.0s against a 10s PreToolUse contract and a 4s Desktop kill, so
     without a budget every recall on a large project silently produced nothing.
     """
 
@@ -459,7 +462,8 @@ def load_code_map(
             or refresh_stats.get("outputTruncated") is True
         ):
             raise ContextMapError("context_refresh_incomplete")
-    payload = _regular_json(root / ".agentlas" / "code-map" / "project-map.json", max_bytes=MAX_MAP_BYTES)
+    map_path = root / ".agentlas" / "code-map" / "project-map.json"
+    payload = _regular_json(map_path, max_bytes=MAX_MAP_BYTES)
     schema = str(payload.get("schemaVersion") or "")
     if schema not in {CODE_MAP_SCHEMA, "5.0"}:
         raise ContextMapError("context_map_upgrade_required")
@@ -510,7 +514,27 @@ def load_code_map(
         if isinstance(manifest.get("compatibilityMap"), dict)
         else {}
     )
-    payload_digest = _canonical_digest(payload)
+    declared_file_digest = compatibility_map.get("fileDigest")
+    if isinstance(declared_file_digest, str) and declared_file_digest:
+        digest_binding_complete = (
+            cache.get("mapFileDigest") == declared_file_digest
+            and cache.get("mapPayloadDigest") == compatibility_map.get("digest")
+            and bool(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(compatibility_map.get("digest") or ""),
+                )
+            )
+            and _regular_file_digest(map_path) == declared_file_digest
+        )
+    else:
+        # Legacy maps migrate on their next generation. Until then preserve the
+        # old canonical JSON integrity check exactly once per load.
+        payload_digest = _canonical_digest(payload)
+        digest_binding_complete = (
+            cache.get("mapPayloadDigest") == payload_digest
+            and compatibility_map.get("digest") == payload_digest
+        )
     if (
         not re.fullmatch(r"sha256:[0-9a-f]{64}", fingerprint)
         or not re.fullmatch(r"sha256:[0-9a-f]{64}", snapshot_id)
@@ -521,7 +545,7 @@ def load_code_map(
         or cache.get("fingerprintHash") != fingerprint
         or cache.get("snapshotId") != snapshot_id
         or cache.get("policyDigest") != payload.get("policyDigest")
-        or cache.get("mapPayloadDigest") != payload_digest
+        or not digest_binding_complete
         or manifest.get("schemaVersion") != CODE_MAP_MANIFEST_SCHEMA
         or manifest.get("projectRootHash") != expected_root_hash
         or manifest.get("snapshotId") != snapshot_id
@@ -529,7 +553,6 @@ def load_code_map(
         or manifest.get("complete") is not True
         or compatibility_map.get("path") != "project-map.json"
         or compatibility_map.get("schemaVersion") != schema
-        or compatibility_map.get("digest") != payload_digest
         or int(cache.get("candidateMappedFiles") or -1)
         != int(stats.get("candidateMappedFiles") or -2)
         or (
@@ -1815,6 +1838,14 @@ def impact(
         else:
             if normalized is None:
                 raise ContextMapError("context_changed_target_invalid")
+            if (
+                not _policy_allows(normalized, _context_index_policy(root))
+                and _safe_file(root, root / normalized)
+            ):
+                # "unknown" used to hide a very different and actionable fact:
+                # the caller named a real project file, but the project policy
+                # deliberately excluded it from the index.
+                raise ContextMapError("context_changed_target_excluded_by_policy")
             key = raw.strip().lower()
             if key and key in definitions:
                 changed_symbols.append(key)

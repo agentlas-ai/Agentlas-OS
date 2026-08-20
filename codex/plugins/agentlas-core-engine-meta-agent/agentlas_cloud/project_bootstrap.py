@@ -379,8 +379,17 @@ def _content_snapshot(
     root: Path,
     relative_files: Sequence[str],
     policy: Mapping[str, Any],
+    *,
+    previous_hashes: Mapping[str, str] | None = None,
+    previous_fingerprints: Mapping[str, Mapping[str, int]] | None = None,
+    current_fingerprints: Mapping[str, Mapping[str, int]] | None = None,
 ) -> tuple[str, dict[str, str], int]:
-    """Return a content-addressed snapshot; stat timestamps are cache hints only."""
+    """Return a content-addressed snapshot, rehashing only changed files.
+
+    Reuse is allowed only when the prior map passed its full binding check and
+    the path's mtime+ctime+size tuple is byte-identical. The aggregate snapshot
+    remains content-addressed; metadata is only the safe incremental hint.
+    """
 
     digest = hashlib.sha256()
     content_hashes: dict[str, str] = {}
@@ -388,21 +397,35 @@ def _content_snapshot(
     digest.update(_policy_digest(policy).encode("ascii"))
     digest.update(b"\0")
     for relative in sorted(relative_files):
-        path = root / relative
-        file_digest = hashlib.sha256()
-        try:
-            with path.open("rb") as handle:
-                while True:
-                    chunk = handle.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    read_bytes += len(chunk)
-                    if read_bytes > MAX_SNAPSHOT_READ_BYTES:
-                        raise OSError("context_snapshot_read_budget_exceeded")
-                    file_digest.update(chunk)
-        except OSError:
-            raise
-        value = "sha256:" + file_digest.hexdigest()
+        previous_hash = previous_hashes.get(relative) if previous_hashes else None
+        previous_fingerprint = (
+            previous_fingerprints.get(relative) if previous_fingerprints else None
+        )
+        current_fingerprint = current_fingerprints.get(relative) if current_fingerprints else None
+        if (
+            isinstance(previous_hash, str)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", previous_hash)
+            and isinstance(previous_fingerprint, Mapping)
+            and isinstance(current_fingerprint, Mapping)
+            and dict(previous_fingerprint) == dict(current_fingerprint)
+        ):
+            value = previous_hash
+        else:
+            path = root / relative
+            file_digest = hashlib.sha256()
+            try:
+                with path.open("rb") as handle:
+                    while True:
+                        chunk = handle.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        read_bytes += len(chunk)
+                        if read_bytes > MAX_SNAPSHOT_READ_BYTES:
+                            raise OSError("context_snapshot_read_budget_exceeded")
+                        file_digest.update(chunk)
+            except OSError:
+                raise
+            value = "sha256:" + file_digest.hexdigest()
         content_hashes[relative] = value
         digest.update(relative.encode("utf-8", errors="surrogateescape"))
         digest.update(b"\0")
@@ -1732,6 +1755,37 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _regular_file_digest(path: Path, *, max_bytes: int = MAX_CODE_MAP_BYTES) -> str:
+    """Hash one bounded regular file without materializing canonical JSON."""
+
+    try:
+        metadata = path.stat(follow_symlinks=False)
+    except OSError:
+        return ""
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_size <= 0
+        or metadata.st_size > max_bytes
+    ):
+        return ""
+    digest = hashlib.sha256()
+    read_bytes = 0
+    try:
+        with path.open("rb") as handle:
+            while True:
+                chunk = handle.read(1024 * 1024)
+                if not chunk:
+                    break
+                read_bytes += len(chunk)
+                if read_bytes > max_bytes:
+                    return ""
+                digest.update(chunk)
+    except OSError:
+        return ""
+    return "sha256:" + digest.hexdigest()
+
+
 def _canonical_json_digest(value: Any) -> str:
     raw = json.dumps(
         value,
@@ -1754,6 +1808,30 @@ def _code_map_binding_complete(
     stats = project_map.get("stats") if isinstance(project_map.get("stats"), dict) else {}
     expected_root_hash = _project_root_hash(project)
     manifest = _read_json_object(project / ".agentlas" / "code-map" / "manifest.json")
+    compatibility = (
+        manifest.get("compatibilityMap")
+        if isinstance(manifest.get("compatibilityMap"), dict)
+        else {}
+    )
+    declared_file_digest = compatibility.get("fileDigest")
+    if isinstance(declared_file_digest, str) and declared_file_digest:
+        digest_binding_complete = (
+            cache.get("mapFileDigest") == declared_file_digest
+            and cache.get("mapPayloadDigest") == compatibility.get("digest")
+            and bool(re.fullmatch(r"sha256:[0-9a-f]{64}", str(compatibility.get("digest") or "")))
+            and _regular_file_digest(
+                project / ".agentlas" / "code-map" / "project-map.json"
+            )
+            == declared_file_digest
+        )
+    else:
+        # Additive migration: one legacy map may pay the old canonicalization
+        # cost; its next generation writes the raw file digest fast path.
+        payload_digest = _canonical_json_digest(project_map)
+        digest_binding_complete = (
+            cache.get("mapPayloadDigest") == payload_digest
+            and compatibility.get("digest") == payload_digest
+        )
     return (
         project_map.get("schemaVersion") == "agentlas.code-map.v2"
         and project_map.get("projectRootHash") == expected_root_hash
@@ -1765,16 +1843,14 @@ def _code_map_binding_complete(
         and cache.get("fingerprintHash") == project_map.get("fingerprintHash")
         and cache.get("snapshotId") == project_map.get("snapshotId")
         and cache.get("policyDigest") == project_map.get("policyDigest")
-        and cache.get("mapPayloadDigest") == _canonical_json_digest(project_map)
+        and digest_binding_complete
         and manifest.get("schemaVersion") == CODE_MAP_MANIFEST_SCHEMA
         and manifest.get("projectRootHash") == expected_root_hash
         and manifest.get("snapshotId") == project_map.get("snapshotId")
         and manifest.get("policyDigest") == project_map.get("policyDigest")
         and manifest.get("complete") is True
-        and isinstance(manifest.get("compatibilityMap"), dict)
-        and manifest["compatibilityMap"].get("path") == "project-map.json"
-        and manifest["compatibilityMap"].get("schemaVersion") == project_map.get("schemaVersion")
-        and manifest["compatibilityMap"].get("digest") == _canonical_json_digest(project_map)
+        and compatibility.get("path") == "project-map.json"
+        and compatibility.get("schemaVersion") == project_map.get("schemaVersion")
         and cache.get("completeMap") is True
         and stats.get("coverageComplete") is True
         and stats.get("incompleteReasons") == []
@@ -2567,23 +2643,39 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
             "size": file_stat.st_size,
         }
     fingerprint = _fingerprint_hash(fingerprints)
+    cache = _read_json_object(cache_path)
+    existing_map = _read_json_object(json_path)
+    existing_binding_complete = (
+        not force and _code_map_binding_complete(project, existing_map, cache)
+    )
+    previous_hashes = (
+        existing_map.get("contentHashes")
+        if existing_binding_complete and isinstance(existing_map.get("contentHashes"), dict)
+        else None
+    )
+    previous_fingerprints = (
+        existing_map.get("fileFingerprints")
+        if existing_binding_complete and isinstance(existing_map.get("fileFingerprints"), dict)
+        else None
+    )
     snapshot_complete = False
     try:
         snapshot_id, content_hashes, snapshot_read_bytes = _content_snapshot(
             project,
             relative_files,
             policy,
+            previous_hashes=previous_hashes,
+            previous_fingerprints=previous_fingerprints,
+            current_fingerprints=fingerprints,
         )
         snapshot_complete = True
     except OSError:
         snapshot_id, content_hashes, snapshot_read_bytes = "", {}, 0
         list_stop = list_stop or "snapshot_read_incomplete"
 
-    cache = _read_json_object(cache_path)
-    existing_map = _read_json_object(json_path)
     complete_listing = list_stop is None
     cache_current = (
-        _code_map_binding_complete(project, existing_map, cache)
+        existing_binding_complete
         and cache.get("snapshotId") == snapshot_id
         and existing_map.get("snapshotId") == snapshot_id
         and cache.get("policyDigest") == policy_digest
@@ -2892,6 +2984,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         },
         "tombstones": tombstones,
         "contentHashes": content_hashes,
+        "fileFingerprints": fingerprints,
         "fileSymbols": file_symbols,
         "defIndex": dict(definitions),
         "refIndex": dict(ref_index),
@@ -2932,7 +3025,12 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         project_map["stats"]["incompleteReasons"] = incomplete_reasons
     serialized_map, output_bytes = _bounded_project_map(project_map)
     coverage_complete = project_map["stats"].get("coverageComplete") is True
-    map_payload_digest = _canonical_json_digest(project_map)
+    map_file_digest = "sha256:" + hashlib.sha256(serialized_map.encode("utf-8")).hexdigest()
+    # New maps use the exact on-disk byte digest for both compatibility and
+    # file binding. Canonical re-serialization of a 57 MB map took ~26 seconds
+    # and added no corruption signal beyond the byte digest. Legacy maps keep
+    # their canonical-digest fallback in _code_map_binding_complete.
+    map_payload_digest = map_file_digest
     existed = {path for path in (json_path, md_path, seed_path, cache_path, manifest_path) if path.exists()}
     _ensure_dir(out_dir, 0o700)
     _atomic_write(json_path, serialized_map)
@@ -2976,6 +3074,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
                     "path": "project-map.json",
                     "schemaVersion": project_map["schemaVersion"],
                     "digest": map_payload_digest,
+                    "fileDigest": map_file_digest,
+                    "digestKind": "sha256-file-bytes-v1",
                 },
                 "indexes": {
                     "inventoryCount": len(relative_files),
@@ -3007,6 +3107,8 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
                 "listingSource": source,
                 "projectRootHash": project_root_hash,
                 "mapPayloadDigest": map_payload_digest,
+                "mapFileDigest": map_file_digest,
+                "mapPayloadDigestKind": "sha256-file-bytes-v1",
             },
             ensure_ascii=False,
             indent=2,

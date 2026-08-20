@@ -2,6 +2,90 @@
 
 ## Unreleased
 
+- **Collaboration edges no longer disqualify every candidate.** An edge is a
+  declaration of handoff, not a qualification requirement. Compiling edges into
+  each slot's consumes/produces made discovery unusable: `artifact:worker-result`
+  is the default edge artifact and 0 of 849 local workforce profiles declare it,
+  so a measured 16 of 16 candidates in every slot came back with a mandatory
+  gap. Requirements are now exactly what the author wrote; the handoff stays in
+  `edges`. Same search, same menu: mandatory gaps went 100% -> 0%.
+- **Authored phrases become concept ids instead of a pattern refusal.** A host
+  writes "network efficiency research"; Core normalizes it to
+  `network-efficiency-research`, reports every rewrite as `normalizedConcepts`,
+  and refuses only what cannot be reduced to an ASCII concept — with a code that
+  says so instead of a bare `schema_pattern`.
+- **A staffing decision is compact too.** `workforce.validate_selection` accepts
+  `decision` (session, author, one row per post naming the menu ordinal) and
+  compiles the exact Selection, ending the empty-array ritual that survived in
+  the Selection contract after the WorkOrder lost it.
+- **An accepted receipt can no longer read as "nothing unmet".** Core still does
+  not choose for you, but an accepted validation now carries
+  `unmetRequirementCount` and the exact unmet rows, and the MCP surface repeats
+  it as a notice.
+- **Expansion shows the artifacts again.** `workforce.expand_candidates` is the
+  narrow, exact look, so it no longer replaces produces/consumes with counts —
+  the host could otherwise not judge edge compatibility on any surface.
+- **Continuity stopped growing without bound.** An implicit goal is per project,
+  not per WorkOrder: preparation joins the incumbent active auto goal instead of
+  opening a new one every task (measured: 3 active goals, 21 roster rows for one
+  project). The per-turn read is projected (`goal-context.v2`) and accepts
+  `knownRevisions` for a delta: 5,647 -> 3,894 tokens, and 1,161 on later turns.
+  Automatic binding also stores the agent's name, so a roster line is readable.
+- **Preparation is no longer silently mistaken for delivery.** 19 of 21 bound
+  roster rows had never been executed. `goal_context` now reports
+  `pendingExecution`, and the session-end checkpoint tells the user in their own
+  view — a warning, never a block.
+- **Stopwords stopped scoring.** The `fit:text:term` stopword filter moved from
+  the MCP projection to the ranking source; half of the lexical fit evidence on
+  an accepted receipt was "and"/"the". Requirement gaps also accept a concept
+  family match, so a spelling variant is no longer reported as a gap.
+- **Refusals stopped re-teaching the catalog.** Selection boundary refusals use
+  the same compaction as WorkOrder refusals (81% of a 3.4KB refusal was the
+  contract catalog already declared in the tool contract), and the tool surface
+  the model actually reads dropped from 9,762 to 8,881 tokens.
+- **Preparation stopped shipping a project dump.** `prepare_execution` attached
+  the raw Context Map slice because the compaction lived inside the Context tool
+  branch and nothing else could reach it. Measured: 44,313 of 57,311 response
+  tokens (77%) were that slice, against a 16 KiB budget the Context tools have
+  enforced all along, while the agent directives the host actually executes were
+  3,010. The compactor is now module-level and both preparation paths use it —
+  57,311 -> 13,680 tokens, with every dropped row declared in `omissions`.
+- **`prepare_execution` takes the same compact `decision`.** Re-authoring the
+  exact Selection to run a decision Core had just accepted was the last echo in
+  the sequence.
+- **A gate that could not run stopped reporting success.** `verify-mcp-surface.sh`
+  used `if rg -q ...`; on a machine without ripgrep that exits 127, reads as
+  false, and skipped the "direct remote MCP bypass" check while still printing
+  "passed".
+
+The staffing request is now semantic at the model boundary and exact only
+inside Core.
+
+- **The first WorkOrder is compiled, not guessed.** The host submits a compact
+  task/role/edge draft. Core deterministically generates transaction, slot and
+  artifact IDs, supplies omitted empty fields, pins the ontology, validates the
+  privacy boundary, and returns a one-hour local `workOrderRef`. Search accepts
+  that reference while retaining the legacy exact object for rolling
+  compatibility. An old runtime without this preflight boundary now produces
+  `workforce_protocol_upgrade_required` instead of inviting another hand-built
+  WorkOrder retry.
+- **Network no longer drags the project map through every protocol call.**
+  WorkOrder preflight, search, selection validation, roster continuity and
+  status/auth calls are project-content independent. Removing the accidental
+  common bootstrap reduced installed-runtime preflight from 23.5s to 0.78s;
+  only explicit Context operations and project-grounded legacy routes inspect
+  a working tree.
+- **Context Map refresh is change-driven and incremental.** Authored docs are
+  indexable; generated evidence, binaries and build outputs remain narrowly
+  excluded. A default Context call performs one automatic refresh after a
+  filesystem fingerprint change, while `refresh=false` remains a strict
+  no-write audit. Unchanged files reuse their prior content hashes instead of
+  rereading multi-gigabyte repositories.
+- **Protocol identity is release-gated.** `manifest.json`, MCP `serverInfo` and
+  the Workforce protocol metadata must agree in the release verification gate,
+  so a protocol change cannot remain a same-version local patch that no other
+  installation can discover.
+
 ## v1.2.14
 
 Two things a package could not say about itself, and a gate that disagreed with

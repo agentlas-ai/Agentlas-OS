@@ -50,11 +50,27 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.14"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.16"}
 
 # Roots this process has already seeded, so only the first tool call in a
 # session pays the bootstrap cost.
 _FIRST_CONTACT_ROOTS: set[str] = set()
+
+# Only these legacy project-grounded tools read the caller's working tree or
+# Work Brief at the common MCP boundary.  Typed Workforce tools keep their
+# exact WorkOrder/candidate state in private Core stores; making every one of
+# them bootstrap and parse a project Context Map turned a sub-second local
+# preflight into a measured 23-second call.  Context tools own their explicit
+# projectDir lifecycle below and must not be bootstrapped a second time here.
+_COMMON_PROJECT_BOOTSTRAP_TOOLS = frozenset(
+    {
+        "hephaestus_route",
+        "hephaestus_cloud_search",
+        "hephaestus_search",
+        "hephaestus_call",
+        "hephaestus_hub_invoke",
+    }
+)
 
 
 def _claim_first_contact(project_dir: str) -> bool:
@@ -86,7 +102,7 @@ _HOST_MODEL_ROLE_POLICY_FIELDS = frozenset({
     "requiredCapabilities",
     "inherit",
 })
-WORKFORCE_PROTOCOL_VERSION = "2026-08-13.2"
+WORKFORCE_PROTOCOL_VERSION = "2026-08-21.1"
 
 
 def workforce_protocol_metadata() -> dict[str, Any]:
@@ -110,10 +126,13 @@ def workforce_protocol_metadata() -> dict[str, Any]:
         "goalContextSchemaVersion": "agentlas.workforce-goal-context.v1",
         "goalTurnSchemaVersion": "agentlas.workforce-goal-turn.v1",
         "goalRosterLifetime": "until-explicit-completion",
+        "workOrderPreflightSchemaVersion": "agentlas.workforce-work-order-preflight.v1",
+        "workOrderPreflightLifetime": "one-hour-local-reference",
         "codeMapSchemaVersion": "agentlas.code-map.v2",
         "contextSliceSchemaVersion": "agentlas.context-slice.v1",
         "contextImpactReceiptSchemaVersion": "agentlas.context-impact-receipt.v2",
         "contextVerificationReceiptSchemaVersion": "agentlas.context-verification-receipt.v2",
+        "contextRefreshDefault": "change-driven-auto-on-next-context-call",
         "localContextNetworkTransfer": "denied",
     }
     metadata["protocolDigest"] = canonical_digest(metadata)
@@ -183,6 +202,121 @@ def _selection_property_with_ordinal(description: str) -> dict[str, Any]:
     except (KeyError, TypeError):
         pass
     return schema
+
+
+def _work_order_draft_schema() -> dict[str, Any]:
+    """Small authoring contract compiled into the strict public WorkOrder.
+
+    The exact wire schema remains available to legacy callers, but the normal
+    host path should never guess finite IDs or repeat empty slot arrays.
+    """
+
+    catalog = workforce_contract_metadata("workOrder")["publicIdCatalog"]
+    concept_list = {
+        "type": "array",
+        "maxItems": 256,
+        "uniqueItems": True,
+        "items": {"type": "string", "minLength": 2, "maxLength": 256},
+    }
+    finite_lists = {
+        "requiredAuthorities": catalog["authorityIds"],
+        "forbiddenAuthorities": catalog["authorityIds"],
+        "runtimes": catalog["runtimeIds"],
+        "languages": catalog["languageIds"],
+        "modalities": catalog["modalityIds"],
+    }
+    role_properties: dict[str, Any] = {
+        "title": {"type": "string", "minLength": 1, "maxLength": 160},
+        "task": {"type": "string", "minLength": 1, "maxLength": 32000},
+        "cardinality": {"type": "integer", "minimum": 1, "maximum": 16, "default": 1},
+        "criticality": {"type": "string", "enum": ["required", "optional"], "default": "required"},
+        "allowedEntityKinds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": True,
+            "items": {"type": "string", "enum": ["agent", "team"]},
+            "default": ["agent", "team"],
+        },
+        "minimumEvidenceLevel": {
+            "type": "string",
+            "enum": ["declared", "checked", "demonstrated", "attested"],
+        },
+    }
+    for field in (
+        "requiredCommunities",
+        "optionalCommunities",
+        "excludedCommunities",
+        "requiredRoles",
+        "requiredSkills",
+        "optionalSkills",
+        "requiredKnowledge",
+        "requiredToolCapabilities",
+    ):
+        role_properties[field] = deepcopy(concept_list)
+    for field, values in finite_lists.items():
+        role_properties[field] = {
+            "type": "array",
+            "uniqueItems": True,
+            "items": {"type": "string", "enum": values},
+        }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "taskBrief": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64000,
+                "description": "Public-safe redacted task brief; never include local paths, secrets, account identifiers, or raw memory.",
+            },
+            "roles": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": role_properties,
+                    "required": ["title", "task"],
+                },
+            },
+            "edges": {
+                "type": "array",
+                "maxItems": 128,
+                "description": "Use 1-based role ordinals. Core creates and binds exact slot/artifact IDs.",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "fromRole": {"type": "integer", "minimum": 1, "maximum": 32},
+                        "toRole": {"type": "integer", "minimum": 1, "maximum": 32},
+                        "relation": {
+                            "type": "string",
+                            "enum": ["reportsTo", "handsOffTo", "reviews", "coordinatesWith"],
+                            "default": "handsOffTo",
+                        },
+                        "artifactKinds": {
+                            "type": "array",
+                            "uniqueItems": True,
+                            "items": {"type": "string", "enum": catalog["artifactIds"]},
+                            "default": ["artifact:worker-result"],
+                        },
+                    },
+                    "required": ["fromRole", "toRole"],
+                },
+            },
+            "forbiddenCommunities": deepcopy(concept_list),
+            "selectionPolicy": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "minimumCandidatesPerSlot": {"type": "integer", "minimum": 2, "maximum": 30, "default": 2},
+                    "maximumCandidatesPerSlot": {"type": "integer", "minimum": 2, "maximum": 100, "default": 8},
+                },
+            },
+        },
+        "required": ["taskBrief", "roles"],
+    }
 
 
 _MENU_AUDIT_FIELDS = ("qualificationEvidence", "packageHash", "contentDigest")
@@ -291,7 +425,12 @@ def _expand_candidates(
             "error": "workforce_expand_selection_invalid",
             "hint": "Send candidates as [{slotId, candidateOrdinal}] — ordinals restart at 1 within each slot.",
         }
-    projected = _menu_projection({"candidateSet": dict(candidate_set)})
+    # ★expand 는 "좁힌 뒤 정확히 보는" 단계다 — 여기서까지 produces/consumes 를
+    # 카운트로 치환하면 호스트는 어떤 표면에서도 엣지 호환을 판단할 재료가 없다.
+    # 무게 근거(후보 간 공유 0%)는 60장짜리 메뉴에서 나온 것이고, 좁힌 N장에는
+    # 해당하지 않는다. 실측 2026-08-21: 6장 3,748 tok → 카운트 유지 여부의 차이는
+    # 수백 tok 이고, 그 대가가 결정 불능이었다.
+    projected = _menu_projection({"candidateSet": dict(candidate_set)}, keep_artifacts=True)
     expanded_slots = []
     missing: list[str] = []
     for slot in (projected.get("candidateSet") or {}).get("slots", []):
@@ -320,7 +459,440 @@ def _expand_candidates(
     }
 
 
-def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
+# Fields a per-turn continuity read does not need. The host decides
+# reuse/recruit from labels, slots, sources and state; the exact release
+# identity is resolved by Core from its own store at preparation time and is
+# never retyped by the model. ★실측 2026-08-21: goal_context 12,751B(약 5,647 tok)
+# 중 34%가 64자 digest 였고 토큰으로는 45%(2,530)였다. 이 응답은 SKILL.md 가
+# "매 턴 시작에 읽어라"로 규정한 것이라 그 무게가 모든 턴에 곱해진다.
+_GOAL_ROSTER_AUDIT_FIELDS = (
+    "agentDefinitionId",
+    "agentReleaseId",
+    "releaseVersion",
+    "addedAt",
+    "addedRevision",
+)
+
+
+def _selection_decision_schema() -> dict[str, Any]:
+    """The three things a staffing decision actually contains.
+
+    Which post, which candidate ordinal from the pinned menu, and why. Core
+    fills schemaVersion, the candidate-set digest it already pinned, and the
+    arrays that are empty in almost every real decision.
+    """
+
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["selectionSessionId", "decisionAuthor", "assignments"],
+        "properties": {
+            "selectionSessionId": {"type": "string", "minLength": 1, "maxLength": 256},
+            "decisionAuthor": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["modelId"],
+                "properties": {
+                    "modelId": {"type": "string", "minLength": 1, "maxLength": 255},
+                    "runtimeId": {"type": "string", "maxLength": 255},
+                },
+            },
+            "assignments": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 64,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["slotId"],
+                    "properties": {
+                        "slotId": {"type": "string", "minLength": 1, "maxLength": 256},
+                        "candidateOrdinal": {"type": "integer", "minimum": 1, "maximum": 100},
+                        "agentReleaseId": {"type": "string", "maxLength": 255},
+                        "reasonCodes": {
+                            "type": "array",
+                            "maxItems": 16,
+                            "items": {"type": "string", "minLength": 2, "maxLength": 255},
+                        },
+                    },
+                },
+            },
+            "edges": {
+                "type": "array",
+                "maxItems": 128,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["fromSlot", "toSlot"],
+                    "properties": {
+                        "fromSlot": {"type": "string", "maxLength": 256},
+                        "toSlot": {"type": "string", "maxLength": 256},
+                        "relation": {
+                            "type": "string",
+                            "enum": ["reportsTo", "handsOffTo", "reviews", "coordinatesWith"],
+                        },
+                        "artifactKinds": {"type": "array", "items": {"type": "string", "maxLength": 255}},
+                    },
+                },
+            },
+            "alternativesConsidered": {"type": "array", "items": {"type": "string", "maxLength": 255}},
+            "requestExpansionForSlots": {"type": "array", "items": {"type": "string", "maxLength": 255}},
+        },
+    }
+
+
+def _roster_labels_from_session(selection: Any) -> dict[str, str]:
+    """Map agentReleaseId -> the candidate's human name for the bound roster.
+
+    Automatic binding never passed labels, so `display_label` fell back to the
+    release id and every continuity read (and every user-facing roster line)
+    showed a hash where a name belongs. The names are already pinned in the
+    session store, so no new input is needed from the host.
+    """
+
+    from .workforce.federation_store import FederationSessionError, FederationSessionStore
+
+    session_id = ""
+    if isinstance(selection, Mapping):
+        session_id = str(selection.get("selectionSessionId") or "").strip()
+    if not session_id:
+        return {}
+    try:
+        stored = FederationSessionStore().get(session_id)
+    except (FederationSessionError, OSError, sqlite3.Error, ValueError):
+        return {}
+    candidate_set = stored.get("candidateSet") if isinstance(stored, Mapping) else None
+    if not isinstance(candidate_set, Mapping):
+        return {}
+    labels: dict[str, str] = {}
+    for slot in candidate_set.get("slots") or []:
+        if not isinstance(slot, Mapping):
+            continue
+        for candidate in slot.get("candidates") or []:
+            if not isinstance(candidate, Mapping):
+                continue
+            release_id = str(candidate.get("agentReleaseId") or "")
+            name = str(candidate.get("name") or "").strip()
+            if release_id and name:
+                labels.setdefault(release_id, name[:160])
+    return labels
+
+
+def _goal_context_projection(
+    context: Mapping[str, Any],
+    *,
+    known_revisions: Any = None,
+) -> dict[str, Any]:
+    """Project a goal context into the bounded per-turn continuity view.
+
+    Also answers the question the old shape could not: which bound releases
+    were prepared and never actually run. A roster row whose `lastUsedAt` is
+    null has no execution claim at all, so "prepared, not executed" is a fact
+    here rather than something the model has to confess.
+    """
+
+    known: dict[str, int] = {}
+    if isinstance(known_revisions, Mapping):
+        for key, value in known_revisions.items():
+            if isinstance(value, int) and not isinstance(value, bool):
+                known[str(key)] = value
+    goals: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
+    unchanged = 0
+    for goal in context.get("goals") or []:
+        if not isinstance(goal, Mapping):
+            continue
+        goal_id = str(goal.get("goalId") or "")
+        revision = goal.get("rosterRevision")
+        roster = [row for row in goal.get("roster") or [] if isinstance(row, Mapping)]
+        never_used = [row for row in roster if not row.get("lastUsedAt")]
+        if never_used:
+            pending.append(
+                {
+                    "goalId": goal_id,
+                    "preparedNotExecuted": len(never_used),
+                    "rosterSize": len(roster),
+                    "agents": [str(row.get("label") or "") for row in never_used][:16],
+                }
+            )
+        if known.get(goal_id) == revision and isinstance(revision, int):
+            unchanged += 1
+            goals.append({"goalId": goal_id, "rosterRevision": revision, "state": "unchanged"})
+            continue
+        goals.append(
+            {
+                **{
+                    key: value
+                    for key, value in goal.items()
+                    if key not in {"roster", "bindingId"}
+                },
+                "roster": [
+                    {
+                        key: value
+                        for key, value in row.items()
+                        if key not in _GOAL_ROSTER_AUDIT_FIELDS
+                    }
+                    for row in roster
+                ],
+            }
+        )
+    projected = {
+        **{key: value for key, value in context.items() if key != "goals"},
+        "projection": "goal-context.v2",
+        "goals": goals,
+    }
+    if unchanged:
+        projected["unchangedGoals"] = unchanged
+    if pending:
+        projected["pendingExecution"] = pending
+        projected["pendingExecutionNotice"] = (
+            "These bound releases were prepared and never recorded as executed. "
+            "Preparation is not delivery: either run them for this turn's work and record it with "
+            "workforce.record_goal_turn, or tell the user plainly that the roster is prepared but not executed."
+        )
+    return projected
+
+
+def _with_unmet_requirement_notice(wrapper: Any) -> Any:
+    """Lift an accepted receipt's unmet-requirement count to the MCP surface.
+
+    The federated wrapper has an exact key set that other products assert, so
+    the count stays inside `selectionValidation` there. What must not happen is
+    an `accepted` that reads as "everything checks out" while the receipt says
+    a chosen release does not meet a requirement the author actually wrote.
+    """
+
+    if not isinstance(wrapper, dict):
+        return wrapper
+    validation = wrapper.get("selectionValidation")
+    if not isinstance(validation, Mapping):
+        return wrapper
+    count = validation.get("unmetRequirementCount")
+    if not isinstance(count, int) or count <= 0:
+        return wrapper
+    return {
+        **wrapper,
+        "unmetRequirementCount": count,
+        "notice": (
+            f"{count} assigned release(s) do not meet a requirement this WorkOrder asked for. "
+            "The selection is valid and Core does not choose for you — read "
+            "selectionValidation.unmetRequirements and either accept the gap deliberately or reselect."
+        ),
+    }
+
+
+# ★프로젝트 근거 압축기는 하나여야 한다 — 이 함수는 오랫동안 _call_tool 안의
+# 중첩 함수였고, 그래서 context.* 도구 경로에서만 돌았다. prepare_execution 도
+# 같은 slice 를 응답에 싣는데 그 경로는 압축기를 지나지 않아 실측 2026-08-21
+# 44,313 tok(응답의 77%)을 그대로 냈다 — 여기 걸린 16 KiB 예산의 몇 배다.
+# 실제 에이전트 지시문은 3,010 tok 이었다. 수리는 갈래마다가 아니라 sink 에서.
+def compact_context_result(tool_name: str, result: Mapping[str, Any]) -> dict[str, Any]:
+    """Bound relationship receipts at the host-visible MCP boundary.
+
+    Core keeps the complete graph for deterministic verification. Codex and
+    other chat hosts need a readable working set plus explicit omission
+    counts, not tens of kilobytes of duplicated graph internals.
+    """
+
+    payload = dict(result)
+    omissions: dict[str, int] = {}
+
+    def trim_list(
+        container: dict[str, Any],
+        field: str,
+        limit: int,
+        *,
+        label: str | None = None,
+        transform=None,
+    ) -> None:
+        value = container.get(field)
+        if not isinstance(value, list):
+            return
+        items = value[:limit]
+        if transform is not None:
+            items = [transform(item) for item in items]
+        container[field] = items
+        omitted = max(0, len(value) - limit)
+        if omitted:
+            omissions[label or field] = omitted
+
+    def compact_path(item: Any) -> Any:
+        if not isinstance(item, Mapping):
+            return item
+        affected = item.get("affectedFiles")
+        affected_files = affected[:8] if isinstance(affected, list) else []
+        compact = {
+            "changedSymbol": item.get("changedSymbol"),
+            "definitions": (item.get("definitions") or [])[:3],
+            "affectedFiles": affected_files,
+        }
+        if isinstance(affected, list) and len(affected) > len(affected_files):
+            compact["affectedFilesOmitted"] = len(affected) - len(affected_files)
+        return compact
+
+    def compact_symbol(item: Any) -> Any:
+        if not isinstance(item, Mapping):
+            return item
+        referenced = item.get("referencedBy")
+        referenced_by = referenced[:4] if isinstance(referenced, list) else []
+        compact = {
+            "symbol": item.get("symbol"),
+            "definitions": (item.get("definitions") or [])[:3],
+            "referenceCount": item.get("referenceCount"),
+            "referencedBy": referenced_by,
+        }
+        if isinstance(referenced, list) and len(referenced) > len(referenced_by):
+            compact["referencedByOmitted"] = len(referenced) - len(referenced_by)
+        return compact
+
+    def compact_context_node(item: Any) -> Any:
+        if not isinstance(item, Mapping):
+            return item
+        compact: dict[str, Any] = {}
+        for key in ("id", "nodeId", "type", "kind", "status", "title", "name", "path"):
+            value = item.get(key)
+            if isinstance(value, str) and value:
+                compact[key] = value[:512]
+        return compact
+
+    if tool_name == "context.impact":
+        trim_list(payload, "impactedFiles", 16)
+        trim_list(payload, "paths", 6, transform=compact_path)
+        trim_list(payload, "verificationTargets", 12)
+        receipt = dict(payload.get("receipt") or {})
+        full_receipt_digest = receipt.pop("receiptDigest", None)
+        trim_list(receipt, "changedSymbols", 16, label="receipt.changedSymbols")
+        trim_list(receipt, "impactedFiles", 16, label="receipt.impactedFiles")
+        trim_list(receipt, "verificationTargets", 8, label="receipt.verificationTargets")
+        if full_receipt_digest:
+            receipt["fullReceiptDigest"] = full_receipt_digest
+        receipt["projectionDigest"] = canonical_digest(receipt)
+        payload["receipt"] = receipt
+    elif tool_name == "context.slice":
+        payload.setdefault("action", tool_name)
+        payload.setdefault("status", "ok")
+        trim_list(payload, "contextEdges", 10)
+        trim_list(payload, "files", 16)
+        trim_list(payload, "moduleEdges", 10)
+        trim_list(payload, "goalsAndConstraints", 6, transform=compact_context_node)
+        trim_list(payload, "relatedContextNodes", 6, transform=compact_context_node)
+        trim_list(payload, "symbols", 5, transform=compact_symbol)
+        receipt = dict(payload.get("receipt") or {})
+        trim_list(receipt, "selectedContextNodeIds", 12, label="receipt.selectedContextNodeIds")
+        trim_list(receipt, "selectedFiles", 16, label="receipt.selectedFiles")
+        trim_list(receipt, "selectedSymbols", 12, label="receipt.selectedSymbols")
+        full_receipt_digest = receipt.pop("receiptDigest", None)
+        if full_receipt_digest:
+            receipt["fullReceiptDigest"] = full_receipt_digest
+        receipt["projectionDigest"] = canonical_digest(receipt)
+        payload["receipt"] = receipt
+        verification = dict(payload.get("verification") or {})
+        trim_list(verification, "edges", 6, label="verification.edges")
+        trim_list(verification, "nodes", 5, label="verification.nodes")
+        trim_list(verification, "issues", 16, label="verification.issues")
+        payload["verification"] = verification
+    elif tool_name == "context.verify":
+        receipt = dict(payload.get("receipt") or {})
+        full_receipt_digest = receipt.pop("receiptDigest", None)
+        trim_list(receipt, "unresolvedFiles", 20, label="receipt.unresolvedFiles")
+        trim_list(receipt, "verificationTargets", 16, label="receipt.verificationTargets")
+        trim_list(receipt, "verificationIssues", 20, label="receipt.verificationIssues")
+        if full_receipt_digest:
+            receipt["fullReceiptDigest"] = full_receipt_digest
+        receipt["projectionDigest"] = canonical_digest(receipt)
+        payload["receipt"] = receipt
+
+    if omissions:
+        payload["omissions"] = omissions
+
+    if tool_name == "context.slice":
+        # The host-visible result has a hard 16 KiB budget, including the
+        # goals list that duplicates selected context nodes. Trim optional
+        # relationship rows deterministically until the complete JSON
+        # projection fits; every removed row remains accounted for.
+        byte_limit = 16 * 1024
+        shrinkable = [
+            (payload, "goalsAndConstraints", "goalsAndConstraints"),
+            (payload, "relatedContextNodes", "relatedContextNodes"),
+            (payload, "contextEdges", "contextEdges"),
+            (payload, "moduleEdges", "moduleEdges"),
+            (payload, "modules", "modules"),
+            (payload, "symbols", "symbols"),
+            (payload, "files", "files"),
+            (verification, "issues", "verification.issues"),
+            (verification, "edges", "verification.edges"),
+            (verification, "nodes", "verification.nodes"),
+            (receipt, "selectedContextNodeIds", "receipt.selectedContextNodeIds"),
+            (receipt, "selectedFiles", "receipt.selectedFiles"),
+            (receipt, "selectedSymbols", "receipt.selectedSymbols"),
+        ]
+
+        def projected_size() -> int:
+            return len(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            )
+
+        while projected_size() > byte_limit:
+            candidate = max(
+                (
+                    (len(value), container, field, label)
+                    for container, field, label in shrinkable
+                    if isinstance((value := container.get(field)), list) and value
+                ),
+                default=None,
+                key=lambda row: row[0],
+            )
+            if candidate is None:
+                rendered = payload.get("rendered")
+                if isinstance(rendered, str) and rendered:
+                    removed = min(1024, len(rendered))
+                    payload["rendered"] = rendered[:-removed]
+                    omissions["renderedChars"] = omissions.get("renderedChars", 0) + removed
+                    payload["omissions"] = omissions
+                    continue
+                break
+            _length, container, field, label = candidate
+            container[field].pop()
+            omissions[label] = omissions.get(label, 0) + 1
+            payload["omissions"] = omissions
+            receipt.pop("projectionDigest", None)
+            receipt["projectionDigest"] = canonical_digest(receipt)
+    return payload
+
+
+
+def _compact_boundary(boundary: Mapping[str, Any]) -> dict[str, Any]:
+    """Strip the already-declared contract catalog from a boundary refusal.
+
+    ★실측 2026-08-21: selection 거절 3,416B 중 2,765B(81%)가 `contract` 카탈로그
+    였다. 그 값은 도구 계약에 이미 한 번 선언돼 있어 거절마다 다시 실을 수리
+    정보가 0이고, 거절→재시도 루프에서 그대로 곱해진다. workOrder 거절에만
+    적용돼 있던 규율을 selection 에도 같게 적용한다.
+    """
+
+    compact = {
+        key: boundary.get(key)
+        for key in (
+            "schemaVersion",
+            "status",
+            "repairable",
+            "mutation",
+            "workOrderDigest",
+            "selectionDigest",
+            "issues",
+        )
+        if key in boundary
+    }
+    compact["issueCount"] = len(boundary.get("issues") or [])
+    return compact
+
+
+def _menu_projection(result: dict[str, Any], *, keep_artifacts: bool = False) -> dict[str, Any]:
     """Projects a search response into a decision-ready summary menu — a
     drop-list approach.
 
@@ -360,7 +932,7 @@ def _menu_projection(result: dict[str, Any]) -> dict[str, Any]:
                     snapshot = dict(snapshot)
                     for field in _MENU_SNAPSHOT_HEAVY_FIELDS:
                         value = snapshot.get(field)
-                        if isinstance(value, list):
+                        if isinstance(value, list) and not keep_artifacts:
                             snapshot.pop(field)
                             snapshot[f"{field}Count"] = len(value)
                     # ★skills 압축 — 실측(2026-08-19, 로컬 20후보 1슬롯): skills 가
@@ -984,19 +1556,37 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "workforce.preflight_work_order",
+        "description": (
+            "Compile a compact semantic staffing draft into an exact, privacy-checked "
+            "agentlas.workforce-work-order.v1 and pin it locally behind a one-hour workOrderRef. "
+            "Core generates finite transaction IDs, empty arrays, artifact flow, ontology/version "
+            "fields and digest deterministically. It performs no discovery and makes zero Hub calls. "
+            "Use the returned workOrderRef with workforce.search_candidates instead of authoring or "
+            "echoing the strict wire WorkOrder by hand."
+        ),
+        "inputSchema": _work_order_draft_schema(),
+        "_meta": workforce_tool_meta(),
+    },
+    {
         "name": "workforce.search_candidates",
         "description": (
-            "Search the Agent Workforce Ontology with a redacted structured work order. "
+            "Search the Agent Workforce Ontology with a locally preflighted WorkOrder reference. "
             "sourceScope=network federates Local, owner Cloud, and public Hub menus; exact "
             "local/cloud/hub values restrict discovery to that source. It never selects a team. "
-            "The calling top-level LLM must author the work order and make the staffing decision."
+            "The calling top-level LLM authors the semantic draft and makes the staffing decision."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "workOrder": _contract_property(
+                "workOrderRef": {
+                    "type": "string",
+                    "pattern": "^work-order-ref:[0-9a-f]{64}$",
+                    "description": "One-hour local handle returned by workforce.preflight_work_order. Preferred; the exact WorkOrder never needs to be echoed.",
+                },
+                "workOrder": _contract_echo_property(
                     "workOrder",
-                    "Complete agentlas.workforce-work-order.v1; use the exact schema and graph version declared in x-agentlas-contract. Semantic role/community/skill/knowledge IDs are open-world English concepts; catalog values are seed examples, not an allowlist.",
+                    "Legacy exact agentlas.workforce-work-order.v1 input. Prefer workOrderRef from workforce.preflight_work_order; Core still validates this object without mutation before any source call.",
                 ),
                 "expandSlotIds": {"type": "array", "items": {"type": "string"}},
                 "sourceScope": {
@@ -1022,14 +1612,15 @@ TOOLS: list[dict[str, Any]] = [
                 "shortlist": {
                     "type": "boolean",
                     "description": (
-                        "Recommended true for a multi-slot search: the response carries summary cards "
+                        "Default true: the response carries summary cards "
                         "(ordinal, name, entityKind, communities, one summary, callable, missingMandatory) "
                         "instead of full dossiers — measured 39,095B -> 8,508B for one 20-candidate slot. "
                         "Narrow to the candidates worth a closer look, then call "
                         "workforce.expand_candidates for their full cards and decide from those. "
                         "Nothing is discarded: the session store keeps the complete menu. Ignored when "
-                        "fullDossier is true."
+                        "fullDossier is true. Set false only when a legacy caller needs menu.v2."
                     ),
+                    "default": True,
                 },
                 "turnId": {
                     "type": "string",
@@ -1041,7 +1632,7 @@ TOOLS: list[dict[str, Any]] = [
                     ),
                 },
             },
-            "required": ["workOrder", "sourceScope"],
+            "required": ["sourceScope"],
         },
         "_meta": workforce_tool_meta(),
     },
@@ -1116,15 +1707,28 @@ TOOLS: list[dict[str, Any]] = [
                         "pick gets cut. Core never sends the merged menu to a remote source."
                     ),
                 },
-                "selection": _selection_property_with_ordinal(
-                    "Complete agentlas.workforce-selection.v1 authored by the host LLM; use the exact canonical schema declared in x-agentlas-contract. Each assignment may name the candidate by candidateOrdinal from the menu instead of copying the 48-hex agentReleaseId — Core resolves the ordinal against its pinned menu.",
-                ),
+                "decision": _selection_decision_schema(),
+                "selection": {
+                    "type": "object",
+                    "description": (
+                        "Legacy exact agentlas.workforce-selection.v1. Prefer `decision`: it carries the "
+                        "same choice without the empty arrays and the copied candidate-set digest, and "
+                        "Core compiles it into this exact object. Either form is validated against the "
+                        "canonical schema server-side, so publishing that schema here a second time "
+                        "would spend context without adding enforcement."
+                    ),
+                },
             },
             # workOrder 는 더 이상 필수가 아니다 — 세션에 핀된 저장본이 항상
             # 권위이고(assert_work_order_binding 이 바이트 동일을 요구), 생략 시
             # Core 가 selectionSessionId 로 복원한다. 판별식: 안 보내도 복원
             # 가능하면 그 필드는 인자가 아니라 의례다(2026-08-19).
-            "required": ["selection"],
+            #
+            # 결정 자체는 여전히 반드시 온다 — 컴팩트 `decision` 이든 레거시
+            # 정확 `selection` 이든 하나는 있어야 한다. "둘 중 하나"를 코드가
+            # 아니라 스키마가 말하게 둔다.
+            "required": [],
+            "anyOf": [{"required": ["decision"]}, {"required": ["selection"]}],
         },
         "_meta": workforce_tool_meta(),
     },
@@ -1151,9 +1755,10 @@ TOOLS: list[dict[str, Any]] = [
                         "only to prepare a set this process did not issue."
                     ),
                 },
+                "decision": _selection_decision_schema(),
                 "selection": _contract_echo_property(
                     "selection",
-                    "The exact Selection already accepted by workforce.validate_selection. Send it back unchanged — Core revalidates it and fails closed on any drift from the accepted roster.",
+                    "The exact Selection already accepted by workforce.validate_selection. Send it back unchanged — Core revalidates it and fails closed on any drift from the accepted roster. Prefer resending the same compact `decision` you validated: Core compiles the identical Selection from the pinned session.",
                 ),
                 "validationReceipt": {"type": "object"},
                 "federationResult": {
@@ -1244,9 +1849,10 @@ TOOLS: list[dict[str, Any]] = [
             # 세션 저장본이 권위라 생략 시 Core 가 복원한다: workOrder 는
             # selectionSessionId 로, federatedSelection 은 federatedSelectionDigest 로.
             # projectDir 는 진짜 인자다(호스트만 아는 값), selection 도 그렇다.
-            "required": [
-                "selection", "projectDir",
-            ],
+            # 결정은 컴팩트 decision 이나 레거시 exact selection 중 하나로 온다.
+            # projectDir 은 언제나 필수다 — 연속성은 선택이 아니다.
+            "required": ["projectDir"],
+            "anyOf": [{"required": ["decision"]}, {"required": ["selection"]}],
         },
         "_meta": workforce_tool_meta(),
     },
@@ -1299,7 +1905,9 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "Read the current account- and project-scoped durable Workforce roster. "
             "Call this at the start of a goal turn before deciding whether the existing "
-            "roster plus local skills is sufficient or an additive recruitment is needed."
+            "roster plus local skills is sufficient or an additive recruitment is needed. "
+            "Returns the bounded goal-context.v2 view; pass knownRevisions to get only what changed, "
+            "and read pendingExecution — those releases were prepared and never executed."
         ),
         "inputSchema": {
             "type": "object",
@@ -1308,6 +1916,15 @@ TOOLS: list[dict[str, Any]] = [
                 "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
                 "goalId": {"type": "string", "minLength": 1, "maxLength": 256},
                 "includeTerminal": {"type": "boolean"},
+                "knownRevisions": {
+                    "type": "object",
+                    "additionalProperties": {"type": "integer", "minimum": 0},
+                    "description": "goalId -> rosterRevision already in this conversation. Matching goals come back as state=unchanged instead of a full roster.",
+                },
+                "fullDossier": {
+                    "type": "boolean",
+                    "description": "Legacy uncompacted context including exact release identity. Preparation resolves exact releases from Core's own store, so a turn decision never needs this.",
+                },
             },
             "required": ["projectDir"],
         },
@@ -1421,8 +2038,7 @@ TOOLS: list[dict[str, Any]] = [
                 "query": {"type": "string", "minLength": 1, "maxLength": 12_000},
                 "refresh": {
                     "type": "boolean",
-                    "default": False,
-                    "description": "Explicitly rebuild project-local indexes. Passive reads never write and return context_map_stale instead of stale results.",
+                    "description": "Omit to auto-refresh once when the map is stale; true forces a rebuild; false is a strict passive no-write read that may return context_map_stale.",
                 },
             },
             "required": ["projectDir", "query"],
@@ -1442,8 +2058,7 @@ TOOLS: list[dict[str, Any]] = [
                 "symbol": {"type": "string", "minLength": 1, "maxLength": 256},
                 "refresh": {
                     "type": "boolean",
-                    "default": False,
-                    "description": "Explicitly rebuild project-local indexes. Passive reads never write and return context_map_stale instead of stale results.",
+                    "description": "Omit to auto-refresh once when the map is stale; true forces a rebuild; false is a strict passive no-write read that may return context_map_stale.",
                 },
             },
             "required": ["projectDir", "symbol"],
@@ -1470,8 +2085,7 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "refresh": {
                     "type": "boolean",
-                    "default": False,
-                    "description": "Explicitly rebuild project-local indexes. Passive reads never write and return context_map_stale instead of stale results.",
+                    "description": "Omit to auto-refresh once when the map is stale; true forces a rebuild; false is a strict passive no-write read that may return context_map_stale.",
                 },
                 "render": {"type": "boolean"},
             },
@@ -1498,8 +2112,7 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "refresh": {
                     "type": "boolean",
-                    "default": False,
-                    "description": "Explicitly rebuild project-local indexes. Passive reads never write and return context_map_stale instead of stale results.",
+                    "description": "Omit to auto-refresh once when the map is stale; true forces a rebuild; false is a strict passive no-write read that may return context_map_stale.",
                 },
             },
             "required": ["projectDir", "changed"],
@@ -1544,8 +2157,7 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "refresh": {
                     "type": "boolean",
-                    "default": False,
-                    "description": "Explicitly rebuild project-local indexes. Omit for a passive, read-only lookup.",
+                    "description": "Omit to auto-refresh once when the map is stale; true forces a rebuild; false is a strict passive no-write verification that may return context_map_stale.",
                 },
             },
             "required": ["projectDir", "changed"],
@@ -1824,13 +2436,17 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             )
         return response
 
-    # Any Agentlas tool touching a folder is first contact with that project, so
-    # the project map is seeded there regardless of which tool arrived first.
-    # Bootstrapping is per-process/per-root: the first call pays for it, the rest
-    # of the session skips it.
+    # Project-grounded legacy tools seed their working tree on first contact.
+    # Workforce protocol calls, auth/status calls, and Context calls are not on
+    # this path: the first two are project-content independent and Context owns
+    # its explicit projectDir lifecycle in its handler below.
     bootstrap: dict[str, Any] | None = None
-    _bootstrap_target = str(arguments.get("project_dir") or ".")
-    if _claim_first_contact(_bootstrap_target):
+    _bootstrap_target = (
+        str(arguments.get("project_dir") or ".")
+        if name in _COMMON_PROJECT_BOOTSTRAP_TOOLS
+        else None
+    )
+    if _bootstrap_target is not None and _claim_first_contact(_bootstrap_target):
         from .project_bootstrap import auto_bootstrap_enabled, maybe_ensure_project
 
         bootstrap = maybe_ensure_project(
@@ -1894,184 +2510,6 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             },
         }
 
-    def compact_context_result(tool_name: str, result: Mapping[str, Any]) -> dict[str, Any]:
-        """Bound relationship receipts at the host-visible MCP boundary.
-
-        Core keeps the complete graph for deterministic verification. Codex and
-        other chat hosts need a readable working set plus explicit omission
-        counts, not tens of kilobytes of duplicated graph internals.
-        """
-
-        payload = dict(result)
-        omissions: dict[str, int] = {}
-
-        def trim_list(
-            container: dict[str, Any],
-            field: str,
-            limit: int,
-            *,
-            label: str | None = None,
-            transform=None,
-        ) -> None:
-            value = container.get(field)
-            if not isinstance(value, list):
-                return
-            items = value[:limit]
-            if transform is not None:
-                items = [transform(item) for item in items]
-            container[field] = items
-            omitted = max(0, len(value) - limit)
-            if omitted:
-                omissions[label or field] = omitted
-
-        def compact_path(item: Any) -> Any:
-            if not isinstance(item, Mapping):
-                return item
-            affected = item.get("affectedFiles")
-            affected_files = affected[:8] if isinstance(affected, list) else []
-            compact = {
-                "changedSymbol": item.get("changedSymbol"),
-                "definitions": (item.get("definitions") or [])[:3],
-                "affectedFiles": affected_files,
-            }
-            if isinstance(affected, list) and len(affected) > len(affected_files):
-                compact["affectedFilesOmitted"] = len(affected) - len(affected_files)
-            return compact
-
-        def compact_symbol(item: Any) -> Any:
-            if not isinstance(item, Mapping):
-                return item
-            referenced = item.get("referencedBy")
-            referenced_by = referenced[:4] if isinstance(referenced, list) else []
-            compact = {
-                "symbol": item.get("symbol"),
-                "definitions": (item.get("definitions") or [])[:3],
-                "referenceCount": item.get("referenceCount"),
-                "referencedBy": referenced_by,
-            }
-            if isinstance(referenced, list) and len(referenced) > len(referenced_by):
-                compact["referencedByOmitted"] = len(referenced) - len(referenced_by)
-            return compact
-
-        def compact_context_node(item: Any) -> Any:
-            if not isinstance(item, Mapping):
-                return item
-            compact: dict[str, Any] = {}
-            for key in ("id", "nodeId", "type", "kind", "status", "title", "name", "path"):
-                value = item.get(key)
-                if isinstance(value, str) and value:
-                    compact[key] = value[:512]
-            return compact
-
-        if tool_name == "context.impact":
-            trim_list(payload, "impactedFiles", 16)
-            trim_list(payload, "paths", 6, transform=compact_path)
-            trim_list(payload, "verificationTargets", 12)
-            receipt = dict(payload.get("receipt") or {})
-            full_receipt_digest = receipt.pop("receiptDigest", None)
-            trim_list(receipt, "changedSymbols", 16, label="receipt.changedSymbols")
-            trim_list(receipt, "impactedFiles", 16, label="receipt.impactedFiles")
-            trim_list(receipt, "verificationTargets", 8, label="receipt.verificationTargets")
-            if full_receipt_digest:
-                receipt["fullReceiptDigest"] = full_receipt_digest
-            receipt["projectionDigest"] = canonical_digest(receipt)
-            payload["receipt"] = receipt
-        elif tool_name == "context.slice":
-            payload.setdefault("action", tool_name)
-            payload.setdefault("status", "ok")
-            trim_list(payload, "contextEdges", 10)
-            trim_list(payload, "files", 16)
-            trim_list(payload, "moduleEdges", 10)
-            trim_list(payload, "goalsAndConstraints", 6, transform=compact_context_node)
-            trim_list(payload, "relatedContextNodes", 6, transform=compact_context_node)
-            trim_list(payload, "symbols", 5, transform=compact_symbol)
-            receipt = dict(payload.get("receipt") or {})
-            trim_list(receipt, "selectedContextNodeIds", 12, label="receipt.selectedContextNodeIds")
-            trim_list(receipt, "selectedFiles", 16, label="receipt.selectedFiles")
-            trim_list(receipt, "selectedSymbols", 12, label="receipt.selectedSymbols")
-            full_receipt_digest = receipt.pop("receiptDigest", None)
-            if full_receipt_digest:
-                receipt["fullReceiptDigest"] = full_receipt_digest
-            receipt["projectionDigest"] = canonical_digest(receipt)
-            payload["receipt"] = receipt
-            verification = dict(payload.get("verification") or {})
-            trim_list(verification, "edges", 6, label="verification.edges")
-            trim_list(verification, "nodes", 5, label="verification.nodes")
-            trim_list(verification, "issues", 16, label="verification.issues")
-            payload["verification"] = verification
-        elif tool_name == "context.verify":
-            receipt = dict(payload.get("receipt") or {})
-            full_receipt_digest = receipt.pop("receiptDigest", None)
-            trim_list(receipt, "unresolvedFiles", 20, label="receipt.unresolvedFiles")
-            trim_list(receipt, "verificationTargets", 16, label="receipt.verificationTargets")
-            trim_list(receipt, "verificationIssues", 20, label="receipt.verificationIssues")
-            if full_receipt_digest:
-                receipt["fullReceiptDigest"] = full_receipt_digest
-            receipt["projectionDigest"] = canonical_digest(receipt)
-            payload["receipt"] = receipt
-
-        if omissions:
-            payload["omissions"] = omissions
-
-        if tool_name == "context.slice":
-            # The host-visible result has a hard 16 KiB budget, including the
-            # goals list that duplicates selected context nodes. Trim optional
-            # relationship rows deterministically until the complete JSON
-            # projection fits; every removed row remains accounted for.
-            byte_limit = 16 * 1024
-            shrinkable = [
-                (payload, "goalsAndConstraints", "goalsAndConstraints"),
-                (payload, "relatedContextNodes", "relatedContextNodes"),
-                (payload, "contextEdges", "contextEdges"),
-                (payload, "moduleEdges", "moduleEdges"),
-                (payload, "modules", "modules"),
-                (payload, "symbols", "symbols"),
-                (payload, "files", "files"),
-                (verification, "issues", "verification.issues"),
-                (verification, "edges", "verification.edges"),
-                (verification, "nodes", "verification.nodes"),
-                (receipt, "selectedContextNodeIds", "receipt.selectedContextNodeIds"),
-                (receipt, "selectedFiles", "receipt.selectedFiles"),
-                (receipt, "selectedSymbols", "receipt.selectedSymbols"),
-            ]
-
-            def projected_size() -> int:
-                return len(
-                    json.dumps(
-                        payload,
-                        ensure_ascii=False,
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ).encode("utf-8")
-                )
-
-            while projected_size() > byte_limit:
-                candidate = max(
-                    (
-                        (len(value), container, field, label)
-                        for container, field, label in shrinkable
-                        if isinstance((value := container.get(field)), list) and value
-                    ),
-                    default=None,
-                    key=lambda row: row[0],
-                )
-                if candidate is None:
-                    rendered = payload.get("rendered")
-                    if isinstance(rendered, str) and rendered:
-                        removed = min(1024, len(rendered))
-                        payload["rendered"] = rendered[:-removed]
-                        omissions["renderedChars"] = omissions.get("renderedChars", 0) + removed
-                        payload["omissions"] = omissions
-                        continue
-                    break
-                _length, container, field, label = candidate
-                container[field].pop()
-                omissions[label] = omissions.get(label, 0) + 1
-                payload["omissions"] = omissions
-                receipt.pop("projectionDigest", None)
-                receipt["projectionDigest"] = canonical_digest(receipt)
-        return payload
-
     def compact_routing_result(result: Mapping[str, Any]) -> dict[str, Any]:
         """Keep discovery menus bounded while preserving exact candidate rows."""
 
@@ -2133,8 +2571,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         "Read-only context tools never create project state."
                     ),
                 }
-            # Reading context is passive by default.  Only an explicit
-            # refresh=true authorizes rebuilding project-local indexes.
+            # Omitted refresh means "automatic once if stale" at the MCP
+            # adapter. Explicit false preserves the strict passive/no-write
+            # contract used by audits and hooks; explicit true forces refresh.
+            auto_refresh = name != "context.refresh" and "refresh" not in arguments
             refresh = name == "context.refresh" or arguments.get("refresh") is True
             if refresh:
                 project_receipt = ensure_project(
@@ -2168,41 +2608,73 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "error": "project_bootstrap_incomplete",
                     "project_bootstrap": compact_project_receipt(project_receipt),
                 }
+            def run_context_operation(refresh_value: bool) -> dict[str, Any]:
+                if name == "context.locate":
+                    return locate(
+                        project_dir,
+                        str(arguments.get("query") or ""),
+                        refresh=refresh_value,
+                    )
+                if name == "context.refs":
+                    return references(
+                        project_dir,
+                        str(arguments.get("symbol") or ""),
+                        refresh=refresh_value,
+                    )
+                if name == "context.slice":
+                    value = context_slice(
+                        project_dir,
+                        str(arguments.get("task") or ""),
+                        targets=arguments.get("targets") or [],
+                        refresh=refresh_value,
+                    )
+                    if arguments.get("render") is True:
+                        value["rendered"] = render_context_slice(value)
+                    return value
+                if name == "context.impact":
+                    return impact(
+                        project_dir,
+                        arguments.get("changed") or [],
+                        refresh=refresh_value,
+                    )
+                return verify_impact(
+                    project_dir,
+                    arguments.get("changed") or [],
+                    arguments.get("reviewed") or [],
+                    verified=arguments.get("verified") or [],
+                    waived=arguments.get("waived") or [],
+                    refresh=refresh_value,
+                )
+
             if name == "context.refresh":
                 result = {
                     "action": name,
                     "status": "ok",
                     "refresh": project_receipt.get("codeMap") or {},
                 }
-            elif name == "context.locate":
-                # Deliberately NOT allow_stale: a tool call is an explicit ask,
-                # and the passive contract is to report context_map_stale with
-                # retryArguments so the caller can decide. That differs from the
-                # recall hook, where the user is waiting and a labelled stale
-                # map beats nothing.
-                result = locate(project_dir, str(arguments.get("query") or ""), refresh=refresh)
-            elif name == "context.refs":
-                result = references(project_dir, str(arguments.get("symbol") or ""), refresh=refresh)
-            elif name == "context.slice":
-                result = context_slice(
-                    project_dir,
-                    str(arguments.get("task") or ""),
-                    targets=arguments.get("targets") or [],
-                    refresh=refresh,
-                )
-                if arguments.get("render") is True:
-                    result["rendered"] = render_context_slice(result)
-            elif name == "context.impact":
-                result = impact(project_dir, arguments.get("changed") or [], refresh=refresh)
             else:
-                result = verify_impact(
-                    project_dir,
-                    arguments.get("changed") or [],
-                    arguments.get("reviewed") or [],
-                    verified=arguments.get("verified") or [],
-                    waived=arguments.get("waived") or [],
-                    refresh=refresh,
-                )
+                try:
+                    result = run_context_operation(refresh)
+                    if auto_refresh:
+                        result["autoRefreshed"] = False
+                except ContextMapError as exc:
+                    if not auto_refresh or exc.code not in {
+                        "context_map_stale",
+                        "context_freshness_incomplete",
+                        "context_verification_refresh_required",
+                    }:
+                        raise
+                    # Exactly one retry, on the first related Context Map call
+                    # after a detected filesystem change. This is change-driven,
+                    # not tied to chat-turn count.
+                    result = run_context_operation(True)
+                    result["autoRefreshed"] = True
+                    project_receipt = {
+                        **project_status(project_root),
+                        "action": "project_auto_refresh",
+                        "reason": f"mcp:{name}:stale",
+                        "writeAttempted": True,
+                    }
             result["project_bootstrap"] = compact_project_receipt(project_receipt)
             return compact_context_result(name, result)
         except ContextMapError as exc:
@@ -2229,6 +2701,18 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     ),
                     "repairable": True,
                     "retryArguments": {"refresh": True},
+                }
+            if exc.code == "context_changed_target_excluded_by_policy":
+                return {
+                    "action": name,
+                    "status": "error",
+                    "error": exc.code,
+                    "detail": (
+                        "The target exists but agentlas-context-map.json excludes its root. "
+                        "Remove that narrow exclusion when the file must participate in impact verification; "
+                        "the next default Context Map call will auto-refresh it."
+                    ),
+                    "repairable": True,
                 }
             return {"action": name, "status": "error", "error": exc.code}
         except (OSError, TimeoutError, ValueError):
@@ -2267,10 +2751,16 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 )
             if name == "workforce.goal_context":
                 goal_id = arguments.get("goalId")
-                return store.context(
+                context = store.context(
                     project_dir=project_dir,
                     goal_id=str(goal_id) if isinstance(goal_id, str) else None,
                     include_terminal=arguments.get("includeTerminal") is True,
+                )
+                if arguments.get("fullDossier") is True:
+                    return context
+                return _goal_context_projection(
+                    context,
+                    known_revisions=arguments.get("knownRevisions"),
                 )
             if name == "workforce.goal_runtime":
                 goal_id = arguments.get("goalId")
@@ -2326,6 +2816,68 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             }
         expanded = _expand_candidates(stored, arguments.get("candidates") or [])
         return {"action": name, **expanded}
+    if name == "workforce.preflight_work_order":
+        from .workforce.federation_store import FederationSessionError, FederationSessionStore
+        from .workforce.work_order_adapter import (
+            WORKFORCE_WORK_ORDER_PREFLIGHT_SCHEMA,
+            WorkOrderDraftError,
+            compile_work_order_draft_with_report,
+        )
+
+        normalized_concepts: list[dict[str, str]] = []
+        try:
+            work_order, normalized_concepts = compile_work_order_draft_with_report(arguments)
+            pin = FederationSessionStore().save_work_order_preflight(work_order)
+        except WorkOrderDraftError as exc:
+            return {
+                "action": name,
+                "schemaVersion": WORKFORCE_WORK_ORDER_PREFLIGHT_SCHEMA,
+                "status": "rejected",
+                "error": exc.code,
+                "repairable": True,
+                "mutation": "none",
+                "workOrderDigest": None,
+                "issueCount": len(exc.issues),
+                "issues": exc.issues,
+                "hubCalls": 0,
+            }
+        except FederationSessionError as exc:
+            return {
+                "action": name,
+                "schemaVersion": WORKFORCE_WORK_ORDER_PREFLIGHT_SCHEMA,
+                "status": "error",
+                "error": exc.code,
+                "repairable": True,
+                "hubCalls": 0,
+            }
+        return {
+            "action": name,
+            "schemaVersion": WORKFORCE_WORK_ORDER_PREFLIGHT_SCHEMA,
+            **{key: value for key, value in pin.items() if key != "status"},
+            "status": "accepted",
+            "pinStatus": pin.get("status"),
+            **(
+                {
+                    "normalizedConcepts": normalized_concepts,
+                    "normalizedConceptNote": (
+                        "Core rewrote these authored phrases into schema-valid concept ids. "
+                        "Discovery matched on the rewritten values."
+                    ),
+                }
+                if normalized_concepts
+                else {}
+            ),
+            "slotBindings": [
+                {
+                    "roleOrdinal": index,
+                    "slotId": slot.get("slotId"),
+                    "title": slot.get("title"),
+                }
+                for index, slot in enumerate(work_order.get("roleSlots") or [], start=1)
+                if isinstance(slot, Mapping)
+            ],
+            "hubCalls": 0,
+        }
     if name in {
         "workforce.search_candidates",
         "workforce.validate_selection",
@@ -2343,7 +2895,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         from .workforce.goal_binding import (
             WorkforceGoalBindingError,
             WorkforceGoalStore,
-            implicit_goal_id,
+            resolve_continuity_goal_id,
         )
 
         # Agentlas OS is the canonical Workforce entrypoint. Core owns source
@@ -2355,6 +2907,31 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         # an author that omits an empty field and one that spells [] are
         # byte-identical from here on.
         work_order = normalize_work_order(arguments.get("workOrder"))
+        if name == "workforce.search_candidates":
+            work_order_ref = arguments.get("workOrderRef")
+            if isinstance(work_order_ref, str) and work_order_ref.strip():
+                try:
+                    pinned_work_order = normalize_work_order(
+                        FederationSessionStore().preflight_work_order(work_order_ref.strip())
+                    )
+                except FederationSessionError as exc:
+                    return {
+                        "action": name,
+                        "status": "rejected",
+                        "error": exc.code,
+                        "repairable": True,
+                        "hubCalls": 0,
+                        "hint": "Run workforce.preflight_work_order again; WorkOrder references expire after one hour.",
+                    }
+                if isinstance(work_order, Mapping) and canonical_digest(work_order) != canonical_digest(pinned_work_order):
+                    return {
+                        "action": name,
+                        "status": "rejected",
+                        "error": "work_order_reference_conflict",
+                        "repairable": True,
+                        "hubCalls": 0,
+                    }
+                work_order = pinned_work_order
         if not isinstance(work_order, Mapping) and name != "workforce.search_candidates":
             """★workOrder 에코도 의례였다 — 저장본이 항상 권위다.
 
@@ -2367,11 +2944,20 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             제외한다: 그때는 아직 핀할 저장본이 없다.
             """
             selection_argument = arguments.get("selection")
+            decision_argument = arguments.get("decision")
             pinned_session = (
-                selection_argument.get("selectionSessionId")
-                if isinstance(selection_argument, Mapping)
-                else None
-            ) or arguments.get("selectionSessionId")
+                (
+                    selection_argument.get("selectionSessionId")
+                    if isinstance(selection_argument, Mapping)
+                    else None
+                )
+                or (
+                    decision_argument.get("selectionSessionId")
+                    if isinstance(decision_argument, Mapping)
+                    else None
+                )
+                or arguments.get("selectionSessionId")
+            )
             if isinstance(pinned_session, str) and pinned_session.strip():
                 try:
                     work_order = normalize_work_order(
@@ -2411,13 +2997,16 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             }
         boundary = validate_hub_work_order_boundary(work_order)
         if boundary["status"] != "accepted":
+            compact_boundary = _compact_boundary(boundary)
             return {
                 "action": name,
                 "status": "rejected",
                 "error": "work_order_hub_boundary_rejected",
                 "repairable": True,
                 "hubCalls": 0,
-                "boundary": boundary,
+                # The full public catalog is already declared once in the tool
+                # contract. Echoing it on every refusal added no repair signal.
+                "boundary": compact_boundary,
             }
         prepare_project_dir: str | None = None
         prepare_goal_id: str | None = None
@@ -2433,7 +3022,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 }
             prepare_project_dir = project_dir_value
             try:
-                prepare_goal_id = implicit_goal_id(
+                prepare_goal_id = resolve_continuity_goal_id(
+                    project_dir=prepare_project_dir,
                     work_order=work_order,
                     requested_goal_id=(
                         str(arguments["goalId"])
@@ -2503,18 +3093,58 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "status": "error",
                     "error": getattr(exc, "code", "workforce_source_search_failed"),
                 }
-            # Default is the decision-ready summary menu (projection). The
+            # Default is the bounded shortlist menu. The
             # session store holds the full original text, so validation/
-            # preparation pin-matching loses nothing. Only a caller that needs
-            # the legacy full-echo flow gets the original shape via fullDossier=true.
+            # preparation pin-matching loses nothing. A legacy caller can ask
+            # for menu.v2 with shortlist=false or the original full dossier.
             if arguments.get("fullDossier") is True:
                 return search_result
-            if arguments.get("shortlist") is True:
+            if arguments.get("shortlist") is not False:
                 return _shortlist_projection(_menu_projection(search_result))
             return _menu_projection(search_result)
         if name != "workforce.search_candidates":
             candidate_set = arguments.get("candidateSet")
             selection = arguments.get("selection")
+            decision_draft = arguments.get("decision")
+            if selection is None and isinstance(decision_draft, Mapping):
+                from .workforce.work_order_adapter import (
+                    WorkOrderDraftError,
+                    compile_selection_draft,
+                )
+
+                pinned_digest = ""
+                session_hint = str(decision_draft.get("selectionSessionId") or "").strip()
+                if session_hint:
+                    try:
+                        pinned = FederationSessionStore().get(session_hint)
+                        pinned_set = pinned.get("candidateSet") if isinstance(pinned, Mapping) else None
+                        if isinstance(pinned_set, Mapping):
+                            pinned_digest = str(pinned_set.get("candidateSetDigest") or "")
+                    except (FederationSessionError, OSError, sqlite3.Error, ValueError):
+                        pinned_digest = ""
+                if not pinned_digest:
+                    return {
+                        "action": name,
+                        "status": "rejected",
+                        "error": "federation_session_unavailable",
+                        "repairable": True,
+                        "hubCalls": 0,
+                        "hint": "Run workforce.search_candidates again — a candidate set expires one hour after it is issued.",
+                    }
+                try:
+                    selection = compile_selection_draft(
+                        decision_draft, candidate_set_digest=pinned_digest
+                    )
+                except WorkOrderDraftError as exc:
+                    return {
+                        "action": name,
+                        "status": "rejected",
+                        "error": exc.code,
+                        "repairable": True,
+                        "hubCalls": 0,
+                        "issueCount": len(exc.issues),
+                        "issues": exc.issues,
+                    }
             federation_result = arguments.get("federationResult")
             federated_selection = arguments.get("federatedSelection")
             # This process issued the federation result and still holds it, keyed
@@ -2631,12 +3261,12 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "hubCalls": 0,
                     "boundary": {
                         "schemaVersion": "agentlas.workforce-selection-hub-boundary.v1",
-                        "contract": workforce_contract_metadata("selection"),
                         "status": "rejected",
                         "repairable": True,
                         "mutation": "none",
                         "selectionDigest": None,
                         "issues": shape_issues,
+                        "issueCount": len(shape_issues),
                     },
                 }
             federated_candidate_set = (
@@ -2658,7 +3288,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "error": "selection_hub_boundary_rejected",
                     "repairable": True,
                     "hubCalls": 0,
-                    "boundary": selection_boundary,
+                    "boundary": _compact_boundary(selection_boundary),
                 }
             if not isinstance(federation_result, Mapping):
                 return {
@@ -2697,12 +3327,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                                 "repairable": True,
                                 "hubCalls": 0,
                             }
-                        return validate_federated_host_selection(
+                        wrapper = validate_federated_host_selection(
                             selection,
                             federation_result=federation_result,
                             work_order=work_order,
                             session_store=store,
                         )
+                        return _with_unmet_requirement_notice(wrapper)
                     if not isinstance(federated_selection, Mapping):
                         """★참조 해석 — wrapper 에코는 정보 0의 왕복세다.
 
@@ -2827,10 +3458,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
                         prepared_result = {
                             **prepared_result,
-                            "localContextSlice": context_slice(
-                                str(prepare_project_dir),
-                                str(work_order.get("taskBrief") or ""),
-                                refresh=True,
+                            "localContextSlice": compact_context_result(
+                                "context.slice",
+                                context_slice(
+                                    str(prepare_project_dir),
+                                    str(work_order.get("taskBrief") or ""),
+                                    refresh=True,
+                                ),
                             ),
                             "localContextBoundary": {
                                 "networkTransfer": "denied",
@@ -2851,6 +3485,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             project_dir=str(prepare_project_dir),
                             preparation=prepared_result,
                             goal_label="automatic Workforce continuity",
+                            roster_labels=_roster_labels_from_session(selection),
                         )
                     except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError) as exc:
                         return {
@@ -2901,10 +3536,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
             remote_result = {
                 **remote_result,
-                "localContextSlice": context_slice(
-                    str(prepare_project_dir),
-                    str(work_order.get("taskBrief") or ""),
-                    refresh=True,
+                "localContextSlice": compact_context_result(
+                    "context.slice",
+                    context_slice(
+                        str(prepare_project_dir),
+                        str(work_order.get("taskBrief") or ""),
+                        refresh=True,
+                    ),
                 ),
                 "localContextBoundary": {
                     "networkTransfer": "denied",
@@ -2922,6 +3560,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 project_dir=str(prepare_project_dir),
                 preparation=remote_result,
                 goal_label="automatic Workforce continuity",
+                roster_labels=_roster_labels_from_session(selection),
             )
         except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError) as exc:
             return {

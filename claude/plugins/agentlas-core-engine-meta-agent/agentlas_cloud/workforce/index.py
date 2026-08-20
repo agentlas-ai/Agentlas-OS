@@ -411,6 +411,17 @@ def _slot_search_text(slot: Mapping[str, Any]) -> str:
     )
 
 
+# ★불용어는 표시가 아니라 점수에서 걸러야 한다 — 실측 2026-08-21: 수락된 검증
+# 영수증의 fit:text:term 6개 중 3개가 "and"/"the" 였고, lexical_score 가
+# len(overlap) 이라 그 3개가 순위에 그대로 들어갔다. MCP 표면에만 필터가 있으면
+# 화면은 깨끗해지고 순위는 계속 오염된다.
+_FIT_TERM_STOPWORDS = frozenset({
+    "a", "an", "and", "are", "as", "at", "be", "between", "by", "can", "each",
+    "for", "from", "in", "into", "is", "it", "its", "of", "on", "one", "or",
+    "that", "the", "then", "this", "to", "with",
+})
+
+
 def _missing_id(axis: str, value: str) -> str:
     return stable_id(f"missing-{axis}", value)
 
@@ -441,7 +452,14 @@ def _fit_evidence(
         "produces": (req["produces"], have["produces"]),
     }
     for axis, (required, available) in required_all.items():
-        mandatory_gaps.extend(_missing_id(axis, item) for item in sorted(required - available))
+        for item in sorted(required - available):
+            # 정확 일치가 아니어도 같은 개념 가족이면 요건은 충족된 것이다.
+            # 철자 변형(publisher 마다 다른 어미)이 결격으로 둔갑하면 결격 신호
+            # 자체가 못 믿을 것이 된다.
+            if _family_any(available, item):
+                evidence.append(f"fit:{axis}-family:{item}")
+                continue
+            mandatory_gaps.append(_missing_id(axis, item))
     singular_axes = {
         "runtimes": "runtime",
         "languages": "language",
@@ -485,7 +503,10 @@ def _fit_evidence(
             if isinstance(item, Mapping)
         ],
     )
-    overlap = sorted(query_tokens & candidate_tokens)
+    overlap = sorted(
+        token for token in query_tokens & candidate_tokens
+        if str(token).lower() not in _FIT_TERM_STOPWORDS
+    )
     for token in overlap[:12]:
         evidence.append(f"fit:text:{stable_id('term', token)}")
     lexical_score = float(len(overlap))

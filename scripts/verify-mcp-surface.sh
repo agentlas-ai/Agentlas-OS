@@ -39,11 +39,17 @@ grep -q '\[mcp_servers\.hephaestus-network\]' scripts/install-all-runtimes.sh \
   || fail "codex MCP registration block missing"
 grep -q 'register_antigravity_mcp' scripts/install-all-runtimes.sh \
   || fail "antigravity MCP registration missing"
-if rg -q 'AGENTLAS_MCP_URL|agentlas\.cloud/api/mcp' \
+# ★`if rg -q ...` 는 rg 가 없는 머신에서 exit 127 이 false 로 읽혀 검사 자체를
+# 건너뛰고 스크립트는 "passed" 를 찍었다(실측 2026-08-21: 이 머신에 rg 실물 없음).
+# 게이트의 조건절에 외부 바이너리를 쓰려면 부재는 통과가 아니라 실패여야 한다.
+# grep -E 는 POSIX 이므로 부재 자체가 없다.
+if grep -qE 'AGENTLAS_MCP_URL|agentlas\.cloud/api/mcp' \
   scripts/install-all-runtimes.sh \
   claude/plugins/agentlas-core-engine-meta-agent/.mcp.json \
   gemini/extension/gemini-extension.json; then
   fail "direct remote MCP bypass reintroduced"
+elif [ $? -gt 1 ]; then
+  fail "direct remote MCP bypass check could not run"
 fi
 
 # 4. Ontology runtime output contract: the keys the MCP/natural-language
@@ -66,6 +72,27 @@ with tempfile.TemporaryDirectory() as tmp:
     report = rt.verify()
     for key in ("status", "schema_version", "counts", "storage_adapter", "vector_adapter"):
         assert key in report, f"verify output lost key: {key}"
+PY
+
+# 5. Runtime release identity owns the Workforce protocol. A protocol-only
+# source change under an unchanged manifest version cannot reach existing
+# users because the verified updater compares release tags. Keep serverInfo,
+# the manifest capability, and the required typed authoring boundary joined.
+PYTHONPATH="$root" python3 <<'PY' || fail "Workforce protocol release identity drifted"
+import json
+from agentlas_cloud.mcp_stdio import (
+    SERVER_INFO,
+    TOOLS,
+    WORKFORCE_PROTOCOL_VERSION,
+)
+
+manifest = json.load(open("manifest.json", encoding="utf-8"))
+assert SERVER_INFO["version"] == manifest["version"], (SERVER_INFO, manifest["version"])
+assert manifest["workforceProtocolVersion"] == WORKFORCE_PROTOCOL_VERSION
+names = {tool["name"] for tool in TOOLS}
+assert "workforce.preflight_work_order" in names
+search = next(tool for tool in TOOLS if tool["name"] == "workforce.search_candidates")
+assert "workOrderRef" in search["inputSchema"]["properties"]
 PY
 
 echo "MCP surface verification passed."
