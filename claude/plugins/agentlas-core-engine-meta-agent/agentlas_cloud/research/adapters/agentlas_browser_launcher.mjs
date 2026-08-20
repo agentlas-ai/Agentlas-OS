@@ -43,7 +43,16 @@ function chromeInfo() {
 function seedProfile(srcUserData, dst) {
   try {
     fs.mkdirSync(path.join(dst, 'Default'), { recursive: true });
-    const rels = ['Local State', 'Default/Cookies', 'Default/Network/Cookies', 'Default/Login Data', 'Default/Web Data', 'Default/Preferences'];
+    // Cookies + Local State (the key wrapper) are what make the seeded profile arrive
+    // logged in. 'Default/Login Data' (saved passwords) and 'Default/Web Data' (payment
+    // methods / autofill) are deliberately NOT copied — same boundary as the desktop rail
+    // (electron/browser/credential-import.ts):
+    //   (a) they contribute almost nothing to login success (cookies + Local State do it),
+    //   (b) reading Login Data together with Local State is the infostealer signature that
+    //       AV/EDR flags, which can block distribution,
+    //   (c) if a marketplace plugin ever reads this profile dir, the blast radius grows
+    //       from "session hijack" to "everything".
+    const rels = ['Local State', 'Default/Cookies', 'Default/Network/Cookies', 'Default/Preferences'];
     for (const rel of rels) {
       const s = path.join(srcUserData, ...rel.split('/'));
       const d = path.join(dst, ...rel.split('/'));

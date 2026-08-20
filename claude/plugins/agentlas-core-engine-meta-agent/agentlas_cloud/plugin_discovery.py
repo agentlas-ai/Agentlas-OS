@@ -48,6 +48,10 @@ def local_search_locations(project_dir: Path) -> list[dict[str, str]]:
     home = Path(os.path.expanduser("~"))
     codex_home = Path(os.environ.get("CODEX_HOME", str(home / ".codex")))
     return [
+        # 1순위: 세 채널(데스크탑·터미널·Agentlas-OS)이 공유하는 Agentlas 플러그인
+        # 저장소. `agentlas plugin add` / 데스크탑 마켓플레이스 설치가 <slug>/plugin.json
+        # (schema agentlas.local-plugin/v1) 마커와 skills/ 파일을 여기에 착지시킨다.
+        {"kind": "agentlas_store", "path": str(home / ".agentlas" / "plugins"), "runtime": "any"},
         {"kind": "plugin_tree", "path": str(home / ".claude" / "plugins"), "runtime": "claude-code"},
         {"kind": "plugin_tree", "path": str(codex_home / "plugins" / "cache"), "runtime": "codex"},
         {"kind": "plugin_tree", "path": str(project_dir / "claude" / "plugins"), "runtime": "claude-code"},
@@ -117,13 +121,54 @@ def _plugin_tree_entries(root: Path) -> list[dict[str, Any]]:
     return entries
 
 
+def _agentlas_store_entries(root: Path) -> list[dict[str, Any]]:
+    """~/.agentlas/plugins/<slug>/plugin.json markers (agentlas.local-plugin/v1).
+
+    데스크탑 hub-plugin-bridge.installSkillBundle / 터미널 engine/hub/plugins.cjs
+    installPluginSkills 가 쓰는 공유 규약의 스캔 절반. 마커 없는 디렉터리는 다른
+    도구의 산출물일 수 있어 조용히 건너뛴다.
+    """
+    if not root.is_dir():
+        return []
+    entries: list[dict[str, Any]] = []
+    for child in sorted(root.iterdir()):
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        payload = _read_json(child / "plugin.json")
+        if not isinstance(payload, dict):
+            continue
+        name = payload.get("slug") or payload.get("name") or child.name
+        skills = payload.get("skills")
+        skill_names = (
+            [str(item.get("name")) for item in skills if isinstance(item, dict) and item.get("name")]
+            if isinstance(skills, list)
+            else []
+        )
+        entries.append(
+            {
+                "name": str(name),
+                "version": payload.get("version"),
+                "description": ", ".join(skill_names) if skill_names else str(payload.get("name") or ""),
+                "origin": "agentlas_plugin_store",
+                "location": str(child),
+                "source": None,
+            }
+        )
+    return entries
+
+
 def scan_local_plugins(project_dir: Path | str = ".") -> dict[str, Any]:
     project = Path(project_dir).resolve()
     locations = local_search_locations(project)
     plugins: dict[str, dict[str, Any]] = {}
     for location in locations:
         path = Path(location["path"])
-        found = _registry_entries(path) if location["kind"] == "registry" else _plugin_tree_entries(path)
+        if location["kind"] == "registry":
+            found = _registry_entries(path)
+        elif location["kind"] == "agentlas_store":
+            found = _agentlas_store_entries(path)
+        else:
+            found = _plugin_tree_entries(path)
         for entry in found:
             key = entry["name"].lower()
             existing = plugins.get(key)
