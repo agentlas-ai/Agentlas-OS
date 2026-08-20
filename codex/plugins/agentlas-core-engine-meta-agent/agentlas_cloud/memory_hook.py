@@ -213,7 +213,7 @@ def _project_boundary(root: Path) -> bool:
 
 
 def _agentlas_project_root(cwd: Path) -> Path | None:
-    """Nearest enclosing project. The home directory is never one.
+    """Nearest enclosing project. The home and scratch roots are never one.
 
     `~/.agentlas` is the runtime's own home (runtime/, one/, cache/), not
     project state, and this walk used to accept it: every folder under $HOME
@@ -228,6 +228,17 @@ def _agentlas_project_root(cwd: Path) -> Path | None:
         unsafe = {Path.home().resolve(), Path(cwd.anchor).resolve()}
     except (OSError, RuntimeError):
         unsafe = set()
+    # project_bootstrap refuses the same three as bootstrap targets, and this
+    # docstring's own rule is that the two must agree — a boundary enforced on
+    # only one side is exactly where the gap opens. The shared scratch root was
+    # missing from both, and a stray `.agentlas/` there made every temp
+    # directory on the machine look like it was already inside a project.
+    try:
+        from .project_bootstrap import _system_scratch_roots
+
+        unsafe |= _system_scratch_roots()
+    except Exception:
+        pass
     for root in (cwd, *cwd.parents):
         try:
             if root.resolve() in unsafe:

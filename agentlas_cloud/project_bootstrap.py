@@ -13,6 +13,7 @@ import hashlib
 import fnmatch
 import json
 import os
+import tempfile
 import queue
 import re
 import secrets
@@ -289,12 +290,34 @@ _OS_ONLY_ROOT_NAMES = frozenset({
 })
 
 
+def _system_scratch_roots() -> set[Path]:
+    """Shared scratch directories that are never themselves a project.
+
+    ★실측 2026-08-21: `$TMPDIR` **루트 그 자체**에 `.agentlas/`(ontology-runtime.sqlite,
+    context-map.json, .project-bootstrap.lock)가 만들어져 있었다. 그러면 그 아래에
+    생기는 모든 임시 디렉터리가 위로 올라가다 그 마커를 만나 "이미 프로젝트 안"으로
+    보인다 — pytest 의 tmp_path 도 전부 여기 아래라 무관한 테스트 두 건이 그 오염으로
+    깨졌다. 아래에 **중첩된** 경로는 진짜 작업 디렉터리일 수 있으므로 그대로 두고,
+    home·파일시스템 루트와 같은 이유로 **정확히 그 루트만** 거절한다.
+    """
+
+    roots: set[Path] = set()
+    for candidate in (tempfile.gettempdir(), "/tmp", "/private/tmp", os.environ.get("TMPDIR")):
+        if not candidate:
+            continue
+        try:
+            roots.add(Path(candidate).expanduser().resolve())
+        except (OSError, RuntimeError):
+            continue
+    return roots
+
+
 def _project_root(project: str | Path) -> Path:
     root = Path(project).expanduser().resolve()
     if not root.is_dir():
         raise ValueError("project_directory_does_not_exist")
     anchor = Path(root.anchor).resolve()
-    if root in {Path.home().resolve(), anchor}:
+    if root in {Path.home().resolve(), anchor} or root in _system_scratch_roots():
         raise ValueError("unsafe_project_root")
     parts = root.relative_to(anchor).parts
     if parts and parts[0] in _OS_ONLY_ROOT_NAMES:

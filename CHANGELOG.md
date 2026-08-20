@@ -53,6 +53,19 @@
 - **`prepare_execution` takes the same compact `decision`.** Re-authoring the
   exact Selection to run a decision Core had just accepted was the last echo in
   the sequence.
+- **The shared scratch root is not a project.** A stray `.agentlas/` had been
+  written at the system temp root, so every temporary directory on the machine
+  resolved to it while walking up for a project — the recall hook then attached
+  an unrelated project's continuity to work that had nothing to do with it. The
+  upward search and the bootstrap refusal now both exclude the exact scratch
+  root (anything nested under it is still a legitimate working directory), which
+  is the boundary the search already documented for home and the filesystem root.
+- **An update check no longer builds the home of a runtime that is not
+  installed.** That guard existed, but two calls ran ahead of it and created
+  `~/.agentlas/runtime/` to write their own markers, so an isolated plugin
+  bundle still grew a runtime home it had no runtime for. The retirement marker
+  now returns when there is nothing to retire.
+
 - **A gate that could not run stopped reporting success.** `verify-mcp-surface.sh`
   used `if rg -q ...`; on a machine without ripgrep that exits 127, reads as
   false, and skipped the "direct remote MCP bypass" check while still printing

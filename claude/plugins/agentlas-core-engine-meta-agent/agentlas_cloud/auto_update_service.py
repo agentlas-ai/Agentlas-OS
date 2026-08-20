@@ -50,7 +50,16 @@ def _run(command: list[str], *, timeout: int = COMMAND_TIMEOUT_SECONDS) -> dict[
 
 
 def _write_retirement_marker(home: Path, result: dict[str, Any]) -> None:
-    path = _runtime_base(home) / RETIREMENT_MARKER
+    base = _runtime_base(home)
+    # ★설치본이 없으면 은퇴시킬 스케줄러도 없다 — 그 사실을 기록하려고 런타임
+    # 홈을 짓지 않는다. maybe_auto_update 는 "런타임이 없으면 아무것도 만들지
+    # 않는다"를 이미 보장하는데, 그 가드보다 **앞서** 불리는 이 마커 기록이
+    # parents=True 로 디렉터리를 먼저 만들어 계약을 깨고 있었다(실측 2026-08-21:
+    # 격리 HOME 에 .agentlas/runtime/{periodic-update-service-retired-v1.json,
+    # auto-update.json} 이 생김). 가드는 가장 먼저 지나는 문에 있어야 한다.
+    if not base.is_dir():
+        return
+    path = base / RETIREMENT_MARKER
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp.{os.getpid()}.{time.time_ns()}")
     payload = {
