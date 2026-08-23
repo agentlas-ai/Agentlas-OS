@@ -367,20 +367,61 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
         directory.mkdir(parents=True, exist_ok=True)
 
     # D9 — the product-shipped operations skill fills the empty skills/ slot.
-    # MISSING-ONLY per file so a user's local edits are never overwritten;
-    # existing installs receive it on their next seed (on/`agentlas-one seed`).
+    #
+    # PRD §3.6 — this used to be MISSING-ONLY, so an install that received the
+    # skill once was frozen at that judgment forever: measured 2026-08-23 the
+    # installed copy was three months behind the shipped one (missing a tool and
+    # the whole model-allocation section), and it was silent about it.
+    # MISSING-ONLY protected user edits, which is right — but "unchanged since we
+    # wrote it" is not a user edit. We record the digest we shipped; if the file
+    # on disk still matches that digest, the user never touched it and we may
+    # bring it forward. If it differs, the user owns it and we keep their copy.
     ops_src = Path(__file__).resolve().parent.parent / "skills" / "agentlas-operations"
     ops_dst = root / "skills" / "agentlas-operations"
     if ops_src.is_dir():
         ops_dst.mkdir(parents=True, exist_ok=True)
+        stamp_path = ops_dst / ".shipped-digests.json"
+        try:
+            shipped = json.loads(stamp_path.read_text(encoding="utf-8"))
+            if not isinstance(shipped, dict):
+                shipped = {}
+        except (OSError, ValueError):
+            shipped = {}
+        changed = False
         for source in sorted(ops_src.glob("*.md")):
             target = ops_dst / source.name
-            if not target.exists():
+            try:
+                body = source.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+            if target.exists():
                 try:
-                    target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-                    mark(target, True)
+                    current = target.read_text(encoding="utf-8")
                 except OSError:
-                    pass
+                    continue
+                if current == body:
+                    # 이미 최신이다 — 도장만 맞춘다.
+                    if shipped.get(source.name) != digest:
+                        shipped[source.name] = digest
+                        changed = True
+                    continue
+                current_digest = hashlib.sha256(current.encode("utf-8")).hexdigest()
+                if shipped.get(source.name) != current_digest:
+                    # 사용자가 손댔다(또는 우리가 보낸 적 없는 판본이다). 그 사람의 것을 지킨다.
+                    continue
+            try:
+                target.write_text(body, encoding="utf-8")
+                mark(target, True)
+                shipped[source.name] = digest
+                changed = True
+            except OSError:
+                pass
+        if changed:
+            try:
+                stamp_path.write_text(json.dumps(shipped, ensure_ascii=False, indent=2), encoding="utf-8")
+            except OSError:
+                pass
 
     # --- Identity -----------------------------------------------------------
     mark(meta / AGENT_CARD_FILE, _write_json_if_absent(meta / AGENT_CARD_FILE, {
@@ -735,11 +776,16 @@ def record_session_receipt(
     root: Path,
     *,
     substantial: bool,
-    capsule_written: bool,
+    capsule_written: bool | None,
     workspace: str = "",
     detail: str = "",
 ) -> dict[str, Any]:
-    """Write a session receipt and record explicitly when no capsule was used."""
+    """Write a session receipt and record explicitly when no capsule was used.
+
+    ``capsule_written=None`` means we could not observe it (PRD §4.19). Unknown is
+    recorded as unknown and never counted as a gap — a signal we cannot measure
+    must not become a claim.
+    """
     root = Path(root).expanduser()
     meta = root / META_DIR
     meta.mkdir(parents=True, exist_ok=True)
@@ -749,8 +795,8 @@ def record_session_receipt(
         "event": "session_stop",
         "workspace": os.path.basename(workspace.rstrip("/")) if workspace else "",
         "substantial": bool(substantial),
-        "capsuleWritten": bool(capsule_written),
-        "gap": bool(substantial and not capsule_written),
+        "capsuleWritten": None if capsule_written is None else bool(capsule_written),
+        "gap": bool(substantial and capsule_written is False),
         "detail": detail[:300],
         "createdAt": _now(),
     }
@@ -1031,10 +1077,21 @@ def _session_started_at(transcript: str) -> float:
     return float(birth)
 
 
-def _capsule_written_since(workspace: str, since_epoch: float) -> bool:
-    """Check whether the canonical learning directory received a session capsule."""
+def _capsule_written_since(workspace: str, since_epoch: float) -> bool | None:
+    """Check whether the canonical learning directory received a session capsule.
+
+    PRD §4.19 — ``_session_started_at`` returns 0.0 when it cannot get a real
+    creation time (Linux has no ``st_birthtime``). Comparing ``mtime >= 0`` is
+    then true for **any** file that exists, so "did this session learn anything?"
+    was always answered yes outside macOS and the "many tool uses, nothing
+    learned" signal could never fire there. When we do not know the start time we
+    do not answer — ``None`` means unknown, and the caller must not treat unknown
+    as either yes or no.
+    """
     if not workspace:
         return False
+    if since_epoch <= 0:
+        return None
     learnings = Path(workspace) / ".agentlas" / "pm" / "learnings"
     if not learnings.is_dir():
         return False
@@ -2124,7 +2181,6 @@ def curate(root: Path) -> dict[str, Any]:
 
     counts = {"admit": 0, "reject": 0, "defer": 0, "deduped": 0}
     chips: list[str] = []
-    pending = [row for row in _read_jsonl(tickets_path) if str(row.get("ticketId")) not in decided]
 
     # G7 — the One drawer only accepts tickets from One's own pipeline. Legacy
     # rows without the field are tolerated (they predate the contract).
@@ -2138,6 +2194,55 @@ def curate(root: Path) -> dict[str, Any]:
     except (OSError, ValueError):
         slug_sidecar = {}
 
+    # PRD §4.20 — 이 구간이 원장 잠금 없이 append 했다. 다른 두 경로는 잠금을 잡는다.
+    # Claude 와 Codex 를 함께 쓰는 표준 구성에서 두 종료가 겹치면 같은 티켓의 결정 행과 같은
+    # 기억 블록이 **두 번** 적혔다. 같은 잠금 안에서 하고, 목록은 잠금 안에서 다시 읽는다
+    # (잠금 밖에서 읽은 pending 은 이미 낡았을 수 있다).
+    with _LedgerLock(decisions_path) as acquired:
+        if not acquired:
+            return {"skipped": "curator_busy", "hint": "another session is curating; this stop wrote nothing"}
+        decided = {
+            str(row.get("ticketId"))
+            for row in _read_jsonl(decisions_path)
+            if row.get("ticketId")
+        }
+        pending = [row for row in _read_jsonl(tickets_path) if str(row.get("ticketId")) not in decided]
+        return _curate_pending(
+            pending=pending,
+            decisions_path=decisions_path,
+            soul_path=soul_path,
+            meta=meta,
+            root=root,
+            counts=counts,
+            chips=chips,
+            durable=durable,
+            durable_prefixes=durable_prefixes,
+            allowed_emitters=allowed_emitters,
+            legacy_ok=legacy_ok,
+            ruleset_sha=ruleset_sha,
+            slug_sidecar=slug_sidecar,
+            exp_db=exp_db,
+        )
+
+
+def _curate_pending(
+    *,
+    pending: list[dict[str, Any]],
+    decisions_path: Path,
+    exp_db: Path,
+    soul_path: Path,
+    meta: Path,
+    root: Path,
+    counts: dict[str, int],
+    chips: list[str],
+    durable: Any,
+    durable_prefixes: Any,
+    allowed_emitters: set[str],
+    legacy_ok: bool,
+    ruleset_sha: str,
+    slug_sidecar: dict[str, Any],
+) -> dict[str, Any]:
+    """curate() 의 결정 구간. 호출자가 원장 잠금을 잡은 상태로만 부른다(PRD §4.20)."""
     with decisions_path.open("a", encoding="utf-8") as handle:
         for ticket in pending:
             candidate = ticket.get("candidate") or {}

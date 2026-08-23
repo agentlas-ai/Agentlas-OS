@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""One 서랍(~/.agentlas/one)에 대한 쓰기 관문 — PRD §4.17.
+
+오너 결정 D3: One 의 서랍은 자기 큐레이터 파이프라인만 쓴다. 배우고 싶으면 Memory Events
+봉투를 내면 되고, 파일을 직접 쓰지는 않는다.
+
+예전 구현의 세 구멍:
+  ① 관문이 **도구 이름**(Edit|Write|MultiEdit|…)에 걸려 있었다. 셸 한 줄이면 그대로 우회됐다.
+  ② 인터프리터가 실패하면 `2>/dev/null || printf '{}'` 가 **열린 채로** 통과시켰다.
+  ③ codex 훅에는 이 관문이 아예 없었다 — 같은 사용자가 다른 호스트에서는 무방비였다.
+
+그래서 이 스크립트는
+  · 판정을 **행동**으로 한다(그 경로에 쓰는가) — 편집 도구든 셸이든 같은 규칙,
+  · 실패하면 닫는다(deny),
+  · 모든 호스트가 같은 파일을 부른다.
+
+입력: 호스트 훅 페이로드(JSON) stdin. 출력: 호스트별 결정 JSON stdout.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shlex
+import sys
+
+# 셸에서 파일을 만드는/바꾸는 흔한 길. 완전하지 않아도 되지만, 완전하지 않다는 이유로
+# 열어 두지는 않는다 — 아래 리다이렉션 검사가 나머지 대부분을 덮는다.
+WRITE_COMMANDS = {
+    "tee", "cp", "mv", "rm", "rmdir", "touch", "install", "truncate", "ln",
+    "sed", "dd", "chmod", "chown", "mkdir", "rsync", "unlink", "shred",
+}
+
+
+def one_dir() -> str:
+    return os.path.realpath(os.path.expanduser(os.environ.get("AGENTLAS_ONE_DIR") or "~/.agentlas/one"))
+
+
+def inside(path: str, root: str) -> bool:
+    if not path:
+        return False
+    try:
+        real = os.path.realpath(os.path.expanduser(path))
+    except OSError:
+        # 경로를 해석조차 못 하면 판단할 수 없다 — 판단 불가는 통과가 아니다.
+        return True
+    return real == root or real.startswith(root + os.sep)
+
+
+def shell_writes_into(command: str, root: str) -> bool:
+    """셸 한 줄이 One 서랍에 쓰는가. 확실히 아니라고 말할 수 있을 때만 False."""
+    if not command:
+        return False
+    # 서랍 경로를 아예 언급하지 않으면 이 관문의 대상이 아니다. 변수·물결표 표기까지 본다.
+    mentions = any(token in command for token in ("agentlas/one", "AGENTLAS_ONE_DIR", root))
+    if not mentions:
+        return False
+    # 리다이렉션(>, >>)의 대상이 서랍이면 쓰기다.
+    for match in re.finditer(r">>?\s*([^\s;|&)]+)", command):
+        if inside(match.group(1).strip("\"'"), root):
+            return True
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        # 따옴표가 안 맞아 못 읽는다 = 판단 불가 = 닫는다.
+        return True
+    for index, token in enumerate(tokens):
+        base = os.path.basename(token)
+        if base in WRITE_COMMANDS:
+            for candidate in tokens[index + 1:]:
+                if candidate.startswith("-"):
+                    continue
+                if inside(candidate.strip("\"'"), root):
+                    return True
+    return False
+
+
+def decision_for(payload: dict, root: str) -> bool:
+    """차단해야 하는가."""
+    tool_input = payload.get("tool_input") or payload.get("input") or {}
+    if not isinstance(tool_input, dict):
+        return True
+    for key in ("file_path", "notebook_path", "path", "target_file"):
+        value = tool_input.get(key)
+        if isinstance(value, str) and inside(value, root):
+            return True
+    edits = tool_input.get("edits")
+    if isinstance(edits, list):
+        for edit in edits:
+            if isinstance(edit, dict) and isinstance(edit.get("file_path"), str) and inside(edit["file_path"], root):
+                return True
+    for key in ("command", "cmd", "script"):
+        value = tool_input.get(key)
+        if isinstance(value, str) and shell_writes_into(value, root):
+            return True
+    return False
+
+
+REASON = (
+    "The One drawer is written only by its own curator pipeline (owner decision D3). "
+    "Read it freely; to record a learning, emit a Memory Events envelope instead."
+)
+
+
+def emit(host: str, deny: bool) -> None:
+    if host == "codex":
+        print(json.dumps({"decision": "deny", "reason": REASON} if deny else {}))
+        return
+    if deny:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": REASON,
+        }}))
+    else:
+        print("{}")
+
+
+def main() -> int:
+    host = "claude"
+    argv = sys.argv[1:]
+    if "--host" in argv:
+        try:
+            host = argv[argv.index("--host") + 1]
+        except IndexError:
+            host = "claude"
+    try:
+        raw = sys.stdin.read()
+        payload = json.loads(raw) if raw.strip() else {}
+        if not isinstance(payload, dict):
+            payload = {}
+        deny = decision_for(payload, one_dir())
+    except Exception:
+        # 실패는 닫힘이다. 예전에는 여기서 열린 채 통과했다(PRD §4.17).
+        emit(host, True)
+        return 0
+    emit(host, deny)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

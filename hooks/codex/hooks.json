@@ -26,8 +26,13 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|apply_patch",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|apply_patch|Bash|shell",
         "hooks": [
+          {
+            "type": "command",
+            "command": "root=$(printf %s \"${CODEX_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\" | tr '\\\\' '/'); if [ -x \"${root}/bin/agentlas-one-drawer-guard\" ]; then \"${root}/bin/agentlas-one-drawer-guard\" --host codex; else printf '%s\\n' '{\"decision\":\"deny\",\"reason\":\"The One drawer guard is missing; refusing the write until it is restored.\"}'; fi",
+            "timeout": 10
+          },
           {
             "type": "command",
             "command": "root=$(printf %s \"${CODEX_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\" | tr '\\\\' '/'); if [ -x \"${root}/bin/agentlas-memory-hook\" ]; then \"${root}/bin/agentlas-memory-hook\" --host codex --event PreToolUse; else printf '{}\\n'; fi",

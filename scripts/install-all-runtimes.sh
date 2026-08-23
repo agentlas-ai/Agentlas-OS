@@ -530,6 +530,13 @@ install_runtime_home() {
   for runtime_dir in bin agentlas_cloud career_graph contracts ontology schemas templates system-agents; do
     copy_tree_without_python_cache "$source_dir/$runtime_dir" "$stage_dir/$runtime_dir" || return 1
   done
+  # PRD §3.6 — One 지시문이 "운영 절차는 <one>/skills/agentlas-operations/SKILL.md 에 있다"고
+  # 가리키는데, 그 씨앗의 원본은 런타임 홈의 skills/ 다(one_workspace.py 가 here.parent/skills
+  # 로 찾는다). 목록에 없어서 새 설치본에는 원본 자체가 없었고, 그래서 씨앗 복사가 조용히
+  # 아무것도 하지 않았다 — One 은 없는 파일을 가리키는 지시를 받았다.
+  if [[ -d "$source_dir/skills" ]]; then
+    copy_tree_without_python_cache "$source_dir/skills" "$stage_dir/skills" || return 1
+  fi
   # Hook packs must travel with the runner: `agentlas-one on` installs them, and
   # a user who never re-runs the installer would otherwise never receive them.
   local pack
@@ -607,6 +614,7 @@ install_runtime_home() {
   promote_runtime_home "$runtime_root" "$home_dir" "$stage_dir" "$version" "$py" \
     || return 1
   log "Installed runner: $HOME/.agentlas/runtime/current/bin/hephaestus"
+  prune_runtime_homes || warn "Old runtime home versions were left in place."
 
   local user_bin="$HOME/.local/bin"
   if mkdir -p "$user_bin" 2>/dev/null; then
@@ -927,6 +935,48 @@ register_claude_mcp() {
 # Plugin cache versions accumulate without bound (measured: seven releases in
 # one cache). Keep the active version and one rollback target; anything older is
 # an orphan that only confuses `claude plugin` output.
+# PRD §4.22 — 런타임 홈은 버전별 디렉터리에 설치하고 링크만 바꾼다. 옛 버전을 정리하는
+# 코드가 없어서 무한히 커졌다(실측 2026-08-23: 124개 버전 9.1GB, 버전당 162MB).
+# 현재 것과 되돌리기용 최근 몇 개만 남긴다. 살아 있는 호스트 설정은 전부 `current` 를 보므로
+# 옛 버전 디렉터리에는 사용자 상태가 없다(2026-08-23 실측 확인).
+# 정리는 설치기와 업데이터 **양쪽**에 있어야 한다 — 한쪽에만 두면 다른 경로로 갱신한
+# 머신은 계속 쌓인다.
+ONE_RUNTIME_KEEP="${AGENTLAS_RUNTIME_KEEP:-3}"
+
+prune_runtime_homes() {
+  local runtime_root="$HOME/.agentlas/runtime"
+  [[ -d "$runtime_root" ]] || return 0
+  local current_target=""
+  if [[ -L "$runtime_root/current" ]]; then
+    current_target="$(basename "$(readlink "$runtime_root/current")")"
+  fi
+  local -a versions=()
+  local dir name
+  while IFS= read -r dir; do
+    name="$(basename "$dir")"
+    # 숨김 스테이징/롤백 디렉터리와 현재 대상은 건드리지 않는다.
+    [[ "$name" == .* ]] && continue
+    [[ "$name" == "current" ]] && continue
+    [[ -n "$current_target" && "$name" == "$current_target" ]] && continue
+    versions+=("$name")
+  done < <(find "$runtime_root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+  local total="${#versions[@]}"
+  local keep=$((ONE_RUNTIME_KEEP - 1))   # current 를 포함해 KEEP 개
+  [[ "$keep" -lt 0 ]] && keep=0
+  [[ "$total" -gt "$keep" ]] || return 0
+  local -a ordered=()
+  while IFS= read -r name; do
+    [[ -n "$name" ]] && ordered+=("$name")
+  done < <(printf '%s\n' "${versions[@]+"${versions[@]}"}" | sort -t. -k1,1n -k2,2n -k3,3n)
+  local removed=0 index=0
+  while [[ "$index" -lt $((total - keep)) ]]; do
+    rm -rf "$runtime_root/${ordered[$index]}" 2>/dev/null && removed=$((removed + 1))
+    index=$((index + 1))
+  done
+  [[ "$removed" -gt 0 ]] && log "Pruned $removed old runtime home version(s); kept the current one and $keep rollback target(s)."
+  return 0
+}
+
 prune_claude_plugin_cache() {
   local cache="$HOME/.claude/plugins/cache/$marketplace_name/$plugin_name"
   [[ -d "$cache" ]] || return 0

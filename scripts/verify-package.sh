@@ -646,6 +646,14 @@ scripts/verify-windows-wiring.sh
 # (system-agents/curator-ruleset.json, then the goose/openclaw hook packs), and
 # both times every consumer degraded silently instead of failing.
 scripts/verify-runtime-home-parity.sh
+# One 지시문이 가리키는 운영 절차 파일이 실제로 배달되고, 갱신되고, 색인이 생성물인가.
+# 셋 다 조용히 깨져 있었다(PRD §3.6): 원본이 페이로드에 없었고, 씨앗은 "없을 때만"이라
+# 3개월 전 판본에 얼어 있었고, 색인 생성기는 아무도 부르지 않았다.
+scripts/verify-ops-skill-delivery.sh
+# One 이 호스트에 남기는 것들(상태·인자·서랍 관문·관측·보존)이 정직하고 유한한가.
+# 여섯 결함 전부 조용했다 — 꺼져 있는데 켜짐으로 기록, 셸로 우회되는 관문, 인자 주입,
+# macOS 밖에서 죽은 신호, 무한히 쌓이는 백업과 런타임 홈(PRD §4.15~§4.22).
+scripts/verify-one-host-hygiene.sh
 scripts/sync-adapters.sh --check
 # Every /hep-<verb> body across 10 runtime formats used to be a separate
 # hand-maintained file. Measured 2026-08-17: 23 of 25 commands had drifted,

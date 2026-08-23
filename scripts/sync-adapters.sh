@@ -99,6 +99,9 @@ code_files=(
   "bin/hephaestus.cmd"
   "bin/agentlas-memory-hook"
   "bin/agentlas-one"
+  # PRD §4.17 — One 서랍 쓰기 관문. 훅은 부르기만 하고 판정은 이 파일이 한다. 미러에 없으면
+  # 플러그인 루트에서 실행 파일을 못 찾고, 훅은 (fail-closed 설계대로) 모든 쓰기를 거절한다.
+  "bin/agentlas-one-drawer-guard"
 )
 
 # Byte-mirrored skill copies at the repo root (.agents/skills); plugin skill

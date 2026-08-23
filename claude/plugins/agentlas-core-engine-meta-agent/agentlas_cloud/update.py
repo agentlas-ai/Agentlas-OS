@@ -59,7 +59,11 @@ RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "contracts", "ontology"
 # allowlist entry must still be installable, and a hard requirement here turns a
 # silent degradation into a total update outage. scripts/verify-runtime-home-
 # parity.sh is what keeps this list honest against the installer.
-RUNTIME_OPTIONAL_DIRS = ("schemas", "system-agents", "goose", "openclaw")
+#   skills/ — one_workspace._seed_operations_skill() copies the product-shipped
+#     operations skill from <runtime>/skills/agentlas-operations. Without it the
+#     One directive points at a file that was never created (PRD §3.6). Measured
+#     2026-08-23: ~/.agentlas/runtime/current/skills did not exist at all.
+RUNTIME_OPTIONAL_DIRS = ("schemas", "system-agents", "goose", "openclaw", "skills")
 RUNTIME_FILES = ("package-contract.json",)
 RUNTIME_BRIDGE_FILES = (
     "desktop-update-bridge-v1.json",
@@ -2050,6 +2054,40 @@ def _activate_runtime(staged: Path, target: Path) -> None:
             _remove_path(target_backup)
         except OSError:
             pass
+    _prune_runtime_homes(target.parent)
+
+
+RUNTIME_HOMES_KEPT = 3
+
+
+def _prune_runtime_homes(runtime_root: Path) -> None:
+    """옛 런타임 홈 버전을 거둔다 (PRD §4.22).
+
+    버전별 디렉터리에 설치하고 링크만 바꾸는데 정리 코드가 없어 무한히 커졌다
+    (실측 2026-08-23: 124개 9.1GB). 살아 있는 호스트 설정은 전부 `current` 를 보므로
+    옛 버전에는 사용자 상태가 없다. 현재 것과 되돌리기용 몇 개만 남긴다.
+    설치기(scripts/install-all-runtimes.sh prune_runtime_homes)와 **양쪽 모두** 있어야 한다 —
+    한쪽에만 두면 다른 경로로 갱신한 머신은 계속 쌓인다.
+    """
+    try:
+        current = runtime_root / "current"
+        active = os.path.basename(os.readlink(current)) if current.is_symlink() else ""
+        candidates = sorted(
+            entry for entry in runtime_root.iterdir()
+            if entry.is_dir()
+            and not entry.name.startswith(".")
+            and entry.name != "current"
+            and entry.name != active
+        )
+    except OSError:
+        return
+    keep = max(0, RUNTIME_HOMES_KEPT - 1)  # current 를 포함해 RUNTIME_HOMES_KEPT 개
+    for stale in candidates[:max(0, len(candidates) - keep)]:
+        try:
+            _remove_path(stale)
+        except OSError:
+            # 지우지 못한 것은 다음 갱신에서 다시 시도한다 — 실패가 업데이트를 막지 않는다.
+            continue
 
 
 def _point_current_at(target: Path) -> dict[str, str]:

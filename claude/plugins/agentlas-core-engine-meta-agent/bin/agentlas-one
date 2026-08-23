@@ -75,10 +75,36 @@ sys.stdout.write("" if value is None else str(value))
 PYEOF
 }
 
+# PRD §4.21 — 진입 파일·훅 파일을 고칠 때마다 시각 접미사 백업을 만들고 **아무도 지우지
+# 않았다**. 실측 2026-08-23: ~/.claude 25개, ~/.codex 18개, ~/.gemini 400개(합 4.9MB).
+# 설정 백업에는 훅 환경값이 들어갈 수 있으므로 무한히 쌓아 둘 물건이 아니다.
+# 되돌리기는 최근 몇 벌이면 충분하다 — 만들되, 그 자리에서 오래된 것을 거둔다.
+ONE_BACKUP_KEEP="${AGENTLAS_ONE_BACKUP_KEEP:-3}"
+
+one_backup_file() {
+  # $1 = 원본 경로. 백업을 만들고 같은 원본의 오래된 백업을 KEEP 개만 남긴다.
+  local src="$1"
+  [ -f "$src" ] || return 0
+  cp "$src" "$src.one-backup-$(date +%s)" 2>/dev/null || return 0
+  # 최신 KEEP 개를 뺀 나머지를 지운다. 이름의 시각이 곧 정렬 키다.
+  local old
+  old="$(ls -1 "$src".one-backup-* 2>/dev/null | sort -r | tail -n +$((ONE_BACKUP_KEEP + 1)))"
+  [ -n "$old" ] || return 0
+  printf '%s\n' "$old" | while IFS= read -r stale; do
+    [ -n "$stale" ] && rm -f "$stale" 2>/dev/null || true
+  done
+  return 0
+}
+
 state_write() {
-  # $1 = name
+  # $1 = name, $2 = on ("true"/"false"); 생략하면 이전 값을 지킨다.
+  #
+  # PRD §4.15 — 예전에는 무조건 on:true 를 썼다. 그래서 **꺼져 있는 머신에서 이름만 바꿔도**
+  # 상태 파일은 켜짐이 됐고(이름 변경 경로가 이 함수를 부른다), 기억 훅은 모든 프롬프트에
+  # 개인 기억을 주입하면서 화면에는 "One 은 여전히 꺼져 있습니다"라고 출력했다.
+  # 저장은 실제 상태를 쓴다.
   mkdir -p "$ONE_DIR" || die "Cannot create the One directory: $ONE_DIR"
-  ONE_NAME="$1" "$PY" - "$STATE_FILE" <<'PYEOF'
+  ONE_NAME="$1" ONE_ON="${2:-}" "$PY" - "$STATE_FILE" <<'PYEOF'
 import json, os, sys, time
 path = sys.argv[1]
 prev = {}
@@ -88,9 +114,16 @@ if os.path.exists(path):
             prev = json.load(fh)
     except Exception:
         prev = {}
+requested_on = (os.environ.get("ONE_ON") or "").strip().lower()
+if requested_on in ("true", "1", "yes"):
+    on = True
+elif requested_on in ("false", "0", "no"):
+    on = False
+else:
+    on = bool(prev.get("on", False))
 state = {
     "contractVersion": "1.0.0",
-    "on": True,
+    "on": on,
     "name": os.environ["ONE_NAME"],
     "mode": prev.get("mode", "assistant"),
     "since": prev.get("since") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -293,7 +326,7 @@ block_install_one() {
   local name="$1" CLAUDE_MD="$2"
   mkdir -p "$(dirname "$CLAUDE_MD")"
   [ -f "$CLAUDE_MD" ] || : > "$CLAUDE_MD"
-  cp "$CLAUDE_MD" "$CLAUDE_MD.one-backup-$(date +%s)" 2>/dev/null || true
+  one_backup_file "$CLAUDE_MD"
   local block; block="$(directive_block "$name")"
   ONE_BLOCK="$block" ONE_BEGIN="$BEGIN_MARK" ONE_END="$END_MARK" \
     "$PY" - "$CLAUDE_MD" <<'PYEOF'
@@ -326,7 +359,7 @@ block_remove_one() {
   local CLAUDE_MD="$1"
   [ -f "$CLAUDE_MD" ] || return 0
   grep -q "$BEGIN_MARK" "$CLAUDE_MD" 2>/dev/null || return 0
-  cp "$CLAUDE_MD" "$CLAUDE_MD.one-backup-$(date +%s)" 2>/dev/null || true
+  one_backup_file "$CLAUDE_MD"
   ONE_BEGIN="$BEGIN_MARK" ONE_END="$END_MARK" "$PY" - "$CLAUDE_MD" <<'PYEOF'
 import os, re, sys
 path = sys.argv[1]
@@ -509,7 +542,7 @@ PYEOF
 install_claude_stop_hook() {
   mkdir -p "$(dirname "$SETTINGS")"
   [ -f "$SETTINGS" ] || printf '{}\n' > "$SETTINGS"
-  cp "$SETTINGS" "$SETTINGS.one-backup-$(date +%s)" 2>/dev/null || true
+  one_backup_file "$SETTINGS"
   ONE_STOP="$(install_target_bin) stop-hook claude" "$PY" - "$SETTINGS" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
@@ -735,7 +768,7 @@ cmd_install() {
   # The checkpoint is armed first so a refused status line cannot suppress it.
   install_claude_stop_hook && printf 'Non-blocking memory checkpoint Stop hook configured.\n'
   install_codex_stop_hook
-  cp "$SETTINGS" "$SETTINGS.one-backup-$(date +%s)" 2>/dev/null || true
+  one_backup_file "$SETTINGS"
   ONE_CMD="$(install_target_bin) statusline" "$PY" - "$SETTINGS" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
@@ -779,7 +812,7 @@ install_codex_stop_hook() {
 install_cursor_stop_hook() {
   local hooks="${AGENTLAS_ONE_CURSOR_HOOKS:-$HOME/.cursor/hooks.json}"
   [ -f "$hooks" ] || { printf 'No Cursor hooks file; skipped (%s)\n' "$hooks"; return 0; }
-  cp "$hooks" "$hooks.one-backup-$(date +%s)" 2>/dev/null || true
+  one_backup_file "$hooks"
   ONE_STOP="$SELF stop-hook cursor" "$PY" - "$hooks" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
@@ -816,7 +849,7 @@ PYEOF
 install_agy_stop_hook() {
   local hooks="${AGENTLAS_ONE_AGY_HOOKS:-$HOME/.gemini/config/hooks.json}"
   [ -f "$hooks" ] || { printf 'No agy hooks file; skipped (%s)\n' "$hooks"; return 0; }
-  cp "$hooks" "$hooks.one-backup-$(date +%s)" 2>/dev/null || true
+  one_backup_file "$hooks"
   ONE_STOP="$SELF stop-hook agy" "$PY" - "$hooks" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
@@ -846,7 +879,7 @@ PYEOF
 install_json_stop_hook() {
   local host="$1" hooks="$2" create_missing="$3"
   [ -f "$hooks" ] || { printf 'No %s hooks file; skipped (%s)\n' "$host" "$hooks"; return 0; }
-  cp "$hooks" "$hooks.one-backup-$(date +%s)" 2>/dev/null || true
+  one_backup_file "$hooks"
   ONE_STOP="$SELF stop-hook $host" ONE_HOST="$host" ONE_CREATE="$create_missing" \
     "$PY" - "$hooks" <<'PYEOF'
 import json, os, sys
@@ -896,7 +929,7 @@ cmd_on() {
   local name="${1:-}"
   [ -n "$name" ] || name="$(state_read name One)"
   [ -n "$name" ] || name="One"
-  state_write "$name"
+  state_write "$name" true
   # Store one canonical directive file. Marker blocks are copies, while runtimes
   # without hooks can read this file directly.
   mkdir -p "$ONE_DIR"
@@ -978,7 +1011,7 @@ remove_stop_hooks() {
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     [ -f "$file" ] || continue
-    cp "$file" "$file.one-backup-$(date +%s)" 2>/dev/null || true
+    one_backup_file "$file"
     "$PY" - "$file" <<'PYEOF'
 import json, os, sys
 
@@ -1045,7 +1078,7 @@ PYEOF
 remove_statusline() {
   [ -f "$SETTINGS" ] || return 0
   grep -q 'agentlas-one statusline' "$SETTINGS" 2>/dev/null || return 0
-  cp "$SETTINGS" "$SETTINGS.one-backup-$(date +%s)" 2>/dev/null || true
+  one_backup_file "$SETTINGS"
   "$PY" - "$SETTINGS" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
@@ -1135,6 +1168,7 @@ cmd_name() {
   local name="${1:-}"
   [ -n "$name" ] || die "Provide a name: agentlas-one name <name>"
   local on; on="$(state_read on false)"
+  # 이름 변경은 켜기가 아니다 — 현재 상태를 그대로 지킨다(PRD §4.15).
   state_write "$name"
   if [ "$on" = "True" ] || [ "$on" = "true" ]; then
     block_install "$name"
@@ -1318,7 +1352,8 @@ case "${1:-status}" in
   on)         shift; cmd_on "${1:-}" ;;
   off)        cmd_off ;;
   uninstall)  shift; cmd_uninstall "$@" ;;
-  name)       shift; cmd_name "${1:-}" ;;
+  # PRD §4.18 — 첫 인자만 넘겨서 두 낱말 이름("Hope Kim")이 잘렸다. 이름은 나머지 전부다.
+  name)       shift; cmd_name "$*" ;;
   status)     shift; cmd_status "$@" ;;
   memory)     cmd_memory ;;
   seed)       shift; cmd_workspace seed --name "$(state_read name One)" "$@" ;;

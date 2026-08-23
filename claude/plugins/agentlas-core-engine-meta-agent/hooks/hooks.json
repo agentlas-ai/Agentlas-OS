@@ -26,11 +26,11 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|apply_patch",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|apply_patch|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import json,os,sys\nraw=sys.stdin.read()\ntry: p=json.loads(raw) if raw.strip() else {}\nexcept Exception: p={}\npath=str((p.get('tool_input') or {}).get('file_path') or (p.get('tool_input') or {}).get('notebook_path') or '')\none=os.path.realpath(os.path.expanduser(os.environ.get('AGENTLAS_ONE_DIR') or '~/.agentlas/one'))\ntry: real=os.path.realpath(os.path.expanduser(path)) if path else ''\nexcept Exception: real=''\nif real and (real==one or real.startswith(one+os.sep)):\n    print(json.dumps({'hookSpecificOutput':{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'The One drawer is written only by its own curator pipeline (owner decision D3). Read it freely; to record a learning, emit a Memory Events envelope instead.'}}))\nelse:\n    print('{}')\" 2>/dev/null || printf '{}\\n'",
+            "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-one-drawer-guard\" ]; then \"$R/bin/agentlas-one-drawer-guard\" --host claude; else printf '%s\\n' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"The One drawer guard is missing; refusing the write until it is restored.\"}}'; fi",
             "timeout": 10
           },
           {
