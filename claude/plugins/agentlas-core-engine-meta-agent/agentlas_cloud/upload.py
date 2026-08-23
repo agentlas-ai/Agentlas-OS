@@ -37,40 +37,25 @@ from .runtime import (
     run_setup_wizard,
     standalone_experience_asset_identity,
 )
+from .upload_limits_generated import (
+    PACKAGE_MAX_FILE_BYTES,
+    PACKAGE_MAX_FILES,
+    PACKAGE_MAX_TOTAL_BYTES,
+    PACKAGE_MAX_UNCOMPRESSED_FILE_BYTES,
+    PACKAGE_MAX_UNCOMPRESSED_TOTAL_BYTES,
+)
 
-# THE REAL WALL IS THE DOCUMENT, NOT THE NETWORK.
-#
-# A package's bytes are stored inside one manifest record on the server
-# (ScanManifest.cloudPackage.files[].contentBase64), and that record is a single
-# MongoDB document, capped at 16 MiB by BSON. Content is stored base64, so the
-# document carries 4/3 of these transport bytes: 10 MiB here is about 13.3 MiB
-# of base64 plus the manifest's own fields, leaving roughly 2 MiB of headroom.
-# Raising it further means moving the bytes out of the document first — and the
-# owner's decision (2026-08-23) is that they stay in the record, because an
-# agent parked in object storage cannot be routed to.
-#
-# The same four numbers are kept by hand in Desktop
-# (electron/cloud-agents/package.ts, restore.ts), the Terminal
-# (engine/hub/install.cjs) and the server (register route,
-# package-integrity.ts). Change one, change all — and deploy the server first,
-# or clients start sending packages it will refuse.
-MAX_TOTAL_BYTES = 10 * 1024 * 1024
-MAX_FILE_BYTES = 2 * 1024 * 1024
-# THE CEILING MEASURES WHAT IS STORED, NOT WHAT WAS AUTHORED.
-#
-# Packages travel as base64 with no compression, inflating text by a third on
-# the way to a 3 MB ceiling. Measured on the published teams, a text-heavy
-# package compresses 1.5x-3.6x, so the ceiling was costing authors most of
-# their room and knowledge files were being dropped to save space compression
-# gives back for free. Limits apply to the COMPRESSED bytes; the original keeps
-# a bound of its own so a small archive cannot declare an enormous original.
-# Desktop (cloud-agents/package.ts) and the register route enforce this pair.
-MAX_UNCOMPRESSED_FILE_BYTES = 4 * MAX_FILE_BYTES
-MAX_UNCOMPRESSED_TOTAL_BYTES = 4 * MAX_TOTAL_BYTES
+# 상한은 정본 하나(agentlas/AgentsAtlas/app .../upload-scan-catalog.json)에서
+# 생성돼 내려온다 — upload_limits_generated.py. 여기서 다시 적으면 서버·데스크탑·
+# 터미널과 어긋나고, 어긋난 쪽은 파일 이름도 없는 코드로 거절한다.
+MAX_TOTAL_BYTES = PACKAGE_MAX_TOTAL_BYTES
+MAX_FILE_BYTES = PACKAGE_MAX_FILE_BYTES
+MAX_UNCOMPRESSED_FILE_BYTES = PACKAGE_MAX_UNCOMPRESSED_FILE_BYTES
+MAX_UNCOMPRESSED_TOTAL_BYTES = PACKAGE_MAX_UNCOMPRESSED_TOTAL_BYTES
 # Walk bound so a pathological tree terminates; the package ceiling is MAX_FILES,
 # measured on the files actually uploaded.
 MAX_WALKED_ENTRIES = 20_000
-MAX_FILES = 400
+MAX_FILES = PACKAGE_MAX_FILES
 # Collection keeps walking past MAX_FILES so the ranked trimmer can choose what
 # to drop; this is the bound where a tree is too big for that choice to matter.
 MAX_COLLECTED_FILES = 4 * MAX_FILES
