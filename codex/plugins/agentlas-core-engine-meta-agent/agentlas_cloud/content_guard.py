@@ -697,8 +697,36 @@ def _adjudicate_reason(text: str, rule: str, deterministic: Reason, *, redact_me
     return deterministic
 
 
+# ONE LINE IS NOT ALWAYS A SENTENCE.
+#
+# Every rule below scans the whole line, and canonicalize/squish build whole
+# copies of it. That is fine for prose and pathological for the lines real
+# packages actually contain: minified JS, a one-line JSON, a base64 data URI.
+# Measured on upload packaging: 1 MB in one line took 483s, the same megabyte
+# with newlines took 11s — 44x, for identical bytes. Authors saw an upload that
+# never finished and no way to know which file did it.
+#
+# Long lines are scanned in overlapping windows instead. Every rule here matches
+# a phrase or a credential, orders of magnitude shorter than the window, and the
+# overlap covers a match that straddles a boundary. A verdict still redacts the
+# whole line, exactly as before.
+_MAX_SCAN_WINDOW = 8192
+_SCAN_WINDOW_OVERLAP = 512
+
+
 def evaluate_line(line: str) -> Reason | None:
     """Return the highest-confidence verdict for a single line, or None."""
+    if len(line) <= _MAX_SCAN_WINDOW:
+        return _evaluate_scan_window(line)
+    step = _MAX_SCAN_WINDOW - _SCAN_WINDOW_OVERLAP
+    for start in range(0, len(line), step):
+        verdict = _evaluate_scan_window(line[start : start + _MAX_SCAN_WINDOW])
+        if verdict is not None:
+            return verdict
+    return None
+
+
+def _evaluate_scan_window(line: str) -> Reason | None:
     canon = canonicalize(line)
     cjk = _cjk_shadow(line)
 
@@ -771,6 +799,12 @@ def find_multiline_spans(lines: list[str]) -> list[SpanReason]:
                 continue
             blank_run = 0
             acc = acc + " " + nxt
+            # A window that has grown past one scan window is no longer a split
+            # sentence; it is a long line already scanned on its own, and
+            # re-canonicalizing it once per step is what made a minified file
+            # take minutes.
+            if len(acc) > _MAX_SCAN_WINDOW:
+                break
             canon = canonicalize(acc)
             cjk = _cjk_shadow(acc)
             hit = None

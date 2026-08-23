@@ -83,8 +83,13 @@ try:
     # the behaviour the owner replaced.
     big = _pl.Path(_tf.mkdtemp(prefix="big-gate."))
     try:
+        from agentlas_cloud.upload import MAX_UNCOMPRESSED_FILE_BYTES as _FILE_MAX
         (big / "AGENTS.md").write_text("# Big\n" + "body\n" * 10)
-        (big / "big.md").write_text("A" * (4 * 1024 * 1024))
+        # Over the ceiling as AUTHORED, sized from the live constant. A fixture
+        # pinned to a literal stopped testing anything the moment the ceiling
+        # moved: 4 MB of one repeated character gzips to nothing and now ships,
+        # which is correct behaviour and a useless assertion.
+        (big / "big.md").write_text("A" * (_FILE_MAX + 1))
         rg = _pa(str(big), visibility="marketplace")
         assert rg["status"] == "ready", f"oversized file refused instead of withheld: {rg['status']}"
         assert "big.md" not in {f.path if hasattr(f, "path") else f["path"] for f in rg["bundle"]["files"]}, "oversized file shipped"
@@ -98,10 +103,15 @@ try:
     essentials = _pl.Path(_tf.mkdtemp(prefix="essentials-gate."))
     try:
         import base64 as _b64, os as _os
+        from agentlas_cloud.upload import MAX_FILE_BYTES as _FILE, MAX_TOTAL_BYTES as _TOTAL
         (essentials / "AGENTS.md").write_text("# Essentials\n" + "body\n" * 10)
         (essentials / "skills").mkdir()
-        for _index in range(20):
-            (essentials / "skills" / f"skill{_index}.md").write_bytes(_b64.b64encode(_os.urandom(220 * 1024)))
+        # Sized from the live ceilings, and oversized because base64 text still
+        # gzips to about 3/4 — a fixture pinned to today's numbers stops testing
+        # anything the moment they move.
+        _chunk = _FILE // 2
+        for _index in range((_TOTAL // _chunk) * 2 + 2):
+            (essentials / "skills" / f"skill{_index}.md").write_bytes(_b64.b64encode(_os.urandom(_chunk * 3 // 4)))
         re_ = _pa(str(essentials), visibility="marketplace")
         assert re_["status"] == "blocked", "a package of nothing but oversized essentials must not report ready"
         assert any(f["category"] == "size" and f["severity"] == "blocker" for f in re_["review"]["findings"])

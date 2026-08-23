@@ -76,6 +76,11 @@ jobs:
       # overwrites a materialization someone edited by hand.
       - name: Project map heals itself after a seed
         run: bash scripts/verify-project-map-selfheal.sh
+      # A live listing must never be reported as a failed publish: the server
+      # withholds files of its own and stores a different hash, and comparing
+      # only against that hash failed the publish after the agent was on the Hub.
+      - name: A published agent is not reported as a failure
+        run: bash scripts/verify-registration-attestation.sh
 
   wiring:
     strategy:

@@ -38,8 +38,24 @@ from .runtime import (
     standalone_experience_asset_identity,
 )
 
-MAX_TOTAL_BYTES = 3 * 1024 * 1024
-MAX_FILE_BYTES = 512 * 1024
+# THE REAL WALL IS THE DOCUMENT, NOT THE NETWORK.
+#
+# A package's bytes are stored inside one manifest record on the server
+# (ScanManifest.cloudPackage.files[].contentBase64), and that record is a single
+# MongoDB document, capped at 16 MiB by BSON. Content is stored base64, so the
+# document carries 4/3 of these transport bytes: 10 MiB here is about 13.3 MiB
+# of base64 plus the manifest's own fields, leaving roughly 2 MiB of headroom.
+# Raising it further means moving the bytes out of the document first — and the
+# owner's decision (2026-08-23) is that they stay in the record, because an
+# agent parked in object storage cannot be routed to.
+#
+# The same four numbers are kept by hand in Desktop
+# (electron/cloud-agents/package.ts, restore.ts), the Terminal
+# (engine/hub/install.cjs) and the server (register route,
+# package-integrity.ts). Change one, change all — and deploy the server first,
+# or clients start sending packages it will refuse.
+MAX_TOTAL_BYTES = 10 * 1024 * 1024
+MAX_FILE_BYTES = 2 * 1024 * 1024
 # THE CEILING MEASURES WHAT IS STORED, NOT WHAT WAS AUTHORED.
 #
 # Packages travel as base64 with no compression, inflating text by a third on
@@ -279,6 +295,15 @@ def referenced_file_names(files: list[UploadFile]) -> set[str]:
     and ``samples/x.jpg`` both count.
     """
 
+    # `[A-Za-z0-9._-]+\.[A-Za-z0-9]{1,8}` scanned over a whole file is
+    # quadratic on the lines real packages contain. On a run of identical
+    # characters — minified JS, a base64 data URI, a one-line JSON — the greedy
+    # class matches to the end at every start position, then backtracks looking
+    # for the dot that never comes. Measured: 256 KB in one line spent 29.6s
+    # here, 1 MB spent 483s, and the author saw an upload that simply never
+    # finished. Tokenizing first is linear: a run with no dot in it is skipped
+    # whole, and the name pattern only ever runs on a bounded candidate.
+    token_re = re.compile(r"[A-Za-z0-9._-]+")
     name_re = re.compile(r"[A-Za-z0-9._-]+\.[A-Za-z0-9]{1,8}")
     names: set[str] = set()
     for item in files:
@@ -291,7 +316,15 @@ def referenced_file_names(files: list[UploadFile]) -> set[str]:
             text = raw.decode("utf-8")
         except (ValueError, UnicodeDecodeError, OSError):
             continue
-        names.update(match.group(0).lower() for match in name_re.finditer(text))
+        for token in token_re.finditer(text):
+            candidate = token.group(0)
+            if "." not in candidate:
+                continue
+            # A name is short. A dotted token this long is data, not a filename,
+            # and only its tail could carry one.
+            if len(candidate) > 512:
+                candidate = candidate[-512:]
+            names.update(match.group(0).lower() for match in name_re.finditer(candidate))
     return names
 
 def _trim_upload_files_to_limits(
@@ -1625,7 +1658,29 @@ def _attest_registration(
                 f"Registration response did not attest {field}={value!r}.",
                 code="registration_attestation_failed",
             )
-    if _normalized_sha256(registration.get("packageHash")) != _normalized_sha256(manifest.get("packageHash")):
+    # THE SERVER MAY STORE LESS THAN IT RECEIVED, AND THAT IS NOT A FAILED PROOF.
+    #
+    #   Registration verifies the submitted hash, then withholds any file its own
+    #   scanner judged credential-like and stores the remainder under a new hash
+    #   (`packageHash` != `submittedPackageHash`, with `uploadReceipt.omissions`
+    #   naming every dropped path). Comparing only against `packageHash` turned
+    #   that documented repair into `registration_attestation_failed` AFTER the
+    #   listing was live: the agent was on the Hub, searchable and callable,
+    #   while the publisher was told the upload failed — and everything after
+    #   attestation, pricing included, never ran.
+    #
+    #   What attestation is for is proof that the server saw exactly this
+    #   package. `submittedPackageHash` is that proof, so either hash matching
+    #   ours satisfies it. Neither matching still fails closed.
+    submitted = _normalized_sha256(manifest.get("packageHash"))
+    stored_hash = _normalized_sha256(registration.get("packageHash"))
+    receipt = registration.get("uploadReceipt")
+    receipt_submitted = (
+        _normalized_sha256(receipt.get("submittedPackageHash"))
+        if isinstance(receipt, dict)
+        else None
+    )
+    if stored_hash != submitted and receipt_submitted != submitted:
         raise UploadError(
             "Registration response did not attest the submitted package hash.",
             code="registration_attestation_failed",
@@ -1772,6 +1827,24 @@ def publish_agent(
             overwrite_cloud_id=overwrite_cloud_id,
         )
         registration = _attest_registration(registration, packaged["manifest"], visibility)
+        # The server withheld files of its own. Say so at the top level: buried
+        # in the registration receipt, "your package shipped without these two
+        # files" is something no caller reads.
+        server_receipt = registration.get("uploadReceipt")
+        if isinstance(server_receipt, dict) and server_receipt.get("omissions"):
+            packaged["serverWithheld"] = {
+                "count": len(server_receipt["omissions"]),
+                "paths": [
+                    str(item.get("path"))
+                    for item in server_receipt["omissions"]
+                    if isinstance(item, dict) and item.get("path")
+                ],
+                "storedPackageHash": server_receipt.get("storedPackageHash"),
+                "note": (
+                    "The listing is live. These files were withheld by the server's own scan "
+                    "and are not part of the stored package."
+                ),
+            }
     packaged["status"] = "registered"
     packaged["registration"] = registration
     registered_slug = registration.get("slug") or packaged["manifest"]["slug"]
@@ -2567,7 +2640,35 @@ def sanitize_upload_text(file_path: str, text: str) -> tuple[str, list[dict[str,
     return "".join(kept), findings
 
 
+# Packaging reads the tree four times — once, then again after repair, after the
+# brief compiles, and after the public card is prepared — because each of those
+# rewrites files and every finding derived from them has to be recomputed rather
+# than filtered. What must NOT be recomputed is the scan of a file that did not
+# change: the content guard is 96% of packaging time (measured 7s per authored
+# MB), so the four passes cost four times that for three passes of identical
+# input. Keyed by exact content, so a repaired file is always rescanned.
+_SANITIZE_CACHE: dict[tuple[str, str], tuple[str, list[dict[str, Any]]]] = {}
+_SANITIZE_CACHE_MAX = 4096
+
+
+def clear_sanitize_cache() -> None:
+    _SANITIZE_CACHE.clear()
+
+
 def sanitize_upload_file_text(file_path: str, text: str) -> tuple[str, list[dict[str, Any]]]:
+    key = (file_path, hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest())
+    hit = _SANITIZE_CACHE.get(key)
+    if hit is not None:
+        sanitized, findings = hit
+        return sanitized, [dict(finding) for finding in findings]
+    sanitized, findings = _sanitize_upload_file_text_uncached(file_path, text)
+    if len(_SANITIZE_CACHE) >= _SANITIZE_CACHE_MAX:
+        _SANITIZE_CACHE.clear()
+    _SANITIZE_CACHE[key] = (sanitized, [dict(finding) for finding in findings])
+    return sanitized, findings
+
+
+def _sanitize_upload_file_text_uncached(file_path: str, text: str) -> tuple[str, list[dict[str, Any]]]:
     if Path(file_path).suffix.lower() != ".json":
         return sanitize_upload_text(file_path, text)
     try:

@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- **A published agent is no longer reported as a failed publish.**
+  Registration verifies the submitted hash, then withholds any file its own scan
+  judged credential-like and stores the rest under a new hash. The client
+  compared only against that stored hash, so the documented repair surfaced as
+  `registration_attestation_failed` AFTER the listing was live — the agent was
+  on the Hub, searchable and callable, while the publisher was told the upload
+  failed, and everything downstream of attestation (pricing included) never ran.
+  Either hash matching ours now satisfies attestation, the withheld paths are
+  reported as `serverWithheld`, and a response carrying neither still fails
+  closed.
+- **The per-agent ceiling is 10 MB transport / 2 MB per file** (40 MB as
+  authored), raised across the engine, Desktop, the Terminal and the server
+  together. 10 MB is what the store can hold: a package's bytes live inside one
+  manifest record, that record is one MongoDB document capped at 16 MiB, and
+  content is stored base64.
+- **Packaging a minified file no longer looks like a hang.** The filename
+  scanner ran a greedy pattern over whole files, which is quadratic on a long
+  run of identical characters — one megabyte on a single line (minified JS, a
+  base64 data URI, a one-line JSON) spent 483 seconds in it. Tokenizing first
+  makes it linear: the same file now packages in 2.0s, with identical extracted
+  names across 200 checked files. The content guard also scans a long line in
+  overlapping windows instead of whole.
+- **Repeated scans of unchanged files are cached.** Packaging reads the tree
+  four times, because repair, brief compilation and card generation each rewrite
+  files. The content guard is most of packaging time, so three of those passes
+  were re-scanning identical bytes: 6 MB authored went 41.3s -> 13.3s. Keyed by
+  exact content, so a repaired file is always rescanned.
+
 - **Upload conforms the package instead of shipping a broken one.** The
   importance-ranked trimmer (agent definitions, cards, `skills/`, `knowledge/`
   are never dropped) existed but never ran: collection stopped walking at the
