@@ -54,6 +54,29 @@ jobs:
       - name: Compile at the minimum supported Python
         run: python -m compileall -q agentlas_cloud ontology career_graph
 
+  # scripts/verify-upload-redaction.sh is the only place the no-block upload
+  # contract is written down as an executable check, and until 2026-08-23 no
+  # workflow ran it. It caught the 2026-08-14 regression that downgraded every
+  # size blocker to a warning — a package over the limit reported `ready` while
+  # collection had stopped at the offending file — and the finding sat in a
+  # script nobody executed for nine days. Tests cannot cover this: `tests/` is
+  # gitignored in this repo, so CI never sees it.
+  contract-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: No-block upload contract (redaction + trimming + hard limits)
+        run: bash scripts/verify-upload-redaction.sh
+      # A stale agent/capability map fail-closes routing for the whole project,
+      # and the bootstrap that rewrites the map's sources used to leave it that
+      # way. This proves the seed re-derives the map, and that it never
+      # overwrites a materialization someone edited by hand.
+      - name: Project map heals itself after a seed
+        run: bash scripts/verify-project-map-selfheal.sh
+
   wiring:
     strategy:
       fail-fast: false

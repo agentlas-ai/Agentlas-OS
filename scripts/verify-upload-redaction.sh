@@ -77,14 +77,36 @@ try:
         assert any(f.get("engineGap") for f in rb["review"]["findings"]), "no engine-gap receipt"
     finally:
         _sh.rmtree(broken, ignore_errors=True)
+    # Owner rule (restated 2026-08-23): upload repairs and conforms, it never
+    # refuses. An oversized file is withheld with a receipt and the REST of the
+    # package uploads. Refusing here is what this gate used to demand, and it is
+    # the behaviour the owner replaced.
     big = _pl.Path(_tf.mkdtemp(prefix="big-gate."))
     try:
         (big / "AGENTS.md").write_text("# Big\n" + "body\n" * 10)
         (big / "big.md").write_text("A" * (4 * 1024 * 1024))
         rg = _pa(str(big), visibility="marketplace")
-        assert rg["status"] == "blocked" and any(f["category"] == "size" for f in rg["review"]["findings"] if f["severity"] == "blocker"), "size limit no longer blocks"
+        assert rg["status"] == "ready", f"oversized file refused instead of withheld: {rg['status']}"
+        assert "big.md" not in {f.path if hasattr(f, "path") else f["path"] for f in rg["bundle"]["files"]}, "oversized file shipped"
+        assert any(f["id"].startswith("large-file") and f["severity"] != "blocker" for f in rg["review"]["findings"]), "withheld file has no receipt"
     finally:
         _sh.rmtree(big, ignore_errors=True)
+
+    # The one case repair cannot reach: only the agent's own essential files are
+    # left and they are still over the ceiling. Nothing droppable remains, so
+    # this must say so instead of publishing something that is not the agent.
+    essentials = _pl.Path(_tf.mkdtemp(prefix="essentials-gate."))
+    try:
+        import base64 as _b64, os as _os
+        (essentials / "AGENTS.md").write_text("# Essentials\n" + "body\n" * 10)
+        (essentials / "skills").mkdir()
+        for _index in range(20):
+            (essentials / "skills" / f"skill{_index}.md").write_bytes(_b64.b64encode(_os.urandom(220 * 1024)))
+        re_ = _pa(str(essentials), visibility="marketplace")
+        assert re_["status"] == "blocked", "a package of nothing but oversized essentials must not report ready"
+        assert any(f["category"] == "size" and f["severity"] == "blocker" for f in re_["review"]["findings"])
+    finally:
+        _sh.rmtree(essentials, ignore_errors=True)
 
     print("PASS verify-upload-redaction")
 finally:

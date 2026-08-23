@@ -55,6 +55,9 @@ MAX_UNCOMPRESSED_TOTAL_BYTES = 4 * MAX_TOTAL_BYTES
 # measured on the files actually uploaded.
 MAX_WALKED_ENTRIES = 20_000
 MAX_FILES = 400
+# Collection keeps walking past MAX_FILES so the ranked trimmer can choose what
+# to drop; this is the bound where a tree is too big for that choice to matter.
+MAX_COLLECTED_FILES = 4 * MAX_FILES
 MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024
 AGENT_DEFINITION_FILES = {"AGENT.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md", "agent.md", "manifest.md", "system-prompt.md"}
 # Engine scaffold stencils are all `{{UPPER_SNAKE}}` (mirrors repackage._PLACEHOLDER).
@@ -373,6 +376,17 @@ def _trim_upload_files_to_limits(
                 "Nothing to do. Keep large assets outside the agent folder to control what ships.",
             )
         )
+    # Everything droppable is gone and the package is still over. What remains
+    # is rank 0 — the agent definition, its cards, its skills. Dropping any of
+    # it would publish something that is not the agent, so this is the one size
+    # case that stays a refusal instead of a receipt.
+    if over_limit(kept):
+        biggest = max(kept, key=lambda item: item.encodedBytes if item.encodedBytes is not None else item.bytes, default=None)
+        rel = biggest.path if biggest is not None else None
+        if len(kept) > MAX_FILES:
+            findings.append(_finding("file-count-limit", "blocker", "size", f"Package still has more than {MAX_FILES} essential files after dropping everything droppable.", rel, "Split the team into smaller packages."))
+        else:
+            findings.append(_finding("package-size-limit", "blocker", "size", f"Package is over {MAX_TOTAL_BYTES} bytes even with only the agent's essential files left.", rel, "Move large assets out of the agent folder, or split the package."))
     return kept
 
 
@@ -802,7 +816,26 @@ def package_agent(
     # engine gap receipt about the thinner artifact, not permission to publish
     # the omitted bytes and not a reason to prevent the remaining package from
     # uploading.
-    engine_gap = list(remaining)
+    #
+    # Owner rule (restated 2026-08-23): upload repairs and conforms, it does not
+    # refuse. Anything oversized is withheld with a receipt and the rest ships;
+    # `_trim_upload_files_to_limits` drops the least essential files by rank
+    # until the package fits. So no size finding is a refusal by policy.
+    #
+    # What is left here is not policy but arithmetic: after everything droppable
+    # is gone, only rank 0 remains — the agent definition, its cards, its skills
+    # — and it is still over the ceiling. There is nothing left to repair with,
+    # and shipping would publish something that is not the agent (the server
+    # refuses it anyway, by code, naming nothing). That single case stays a
+    # refusal; both findings are raised only after trimming has run.
+    HARD_BLOCK_ID_PREFIXES = (
+        "package-size-limit",
+        "package-uncompressed-size-limit",
+        "file-count-limit",
+    )
+    def _must_stay_blocked(finding: dict[str, Any]) -> bool:
+        return str(finding.get("id", "")).startswith(HARD_BLOCK_ID_PREFIXES)
+    engine_gap = [f for f in remaining if not _must_stay_blocked(f)]
     if engine_gap:
         gap_ids = {id(f) for f in engine_gap}
         remaining = [f for f in remaining if id(f) not in gap_ids]
@@ -2698,7 +2731,7 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             # Blocker, not "high": the file is dropped from the bundle, and a
             # "high" finding never fails static_review, so publish_agent went on
             # to register the truncated package and answered "Registered <slug>."
-            findings.append(_finding("large-file", "blocker", "size", f"File exceeds {MAX_UNCOMPRESSED_FILE_BYTES} bytes and cannot be shipped in the package.", rel, "Move the large asset out of the package folder, or split it below the limit."))
+            findings.append(_finding("large-file", "warning", "size", f"File is over {MAX_UNCOMPRESSED_FILE_BYTES} bytes, so it was left out and the rest of the package was uploaded.", rel, "Receipt: nothing to do to publish. Host the large asset outside the agent folder if the agent needs it at runtime."))
             continue
         # Path portability boundary. Agent Cloud refuses the entire bundle when
         # any path breaks its contract, so decide it here and withhold the exact
@@ -2790,20 +2823,26 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
         # `file: None`, so the author could not tell which file to remove while
         # the same response reported a manifest of a few kilobytes.
         file_count += 1
-        if file_count > MAX_FILES:
-            findings.append(_finding("file-count-limit", "blocker", "size", f"Package has more than {MAX_FILES} files.", rel, "Publish a focused agent/team folder."))
+        if file_count > MAX_COLLECTED_FILES:
+            findings.append(_finding("file-count-limit", "blocker", "size", f"Package has more than {MAX_COLLECTED_FILES} files, past the point where dropping the least essential ones can still fit it.", rel, "Publish a focused agent/team folder."))
             break
         content_base64, encoding, encoded_bytes = encode_upload_content(raw)
         stored = encoded_bytes if encoded_bytes is not None else len(raw)
         if stored > MAX_FILE_BYTES:
-            findings.append(_finding("large-file", "blocker", "size", f"File is {stored} bytes even after compression, over the {MAX_FILE_BYTES} byte limit.", rel, "Move the large asset out of the package folder, or split it below the limit."))
+            findings.append(_finding("large-file", "warning", "size", f"File is {stored} bytes even after compression, over the {MAX_FILE_BYTES} byte limit, so it was left out and the rest of the package was uploaded.", rel, "Receipt: nothing to do to publish. Host the large asset outside the agent folder if the agent needs it at runtime."))
             continue
         # What travelled is what counts against the ceiling; an uncompressed
         # package is unaffected because for it the two numbers are the same.
+        #
+        # Crossing the ceiling must NOT stop the walk. Whoever is left out is
+        # chosen by `_trim_upload_files_to_limits`, which ranks by what the
+        # agent needs (owner decision 2026-08-18: trimming must not cost the
+        # agent its abilities) and leaves a receipt per dropped path. Breaking
+        # here handed that decision to the filesystem's walk order instead: a
+        # package with a heavy `benchmarks/` folder shipped 13 benchmark files
+        # and zero `skills/` files, because "b" is walked before "s" — the
+        # ranked trimmer never saw the skills to keep them.
         transport_bytes += stored
-        if transport_bytes > MAX_TOTAL_BYTES:
-            findings.append(_finding("package-size-limit", "blocker", "size", f"Package exceeds {MAX_TOTAL_BYTES} bytes at {rel}.", rel, "Publish a smaller package."))
-            break
         total_bytes += len(raw)
         if total_bytes > MAX_UNCOMPRESSED_TOTAL_BYTES:
             findings.append(_finding("package-uncompressed-size-limit", "blocker", "size", f"Package contents exceed {MAX_UNCOMPRESSED_TOTAL_BYTES} bytes before compression at {rel}.", rel, "Publish a focused agent/team folder."))

@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **Upload conforms the package instead of shipping a broken one.** The
+  importance-ranked trimmer (agent definitions, cards, `skills/`, `knowledge/`
+  are never dropped) existed but never ran: collection stopped walking at the
+  file that crossed the ceiling, so the trimmer only ever saw a list that
+  already fit. Whoever was left out was decided by the filesystem's walk order.
+  Measured on a package with a heavy `benchmarks/` folder: 13 benchmark files
+  shipped and all 3 `skills/` files were dropped — and it reported `ready`.
+  Collection now completes and the ranked trimmer chooses, each drop leaving a
+  receipt. Same package: every skill kept, one benchmark dropped.
+- **An oversized file is withheld, not a refusal.** A file over the per-file
+  ceiling can never travel, so it is left out with a receipt and the rest of the
+  package uploads. The only size case that still stops is arithmetic, not
+  policy: nothing droppable is left and the agent's own essential files are
+  still over the ceiling.
+- **The project's agent map heals itself.** `.agentlas/agent-ontology/` is
+  derived from sitemap/routing-card/memory-map, all of which the project seed
+  rewrites — and nothing re-derived it, so an ordinary seed left the map stale
+  and a stale map fail-closes routing for the whole project. One test-suite run
+  took ten routing paths down at once. The seed now re-derives the map, and
+  never touches a materialization someone edited by hand.
+- **Two contracts now run in CI.** `verify-upload-redaction.sh` held the upload
+  contract but no workflow called it, so a regression that downgraded every
+  package-limit finding to a warning sat undetected for nine days. It and the
+  new `verify-project-map-selfheal.sh` run on every push.
+
 - **Collaboration edges no longer disqualify every candidate.** An edge is a
   declaration of handoff, not a qualification requirement. Compiling edges into
   each slot's consumes/produces made discovery unusable: `artifact:worker-result`

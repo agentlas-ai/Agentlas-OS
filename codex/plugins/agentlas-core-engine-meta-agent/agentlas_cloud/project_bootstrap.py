@@ -3271,6 +3271,52 @@ def project_status(project: str | Path) -> dict[str, Any]:
     }
 
 
+def _refresh_materialized_ontology(root: Path) -> tuple[list[str], list[str]]:
+    """Re-derive the agent/capability map when the seed just moved its sources.
+
+    The map (`.agentlas/agent-ontology/`) is derived from sitemap.json,
+    routing-card.json, memory-map.json and company-blueprint.json — all of which
+    this bootstrap rewrites. Nothing re-derived it afterwards, so a routine seed
+    left the map stale, and a stale map fail-closes routing for the whole
+    project ("project Agent Ontology is stale; routing stopped"). Measured: one
+    test-suite run was enough to take ten routing paths down at once, all of
+    them green again after a manual `ao migrate --overwrite`.
+
+    Regenerating is only safe for output nobody touched. If the materialized
+    bytes no longer match their own migration receipt, a human edited generated
+    files; that is left alone and reported, never overwritten.
+    """
+
+    from .agent_graph.loader import (
+        AGENT_ONTOLOGY_DIR,
+        materialization_content_digest,
+        source_fingerprint,
+    )
+
+    materialized_root = root / ".agentlas" / AGENT_ONTOLOGY_DIR
+    report_path = materialized_root / "migrate-report.json"
+    if not report_path.is_file():
+        # Never materialized (or an older format without a receipt): the
+        # on-demand `ao migrate` path owns that case.
+        return [], []
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        recorded_fingerprint = str(report.get("source_fingerprint") or "")
+        recorded_content = str(report.get("materialization_content_digest") or "")
+        if not recorded_fingerprint or not recorded_content:
+            return [], []
+        if recorded_fingerprint == source_fingerprint(root):
+            return [], []
+        if recorded_content != materialization_content_digest(root):
+            return [], ["ontology_refresh_skipped:materialization_edited_by_hand"]
+        from .agent_graph.migrate import migrate_ontology
+
+        migrate_ontology(root, write=True, overwrite=True)
+    except Exception as exc:  # a stale map must not stop the rest of the seed
+        return [], [f"ontology_refresh_failed:{type(exc).__name__}"]
+    return [f".agentlas/{AGENT_ONTOLOGY_DIR}"], []
+
+
 def ensure_project(project: str | Path, *, reason: str = "host-first-contact", force_code_map: bool = False) -> dict[str, Any]:
     root = _project_root(project)
     with _project_lock(root):
@@ -3291,6 +3337,11 @@ def ensure_project(project: str | Path, *, reason: str = "host-first-contact", f
         from .context_map_authoring import refresh_declared_context
 
         declared_context = refresh_declared_context(root)
+        # The seed above may have rewritten a map source. Re-derive the map
+        # before anyone routes against it.
+        ontology_created, ontology_warnings = _refresh_materialized_ontology(root)
+        seed_warnings.extend(ontology_warnings)
+        graph_created.extend(ontology_created)
         permission_warnings = _harden_private_tree(root)
         status = project_status(root)
     created = list(dict.fromkeys(seed_created + graph_created + list(code_map.get("created") or [])))
