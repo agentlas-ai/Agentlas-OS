@@ -23,27 +23,29 @@ from agentlas_cloud.agent_graph.loader import source_fingerprint
 from agentlas_cloud.agent_graph.migrate import migrate_ontology
 from agentlas_cloud.project_bootstrap import ensure_project
 
-source = pathlib.Path(".").resolve()
+# The fixture is seeded by the product itself. Copying this checkout's own
+# `.agentlas/` was tried first and passed locally while failing in CI on the
+# very first run: that folder is private project state and is gitignored, so a
+# fresh checkout has none of it. A gate that reads local-only state is a gate
+# that only ever runs on the machine where things already work.
 workspace = pathlib.Path(tempfile.mkdtemp(prefix="project-map-selfheal.")) / "project"
 workspace.mkdir(parents=True)
 try:
-    for name in ("AGENTS.md", "agentlas.json", "manifest.json"):
-        if (source / name).exists():
-            shutil.copy2(source / name, workspace / name)
-    private = workspace / ".agentlas"
-    private.mkdir()
-    for name in ("sitemap.json", "routing-card.json", "memory-map.json", "company-blueprint.json"):
-        if (source / ".agentlas" / name).exists():
-            shutil.copy2(source / ".agentlas" / name, private / name)
+    (workspace / "AGENTS.md").write_text(
+        "# Map Selfheal Fixture\n\nA minimal agent used to prove the project map heals itself.\n",
+        encoding="utf-8",
+    )
+    ensure_project(workspace, reason="verify-project-map-selfheal-seed")
 
     migrate_ontology(workspace, write=True, overwrite=True)
-    report_path = private / "agent-ontology" / "migrate-report.json"
+    report_path = workspace / ".agentlas" / "agent-ontology" / "migrate-report.json"
+    assert report_path.is_file(), "seed produced no materialization receipt"
     recorded = json.loads(report_path.read_text(encoding="utf-8"))["source_fingerprint"]
     assert recorded == source_fingerprint(workspace), "fresh materialization is already stale"
 
-    sitemap_path = private / "sitemap.json"
+    sitemap_path = workspace / ".agentlas" / "sitemap.json"
     sitemap = json.loads(sitemap_path.read_text(encoding="utf-8"))
-    sitemap["purpose"] = f"{sitemap.get('purpose', '')} (map source moved)"
+    sitemap["purpose"] = str(sitemap.get("purpose", "")) + " (map source moved)"
     sitemap_path.write_text(json.dumps(sitemap, ensure_ascii=False), encoding="utf-8")
     assert recorded != source_fingerprint(workspace), "moving a map source did not change the fingerprint"
 
@@ -52,9 +54,9 @@ try:
     assert healed == source_fingerprint(workspace), "bootstrap left the map stale; routing would fail closed"
     assert not [w for w in result.get("warnings", []) if "ontology_refresh" in w], result.get("warnings")
 
-    hand_edited = private / "agent-ontology" / "agents.jsonl"
+    hand_edited = workspace / ".agentlas" / "agent-ontology" / "agents.jsonl"
     hand_edited.write_text('{"id":"hand-edited"}\n', encoding="utf-8")
-    sitemap["purpose"] = f"{sitemap['purpose']} (again)"
+    sitemap["purpose"] = str(sitemap["purpose"]) + " (again)"
     sitemap_path.write_text(json.dumps(sitemap, ensure_ascii=False), encoding="utf-8")
     guarded = ensure_project(workspace, reason="verify-project-map-selfheal-hand-edit")
     assert hand_edited.read_text(encoding="utf-8").strip() == '{"id":"hand-edited"}', "hand-edited materialization was overwritten"
