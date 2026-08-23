@@ -1812,6 +1812,14 @@ if [[ "${AGENTLAS_INSTALLER_LIBRARY_ONLY:-0}" == "1" ]]; then
 fi
 
 # Allow `source` for contract tests without running the installer.
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+#
+# `curl ... | bash` feeds the script on stdin, so BASH_SOURCE is an EMPTY array.
+# With `set -u` (line 2) a bare ${BASH_SOURCE[0]} then aborts with
+# "BASH_SOURCE[0]: unbound variable" before main ever runs — the documented
+# install command died on this line (issue #16).
+# Defaulting to "$0" keeps both paths correct:
+#   piped/executed -> BASH_SOURCE unset or == $0 -> run main
+#   sourced        -> BASH_SOURCE[0] is this file, $0 is the caller -> skip main
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
   main "$@"
 fi
