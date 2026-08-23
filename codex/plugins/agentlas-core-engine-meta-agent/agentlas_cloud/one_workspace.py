@@ -560,12 +560,29 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
     }
 
 
+# PRD §5.16 — 이 집합은 세션 종료마다 원장 **전량**을 다시 읽고 다시 해시했다. 원장은 월 단위로
+# 회전하지만 그 안에서는 계속 자라므로, 바쁜 달의 매 종료가 같은 일을 반복한다.
+# 파일의 크기·수정 시각이 그대로면 결과도 그대로다 — 그 지문으로 캐시한다(증분 색인).
+_ticket_hash_cache: dict[str, tuple[tuple[int, int], set[str]]] = {}
+
+
 def _existing_ticket_hashes(meta: Path) -> set[str]:
     """Hash existing ticket content so re-reading a transcript stays idempotent."""
-    return {
+    path = meta / MEMORY_TICKETS_FILE
+    try:
+        stat = path.stat()
+        fingerprint = (stat.st_size, int(stat.st_mtime_ns))
+    except OSError:
+        return set()
+    cached = _ticket_hash_cache.get(str(path))
+    if cached and cached[0] == fingerprint:
+        return set(cached[1])
+    hashes = {
         _content_hash(str((row.get("candidate") or {}).get("content") or ""))
-        for row in _read_jsonl(meta / MEMORY_TICKETS_FILE)
+        for row in _read_jsonl(path)
     }
+    _ticket_hash_cache[str(path)] = (fingerprint, set(hashes))
+    return hashes
 
 
 def _slugify(value: str) -> str:
@@ -3030,7 +3047,22 @@ def _main(argv: list[str]) -> int:
         # prepared and never executed. A warning, never a block — the decision
         # is the person's; only the silence is removed.
         notice = out.get("workforceNotice") if isinstance(out, dict) else ""
-        print(json.dumps({"systemMessage": notice} if notice else {}, ensure_ascii=False))
+        # PRD §5.15 — `systemMessage` 는 Claude 훅의 형식이다. 다른 호스트에서는 그 키를
+        # 아무도 읽지 않아, One 의 **유일한 알림**("준비했지만 실행하지 않은 로스터")이
+        # 그 사람들에게는 존재하지 않았다. 호스트별로 그 호스트가 읽는 자리에 낸다.
+        if notice:
+            host = (args.host or "claude").strip().lower()
+            if host == "codex":
+                # Codex 훅은 decision/reason 을 읽는다. 막지 않고 이유만 전한다.
+                print(json.dumps({"decision": "continue", "reason": notice}, ensure_ascii=False))
+            elif host in ("claude", ""):
+                print(json.dumps({"systemMessage": notice}, ensure_ascii=False))
+            else:
+                # 훅 계약이 없는 호스트(cursor·goose·opencode …)는 stdout 을 그대로 보여 준다.
+                # 형식을 모르면 형식을 지어내지 않는다 — 사람이 읽을 한 줄을 낸다.
+                print(notice)
+        else:
+            print(json.dumps({}, ensure_ascii=False))
         sys.stderr.write(json.dumps(out, ensure_ascii=False) + "\n")
         return 0
     else:

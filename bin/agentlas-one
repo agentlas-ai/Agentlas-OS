@@ -598,6 +598,25 @@ PYEOF
 #           statusLine of the machine that authored this).
 # Every applied heal appends a receipt to <one>/.agentlas/migrations.jsonl —
 # silent auto-repair is forbidden. Fail-open: any error leaves settings as-is.
+# PRD §5.19 — 자가 치유가 **Claude 설정 한 파일만** 봤다. 그래서 다른 호스트의 진입 파일에서
+# 지시문 블록이 사라져도(수동 편집·다른 도구의 덮어쓰기) 상태 표시는 계속 "설치됨"이었다
+# (실측 2026-08-23: ~/.gemini/GEMINI.md 에 One 표식 0개인데 상태는 설치됨).
+# 켜져 있는 동안에는 모든 진입 파일이 실제로 블록을 갖고 있어야 한다 — 없으면 다시 심는다.
+self_heal_entrypoints() {
+  [ "$(state_read on false)" = "True" ] || [ "$(state_read on false)" = "true" ] || return 0
+  local name; name="$(state_read name One)"
+  [ -n "$name" ] || name="One"
+  local target repaired=0
+  while IFS= read -r target; do
+    [ -n "$target" ] || continue
+    if [ ! -f "$target" ] || ! grep -q "$BEGIN_MARK" "$target" 2>/dev/null; then
+      block_install_one "$name" "$target" && repaired=$((repaired + 1))
+    fi
+  done < <(runtime_entrypoints)
+  [ "$repaired" -gt 0 ] && printf 'Repaired the One directive in %d entry file(s).\n' "$repaired"
+  return 0
+}
+
 self_heal_claude_settings() {
   [ -f "$SETTINGS" ] || return 0
   ONE_SETTINGS="$SETTINGS" \
@@ -759,6 +778,10 @@ PYEOF
 
 # Prefer the installed runtime over this script's own location: a checkout
 # path breaks when the repository moves (measured on this machine's statusLine).
+#
+# PRD §5.20 — Claude 경로만 이것을 쓰고 cursor·agy·나머지 호스트는 `$SELF`(체크아웃 경로)를
+# 훅에 그대로 박았다. 저장소를 옮기거나 지우면 그 호스트들의 종료 훅이 조용히 죽는다.
+# 모든 호스트가 설치 경로를 쓴다.
 install_target_bin() {
   local runtime_bin="${AGENTLAS_ONE_RUNTIME_BIN:-$HOME/.agentlas/runtime/current/bin/agentlas-one}"
   if [ -x "$runtime_bin" ]; then printf '%s' "$runtime_bin"; else printf '%s' "$SELF"; fi
@@ -795,6 +818,7 @@ PYEOF
   # Self-heal after wiring: drops a now-duplicate Stop entry and repoints stale
   # checkout paths. Installing must leave a machine consistent, not just wired.
   self_heal_claude_settings >/dev/null 2>&1 || true
+  self_heal_entrypoints >/dev/null 2>&1 || true
   return $rc
 }
 
@@ -813,7 +837,7 @@ install_cursor_stop_hook() {
   local hooks="${AGENTLAS_ONE_CURSOR_HOOKS:-$HOME/.cursor/hooks.json}"
   [ -f "$hooks" ] || { printf 'No Cursor hooks file; skipped (%s)\n' "$hooks"; return 0; }
   one_backup_file "$hooks"
-  ONE_STOP="$SELF stop-hook cursor" "$PY" - "$hooks" <<'PYEOF'
+  ONE_STOP="$(install_target_bin) stop-hook cursor" "$PY" - "$hooks" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
 try:
@@ -850,7 +874,7 @@ install_agy_stop_hook() {
   local hooks="${AGENTLAS_ONE_AGY_HOOKS:-$HOME/.gemini/config/hooks.json}"
   [ -f "$hooks" ] || { printf 'No agy hooks file; skipped (%s)\n' "$hooks"; return 0; }
   one_backup_file "$hooks"
-  ONE_STOP="$SELF stop-hook agy" "$PY" - "$hooks" <<'PYEOF'
+  ONE_STOP="$(install_target_bin) stop-hook agy" "$PY" - "$hooks" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
 try:
@@ -880,7 +904,7 @@ install_json_stop_hook() {
   local host="$1" hooks="$2" create_missing="$3"
   [ -f "$hooks" ] || { printf 'No %s hooks file; skipped (%s)\n' "$host" "$hooks"; return 0; }
   one_backup_file "$hooks"
-  ONE_STOP="$SELF stop-hook $host" ONE_HOST="$host" ONE_CREATE="$create_missing" \
+  ONE_STOP="$(install_target_bin) stop-hook $host" ONE_HOST="$host" ONE_CREATE="$create_missing" \
     "$PY" - "$hooks" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
@@ -949,6 +973,7 @@ print(f"created {len(c)}" if c else "already present")' 2>/dev/null)"
   install_codex_stop_hook >/dev/null 2>&1 || true
   install_hook_packs >/dev/null 2>&1 || true
   self_heal_claude_settings >/dev/null 2>&1 || true
+  self_heal_entrypoints >/dev/null 2>&1 || true
   printf '%s enabled.\n' "$name"
   printf '  State file : %s\n' "$STATE_FILE"
   printf '  Directive  : %s (AGENTLAS-ONE block)\n' "$CLAUDE_MD"
@@ -967,25 +992,30 @@ cmd_off() {
 # Runtimes that load a hook from a directory rather than a settings key. These
 # are installed by `on` and removed by `off` so the two stay symmetric: a pack
 # that only the installer can place would stay missing until the next release.
+#
+# PRD §5.18 — 레지스트리에 `hookpack-dir` 행이 선언돼 있는데 **읽는 코드가 없었다**:
+# 여기는 goose·openclaw 두 이름을 손으로 박고 있었다. 그래서 레지스트리에 세 번째 훅팩을
+# 더해도 아무 일도 일어나지 않는다(선언이 조용히 규칙이 아니게 되는 모양).
+# 이제 레지스트리 행을 소비한다 — 손으로 박은 목록은 자산 경로 매핑에만 남는다.
 install_hook_packs() {
   local assets; assets="$(hook_asset_root)" || return 0
-  local dest
-  dest="${AGENTLAS_ONE_GOOSE_PLUGIN:-$HOME/.agents/plugins/agentlas-one}"
-  if [ -d "$HOME/.config/goose" ] || [ -d "$(dirname "$dest")" ]; then
-    if [ -d "$assets/goose/plugins/agentlas-one" ]; then
+  local id kind suffix path dest source
+  while IFS=$'\t' read -r id kind suffix path; do
+    [ "$kind" = "hookpack" ] || continue
+    dest="$(registry_override hookpack "$suffix" "$path")"
+    # 자산은 런타임 홈/체크아웃 안의 그 런타임 폴더에 있다. 두 가지 알려진 모양을 본다.
+    source=""
+    if [ -d "$assets/$id/plugins/agentlas-one" ]; then source="$assets/$id/plugins/agentlas-one"
+    elif [ -d "$assets/$id/hooks/agentlas-one" ]; then source="$assets/$id/hooks/agentlas-one"
+    fi
+    [ -n "$source" ] || continue
+    # 그 호스트를 쓰는 흔적이 있을 때만 설치한다(안 쓰는 사람 홈에 폴더를 만들지 않는다).
+    if [ -d "$(dirname "$dest")" ] || [ -d "$HOME/.config/$id" ] || [ -d "$HOME/.$id" ]; then
       rm -rf "$dest"
       mkdir -p "$(dirname "$dest")"
-      cp -R "$assets/goose/plugins/agentlas-one" "$dest" 2>/dev/null || true
+      cp -R "$source" "$dest" 2>/dev/null || true
     fi
-  fi
-  dest="${AGENTLAS_ONE_OPENCLAW_HOOK:-$HOME/.openclaw/hooks/agentlas-one}"
-  if [ -d "$HOME/.openclaw" ] || [ -d "$(dirname "$dest")" ]; then
-    if [ -d "$assets/openclaw/hooks/agentlas-one" ]; then
-      rm -rf "$dest"
-      mkdir -p "$(dirname "$dest")"
-      cp -R "$assets/openclaw/hooks/agentlas-one" "$dest" 2>/dev/null || true
-    fi
-  fi
+  done < <(registry_paths)
 }
 
 # Hook packs ship beside the runner in the runtime home, and beside this script
@@ -1069,8 +1099,14 @@ with open(tmp, "w", encoding="utf-8") as fh:
 os.replace(tmp, path)
 PYEOF
   done < <(one_hook_files)
-  rm -rf "${AGENTLAS_ONE_GOOSE_PLUGIN:-$HOME/.agents/plugins/agentlas-one}" 2>/dev/null || true
-  rm -rf "${AGENTLAS_ONE_OPENCLAW_HOOK:-$HOME/.openclaw/hooks/agentlas-one}" 2>/dev/null || true
+  # PRD §5.18 — 설치와 대칭으로 제거도 레지스트리를 읽는다. 손으로 박은 두 줄만 지우면
+  # 레지스트리에 더한 세 번째 훅팩은 영원히 남는다.
+  local pack_id pack_kind pack_suffix pack_path pack_dest
+  while IFS=$'\t' read -r pack_id pack_kind pack_suffix pack_path; do
+    [ "$pack_kind" = "hookpack" ] || continue
+    pack_dest="$(registry_override hookpack "$pack_suffix" "$pack_path")"
+    [ -n "$pack_dest" ] && rm -rf "$pack_dest" 2>/dev/null || true
+  done < <(registry_paths)
 }
 
 # Remove ONLY a status line we installed (command contains "agentlas-one
@@ -1247,6 +1283,12 @@ PYEOF
 cmd_status_drift() {
   local mod; mod="$(drift_py)" || die "Cannot find runtime_drift.py"
   if [ "${1:-}" = "--now" ]; then shift; drift_check_now "$@"; return $?; fi
+  # PRD §5.14 — 안내만 있고 구현이 없던 7일 유예. 이제 확인하면 실제로 조용해진다.
+  if [ "${1:-}" = "--ack" ]; then
+    shift
+    "$PY" "$mod" --ack "$@"
+    return $?
+  fi
   if [ ! -f "$DRIFT_REPORT" ]; then
     printf 'Runtime drift: no report yet (checked once a day from the session-end hook).\n'
     printf '  Run now: agentlas-one status --drift --now\n'
@@ -1374,6 +1416,7 @@ case "${1:-status}" in
               # Session-end is the one moment every install passes through, so
               # legacy wiring heals here (fail-open; stdout stays hook-clean).
               self_heal_claude_settings >/dev/null 2>&1 || true
+  self_heal_entrypoints >/dev/null 2>&1 || true
               drift_kick_daily >/dev/null 2>&1 || true
               cmd_workspace stop-hook ${1:+--host "$1"} ;;
   *)          die "Usage: agentlas-one {install|on [name]|off|uninstall [--purge]|name <name>|status [--runtimes|--drift]|memory|remember <text>|curate|seed|chips [status]|promote <chip> [reason]|reject <chip> [reason]|coverage|orch [role=value...]}" ;;

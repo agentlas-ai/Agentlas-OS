@@ -27,8 +27,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -135,6 +137,63 @@ def read_report(path: str) -> Optional[dict]:
         return None
 
 
+# PRD §5.14 — 두 곳이 "7일 유예"를 안내했는데 **구현이 없었다.** 그래서 이 머신의 6건은
+# 영구 표시였다: 사용자가 확인해도 사라지지 않으니 경고가 배경 소음이 된다. 확인을 저장하고,
+# 그 기간 동안 같은 소견을 숨긴다(사라지는 것은 표시이지 사실이 아니다 — --all 로 다 본다).
+DRIFT_ACK_DAYS = 7
+
+
+def _ack_path() -> Path:
+    return Path(os.environ.get("AGENTLAS_ONE_DIR") or (Path.home() / ".agentlas" / "one")) / "runtime-drift-ack.json"
+
+
+def _load_acks() -> dict[str, str]:
+    try:
+        data = json.loads(_ack_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _finding_key(finding: dict) -> str:
+    return f"{finding.get('kind')}|{finding.get('runtime')}|{finding.get('detail')}"
+
+
+def _save_acks(findings: list[dict]) -> int:
+    acks = _load_acks()
+    stamp = _now()
+    for finding in findings:
+        acks[_finding_key(finding)] = stamp
+    path = _ack_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(acks, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        return 0
+    return len(findings)
+
+
+def _apply_acks(findings: list[dict]) -> list[dict]:
+    acks = _load_acks()
+    if not acks:
+        return findings
+    cutoff = datetime.now(timezone.utc) - timedelta(days=DRIFT_ACK_DAYS)
+    fresh: list[dict] = []
+    for finding in findings:
+        stamp = acks.get(_finding_key(finding))
+        if not stamp:
+            fresh.append(finding)
+            continue
+        try:
+            seen = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        except ValueError:
+            fresh.append(finding)
+            continue
+        if seen < cutoff:
+            fresh.append(finding)
+    return fresh
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     root = Path(__file__).resolve().parents[1]
@@ -147,6 +206,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--write", default=None, help="also write the JSON report to this path (atomic); used by agentlas-one")
     parser.add_argument("--quiet", action="store_true", help="no stdout (for background runs)")
+    parser.add_argument("--ack", action="store_true", help=f"acknowledge the current findings and hide them for {DRIFT_ACK_DAYS} days")
+    parser.add_argument("--all", action="store_true", help="show acknowledged findings too")
     args = parser.parse_args(argv)
 
     try:
@@ -162,6 +223,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     findings = check_drift(ours, acp_reg, matrix, prev)
+    if args.ack:
+        acknowledged = _save_acks(findings)
+        if not args.quiet:
+            print(f"check-runtime-drift: acknowledged {acknowledged} finding(s) for {DRIFT_ACK_DAYS} days")
+        return 0
+    # 유예는 **표시**에만 적용한다. 기계 판독(--json/--write)은 사실 그대로 낸다.
+    if not args.all and not args.json and not args.write:
+        findings = _apply_acks(findings)
     if args.write:
         _write_report(args.write, {"checkedAt": _now(), "status": "ok", "drift": bool(findings), "findings": findings})
     if args.quiet:
@@ -172,7 +241,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         if not findings:
             print("check-runtime-drift: no drift against ACP registry/matrix")
         else:
-            print(f"check-runtime-drift: {len(findings)} finding(s) — review, do not auto-apply (cooldown 7d)")
+            print(f"check-runtime-drift: {len(findings)} finding(s) — review, do not auto-apply "
+                  f"(acknowledge with `agentlas-one status --drift --ack` to silence for {DRIFT_ACK_DAYS}d)")
             for f in findings:
                 print(f"  [{f['kind']}] {f['runtime']}: {f['detail']}")
     return 1 if findings else 0
