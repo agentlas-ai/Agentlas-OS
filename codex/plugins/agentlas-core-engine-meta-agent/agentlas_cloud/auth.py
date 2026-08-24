@@ -492,6 +492,67 @@ def invalidate_access_token(base_url: str | None = None) -> bool:
     return True
 
 
+def verify_access_token_with_server(
+    base_url: str | None = None,
+    token: str | None = None,
+    *,
+    timeout_seconds: int = 15,
+) -> bool | None:
+    """Ask the server whether this token still carries a signed-in identity.
+
+    A locally stored token can be revoked server-side (epoch advance, authority
+    revocation) while its own `expires_at` sits weeks in the future, so local
+    validity can never prove the source will open. Returns True when the server
+    accepted the token, False when it explicitly refused it, and None when the
+    answer could not be determined (network failure, unexpected response) —
+    callers must not read None as a rejection, or an offline machine would be
+    forced through a browser login it cannot complete.
+    """
+
+    base = normalize_base_url(base_url)
+    if token is None:
+        token = _valid_access_token(read_token_record(base))
+    if not token:
+        return False
+    body = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "agentlas.account_context", "arguments": {}},
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        base + "/api/mcp/v1",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "hephaestus-auth-ensure-verify",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return False if exc.code == 401 else None
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if error is not None:
+        # The MCP endpoint answers a signed-out call with a JSON-RPC error
+        # (-32001, "Authentication required for: …") over HTTP 401; keep the
+        # message check as a fallback for proxies that flatten the status.
+        if isinstance(error, dict) and error.get("code") == -32001:
+            return False
+        if "authentication required" in str(error).lower():
+            return False
+        return None
+    return True if isinstance(payload, dict) and payload.get("result") is not None else None
+
+
 def ensure_access_token(
     base_url: str | None = None,
     *,

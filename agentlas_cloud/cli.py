@@ -1297,6 +1297,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "context":
         from .context_map import (
             ContextMapError,
+            context_error_remedy,
             context_slice,
             impact,
             locate,
@@ -1352,6 +1353,9 @@ def main(argv: list[str] | None = None) -> int:
                                 "action": "context.refresh",
                                 "status": "error",
                                 "error": "context_refresh_incomplete",
+                                # This branch bypasses the ContextMapError
+                                # handler below, so it carries the remedy itself.
+                                "hint": context_error_remedy("context_refresh_incomplete"),
                                 "refresh": code_map_receipt,
                             }
                         ) or 2
@@ -1380,6 +1384,7 @@ def main(argv: list[str] | None = None) -> int:
                             "action": "context.refresh",
                             "status": "error",
                             "error": "context_refresh_incomplete",
+                            "hint": context_error_remedy("context_refresh_incomplete"),
                             "refresh": refresh_result,
                         }
                     ) or 2
@@ -1423,18 +1428,11 @@ def main(argv: list[str] | None = None) -> int:
             # boundary or a next step — while its own siblings (`locate`,
             # `impact`, `verify`) say plainly which argument is missing. Every
             # code a user can actually reach carries an action here.
-            hints = {
-                "context_map_integrity_failed":
-                    "The stored context map no longer matches this project. Run `agentlas context refresh` to rebuild it, then retry.",
-                "context_task_too_large":
-                    "The task text is over 12,000 characters. Shorten it, or pass a file path instead of pasting the whole content.",
-                "context_map_missing":
-                    "This project has no context map yet. Run `agentlas context refresh` first.",
-                "context_map_incomplete":
-                    "The context map was built from a partial scan. Run `agentlas context refresh --force` to rebuild it completely.",
-            }
+            # The table lives beside the codes in context_map.py so this surface
+            # and the MCP surface cannot answer the same code differently — or,
+            # as happened, one of them not answer it at all.
             payload: dict[str, Any] = {"action": "context", "status": "error", "error": exc.code}
-            hint = hints.get(exc.code)
+            hint = context_error_remedy(exc.code)
             if hint:
                 payload["hint"] = hint
             return emit(payload) or 2

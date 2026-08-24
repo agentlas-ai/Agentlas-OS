@@ -1179,7 +1179,17 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             return emit({"action": "global_router", "status": "error", "error": str(exc)}) or 2
     if args.command == "auth":
-        from .auth import AgentlasAuthError, auth_status, ensure_access_token, login, logout, normalize_base_url, token_path
+        from .auth import (
+            AgentlasAuthError,
+            auth_status,
+            ensure_access_token,
+            invalidate_access_token,
+            login,
+            logout,
+            normalize_base_url,
+            token_path,
+            verify_access_token_with_server,
+        )
 
         try:
             if args.auth_command == "status":
@@ -1195,10 +1205,34 @@ def main(argv: list[str] | None = None) -> int:
                     open_browser=not args.no_open,
                     timeout_seconds=args.timeout,
                 )
+                # A locally unexpired token can be revoked server-side (epoch
+                # advance) while `auth status` keeps saying authenticated —
+                # measured 2026-08-24: every hep command pre-step passed while
+                # owner-cloud staffing failed source_unauthorized. `ensure` is
+                # the one place every command runs first, so it asks the server
+                # and opens the browser sign-in right here instead of letting
+                # the command fail one step later.
+                verified = verify_access_token_with_server(args.base_url, token) if token else False
+                if token and verified is False:
+                    invalidate_access_token(args.base_url)
+                    token = ensure_access_token(
+                        args.base_url,
+                        interactive=True,
+                        open_browser=not args.no_open,
+                        timeout_seconds=args.timeout,
+                        force_refresh=True,
+                    )
+                    verified = (
+                        verify_access_token_with_server(args.base_url, token) if token else False
+                    )
                 result = {
                     "status": "authenticated" if token else "signed_out",
                     "base_url": normalize_base_url(args.base_url),
                     "token_path": str(token_path(args.base_url)),
+                    # None means the server could not be asked (offline); say so
+                    # instead of upgrading it to a confirmation.
+                    "verified_against_server": bool(verified) if verified is not None else False,
+                    **({"verify": "unreachable"} if verified is None else {}),
                 }
             else:
                 parser.error("unhandled auth command")
@@ -1263,6 +1297,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "context":
         from .context_map import (
             ContextMapError,
+            context_error_remedy,
             context_slice,
             impact,
             locate,
@@ -1318,6 +1353,9 @@ def main(argv: list[str] | None = None) -> int:
                                 "action": "context.refresh",
                                 "status": "error",
                                 "error": "context_refresh_incomplete",
+                                # This branch bypasses the ContextMapError
+                                # handler below, so it carries the remedy itself.
+                                "hint": context_error_remedy("context_refresh_incomplete"),
                                 "refresh": code_map_receipt,
                             }
                         ) or 2
@@ -1346,6 +1384,7 @@ def main(argv: list[str] | None = None) -> int:
                             "action": "context.refresh",
                             "status": "error",
                             "error": "context_refresh_incomplete",
+                            "hint": context_error_remedy("context_refresh_incomplete"),
                             "refresh": refresh_result,
                         }
                     ) or 2
@@ -1389,18 +1428,11 @@ def main(argv: list[str] | None = None) -> int:
             # boundary or a next step — while its own siblings (`locate`,
             # `impact`, `verify`) say plainly which argument is missing. Every
             # code a user can actually reach carries an action here.
-            hints = {
-                "context_map_integrity_failed":
-                    "The stored context map no longer matches this project. Run `agentlas context refresh` to rebuild it, then retry.",
-                "context_task_too_large":
-                    "The task text is over 12,000 characters. Shorten it, or pass a file path instead of pasting the whole content.",
-                "context_map_missing":
-                    "This project has no context map yet. Run `agentlas context refresh` first.",
-                "context_map_incomplete":
-                    "The context map was built from a partial scan. Run `agentlas context refresh --force` to rebuild it completely.",
-            }
+            # The table lives beside the codes in context_map.py so this surface
+            # and the MCP surface cannot answer the same code differently — or,
+            # as happened, one of them not answer it at all.
             payload: dict[str, Any] = {"action": "context", "status": "error", "error": exc.code}
-            hint = hints.get(exc.code)
+            hint = context_error_remedy(exc.code)
             if hint:
                 payload["hint"] = hint
             return emit(payload) or 2

@@ -121,6 +121,65 @@ _STOP_TERMS = frozenset(
 )
 
 
+# One remedy table, read by every surface that can raise these.
+#
+# The CLI grew its own copy covering four codes; the MCP surface — the one the
+# /hep-* commands actually go through — ended in a bare
+# `{"error": "<code>"}` with nothing to act on. Measured: `context.slice`
+# answered `context_map_integrity_failed` with no next step, and the code the
+# documented remedy then produced, `context_refresh_incomplete`, was in neither
+# copy, so following the instructions led to a second dead end. A raised error
+# has to carry a way out, and it has to carry it on every surface, so the table
+# lives here beside the codes instead of next to one caller.
+CONTEXT_ERROR_REMEDIES: dict[str, str] = {
+    "context_map_missing":
+        "This project has no context map yet. Run `agentlas context refresh` first.",
+    "context_map_stale":
+        "The stored map is older than this working tree. Retry the same call with refresh=true.",
+    "context_map_integrity_failed":
+        "The stored context map no longer matches this project. Run `agentlas context refresh` to rebuild it, then retry.",
+    "context_map_unreadable":
+        "The stored map could not be read as a complete snapshot. Run `agentlas context refresh --force` to rebuild it.",
+    "context_map_upgrade_required":
+        "The stored map predates the current map format. Run `agentlas context refresh --force` once to rebuild it in the current format.",
+    "context_map_incomplete":
+        "The context map was built from a partial scan. Run `agentlas context refresh --force` to rebuild it completely.",
+    "context_refresh_incomplete":
+        "The rebuild ran but could not finish this project inside its scan budget, so the map stays partial and strict reads keep refusing it. "
+        "Read `stats.incompleteReasons` and `stats.budgetStop` on the refresh receipt for which limit was hit, then narrow the mapped scope in "
+        "agentlas-context-map.json (exclude generated, vendored and build-output roots) and refresh again. "
+        "Passing allow_stale/--allow-stale uses the partial map meanwhile.",
+    "context_freshness_incomplete":
+        "A passive read refuses an unverified index. Retry the same call with refresh=true.",
+    "context_freshness_budget_exceeded":
+        "Refreshing did not finish inside the freshness budget. Raise the budget for this call, or accept the stored map with allow_stale.",
+    "context_impact_incomplete":
+        "Impact could not be computed over a partial map. Run `agentlas context refresh --force`, then retry.",
+    "context_verification_map_incomplete":
+        "Verification needs a complete dependency map. Run `agentlas context refresh --force`, then retry.",
+    "context_verification_evidence_invalid":
+        "The reviewed/verified evidence does not match the changed targets. Re-state the evidence for the files actually changed.",
+    "context_changed_target_required":
+        "Name at least one changed path.",
+    "context_changed_target_invalid":
+        "A changed path must be inside this project.",
+    "context_changed_target_unknown":
+        "That path is not in the map. Run `agentlas context refresh`, or check the path.",
+    "context_changed_target_excluded_by_policy":
+        "The target exists but agentlas-context-map.json excludes its root. Remove that narrow exclusion when the file must participate in impact verification.",
+    "context_project_invalid":
+        "Pass an existing project directory.",
+    "context_task_too_large":
+        "The task text is over 12,000 characters. Shorten it, or pass a file path instead of pasting the whole content.",
+}
+
+
+def context_error_remedy(code: str) -> str | None:
+    """The one action that clears ``code``, or None when there is none to give."""
+
+    return CONTEXT_ERROR_REMEDIES.get(str(code))
+
+
 class ContextMapError(ValueError):
     """Stable, secret-free error surfaced by CLI and MCP adapters."""
 
@@ -152,7 +211,7 @@ def _project_root(value: str | Path) -> Path:
 
 def _regular_json(path: Path, *, max_bytes: int | None = None) -> dict[str, Any]:
     try:
-        metadata = path.stat(follow_symlinks=False)
+        metadata = path.lstat()
     except OSError as exc:
         raise ContextMapError("context_map_missing") from exc
     if (

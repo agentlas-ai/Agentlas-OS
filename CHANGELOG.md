@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **A context error now carries a way out, on every surface.** The CLI kept its
+  own hint table covering four codes; the MCP surface — the one the `/hep-*`
+  commands go through — ended in a bare `{"error": "<code>"}` with nothing to
+  act on. Measured: `context.slice` answered `context_map_integrity_failed`
+  with no next step, and the code the documented remedy then produced,
+  `context_refresh_incomplete`, was in neither copy — so following the
+  instructions led to a second dead end. One table now lives beside the codes
+  in `context_map.py` and is read by both surfaces, covering every code a
+  caller can reach; the two refresh branches that bypass the error handler
+  carry it themselves. The incomplete-refresh remedy names the actual lever:
+  read `stats.budgetStop`, then narrow the mapped scope in
+  `agentlas-context-map.json`, or use allow_stale meanwhile.
+
 - **A newly shipped command can now reach a machine that already has the
   others.** The adapter sweep overwrote only destination paths that already
   existed, so that a host surface the user never set up is never created. But

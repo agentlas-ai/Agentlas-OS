@@ -2545,6 +2545,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     }:
         from .context_map import (
             ContextMapError,
+            context_error_remedy,
             context_slice,
             impact,
             locate,
@@ -2600,6 +2601,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         "action": name,
                         "status": "error",
                         "error": "context_refresh_incomplete",
+                        # Reached before the ContextMapError handler, so the
+                        # remedy is attached here too.
+                        "detail": context_error_remedy("context_refresh_incomplete"),
                         "project_bootstrap": compact_project_receipt(project_receipt),
                     }
                 return {
@@ -2714,7 +2718,15 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     ),
                     "repairable": True,
                 }
-            return {"action": name, "status": "error", "error": exc.code}
+            # Every remaining code reaches the caller through here. Without the
+            # remedy this returned a bare `{"error": "<code>"}`, which is where
+            # `context.slice` dead-ended for a caller that had no CLI to fall
+            # back to.
+            payload = {"action": name, "status": "error", "error": exc.code}
+            remedy = context_error_remedy(exc.code)
+            if remedy:
+                payload["detail"] = remedy
+            return payload
         except (OSError, TimeoutError, ValueError):
             return {"action": name, "status": "error", "error": "context_operation_failed"}
 
