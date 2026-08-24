@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Signing in no longer makes pre-sign-in rosters look deleted.** Goal
+  bindings are partitioned by account, so rosters bound while signed out live
+  in the shared signed-out drawer and stop appearing after sign-in — nothing is
+  deleted, but "I signed in and my team vanished" is indistinguishable from
+  data loss (measured: 2 goals / 21 roster rows visible before login,
+  `goals: []` after). Merging across partitions is a cross-account write and
+  waits for an owner decision; saying the other drawer is non-empty does not.
+  `goal_context` now counts active signed-out bindings for the same project and
+  reports them as `signedOutGoalsForThisProject` with a plain-language notice.
+
 - **The sign-in URL is printed whether or not the browser "opened".**
   `webbrowser.open` returning True means a handler was invoked, not that the
   person is looking at a sign-in window, and the URL was only printed when it

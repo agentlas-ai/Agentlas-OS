@@ -62,6 +62,17 @@ def default_goal_runtime_root() -> Path:
     return _agentlas_home() / "networking" / "workforce-goal-runtime"
 
 
+def unsigned_local_partition() -> str:
+    """The fixed partition every signed-out machine shares."""
+
+    return canonical_digest(
+        {
+            "schemaVersion": "agentlas.workforce-local-account-partition.v1",
+            "scope": "unsigned-local",
+        }
+    )
+
+
 def current_account_partition() -> str:
     """Return the same rotation-stable account partition used by preparation.
 
@@ -569,13 +580,7 @@ class WorkforceGoalStore:
         project_key, project_path = _project_identity(project_dir)
         plan, rows = _roster_rows(preparation, roster_labels)
         if any(row["source"] in {"hub", "cloud"} for row in rows):
-            unsigned = canonical_digest(
-                {
-                    "schemaVersion": "agentlas.workforce-local-account-partition.v1",
-                    "scope": "unsigned-local",
-                }
-            )
-            if self.account_partition == unsigned:
+            if self.account_partition == unsigned_local_partition():
                 raise WorkforceGoalBindingError("workforce_goal_remote_account_required")
         timestamp = _now()
         label = str(goal_label or "").strip()[:240] or None
@@ -730,7 +735,24 @@ class WorkforceGoalStore:
                         ],
                     }
                 )
-        return {
+        # Signing in switches the partition, so rosters bound while signed out
+        # stop appearing here. Nothing was deleted — the reader is looking in a
+        # different drawer — but to the user "I signed in and my team vanished"
+        # is indistinguishable from data loss (measured 2026-08-25: 2 goals /
+        # 21 roster rows visible before login, `goals: []` after). Merging
+        # across partitions is a cross-account write and needs an owner
+        # decision; SAYING the other drawer is non-empty does not. Count only.
+        unsigned_leftovers = 0
+        if self.account_partition != unsigned_local_partition():
+            with self._connect() as conn:
+                unsigned_leftovers = int(
+                    conn.execute(
+                        "SELECT count(*) FROM goal_bindings"
+                        " WHERE account_partition = ? AND project_key = ? AND status = 'active'",
+                        (unsigned_local_partition(), project_key),
+                    ).fetchone()[0]
+                )
+        payload: dict[str, Any] = {
             "schemaVersion": WORKFORCE_GOAL_CONTEXT_SCHEMA,
             "accountPartition": self.account_partition,
             "projectKey": project_key,
@@ -743,6 +765,14 @@ class WorkforceGoalStore:
                 "standbyMeansBoundNotContinuouslyExecuting": True,
             },
         }
+        if unsigned_leftovers:
+            payload["signedOutGoalsForThisProject"] = unsigned_leftovers
+            payload["signedOutGoalsNotice"] = (
+                "This project has active goal bindings created before sign-in. "
+                "They live in the signed-out local drawer and are not shown "
+                "here; sign out to see them, or ask the owner to migrate them."
+            )
+        return payload
 
     def runtime_context(
         self,
