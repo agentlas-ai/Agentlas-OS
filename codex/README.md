@@ -73,7 +73,7 @@ app restart.
 Codex-only manual install:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.19
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.20
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
