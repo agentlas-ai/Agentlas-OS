@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **One oversized source stopped being able to fail every future ingest.**
+  `career-graph ingest` refuses a JSON source over the 64 MiB reader cap, and
+  refused the whole run with it, so a generated `project-map.json` that reached
+  69 MB left `career-graph status` answering `stale` with exit 1 on every run
+  afterwards and no command able to clear it. A malformed source still aborts —
+  its content cannot be trusted and keeping the previous projection is the
+  point, which its test defends — but a source that is merely too large is
+  valid content we decline to read, so it is skipped alone and the rest is
+  ingested. `status` reports such a file under `skippedSources` with its size,
+  the limit and the remedy, instead of counting it as staleness that will never
+  clear: a permanent condition dressed as a pending one is how a genuinely
+  stale source goes unnoticed. Measured on the stuck project: ingest went from
+  `career_ingest_failed` to 27,086 nodes / 27,089 edges, and `status` from
+  `stale` exit 1 to `active` exit 0 with one named exclusion.
+
 - **A new Mac could not run six commands at all.** `Path.stat(follow_symlinks=)`
   exists only from Python 3.10, and the system Python a fresh macOS ships is
   3.9, so `project ensure`, `route`, `hep-search`, `hep-call`, `hep-storm` and

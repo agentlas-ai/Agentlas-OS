@@ -40,13 +40,31 @@ def read_json(path: Path, default: Any = None) -> Any:
         return default
 
 
+class CareerSourceTooLargeError(ValueError):
+    """A source that is well-formed but larger than this reader accepts.
+
+    Kept apart from every other ValueError raised here because the two mean
+    different things to the caller. A malformed source is content we cannot
+    trust, and refusing the whole ingest keeps the previous projection intact
+    — that behaviour is deliberate and tested. A source over the byte cap is
+    valid content we simply will not read: there is nothing to distrust, and
+    treating it the same way made one generated file able to fail every future
+    ingest forever. Measured: a generated `project-map.json` reached 69 MB
+    against the 64 MiB cap, `career-graph ingest` died on it in both full and
+    incremental mode, and `career-graph status` answered `stale` with exit 1
+    on every run afterwards with no command able to clear it.
+    """
+
+
 def read_source_json_object(path: Path) -> dict[str, Any]:
     """Read a canonical Career source without converting corruption to empty."""
 
     if path.is_symlink() or not path.is_file():
         raise ValueError(f"career graph JSON source must be a regular file: {path.name}")
     if path.stat().st_size > MAX_JSON_BYTES:
-        raise ValueError(f"career graph JSON source exceeds {MAX_JSON_BYTES} bytes: {path.name}")
+        raise CareerSourceTooLargeError(
+            f"career graph JSON source exceeds {MAX_JSON_BYTES} bytes: {path.name}"
+        )
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -332,9 +350,39 @@ class CareerGraphRuntime:
         # one canonical JSON source is malformed, the previous projection stays
         # queryable and no source row or node is deleted.
         parsed: list[tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]] = []
+        oversized: list[dict[str, Any]] = []
         for source in changed_sources:
-            source_nodes, source_edges = self._ingest_source(source, project_node["node_id"])
+            try:
+                source_nodes, source_edges = self._ingest_source(source, project_node["node_id"])
+            except CareerSourceTooLargeError as exc:
+                # A malformed source still aborts (see the class docstring):
+                # its content cannot be trusted and the previous projection is
+                # worth keeping. A source merely over the byte cap is one
+                # source, not the whole graph — skipping it is the only way the
+                # command can ever succeed again, and the receipt says which
+                # file was left out and what clears it.
+                oversized.append(
+                    {
+                        "path": str(source.get("path")),
+                        "reason": str(exc),
+                        "remedy": (
+                            "regenerate this file smaller, or drop it from "
+                            ".agentlas/career-graph-sources.json; the rest of the graph "
+                            "was ingested without it"
+                        ),
+                    }
+                )
+                continue
             parsed.append((source, source_nodes, source_edges))
+        # Leave the skipped path out of the delete set so an incremental run
+        # keeps whatever projection it already had, and out of the changed set
+        # so the receipt does not count it as ingested.
+        skipped_paths = {row["path"] for row in oversized}
+        changed_paths -= skipped_paths
+        changed_sources = [
+            source for source in changed_sources
+            if str(Path(source["path"])) not in skipped_paths
+        ]
 
         with closing(self.connect()) as conn, conn:
             # Serialize only the write/allocation phase. Parsing stays outside
@@ -380,7 +428,10 @@ class CareerGraphRuntime:
             conn.commit()
 
         return {
-            "status": "ok",
+            # Not a bare "ok": a caller must be able to tell a whole graph from
+            # one that ingested with a file left out.
+            "status": "ok" if not oversized else "ok_with_skipped_sources",
+            "skippedSources": oversized,
             "project": str(self.config.root),
             "db_path": str(self.config.sqlite_path),
             "run_id": run_id,
@@ -964,6 +1015,36 @@ class CareerGraphRuntime:
         for path in self._declared_missing_sources():
             if not any(item["path"] == str(path) for item in stale):
                 stale.append({"path": str(path), "reason": "source_missing"})
+        # A source the reader refuses by size is a known, decided exclusion, not
+        # work still pending. Left in `stale` it makes `status` answer "stale"
+        # and exit 1 on every run for as long as the file stays big, which is a
+        # permanent condition wearing the costume of a pending one — the state
+        # in which a genuinely stale source would go unnoticed. Report it in its
+        # own field, with the size that caused it, and let the index be active.
+        skipped: list[dict[str, Any]] = []
+        remaining: list[dict[str, Any]] = []
+        for item in stale:
+            candidate = Path(item["path"])
+            try:
+                too_large = candidate.is_file() and candidate.stat().st_size > MAX_JSON_BYTES
+            except OSError:
+                too_large = False
+            if too_large and candidate.suffix == ".json":
+                skipped.append(
+                    {
+                        **item,
+                        "reason": "source_exceeds_reader_limit",
+                        "bytes": candidate.stat().st_size,
+                        "limitBytes": MAX_JSON_BYTES,
+                        "remedy": (
+                            "regenerate this file smaller, or drop it from "
+                            ".agentlas/career-graph-sources.json"
+                        ),
+                    }
+                )
+            else:
+                remaining.append(item)
+        stale = remaining
         return {
             "status": "active" if exists and not stale else ("stale" if exists else "missing_index"),
             **files,
@@ -971,6 +1052,7 @@ class CareerGraphRuntime:
             "counts": counts,
             "canonical_sources": len(self._canonical_sources()),
             "stale": stale,
+            "skippedSources": skipped,
             "policy": "ledger_first_derived_index",
         }
 
