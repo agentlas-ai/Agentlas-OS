@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **A remote prepare refusal names the roster row it refused.** Audit R4-1:
+  four consecutive menu candidates failed prepare with a bare
+  `release_artifact_unavailable` and the only way to find the culprit was to
+  bisect the selection by hand. The refusal now carries which source refused
+  which release for which slot, and for the unavailable-artifact case, the
+  move ("validate a different candidate for this slot, or retry later").
+  Surfacing an unpreparable listing in the menu itself needs server-side data
+  and stays on the web-side list.
+- **Schema validation works without a compiled dependency (audit F7 closed).**
+  `jsonschema` 4.18+ requires `rpds`, a native module — absent on a fresh Mac,
+  and measured broken on the dev Mac itself (x86_64 `rpds.so` under an arm64
+  interpreter), which left workforce execution-receipt verification entirely
+  unavailable. The runtime now vendors pure-Python jsonschema 4.17.3 (+attrs,
+  pyrsistent; licenses included, test/benchmark dirs stripped) behind a loader
+  that prefers a healthy installed copy and falls back only when the real
+  import fails. Measured on stock 3.9 with user-site blocked, and on the
+  broken-arch 3.12: both validate; the receipt validator loads.
+- Working-tree edits make the router block with `ao_graph_stale` until
+  `ao migrate --overwrite` re-materializes — today's recurring "flaky"
+  network-pipeline test failures were exactly this, three times. Not a code
+  change; recorded so the next person runs the remedy instead of re-diagnosing.
+
 - **Audit round 2 follow-ups.** The re-audit's one condition and both
   non-blocking notes, plus two defects the parity tests caught in the freshly
   restored login command:

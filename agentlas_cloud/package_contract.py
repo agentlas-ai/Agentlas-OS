@@ -935,9 +935,12 @@ def _schema_shape_errors(doc: Any, schema_path: Path) -> list[str]:
         return []
 
     try:
-        from jsonschema import Draft202012Validator
-        from jsonschema.exceptions import SchemaError
-        from jsonschema.validators import validator_for
+        from ._vendor import load_jsonschema
+
+        _js = load_jsonschema()
+        Draft202012Validator = _js.Draft202012Validator
+        SchemaError = _js.exceptions.SchemaError
+        validator_for = _js.validators.validator_for
 
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         validator_class = validator_for(schema, default=Draft202012Validator)

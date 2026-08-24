@@ -48,7 +48,12 @@ _MAX_DIGEST_VALUE_NODES = 10_000
 def _execution_receipt_schema_validator() -> Any:
     """Load the complete bundled Draft 2020-12 receipt schema locally."""
 
-    from jsonschema import Draft202012Validator
+    # Import through the vendor loader: a fresh Mac has no jsonschema, and a
+    # wrong-architecture user-site copy fails to import on a healthy dev Mac
+    # (measured). Receipt verification must not be the feature that dies first.
+    from .._vendor import load_jsonschema
+
+    Draft202012Validator = load_jsonschema().Draft202012Validator
 
     schema_path = (
         Path(__file__).resolve().parents[2]

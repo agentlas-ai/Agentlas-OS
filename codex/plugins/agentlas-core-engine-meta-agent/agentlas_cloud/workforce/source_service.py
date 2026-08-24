@@ -1142,7 +1142,29 @@ class WorkforceSourceService:
                         time.sleep(min(retry_after_ms / 1_000.0, remaining))
                     if refusal is not None:
                         release_claim()
-                        raise WorkforceSourceError(refusal)
+                        # A remote refusal used to surface as the bare code with
+                        # nothing naming which roster row it refused. Measured
+                        # (audit R4-1): four consecutive menu candidates failed
+                        # prepare with `release_artifact_unavailable` and the
+                        # only way to learn which slot/release was at fault was
+                        # to bisect the selection by hand. Name the row and the
+                        # move; `refusal_fields` forwards this sentence to the
+                        # MCP/CLI response beside the code.
+                        raise WorkforceSourceError(
+                            refusal,
+                            (
+                                f"{source} refused release "
+                                f"{pin.get('agentReleaseId')} for slot "
+                                f"{pin.get('slotId')}"
+                                + (
+                                    "; that listing has no downloadable "
+                                    "artifact right now — validate a different "
+                                    "candidate for this slot, or retry later"
+                                    if refusal == "release_artifact_unavailable"
+                                    else ""
+                                )
+                            ),
+                        )
                     bundle_value = response.get("runtimeBundle")
                     receipt = response.get("verificationReceipt")
                     if (
