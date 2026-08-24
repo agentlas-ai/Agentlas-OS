@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import re
+import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -175,6 +177,28 @@ def hub_url(home: Path | str | None = None) -> str:
     return str(config.get("hub_url") or "https://agentlas.cloud").rstrip("/")
 
 
+def _interactive_auth_allowed() -> bool:
+    """브라우저 로그인을 띄워도 되는 자리인지 — 터미널에 사람이 있는가.
+
+    실측 2026-08-24 (격리 신규 환경): 헤드리스 하네스에서 hep-call·hep-storm 이
+    인증 필요를 만나자 브라우저 로그인을 열고 LOGIN_TIMEOUT_SECONDS(180초)를
+    통째로 기다렸다 — 받는 사람이 없는 로그인 창은 응답 없는 명령으로 보인다.
+    사람이 터미널에 있으면(TTY) 그 자리에서 로그인 창을 여는 것이 맞고(오너
+    지시), 파이프/서브프로세스에서는 즉시 구조화 거절로 떨어져야 한다.
+    HEPHAESTUS_AUTO_AUTH=0/1 로 강제할 수 있다.
+    """
+
+    override = os.environ.get("HEPHAESTUS_AUTO_AUTH")
+    if override == "0":
+        return False
+    if override == "1":
+        return True
+    try:
+        return sys.stdin.isatty() or sys.stderr.isatty()
+    except (OSError, ValueError):
+        return False
+
+
 def call_hub_tool(
     name: str,
     arguments: dict[str, Any] | None = None,
@@ -198,7 +222,7 @@ def call_hub_tool(
         # cloud staffing failed `source_unauthorized` on every attempt while
         # `auth status` kept reporting `authenticated`.
         invalidate_access_token(base_url)
-        if not auto_auth:
+        if not auto_auth or not _interactive_auth_allowed():
             raise
         token = ensure_access_token(base_url, interactive=True, force_refresh=True)
         if not token:

@@ -1445,12 +1445,22 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
         if build_profile in (artifact.get("optionalWhen") or []):
             effective_artifact["required"] = False
         reports.append(_verify_artifact(workspace, effective_artifact, base))
-    blockers = [
-        f"{report['path']}: {problem}"
-        for report in reports
-        if report.get("required", True)
-        for problem in report.get("problems", [])
-    ]
+    # 신품 맥(시스템 파이썬 3.9, jsonschema 미설치)에서는 스키마 검증 의존성이
+    # 없어 모든 verify 가 영구 차단됐다 — 실측 2026-08-24 격리 신규 환경.
+    # 로컬 verify 에서는 이를 '검증 축소' 경고로 강등해 작업을 막지 않되,
+    # 보고서에 schemaValidation="unavailable" 을 남겨 발행(upload) 경로가
+    # 그대로 차단할 수 있게 한다 — 검증 안 된 패키지가 시장에 나가면 안 된다.
+    blockers = []
+    schema_unavailable: list[str] = []
+    for report in reports:
+        if not report.get("required", True):
+            continue
+        for problem in report.get("problems", []):
+            line = f"{report['path']}: {problem}"
+            if problem.startswith("schema validation unavailable:"):
+                schema_unavailable.append(line)
+            else:
+                blockers.append(line)
     blockers.extend(_portable_path_blockers(workspace))
     # Generated runtime state is a cleanup item, not a blocker. The product
     # writes it: run any Hephaestus command with a package folder as the working
@@ -1476,6 +1486,7 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
         warnings.append(
             "minimal-private opt-out is active; this package is private-only and is not public or marketplace ready"
         )
+    warnings.extend(schema_unavailable)
     return {
         "workspace": str(workspace),
         "mode": mode,
@@ -1485,7 +1496,13 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
         "warnings": warnings,
         "cleanup": cleanup,
         "build_profile": build_profile,
-        "public_marketplace_ready": bool(not blockers and build_profile == "standard"),
+        # "full" 은 스키마 검증이 실제로 돌았다는 뜻이고, "unavailable" 은 이
+        # 환경에 검증기가 없어 축소 검증만 했다는 뜻이다. 발행 경로는 이 값이
+        # unavailable 이면 차단한다.
+        "schemaValidation": "unavailable" if schema_unavailable else "full",
+        "public_marketplace_ready": bool(
+            not blockers and not schema_unavailable and build_profile == "standard"
+        ),
         # ★이 패키지가 어느 엔진으로 지어졌는지, 지금 엔진과 어긋나는지. 판정만 싣고
         #   자동으로 고치지 않는다 — 무엇을 고칠지는 위 blockers 가 이미 말한다.
         #   실측 2026-08-19: 로컬 에이전트 7개 중 6개가 계약에 떨어졌는데, 어느 것도

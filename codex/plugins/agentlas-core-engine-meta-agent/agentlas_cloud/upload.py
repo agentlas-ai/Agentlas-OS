@@ -658,6 +658,20 @@ def package_agent(
     # blockers rather than invented auto-fills.
     contract_mode = "team" if _infer_kind(base) == "team" else "single"
     contract_report = verify_package_contract(base, mode=contract_mode)
+    # 로컬 verify 는 스키마 검증기(jsonschema)가 없는 환경에서 '축소 검증' 경고로
+    # 지나가지만, 발행은 다르다 — 스키마 검증이 실제로 돌지 않은 패키지를 시장에
+    # 내보내지 않는다 (2026-08-24, 신품 맥 실측에서 강등을 넣으며 함께 고정).
+    if contract_report.get("schemaValidation") == "unavailable":
+        findings.append(
+            _finding(
+                "schema-validation-unavailable",
+                "blocker",
+                "structure",
+                "schema validation did not run in this environment; publishing requires it",
+                None,
+                "Install jsonschema for the interpreter this CLI runs under (the verify report names it), then rerun the upload.",
+            )
+        )
     for blocker in contract_report["blockers"]:
         artifact_path = blocker.split(":", 1)[0] if ":" in blocker else None
         # Upload packages the collected file set, not the mutable source tree.
