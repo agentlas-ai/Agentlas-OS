@@ -3506,12 +3506,19 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             roster_labels=_roster_labels_from_session(selection),
                         )
                     except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError) as exc:
+                        # This catch — not the goal-command handlers — is where a
+                        # tombstoned implicit goal actually fires (audit round 6:
+                        # the remediation added at the raise site never reached
+                        # the wire because this dict is assembled by hand).
+                        from .workforce.package_adapter import refusal_fields
+
                         return {
                             "action": name,
                             "status": "error",
                             "error": getattr(exc, "code", "workforce_goal_binding_failed"),
                             "executionAllowed": False,
                             "preparedButUnbound": True,
+                            **refusal_fields(exc),
                         }
                     final_result = {**prepared_result, "goalBinding": goal_binding}
                     # 투영은 명시 옵트인(fullDossier=False)이다. search 와 달리
@@ -3581,12 +3588,16 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 roster_labels=_roster_labels_from_session(selection),
             )
         except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError) as exc:
+            # Same firing path as the local branch above, remote leg.
+            from .workforce.package_adapter import refusal_fields
+
             return {
                 "action": name,
                 "status": "error",
                 "error": getattr(exc, "code", "workforce_goal_binding_failed"),
                 "executionAllowed": False,
                 "preparedButUnbound": True,
+                **refusal_fields(exc),
             }
         final_remote = {**remote_result, "goalBinding": goal_binding}
         # 위 로컬 경로와 같은 이유로 명시 옵트인.
