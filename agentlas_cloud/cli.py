@@ -857,6 +857,15 @@ def main(argv: list[str] | None = None) -> int:
     workforce_sub.add_parser("local-list", help="List registered local Workforce definitions")
     workforce_reconcile = workforce_sub.add_parser("local-reconcile", help="Reconcile explicit networking sources/cards")
     workforce_reconcile.add_argument("--networking-home", default=None)
+    workforce_repair = workforce_sub.add_parser(
+        "local-repair",
+        help="Recompile stored releases left behind by an older profile compiler",
+    )
+    workforce_repair.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report which stored releases are stale without rewriting them",
+    )
     workforce_validate = workforce_sub.add_parser("validate", help="Validate a host-LLM staffing decision")
     workforce_validate.add_argument("work_order")
     workforce_validate.add_argument(
@@ -1692,7 +1701,17 @@ def main(argv: list[str] | None = None) -> int:
                     return emit(registry.unregister(args.target))
                 if args.workforce_command == "local-list":
                     return emit({"status": "ok", "registrations": registry.list_registrations()})
-                return emit(registry.reconcile(args.networking_home))
+                if args.workforce_command == "local-repair":
+                    return emit(registry.repair_stale_profiles(dry_run=bool(args.dry_run)))
+                # Reconcile only reaches packages whose import folder still
+                # exists. Heal the registry's own stored releases first so a
+                # release whose source folder moved stops serving a profile the
+                # current compiler would never produce.
+                repair = registry.repair_stale_profiles()
+                outcome = registry.reconcile(args.networking_home)
+                if repair.get("repaired") or repair.get("failed"):
+                    outcome = {**outcome, "staleProfileRepair": repair}
+                return emit(outcome)
             # The ledger is handled before the roster-binding block below: its
             # parser has no --account-subject/--hub-base-url flags, and the
             # binding block ends in a goal-complete fallthrough that would
@@ -3168,8 +3187,79 @@ def run_doctor() -> dict[str, Any]:
             checks["adapters_sanitized"] = sanitized["sanitized"]
     except Exception as exc:
         checks["actions"].append(f"adapter reconcile failed: {exc}")
+    host_plugin_drift = _host_plugin_version_drift()
+    if host_plugin_drift:
+        checks["host_plugin_version_drift"] = host_plugin_drift
+        for row in host_plugin_drift:
+            checks["actions"].append(
+                f"{row['host']} still records this plugin as {row['recordedVersion']} "
+                f"while the installed files are {row['installedVersion']}; "
+                f"run `{row['remediation']}`"
+            )
     checks["status"] = "warn" if checks["actions"] else "ok"
     return checks
+
+
+def _host_plugin_version_drift() -> list[dict[str, Any]]:
+    """Report a host whose plugin ledger disagrees with the files on disk.
+
+    The Agentlas updater refreshes the plugin payload in place, but the host's
+    own install ledger — and the version-named cache directory it points at —
+    belong to the host and keep the number recorded at install time. Measured:
+    the plugin directory and ledger both said 1.2.4 while every file inside,
+    including the plugin manifest and the bundled binary, was 1.2.18. Nothing
+    breaks, but the host's update check compares against the stale number, so a
+    real update can be reported as already applied. Doctor names it and gives
+    the one command that reconciles it rather than leaving it to be discovered.
+    """
+
+    rows: list[dict[str, Any]] = []
+    home = Path.home()
+    ledgers = (
+        ("claude", home / ".claude" / "plugins" / "installed_plugins.json", "claude plugin update hephaestus"),
+        (
+            "codex",
+            Path(os.environ.get("CODEX_HOME") or home / ".codex") / "plugins" / "installed_plugins.json",
+            "codex plugin update hephaestus",
+        ),
+    )
+    for host, ledger_path, remediation in ledgers:
+        try:
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        plugins = ledger.get("plugins") if isinstance(ledger, dict) else None
+        if not isinstance(plugins, dict):
+            continue
+        for key, entries in plugins.items():
+            if not str(key).startswith("hephaestus@") or not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                install_path = entry.get("installPath")
+                if not install_path:
+                    continue
+                manifest = Path(str(install_path)) / ".claude-plugin" / "plugin.json"
+                try:
+                    installed_version = str(
+                        json.loads(manifest.read_text(encoding="utf-8")).get("version") or ""
+                    )
+                except (OSError, ValueError):
+                    continue
+                recorded = str(entry.get("version") or "")
+                if installed_version and recorded and installed_version != recorded:
+                    rows.append(
+                        {
+                            "host": host,
+                            "plugin": str(key),
+                            "recordedVersion": recorded,
+                            "installedVersion": installed_version,
+                            "installPath": str(install_path),
+                            "remediation": remediation,
+                        }
+                    )
+    return rows
 
 
 def _probe_python_command(command: str) -> dict[str, Any]:

@@ -427,10 +427,29 @@ def _missing_id(axis: str, value: str) -> str:
 
 
 def _fit_evidence(
-    profile: Mapping[str, Any], slot: Mapping[str, Any]
+    profile: Mapping[str, Any],
+    slot: Mapping[str, Any],
+    vocabulary: Mapping[str, bool] | None = None,
 ) -> tuple[list[str], list[str], list[str], float, float]:
     req = _slot_requirements(slot)
     have = _profile_sets(profile)
+    # `_hard_eligibility` demotes a requirement term the ontology cannot enforce,
+    # so such a term never excludes anyone. This function kept enforcing the same
+    # term as a *label*, so a candidate passed the gate and then arrived carrying
+    # `gap:required-skill:<term>`. Measured: all 16 candidates in both slots came
+    # back "missing" a skill, beside a slot-level
+    # `gap:requirement-vocabulary-unsupported:skill` saying that very term was
+    # not enforced — two answers to one question, and the louder one was wrong.
+    #
+    # Only the *absence* claim is dropped. A demoted term still earns fit
+    # evidence, still feeds the structured score, and still carries the minimum
+    # evidence-level check, because those read what a candidate DID declare.
+    # "This term cannot filter" is not "this candidate lacks the capability".
+    unenforceable = (
+        _unsupported_requirements(req, vocabulary)
+        if vocabulary is not None
+        else {kind: set() for kind in _REQUIREMENT_VOCABULARY_KINDS}
+    )
     evidence: list[str] = []
     mandatory_gaps: list[str] = []
     optional_gaps: list[str] = []
@@ -451,6 +470,14 @@ def _fit_evidence(
         "consumes": (req["consumes"], have["consumes"]),
         "produces": (req["produces"], have["produces"]),
     }
+    _GAP_AXIS_KIND = {
+        "role": "roles",
+        "skill": "skills",
+        "knowledge": "knowledge",
+        "tool": "tools",
+        "consumes": "consumes",
+        "produces": "produces",
+    }
     for axis, (required, available) in required_all.items():
         for item in sorted(required - available):
             # 정확 일치가 아니어도 같은 개념 가족이면 요건은 충족된 것이다.
@@ -459,6 +486,8 @@ def _fit_evidence(
             if _family_any(available, item):
                 evidence.append(f"fit:{axis}-family:{item}")
                 continue
+            if item in unenforceable.get(_GAP_AXIS_KIND.get(axis, ""), ()):
+                continue
             mandatory_gaps.append(_missing_id(axis, item))
     singular_axes = {
         "runtimes": "runtime",
@@ -466,9 +495,10 @@ def _fit_evidence(
         "modalities": "modality",
     }
     for axis, singular_axis in singular_axes.items():
-        if req[axis] and not req[axis] & have[axis]:
+        enforceable = req[axis] - unenforceable.get(axis, set())
+        if enforceable and not enforceable & have[axis]:
             mandatory_gaps.extend(
-                _missing_id(singular_axis, item) for item in sorted(req[axis])
+                _missing_id(singular_axis, item) for item in sorted(enforceable)
             )
 
     levels = {"declared": 0, "checked": 1, "demonstrated": 2, "attested": 3}
@@ -869,7 +899,7 @@ class WorkforceIndex:
                     optional_gaps,
                     lexical_score,
                     structured_score,
-                ) = _fit_evidence(profile, slot)
+                ) = _fit_evidence(profile, slot, vocabulary)
                 release_id = str(profile.get("agentReleaseId"))
                 profile_vector = self._profile_vectors.get(release_id)
                 vector_available = slot_vector is not None and profile_vector is not None

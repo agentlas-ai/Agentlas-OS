@@ -749,6 +749,146 @@ class LocalWorkforceRegistry:
             except PackageAdaptationError as exc:
                 return self._quarantine(root, exc)
 
+    def repair_stale_profiles(self, *, dry_run: bool = False) -> dict[str, Any]:
+        """Recompile stored releases whose profile predates the current compiler.
+
+        `register()` already recompiles when the stored `compilerVersion` differs,
+        but it is only reached for a package whose *original source folder* is
+        still on disk and still registered. A release imported from a folder that
+        has since moved or been deleted keeps serving whatever the old compiler
+        wrote, forever — measured 154 of 850 stored profiles still carrying the
+        doubled `skill:skill:` prefix, which makes those skills unmatchable by
+        any requirement lookup, months after the compiler was fixed.
+
+        The materialized package lives inside the release directory itself, so
+        the repair never needs the import source: it recompiles from the bytes
+        the registry already owns and keeps the definition, release, and package
+        identity unchanged. Only the profile content and its content digest move.
+        """
+
+        repaired: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
+        current = 0
+        with self._locked():
+            for definition_dir in sorted((self.home / "releases").glob("*")):
+                if not definition_dir.is_dir():
+                    continue
+                for release_dir in sorted(definition_dir.glob("*")):
+                    if not release_dir.is_dir():
+                        continue
+                    profile = read_json(release_dir / "profile.json", default=None)
+                    registration = read_json(release_dir / "registration.json", default=None)
+                    if not isinstance(profile, Mapping) or not isinstance(registration, Mapping):
+                        continue
+                    stored_compiler = str(
+                        (profile.get("provenance") or {}).get("compilerVersion") or ""
+                    )
+                    if stored_compiler == COMPILER_VERSION:
+                        current += 1
+                        continue
+                    identity = {
+                        "agentDefinitionId": str(registration.get("agentDefinitionId") or ""),
+                        "agentReleaseId": str(registration.get("agentReleaseId") or ""),
+                        "storedCompilerVersion": stored_compiler or None,
+                    }
+                    package_root = release_dir / "package"
+                    if not package_root.is_dir():
+                        failed.append({**identity, "reasonCode": "stored_package_missing"})
+                        continue
+                    if dry_run:
+                        repaired.append({**identity, "status": "would_recompile"})
+                        continue
+                    try:
+                        rebuilt = self._recompile_stored_release(
+                            release_dir, registration, package_root
+                        )
+                    except (PackageAdaptationError, OSError, TypeError, ValueError) as exc:
+                        failed.append(
+                            {
+                                **identity,
+                                "reasonCode": getattr(exc, "code", None) or type(exc).__name__,
+                                "message": str(exc)[:200],
+                            }
+                        )
+                        continue
+                    repaired.append({**identity, "status": "recompiled", **rebuilt})
+        return {
+            "status": "repaired" if not dry_run else "inspected",
+            "compilerVersion": COMPILER_VERSION,
+            "alreadyCurrent": current,
+            "repaired": len(repaired),
+            "failed": len(failed),
+            "repairedReleases": repaired[:200],
+            "failedReleases": failed[:200],
+        }
+
+    def _recompile_stored_release(
+        self,
+        release_dir: Path,
+        registration: Mapping[str, Any],
+        package_root: Path,
+    ) -> dict[str, Any]:
+        """Rebuild one stored profile in place from the registry's own package."""
+
+        inspection = inspect_package(package_root)
+        routing_card = inspection.routing_card
+        if not isinstance(routing_card, Mapping):
+            raise PackageAdaptationError(
+                "stored_package_not_native",
+                "the stored package carries no routing card to recompile from",
+            )
+        status = effective_status(routing_card)
+        team_ready = routing_card.get("type") != "team" or bool(
+            inspection.team_graph
+            and inspection.team_graph.get("authoritative")
+            and inspection.team_graph.get("manager")
+        )
+        routing_eligible = status in {"routing_ready", "trusted"} and team_ready
+        unavailable_reasons = ([] if team_ready else ["team_graph_not_authoritative"]) + (
+            routing_ineligibility_reasons(routing_card)
+        )
+        profile = compile_workforce_profile(
+            agent_definition_id=str(registration["agentDefinitionId"]),
+            agent_release_id=str(registration["agentReleaseId"]),
+            # Identity is not recomputed: the stored package is the same bytes
+            # that produced this release, and a repair that moved packageHash
+            # would invalidate every pin already handed out for it.
+            package_hash=str(registration["packageHash"]),
+            release_version=str(registration.get("releaseVersion") or ""),
+            routing_card=routing_card,
+            manifest=inspection.manifest,
+            mcp_requirements=list(inspection.mcp_requirements),
+            team_graph=inspection.team_graph,
+            operational={
+                "callable": True,
+                "installable": True,
+                "routingEligible": routing_eligible,
+                "unavailableReasons": unavailable_reasons,
+                "sourceRefs": [str(package_root), inspection.entrypoint],
+            },
+        )
+        verify_profile_integrity(profile)
+        updated = {
+            **dict(registration),
+            "contentDigest": profile["provenance"]["contentDigest"],
+            "entityKind": profile["entityKind"],
+            "routingEligible": routing_eligible,
+            "routingStatus": status,
+            "repairedAt": _now(),
+        }
+        atomic_write_json(release_dir / "profile.json", profile)
+        atomic_write_json(release_dir / "registration.json", updated)
+        self._publish_event(
+            "upsert",
+            {
+                "agentDefinitionId": updated["agentDefinitionId"],
+                "agentReleaseId": updated["agentReleaseId"],
+                "registration": updated,
+                "workforceProfile": profile,
+            },
+        )
+        return {"contentDigest": updated["contentDigest"]}
+
     def reconcile(self, networking_root: Path | str | None = None) -> dict[str, Any]:
         """Reconcile only paths explicitly registered in networking state.
 

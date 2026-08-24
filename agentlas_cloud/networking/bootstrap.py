@@ -442,12 +442,35 @@ def network_status(home: Path | str | None = None) -> dict[str, Any]:
         benchmark["recorded_passed"] = recorded_bench_passed
     benchmark["passed"] = bench_passed
     benchmark["readiness"] = benchmark_readiness
+    # The routing benchmark is a development fixture: the public release
+    # allowlist keeps `benchmarks/` out of every shipped build, so on an
+    # installed machine `hephaestus network bench` has no suite to load and can
+    # never report cases. Left as-is the status reads "benchmark state is not
+    # ready (no_suites, no_cases)" — a blocker phrased as something the user
+    # could clear, which nothing they do ever will. A permanent condition
+    # reported as a pending failure is how a real fault gets lost among yellow
+    # lights. Say what is actually true for this build instead, and keep the
+    # blocker wording for a checkout that does ship the suites.
+    benchmark_suites_shipped = (
+        Path(__file__).resolve().parent.parent.parent / "benchmarks" / "routing"
+    ).is_dir()
     auto_routing_reasons: list[str] = []
     if ready < min_ready_cards:
         auto_routing_reasons.append(f"requires >= {min_ready_cards} routing_ready cards (has {ready})")
     if not benchmark_readiness["ready"]:
-        blocker_codes = ", ".join(str(item.get("code")) for item in benchmark_readiness["blockers"])
-        auto_routing_reasons.append(f"benchmark state is not ready ({blocker_codes})")
+        if not benchmark_suites_shipped:
+            auto_routing_reasons.append(
+                "this build ships no routing benchmark, so automatic routing stays off "
+                "by design and the host LLM makes the routing decision"
+            )
+            benchmark["not_applicable"] = True
+            benchmark["note"] = (
+                "routing benchmark suites are development fixtures and are not part of "
+                "a released build; nothing on this machine can run them"
+            )
+        else:
+            blocker_codes = ", ".join(str(item.get("code")) for item in benchmark_readiness["blockers"])
+            auto_routing_reasons.append(f"benchmark state is not ready ({blocker_codes})")
     elif not recorded_bench_passed:
         auto_routing_reasons.append("benchmark did not pass")
     return {

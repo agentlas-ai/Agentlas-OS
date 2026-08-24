@@ -18,7 +18,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from ..auth import ensure_access_token
+from ..auth import ensure_access_token, invalidate_access_token
 from .bootstrap import append_jsonl, networking_home, read_json, read_jsonl, utc_now
 from .card_store import load_global_cards
 from .hub_client import finite_hub_tool_error_code
@@ -158,20 +158,39 @@ def search_hub(
     # token so Agentlas Web can resolve the caller workspace. Marketplace
     # search stays anonymous (token omitted).
     token = ensure_access_token(_hub_url(base), interactive=False) if owner_scoped else None
-    request = urllib.request.Request(
-        url,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": "hephaestus-network-router",
-            **({"Authorization": f"Bearer {token}"} if token else {}),
-        },
-        method="POST",
-    )
-    try:
+
+    def _post(bearer: str | None):
+        request = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "hephaestus-network-router",
+                **({"Authorization": f"Bearer {bearer}"} if bearer else {}),
+            },
+            method="POST",
+        )
         with urllib.request.urlopen(request, timeout=_HUB_TIMEOUT_SECONDS) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            return json.loads(response.read().decode("utf-8"))
+
+    try:
+        try:
+            payload = _post(token)
+        except urllib.error.HTTPError as first:
+            # A 401 here is the server saying the stored credential is not
+            # accepted. The record's own expiry cannot observe a revocation, so
+            # unless it is invalidated the next owner-scoped call sends the same
+            # dead token and `auth status` keeps answering `authenticated`.
+            if first.code != 401 or not owner_scoped:
+                raise
+            invalidate_access_token(_hub_url(base))
+            retried = ensure_access_token(
+                _hub_url(base), interactive=False, force_refresh=True
+            )
+            if not retried or retried == token:
+                raise
+            payload = _post(retried)
     except urllib.error.HTTPError as exc:
         try:
             raw_detail = exc.read(65_537)

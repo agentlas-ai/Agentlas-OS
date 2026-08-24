@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Collection, Mapping
 
-from ..auth import ensure_access_token
+from ..auth import ensure_access_token, invalidate_access_token
 from .bootstrap import networking_home, read_json
 
 _HUB_TIMEOUT_SECONDS = 15
@@ -190,9 +190,17 @@ def call_hub_tool(
     try:
         return _call_hub_tool_once(name, arguments or {}, base_url=base_url, timeout=timeout, token=token)
     except HubAuthRequiredError:
+        # The server just told us this credential is not accepted. The stored
+        # record cannot know that on its own — its `expires_at` can sit months
+        # in the future while the token is revoked — so retrying without
+        # invalidating it replays the identical dead token and the refresh and
+        # browser-login branches below are never reached. Measured: owner-scoped
+        # cloud staffing failed `source_unauthorized` on every attempt while
+        # `auth status` kept reporting `authenticated`.
+        invalidate_access_token(base_url)
         if not auto_auth:
             raise
-        token = ensure_access_token(base_url, interactive=True)
+        token = ensure_access_token(base_url, interactive=True, force_refresh=True)
         if not token:
             raise
         return _call_hub_tool_once(name, arguments or {}, base_url=base_url, timeout=timeout, token=token)

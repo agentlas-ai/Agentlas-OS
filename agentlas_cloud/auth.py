@@ -436,13 +436,60 @@ def auth_status(base_url: str | None = None) -> dict[str, Any]:
     expires_at = int(record.get("expires_at") or 0)
     has_access = bool(record.get("access_token")) and expires_at > now + TOKEN_REFRESH_SKEW_SECONDS
     has_refresh = bool(record.get("refresh_token")) and bool(record.get("client_id"))
-    return {
-        "status": "authenticated" if has_access else ("refreshable" if has_refresh else "expired"),
+    # `expires_at` is the issuer's own claim, copied into this file at login. It
+    # says when the token stops being valid on its own; it cannot say the server
+    # still honours it. A revoked or rotated-out token keeps a future
+    # `expires_at` forever, and reporting that as "authenticated" is how a dead
+    # credential passed as a live one while every owner-scoped call 401'd.
+    # `server_rejected_at` is the only evidence in this record that came from
+    # the server, so it outranks the clock.
+    rejected_at = int(record.get("server_rejected_at") or 0)
+    if rejected_at and rejected_at >= int(record.get("updated_at") or 0):
+        has_access = False
+    status = "authenticated" if has_access else ("refreshable" if has_refresh else "expired")
+    payload: dict[str, Any] = {
+        "status": status,
         "base_url": base,
         "token_path": str(token_path(base)),
         "expires_at": expires_at or None,
         "has_refresh_token": has_refresh,
+        # Say out loud that nothing here was confirmed with the server, so a
+        # caller cannot read "authenticated" as "the source will open".
+        "verified_against_server": bool(rejected_at) if rejected_at else False,
     }
+    if rejected_at:
+        payload["server_rejected_at"] = rejected_at
+        payload["reason"] = (
+            "the server rejected this token; refresh or sign in again"
+        )
+    return payload
+
+
+def invalidate_access_token(base_url: str | None = None) -> bool:
+    """Record that the server refused this access token.
+
+    Keeps the refresh grant so the next call can re-mint silently. Without this
+    the stored record still looks valid to `_valid_access_token`, so both the
+    refresh branch and the interactive-login branch of `ensure_access_token`
+    become unreachable and every retry replays the same dead token.
+    """
+
+    base = normalize_base_url(base_url)
+    record = read_token_record(base)
+    if not record:
+        return False
+    now = int(time.time())
+    if int(record.get("server_rejected_at") or 0) >= int(record.get("updated_at") or 0) and not record.get("access_token"):
+        return False
+    record = {
+        **record,
+        "access_token": "",
+        "expires_at": 0,
+        "server_rejected_at": now,
+        "updated_at": now,
+    }
+    write_token_record(record, base)
+    return True
 
 
 def ensure_access_token(
@@ -451,12 +498,19 @@ def ensure_access_token(
     interactive: bool = False,
     open_browser: bool = True,
     timeout_seconds: int = LOGIN_TIMEOUT_SECONDS,
+    force_refresh: bool = False,
 ) -> str | None:
-    """Return a usable Bearer token, refreshing or opening a browser if allowed."""
+    """Return a usable Bearer token, refreshing or opening a browser if allowed.
+
+    `force_refresh` skips the stored access token even when it still looks valid
+    locally. Callers use it after the server answered 401: the record's own
+    expiry cannot see a revocation, so trusting it there returns the same dead
+    token and the retry is not a retry.
+    """
 
     base = normalize_base_url(base_url)
     record = read_token_record(base)
-    token = _valid_access_token(record)
+    token = None if force_refresh else _valid_access_token(record)
     if token:
         return token
     if record and record.get("refresh_token") and record.get("client_id"):
@@ -584,6 +638,7 @@ def _refresh_token(base_url: str, record: dict[str, Any]) -> dict[str, Any] | No
         return None
     refreshed = {
         **record,
+        "server_rejected_at": 0,
         "access_token": tokens["access_token"],
         "refresh_token": tokens.get("refresh_token") or record.get("refresh_token"),
         "token_type": tokens.get("token_type") or record.get("token_type") or "Bearer",

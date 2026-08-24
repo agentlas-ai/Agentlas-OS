@@ -143,18 +143,46 @@ RUNTIME_MODEL2VEC_PATH = Path("models") / "model2vec" / MODEL2VEC_ASSET_NAME
 # those three files at their first-install content forever — and nothing
 # reported it, because a name that is not in the list is never even considered.
 # The installer already derives its set; this path must agree with it.
+# The floor of commands the updater must guarantee on every installed machine.
+# `_managed_command_names` unions this with what the release ships and what the
+# machine already has, so the floor is the ONLY way a command that never landed
+# on a given machine can still arrive: a destination-only sweep cannot invent a
+# name it does not already see. Leaving a shipped command out of this tuple is
+# therefore silent — measured, `hep-orch` and `hep-update` were renderable,
+# installable and documented, yet absent from this user's global commands while
+# every other command was present. `tests/test_installer_registry_parity.py`
+# fails if this drifts from the rendered set again.
 HEP_COMMANDS = (
-    "hep-build",
-    "hep-network",
-    "hep-local",
-    "hep-cloud",
-    "hep-hub",
-    "hep-search",
+    "agentlas",
+    "agentlas-browser",
+    "agentlas-build",
+    "agentlas-call",
+    "agentlas-cloud",
+    "agentlas-connect",
+    "agentlas-graph",
+    "agentlas-hub",
+    "agentlas-local",
+    "agentlas-network",
+    "agentlas-one",
+    "agentlas-orch",
+    "agentlas-search",
+    "agentlas-storm",
+    "agentlas-update",
+    "agentlas-upload",
     "hep-browser",
+    "hep-build",
     "hep-call",
-    "hep-upload",
+    "hep-cloud",
     "hep-connect",
+    "hep-graph",
+    "hep-hub",
+    "hep-local",
+    "hep-network",
+    "hep-orch",
+    "hep-search",
     "hep-storm",
+    "hep-update",
+    "hep-upload",
 )
 
 # Repo-own adapter surfaces that are never installed as user-global commands.

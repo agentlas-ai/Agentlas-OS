@@ -2,6 +2,77 @@
 
 ## Unreleased
 
+- **A revoked sign-in is now noticed instead of replayed forever.** The stored
+  token's `expires_at` is the issuer's claim, not proof the server still honours
+  it, so a revoked credential kept a future expiry and `auth status` kept
+  answering `authenticated` while every owner-scoped call returned 401. The
+  retry in `call_hub_tool` asked for a token again and got the same dead one
+  back, which made both the refresh branch and the browser-login branch
+  unreachable: the "retry" replayed the identical credential. A 401 now
+  invalidates the access token (keeping the refresh grant), the retry forces
+  past it, and `auth status` reports `refreshable` with `server_rejected_at`
+  rather than claiming a live session. Measured: owner Cloud staffing failed
+  `source_unauthorized` on every attempt with the local status reading
+  "authenticated until 2026-09-13".
+- **A compiler fix now reaches releases whose import folder is gone.**
+  `register()` recompiles a stored release when the profile predates the current
+  compiler, but it is only reached for a package whose original source folder is
+  still on disk and still registered. Everything else kept serving whatever the
+  old compiler wrote. Measured: 849 of 849 stored profiles were still
+  `awo-compiler:1.1.0`, and 154 of them carried the doubled `skill:skill:`
+  prefix that makes a skill unmatchable by any requirement lookup — months after
+  the doubling itself was fixed. `workforce local-repair` recompiles in place
+  from the package the registry already owns, keeping definition, release and
+  package identity unchanged; `local-reconcile` now runs it first. Verified on a
+  copy of the live registry before applying: 849 repaired, 0 failed, pollution
+  154 -> 0, integrity 149/149, and a rerun finds nothing (idempotent).
+- **A requirement the ontology cannot enforce no longer brands every
+  candidate.** `_hard_eligibility` already demotes such a term so it excludes
+  nobody, but the candidate card kept enforcing the same term as a label, so a
+  candidate passed the gate and then arrived carrying `gap:required-skill:<term>`
+  beside a slot-level `gap:requirement-vocabulary-unsupported:skill` saying that
+  term was never applied — two answers to one question, and the louder one was
+  wrong. Measured: 16 of 16 candidates in both slots reported "missing" a skill
+  none of them could have declared; after the fix, 0 of 8 on the same query,
+  with the slot-level demotion still reported. Only the absence claim is
+  dropped: a demoted term still earns fit evidence, still feeds the structured
+  score, and still carries the minimum evidence-level check.
+- **A refused selection now names the vocabulary it wanted.**
+  `selection_reason_code_not_public_finite` stated the rule and not the allowed
+  values, so the caller had to read the source to repair a rejection. The issue
+  now carries a bounded `allowedValues`, the candidate's own fit evidence first.
+  Everything listed already reached the caller in the candidate set it is
+  selecting from, so this closes the loop without disclosing anything new.
+- **Every shipped command reaches an existing machine.** The updater unions its
+  command floor with the release bundle and with what the machine already has,
+  so for a machine that never received a command the floor is the only path by
+  which it can arrive. The floor still listed the eleven names it was born with:
+  `hep-graph`, `hep-orch`, `hep-update` and the whole `agentlas-*` alias family
+  were renderable, installable and documented, yet absent from a long-lived
+  machine's global commands. The floor is now the full rendered set, and
+  `tests/test_installer_registry_parity.py` fails if it drifts again.
+- **Automatic routing stops reporting an unreachable blocker.** Routing
+  benchmark suites are development fixtures the public release allowlist keeps
+  out of every shipped build, so on an installed machine `network bench` has no
+  suite to load and the status read "benchmark state is not ready (no_suites,
+  no_cases)" — a blocker phrased as something the user could clear, which
+  nothing they do ever will. A build that ships no suites now says so, and says
+  the host LLM makes the routing decision; a checkout that does ship them keeps
+  the original blocker wording.
+- **Doctor names a host plugin ledger that drifted from its own files.** The
+  updater refreshes the plugin payload in place while the host's install ledger
+  keeps the number recorded at install time, so the host's update check compares
+  against a stale version. Measured: ledger and cache directory both said
+  1.2.4 while every file inside, manifest and bundled binary included, was
+  1.2.18. Doctor reports the drift and the one command that reconciles it.
+- **The MCP surface gate enforces the rule it documents.** The rule is "no
+  second remote MCP that bypasses Core governance", but the assertion read
+  "exactly one server, full stop". When a local companion launcher shipped, the
+  gate failed on `main` for a reason that was not a governance problem while
+  reporting the plugin contract "broken". Core must now be present and exact,
+  any other entry must be a local process from an allowlist, and no entry may
+  carry a remote endpoint.
+
 - **A published agent is no longer reported as a failed publish.**
   Registration verifies the submitted hash, then withholds any file its own scan
   judged credential-like and stores the rest under a new hash. The client

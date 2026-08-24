@@ -38,8 +38,20 @@ class SelectionHubBoundaryError(ValueError):
         super().__init__("selection_hub_boundary_rejected")
 
 
-def _add_unique(issues: list[dict[str, str]], path: str, code: str) -> None:
-    issue = {"path": path, "code": code}
+def _add_unique(
+    issues: list[dict[str, Any]],
+    path: str,
+    code: str,
+    *,
+    allowed: Any = None,
+) -> None:
+    issue: dict[str, Any] = {"path": path, "code": code}
+    if allowed:
+        # A rejection that names the rule but not the vocabulary leaves the
+        # caller guessing. Everything listed here already reached the caller in
+        # the candidate set it is selecting from, so echoing it back adds no
+        # disclosure — it only closes the loop the refusal opened.
+        issue["allowedValues"] = list(allowed)
     if issue not in issues:
         issues.append(issue)
 
@@ -193,6 +205,16 @@ def validate_hub_selection_boundary(
                             issues,
                             f"assignments[{index}].reasonCodes[{reason_index}]",
                             "selection_reason_code_not_public_finite",
+                            # Bounded, and ordered so the candidate's own fit
+                            # evidence — the codes a correct selection actually
+                            # uses — comes before the generic vocabulary.
+                            allowed=sorted(
+                                allowed_reasons,
+                                key=lambda item: (
+                                    item in WORKFORCE_SELECTION_REASON_CODES,
+                                    item,
+                                ),
+                            )[:24],
                         )
 
     edges = selection.get("edges")

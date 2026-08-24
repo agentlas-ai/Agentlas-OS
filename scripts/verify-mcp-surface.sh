@@ -13,13 +13,37 @@ fail() {
 }
 
 # 1. Claude Code: bundled .mcp.json registers the local Core.
+#
+# The rule this gate exists for is "no second REMOTE MCP that bypasses Core
+# governance", but it was written as "exactly one server, full stop". A local
+# companion launcher is neither a bypass nor a second Core, so the assertion was
+# stricter than the rule it enforces — and when `agentlas-browser` shipped, the
+# gate failed for a reason that was not a governance problem while saying the
+# plugin contract was "broken". Enforce the actual rule: Core must be present and
+# exact, every other entry must be a local process from an allowlist, and nothing
+# may carry a remote endpoint.
 python3 <<'PY' || fail "claude plugin .mcp.json contract broken"
 import json
+
+ALLOWED_LOCAL_COMPANIONS = {"agentlas-browser"}
+
 data = json.load(open("claude/plugins/agentlas-core-engine-meta-agent/.mcp.json"))
-assert set(data) == {"hephaestus-network"}, data
+assert "hephaestus-network" in data, data
 server = data["hephaestus-network"]
 assert server.get("command") == "${CLAUDE_PLUGIN_ROOT}/bin/hephaestus", data
 assert server.get("args") == ["mcp", "serve"], data
+
+extra = set(data) - {"hephaestus-network"}
+unknown = sorted(extra - ALLOWED_LOCAL_COMPANIONS)
+assert not unknown, f"undeclared MCP server(s) in the Claude plugin: {unknown}"
+
+for name in sorted(extra):
+    entry = data[name]
+    # A companion must be a local process, never a URL-addressed transport.
+    assert "url" not in entry and "type" not in entry, (name, entry)
+    assert entry.get("command"), (name, entry)
+    blob = json.dumps(entry)
+    assert "http://" not in blob and "https://" not in blob, (name, entry)
 PY
 
 # 2. Gemini: extension manifest registers the same local Core.
