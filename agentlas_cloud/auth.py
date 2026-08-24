@@ -625,11 +625,19 @@ def login(
     opened = False
     if open_browser:
         opened = bool(webbrowser.open(auth_url, new=1, autoraise=True))
-    if not opened:
-        # 브라우저가 안 열렸는데(또는 --no-open) 주소를 로그인이 끝난 뒤에야
-        # 알려주면 아무도 그 로그인을 완료할 수 없다 — 실측 2026-08-24: 창이
-        # 안 뜬 사용자는 주소를 볼 방법이 없어 명령이 그냥 시간초과로 죽었다.
-        # 기다리기 전에 먼저 말한다.
+    # 열렸든 아니든 **항상** 먼저 말한다. `webbrowser.open` 이 True 를 돌려줘도
+    # 그것은 "핸들러를 호출했다"는 뜻이지 사용자가 로그인 창을 보고 있다는 뜻이
+    # 아니다 — 실측 2026-08-24: 맥에서 Chrome 프로세스는 떴는데 화면에 아무것도
+    # 없었고, opened=True 라서 주소는 찍히지 않았다. 사용자는 갈 곳이 없는 채로
+    # 명령이 조용히 대기했다. 주소 한 줄은 공짜이고, 없을 때의 대가는 로그인
+    # 자체가 불가능해지는 것이다.
+    if opened:
+        print(
+            f"A sign-in window should have opened. If you do not see it, open this URL: {auth_url}",
+            file=sys.stderr,
+            flush=True,
+        )
+    else:
         print(f"Open this URL in your browser to sign in: {auth_url}", file=sys.stderr, flush=True)
     if require_browser_open and open_browser and not opened:
         try:

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **The sign-in URL is printed whether or not the browser "opened".**
+  `webbrowser.open` returning True means a handler was invoked, not that the
+  person is looking at a sign-in window, and the URL was only printed when it
+  returned False. Measured on macOS: the call returned True, a Chrome process
+  started, and no browser anywhere held the authorization URL — the flow then
+  waited silently on its callback while the user had nowhere to go. Three
+  attempts in a row ended that way. The URL is now printed on both paths, with
+  wording that says a window should have opened and to use the URL if it did
+  not; printing the line costs nothing, and its absence makes signing in
+  impossible. This is the third separate break on the path to a login window,
+  after the one that never opened it and the missing login command.
+
 - **One oversized source stopped being able to fail every future ingest.**
   `career-graph ingest` refuses a JSON source over the 64 MiB reader cap, and
   refused the whole run with it, so a generated `project-map.json` that reached
