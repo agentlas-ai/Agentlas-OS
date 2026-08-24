@@ -41,9 +41,12 @@ _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 class WorkforceGoalBindingError(ValueError):
     """Finite local continuity failure."""
 
-    def __init__(self, code: str):
+    def __init__(self, code: str, remediation: str | None = None):
         super().__init__(code)
         self.code = code
+        # Forwarded by `refusal_fields` next to the code, so a refusal a caller
+        # can actually escape carries its way out on every surface.
+        self.remediation = remediation if isinstance(remediation, str) and remediation else None
 
 
 def _now() -> str:
@@ -598,7 +601,20 @@ class WorkforceGoalStore:
                 (binding_id,),
             ).fetchone()
             if prior is not None and str(prior["status"]) in _TERMINAL_STATUSES:
-                raise WorkforceGoalBindingError("workforce_goal_already_terminal")
+                # The implicit goal id is a deterministic digest of the
+                # WorkOrder, so preparing the same request in the same project
+                # after its auto goal was completed lands on the tombstone
+                # forever (audit R5-1: a combo that prepared fine failed for
+                # good once the earlier test goal was cleaned up). The escape
+                # exists — pass an explicit goalId — but the refusal never said
+                # so, and a raised error must carry its way out.
+                raise WorkforceGoalBindingError(
+                    "workforce_goal_already_terminal",
+                    "this goal id was completed and terminal ids are never "
+                    "reused; pass a new explicit goalId to prepare_execution "
+                    "(continuity then binds under that goal), or reuse a "
+                    "different active goal from goal_context",
+                )
             revision = int(prior["roster_revision"]) + 1 if prior is not None else 1
             conn.execute(
                 """

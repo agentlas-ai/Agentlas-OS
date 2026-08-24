@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Package schema validation now actually runs on a machine without the
+  compiled stack (audit round 5 condition).** The previous entry said F7 was
+  closed; the auditor measured that only the receipt half was — package
+  contract validation still degraded, because the validator was built through
+  the 4.18-era referencing registry, which the vendored 4.17.3 deliberately
+  predates. The same local-only schema store now resolves through 4.17's
+  RefResolver when the registry path is unavailable. Measured with the
+  auditor's own teeth check: an invalid document yields 5 real schema errors
+  on stock 3.9 with user-site blocked (previously "schema validation
+  unavailable"), and a healthy interpreter still uses the genuine installed
+  jsonschema.
+- **A tombstoned goal names its way out (audit R5-1).** The implicit goal id
+  is a deterministic digest of the WorkOrder, so preparing the same request in
+  the same project after its auto goal was completed failed forever with a
+  bare `workforce_goal_already_terminal`. The refusal now says to pass a new
+  explicit goalId (or reuse an active goal from goal_context), and both MCP
+  goal handlers forward remediation sentences beside their codes.
+
 - **A remote prepare refusal names the roster row it refused.** Audit R4-1:
   four consecutive menu candidates failed prepare with a bare
   `release_artifact_unavailable` and the only way to find the culprit was to

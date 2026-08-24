@@ -945,11 +945,38 @@ def _schema_shape_errors(doc: Any, schema_path: Path) -> list[str]:
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         validator_class = validator_for(schema, default=Draft202012Validator)
         validator_class.check_schema(schema)
-        validator = validator_class(
-            schema,
-            registry=_local_schema_registry(str(schema_path.parent.resolve())),
-            format_checker=validator_class.FORMAT_CHECKER,
-        )
+        try:
+            validator = validator_class(
+                schema,
+                registry=_local_schema_registry(str(schema_path.parent.resolve())),
+                format_checker=validator_class.FORMAT_CHECKER,
+            )
+        except (ImportError, TypeError):
+            # `registry=` and the Registry it carries are the 4.18+ referencing
+            # API. The vendored fallback is 4.17.3 — deliberately the last
+            # release before the compiled dependency — so on a machine where
+            # the real jsonschema stack is absent or broken this branch used to
+            # die on `from referencing import Registry` and the whole check
+            # degraded to "schema validation unavailable" (audit round 5: the
+            # F7 repair had fixed receipts but not this, while the changelog
+            # said "closed"). Resolve the same local-only references through
+            # 4.17's RefResolver instead: same schemas, same no-network rule.
+            store: dict[str, Any] = {}
+            for candidate in sorted(schema_path.parent.resolve().glob("*.schema.json")):
+                payload = json.loads(candidate.read_text(encoding="utf-8"))
+                store[candidate.as_uri()] = payload
+                declared_id = payload.get("$id")
+                if isinstance(declared_id, str) and declared_id:
+                    store[declared_id] = payload
+            validator = validator_class(
+                schema,
+                resolver=_js.RefResolver(
+                    base_uri=schema_path.resolve().as_uri(),
+                    referrer=schema,
+                    store=store,
+                ),
+                format_checker=validator_class.FORMAT_CHECKER,
+            )
         issues = sorted(
             validator.iter_errors(doc),
             key=lambda issue: (

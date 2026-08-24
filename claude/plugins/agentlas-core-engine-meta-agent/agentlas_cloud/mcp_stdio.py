@@ -2803,10 +2803,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 reason=str(arguments.get("reason") or "explicit-host-goal-terminal"),
             )
         except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError) as exc:
+            from .workforce.package_adapter import refusal_fields
+
             return {
                 "action": name,
                 "status": "error",
                 "error": getattr(exc, "code", "workforce_goal_binding_failed"),
+                **refusal_fields(exc),
             }
     if name == "workforce.expand_candidates":
         # 읽기 전용 — 핀된 메뉴에서 shortlist 서수의 풀카드를 되돌려준다.
@@ -3044,12 +3047,15 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     ),
                 )
             except WorkforceGoalBindingError as exc:
+                from .workforce.package_adapter import refusal_fields
+
                 return {
                     "action": name,
                     "status": "rejected",
                     "error": exc.code,
                     "repairable": True,
                     "hubCalls": 0,
+                    **refusal_fields(exc),
                 }
         source_scope = arguments.get("sourceScope")
         expand_slot_ids: list[str] = []
