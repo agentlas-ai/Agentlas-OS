@@ -1761,7 +1761,7 @@ def _fingerprint_hash(files: dict[str, dict[str, int]]) -> str:
 
 def _read_json_object(path: Path) -> dict[str, Any]:
     try:
-        metadata = path.stat(follow_symlinks=False)
+        metadata = path.lstat()
     except OSError:
         return {}
     if (
@@ -1782,7 +1782,7 @@ def _regular_file_digest(path: Path, *, max_bytes: int = MAX_CODE_MAP_BYTES) -> 
     """Hash one bounded regular file without materializing canonical JSON."""
 
     try:
-        metadata = path.stat(follow_symlinks=False)
+        metadata = path.lstat()
     except OSError:
         return ""
     if (

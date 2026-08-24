@@ -95,7 +95,7 @@ def _slug(value: str) -> str:
 
 def _read_text(path: Path) -> str | None:
     try:
-        info = path.stat(follow_symlinks=False)
+        info = path.lstat()
     except OSError:
         return None
     if path.is_symlink() or not info.st_size or info.st_size > MAX_LEARNING_BYTES:

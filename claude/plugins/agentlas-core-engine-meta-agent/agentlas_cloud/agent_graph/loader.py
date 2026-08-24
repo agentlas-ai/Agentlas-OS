@@ -208,7 +208,7 @@ def source_fingerprint(project_root: str | Path = ".") -> str:
             digest.update(b"<symlink-not-allowed>")
         elif path.is_file():
             try:
-                metadata = path.stat(follow_symlinks=False)
+                metadata = path.lstat()
                 if metadata.st_size > MAX_AO_SOURCE_BYTES:
                     digest.update(b"<oversized>")
                 else:

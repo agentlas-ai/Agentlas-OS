@@ -98,7 +98,9 @@ def _active_grant(capability: str, target: str, home: Path | str | None = None) 
         ttl = grant.get("ttl_seconds")
         if ttl:
             try:
-                granted_at = datetime.fromisoformat(str(grant.get("ts")))
+                # 3.11 미만 fromisoformat 은 'Z' 접미를 못 읽는다 — 다른 파일들과
+                # 같은 정규화를 여기에도 적용 (신품 맥 기본 파이썬은 3.9).
+                granted_at = datetime.fromisoformat(str(grant.get("ts")).replace("Z", "+00:00"))
             except ValueError:
                 continue
             if (now - granted_at).total_seconds() > float(ttl):
