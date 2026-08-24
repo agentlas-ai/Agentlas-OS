@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Every command now has a natural-language definition of "working", and the
+  definition is the audit rubric.** Owner directive: what matters is defining,
+  in plain sentences, what each command's normal behaviour is — and whether
+  that actually happens. `contracts/COMMAND-NORMAL-BEHAVIOR.md` states, for
+  all sixteen commands plus the shared rules, what a user must observe, what
+  must never happen, and how to check — each sentence grounded in something
+  measured this week. Audit rounds grade these sentences directly; a mismatch
+  is fixed in the product or, with owner approval, in the sentence — never
+  left silently divergent. A new command is incomplete until its definition
+  exists here. The file ships with the runtime.
+
 - **Package schema validation now actually runs on a machine without the
   compiled stack (audit round 5 condition).** The previous entry said F7 was
   closed; the auditor measured that only the receipt half was — package
