@@ -498,6 +498,10 @@ case "$command" in
 		  call|hep-call|hephaestus-call|Hephaestus-call)
 		    run_python_module agentlas_cloud call "$@"
 		    ;;
+		  login|hep-login|agentlas-login)
+		    # 로그인 전용 진입 — 브라우저 로그인 창을 열고 완료를 기다린다.
+		    run_python_module agentlas_cloud auth login "$@"
+		    ;;
 		  cloud|hep-cloud|hephaestus-cloud)
 		    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"cloud","sources":["cloud"],"decisionOwner":"host_llm","legacyRouter":"disabled"}'
 		    exit 3

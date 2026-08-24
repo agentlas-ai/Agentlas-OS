@@ -1,0 +1,36 @@
+# /hep-login
+
+Sign this machine into Agentlas so cloud staffing, uploads, and paid Hub calls
+work. Raw request: `{{ARGS}}`
+
+Resolve the runner (authentication only):
+
+```bash
+RUNNER=""
+for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
+  "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
+  "${GEMINI_EXTENSION_ROOT:+$GEMINI_EXTENSION_ROOT/bin/hephaestus}" \
+  "./bin/hephaestus"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
+done
+"$RUNNER" auth login --timeout 570
+```
+
+1. Run the login command above in the foreground and wait for it — it opens
+   the browser sign-in window and blocks until the user finishes (up to ~10
+   minutes). Tell the user, in their language, that a browser sign-in window
+   just opened and they should complete it there.
+2. If the output prints an authorization URL line instead (the browser could
+   not be opened), show that URL to the user as a clickable link and keep the
+   command running — clicking it completes the same sign-in.
+3. When it exits, run `"$RUNNER" auth status` and report plainly:
+   `authenticated` (say sign-in is done and cloud commands now work) or
+   `signed_out` (say it did not complete, show the exact error line, and offer
+   to run `/hep-login` again).
+4. Never print token values. Never paste the user's credentials anywhere.
+   If the user asked for something else after `/hep-login` (extra words in the
+   raw request), treat sign-in as the prerequisite step and continue with that
+   request only after `authenticated`.

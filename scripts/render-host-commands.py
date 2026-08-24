@@ -67,6 +67,11 @@ FRONTMATTER = {
         "argument-hint": "'<package folder> [--visibility private-link|marketplace]'",
         "codex-argument-hint": "<package folder>",
     },
+    "hep-login": {
+        "description": "Sign this machine into Agentlas (opens the browser sign-in window).",
+        "argument-hint": "''",
+        "codex-argument-hint": "",
+    },
     "hep-update": {
         "description": "Update the installed Agentlas runtime and every host adapter on this machine.",
         "argument-hint": "''",

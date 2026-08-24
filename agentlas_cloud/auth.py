@@ -17,6 +17,7 @@ import os
 import re
 import secrets
 import stat
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -624,6 +625,12 @@ def login(
     opened = False
     if open_browser:
         opened = bool(webbrowser.open(auth_url, new=1, autoraise=True))
+    if not opened:
+        # 브라우저가 안 열렸는데(또는 --no-open) 주소를 로그인이 끝난 뒤에야
+        # 알려주면 아무도 그 로그인을 완료할 수 없다 — 실측 2026-08-24: 창이
+        # 안 뜬 사용자는 주소를 볼 방법이 없어 명령이 그냥 시간초과로 죽었다.
+        # 기다리기 전에 먼저 말한다.
+        print(f"Open this URL in your browser to sign in: {auth_url}", file=sys.stderr, flush=True)
     if require_browser_open and open_browser and not opened:
         try:
             server.server_close()
