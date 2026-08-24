@@ -1,6 +1,15 @@
 {
   "hephaestus-network": {
     "command": "${CLAUDE_PLUGIN_ROOT}/bin/hephaestus",
-    "args": ["mcp", "serve"]
+    "args": [
+      "mcp",
+      "serve"
+    ]
+  },
+  "agentlas-browser": {
+    "command": "node",
+    "args": [
+      "${CLAUDE_PLUGIN_ROOT}/agentlas_cloud/research/adapters/agentlas_browser_launcher.mjs"
+    ]
   }
 }

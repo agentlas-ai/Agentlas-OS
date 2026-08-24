@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const PORT = Number(process.env.AGENTLAS_CDP_PORT || 9222);
 const CDP_PROFILE = process.env.AGENTLAS_CDP_PROFILE || path.join(os.homedir(), '.agentlas', 'chrome-cdp-profile');
@@ -293,8 +293,28 @@ async function main() {
 // Run only when executed directly; importing the module (tests) must stay
 // side-effect free so classifyAction can be unit-tested without a browser.
 const invokedDirectly = (() => {
-  try { return !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href; }
-  catch (e) { return true; }
+  /*
+   * ★ 심볼릭 링크를 지나 실행돼도 자기 자신을 알아봐야 한다.
+   *
+   * `import.meta.url` 은 실제 경로로 풀려 오는데 `process.argv[1]` 은 사용자가 적은
+   * 그대로다. 런타임은 `~/.agentlas/runtime/current` 라는 링크로 설치되므로, 그 경로로
+   * 부르면 두 값이 달라 "임포트된 모듈" 로 판정되고 main() 이 아예 돌지 않는다.
+   * 프로세스는 아무 말 없이 종료 0 으로 끝난다 — 오류도, 로그도 없다.
+   *
+   * 실측(2026-08-24): `current/...` 로 부르면 도구 0개·stderr 없음, 같은 파일을
+   * `1.2.16/...` 실제 경로로 부르면 도구 27개. 이것이 호스트 CLI 가 브라우저를
+   * 잡지 못하던 이유다. 양쪽을 실제 경로로 풀어서 비교한다.
+   */
+  try {
+    if (!process.argv[1]) return false;
+    const here = fs.realpathSync(fileURLToPath(import.meta.url));
+    const invoked = fs.realpathSync(process.argv[1]);
+    return here === invoked;
+  } catch (e) {
+    // 경로를 풀 수 없으면 예전 비교로 물러난다 — 못 푸는 것이 실행하지 않을 이유는 아니다.
+    try { return !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href; }
+    catch (e2) { return true; }
+  }
 })();
 if (invokedDirectly) {
   main().catch((e) => { console.error('[agentlas-browser] fatal', e && e.stack || e); process.exit(1); });
