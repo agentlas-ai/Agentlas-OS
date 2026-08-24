@@ -1179,7 +1179,17 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             return emit({"action": "global_router", "status": "error", "error": str(exc)}) or 2
     if args.command == "auth":
-        from .auth import AgentlasAuthError, auth_status, ensure_access_token, login, logout, normalize_base_url, token_path
+        from .auth import (
+            AgentlasAuthError,
+            auth_status,
+            ensure_access_token,
+            invalidate_access_token,
+            login,
+            logout,
+            normalize_base_url,
+            token_path,
+            verify_access_token_with_server,
+        )
 
         try:
             if args.auth_command == "status":
@@ -1195,10 +1205,34 @@ def main(argv: list[str] | None = None) -> int:
                     open_browser=not args.no_open,
                     timeout_seconds=args.timeout,
                 )
+                # A locally unexpired token can be revoked server-side (epoch
+                # advance) while `auth status` keeps saying authenticated —
+                # measured 2026-08-24: every hep command pre-step passed while
+                # owner-cloud staffing failed source_unauthorized. `ensure` is
+                # the one place every command runs first, so it asks the server
+                # and opens the browser sign-in right here instead of letting
+                # the command fail one step later.
+                verified = verify_access_token_with_server(args.base_url, token) if token else False
+                if token and verified is False:
+                    invalidate_access_token(args.base_url)
+                    token = ensure_access_token(
+                        args.base_url,
+                        interactive=True,
+                        open_browser=not args.no_open,
+                        timeout_seconds=args.timeout,
+                        force_refresh=True,
+                    )
+                    verified = (
+                        verify_access_token_with_server(args.base_url, token) if token else False
+                    )
                 result = {
                     "status": "authenticated" if token else "signed_out",
                     "base_url": normalize_base_url(args.base_url),
                     "token_path": str(token_path(args.base_url)),
+                    # None means the server could not be asked (offline); say so
+                    # instead of upgrading it to a confirmation.
+                    "verified_against_server": bool(verified) if verified is not None else False,
+                    **({"verify": "unreachable"} if verified is None else {}),
                 }
             else:
                 parser.error("unhandled auth command")
