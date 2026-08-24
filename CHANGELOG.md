@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **A new Mac could not run six commands at all.** `Path.stat(follow_symlinks=)`
+  exists only from Python 3.10, and the system Python a fresh macOS ships is
+  3.9, so `project ensure`, `route`, `hep-search`, `hep-call`, `hep-storm` and
+  `ao lint` all died with a `TypeError` on any machine without the desktop
+  app's bundled interpreter. A development machine never sees it. Found by
+  running the commands in an isolated new-machine environment rather than by a
+  gate, and fixed at every site. Re-measured on Python 3.9.6 after the fix: all
+  175 modules of `agentlas_cloud`, `career_graph` and `ontology` import cleanly,
+  and no `Path.stat(follow_symlinks=)` remains — the surviving
+  `os.stat(..., follow_symlinks=False)` calls have accepted that keyword since
+  3.3.
+
 - **A context error now carries a way out, on every surface.** The CLI kept its
   own hint table covering four codes; the MCP surface — the one the `/hep-*`
   commands go through — ended in a bare `{"error": "<code>"}` with nothing to
