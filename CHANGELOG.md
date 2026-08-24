@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Audit round 2 follow-ups.** The re-audit's one condition and both
+  non-blocking notes, plus two defects the parity tests caught in the freshly
+  restored login command:
+  - the `.zcode` dispatcher surface accepts `login|orch|update` (the last of
+    ten surfaces; the other nine were fixed in the previous commit);
+  - `auth ensure` exits 3 when it ends anything other than authenticated, so
+    `auth ensure && <cloud work>` can actually gate (deployed bodies run it
+    with `|| true` and are unaffected);
+  - the sign-in hint on an unauthenticated search section survives the CLI
+    projection instead of being dropped (`error` too);
+  - `hep-login`/`agentlas-login` join the updater's command floor — without
+    this, a machine that never received them never would, the exact delivery
+    defect fixed in v1.2.20;
+  - the login body carries the standard update-fallback first line, from the
+    canonical body, so every surface renders it identically.
+
 - **The automation kill-switch now kills.** Every hep staffing command runs
   `auth ensure --timeout 180` first, in every runtime, and that path called
   `ensure_access_token` with a hard-coded `interactive=True` — so

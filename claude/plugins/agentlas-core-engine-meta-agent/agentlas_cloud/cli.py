@@ -1290,7 +1290,17 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(result, dict):
                 raise AgentlasAuthError("Authentication command returned an invalid result.")
             result.pop("access_token", None)
-            return emit(result)
+            # `ensure` is the gate scripts compose with (`auth ensure &&
+            # <cloud work>`). A refusal that exits 0 cannot gate anything — the
+            # non-blocking note: the kill-switch refusal returned success. The
+            # deployed command bodies run it with `|| true`, so a nonzero exit
+            # changes nothing for them and starts meaning something for
+            # everyone else. 3 = not authenticated (kill-switch, no display,
+            # timeout, or declined); 0 stays "authenticated".
+            code = 0
+            if args.auth_command == "ensure" and result.get("status") != "authenticated":
+                code = 3
+            return emit(result) or code
         except AgentlasAuthError as exc:
             # Do not derive token_path here: URL/path validation may be the
             # original failure, and recomputing it from the same invalid input

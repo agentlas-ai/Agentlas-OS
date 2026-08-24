@@ -272,6 +272,12 @@ def _section(scope: str, raw: dict[str, Any], query: str, limit: int) -> dict[st
         **({"expandedFrom": raw.get("expandedFrom")} if raw.get("expandedFrom") else {}),
         **({"fallbackReason": raw.get("fallbackReason")} if raw.get("fallbackReason") else {}),
         **({"detail": raw.get("detail")} if raw.get("detail") else {}),
+        # The unauthenticated refusal names its own way out ("sign in with
+        # `hephaestus auth login`"), and this projection was dropping it — the
+        # audit observed the honest status arrive with the hint missing. An
+        # error field survives projection or it may as well not exist.
+        **({"error": raw.get("error")} if raw.get("error") else {}),
+        **({"hint": raw.get("hint")} if raw.get("hint") else {}),
         **({"question": raw.get("question") or raw.get("questionKo")} if raw.get("status") == "clarify" else {}),
         **({"note": raw.get("note")} if raw.get("note") else {}),
     }
