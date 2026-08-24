@@ -375,7 +375,10 @@ def main(argv: list[str] | None = None) -> int:
         auth_cmd.add_argument("--base-url", default=None)
         if auth_name in {"login", "ensure"}:
             auth_cmd.add_argument("--no-open", action="store_true", help="Print the authorization URL instead of opening a browser")
-            auth_cmd.add_argument("--timeout", type=int, default=180)
+            # 실측 2026-08-24: 사용자가 180초를 넘겨 로그인을 마치면 콜백 서버가
+            # 이미 닫혀 브라우저에 localhost 연결 거부만 남는다(두 번 재현).
+            # 사람이 계정 고르고 2단계 인증까지 하는 시간으로 180초는 짧다.
+            auth_cmd.add_argument("--timeout", type=int, default=600)
 
     plugins = sub.add_parser("plugins", help="Plugin discovery (local installs + Agentlas Hub)")
     plugins_sub = plugins.add_subparsers(dest="plugins_command", required=True)

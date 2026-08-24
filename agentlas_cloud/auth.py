@@ -560,6 +560,7 @@ def ensure_access_token(
     open_browser: bool = True,
     timeout_seconds: int = LOGIN_TIMEOUT_SECONDS,
     force_refresh: bool = False,
+    require_browser_open: bool = False,
 ) -> str | None:
     """Return a usable Bearer token, refreshing or opening a browser if allowed.
 
@@ -580,7 +581,12 @@ def ensure_access_token(
             return str(refreshed["access_token"])
     if not interactive:
         return None
-    login_result = login(base, open_browser=open_browser, timeout_seconds=timeout_seconds)
+    login_result = login(
+        base,
+        open_browser=open_browser,
+        timeout_seconds=timeout_seconds,
+        require_browser_open=require_browser_open,
+    )
     return str(login_result["access_token"])
 
 
@@ -589,8 +595,15 @@ def login(
     *,
     open_browser: bool = True,
     timeout_seconds: int = LOGIN_TIMEOUT_SECONDS,
+    require_browser_open: bool = False,
 ) -> dict[str, Any]:
-    """Run Authorization Code + PKCE through the user's default browser."""
+    """Run Authorization Code + PKCE through the user's default browser.
+
+    ``require_browser_open`` 은 명령이 스스로 로그인 창을 여는 암묵 경로용이다:
+    브라우저를 못 열었으면(원격 셸, 깨진 기본 브라우저) 아무도 볼 수 없는
+    로그인을 ``timeout_seconds`` 동안 기다리지 말고 즉시 실패한다. 사용자가
+    직접 부른 ``auth login`` 은 URL 을 손으로 열 수 있으므로 기본값 False.
+    """
 
     base = normalize_base_url(base_url)
     metadata = _fetch_metadata(base)
@@ -611,6 +624,15 @@ def login(
     opened = False
     if open_browser:
         opened = bool(webbrowser.open(auth_url, new=1, autoraise=True))
+    if require_browser_open and open_browser and not opened:
+        try:
+            server.server_close()
+        except OSError:
+            pass
+        raise AgentlasAuthError(
+            "Could not open a browser for Agentlas sign-in on this machine. "
+            "Run `hephaestus auth login` and open the printed URL yourself."
+        )
     _wait_for_callback(server, timeout_seconds)
     if server.error:
         raise AgentlasAuthError(server.error)

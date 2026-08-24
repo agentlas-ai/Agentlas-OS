@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -177,15 +178,19 @@ def hub_url(home: Path | str | None = None) -> str:
     return str(config.get("hub_url") or "https://agentlas.cloud").rstrip("/")
 
 
-def _interactive_auth_allowed() -> bool:
-    """브라우저 로그인을 띄워도 되는 자리인지 — 터미널에 사람이 있는가.
+_INTERACTIVE_LOGIN_LOCK = threading.Lock()
 
-    실측 2026-08-24 (격리 신규 환경): 헤드리스 하네스에서 hep-call·hep-storm 이
-    인증 필요를 만나자 브라우저 로그인을 열고 LOGIN_TIMEOUT_SECONDS(180초)를
-    통째로 기다렸다 — 받는 사람이 없는 로그인 창은 응답 없는 명령으로 보인다.
-    사람이 터미널에 있으면(TTY) 그 자리에서 로그인 창을 여는 것이 맞고(오너
-    지시), 파이프/서브프로세스에서는 즉시 구조화 거절로 떨어져야 한다.
-    HEPHAESTUS_AUTO_AUTH=0/1 로 강제할 수 있다.
+
+def _interactive_auth_allowed() -> bool:
+    """로그인 창을 띄워도 되는 자리인지 — 이 기계에 화면이 있는가.
+
+    오너 정정 2026-08-24: 처음엔 TTY 로 갈랐는데 그건 틀렸다. 일반 사용자가
+    Claude Code 같은 호스트에서 /hep-network 나 클라우드 명령을 칠 때 stdin 은
+    TTY 가 아니지만 **사람은 화면 앞에 있다** — 로그인이 안 되어 있으면 바로
+    브라우저 로그인 창을 여는 것이 기본값이어야 한다. 즉시 거절해야 하는 것은
+    화면이 없는 자리(CI·서버·리눅스 무디스플레이)와 자동화가 명시로 끈 경우
+    (HEPHAESTUS_AUTO_AUTH=0)뿐이다. 브라우저를 열지 못한 경우의 180초 대기는
+    login 쪽 require_browser_open 이 즉시 실패로 끊는다.
     """
 
     override = os.environ.get("HEPHAESTUS_AUTO_AUTH")
@@ -193,10 +198,9 @@ def _interactive_auth_allowed() -> bool:
         return False
     if override == "1":
         return True
-    try:
-        return sys.stdin.isatty() or sys.stderr.isatty()
-    except (OSError, ValueError):
-        return False
+    if sys.platform == "darwin" or os.name == "nt":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
 def call_hub_tool(
@@ -224,7 +228,18 @@ def call_hub_tool(
         invalidate_access_token(base_url)
         if not auto_auth or not _interactive_auth_allowed():
             raise
-        token = ensure_access_token(base_url, interactive=True, force_refresh=True)
+        # 동시 소스 호출(예: network 페더레이션의 cloud+prepare)이 로그인 창을
+        # 두 개 띄우지 않게 잠근다. 잠금을 얻었을 때 다른 쪽이 이미 로그인을
+        # 끝냈으면 저장된 새 토큰을 그대로 쓴다.
+        with _INTERACTIVE_LOGIN_LOCK:
+            token = ensure_access_token(base_url, interactive=False)
+            if not token:
+                token = ensure_access_token(
+                    base_url,
+                    interactive=True,
+                    force_refresh=True,
+                    require_browser_open=True,
+                )
         if not token:
             raise
         return _call_hub_tool_once(name, arguments or {}, base_url=base_url, timeout=timeout, token=token)

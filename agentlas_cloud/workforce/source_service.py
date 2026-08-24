@@ -450,10 +450,12 @@ class WorkforceSourceService:
         # build parses so the source can tell the truth; a server that predates
         # the field ignores it, so this is safe in either deployment order.
         payload["acceptedCoverageGapCodes"] = list(WORKFORCE_COVERAGE_GAP_CODES)
-        # Workforce runs can be scheduled/headless. Never open an interactive
-        # login after dispatch: surface source_unauthorized so Desktop can keep
-        # the automation enabled and request attention without hanging it.
-        return call_hub_tool("workforce.search_candidates", payload, auto_auth=False)
+        # 오너 정정 2026-08-24: 일반 사용자가 호스트(Claude Code 등)에서
+        # /hep-network·클라우드 명령을 쓰다 로그인이 없으면 **여기서 바로
+        # 브라우저 로그인 창이 떠야 한다** — source_unauthorized 로 한 발 늦게
+        # 죽는 것이 아니라. 예약/무인 실행은 HEPHAESTUS_AUTO_AUTH=0 으로 끄고,
+        # 브라우저를 못 여는 자리는 hub_client 가 즉시 실패로 끊는다.
+        return call_hub_tool("workforce.search_candidates", payload)
 
     def _default_remote_bundle_fetch(
         self,
@@ -496,7 +498,9 @@ class WorkforceSourceService:
         })
         if source == "cloud":
             payload["sourceScope"] = "cloud"
-        return call_hub_tool(WORKFORCE_SOURCE_BUNDLE_TOOL, payload, auto_auth=False)
+        # 검색과 같은 경계: 사람이 있는 기계에서는 로그인 창, 무인은
+        # HEPHAESTUS_AUTO_AUTH=0. (오너 정정 2026-08-24)
+        return call_hub_tool(WORKFORCE_SOURCE_BUNDLE_TOOL, payload)
 
     @staticmethod
     def _default_remote_bundle_verifier(
