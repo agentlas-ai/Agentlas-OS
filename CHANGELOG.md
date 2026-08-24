@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+- **The automation kill-switch now kills.** Every hep staffing command runs
+  `auth ensure --timeout 180` first, in every runtime, and that path called
+  `ensure_access_token` with a hard-coded `interactive=True` — so
+  `HEPHAESTUS_AUTO_AUTH=0` had no effect there (independent audit, F1:
+  unset/0/1 all burned the full timeout and tried to open a window). A
+  signed-out machine's scheduled run would stall three minutes per command and
+  pop a browser at night. `auth ensure` now consults the same screen/kill-switch
+  gate as the hub client: silent refresh still happens, but with the switch off
+  (or no display) it returns `signed_out` immediately with a reason. Measured:
+  15s burn → 1s refusal.
+- **A signed-out owner-scope search stops answering "there is nothing".** The
+  CLI `search` asked cloud/bookmarks anonymously and reported `status: ok` with
+  zero rows — "could not ask" dressed as "none exist", while the MCP surface
+  answered `failed`/`partial` honestly (audit F2). It now refuses plainly with
+  `unauthenticated` and a sign-in hint.
+- **Search cache lines carry the account.** The hub-search cache key had no
+  identity, so a signed-out session (or the next account) inherited the
+  previous account's cloud/bookmark rows for the whole TTL (audit F3,
+  reproduced across a logout). Owner-scoped lines are now keyed by an account
+  digest, which makes a foreign hit impossible without any cross-module cache
+  wipe on logout.
+- **`project status` in an unsafe directory names the guard and the way out.**
+  The intentional home/system-folder guard was collapsed by a bare exception
+  handler into `project_bootstrap_failed` with no cause and no next step
+  (audit F4). The refusal now carries the real code (`unsafe_project_root`,
+  `project_directory_does_not_exist`, …) and a remedy line.
+- **`/agentlas login|orch|update` stop being refused.** The alias files said
+  "identical to /hep-login" while the `/agentlas` dispatcher's accept list
+  did not contain them, on every runtime (audit F5) — the freshly restored
+  login command was unreachable through its most natural spelling. All eight
+  dispatcher surfaces now accept the three verbs; resolution reuses the
+  existing `hep-<cmd>.md` rule unchanged.
+- **`hep-connect` reaches cursor, gemini and opencode.** The renderer
+  deliberately leaves a command a host never shipped to a person; the audit
+  (F6) confirmed the gap was benign but real. Coverage completed from the
+  canonical body; both render gates green.
+- Known gap, deferred with reason: package schema validation needs `jsonschema`,
+  which the runtime does not bundle (audit F7). The failure is honest — it
+  reports "schema validation unavailable" and upload refuses to publish an
+  unvalidated package — and bundling a dependency into the release asset is a
+  build-pipeline change that should not be rushed into this tag.
+- The no-Python-anywhere hint no longer tells a Mac user about Windows.
+
 - **Signing in no longer makes pre-sign-in rosters look deleted.** Goal
   bindings are partitioned by account, so rosters bound while signed out live
   in the shared signed-out drawer and stop appearing after sign-in — nothing is

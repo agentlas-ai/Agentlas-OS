@@ -16,7 +16,7 @@ everything after it as REQUEST, verbatim.
 
 COMMAND is one of:
 `network`, `build`, `storm`, `call`, `search`, `hub`, `local`, `cloud`,
-`browser`, `connect`, `upload`, `graph`, `one`.
+`browser`, `connect`, `upload`, `graph`, `one`, `login`, `orch`, `update`.
 
 If COMMAND is missing, or is not in that list, print the list, ask which one the
 user meant, and stop. Never guess a command, and never improvise a workflow from

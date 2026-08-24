@@ -45,7 +45,7 @@ path_sep="$(agentlas_path_sep)"
 
 run_python_module() {
   if [[ -z "$HEPHAESTUS_PY" ]]; then
-    echo "$self: Python 3.9+ not found. On Windows, install Python from python.org or run 'py -3' once, then rerun hephaestus doctor." >&2
+    echo "$self: Python 3.9+ not found. On macOS/Linux install python3 (python.org or your package manager); on Windows install it from python.org or run 'py -3' once. Then rerun hephaestus doctor." >&2
     exit 127
   fi
   # shellcheck disable=SC2086

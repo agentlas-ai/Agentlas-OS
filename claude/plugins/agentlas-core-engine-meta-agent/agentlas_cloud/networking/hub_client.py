@@ -203,6 +203,22 @@ def _interactive_auth_allowed() -> bool:
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
+def interactive_auth_allowed() -> bool:
+    """Public face of the sign-in-window gate.
+
+    `auth ensure` is the pre-step every hep command runs first, in every
+    runtime, with `--timeout 180`. It called `ensure_access_token` with a
+    hard-coded `interactive=True`, so the documented kill-switch
+    (HEPHAESTUS_AUTO_AUTH=0) had no effect there — measured by the independent
+    audit 2026-08-25: unset/0/1 all burned the full timeout and tried to open
+    a window. A signed-out machine's scheduled run would stall three minutes
+    per command and pop a browser at night. The gate existed; nothing on that
+    path consulted it.
+    """
+
+    return _interactive_auth_allowed()
+
+
 def call_hub_tool(
     name: str,
     arguments: dict[str, Any] | None = None,

@@ -1,6 +1,6 @@
 ---
 name: agentlas
-description: "Single entry point for every Agentlas command: /agentlas network, /agentlas build, /agentlas storm, /agentlas graph, /agentlas one, /agentlas upload, /agentlas cloud, /agentlas hub, /agentlas local, /agentlas browser, /agentlas call, /agentlas search, /agentlas connect."
+description: "Single entry point for every Agentlas command: /agentlas network, /agentlas build, /agentlas storm, /agentlas graph, /agentlas one, /agentlas upload, /agentlas cloud, /agentlas hub, /agentlas local, /agentlas browser, /agentlas call, /agentlas search, /agentlas connect, /agentlas login, /agentlas orch, /agentlas update."
 ---
 
 # Agentlas Core & Unified Command System

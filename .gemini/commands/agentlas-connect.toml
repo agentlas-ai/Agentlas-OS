@@ -1,0 +1,10 @@
+description = "Connect Agentlas agents or teams to Telegram."
+prompt = """
+# /agentlas-connect
+
+Argument: {{args}}
+
+Identical to `/hep-connect` and `/agentlas connect <request>`. Locate the file named `hep-connect.toml` in the exact same directory this file was loaded from, read its `prompt` value, and follow those instructions exactly — treating the argument above as that command's request.
+
+Do not improvise a separate workflow and do not summarize `hep-connect.toml` from memory; that file is the sole authority for this command's behavior.
+"""

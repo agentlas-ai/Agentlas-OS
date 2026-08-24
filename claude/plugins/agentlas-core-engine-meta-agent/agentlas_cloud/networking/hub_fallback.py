@@ -18,7 +18,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from ..auth import ensure_access_token, invalidate_access_token
+from ..auth import ensure_access_token, invalidate_access_token, read_token_record
 from .bootstrap import append_jsonl, networking_home, read_json, read_jsonl, utc_now
 from .card_store import load_global_cards
 from .hub_client import finite_hub_tool_error_code
@@ -127,7 +127,35 @@ def search_hub(
     # reranked by meaning. Keying on tokens alone served two differently-worded
     # questions the first one's ordering for the whole TTL.
     sentence_key = _cache_key(str(query_text or ""))[:16]
-    query_key = _cache_key(f"{scope}|{redacted_query}|sent:{sentence_key}|local:{local_fingerprint}")
+    # Owner-scoped lookups answer "what does THIS account own/bookmark", so
+    # both the honesty of the answer and the cache line carry an identity:
+    #
+    # - Signed out, asking anyway used to return `status: ok` with zero rows —
+    #   "could not ask" dressed as "there is nothing" (audit F2; the MCP
+    #   surface already answers `failed`/`partial` in the same situation).
+    #   Refuse plainly instead.
+    # - The cache key had no identity, so a signed-out session (or the next
+    #   account) inherited the previous account's cloud/bookmark rows for the
+    #   whole TTL (audit F3, reproduced with `cached: true` across a logout).
+    #   Keying the line by account digest makes a foreign hit impossible; no
+    #   cross-module cache wipe on logout needed.
+    token = ensure_access_token(_hub_url(base), interactive=False) if owner_scoped else None
+    identity_key = ""
+    if owner_scoped:
+        if not token:
+            return {
+                "status": "unauthenticated",
+                "scope": scope,
+                "error": "source_unauthorized",
+                "results": [],
+                "hint": "sign in with `hephaestus auth login` to search this scope",
+            }
+        record = read_token_record(_hub_url(base)) or {}
+        subject = str(record.get("account_subject") or "")
+        identity_key = "|acct:" + (_cache_key(subject)[:16] if subject else "tokened-unknown")
+    query_key = _cache_key(
+        f"{scope}|{redacted_query}|sent:{sentence_key}|local:{local_fingerprint}{identity_key}"
+    )
     cache_path = base / "cache" / _HUB_CACHE_FILE
     _purge_legacy_query_cache(cache_path)
     cached_hit = _cached_success(cache_path, query_key)
@@ -157,8 +185,6 @@ def search_hub(
     # Cloud and bookmarks are sign-in-gated surfaces; send the stored bearer
     # token so Agentlas Web can resolve the caller workspace. Marketplace
     # search stays anonymous (token omitted).
-    token = ensure_access_token(_hub_url(base), interactive=False) if owner_scoped else None
-
     def _post(bearer: str | None):
         request = urllib.request.Request(
             url,

@@ -80,6 +80,40 @@ RESEARCH_SEARCH_PROVIDER_HINTS = {
 AGENTLAS_BROWSER_MODULE = "browser.agent_cli"
 
 
+_PROJECT_BOOTSTRAP_REMEDIES = {
+    "unsafe_project_root":
+        "This directory cannot be a project (home, filesystem root, or a system "
+        "folder). cd into an actual project folder, or pass --project <dir>.",
+    "project_directory_does_not_exist":
+        "That path does not exist. Check it, or pass --project <dir>.",
+    "invalid_project_root":
+        "That path cannot be used as a project root. Pass --project <dir> "
+        "pointing at a real project folder.",
+}
+
+
+def _project_bootstrap_error(reason_code: str, **extra: Any) -> dict[str, Any]:
+    """One error shape for every project-bootstrap refusal, remedy included.
+
+    The bare `except (OSError, TimeoutError, ValueError)` used to collapse an
+    intentional guard (`unsafe_project_root`, raised when someone runs
+    `project status` in their home directory) into the fixed string
+    `project_bootstrap_failed` — the audit's F4: exit 2, no cause, no next
+    step, while every sibling surface names its remedy.
+    """
+
+    payload: dict[str, Any] = {
+        "action": "project_bootstrap",
+        "status": "error",
+        "detail": reason_code or "project_bootstrap_failed",
+        **extra,
+    }
+    hint = _PROJECT_BOOTSTRAP_REMEDIES.get(reason_code)
+    if hint:
+        payload["hint"] = hint
+    return payload
+
+
 def _project_bootstrap_receipt(
     project: str | Path,
     reason: str,
@@ -92,14 +126,8 @@ def _project_bootstrap_receipt(
     if requested or trusted_contact:
         try:
             return ensure_project(project, reason=reason)
-        except (OSError, TimeoutError, ValueError):
-            return {
-                "action": "project_bootstrap",
-                "status": "error",
-                "reason": reason,
-                "detail": "project_bootstrap_failed",
-                "writeAttempted": True,
-            }
+        except (OSError, TimeoutError, ValueError) as exc:
+            return _project_bootstrap_error(str(exc), reason=reason, writeAttempted=True)
 
     return maybe_ensure_project(
         project,
@@ -1202,10 +1230,16 @@ def main(argv: list[str] | None = None) -> int:
             elif args.auth_command == "login":
                 result = login(args.base_url, open_browser=not args.no_open, timeout_seconds=args.timeout)
             elif args.auth_command == "ensure":
+                from .networking.hub_client import interactive_auth_allowed
+
+                # The kill-switch and the no-display case refuse IMMEDIATELY:
+                # a silent token refresh is still fine, but no browser window
+                # and no waiting on a callback that cannot arrive.
+                interactive = interactive_auth_allowed()
                 token = ensure_access_token(
                     args.base_url,
-                    interactive=True,
-                    open_browser=not args.no_open,
+                    interactive=interactive,
+                    open_browser=interactive and not args.no_open,
                     timeout_seconds=args.timeout,
                 )
                 # A locally unexpired token can be revoked server-side (epoch
@@ -1220,8 +1254,8 @@ def main(argv: list[str] | None = None) -> int:
                     invalidate_access_token(args.base_url)
                     token = ensure_access_token(
                         args.base_url,
-                        interactive=True,
-                        open_browser=not args.no_open,
+                        interactive=interactive,
+                        open_browser=interactive and not args.no_open,
                         timeout_seconds=args.timeout,
                         force_refresh=True,
                     )
@@ -1232,6 +1266,17 @@ def main(argv: list[str] | None = None) -> int:
                     "status": "authenticated" if token else "signed_out",
                     "base_url": normalize_base_url(args.base_url),
                     "token_path": str(token_path(args.base_url)),
+                    **(
+                        {
+                            "reason": (
+                                "interactive sign-in disabled here "
+                                "(HEPHAESTUS_AUTO_AUTH=0 or no display); "
+                                "run `hephaestus auth login` from a machine with a screen"
+                            )
+                        }
+                        if not token and not interactive
+                        else {}
+                    ),
                     # None means the server could not be asked (offline); say so
                     # instead of upgrading it to a confirmation.
                     "verified_against_server": bool(verified) if verified is not None else False,
@@ -1289,14 +1334,8 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
             return emit(project_status(args.project))
-        except (OSError, TimeoutError, ValueError):
-            return emit(
-                {
-                    "action": "project_bootstrap",
-                    "status": "error",
-                    "detail": "project_bootstrap_failed",
-                }
-            ) or 2
+        except (OSError, TimeoutError, ValueError) as exc:
+            return emit(_project_bootstrap_error(str(exc))) or 2
     if args.command == "context":
         from .context_map import (
             ContextMapError,
