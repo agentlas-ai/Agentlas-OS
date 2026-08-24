@@ -826,24 +826,46 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
 def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> dict[str, Any]:
     """Refresh already-installed command and skill adapters from ``source``.
 
-    Only exact destination paths that already exist are overwritten. This keeps
-    auto-update from installing a runtime surface the user never set up.
+    A surface the user never set up is still never created. But "did the user
+    set this surface up" is a question about the DIRECTORY, not about each file
+    in it. Keyed per file, the answer was always "no" for a command that did not
+    exist yet, so a newly shipped command could never reach an existing machine
+    through an update — measured: `hep-orch` and `hep-update` sat in the verified
+    adapter bundle while `~/.claude/commands/` held seventeen of their siblings,
+    and two consecutive updates reported success without adding them. Completing
+    the install floor did not help either, because this loop never got as far as
+    consulting it.
+
+    So the question is asked of the directory: if the destination directory
+    exists, that host surface exists on this machine and a managed file missing
+    from it is filled in. If the directory does not exist, nothing is created
+    and the surface stays absent, exactly as before.
+
+    Existence, not contents. An empty managed directory is not evidence that the
+    user declined our files — measured, `~/.codex/prompts` existed and held
+    nothing, and a contents-based rule skipped all 14 commands for a host the
+    machine plainly has set up.
     """
 
     home_dir = home or Path.home()
     updated: list[str] = []
+    added: list[str] = []
     skipped_missing: list[str] = []
     failed: list[dict[str, str]] = []
 
     for src_rel, dest in _installed_adapter_file_targets(source, home_dir):
         src = source / src_rel
-        if not src.exists() or not dest.exists():
+        if not src.exists():
+            skipped_missing.append(str(dest))
+            continue
+        existed = dest.exists()
+        if not existed and not dest.parent.is_dir():
             skipped_missing.append(str(dest))
             continue
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest)
-            updated.append(str(dest))
+            (updated if existed else added).append(str(dest))
         except Exception as exc:
             failed.append({"path": str(dest), "error": str(exc)})
 
@@ -880,6 +902,10 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
 
     return {
         "updated": updated,
+        # Named separately from `updated` so a receipt can show that a surface
+        # gained a command it did not have, rather than burying it in a refresh
+        # count that looks identical whether or not anything arrived.
+        "added": added,
         "skipped_missing": skipped_missing,
         "failed": failed,
     }

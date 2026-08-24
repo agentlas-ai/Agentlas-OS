@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **A newly shipped command can now reach a machine that already has the
+  others.** The adapter sweep overwrote only destination paths that already
+  existed, so that a host surface the user never set up is never created. But
+  "did the user set this surface up" is a question about the directory, not
+  about each file in it: keyed per file the answer was always "no" for a command
+  that did not exist yet, and no update could ever add one. Measured on a live
+  machine — `hep-orch` and `hep-update` sat in the verified adapter bundle while
+  `~/.claude/commands/` held seventeen of their siblings, and two consecutive
+  updates reported success without adding them; completing the install floor did
+  not help either, because this loop never got as far as consulting it. The
+  question is now asked of the directory, by existence rather than contents: an
+  empty `~/.codex/prompts` is not evidence that the user declined our commands,
+  and a contents-based rule skipped all fourteen for a host the machine plainly
+  has. Verified by running it, not by the gate: 29 files added, 0 skipped, 0
+  failed, and codex went from 0 commands to 29. New arrivals are reported as
+  `added` rather than folded into the refresh count.
+
 - **A revoked sign-in is now noticed instead of replayed forever.** The stored
   token's `expires_at` is the issuer's claim, not proof the server still honours
   it, so a revoked credential kept a future expiry and `auth status` kept
