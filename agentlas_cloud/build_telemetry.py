@@ -32,6 +32,7 @@ import secrets
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,6 +41,14 @@ from typing import Any
 _SEND_TIMEOUT_SECONDS = 3
 _ENDPOINT_PATH = "/api/telemetry/build"
 _INSTALL_ID_KEY = "telemetry_install_id"
+_COOLDOWN_KEY = "telemetry_retry_after"
+# A rate-limited client that keeps sending at full rate is what keeps it
+# rate-limited. Honour the server's 429 by going quiet until it lifts, and
+# bound the quiet window so a bogus Retry-After cannot mute telemetry for
+# good. The floor keeps a header-less 429 from turning into a hot retry.
+_COOLDOWN_FLOOR_SECONDS = 300
+_COOLDOWN_CEILING_SECONDS = 24 * 60 * 60
+_COOLDOWN_DEFAULT_SECONDS = 3600
 _EVENT_NAMES = {"scaffold", "complete", "verify", "package"}
 _MODES = {"single", "team", "package"}
 # Machine codes only. Anything with a separator a path/message would carry
@@ -116,6 +125,53 @@ def _install_id() -> str:
         return ephemeral
 
 
+def _config_path_and_body() -> tuple[Any, dict[str, Any]]:
+    """(path, config dict) for the shared networking config. Raises on failure."""
+    from .networking.bootstrap import default_config, networking_home, read_json
+
+    config_path = networking_home() / "config.json"
+    config = read_json(config_path, default=None)
+    if not isinstance(config, dict):
+        config = default_config()
+    return config_path, config
+
+
+def _cooling_down() -> bool:
+    """True while the server's last 429 is still in force. Never raises."""
+    try:
+        _, config = _config_path_and_body()
+        until = config.get(_COOLDOWN_KEY)
+        if not isinstance(until, (int, float)):
+            return False
+        return time.time() < float(until)
+    except Exception:
+        # An unreadable config must not silently lift a cooldown we set.
+        return True
+
+
+def _cooldown_seconds(retry_after: Any) -> int:
+    """Clamp the server's Retry-After into the bounded quiet window."""
+    seconds = _COOLDOWN_DEFAULT_SECONDS
+    try:
+        if isinstance(retry_after, str) and retry_after.strip().isdigit():
+            seconds = int(retry_after.strip())
+    except Exception:
+        seconds = _COOLDOWN_DEFAULT_SECONDS
+    return max(_COOLDOWN_FLOOR_SECONDS, min(_COOLDOWN_CEILING_SECONDS, seconds))
+
+
+def _begin_cooldown(retry_after: Any) -> None:
+    """Persist the quiet window so later commands do not spawn a sender."""
+    try:
+        from .networking.bootstrap import atomic_write_json
+
+        config_path, config = _config_path_and_body()
+        config[_COOLDOWN_KEY] = time.time() + _cooldown_seconds(retry_after)
+        atomic_write_json(config_path, config)
+    except Exception:
+        pass
+
+
 def _sanitize_code(value: Any) -> str | None:
     try:
         if not isinstance(value, str):
@@ -173,6 +229,10 @@ class _BuildEventTracker:
             self._event = event if event in _EVENT_NAMES else None
             self._mode = mode if mode in _MODES else None
             if self._event is None or not telemetry_enabled():
+                return
+            # Going quiet costs one config read; staying loud costs the server a
+            # 429 per event and this install every later measurement.
+            if _cooling_down():
                 return
             self._install_id = _install_id()
             self._run_id = secrets.token_urlsafe(8)
@@ -265,6 +325,15 @@ def _send_once(raw: str) -> None:
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=_SEND_TIMEOUT_SECONDS):
+            pass
+    except urllib.error.HTTPError as exc:
+        # 429 is the one status worth reacting to: it is the server asking this
+        # install to stop, and swallowing it means the next command sends at the
+        # same rate into the same wall.
+        try:
+            if exc.code == 429:
+                _begin_cooldown(exc.headers.get("Retry-After"))
+        except Exception:
             pass
     except Exception:
         pass
