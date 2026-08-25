@@ -321,6 +321,23 @@ def _work_order_draft_schema() -> dict[str, Any]:
 
 _MENU_AUDIT_FIELDS = ("qualificationEvidence", "packageHash", "contentDigest")
 
+# 후보 요약의 글자 상한. 웹 `lib/workforce/menu-projection.ts` 의 같은 값과 한 벌이어야
+# 하며, 어긋나면 같은 워크오더가 어느 표면이 답했느냐에 따라 다르게 읽힌다.
+# 근거: 라우팅 카드 336장 실측에서 후보 한 장 평균 368자 중 요약이 200자(중앙 204, 최대
+# 524)로 메뉴 무게의 대부분이다. 상한은 렌더된 메뉴에만 걸리고 랭킹과 저장된 후보 집합은
+# 전문을 유지한다.
+_MENU_SUMMARY_CHARS = 120
+
+
+def _trim_summary(text: str, limit: int = _MENU_SUMMARY_CHARS) -> str:
+    """단어 경계에서 자른다 — 자르는 자리가 낱말을 쪼개지 않도록."""
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    space = head.rfind(" ")
+    body = head[:space] if space >= limit * 0.6 else head
+    return body.rstrip(" ,;:.-\u2013\u2014") + "\u2026"
+
 # Heavyweight fields inside semanticSnapshot. This is where a card stuffs a
 # whole sentence slugified into an artifact ID, so a single candidate can
 # carry dozens of them — and since candidates never overlap, comparing them is
@@ -949,6 +966,9 @@ def _menu_projection(result: dict[str, Any], *, keep_artifacts: bool = False) ->
                     if key not in _MENU_AUDIT_FIELDS
                 }
                 candidate["candidateOrdinal"] = ordinal
+                summary = candidate.get("summary")
+                if isinstance(summary, str):
+                    candidate["summary"] = _trim_summary(summary)
                 evidence = (slot.get("candidates", [])[ordinal - 1] or {}).get("qualificationEvidence")
                 if isinstance(evidence, list):
                     candidate["qualificationEvidenceCount"] = len(evidence)
