@@ -91,6 +91,15 @@ _CONCEPT_DASHES_RE = re.compile(r"-{2,}")
 
 def _normalize_concept(value: str) -> str | None:
     text = str(value).strip().lower().replace("_", "-")
+    # A non-ASCII letter or digit IS the concept; the ASCII-only substitution
+    # below can only delete it.  `role:성능-조사자` used to survive that as the
+    # bare namespace `role` — accepted, pinned as a mandatory requirement, and
+    # then matched against nothing, so every candidate came back
+    # `missing-role:role`.  Only a concept with no ASCII at all reached the
+    # refusal; one carrying an ASCII prefix slipped past it.  Refuse whenever
+    # normalization would drop meaning, not just when it would drop everything.
+    if any(ch.isalnum() and not ch.isascii() for ch in text):
+        return None
     text = _CONCEPT_UNSAFE_RE.sub("-", text)
     text = _CONCEPT_DASHES_RE.sub("-", text).strip("-.:/@")
     if not 2 <= len(text) <= 256 or not text[0].isalnum():

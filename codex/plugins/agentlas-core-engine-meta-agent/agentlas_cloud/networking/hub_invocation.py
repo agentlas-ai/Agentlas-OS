@@ -209,6 +209,13 @@ def invoke_hub_agent(
                 "request_hash": _request_hash(request),
                 "routing_receipt_id": (hub_decision or {}).get("receipt_id"),
                 "detail": str(exc),
+                # The last neighbour that common rule 3 had not reached: a
+                # transient server error (measured: HTTP 502 mid-audit) told
+                # the caller what broke and nothing about what to do.
+                "remediation": (
+                    "the Hub could not complete this call — retry shortly; "
+                    "if it persists, check `hephaestus doctor` and your network"
+                ),
                 "local_slug_audit": local,
             },
         )
@@ -377,13 +384,35 @@ def _server_refusal(response: dict[str, Any]) -> dict[str, Any] | None:
                 or "Not enough Agentlas credits to call this agent. Top up or upgrade to continue.",
             },
         }
-    return {
-        "status": error,
-        "fields": {
-            "server_error": error,
-            "message": response.get("message") or error,
-        },
+    # The server sentence is preserved verbatim (hep-call's contract: relay the
+    # server's exact refusal, never substitute). The remedy is added beside it,
+    # not instead of it — a statement of fact with no next move is where common
+    # rule 3 and that contract only appear to conflict.
+    local_remedies = {
+        "agent_not_found": (
+            "no listing with that slug — check the spelling, or find the right "
+            "one with `hephaestus search \"<what you need>\"`"
+        ),
+        "no_cloud_package": (
+            "this listing has no cloud package to call; install it locally, or "
+            "ask the publisher to publish a callable release"
+        ),
+        "owner_only": (
+            "this listing is private to its owner — sign in as that workspace, "
+            "or pick a public listing"
+        ),
+        "team_execution_graph_unavailable": (
+            "this team ships no execution graph, so it cannot be run as a team; "
+            "call one of its agents directly, or ask the publisher to repair it"
+        ),
     }
+    fields = {
+        "server_error": error,
+        "message": response.get("message") or error,
+    }
+    if error in local_remedies:
+        fields["remediation"] = local_remedies[error]
+    return {"status": error, "fields": fields}
 
 
 def _derive_plugin_needs(bundle: dict[str, Any]) -> list[str]:

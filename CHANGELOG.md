@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **The last two refusals without a next move now have one.** Round 8 found
+  the neighbours the round-7 repair had not reached: a transient Hub error
+  (measured mid-audit as HTTP 502) reported what broke and nothing to do about
+  it, and the named server refusals (`agent_not_found`, `no_cloud_package`,
+  `owner_only`, `team_execution_graph_unavailable`) stated a fact with no next
+  step. The server's own sentence is preserved verbatim — hep-call's contract
+  is to relay the exact refusal, never substitute — and the remedy is added
+  beside it, which is where that contract and common rule 3 only appeared to
+  conflict.
+
 - **The cloud scope's contract sentence is checked by structure, not by
   counting (owner decision).** Round 7 marked "cloud sees everything you own"
   unmeasurable for lack of a reference count. The owner pointed out the real
