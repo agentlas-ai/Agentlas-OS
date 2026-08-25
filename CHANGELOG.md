@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **The upload seam is closed end to end, and telemetry stops shouting at a
+  closed door.** With production's Agent Cloud write mode restored, a
+  throwaway package was published, the server was asked to describe that exact
+  record back (it returned the same package hash this machine had computed),
+  and the record was then removed and confirmed gone. Registration, storage,
+  read-back and deletion are one verified round trip, not four separate
+  claims. Alongside it, build telemetry now honours a 429 instead of
+  discarding it: a rate-limited install goes quiet for a bounded window
+  (measured: 0 requests across the next five commands) rather than sending at
+  the same rate into the wall that just rejected it, and an ordinary run still
+  reports normally.
+
+- **`hep-storm` with no arguments printed a bash internal error.** Under
+  `set -u`, expanding an empty array crashed the launcher with
+  `storm_args[@]: unbound variable` — the one branch in the file that expanded
+  a possibly-empty array without the guard every other branch already used.
+  It now answers `query or --decision-file is required` at exit 2, and
+  arguments still reach the parser.
+
 - **Audit round 9 — first round graded on "does it work", and most of it
   does.** Seven commands finished their success path with visible evidence: an
   automation described in words got interviewed, saved, listed, shown, run, and
