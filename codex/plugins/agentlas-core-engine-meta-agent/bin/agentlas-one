@@ -523,6 +523,18 @@ for arg in args:
         scope["maxTier"] = value.lower()
         scope.pop("pinnedModelId", None)
     else:
+        # Anything that is not a tier used to be stored as a pinned model id,
+        # so `worker=frontierr` saved a pin to a model that does not exist and
+        # exited 0 (audit F9-5). A typo of a tier looks like a tier: short, no
+        # separator, close to a known name. A real model id carries a vendor
+        # separator (`anthropic/opus`, `gpt-5.6`) or is plainly long. Refuse
+        # the in-between rather than promote it to a pin nothing can resolve.
+        looks_like_model = ("/" in value) or ("-" in value) or ("." in value) or len(value) > 24
+        if not looks_like_model:
+            raise SystemExit(
+                f"unknown tier: {value} (use {' or '.join(TIERS)}); "
+                f"to pin an exact model instead, give its full id, e.g. anthropic/opus"
+            )
         scope["pinnedModelId"] = value
         scope.pop("maxTier", None)
     policy[role] = scope

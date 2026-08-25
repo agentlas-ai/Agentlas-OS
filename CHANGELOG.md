@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- **Audit round 9 — first round graded on "does it work", and most of it
+  does.** Seven commands finished their success path with visible evidence: an
+  automation described in words got interviewed, saved, listed, shown, run, and
+  **wrote a real file**; a signed-out machine went through login to a verified
+  token and watched cloud flip from `unauthenticated` to `ok`; the staffing
+  chain reached `prepared` with an 18.5KB plan on disk; unrelated queries
+  returned genuinely different candidates; five runtimes each lost a command
+  file and got it back byte-identical in one update; an orchestration setting
+  changed and stuck; the browser took a real snapshot. Four defects that
+  round 1-8's refusal-shaped grading could never have surfaced:
+  - `contract scaffold` wrote a `canonicalCommand` its own schema rejects for
+    any folder name containing an underscore — scaffold emitting a file that
+    fails the verify it ships with. `command_slug`, the repair written when 16
+    published packages hit this, existed; scaffold was simply never routed
+    through it. Both scaffold and the repackage templates now are.
+  - `orch worker=<typo>` stored the typo as a pinned model id and exited 0, so
+    a mistyped tier became a pin nothing can resolve. A value that is neither
+    a tier nor shaped like a model id is now refused with both options named.
+  - `hephaestus graph list` fell through to the natural-language router and
+    answered with Hub candidates at exit 0 — a marketplace list that reads
+    exactly like the saved-automation list the user asked for. Words this
+    launcher does not own but the sibling `agentlas` CLI does now name the
+    right tool. Real phrases still route.
+  - `hep-browser` exited 0 on its research path even when no browser could be
+    opened and nothing was produced (honest in the body, success to a script).
+    The action and snapshot paths already exited nonzero; this one now does too.
+
 - **A concept whose meaning normalization would delete is refused, instead of
   passing as its bare namespace.** The work-order normalizer refused an id only
   when nothing ASCII survived, so `네트워크 효율` was rejected while

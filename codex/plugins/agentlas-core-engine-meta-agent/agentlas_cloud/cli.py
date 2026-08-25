@@ -2962,7 +2962,16 @@ def _run_hep_browser(args: argparse.Namespace) -> int:
         "original_urls": raw_urls,
         "url_rewrites": url_rewrites,
     }
-    return emit(result)
+    # The action and snapshot branches above already exit nonzero on failure;
+    # this one always exited 0. Measured (audit F9-3): with node/npx absent the
+    # run came back `partial`, `browser.used: false`, zero results — honest in
+    # its body, a success to any script reading the code. Common rule 6.
+    browser_used = bool(((result.get("browser") or {}) if isinstance(result.get("browser"), dict) else {}).get("used"))
+    produced = bool(result.get("results") or result.get("pages") or result.get("findings"))
+    failed = str(result.get("status") or "") in {"error", "failed"} or (
+        not produced and not browser_used
+    )
+    return emit(result) or (1 if failed else 0)
 
 
 def _agent_browser_args_from_hep_browser(args: argparse.Namespace) -> list[str]:

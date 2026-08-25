@@ -165,7 +165,10 @@ def derive(
     capabilities = [c for c in (card.get("capabilities") or []) if isinstance(c, str) and c.strip()]
     substitutions = {
         "{{PACKAGE_ID}}": slug,
-        "{{COMMAND_SLUG}}": slug,
+        # Same grammar, same repair: the id keeps the slug, the command is made
+        # legal. Without this the templates rendered a command the schema below
+        # rejects for any slug carrying an underscore or a capital.
+        "{{COMMAND_SLUG}}": command_slug(slug),
         "{{project_id}}": slug,
         "{{draft_id}}": f"{slug}-export",
         "{{NAME}}": name,

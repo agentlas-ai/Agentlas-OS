@@ -535,6 +535,19 @@ case "$command" in
 	      echo "See: $self --help  ·  to route it as a request: $self \"$command …\"" >&2
 	      exit 2
 	    fi
+	    # A word this launcher does not own, but the sibling CLI does, is a
+	    # wrong-tool mistake — not a request. The single-word guard above never
+	    # sees it because these are typed with a subcommand (`graph list`),
+	    # and the router then answered with Hub candidates at exit 0: a list of
+	    # marketplace agents that reads exactly like the list of saved
+	    # automations the user asked for (audit F9-4). Name the right tool.
+	    case "$command" in
+	      graph|automation|automations)
+	        echo "$self: '$command' belongs to the agentlas CLI, not hephaestus." >&2
+	        echo "Try: agentlas $command $*" >&2
+	        exit 2
+	        ;;
+	    esac
 	    # Whitespace-only input is not a request either.
 	    if [[ -z "${command// /}" && $# -eq 0 ]]; then
 	      echo "$self: no command given." >&2

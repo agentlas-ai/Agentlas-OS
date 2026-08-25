@@ -94,11 +94,20 @@ def contract_prompt_lines(mode: str, root: Path | None = None) -> list[str]:
 
 
 def _default_substitutions(package_id: str, name: str, command: str, mode: str) -> dict[str, str]:
+    # The command grammar accepts only [a-z0-9-]; a folder named
+    # `under_score_name` produced `/under_score_name`, which this package's own
+    # schema then rejected — scaffold writing a file that fails the very
+    # verify it ships with (audit F9-2). `command_slug` is the existing repair
+    # for exactly this, applied when 16 published packages hit it; scaffold was
+    # simply never routed through it. Reshaping is not renaming: the package id
+    # keeps its name, only the command string is made legal.
+    from .repackage import command_slug
+
     return {
         "PACKAGE_ID": package_id,
         "PACKAGE_NAME": name,
         "NAME_KO": name,
-        "COMMAND_SLUG": command,
+        "COMMAND_SLUG": command_slug(command),
         "TEAM_NAME": name,
         "ENTITY_TYPE": "team" if mode == "team" else "agent",
         "ORCHESTRATOR_AGENT_ID": f"{package_id}-orchestrator",
