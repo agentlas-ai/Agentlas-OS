@@ -473,9 +473,12 @@ case "$command" in
 		    # The user-facing Storm shortcut follows the same Hub-first contract as
 		    # hep-network. Operators who intentionally want local-card debug routing
 		    # can still use the lower-level `stormbreaker run` command directly.
+		    # set -u 아래에서 빈 배열을 "${a[@]}" 로 펴면 bash 3.2(맥 기본)가
+		    # unbound variable 로 죽는다. 인자 없이 부른 사용자가 셸 내부 오류를
+		    # 보게 되므로, 이 파일이 다른 곳에서 쓰는 것과 같은 보호 관용구를 쓴다.
 		    storm_args=("$@")
 		    storm_hub_only=1
-		    for storm_arg in "${storm_args[@]}"; do
+		    for storm_arg in ${storm_args[@]+"${storm_args[@]}"}; do
 		      if [[ "$storm_arg" == "--no-hub" ]]; then
 		        storm_hub_only=0
 		        break
@@ -484,7 +487,7 @@ case "$command" in
 		    if [[ "$storm_hub_only" == "1" ]]; then
 		      storm_args+=("--hub-only")
 		    fi
-		    run_python_module agentlas_cloud stormbreaker run "${storm_args[@]}"
+		    run_python_module agentlas_cloud stormbreaker run ${storm_args[@]+"${storm_args[@]}"}
 		    ;;
 		  search|hep-search|hephaestus-search|Hephaestus-search)
 		    run_python_module agentlas_cloud search "$@"
