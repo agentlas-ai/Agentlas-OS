@@ -105,7 +105,17 @@ def invoke_hub_agent(
                     "slug": selected_slug,
                     "request_hash": _request_hash(request),
                     "routing_receipt_id": (hub_decision or {}).get("receipt_id"),
-                    "detail": _bundle_failure_detail(bundle_response),
+                    # Never bare: the audit measured one live refusal with no
+                    # detail at all and none with a way out, while the MCP
+                    # prepare surface says both. Same refusal, same words,
+                    # every surface.
+                    "detail": _bundle_failure_detail(bundle_response)
+                    or "the Hub answered without a runnable bundle for this listing",
+                    "remediation": (
+                        "this listing has no runnable bundle right now — "
+                        "call a different agent, or retry later; if it persists, "
+                        "the listing itself needs repair on the Hub"
+                    ),
                     "hub_response": _bundle_response_summary(bundle_response),
                     "local_slug_audit": local,
                 },
@@ -154,6 +164,11 @@ def invoke_hub_agent(
                     "request_hash": _request_hash(request),
                     "routing_receipt_id": (hub_decision or {}).get("receipt_id"),
                     "detail": "Hub returned an incomplete runtime bundle.",
+                    "remediation": (
+                        "this listing has no runnable bundle right now — "
+                        "call a different agent, or retry later; if it persists, "
+                        "the listing itself needs repair on the Hub"
+                    ),
                     "missing_fields": missing,
                     "hub_response": _bundle_response_summary(bundle_response),
                     "local_slug_audit": local,

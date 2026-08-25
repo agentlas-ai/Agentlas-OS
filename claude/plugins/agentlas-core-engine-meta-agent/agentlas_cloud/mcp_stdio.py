@@ -910,6 +910,31 @@ def _menu_projection(result: dict[str, Any], *, keep_artifacts: bool = False) ->
     Core's shared path would make that side die with candidate_set_invalid.
     """
     projected = {key: value for key, value in result.items() if key != "candidateProvenance"}
+    # A failed source receipt is digest-sealed to an exact key set, so the way
+    # out cannot ride inside it — and until now it rode nowhere: the menu said
+    # `cloud: failed source_unauthorized` and left the host to guess the move
+    # (audit round 7, common rule 3). Decorate the projection instead: hints
+    # live beside the receipts, not in them, so seals and consumers are
+    # untouched.
+    receipt_rows = projected.get("sourceReceipts")
+    if isinstance(receipt_rows, list):
+        failure_hints = {
+            "source_unauthorized": "sign in with `hephaestus auth login`, then retry",
+            "source_timeout": "the source did not answer in time — retry shortly",
+            "source_circuit_open": "recent failures paused this source — retry after a short wait",
+            "source_rate_limited": "rate limited — retry after a short wait",
+            "source_not_configured": "this source is not configured on this machine",
+            "source_unavailable": "the source could not be reached — check the network, then retry",
+        }
+        hints = {
+            str(row.get("source")): failure_hints[str(row.get("failureCode"))]
+            for row in receipt_rows
+            if isinstance(row, dict)
+            and row.get("status") == "failed"
+            and str(row.get("failureCode")) in failure_hints
+        }
+        if hints:
+            projected["sourceFailureHints"] = hints
     candidate_set = projected.get("candidateSet")
     if isinstance(candidate_set, dict):
         candidate_set = dict(candidate_set)

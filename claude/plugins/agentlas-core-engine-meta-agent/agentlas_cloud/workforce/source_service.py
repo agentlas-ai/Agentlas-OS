@@ -12,6 +12,7 @@ import time
 from typing import Any, Callable, Collection, Mapping
 
 from ..auth import ensure_login_instance_id, read_token_record
+from ..auth import AgentlasAuthError
 from ..networking.hub_client import (
     HubAuthRequiredError,
     HubToolError,
@@ -670,6 +671,16 @@ class WorkforceSourceService:
                 self.remote_circuit.record_failure(circuit_key, source, exc.code)
                 raise
             except HubAuthRequiredError as exc:
+                raise WorkforceSourceError("source_unauthorized", attempt_count=attempts) from exc
+            except AgentlasAuthError as exc:
+                # The sign-in-by-default gate can now start a login attempt
+                # inside a source call, and a network hiccup during that
+                # attempt (measured: connection reset while fetching OAuth
+                # metadata) raised straight through — one source's login
+                # trouble crashed the entire federated search with a traceback
+                # instead of one failed receipt. RuntimeError lineage, so no
+                # existing arm caught it.
+                self.remote_circuit.record_failure(circuit_key, source, "source_unauthorized")
                 raise WorkforceSourceError("source_unauthorized", attempt_count=attempts) from exc
             except TimeoutError as exc:
                 if attempts < 2:

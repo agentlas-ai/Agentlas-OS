@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **Audit round 7 (first graded against the behaviour contract).**
+  - Exit codes tell the truth (contract, common rule 6): `search` exits 4 when
+    every section failed with zero rows — previously indistinguishable, to a
+    script, from "searched fine, nothing matched" — and `call` exits 4 on a
+    failed preparation. Partial results stay 0.
+  - A `bundle_unavailable` refusal carries its detail and its way out on the
+    call surface too, with the same wording every surface uses (common rule 3;
+    one live refusal was measured bare).
+  - A failed source receipt's way out rides beside the sealed receipt: the
+    menu projection decorates failures with per-source hints
+    ("sign in with `hephaestus auth login`, then retry") without touching the
+    digest-sealed receipt rows.
+  - Found while measuring: the sign-in-by-default gate can start a login
+    attempt inside a source call, and a network hiccup during that attempt
+    (measured: connection reset fetching OAuth metadata) crashed the entire
+    federated search with a traceback — RuntimeError lineage, no arm caught
+    it. One source's login trouble is now one failed receipt.
+  - Live server-side evidence recorded for the web repo: listing
+    `brand-introduction` refuses with `object_store_unreadable` ("re-save this
+    asset from a trusted machine") — the stored package itself is corrupt, the
+    exact artifact-health defect deferred in round 5, now with a named case.
+
 - **Every command now has a natural-language definition of "working", and the
   definition is the audit rubric.** Owner directive: what matters is defining,
   in plain sentences, what each command's normal behaviour is — and whether

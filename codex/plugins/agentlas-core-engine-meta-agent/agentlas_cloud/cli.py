@@ -2325,7 +2325,18 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.limit,
         )
         result["project_bootstrap"] = bootstrap
-        return emit(result)
+        # Contract, common rule 6: exit codes tell the truth. A search whose
+        # every section failed (offline hub, signed-out owner scopes) with zero
+        # rows used to exit 0 — indistinguishable, to a script, from "searched
+        # fine, nothing matched" (audit round 7). Partial results stay 0: some
+        # sections answered, and the per-section statuses carry the rest.
+        sections = result.get("sections") if isinstance(result.get("sections"), dict) else {}
+        section_rows = [row for row in sections.values() if isinstance(row, dict)]
+        all_failed = bool(section_rows) and all(
+            str(row.get("status")) not in {"ok", "clarify"} for row in section_rows
+        )
+        no_rows = not any(row.get("results") for row in section_rows)
+        return emit(result) or (4 if all_failed and no_rows else 0)
     if args.command == "call":
         from .networking import call_agents, init_networking
         from .networking.bootstrap import networking_home
@@ -2351,7 +2362,9 @@ def main(argv: list[str] | None = None) -> int:
             local_inventory=parse_local_inventory(args.local_inventory),
         )
         result["project_bootstrap"] = bootstrap
-        return emit(result)
+        # Same truth rule for call: a failed preparation is not a success exit.
+        call_status = str(result.get("status") or "")
+        return emit(result) or (4 if call_status in {"failed", "error"} else 0)
     if args.command == "hep-browser":
         return _run_hep_browser(args)
     if args.command == "route":
