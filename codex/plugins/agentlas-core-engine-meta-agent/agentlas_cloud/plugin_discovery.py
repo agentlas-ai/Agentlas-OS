@@ -23,6 +23,28 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_HUB_URL = "https://agentlas.cloud"
+
+# One list with the web side (AgentsAtlas app, lib/search/stopwords.ts). Words
+# that cannot describe work: before this filter, a query carrying ordinary
+# English glue matched most of the catalogue because matching is substring
+# containment ("it" hits "edit", "the" hits "theme"). Question words
+# (how/why/when/where) stay out of the list on purpose — they carry intent.
+_SEARCH_STOPWORDS = frozenset("""
+agent agents an a the for to i me my that which what want need needs find search
+please help with do does can is are and or of in on at by from as it its this
+these those they their there then be was were been being am our us you your we
+he she him her them into about over than too very just also any all some more
+most other own same such both each few had has have here next up out off so if
+but no not
+""".split())
+
+
+def _search_tokens(text: str) -> list[str]:
+    return [
+        token
+        for token in (text or "").lower().split()
+        if len(token) >= 2 and token not in _SEARCH_STOPWORDS
+    ]
 _HUB_TIMEOUT_SECONDS = 6
 _SCAN_MAX_DEPTH = 6
 
@@ -206,7 +228,7 @@ def fetch_hub_plugins(query: str = "") -> dict[str, Any]:
 
 def resolve_plugins(query: str, project_dir: Path | str = ".", use_hub: bool = True) -> dict[str, Any]:
     local = scan_local_plugins(project_dir)
-    tokens = [token for token in query.lower().split() if len(token) >= 2]
+    tokens = _search_tokens(query)
 
     def matches_local(entry: dict[str, Any]) -> bool:
         haystack = f"{entry['name']} {entry.get('description', '')}".lower()
@@ -248,3 +270,111 @@ def resolve_plugins(query: str, project_dir: Path | str = ".", use_hub: bool = T
         "how_to_load": HOW_TO_LOAD,
         "search_locations": local["search_locations"],
     }
+
+
+# ── Two-tier tool search over installed plugin routing cards ─────────────────
+#
+# Layer contract: docs 2026-08-25-workforce-routing-v2/TOOLSEARCH-SCHEMAS.md.
+# Tier 1 ranks plugin/server cards by stopword-filtered keyword overlap over
+# name, summary and trigger examples; tier 2 looks only at the winners'
+# capability entries. The response never carries an input schema — measured on
+# the 43-card corpus, a 4-candidate shortlist plus one loaded schema is ~2.4%
+# of shipping everything (244 vs 9,982 estimated tokens).
+
+_READ_PREFIXES = ("get_", "read_", "list_", "search_", "inspect_", "query_", "check_")
+_DESTRUCTIVE_PREFIXES = ("delete_", "remove_", "drop_", "wipe_")
+
+
+def _card_search_rows(root) -> list[dict]:
+    import glob as _glob
+    rows = []
+    base = Path(root)
+    for card_path in sorted(_glob.glob(str(base / "*" / ".agentlas" / "routing-card.json"))):
+        try:
+            card = json.loads(Path(card_path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(card, dict) or not card.get("id"):
+            continue
+        examples = [
+            (entry.get("text") if isinstance(entry, dict) else str(entry)) or ""
+            for entry in (card.get("trigger_examples") or [])
+        ]
+        rows.append({
+            "slug": str(card["id"]).split("/")[-1],
+            "name": card.get("name") or card["id"],
+            "summary": card.get("summary") or "",
+            "haystack": " ".join([
+                str(card["id"]), card.get("name") or "", card.get("summary") or "",
+                " ".join(examples),
+                " ".join(str(c).replace("_", " ") for c in (card.get("capabilities") or [])),
+            ]).lower(),
+            "tools": [
+                {
+                    "name": cap,
+                    "summary": str(cap).replace("_", " "),
+                    "effects": {
+                        "readOnly": str(cap).startswith(_READ_PREFIXES),
+                        "destructive": str(cap).startswith(_DESTRUCTIVE_PREFIXES),
+                    },
+                }
+                for cap in (card.get("capabilities") or [])
+            ],
+        })
+    return rows
+
+
+def tool_search(
+    need: str,
+    plugin_root: Path | str,
+    *,
+    limit: int = 4,
+    forbid_destructive: bool = False,
+) -> dict:
+    rows = _card_search_rows(plugin_root)
+    tokens = _search_tokens(need)
+    if not tokens:
+        return {"schemaVersion": "agentlas.tool-search-result.v1", "candidates": [], "degraded": ["empty_need"]}
+    import math as _math
+    df: dict[str, int] = {}
+    for row in rows:
+        for token in set(row["haystack"].split()):
+            df[token] = df.get(token, 0) + 1
+    def _idf(token: str) -> float:
+        return _math.log(1 + len(rows) / (1 + df.get(token, 0)))
+    ranked = sorted(
+        (
+            (sum(_idf(t) for t in tokens if t in row["haystack"]), row)
+            for row in rows
+        ),
+        key=lambda pair: -pair[0],
+    )
+    candidates = []
+    for score, row in ranked[:8]:
+        if score <= 0:
+            break
+        tools = [
+            t for t in row["tools"]
+            if not (forbid_destructive and t["effects"]["destructive"])
+        ]
+        scored_tools = sorted(
+            tools,
+            key=lambda t: -sum(1 for x in tokens if x in (t["name"] + " " + t["summary"]).lower()),
+        )
+        for tool in scored_tools[:2] or [None]:
+            candidates.append({
+                "ordinal": 0,
+                "server": row["slug"],
+                "serverName": row["name"],
+                "tool": tool["name"] if tool else None,
+                "summary": tool["summary"] if tool else row["summary"],
+                "effects": tool["effects"] if tool else None,
+                "installed": True,
+            })
+            if len(candidates) >= limit:
+                break
+        if len(candidates) >= limit:
+            break
+    for index, candidate in enumerate(candidates):
+        candidate["ordinal"] = index + 1
+    return {"schemaVersion": "agentlas.tool-search-result.v1", "candidates": candidates, "degraded": []}
