@@ -1276,6 +1276,27 @@ def _host_model_allocation_policy() -> dict[str, Any]:
 
 TOOLS: list[dict[str, Any]] = [
     {
+        "name": "agentlas_tool_search",
+        "description": (
+            "Find the TOOL for a concrete action, not the plugin for a topic. Pass `need` as one "
+            "plain sentence describing the action ('show what changed in the repository since the "
+            "last commit'). Searches servers first, then only the winners' tools, and answers with a "
+            "short list: server, tool, one line, and effect hints (readOnly/destructive). Input "
+            "schemas are NOT returned — load the chosen tool's schema from its server at call time. "
+            "Use forbid_destructive when the task must not delete or overwrite anything."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["need"],
+            "properties": {
+                "need": {"type": "string", "description": "One sentence describing the action to perform."},
+                "project_dir": {"type": "string", "description": "Project directory to scan (default: cwd)."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 8, "description": "Candidates to return (default 4)."},
+                "forbid_destructive": {"type": "boolean", "description": "Exclude tools that delete or overwrite."},
+            },
+        },
+    },
+    {
         "name": "hephaestus_route",
         "description": (
             "Legacy compatibility/debug card router. Disabled unless the operator "
@@ -3739,6 +3760,18 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if brief_warning:
             invocation["work_brief_warning"] = brief_warning
         return with_bootstrap(invocation)
+    if name == "agentlas_tool_search":
+        from .plugin_discovery import tool_search
+
+        need = str(arguments.get("need") or "").strip()
+        if not need:
+            return {"error": "missing_need", "message": "need is required — one sentence describing the action."}
+        return tool_search(
+            need,
+            arguments.get("project_dir") or ".",
+            limit=int(arguments.get("limit") or 4),
+            forbid_destructive=arguments.get("forbid_destructive") is True,
+        )
     if name == "hephaestus_network_status":
         return network_status()
     if name == "agentlas_auth_status":

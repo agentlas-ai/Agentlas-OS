@@ -416,6 +416,18 @@ def main(argv: list[str] | None = None) -> int:
     plugins_resolve.add_argument("query")
     plugins_resolve.add_argument("--project", default=".")
     plugins_resolve.add_argument("--no-hub", action="store_true", help="Skip the Agentlas Hub query (local scan only)")
+    plugins_tool_search = plugins_sub.add_parser(
+        "tool-search",
+        help="Find the TOOL for a concrete action (servers first, then their tools; no input schemas)",
+    )
+    plugins_tool_search.add_argument("need", help="One sentence describing the action to perform")
+    plugins_tool_search.add_argument("--project", default=".")
+    plugins_tool_search.add_argument("--limit", type=int, default=4)
+    plugins_tool_search.add_argument(
+        "--forbid-destructive",
+        action="store_true",
+        help="Exclude tools that delete or overwrite",
+    )
 
     project_cmd = sub.add_parser("project", help="Canonical local project bootstrap shared by every Agentlas host")
     project_sub = project_cmd.add_subparsers(dest="project_command", required=True)
@@ -1331,6 +1343,17 @@ def main(argv: list[str] | None = None) -> int:
             return emit(scan_local_plugins(args.project))
         if args.plugins_command == "resolve":
             return emit(resolve_plugins(args.query, args.project, use_hub=not args.no_hub))
+        if args.plugins_command == "tool-search":
+            from .plugin_discovery import tool_search
+
+            return emit(
+                tool_search(
+                    args.need,
+                    args.project,
+                    limit=args.limit,
+                    forbid_destructive=args.forbid_destructive,
+                )
+            )
     if args.command == "project":
         from .project_bootstrap import ensure_project, project_status
 
