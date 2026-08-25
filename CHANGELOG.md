@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **The cloud scope's contract sentence is checked by structure, not by
+  counting (owner decision).** Round 7 marked "cloud sees everything you own"
+  unmeasurable for lack of a reference count. The owner pointed out the real
+  shape: cloud and hub are the same routing — one function, one code path,
+  differing only in which server tool it calls (network→marketplace,
+  cloud→cargo, bookmark→bookmarks). So the check is structural sameness: the
+  three scopes share the path, cloud alone attaches the owner-scope arguments,
+  and the runtime never re-filters the answer. Measured all three today. This
+  also fixes where such a defect belongs: scope is decided server-side, so
+  "something I own is missing from search" is a server defect, not this
+  command's — exactly what the 284 hidden public listings turned out to be.
+  The browser sentence stays as written, by owner decision.
+
 - **Audit round 7 (first graded against the behaviour contract).**
   - Exit codes tell the truth (contract, common rule 6): `search` exits 4 when
     every section failed with zero rows — previously indistinguishable, to a
