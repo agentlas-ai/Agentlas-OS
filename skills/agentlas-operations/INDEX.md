@@ -1,9 +1,10 @@
 # Agentlas 도구 색인 (자동 생성 — 손으로 편집 금지)
 
-생성원: `agentlas_cloud/mcp_stdio.py` TOOLS (26개). 재생성: `python3 scripts/generate-ops-skill-index.py`.
+생성원: `agentlas_cloud/mcp_stdio.py` TOOLS (27개). 재생성: `python3 scripts/generate-ops-skill-index.py`.
 
 | 도구 | 요지 |
 |---|---|
+| `agentlas_tool_search` | Find the TOOL for a concrete action, not the plugin for a topic. |
 | `hephaestus_route` | Legacy compatibility/debug card router. |
 | `model.resolve_allocation` | Resolve one host-owned invocation stage to an orchestrator or worker model using the operator's provider-neutral role policy. |
 | `hephaestus_cloud_search` | Legacy compatibility/debug owner-cargo router. |

@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- **Tool search descends servers before tools, and never ships input schemas.**
+  Finding the tool for a concrete action was the plugin search wearing the wrong
+  hat: it answered "which plugin covers this topic" when the caller needed
+  "which callable does this". `agentlas_tool_search` (MCP, plus
+  `agentlas plugins tool-search "<need>"`) ranks servers first and looks only at
+  the winners' tools, so catalogue size never changes what the model reads.
+  Measured over the 43 shipped routing cards and their 207 capabilities: the
+  expected server was in a four-candidate shortlist 5/5 times, four of them at
+  rank 1, at ~209 tokens and ~3ms per search — against ~9,982 tokens to hand
+  over every tool definition up front. Schemas load for the tool actually
+  chosen. `forbid_destructive` keeps deleting tools out of a shortlist for work
+  that must not delete.
+
+- **The candidate menu defaults to four per slot, and a role can carry several
+  phrasings.** Measured on the 116 routing-eligible profiles with 389 English
+  queries: the right agent is inside the top four 97.4% of the time and inside
+  the top three 97.2%, so slots five through eight bought 0.2 points for roughly
+  2,900 characters a slot. And one request rarely matches a card in only one
+  wording — "our webhook double-charges", "duplicate effects under retry" and
+  "design an idempotency key" reach different cards while describing one job —
+  so a role may now list up to eight `queries`, joined into its task.
+
+- **Plugin discovery stopped scoring function words.** Matching is substring
+  containment, so "it" hit "edit" and "the" hit "theme": on the live catalogue,
+  "book me a flight and pay with my card" put a positive score on 106 of 113
+  plugins and "read the file and send it" on 109, while the same shape of
+  request without the glue touched 17. One stopword list now serves this and the
+  agent catalogue, so the two cannot drift apart again.
+
 - **The upload seam is closed end to end, and telemetry stops shouting at a
   closed door.** With production's Agent Cloud write mode restored, a
   throwaway package was published, the server was asked to describe that exact
