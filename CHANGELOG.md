@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **A concept whose meaning normalization would delete is refused, instead of
+  passing as its bare namespace.** The work-order normalizer refused an id only
+  when nothing ASCII survived, so `네트워크 효율` was rejected while
+  `role:성능-조사자` was not: it normalized to `role`, and `community:웹-개발` to
+  `community`. Both were accepted, pinned as mandatory slot requirements, and
+  then matched against nothing — measured, all 8 local candidates returned
+  `missing-community:community`, which no required slot can be staffed through.
+  The refusal now triggers whenever a non-ASCII letter or digit is present,
+  since the ASCII-only substitution can only delete it; this covers Japanese,
+  Chinese, Arabic and Hindi identically and leaves authored English phrases
+  untouched.
+
 - **The last two refusals without a next move now have one.** Round 8 found
   the neighbours the round-7 repair had not reached: a transient Hub error
   (measured mid-audit as HTTP 502) reported what broke and nothing to do about
