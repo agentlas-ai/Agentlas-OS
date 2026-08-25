@@ -47,6 +47,14 @@ _FINITE_SLOT_LIST_FIELDS = (
 _ALLOWED_ROLE_FIELDS = frozenset({
     "title",
     "task",
+    # Several phrasings of the same slot, joined into `task`. Ranking uses the
+    # slot's title plus task as its query text, and one request rarely matches a
+    # card in only one wording — "our webhook double-charges", "duplicate effects
+    # under retry", and "design an idempotency key" reach different cards even
+    # though they describe one job. Authors kept cramming these into one
+    # sentence; letting them list the phrasings is the whole of what a v2 work
+    # order was going to add, without a second wire schema to keep alive.
+    "queries",
     "cardinality",
     "criticality",
     "allowedEntityKinds",
@@ -215,6 +223,20 @@ def compile_work_order_draft(
             _add(issues, f"{base}.{field}", "draft_additional_property")
         title = raw_role.get("title")
         task = raw_role.get("task")
+        raw_queries = raw_role.get("queries")
+        if raw_queries is not None:
+            if (
+                not isinstance(raw_queries, list)
+                or not raw_queries
+                or len(raw_queries) > 8
+                or any(not isinstance(q, str) or not q.strip() for q in raw_queries)
+            ):
+                _add(issues, f"{base}.queries", "draft_role_queries_invalid")
+            elif task is None:
+                task = "\n".join(q.strip() for q in raw_queries)
+            else:
+                # Both given: the author's own sentence leads, the phrasings follow.
+                task = "\n".join([task.strip(), *(q.strip() for q in raw_queries)])
         if not isinstance(title, str) or not title.strip() or len(title) > 160:
             _add(issues, f"{base}.title", "draft_role_title_invalid")
         if not isinstance(task, str) or not task.strip() or len(task) > 32_000:
