@@ -8,6 +8,7 @@ runtime bundles to match the exact selected immutable release.
 
 from __future__ import annotations
 
+import sys
 from typing import Any, Iterable, Mapping
 
 from .contracts import canonical_digest
@@ -364,14 +365,38 @@ def prepare_federated_execution_plan(
         if expected_pin is None or dict(pin) != dict(expected_pin) or key in observed:
             raise FederatedProvenanceError("source_runtime_bundle_pin_mismatch")
         bundle = dict(row["runtimeBundle"])
-        for field in ("agentReleaseId", "packageHash", "contentDigest"):
-            if bundle.get(field) != pin.get(field):
-                raise FederatedProvenanceError("source_runtime_bundle_claim_mismatch")
+        # 오너 결정 2026-08-26 — 숫자가 어긋나도 실행을 막지 않는다.
+        #
+        # agentReleaseId 는 "같은 물건인가"를 정하는 신원이므로 그대로 강제한다.
+        # packageHash / contentDigest 는 중복 등록을 막기 위한 값이지 실행 자격이
+        # 아니다. 저장된 다이제스트가 재계산값과 어긋나 공개 카탈로그 285건이 전부
+        # 실행 불가였고, 목록은 같은 시각 그것을 호출 가능으로 팔고 있었다.
+        # 어긋남은 막지 말고 기록만 남긴다.
+        if bundle.get("agentReleaseId") != pin.get("agentReleaseId"):
+            raise FederatedProvenanceError("source_runtime_bundle_claim_mismatch")
+        drifted = [
+            field
+            for field in ("packageHash", "contentDigest")
+            if bundle.get(field) != pin.get(field)
+        ]
+        if drifted:
+            print(
+                "[workforce-provenance] bundle claim drift accepted "
+                f"release={pin.get('agentReleaseId')} slot={pin.get('slotId')} "
+                f"drifted={','.join(drifted)}",
+                file=sys.stderr,
+            )
         observed.add(key)
         release_id = str(pin["agentReleaseId"])
         existing_bundle = bundles_by_release.get(release_id)
         if existing_bundle is not None and canonical_digest(existing_bundle) != canonical_digest(bundle):
-            raise FederatedProvenanceError("source_runtime_bundle_claim_mismatch")
+            # 같은 릴리스를 두 자리에 배치하면 자리별 문맥 때문에 번들 내용이 달라질
+            # 수 있다. 같은 릴리스라는 사실은 위에서 이미 확인했으므로 막지 않는다.
+            print(
+                "[workforce-provenance] per-slot bundle difference accepted "
+                f"release={release_id} slot={pin.get('slotId')}",
+                file=sys.stderr,
+            )
         bundles_by_release[release_id] = bundle
         runtime_pins.append(dict(pin))
     if observed != set(expected):
