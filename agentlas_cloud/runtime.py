@@ -362,6 +362,36 @@ def canonical_package_hash_hex(entries: Iterable[tuple[str, bytes]]) -> str:
     return digest.hexdigest()
 
 
+def _member_identities(base: Path, existing: Any) -> list[dict[str, Any]]:
+    """One identity row per worker in the roster, minted once and preserved.
+
+    A member's folder name is display information like any other slug; the
+    identity is the opaque id beside it. Existing rows are carried verbatim so a
+    rebuild never re-mints, and a role that has disappeared from disk keeps its
+    row rather than silently losing whatever accrued to it.
+    """
+
+    import uuid
+
+    by_role: dict[str, dict[str, Any]] = {}
+    for row in existing if isinstance(existing, list) else []:
+        if not isinstance(row, dict):
+            continue
+        role = str(row.get("role") or "").strip()
+        agent_id = str(row.get("agentId") or "").strip()
+        if role and agent_id:
+            by_role[role] = {
+                "role": role,
+                "agentId": agent_id,
+                "agentVersion": int(row.get("agentVersion") or 1),
+            }
+    for manifest in sorted(base.glob("agents/*/agent.md")):
+        role = manifest.parent.name
+        if role not in by_role:
+            by_role[role] = {"role": role, "agentId": f"agt_{uuid.uuid4().hex}", "agentVersion": 1}
+    return [by_role[role] for role in sorted(by_role)]
+
+
 AGENT_ID_TEAM_MARKER = "agt_team_"
 
 
@@ -743,6 +773,15 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
         import uuid
 
         manifest_payload["agentId"] = f"agt_{'team_' if _package_is_team(base) else ''}{uuid.uuid4().hex}"
+    # 팀이면 멤버 각자도 신원을 갖는다. 멤버는 지금까지 `agents/<역할>/agent.md` 폴더
+    # 이름 하나가 신원의 전부였다 — 그래서 기기마다 다른 값이 되고, 서버는 구성원이
+    # 누구인지 아예 모른다(화면용 역할 문자열만 저장). 멤버 신원은 팀 매니페스트에
+    # 적어 두어야 패키지를 옮겨도 따라간다.
+    #
+    # 멤버는 팀이 아니므로 `team_` 낙인이 **없다** — 경험칩·자가진화가 멤버에게는
+    # 쌓이고 팀 자체에는 안 쌓인다는 규칙이 이 한 글자로 성립한다.
+    if _package_is_team(base):
+        manifest_payload["members"] = _member_identities(base, manifest_payload.get("members"))
     if write:
         (base / "agentlas.json").write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         agentlas_dir = base / ".agentlas"
