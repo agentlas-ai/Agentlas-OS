@@ -306,6 +306,9 @@ def resolve_package_target(target: str, *, base: str | Path | None = None) -> di
     }
 
 
+from .interview.schema import WORK_BRIEF_SCHEMA_VERSION
+
+
 def _interview_evidence_problem(
     work_brief: str | Path | None,
     minimal_private_reason: str,
@@ -461,6 +464,15 @@ def scaffold(
             except (OSError, ValueError):
                 brief_doc = None
             if isinstance(brief_doc, dict):
+                # Stamp the version the *stored* artifact is contracted to. The
+                # gate above asks the author for exactly two fields, so a brief
+                # that satisfies it verbatim carries no schemaVersion — and then
+                # this package's own `contract verify` refuses it with
+                # "schemaVersion must be work-brief/1.0", a third field nobody
+                # was asked for (measured 2026-08-26). The author's file is
+                # input; the copy we write is our artifact, so we stamp it.
+                # An author who already set it keeps their value.
+                brief_doc.setdefault("schemaVersion", WORK_BRIEF_SCHEMA_VERSION)
                 brief_target.parent.mkdir(parents=True, exist_ok=True)
                 brief_target.write_text(
                     json.dumps(brief_doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -896,7 +908,13 @@ def _verify_skills_consistency(workspace: Path) -> list[str]:
     repackage.py already globs skills/*/SKILL.md for sitemap/sources
     generation; this reads the same shape so the two never disagree."""
     registry = _read_json(workspace / ".agentlas" / "skill-registry.json")
-    on_disk = {p.parent.name for p in sorted(workspace.glob("skills/*/SKILL.md"))}
+    # This globbed only `skills/*/SKILL.md`, so it was blind to the host layout
+    # real packages actually use — `.claude/skills/<name>/SKILL.md`. Measured
+    # 2026-08-26: a package shipping six skills there reported zero, and the
+    # check silently passed. Use the shared discovery.
+    from .networking.card_lint import discover_skill_slugs
+
+    on_disk = set(discover_skill_slugs(workspace))
     registered = set()
     if isinstance(registry, dict):
         for entry in registry.get("skills") or []:
@@ -904,9 +922,9 @@ def _verify_skills_consistency(workspace: Path) -> list[str]:
                 registered.add(entry["slug"])
     warnings: list[str] = []
     for slug in sorted(on_disk - registered):
-        warnings.append(f"skills/{slug}/SKILL.md: not listed in .agentlas/skill-registry.json skills[]")
+        warnings.append(f"{slug}/SKILL.md: not listed in .agentlas/skill-registry.json skills[]")
     for slug in sorted(registered - on_disk):
-        warnings.append(f".agentlas/skill-registry.json: registers '{slug}' but skills/{slug}/SKILL.md does not exist")
+        warnings.append(f".agentlas/skill-registry.json: registers '{slug}' but no {slug}/SKILL.md exists")
     return warnings
 
 
@@ -1044,6 +1062,81 @@ def _verify_team_shape(workspace: Path, artifact: dict[str, Any]) -> dict[str, A
         "required": artifact.get("required", True),
         "team_shape": shape,
         "problems": list(shape["errors"]),
+    }
+
+
+def _verify_skill_shape(workspace: Path, artifact: dict[str, Any]) -> dict[str, Any]:
+    """Verify the package's skills — one folder per skill, named by the folder.
+
+    WHY this exists: a skill's name IS its directory name
+    (``<host>/skills/<name>/SKILL.md``), but nothing in the contract said so.
+    Measured 2026-08-26: `agentlas.json.skills` matched the folders only
+    because the build agent happened to keep them in sync by hand, while the
+    same package's routing card advertised six entirely different skill ids,
+    and a freshly scaffolded package shipped no skill folder at all. Make the
+    folders the checked fact.
+    """
+    from .networking.card_lint import discover_skill_manifests
+
+    manifests = discover_skill_manifests(workspace)
+    problems: list[str] = []
+    if not manifests:
+        problems.append(
+            "no skills: an agent declares its capabilities as "
+            "<host>/skills/<skill-name>/SKILL.md, one folder per skill"
+        )
+    for slug, relative in manifests:
+        target = workspace / relative
+        try:
+            text = target.read_text(encoding="utf-8")
+        except OSError as err:
+            problems.append(f"{relative}: unreadable: {err}")
+            continue
+        leftover = sorted(set(PLACEHOLDER_RE.findall(text)))
+        if leftover:
+            problems.append(f"{relative}: unfilled placeholders: {', '.join(leftover[:4])}")
+        match = re.match(r"---\s*\n(.*?)\n---\s*\n", text, re.S)
+        if not match:
+            problems.append(f"{relative}: missing YAML frontmatter (name + description)")
+            continue
+        front = match.group(1)
+        declared = re.search(r"^name:\s*[\"']?([^\"'\n]+)", front, re.M)
+        declared_name = declared.group(1).strip() if declared else ""
+        if not declared_name:
+            problems.append(f"{relative}: frontmatter has no name")
+        elif declared_name != target.parent.name:
+            problems.append(
+                f"{relative}: frontmatter name '{declared_name}' must equal its "
+                f"folder name '{target.parent.name}' — the folder name is the skill name"
+            )
+        description = re.search(r"^description:\s*(.+)", front, re.M)
+        if not description or not description.group(1).strip().strip("\"'"):
+            problems.append(f"{relative}: frontmatter has no description")
+
+    declared_manifest: list[str] = []
+    manifest_path = workspace / "agentlas.json"
+    if manifest_path.is_file():
+        manifest = _read_json(manifest_path)
+        if isinstance(manifest, dict) and isinstance(manifest.get("skills"), list):
+            declared_manifest = [str(item) for item in manifest["skills"]]
+    on_disk = [slug for slug, _ in manifests]
+    if declared_manifest:
+        for slug in declared_manifest:
+            if slug not in on_disk:
+                problems.append(
+                    f"agentlas.json skills[] lists '{slug}' but no {slug}/SKILL.md exists"
+                )
+        for slug in on_disk:
+            if slug not in declared_manifest:
+                problems.append(
+                    f"{slug}/SKILL.md exists but agentlas.json skills[] does not list it"
+                )
+
+    return {
+        "path": artifact["path"],
+        "required": artifact.get("required", True),
+        "skills": on_disk,
+        "problems": problems,
     }
 
 
@@ -1212,6 +1305,8 @@ def _global_command_adapter_problems(workspace: Path, doc: dict[str, Any]) -> li
 def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> dict[str, Any]:
     if artifact.get("lint") == "team-shape":
         return _verify_team_shape(workspace, artifact)
+    if artifact.get("lint") == "skill-shape":
+        return _verify_skill_shape(workspace, artifact)
 
     path = workspace / artifact["path"]
     report: dict[str, Any] = {"path": artifact["path"], "required": artifact.get("required", True)}

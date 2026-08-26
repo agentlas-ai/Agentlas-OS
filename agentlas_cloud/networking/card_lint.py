@@ -45,7 +45,59 @@ WORKFORCE_MODALITY_IDS = {"text", "image", "audio", "video", "multimodal"}
 WORKFORCE_LANGUAGE_IDS = {"ar", "de", "en", "es", "fr", "hi", "it", "ja", "ko", "pt", "zh", "zh-CN", "zh-TW"}
 
 
-def ensure_workforce_block(card: dict[str, Any]) -> dict[str, Any]:
+# A skill's name IS its markdown folder name: `<root>/<skill-name>/SKILL.md`.
+# Nothing in the engine derived this, so a card's skill list was whatever the
+# build agent happened to hand-write, and it drifted from the folders on disk.
+# Same host set upload_repair already used to prove a declared skill exists
+# on disk — kept in one place so the two can never disagree.
+SKILL_MANIFEST_ROOTS = (
+    "skills",
+    ".claude/skills",
+    ".codex/skills",
+    ".gemini/skills",
+    ".agents/skills",
+)
+
+# Scaffolds ship `{{SKILL_ID_1}}` etc. Slugifying an unfilled placeholder
+# minted real-looking ids (`skill:skill-id-1`) that match nothing — measured
+# live 2026-08-26 on 2 of 1026 published workforce profiles, and on 4 of 4
+# concept fields of every freshly scaffolded package.
+_PLACEHOLDER_RE = re.compile(r"\{\{.*?\}\}")
+
+
+def _is_unfilled_placeholder(raw: str, prefix: str, slug: str) -> bool:
+    if _PLACEHOLDER_RE.search(raw):
+        return True
+    return bool(re.fullmatch(rf"{prefix}-id-\d+", slug))
+
+
+def discover_skill_manifests(workspace: Path) -> list[tuple[str, str]]:
+    """Every skill the package ships, as `(name, package-relative SKILL.md path)`.
+
+    The name is the folder name — that is what a skill IS called.
+    """
+    found: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for root in SKILL_MANIFEST_ROOTS:
+        base = workspace / root
+        if not base.is_dir():
+            continue
+        for manifest in sorted(base.glob("*/SKILL.md")):
+            slug = re.sub(r"[^a-z0-9-]+", "-", manifest.parent.name.lower().replace("_", "-")).strip("-")
+            if slug and slug not in seen:
+                seen.add(slug)
+                found.append((slug, f"{root}/{manifest.parent.name}/SKILL.md"))
+    return found
+
+
+def discover_skill_slugs(workspace: Path) -> list[str]:
+    """Return the package's skill names, taken from its SKILL.md folder names."""
+    return [slug for slug, _ in discover_skill_manifests(workspace)]
+
+
+def ensure_workforce_block(
+    card: dict[str, Any], workspace: Path | None = None
+) -> dict[str, Any]:
     """Deterministically fill a missing workforce résumé block in place.
 
     Build agents 10/20/30 author this contract, but older packages may predate
@@ -72,6 +124,10 @@ def ensure_workforce_block(card: dict[str, Any]) -> dict[str, Any]:
             while body.startswith(f"{prefix}:"):
                 body = body.split(":", 1)[1]
             slug = re.sub(r"[^a-z0-9-]+", "-", body.replace("_", "-")).strip("-")
+            if _is_unfilled_placeholder(raw, prefix, slug):
+                # An unfilled scaffold slot means "not declared", not
+                # "declared as skill-id-1". Drop it.
+                continue
             concept = f"{prefix}:{slug}" if slug else ""
             if concept and concept not in out:
                 out.append(concept)
@@ -87,6 +143,13 @@ def ensure_workforce_block(card: dict[str, Any]) -> dict[str, Any]:
     if not skills:
         skills = semantic(card.get("capabilities"), "skill", 12)
     knowledge = semantic(workforce.get("knowledge"), "knowledge", 12)
+    # The skill folders on disk are facts; a hand-written list is a claim.
+    # Keep both, folders first, so a card can never advertise fewer skills
+    # than it actually ships.
+    if workspace is not None:
+        from_disk = [f"skill:{slug}" for slug in discover_skill_slugs(workspace)]
+        skills = from_disk + [item for item in skills if item not in from_disk]
+        skills = skills[:12]
     modalities = [
         str(value)
         for value in workforce.get("modalities") or []

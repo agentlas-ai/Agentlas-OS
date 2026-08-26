@@ -641,6 +641,8 @@ def package_agent(
     if write_manifest:
         refresh_generated_projections(base)
     routing_meta = refresh_routing_card_metadata(base)
+    if write_manifest:
+        refresh_manifest_skills(base)
     _repair_mcp_policy_file(base, findings, write=write_manifest)
     setup_wizard = run_setup_wizard(base, package_name, write=write_manifest)
     if write_manifest:
@@ -2224,6 +2226,44 @@ def _registration_error_code(detail: str, fallback: str) -> str:
     return code if isinstance(code, str) and code else fallback
 
 
+def refresh_manifest_skills(base: Path) -> dict[str, Any]:
+    """Make `agentlas.json` skills[] say what the package actually ships.
+
+    A skill's name IS its `<host>/skills/<name>/SKILL.md` folder name, so the
+    folders answer this without guessing. Measured 2026-08-26: a package with
+    six skill folders kept them in the manifest only because its build agent
+    typed them by hand — nothing derived or checked it, and a package that
+    shipped skills while declaring none advertised nothing at all.
+
+    Author intent is preserved: an explicit list is never reordered or trimmed
+    here (upload_repair drops ids with no file); only genuinely missing entries
+    are added.
+    """
+    from .networking.card_lint import discover_skill_slugs
+
+    manifest_path = base / "agentlas.json"
+    if not manifest_path.is_file():
+        return {"updated": False, "reason": "missing_manifest"}
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {"updated": False, "reason": "invalid_manifest"}
+    if not isinstance(manifest, dict):
+        return {"updated": False, "reason": "invalid_manifest"}
+
+    on_disk = discover_skill_slugs(base)
+    declared = manifest.get("skills")
+    declared = [str(item) for item in declared] if isinstance(declared, list) else []
+    added = [slug for slug in on_disk if slug not in declared]
+    if not added:
+        return {"updated": False, "skills": declared}
+    manifest["skills"] = declared + added
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return {"updated": True, "added": added, "skills": manifest["skills"]}
+
+
 def refresh_routing_card_metadata(base: Path) -> dict[str, Any]:
     card_path = base / ".agentlas" / "routing-card.json"
     if not card_path.is_file():
@@ -2241,7 +2281,10 @@ def refresh_routing_card_metadata(base: Path) -> dict[str, Any]:
     # new standard gate (no model call, preserves any existing block).
     from .networking.card_lint import ensure_workforce_block
 
-    ensure_workforce_block(card)
+    # `base` lets the projector read the package's own skill folders — a skill
+    # is named by its `<root>/<name>/SKILL.md` directory, not by whatever the
+    # build agent typed into the card.
+    ensure_workforce_block(card, base)
     agent_card_path = base / ".agentlas" / "agent-card.json"
     if isinstance(card.get("agent_card_ref"), dict) and agent_card_path.is_file():
         card["agent_card_ref"]["content_hash"] = _sha256_bytes(agent_card_path.read_bytes())

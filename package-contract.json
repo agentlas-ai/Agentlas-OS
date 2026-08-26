@@ -160,6 +160,21 @@
       "description": "Skill registry (empty list allowed)"
     },
     {
+      "path": ".claude/skills/*/SKILL.md",
+      "modes": [
+        "single",
+        "package"
+      ],
+      "required": true,
+      "optionalWhen": ["minimal-private"],
+      "format": "markdown",
+      "fill": "generate",
+      "template": null,
+      "schema": null,
+      "lint": "skill-shape",
+      "description": "Skills: one folder per skill at <host>/skills/<skill-name>/SKILL.md. The folder name IS the skill name — frontmatter name must equal it, and agentlas.json skills[] must list exactly the folders on disk"
+    },
+    {
       "path": ".agentlas/memory-tickets.jsonl",
       "modes": [
         "single",
