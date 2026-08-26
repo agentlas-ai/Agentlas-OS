@@ -50,7 +50,7 @@ from .workforce.provenance import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.29"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.30"}
 
 # Roots this process has already seeded, so only the first tool call in a
 # session pays the bootstrap cost.
