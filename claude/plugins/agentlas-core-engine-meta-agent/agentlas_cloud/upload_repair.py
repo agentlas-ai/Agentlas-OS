@@ -630,9 +630,9 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
         # a skill the package really ships is never touched.
         declared = manifest.get("skills")
         if isinstance(declared, list) and declared:
-            present = {path.parent.name for path in base.glob("skills/*/SKILL.md")}
-            for host in (".claude", ".codex", ".gemini", ".agents"):
-                present.update(path.parent.name for path in base.glob(f"{host}/skills/*/SKILL.md"))
+            from .networking.card_lint import discover_skill_slugs
+
+            present = set(discover_skill_slugs(base))
             kept = [skill for skill in declared if not isinstance(skill, str) or skill in present]
             dropped = [skill for skill in declared if isinstance(skill, str) and skill not in present]
             if dropped:
@@ -753,7 +753,7 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
         # being rejected for fields the package already proves.
         from .networking.card_lint import ensure_workforce_block
 
-        ensure_workforce_block(card)
+        ensure_workforce_block(card, base)
         workforce = card["workforce"]
         declared_knowledge = list(workforce.get("knowledge") or [])
         for knowledge_file in sorted(base.glob("**/knowledge/*")):

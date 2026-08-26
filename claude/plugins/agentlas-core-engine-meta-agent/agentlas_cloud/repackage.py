@@ -936,13 +936,19 @@ def fill_declared_artifacts(root: Path, slug: str) -> list[str]:
     # there is no evidence yet. Task Bias promotes them as evidence arrives.
     sitemap_path = root / ".agentlas" / "sitemap.json"
     if stale(sitemap_path):
-        surfaces = [p.parent.name for p in sorted(root.glob("agents/*/agent.md"))]
+        surfaces = [(p.parent.name, f"agents/{p.parent.name}/agent.md")
+                    for p in sorted(root.glob("agents/*/agent.md"))]
         kind = "team-member"
         if not surfaces:
-            surfaces = [p.parent.name for p in sorted(root.glob("skills/*/SKILL.md"))]
+            # `skills/*/SKILL.md` alone missed the host layout real packages
+            # use (`.claude/skills/<name>/SKILL.md`), so a six-skill agent got
+            # no sitemap at all. Discovery covers every host root.
+            from .networking.card_lint import discover_skill_manifests
+
+            surfaces = discover_skill_manifests(root)
             kind = "skill"
         if surfaces:
-            lead = surfaces[0]
+            lead = surfaces[0][0]
             _write_json(sitemap_path, {
                 "schemaVersion": "agentlas.sitemap/1",
                 "projectId": slug,
@@ -951,22 +957,21 @@ def fill_declared_artifacts(root: Path, slug: str) -> list[str]:
                         "id": name,
                         "kind": kind,
                         "title": name.split("-", 1)[1] if name[:1].isdigit() and "-" in name else name,
-                        "relative_path": (f"agents/{name}/agent.md" if kind == "team-member"
-                                          else f"skills/{name}/SKILL.md"),
+                        "relative_path": relative_path,
                         "status": "unknown",
                         "generated": True,
                         "dependencies": [],
                     }
-                    for name in surfaces
+                    for name, relative_path in surfaces
                 ],
                 # A single agent's skills do not call each other, and a team's
                 # members answer to the lead - the same shape orchestrator-protocol
                 # states. No edge is guessed beyond that.
                 "edges": ([] if kind == "skill" else [
                     {"from": lead, "to": name, "relation": "delegates", "generated": True}
-                    for name in surfaces[1:]
+                    for name, _ in surfaces[1:]
                 ]),
-                "derivedFrom": "agents/*/agent.md" if kind == "team-member" else "skills/*/SKILL.md",
+                "derivedFrom": "agents/*/agent.md" if kind == "team-member" else "<host>/skills/*/SKILL.md",
             })
             written.append(".agentlas/sitemap.json")
 
