@@ -132,7 +132,7 @@ security-conscious), open this link in your browser first:
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
-    <img src="assets/readme/agentlas-desktop-hero.png" alt="Agentlas Desktop dashboard with local agents, owner-private Agent Cloud, Hub specialists, connected model hosts, and automations" width="960">
+    <img src="assets/readme/agentlas-desktop-hero.png" alt="Agentlas Desktop workspace showing Worker model priorities, multimodal routing, connected hosts, and local agents" width="960">
   </a>
 </p>
 
@@ -449,6 +449,8 @@ forcing your work into one model provider:
 
 Agents generated from vague, single-sentence prompts fail under real-world edge cases. Hephaestus v1.1.0 positions task specification as a first-class OS service through the **Briefing Interview Engine**:
 
+The current v1.2.30 release carries the resolved Work Brief through host-owned Network 2.0 selection, exact release pinning, and server-first tool discovery.
+
 *   **Quantitative Ambiguity Gates:** The compilation scheduler evaluates prompt clarity across four key vectors (Goal, Constraints, Scope, Context). The build process is strictly gated until the ambiguity score passes a numeric threshold (ambiguity score $\le 0.2$, with per-dimension safety floors). Clear prompts bypass the interview loop entirely via a budget system that caps questions for trivial tasks.
 *   **Lens-Driven System Analysis:** Clarifying questions are dynamically sourced from a structured lens table (Scope, Intent, Challenge, System Architecture) focusing on critical routing indicators: *anti-scope bounds* (what the agent must NOT do), *verifiable acceptance criteria*, and *exit conditions*.
 *   **The Work Brief:** Resolved details are frozen into `.agentlas/work-brief.json`—recording the validated goal, concrete constraints, an assumption ledger with source tags, and the metadata ambiguity score.
@@ -678,7 +680,7 @@ Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization]
 
 Features first-party Korean document parsing (HWPX and legacy HWP5) with zero GPL dependencies. Fully local and SQLite-backed; confidential and private chunks are isolated, preventing them from reaching external cloud hooks.
 
-The v1.2.4 release contract ships and verifies the dependency-free
+The current release contract ships and verifies the dependency-free
 `potion-multilingual-128M-int8` Model2Vec asset as the primary semantic
 adapter. Its pure-Python Unigram runtime returns a normalized 256-dimensional
 semantic vector. Runtime queries never download a model or call a hosted
@@ -686,7 +688,7 @@ embedding API. Hash-96 mode is an explicitly reported degraded fallback when
 the verified local asset is missing or rejected, not an alternative silent
 default.
 
-The v1.2.4 self-updater installs the complete one-touch runtime payload,
+The current self-updater installs the complete one-touch runtime payload,
 including Career Graph, templates, and the verified model under the versioned
 `models/model2vec/potion-multilingual-128M-int8` directory. It checks that payload before
 and after switching `~/.agentlas/runtime/current`, then repairs merge-safe
