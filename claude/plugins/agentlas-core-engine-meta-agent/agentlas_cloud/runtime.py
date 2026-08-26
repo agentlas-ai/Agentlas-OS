@@ -362,6 +362,28 @@ def canonical_package_hash_hex(entries: Iterable[tuple[str, bytes]]) -> str:
     return digest.hexdigest()
 
 
+AGENT_ID_TEAM_MARKER = "agt_team_"
+
+
+def is_team_agent_id(agent_id: str | None) -> bool:
+    """Whether this identity belongs to a team rather than a single agent.
+
+    The marker lives inside the id on purpose, so every surface answers the
+    question the same way without reading a schema.
+    """
+
+    return str(agent_id or "").strip().startswith(AGENT_ID_TEAM_MARKER)
+
+
+def _package_is_team(base: Path) -> bool:
+    """A package with a worker roster is a team (`agents/<role>/agent.md`)."""
+
+    try:
+        return any(base.glob("agents/*/agent.md"))
+    except OSError:
+        return False
+
+
 def package_hash_includes(path: str) -> bool:
     """Return whether a package path is immutable base-release material.
 
@@ -700,17 +722,27 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
     # plain opaque id minted ONCE at first build and never changed afterwards -
     # the iOS-bundle-id analogue. slug/name stay mutable display info and
     # `packageHash` stays the per-release integrity hash; identity lives here.
-    # agentlas.json is excluded from the package hash on every surface, so
-    # minting the id does not disturb any release digest. An existing value -
-    # whatever generation minted it - is preserved verbatim: rewriting it is the
-    # republish-mints-new-definition incident all over again.
+    # agentlas.json is excluded from THIS package's local sourcePackage hash
+    # (PACKAGE_HASH_EXCLUDED_PATHS) but NOT from the Cloud/Hub artifact hash --
+    # `path-sha256-executable-v2` has no exclusion list on any surface. So the id
+    # must be minted before the artifact is hashed, never written after. An
+    # existing value - whatever generation minted it - is preserved verbatim:
+    # rewriting it is the republish-mints-new-definition incident all over again.
+    #
+    # A team carries the fact that it IS a team inside its id (owner decision):
+    # `agt_team_...`. That makes "is this a team?" a prefix check rather than a
+    # guess assembled from entity_kind, a role column and a parent pointer -- the
+    # same guess that, measured on this machine, would have swept away 87% of the
+    # user's experience chips because one column meant two different things.
+    # Experience chips and self-evolution accrue to everything WITHOUT that
+    # marker; a team itself holds only the organisation's shared memory.
     existing_agent_id = (existing_manifest or {}).get("agentId")
     if isinstance(existing_agent_id, str) and existing_agent_id.strip():
         manifest_payload["agentId"] = existing_agent_id.strip()
     elif not str(manifest_payload.get("agentId") or "").strip():
         import uuid
 
-        manifest_payload["agentId"] = f"agt_{uuid.uuid4().hex}"
+        manifest_payload["agentId"] = f"agt_{'team_' if _package_is_team(base) else ''}{uuid.uuid4().hex}"
     if write:
         (base / "agentlas.json").write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         agentlas_dir = base / ".agentlas"

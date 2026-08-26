@@ -1557,7 +1557,12 @@ def _pin_snapshot_agent_identity(snapshot: Path, fallback_name: str) -> None:
         return
     identity_seed = str(manifest.get("slug") or manifest.get("name") or fallback_name).strip().lower()
     digest = hashlib.sha256(f"agentlas-upload-agent-id-v1\0{identity_seed}".encode("utf-8")).hexdigest()
-    manifest["agentId"] = f"agt_{digest[:32]}"
+    # A team says so inside its id, exactly as the wizard mints it
+    # (`runtime.py`), so the marker survives whichever path minted first.
+    from .runtime import _package_is_team
+
+    marker = "team_" if _package_is_team(snapshot) else ""
+    manifest["agentId"] = f"agt_{marker}{digest[:32]}"
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
