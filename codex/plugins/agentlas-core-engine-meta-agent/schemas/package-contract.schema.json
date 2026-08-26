@@ -29,7 +29,7 @@
           },
           "template": { "type": ["string", "null"], "description": "templates/*.tpl path or null" },
           "schema": { "type": ["string", "null"], "description": "schemas/*.schema.json used by verify for top-level required-field checks" },
-          "lint": { "type": ["string", "null"], "enum": ["routing-card", "team-shape", null], "description": "Deep content lint to run beyond schema shape. 'team-shape' runs agentlas_cloud.team_shape — the same rule scripts/verify-team-package.sh runs — so the contract gate and the shell gate cannot disagree about what a team is." },
+          "lint": { "type": ["string", "null"], "enum": ["routing-card", "team-shape", "skill-shape", null], "description": "Deep content lint to run beyond schema shape. 'team-shape' runs agentlas_cloud.team_shape — the same rule scripts/verify-team-package.sh runs — so the contract gate and the shell gate cannot disagree about what a team is. 'skill-shape' checks the package's skills: a skill is named by its <host>/skills/<name>/SKILL.md folder, its frontmatter name must equal that folder name, and agentlas.json skills[] must list exactly the folders on disk." },
           "minLines": { "type": "integer", "minimum": 0 },
           "description": { "type": "string", "description": "One line injected into builder prompts" }
         }
