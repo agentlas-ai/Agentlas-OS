@@ -132,7 +132,7 @@ security-conscious), open this link in your browser first:
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
-    <img src="assets/readme/agentlas-desktop-hero.png" alt="Agentlas Desktop workspace showing Worker model priorities, multimodal routing, connected hosts, and local agents" width="960">
+    <img src="assets/readme/agentlas-desktop-hero-v2.png" alt="Agentlas Desktop workspace showing Worker model priorities, multimodal routing, connected hosts, and local agents" width="960">
   </a>
 </p>
 
@@ -168,7 +168,7 @@ Combine local agents and borrowed Hub specialists into one orchestrator. Roles s
 
 </td>
 <td width="58%">
-  <a href="https://agentlas.cloud/models/hephaestus"><picture><source srcset="assets/readme/feature-wall/workflow-make-group.gif" type="image/gif"><img src="assets/readme/feature-wall/workflow-make-group.jpg" alt="Composing local and Hub agents into one orchestrated team" width="100%"></picture></a>
+  <a href="https://agentlas.cloud/models/hephaestus"><picture><source srcset="assets/readme/feature-wall/workflow-make-group-v2.gif" type="image/gif"><img src="assets/readme/feature-wall/workflow-make-group-v2.jpg" alt="Composing local and Hub agents into one orchestrated team" width="100%"></picture></a>
 </td>
 </tr>
 <tr>
@@ -182,7 +182,7 @@ Use the model account or API key you choose. Your current host performs the work
 
 </td>
 <td width="58%">
-  <a href="https://agentlas.cloud/docs/trust/agent-trust"><picture><source srcset="assets/readme/feature-wall/workflow-run.gif" type="image/gif"><img src="assets/readme/feature-wall/workflow-run.jpg" alt="Running and verifying an Agentlas agent under the local host permission boundary" width="100%"></picture></a>
+  <a href="https://agentlas.cloud/docs/trust/agent-trust"><picture><source srcset="assets/readme/feature-wall/workflow-run-v2.gif" type="image/gif"><img src="assets/readme/feature-wall/workflow-run-v2.jpg" alt="Running and verifying an Agentlas agent under the local host permission boundary" width="100%"></picture></a>
 </td>
 </tr>
 </table>
