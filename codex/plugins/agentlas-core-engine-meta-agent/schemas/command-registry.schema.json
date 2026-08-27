@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "agentlas.command-registry.v2",
+  "title": "Agentlas Internal Command Registry",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "registryId",
+    "compatibility",
+    "universalSkills",
+    "commands"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "agentlas.command-registry.v2"
+    },
+    "registryId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updatedAt": {
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "canonicalPublicPrefix",
+        "agentlasAliasPrefix",
+        "agentlasSpacedForm",
+        "commandIdInternalOnly",
+        "preserveExistingPublicNames"
+      ],
+      "properties": {
+        "canonicalPublicPrefix": {"const": "hep-"},
+        "agentlasAliasPrefix": {"const": "agentlas-"},
+        "agentlasSpacedForm": {"const": "agentlas <verb>"},
+        "commandIdInternalOnly": {"const": true},
+        "preserveExistingPublicNames": {"const": true}
+      },
+      "additionalProperties": true
+    },
+    "universalSkills": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]*$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/command"
+      }
+    }
+  },
+  "$defs": {
+    "route": {
+      "type": "object",
+      "required": ["entrypoint", "inputModes"],
+      "properties": {
+        "entrypoint": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "inputModes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["host_request", "interactive_thread", "headless_export", "local_cli"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "hostModelRequired": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "type": "object",
+      "required": [
+        "commandId",
+        "publicCommand",
+        "terminalCommand",
+        "aliases",
+        "engineEntrypoint",
+        "body",
+        "routes"
+      ],
+      "properties": {
+        "commandId": {
+          "type": "string",
+          "pattern": "^agentlas\\.[a-z0-9][a-z0-9-]*$"
+        },
+        "publicCommand": {
+          "type": "string",
+          "pattern": "^/hep-[a-z0-9][a-z0-9-]*$"
+        },
+        "terminalCommand": {
+          "type": "string",
+          "pattern": "^hep-[a-z0-9][a-z0-9-]*$"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "engineEntrypoint": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "body": {
+          "type": "string",
+          "pattern": "^[^/][^\\n]*$"
+        },
+        "routes": {
+          "type": "object",
+          "required": ["default"],
+          "additionalProperties": {"$ref": "#/$defs/route"}
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

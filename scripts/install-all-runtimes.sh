@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.2.31}"
+version="${HEPHAESTUS_REF:-v1.2.32}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -375,15 +375,51 @@ project_only_commands=(
 )
 
 # AgentSkills-spec surfaces installed into ~/.agents plus host-specific skill
-# homes. The updater carries the exact same set in agentlas_cloud/update.py;
-# the package gate compares both against skills/ so additions cannot be omitted.
-managed_skill_names=(
+# homes. The command registry owns this list; the fallback is for archives from
+# before command-registry.v2 existed and is deliberately kept compatible with
+# those older releases.
+managed_skill_names=()
+managed_skill_fallback=(
+  "agentlas"
+  "agentlas-one"
   "hephaestus-network"
   "hephaestus-cloud"
   "hephaestus-storm"
   "hephaestus-graph"
   "hephaestus-upload"
 )
+
+load_managed_skill_names() {
+  local registry="$source_dir/contracts/command-registry.v2.json"
+  local py=""
+  managed_skill_names=("${managed_skill_fallback[@]}")
+  [[ -f "$registry" ]] || return 0
+  py="$(resolve_python_cmd || true)"
+  [[ -n "$py" ]] || { warn "python3 unavailable; using the legacy universal skill fallback."; return 0; }
+  local rendered=""
+  rendered="$(run_resolved_python "$py" - "$registry" <<'PY'
+import json, re, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+skills = data.get("universalSkills")
+if not isinstance(skills, list) or not skills:
+    raise SystemExit("universalSkills is missing or empty")
+safe = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+if any(not isinstance(name, str) or not safe.fullmatch(name) for name in skills):
+    raise SystemExit("universalSkills contains an unsafe name")
+print("\n".join(skills))
+PY
+  )" || {
+    warn "could not read universalSkills from $registry; using the legacy universal skill fallback."
+    return 0
+  }
+  managed_skill_names=()
+  local name
+  while IFS= read -r name; do
+    [[ -n "$name" ]] && managed_skill_names+=("$name")
+  done <<< "$rendered"
+  [[ "${#managed_skill_names[@]}" -gt 0 ]] || managed_skill_names=("${managed_skill_fallback[@]}")
+  log "Command registry selected universal skills: ${managed_skill_names[*]}"
+}
 
 # The managed command set is DERIVED from the release, never typed out again.
 # Six hardcoded copies of this list is how `agentlas-one` reached no machine and
@@ -1754,6 +1790,7 @@ main() {
   preflight_git || exit 1
 
   install_runtime_home || { warn "Runtime home install failed."; failed=$((failed + 1)); }
+  load_managed_skill_names || { warn "Command registry skill selection failed; using fallback skills."; }
   install_agents_skills || { warn "Universal ~/.agents/skills install failed."; failed=$((failed + 1)); }
   install_claude || { warn "Claude install failed."; failed=$((failed + 1)); }
   install_codex || { warn "Codex install failed."; failed=$((failed + 1)); }

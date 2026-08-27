@@ -186,6 +186,38 @@ Agent Cloud는 소유자의 패키지를 보관하고 다시 전달합니다. �
 로컬 파일, 컴퓨터별 권한은 패키지와 함께 이동하지 않으며 각 컴퓨터에서 별도로
 설정해야 합니다.
 
+### 작업 세션을 소유한 에이전트로 만들기
+
+반복해서 사용할 만한 작업 방식이 한 세션 안에 생겼다면 다음 정본 서브라우트를
+실행하세요:
+
+```text
+hep-build session
+```
+
+인터랙티브 호스트에서는 현재 보이는 대화가 입력입니다. Agentlas가 먼저 저장
+위치를 묻고, 다른 폴더를 지정하지 않으면 `AGENTLAS_AGENT_HOME` 아래 또는 기본값인
+`~/.agentlas/agentlas-agent` 아래에 안전한 이름의 새 하위 패키지를 만듭니다.
+기존 하위 패키지는 덮어쓰지 않습니다. 그 다음 범용화한 세션 리포트를 보여주고,
+사용자가 승인하면 독립 실행 가능한 에이전트 프롬프트와 패키지로 변환한 뒤 로컬
+등록과 표준 검증 게이트를 실행합니다.
+
+이 인터랙티브 경로에는 JSON export가 필요하지 않습니다. JSON/JSONL은 명시적으로
+터미널·재생·헤드리스 작업을 실행할 때만 사용할 수 있습니다. 기본 산출물은 싱글
+에이전트이며 팀은 별도로 선택합니다. 원문 transcript, 숨은 프롬프트, 자격 증명,
+사설 경로·URL, 스크린샷, literal tool arguments/results는 생성 패키지에 넣지
+않습니다. Agent Cloud나 공개 Hub 업로드도 별도의 명시적 선택입니다. 결정적 export
+경계는 [세션 빌드 계약](contracts/session-build.md)에서 확인할 수 있습니다.
+
+```text
+현재 대화
+  -> 저장 위치 질문
+  -> 범용 세션 리포트
+  -> 사용자 검토/승인
+  -> 독립 에이전트/패키지
+  -> 로컬 등록 및 검증
+```
+
 ### Hub와 Agent Cloud는 서로 다른 범위입니다
 
 | 표면 | 포함하는 것 | 용도 |
@@ -386,7 +418,7 @@ Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README�
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.31
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.32
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. Codex 0.117+에서는 custom `/prompts:*` 명령이 제거됐으므로, 설치 후에는 `$hephaestus-network <요청>` 스킬을 호출하세요.*
@@ -430,6 +462,7 @@ Agentlas OS 호스트를 설치하고 패키지 소유자로 로그인해야 합
 | 시스템 서브시스템 | 셸 명령 | 예시 |
 | :--- | :--- | :--- |
 | **에이전트 / 팀 빌더** | `/agentlas-build` (또는 `/agentlas build`, `/hep-build`) | `/agentlas-build create a customer support agent for Shopify refunds` |
+| **세션 → 에이전트 빌더** | `/hep-build session` (정본 경로: `hep-build session`) | `/hep-build session` |
 | **Workforce 연합 라우팅(Local + Cloud + Hub)** | `/agentlas-network` (또는 `/agentlas network`, `/hep-network`) | `/agentlas-network split this launch plan into research, copy, QA, and release agents` |
 | **스톰브레이커 루프** | `/agentlas-storm` (또는 `/agentlas storm`, `/hep-storm`) | `/agentlas-storm build full-stack saas landing page` |
 | **자동화 그래프** | `/agentlas-graph` (또는 `/agentlas graph`, `/hep-graph`) | `/agentlas-graph create daily market summary automation` |

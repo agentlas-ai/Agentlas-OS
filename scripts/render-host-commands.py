@@ -30,10 +30,12 @@ WHAT IS ACTUALLY HOST-SPECIFIC
 from __future__ import annotations
 
 import pathlib
+import json
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BODIES = ROOT / "contracts" / "commands"
+COMMAND_REGISTRY = ROOT / "contracts" / "command-registry.v2.json"
 
 # (directory, file format, args token, frontmatter lines)
 # `args` is None when the host passes the user's text some other way and the
@@ -157,15 +159,40 @@ def render(name: str, args_token: str | None, style: str) -> str:
     return text
 
 
+def registry_command_names() -> set[str]:
+    registry = json.loads(COMMAND_REGISTRY.read_text(encoding="utf-8"))
+    return {
+        str(command["terminalCommand"])
+        for command in registry.get("commands", [])
+        if isinstance(command, dict) and isinstance(command.get("terminalCommand"), str)
+    }
+
+
 def main() -> int:
     check = "--check" in sys.argv[1:]
+    try:
+        registered = registry_command_names()
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"command registry unreadable: {exc}")
+        return 1
+    body_names = {p.stem.removesuffix(".body") for p in BODIES.glob("*.body.md")}
+    if body_names != registered:
+        print(
+            "command registry/body mismatch: "
+            f"bodies-only={sorted(body_names - registered)}, "
+            f"registry-only={sorted(registered - body_names)}"
+        )
+        return 1
     names = [n for n in sys.argv[1:] if not n.startswith("--")]
     if not names:
-        names = sorted(p.name.replace(".body.md", "") for p in BODIES.glob("*.body.md"))
+        names = sorted(registered)
     problems: list[str] = []
     missing: list[str] = []
     written = 0
     for name in names:
+        if name not in registered:
+            problems.append(f"{name} is not registered in {COMMAND_REGISTRY.relative_to(ROOT)}")
+            continue
         if not (BODIES / f"{name}.body.md").exists():
             problems.append(f"no canonical body for {name}")
             continue

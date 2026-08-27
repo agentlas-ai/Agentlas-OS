@@ -6,6 +6,10 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # runner, and answering "hephaestus:" to someone who ran `agentlas` is the
 # half-renamed confusion this symlink exists to remove.
 self="$(basename "${BASH_SOURCE[0]}")"
+# The host spelling is compatibility syntax. Core resolves it to an internal
+# commandId after Python starts, so aliases and runtime adapters never need to
+# duplicate semantic routing rules.
+export AGENTLAS_COMMAND_NAME="${1:-}"
 export PYTHONUTF8="${PYTHONUTF8:-1}"
 export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
 export PYTHONDONTWRITEBYTECODE=1
@@ -431,7 +435,7 @@ case "$command" in
 	  session)
 	    run_python_module agentlas_cloud session "$@"
 	    ;;
-	  network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract|feature-map)
+	  command|network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract|feature-map)
 	    # `contract` was the one subcommand the Python CLI exposed that this
 	    # dispatcher never listed. It fell through to the natural-language
 	    # router, which read the package path as a private path and refused

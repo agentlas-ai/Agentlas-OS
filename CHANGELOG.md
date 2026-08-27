@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.32 — 2026-08-27
+
 - **`hep-build session` adds the fourth builder route across the supported host
   adapters.** Interactive hosts analyze the visible current conversation, ask
   for the agent destination, default to the global Agentlas agent folder when

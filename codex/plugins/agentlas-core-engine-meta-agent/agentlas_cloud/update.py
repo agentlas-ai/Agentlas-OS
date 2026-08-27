@@ -98,7 +98,9 @@ HOST_ADAPTER_DIRS = (
     "skills",
 )
 HOST_ADAPTER_CONTRACT_PATH = Path("contracts") / "runtime-registry.json"
+COMMAND_REGISTRY_CONTRACT_PATH = Path("contracts") / "command-registry.v2.json"
 _HOST_ADAPTER_NAME_RE = re.compile(r"^\.?[a-z0-9][a-z0-9._-]*$")
+_COMMAND_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def _host_adapter_dirs(source: Path) -> tuple[str, ...]:
@@ -187,6 +189,38 @@ HEP_COMMANDS = (
     "hep-upload",
 )
 
+
+def _command_registry_names(source: Path | None = None) -> set[str]:
+    """Read command filenames from commandId's registry when available.
+
+    The literal HEP_COMMANDS tuple above remains an install-floor fallback for
+    archives released before command-registry.v2. New releases cannot silently
+    omit a command from the updater just because this tuple was not edited.
+    """
+
+    roots = [source] if source is not None else []
+    roots.append(Path(__file__).resolve().parent.parent)
+    for root in roots:
+        if root is None:
+            continue
+        try:
+            data = json.loads((root / COMMAND_REGISTRY_CONTRACT_PATH).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        result: set[str] = set()
+        for command in data.get("commands", []) if isinstance(data, dict) else []:
+            if not isinstance(command, dict):
+                continue
+            terminal = command.get("terminalCommand")
+            if not isinstance(terminal, str) or not terminal.startswith("hep-"):
+                continue
+            verb = terminal[len("hep-"):]
+            if _COMMAND_NAME_RE.fullmatch(verb):
+                result.update({terminal, f"agentlas-{verb}"})
+        if result:
+            return result
+    return set()
+
 # Repo-own adapter surfaces that are never installed as user-global commands.
 # Must stay identical to `project_only_commands` in scripts/install-all-runtimes.sh.
 PROJECT_ONLY_COMMANDS = frozenset({"meta-agent"})
@@ -204,6 +238,8 @@ def _managed_command_names(source: Path | None = None, home: Path | None = None)
     """
 
     names: set[str] = set(HEP_COMMANDS)
+    for registry_root in (source, None):
+        names.update(_command_registry_names(registry_root))
     for directory in (
         source / ".claude" / "commands" if source is not None else None,
         home / ".claude" / "commands" if home is not None else None,
@@ -222,12 +258,36 @@ def _managed_command_names(source: Path | None = None, home: Path | None = None)
 # upload in the same updater-owned set as network/cloud/storm so an update can
 # never leave a first-install copy frozen indefinitely.
 HEP_SKILLS = (
+    "agentlas",
+    "agentlas-one",
     "hephaestus-network",
     "hephaestus-cloud",
     "hephaestus-storm",
     "hephaestus-graph",
     "hephaestus-upload",
 )
+
+
+def _managed_skill_names(source: Path | None = None) -> tuple[str, ...]:
+    """Use command-registry.v2's universalSkills, with an old-release fallback."""
+
+    roots = [source] if source is not None else []
+    roots.append(Path(__file__).resolve().parent.parent)
+    for root in roots:
+        if root is None:
+            continue
+        try:
+            data = json.loads((root / COMMAND_REGISTRY_CONTRACT_PATH).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        skills = data.get("universalSkills") if isinstance(data, dict) else None
+        if isinstance(skills, list) and skills and all(
+            isinstance(name, str) and _COMMAND_NAME_RE.fullmatch(name) for name in skills
+        ):
+            return tuple(dict.fromkeys(skills))
+    return HEP_SKILLS
+
+
 PYTHON_CACHE_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
 AUTO_UPDATE_MARKER = "auto-update.json"
 
@@ -345,7 +405,8 @@ def _adapter_paths(home: Path) -> list[Path]:
                 home / ".gemini" / "hephaestus-extension-source" / "commands" / f"{command}.toml",
             ]
         )
-    for skill in HEP_SKILLS:
+    managed_skills = _managed_skill_names()
+    for skill in managed_skills:
         paths.extend(
             [
                 home / ".agents" / "skills" / skill / "SKILL.md",
@@ -371,7 +432,7 @@ def _adapter_paths(home: Path) -> list[Path]:
                 if command_dir.is_dir():
                     for command in managed_commands:
                         paths.append(command_dir / f"{command}.md")
-            for skill in HEP_SKILLS:
+            for skill in managed_skills:
                 paths.append(child / "skills" / skill / "SKILL.md")
     return paths
 
@@ -1605,7 +1666,7 @@ def _installed_adapter_dir_targets(source: Path, home: Path) -> list[tuple[Path,
     targets: list[tuple[Path, Path]] = []
     if (source / "gemini" / "extension").is_dir():
         targets.append((Path("gemini") / "extension", home / ".gemini" / "hephaestus-extension-source"))
-    for skill in HEP_SKILLS:
+    for skill in _managed_skill_names(source):
         targets.extend(
             [
                 (Path("skills") / skill, home / ".agents" / "skills" / skill),

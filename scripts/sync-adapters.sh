@@ -74,6 +74,10 @@ code_files=(
   # Runtime registry: `agentlas-one status --runtimes` reads it from the runtime
   # home, so every mirror must carry the same rows.
   "contracts/runtime-registry.json"
+  # Core command identity is consumed by the mirrored launcher/CLI. Keep this
+  # single contract beside those code mirrors; the full contracts/ tree is not
+  # a plugin payload.
+  "contracts/command-registry.v2.json"
   "agents/10-single-agent-builder/agent.md"
   "agents/20-multi-agent-team-builder/agent.md"
   "agents/30-agentlas-packager/agent.md"

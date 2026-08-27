@@ -35,6 +35,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "schemas" / "command-alias-manifest.json"
+COMMAND_REGISTRY_PATH = ROOT / "contracts" / "command-registry.v2.json"
 
 FRONTMATTER_RE = re.compile(r"\A---\n(.*?\n)---\n", re.DOTALL)
 
@@ -141,7 +142,17 @@ def load_manifest() -> dict:
     return json.loads(_read(MANIFEST_PATH))
 
 
-def planned_files() -> dict[Path, str]:
+def load_command_verbs() -> set[str]:
+    registry = json.loads(_read(COMMAND_REGISTRY_PATH))
+    return {
+        str(command["terminalCommand"])[len("hep-"):]
+        for command in registry.get("commands", [])
+        if isinstance(command, dict)
+        and str(command.get("terminalCommand", "")).startswith("hep-")
+    }
+
+
+def planned_files(registered_verbs: set[str]) -> dict[Path, str]:
     """Return {absolute_path: desired_content} for every generated alias."""
     plan: dict[Path, str] = {}
 
@@ -151,6 +162,8 @@ def planned_files() -> dict[Path, str]:
             continue
         for hep_file in sorted(root.glob("hep-*.md")):
             verb = hep_file.stem[len("hep-"):]
+            if verb not in registered_verbs:
+                continue
             hep_text = _read(hep_file)
             fm = _frontmatter_block(hep_text)
             alias_path = root / alias_pat.format(verb=verb)
@@ -162,6 +175,8 @@ def planned_files() -> dict[Path, str]:
             continue
         for hep_file in sorted(root.glob("hep-*.toml")):
             verb = hep_file.stem[len("hep-"):]
+            if verb not in registered_verbs:
+                continue
             hep_text = _read(hep_file)
             alias_path = root / alias_pat.format(verb=verb)
             plan[alias_path] = _toml_alias(verb, hep_text)
@@ -175,6 +190,8 @@ def planned_files() -> dict[Path, str]:
             if not skill_file.is_file():
                 continue
             verb = hep_dir.name[len("hep-"):]
+            if verb not in registered_verbs:
+                continue
             hep_text = _read(skill_file)
             alias_path = root / alias_pat.format(verb=verb)
             plan[alias_path] = _kimi_skill_alias(verb, hep_text)
@@ -189,7 +206,24 @@ def planned_files() -> dict[Path, str]:
 
 def main(argv: list[str]) -> int:
     check = "--check" in argv
-    plan = planned_files()
+    try:
+        registered_verbs = load_command_verbs()
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"render-command-aliases: command registry unreadable: {exc}", file=sys.stderr)
+        return 1
+    body_verbs = {
+        path.name[len("hep-"):-len(".body.md")]
+        for path in (ROOT / "contracts" / "commands").glob("hep-*.body.md")
+    }
+    if registered_verbs != body_verbs:
+        print(
+            "render-command-aliases: command registry/body mismatch: "
+            f"bodies-only={sorted(body_verbs - registered_verbs)}, "
+            f"registry-only={sorted(registered_verbs - body_verbs)}",
+            file=sys.stderr,
+        )
+        return 1
+    plan = planned_files(registered_verbs)
     drift: list[str] = []
 
     for path, desired in plan.items():

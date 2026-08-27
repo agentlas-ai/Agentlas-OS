@@ -250,6 +250,41 @@ model and current host runtime execute it under that host's permission and
 safety model. Credentials, local files, and machine-specific permissions do not
 travel with the package—you configure those separately on each computer.
 
+### Turn a working session into an owned agent
+
+When a conversation contains a repeatable working method, use the canonical
+session route:
+
+```text
+hep-build session
+```
+
+In an interactive host, the current visible conversation is the source. Agentlas
+asks for the destination first; if you do not name another folder, it creates a
+new safe-slug child below `AGENTLAS_AGENT_HOME` or, by default,
+`~/.agentlas/agentlas-agent`. Existing children are never overwritten. It then
+shows a generalized session report for your review, turns the approved method
+into a standalone agent prompt and package, registers it locally, and runs the
+normal verification gates.
+
+You do not need to export JSON for this interactive route. JSON/JSONL remains an
+explicit option for terminal, replay, and headless workflows only. The default
+output is a single agent; choose a team explicitly. Raw transcripts, hidden
+prompts, credentials, private paths or URLs, screenshots, and literal tool
+arguments/results are not carried into the generated package. Uploading to Agent
+Cloud or the public Hub is a separate, explicit choice. See the
+[session build contract](contracts/session-build.md) for the deterministic
+export boundary.
+
+```text
+current conversation
+  -> destination question
+  -> generalized session report
+  -> owner review
+  -> standalone agent/package
+  -> local registration and verification
+```
+
 ### The package contract — what every build must emit
 
 An agent package is not a worker with capabilities. It is a **method document**.
@@ -449,7 +484,7 @@ forcing your work into one model provider:
 
 Agents generated from vague, single-sentence prompts fail under real-world edge cases. Hephaestus v1.1.0 positions task specification as a first-class OS service through the **Briefing Interview Engine**:
 
-The current v1.2.31 release carries the resolved Work Brief through host-owned Network 2.0 selection, exact release pinning, and server-first tool discovery.
+The current v1.2.32 release carries the resolved Work Brief through host-owned Network 2.0 selection, exact release pinning, and server-first tool discovery.
 
 *   **Quantitative Ambiguity Gates:** The compilation scheduler evaluates prompt clarity across four key vectors (Goal, Constraints, Scope, Context). The build process is strictly gated until the ambiguity score passes a numeric threshold (ambiguity score $\le 0.2$, with per-dimension safety floors). Clear prompts bypass the interview loop entirely via a budget system that caps questions for trivial tasks.
 *   **Lens-Driven System Analysis:** Clarifying questions are dynamically sourced from a structured lens table (Scope, Intent, Challenge, System Architecture) focusing on critical routing indicators: *anti-scope bounds* (what the agent must NOT do), *verifiable acceptance criteria*, and *exit conditions*.
@@ -542,7 +577,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.31
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.32
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -590,6 +625,7 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 | System Subsystem | Command | Example |
 | :--- | :--- | :--- |
 | **Agent / Team Builder** | `/agentlas-build` (or `/agentlas build`, `/hep-build`) | `/agentlas-build create a customer support agent for Shopify refunds` |
+| **Session-to-Agent Builder** | `/hep-build session` (canonical route: `hep-build session`) | `/hep-build session` |
 | **Workforce Federation (Local + Cloud + Hub)** | `/agentlas-network` (or `/agentlas network`, `/hep-network`) | `/agentlas-network split this launch plan into research, copy, QA, and release agents` |
 | **Stormbreaker Loop** | `/agentlas-storm` (or `/agentlas storm`, `/hep-storm`) | `/agentlas-storm build full-stack saas landing page` |
 | **Graph Automations** | `/agentlas-graph` (or `/agentlas graph`, `/hep-graph`) | `/agentlas-graph create daily market summary automation` |

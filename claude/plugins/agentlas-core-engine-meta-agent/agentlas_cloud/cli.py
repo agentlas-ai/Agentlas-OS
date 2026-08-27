@@ -649,6 +649,33 @@ def main(argv: list[str] | None = None) -> int:
     session.add_argument("--skill", default=None, help="Candidate skill slug for promote")
     session.add_argument("--owner-approved", action="store_true", help="Record explicit owner approval for the promotion request")
 
+    # Internal only: host adapters continue to expose their existing hep-* and
+    # plugin names, while this diagnostic surface makes the commandId mapping
+    # observable and testable without making command IDs user-facing syntax.
+    command_registry_cmd = sub.add_parser(
+        "command",
+        help="Inspect the internal command identity registry",
+    )
+    command_registry_sub = command_registry_cmd.add_subparsers(
+        dest="command_registry_action",
+        required=True,
+    )
+    command_registry_sub.add_parser(
+        "registry",
+        aliases=["list"],
+        help="Show the internal command registry summary",
+    )
+    command_resolve = command_registry_sub.add_parser(
+        "resolve",
+        help="Resolve a host spelling to commandId and route",
+    )
+    command_resolve.add_argument("name", nargs="+", help="Existing hep-*, agentlas-*, or host command spelling")
+    command_resolve.add_argument("--route", default=None, help="Optional explicit route, such as session")
+    command_registry_sub.add_parser(
+        "check",
+        help="Validate the registry, canonical bodies, and universal skill sources",
+    )
+
     package_cmd = sub.add_parser("package", help="Package and statically review an agent folder for Cloud/Hub upload")
     package_cmd.add_argument("folder")
     package_cmd.add_argument("--slug")
@@ -1411,10 +1438,34 @@ def main(argv: list[str] | None = None) -> int:
     workforce_goal_ledger.add_argument("--reason", default=None)
 
     args = parser.parse_args(argv)
+    # Resolve the launcher-provided spelling into process-local command context.
+    # A missing/older registry must not make an existing command unusable; the
+    # explicit `command check` path reports that failure instead.
+    try:
+        from .command_registry import attach_command_context
+
+        attach_command_context(route="session" if args.command == "session" else None)
+    except Exception:
+        pass
+    if args.command == "command":
+        from .command_registry import CommandRegistryError, check_registry, registry_summary, resolve_command
+
+        if args.command_registry_action in {"registry", "list"}:
+            try:
+                return emit(registry_summary())
+            except CommandRegistryError as exc:
+                return emit({"status": "error", "code": "command_registry_invalid", "errors": [str(exc)]}) or 1
+        if args.command_registry_action == "resolve":
+            result = resolve_command(" ".join(args.name), route=args.route)
+            return emit(result) or (1 if result.get("status") != "resolved" else 0)
+        if args.command_registry_action == "check":
+            result = check_registry()
+            return emit(result) or (1 if result.get("status") != "ok" else 0)
+
     # Auto-update is the default: every command kicks off a fail-silent,
     # rate-limited background runtime update check. hep-update runs its own
     # synchronous check below, so skip the duplicate spawn for it.
-    if args.command not in {"hep-update", "update", "session"}:
+    if args.command not in {"hep-update", "update", "session", "command"}:
         maybe_auto_update()
         # The background check above never prints anything (fail-silent by
         # design), so a detected update was previously invisible until someone
@@ -1429,7 +1480,7 @@ def main(argv: list[str] | None = None) -> int:
     # never depends on which product (Desktop, terminal, plugin host) the
     # machine happens to use. Project .agentlas writes live in the workspace,
     # so this also works inside host sandboxes.
-    if args.command != "session":
+    if args.command not in {"session", "command"}:
         try:
             from .project_index_backstop import maybe_refresh_project_index
 
@@ -3798,7 +3849,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.2.31",
+            "version": "1.2.32",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},
