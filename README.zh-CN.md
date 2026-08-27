@@ -128,7 +128,7 @@ Hephaestus 与经典操作系统概念一一对应：
 </p>
 
 <p align="center">
-  <sub>图 1. 请求塑形、三种构建器、生成的包契约、记忆策展、技能生命周期、运行时适配器与同步边界。</sub>
+  <sub>图 1. 请求塑形、四种构建器、生成的包契约、记忆策展、技能生命周期、运行时适配器与同步边界。</sub>
 </p>
 
 ---
@@ -183,7 +183,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 在操作系统终端中运行：
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.30
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.31
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注：Codex 应用内不支持 `/plugin marketplace add`，请在操作系统终端中运行上面两条命令。操作系统终端的 CLI 命令为单数形式（`codex plugin`）；在 Codex 应用内，插件浏览器的斜杠命令为复数形式（`/plugins`）。安装完成后，`/prompts:agentlas` 即为应用内入口。*
@@ -226,13 +226,14 @@ codex plugin add hephaestus@agentlas-core-engine
 ## OS 子系统
 
 ### Meta-Agent Factory — 进程创建
-由三种构建器组成的统一编译工厂。每个生成的包都会注册其全局命令（`.agentlas/global-commands.json`）并附带验证脚本——用户永远不需要去猜编译后的包该怎么运行：
+由四种构建器组成的统一编译工厂。每个生成的包都会注册其全局命令（`.agentlas/global-commands.json`）并附带验证脚本——用户永远不需要去猜编译后的包该怎么运行：
 
 | 编译模式 | 路由目标 | 输出产物 |
 | :--- | :--- | :--- |
 | **单智能体** | `10-single-agent-builder` | 独立工作者，带本地化技能、记忆契约与运行时适配器。 |
 | **多智能体团队** | `20-multi-agent-team-builder` | 层级化团队，包含 PM Orchestrator、Memory Curator、Policy Gate、QA 与校验脚本。 |
 | **工作区打包器** | `30-agentlas-packager` | 编译好的捆绑包，可直接用于 runtime 导入、CLI 执行或 GitHub 分发。 |
+| **会话智能体构建器** | `40-session-agent-builder` | 将明确导出的会话转换为经过审查的单智能体或多智能体团队包。 |
 
 *简报访谈门：* 构建器通过**简报访谈门**（[docs/builder-interview-research-gate.md](docs/builder-interview-research-gate.md)）启动流程：进行透镜驱动的提问、评估歧义阈值、检索一手来源，并输出 Work Brief。
 

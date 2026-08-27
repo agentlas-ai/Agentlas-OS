@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/session-agent-draft.schema.json",
+  "title": "Agentlas Session Agent Draft",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "draftId", "identity", "behavior", "inputs", "capabilityProposals", "policyProposal", "evaluation", "unsupportedClaims", "provenance", "approval", "draftDigest"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.session-agent-draft.v1" },
+    "kind": { "const": "agentlas-session-agent-draft" },
+    "draftId": { "type": "string", "pattern": "^draft_[a-f0-9]{24}$" },
+    "identity": { "type": "object", "required": ["slug", "name", "mode"], "properties": { "slug": { "type": "string" }, "name": { "type": "string" }, "mode": { "enum": ["single", "team"] } }, "additionalProperties": false },
+    "behavior": { "type": "object", "required": ["systemPromptCore", "loop", "decisionRules", "outputContract"], "properties": { "systemPromptCore": { "type": "string" }, "loop": { "type": "array", "items": { "type": "string" } }, "decisionRules": { "type": "array", "items": { "type": "object" } }, "outputContract": { "type": "object" } }, "additionalProperties": false },
+    "inputs": { "type": "object" },
+    "capabilityProposals": { "type": "array", "items": { "type": "object" } },
+    "policyProposal": { "type": "object", "properties": { "permissionChanges": { "const": "forbidden" }, "externalSideEffects": { "const": "owner_approval_required" } }, "additionalProperties": true },
+    "evaluation": { "type": "object" },
+    "unsupportedClaims": { "type": "array", "items": { "type": "string" } },
+    "provenance": { "type": "object", "required": ["sourceDigests", "workBriefDigest", "irDigest", "rawTranscriptIncluded"], "properties": { "sourceDigests": { "type": "array", "items": { "type": "string" } }, "workBriefDigest": { "type": "string" }, "irDigest": { "type": "string" }, "rawTranscriptIncluded": { "const": false } }, "additionalProperties": false },
+    "approval": { "type": "object", "required": ["approved", "scope"], "properties": { "approved": { "type": "boolean" }, "scope": { "const": "session-build-draft" } }, "additionalProperties": false },
+    "draftDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  },
+  "additionalProperties": false
+}

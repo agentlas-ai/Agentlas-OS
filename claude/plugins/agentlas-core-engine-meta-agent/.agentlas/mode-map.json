@@ -118,6 +118,35 @@
         "raw logs or full transcripts",
         "unverified runtime parity claims"
       ]
+    },
+    "session-agent-builder": {
+      "contract": "modes/session-agent-builder.md",
+      "agent": "agents/40-session-agent-builder/agent.md",
+      "primarySkill": "skills/session-agent-builder/SKILL.md",
+      "useWhen": [
+        "current interactive conversation used as the source",
+        "/hep-build session",
+        "convert the current working session into a reusable agent",
+        "explicit JSON or JSONL session export for terminal or headless replay"
+      ],
+      "mustInclude": [
+        "current-session destination question",
+        "global Agentlas agent home fallback",
+        "generalized session report",
+        "owner review before package write",
+        "privacy and security boundary",
+        "reviewed Work Brief",
+        "standalone agent system prompt",
+        "existing package scaffold and verification",
+        "existing package contract verification"
+      ],
+      "mustNotInclude": [
+        "recent-session or host-database discovery",
+        "JSON or JSONL as an interactive input requirement",
+        "raw transcript or hidden prompt carryover",
+        "automatic permission or MCP activation",
+        "automatic Skill promotion or upload"
+      ]
     }
   }
 }

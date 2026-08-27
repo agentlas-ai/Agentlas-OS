@@ -12,12 +12,13 @@ User request
        10-single-agent-builder
        20-multi-agent-team-builder
        30-agentlas-packager
+       40-session-agent-builder
   -> Agentlas architecture contracts
   -> runtime adapters
   -> verification
 ```
 
-## Three Core Agents
+## Four Core Agents
 
 - `10-single-agent-builder`: creates one installable worker package. It can add
   self-evolution, research refresh, memory architecture, and runtime adapters
@@ -28,6 +29,9 @@ User request
 - `30-agentlas-packager`: takes existing local or external agents/teams and
   repairs them into the Agentlas architecture, including public plugin and
   one-line installer surfaces when requested.
+- `40-session-agent-builder`: converts explicitly exported host sessions into a
+  reviewed, reusable single-agent or team candidate without carrying raw
+  conversation data into the package.
 
 ## Canonical Core
 
@@ -156,7 +160,7 @@ code:
 ## Generated Architecture Components
 
 The following concepts are not separate meta-agent team members. They are
-contracts that the three builders generate or repair inside output packages:
+contracts that the four builders generate or repair inside output packages:
 
 - PM Soul or project owner.
 - Memory Curator and Memory Tickets.
@@ -217,8 +221,8 @@ A public package should look intentional at first glance:
 
 - `README.md` explains the purpose.
 - `ARCHITECTURE.md` explains the system.
-- `agents/` shows the three meta-agent team roles.
-- `modes/` shows the three work modes.
+- `agents/` shows the four canonical meta-agent builder roles.
+- `modes/` shows the four work modes.
 - `skills/` shows reusable procedures.
 - `schemas/` makes contracts explicit.
 - `agentlas.json` defines the Cloud call entry, allow/deny reads, memory

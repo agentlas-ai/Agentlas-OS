@@ -34,6 +34,7 @@ os1() {
   bash scripts/sync-adapters.sh --check || return 1
   grep -q '"contracts/builder-interview-research-gate.md"' scripts/sync-adapters.sh || return 1
   grep -q '"agents/10-single-agent-builder/agent.md"' scripts/sync-adapters.sh || return 1
+  grep -q '"agents/40-session-agent-builder/agent.md"' scripts/sync-adapters.sh || return 1
   grep -q '"contracts/runtime-registry.json"' scripts/sync-adapters.sh || return 1
   # Mutation: a one-byte drift in a mirror must be detected, then restored.
   local target="claude/plugins/agentlas-core-engine-meta-agent/agents/10-single-agent-builder/agent.md"

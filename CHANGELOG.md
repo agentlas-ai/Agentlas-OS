@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **`hep-build session` adds the fourth builder route across the supported host
+  adapters.** Interactive hosts analyze the visible current conversation, ask
+  for the agent destination, default to the global Agentlas agent folder when
+  none is supplied, and require owner review before materialization. Terminal
+  and headless callers may use explicit JSON/JSONL exports through the same
+  deterministic Core boundary. Internal package and plugin names remain
+  unchanged, and session builds never upload or publish automatically.
+
 - **Tool search descends servers before tools, and never ships input schemas.**
   Finding the tool for a concrete action was the plugin search wearing the wrong
   hat: it answered "which plugin covers this topic" when the caller needed

@@ -19,7 +19,7 @@
   "verbatimSkills": [
     {
       "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-build/SKILL.md",
-      "content": "---\nname: agentlas-build\ndescription: \"Use when the user types /agentlas-build, /agentlas build, or /hep-build to design, build, and package a single agent or multi-agent team.\"\n---\n\n# Agentlas Build (/agentlas-build, /hep-build)\n\nDesign, assemble, and package installable single agents or multi-agent teams.\nAlias for `/agentlas build` and `/hep-build`.\n\nGuides the workflow through:\n1. Mode classification (`single-agent-creator`, `team-builder`, `agentlas-packager`)\n2. Interview/research gate\n3. Routing card and soul authoring\n4. Runtime adapter generation (Codex, Claude, Gemini, Antigravity)\n5. Package verification\n"
+    "content": "---\nname: agentlas-build\ndescription: \"Use when the user types /agentlas-build, /agentlas build, or /hep-build to design, build, and package a single agent or multi-agent team.\"\n---\n\n# Agentlas Build (/agentlas-build, /hep-build)\n\nDesign, assemble, and package installable single agents or multi-agent teams.\nAlias for `/agentlas build` and `/hep-build`.\n\nGuides the workflow through:\n1. Mode classification (`single-agent-creator`, `team-builder`, `agentlas-packager`, `session-agent-builder`)\n2. Interview/research gate\n3. Routing card and soul authoring\n4. Runtime adapter generation (Codex, Claude, Gemini, Antigravity)\n5. Package verification\n"
     },
     {
       "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-cloud/SKILL.md",

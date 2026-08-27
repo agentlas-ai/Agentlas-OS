@@ -77,6 +77,7 @@ code_files=(
   "agents/10-single-agent-builder/agent.md"
   "agents/20-multi-agent-team-builder/agent.md"
   "agents/30-agentlas-packager/agent.md"
+  "agents/40-session-agent-builder/agent.md"
   # NOT shipped into adapter mirrors. The release archive check refuses any
   # `docs/` path inside a plugin bundle, and it is right to: internal design
   # and research notes are not end-user install material. Added here earlier
@@ -141,6 +142,14 @@ skill_mirrors=(
   ".agentlas/routing-card.json:codex/plugins/agentlas-core-engine-meta-agent/.agentlas/routing-card.json"
   ".agentlas/routing-card.json:gemini/extension/.agentlas/routing-card.json"
   "cursor/rules/hephaestus.mdc:cursor/plugin/rules/hephaestus.mdc"
+)
+
+# Claude Code discovers agent definitions from the plugin's top-level
+# `agents/*.md` directory, while the portable core keeps canonical builders in
+# `agents/<ordinal>-<name>/agent.md`. Keep the session builder visible to the
+# Claude component inventory without changing the canonical four-agent layout.
+agent_mirrors=(
+  "agents/40-session-agent-builder/agent.md:claude/plugins/agentlas-core-engine-meta-agent/agents/session-agent-builder.md"
 )
 
 # EVERY plugin command gets a user-global copy. This is a glob on purpose: the
@@ -227,6 +236,16 @@ for pair in "${hook_dir_mirrors[@]}"; do
 done
 
 for pair in "${skill_mirrors[@]}"; do
+  src="${pair%%:*}"
+  dest="${pair##*:}"
+  if [[ "$mode" == "--check" ]]; then
+    check_file "$src" "$dest"
+  else
+    sync_file "$src" "$dest"
+  fi
+done
+
+for pair in "${agent_mirrors[@]}"; do
   src="${pair%%:*}"
   dest="${pair##*:}"
   if [[ "$mode" == "--check" ]]; then

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/session-ir.schema.json",
+  "title": "Agentlas Session IR",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "sourceSetHash", "segments", "strategies", "decisionRules", "parameters", "successCriteria", "failures", "conflicts", "unknowns", "modeCandidate", "status", "nodes", "transitions", "rawTranscriptIncluded", "irDigest"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.session-ir.v1" },
+    "kind": { "const": "agentlas-session-ir" },
+    "sourceSetHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "sourceDigests": { "type": "array", "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" } },
+    "mode": { "enum": ["single", "team"] },
+    "goal": { "type": "string" },
+    "segments": { "type": "array", "items": { "type": "object" } },
+    "strategies": { "type": "array", "items": { "type": "object" } },
+    "decisionRules": { "type": "array", "items": { "type": "object" } },
+    "parameters": { "type": "array", "items": { "type": "object" } },
+    "successCriteria": { "type": "array", "items": { "type": "string" } },
+    "failures": { "type": "array", "items": { "type": "object" } },
+    "conflicts": { "type": "array", "items": { "type": "object" } },
+    "unknowns": { "type": "array", "items": { "type": "string" } },
+    "modeCandidate": { "enum": ["single", "team"] },
+    "status": { "enum": ["candidate", "approved"] },
+    "nodes": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["id", "type", "action"], "properties": { "id": { "type": "string" }, "type": { "type": "string" }, "action": { "type": "string" } }, "additionalProperties": true } },
+    "transitions": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["from", "to", "when"], "properties": { "from": { "type": "string" }, "to": { "type": "string" }, "when": { "type": "string" } }, "additionalProperties": false } },
+    "roles": { "type": "array", "items": { "type": "object" } },
+    "rules": { "type": "array", "items": { "type": "object" } },
+    "rawTranscriptIncluded": { "const": false },
+    "irDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  },
+  "additionalProperties": false
+}

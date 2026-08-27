@@ -19,11 +19,13 @@ portable Agentlas-compatible package.
   PM Soul, Memory Curator, policy, eval, QA, memory, and runtime adapters.
 - `30-agentlas-packager`: convert or repair existing local/external agents or
   teams into Agentlas architecture.
+- `40-session-agent-builder`: convert explicitly exported sessions into an
+  owner-reviewed reusable Agentlas agent or team candidate.
 
 ## Outputs
 
-- A selected mode: `single-agent-creator`, `team-builder`, or
-  `agentlas-packager`.
+- A selected mode: `single-agent-creator`, `team-builder`, `agentlas-packager`,
+  or `session-agent-builder`.
 - A canonical `AGENTS.md`.
 - Visible `agents/` and `skills/` folders where relevant.
 - `.agentlas/` mode, memory, vault, sitemap, ticket, capability, and blueprint
@@ -67,7 +69,8 @@ portable Agentlas-compatible package.
 
 The generated or packaged output is done only when a user can:
 
-1. see whether it is single-agent, team-builder, or packager output;
+1. see whether it is single-agent, team-builder, packager, or session-builder
+   output;
 2. inspect the visible structure;
 3. install it into a project;
 4. call it from Codex, Claude Code, Gemini CLI, generic AGENTS.md tools, or

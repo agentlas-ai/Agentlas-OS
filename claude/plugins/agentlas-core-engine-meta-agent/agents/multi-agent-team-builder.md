@@ -127,7 +127,7 @@ knowledge layer:
 
 ## Routing Contract — Non-Negotiable
 
-The routing card is the same artifact in all three builders. Author or repair it
+The routing card is the same artifact in all four builders. Author or repair it
 with `skills/routing-card-authoring/SKILL.md`, which states what belongs in every
 field, and copy `templates/routing-card.example.json` as the starting shape.
 Two rules from that spec decide whether the card is findable at all: open-world

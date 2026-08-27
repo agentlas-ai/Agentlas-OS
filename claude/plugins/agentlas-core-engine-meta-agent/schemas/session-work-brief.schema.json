@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/session-work-brief.schema.json",
+  "title": "Agentlas Session Work Brief",
+  "type": "object",
+  "required": ["schemaVersion", "goal", "constraints", "acceptance_criteria", "anti_scope", "assumptions", "deferred", "evaluation_principles", "exit_conditions", "metadata", "session"],
+  "properties": {
+    "schemaVersion": { "const": "work-brief/1.0" },
+    "goal": { "type": "string", "minLength": 1, "maxLength": 320, "pattern": "^[^\\n]+$" },
+    "constraints": { "type": "array", "items": { "type": "string" } },
+    "acceptance_criteria": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "anti_scope": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "assumptions": { "type": "array", "items": { "type": "object", "required": ["text", "status", "source"], "properties": { "text": { "type": "string" }, "status": { "enum": ["verified", "assumed"] }, "source": { "enum": ["user", "code", "memory", "research", "default"] } }, "additionalProperties": false } },
+    "deferred": { "type": "array", "items": { "type": "string" } },
+    "evaluation_principles": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["name", "weight"], "properties": { "name": { "type": "string" }, "weight": { "type": "number", "minimum": 0, "maximum": 1 } }, "additionalProperties": false } },
+    "exit_conditions": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["name", "criteria"], "properties": { "name": { "type": "string" }, "criteria": { "type": "string" } }, "additionalProperties": false } },
+    "metadata": { "type": "object", "required": ["surface", "ambiguity_score", "mode"], "properties": { "surface": { "const": "hep-build" }, "ambiguity_score": { "type": "number", "minimum": 0, "maximum": 1 }, "mode": { "enum": ["single", "team"] } }, "additionalProperties": false },
+    "session": {
+      "type": "object",
+      "required": ["schemaVersion", "status", "sourceDigests", "sourceSetHash", "hosts", "evidence", "strategies", "corrections", "conflicts", "rawTranscriptIncluded", "untrustedEventCount"],
+      "properties": {
+        "schemaVersion": { "const": "agentlas.session-work-brief.v1" },
+        "status": { "enum": ["candidate", "approved", "conflict_review_required"] },
+        "sourceDigests": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }, "uniqueItems": true },
+        "sourceSetHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "hosts": { "type": "array", "minItems": 1, "items": { "type": "string" }, "uniqueItems": true },
+        "evidence": { "type": "array", "maxItems": 64, "items": { "type": "object", "required": ["ref", "sourceDigest", "role", "kind", "claim"], "properties": { "ref": { "type": "string" }, "sourceDigest": { "type": "string" }, "role": { "type": "string" }, "kind": { "type": "string" }, "claim": { "type": "string", "maxLength": 1600 } }, "additionalProperties": false } },
+        "strategies": { "type": "array", "items": { "type": "object" } },
+        "corrections": { "type": "array", "items": { "type": "object" } },
+        "conflicts": { "type": "array", "items": { "type": "object" } },
+        "rawTranscriptIncluded": { "const": false },
+        "untrustedEventCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "approval": { "type": "object", "required": ["approved", "sourceDigests", "scope"], "properties": { "approved": { "const": true }, "sourceDigests": { "type": "array", "items": { "type": "string" } }, "scope": { "const": "session-build-draft" } }, "additionalProperties": false }
+  },
+  "additionalProperties": false
+}

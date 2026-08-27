@@ -440,7 +440,7 @@ forcing your work into one model provider:
 </p>
 
 <p align="center">
-  <sub>Figure 1. Request shaping, three builders, generated package contracts, memory curation, skill lifecycle, runtime adapters, and sync boundaries.</sub>
+  <sub>Figure 1. Request shaping, four builders, generated package contracts, memory curation, skill lifecycle, runtime adapters, and sync boundaries.</sub>
 </p>
 
 ---
@@ -449,7 +449,7 @@ forcing your work into one model provider:
 
 Agents generated from vague, single-sentence prompts fail under real-world edge cases. Hephaestus v1.1.0 positions task specification as a first-class OS service through the **Briefing Interview Engine**:
 
-The current v1.2.30 release carries the resolved Work Brief through host-owned Network 2.0 selection, exact release pinning, and server-first tool discovery.
+The current v1.2.31 release carries the resolved Work Brief through host-owned Network 2.0 selection, exact release pinning, and server-first tool discovery.
 
 *   **Quantitative Ambiguity Gates:** The compilation scheduler evaluates prompt clarity across four key vectors (Goal, Constraints, Scope, Context). The build process is strictly gated until the ambiguity score passes a numeric threshold (ambiguity score $\le 0.2$, with per-dimension safety floors). Clear prompts bypass the interview loop entirely via a budget system that caps questions for trivial tasks.
 *   **Lens-Driven System Analysis:** Clarifying questions are dynamically sourced from a structured lens table (Scope, Intent, Challenge, System Architecture) focusing on critical routing indicators: *anti-scope bounds* (what the agent must NOT do), *verifiable acceptance criteria*, and *exit conditions*.
@@ -542,7 +542,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.30
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.31
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -626,13 +626,14 @@ Custom `/prompts:*` commands were removed from Codex 0.117+.
 ## The OS Subsystems
 
 ### Meta-Agent Factory — Process Creation
-A unified compilation factory using three builders. Every generated package registers its global command (`.agentlas/global-commands.json`) and ships verification scripts—the user never has to infer how to run the compiled package:
+A unified compilation factory using four builders. Every generated package registers its global command (`.agentlas/global-commands.json`) and ships verification scripts—the user never has to infer how to run the compiled package:
 
 | Compilation Mode | Routing Target | Output Artifact |
 | :--- | :--- | :--- |
 | **Single-Agent** | `10-single-agent-builder` | Standalone worker with localized skills, memory contracts, and runtime adapters. |
 | **Multi-Agent Team** | `20-multi-agent-team-builder` | Hierarchical team containing a PM Orchestrator, Memory Curator, Policy Gate, QA, and validation scripts. |
 | **Workspace Packager** | `30-agentlas-packager` | Compiled bundle ready for runtime import, CLI execution, or GitHub distribution. |
+| **Session Agent Builder** | `40-session-agent-builder` | Converts explicitly exported sessions into a reviewed single-agent or multi-agent team package. |
 
 *Briefing Interview Gate:* Builders initiate the process using the **briefing interview gate** ([docs/builder-interview-research-gate.md](docs/builder-interview-research-gate.md)): conducting lens-driven questions, evaluating the ambiguity threshold, searching primary sources, and outputting the work brief.
 
@@ -779,7 +780,8 @@ Hephaestus packages agents into a standard directory layout that any workspace r
 ├── agent.md / agents/                     # Single worker, HQ/orchestrator, or team roles
 │   ├── 10-single-agent-builder/
 │   ├── 20-multi-agent-team-builder/
-│   └── 30-agentlas-packager/
+│   ├── 30-agentlas-packager/
+│   └── 40-session-agent-builder/
 ├── .agentlas/                             # Agentlas OS system directory
 │   ├── sitemap.json                       # Product graph: modes, runtime adapters, memory, release checks
 │   ├── mode-map.json                      # Single-agent / team / packager classification contract

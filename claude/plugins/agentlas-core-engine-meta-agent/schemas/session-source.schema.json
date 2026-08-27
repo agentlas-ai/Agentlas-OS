@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/session-source.schema.json",
+  "title": "Agentlas Session Source",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "sourceId", "sourceDigest", "host", "events", "eventKinds", "counts", "security", "sanitizedDigest"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.session-source.v1" },
+    "kind": { "const": "agentlas-session-source" },
+    "sourceId": { "type": "string", "pattern": "^sess_[a-f0-9]{16}$" },
+    "sourceDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "host": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4000,
+      "items": {
+        "type": "object",
+        "required": ["id", "role", "kind"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^e[0-9]{4}$" },
+          "role": { "enum": ["user", "assistant", "tool", "error"] },
+          "kind": { "enum": ["text", "tool", "error", "untrusted"] },
+          "text": { "type": "string", "maxLength": 1600 },
+          "capability": { "enum": ["file_read", "file_write", "web_search", "test", "browser", "shell", "mcp", "other"] },
+          "errorType": { "type": "string", "maxLength": 80 },
+          "security": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "eventKinds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "counts": {
+      "type": "object",
+      "required": ["events", "user", "assistant", "tool", "error", "untrusted"],
+      "properties": {
+        "events": { "type": "integer", "minimum": 1 },
+        "user": { "type": "integer", "minimum": 0 },
+        "assistant": { "type": "integer", "minimum": 0 },
+        "tool": { "type": "integer", "minimum": 0 },
+        "error": { "type": "integer", "minimum": 0 },
+        "untrusted": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "security": {
+      "type": "object",
+      "required": ["blocked", "rawTranscriptIncluded", "findings", "redactedFields", "untrustedEventIds", "inputBytes"],
+      "properties": {
+        "blocked": { "const": false },
+        "rawTranscriptIncluded": { "const": false },
+        "findings": { "type": "array", "items": { "type": "string" } },
+        "redactedFields": { "type": "array", "items": { "type": "string" } },
+        "untrustedEventIds": { "type": "array", "items": { "type": "string" } },
+        "inputBytes": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "sanitizedDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  },
+  "additionalProperties": false
+}

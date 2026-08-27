@@ -12,6 +12,8 @@ Invoke the Agentlas Core Engine Meta-Agent Team.
    - `agents/10-single-agent-builder/agent.md` for one worker package.
    - `agents/20-multi-agent-team-builder/agent.md` for a team package.
    - `agents/30-agentlas-packager/agent.md` for existing agent/team packaging.
+   - `agents/40-session-agent-builder/agent.md` for explicitly exported session
+     to agent/team compilation.
 5. Load matching skills only.
 6. Use `.agentlas` auto-activation contracts when local continuity is needed.
 7. Generate or repair `.agentlas/global-commands.json` and matching runtime

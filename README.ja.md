@@ -190,7 +190,7 @@ one-touch installer を使用してください。これは
 
 OS のターミナルから:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.30
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.31
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注: Codex アプリ内では `/plugin marketplace add` は利用できません。上記の 2 つのコマンドを OS のターミナルで実行してください。OS ターミナルの CLI コマンドは単数形（`codex plugin`）ですが、Codex アプリ内のプラグインブラウザーのスラッシュコマンドは複数形（`/plugins`）です。インストール後は、`/prompts:agentlas` がアプリ内のエントリーポイントになります。*
@@ -234,13 +234,14 @@ codex plugin add hephaestus@agentlas-core-engine
 ## OS サブシステム
 
 ### Meta-Agent Factory — プロセス生成
-3 つのビルダーを用いる統合コンパイルファクトリーです。生成されるすべてのパッケージはグローバルコマンド（`.agentlas/global-commands.json`）を登録し、検証スクリプトを同梱します — コンパイル済みパッケージの実行方法をユーザーが推測する必要は一切ありません:
+4 つのビルダーを用いる統合コンパイルファクトリーです。生成されるすべてのパッケージはグローバルコマンド（`.agentlas/global-commands.json`）を登録し、検証スクリプトを同梱します — コンパイル済みパッケージの実行方法をユーザーが推測する必要は一切ありません:
 
 | コンパイルモード | ルーティング先 | 出力アーティファクト |
 | :--- | :--- | :--- |
 | **シングルエージェント** | `10-single-agent-builder` | ローカライズされたスキル、メモリコントラクト、ランタイムアダプターを備えたスタンドアロンワーカー。 |
 | **マルチエージェントチーム** | `20-multi-agent-team-builder` | PM Orchestrator、Memory Curator、Policy Gate、QA、検証スクリプトを含む階層型チーム。 |
 | **ワークスペースパッケージャー** | `30-agentlas-packager` | ランタイムへのインポート、CLI 実行、GitHub 配布に対応したコンパイル済みバンドル。 |
+| **セッションエージェントビルダー** | `40-session-agent-builder` | 明示的にエクスポートされたセッションを、レビュー済みのシングルエージェントまたはマルチエージェントチームパッケージに変換します。 |
 
 *Briefing Interview Gate:* ビルダーは **briefing interview gate**（[docs/builder-interview-research-gate.md](docs/builder-interview-research-gate.md)）を用いてプロセスを開始します: レンズ駆動の質問を行い、曖昧さのしきい値を評価し、一次情報源を検索し、Work Brief を出力します。
 

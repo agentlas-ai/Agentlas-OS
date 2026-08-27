@@ -41,6 +41,7 @@ core_files=(
   "agents/10-single-agent-builder/agent.md"
   "agents/20-multi-agent-team-builder/agent.md"
   "agents/30-agentlas-packager/agent.md"
+  "agents/40-session-agent-builder/agent.md"
   "modes/single-agent-creator.md"
   "modes/team-builder.md"
   "modes/agentlas-packager.md"

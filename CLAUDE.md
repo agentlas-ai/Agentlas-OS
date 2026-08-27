@@ -22,7 +22,8 @@ staged archive, not the dirty working tree.
 5. Route to one core team member:
    - `agents/10-single-agent-builder/agent.md`;
    - `agents/20-multi-agent-team-builder/agent.md`;
-   - `agents/30-agentlas-packager/agent.md`.
+   - `agents/30-agentlas-packager/agent.md`;
+   - `agents/40-session-agent-builder/agent.md`.
 6. Load only matching `skills/*/SKILL.md`.
 7. Use `skills/agentlas-auto-activation/SKILL.md` when local project
    continuity or `.agentlas` activation is part of the output.

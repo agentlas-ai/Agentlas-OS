@@ -14,6 +14,7 @@ description: "Use when designing a new multi-agent team, visible agents folder, 
    - `agents/10-single-agent-builder/agent.md`
    - `agents/20-multi-agent-team-builder/agent.md`
    - `agents/30-agentlas-packager/agent.md`
+   - `agents/40-session-agent-builder/agent.md`
 4. Add `skills/<capability>/SKILL.md` for reusable procedures.
 5. Add `.agentlas/company-blueprint.json` for topology.
 

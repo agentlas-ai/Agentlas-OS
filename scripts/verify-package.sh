@@ -48,10 +48,20 @@ required_files=(
   "schemas/runtime-registry.schema.json"
   "agentlas_cloud/runtime_registry.py"
   "agentlas_cloud/networking/acp_client.py"
+  "agentlas_cloud/session_build.py"
+  "contracts/session-build.md"
   "schemas/package-contract.schema.json"
+  "schemas/session-source.schema.json"
+  "schemas/session-source-set.schema.json"
+  "schemas/session-work-brief.schema.json"
+  "schemas/session-ir.schema.json"
+  "schemas/session-agent-draft.schema.json"
+  "schemas/session-build-plan.schema.json"
+  "schemas/session-build-receipt.schema.json"
   "agents/10-single-agent-builder/agent.md"
   "agents/20-multi-agent-team-builder/agent.md"
   "agents/30-agentlas-packager/agent.md"
+  "agents/40-session-agent-builder/agent.md"
   "skills/mode-classification/SKILL.md"
   "skills/clarify-question-loop/SKILL.md"
   "skills/agentlas-auto-activation/SKILL.md"
@@ -64,6 +74,9 @@ required_files=(
   "modes/team-builder.md"
   "modes/agentlas-packager.md"
   "modes/ontology-backed-agent.md"
+  "modes/session-agent-builder.md"
+  "skills/session-agent-builder/SKILL.md"
+  ".agents/skills/session-agent-builder/SKILL.md"
   ".agentlas/contract-injection-map.json"
   "examples/ontology-proposal-agent/README.md"
   "examples/ontology-proposal-agent/agent.md"
@@ -304,6 +317,7 @@ required_files=(
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-call.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-upload.md"
   "claude/plugins/agentlas-core-engine-meta-agent/commands/hep-connect.md"
+  "claude/plugins/agentlas-core-engine-meta-agent/agents/session-agent-builder.md"
   "claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
   "claude/plugins/agentlas-core-engine-meta-agent/bin/agentlas-python-cache-boundary"
   "claude/plugins/agentlas-core-engine-meta-agent/bin/ontology"
@@ -368,6 +382,7 @@ required_files=(
   "codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-build/SKILL.md"
   "codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-network/SKILL.md"
   "codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-cloud/SKILL.md"
+  "codex/plugins/agentlas-core-engine-meta-agent/skills/session-agent-builder/SKILL.md"
   "skills/hephaestus-network/SKILL.md"
   "skills/hephaestus-cloud/SKILL.md"
   ".agents/skills/hephaestus-network/SKILL.md"
@@ -446,11 +461,64 @@ grep -q 'install-memory-hooks.py' scripts/install-all-runtimes.sh \
   || fail "one-touch installer does not activate global host memory hooks"
 
 agent_count="$(find agents -mindepth 2 -maxdepth 2 -name agent.md | wc -l | tr -d ' ')"
-[[ "$agent_count" == "3" ]] || fail "expected exactly 3 visible core agents, found $agent_count"
+[[ "$agent_count" == "4" ]] || fail "expected exactly 4 visible core agents, found $agent_count"
 
 python3 - <<'PY'
 import json
+import hashlib
 from pathlib import Path
+
+expected_core_agents = [
+    "agents/10-single-agent-builder/agent.md",
+    "agents/20-multi-agent-team-builder/agent.md",
+    "agents/30-agentlas-packager/agent.md",
+    "agents/40-session-agent-builder/agent.md",
+]
+actual_core_agents = sorted(
+    str(path.relative_to(Path("."))) for path in Path("agents").glob("*/agent.md")
+)
+if actual_core_agents != sorted(expected_core_agents):
+    raise SystemExit(
+        f"core agent inventory is {actual_core_agents}, expected {expected_core_agents}"
+    )
+
+manifest = json.loads(Path("manifest.json").read_text(encoding="utf-8"))
+if manifest.get("coreAgents") != expected_core_agents:
+    raise SystemExit(
+        f"manifest coreAgents is {manifest.get('coreAgents')}, expected {expected_core_agents}"
+    )
+
+blueprint = json.loads(
+    Path(".agentlas/company-blueprint.json").read_text(encoding="utf-8")
+)
+core_ids = {Path(path).parent.name for path in expected_core_agents}
+core_nodes = {
+    node.get("id"): node
+    for node in blueprint.get("nodes", [])
+    if node.get("id") in core_ids
+}
+if set(core_nodes) != core_ids or [
+    core_nodes[Path(path).parent.name].get("path") for path in expected_core_agents
+] != expected_core_agents:
+    raise SystemExit("company-blueprint.json does not name the exact four core agents")
+
+def digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+for relative in expected_core_agents:
+    canonical = Path(relative)
+    canonical_digest = digest(canonical)
+    for adapter in (
+        Path("claude/plugins/agentlas-core-engine-meta-agent"),
+        Path("codex/plugins/agentlas-core-engine-meta-agent"),
+    ):
+        mirror = adapter / relative
+        if not mirror.is_file() or digest(mirror) != canonical_digest:
+            raise SystemExit(f"core agent blueprint mirror drift: {mirror}")
+
+session_alias = Path("claude/plugins/agentlas-core-engine-meta-agent/agents/session-agent-builder.md")
+if digest(session_alias) != digest(Path("agents/40-session-agent-builder/agent.md")):
+    raise SystemExit(f"session builder agent alias drift: {session_alias}")
 
 public_skill_names = {
     "hephaestus-build",
@@ -460,6 +528,7 @@ public_skill_names = {
     "hephaestus-storm",
     "hephaestus-graph",
     "routing-card-authoring",
+    "session-agent-builder",
     "agentlas-build",
     "agentlas-network",
     "agentlas-cloud",

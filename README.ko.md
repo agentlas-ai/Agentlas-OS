@@ -286,7 +286,7 @@ Agentlas는 하나의 모델 제공자에 묶이지 않으면서 에이전트 �
 </p>
 
 <p align="center">
-  <sub>그림 1. 요청 셰이핑, 세 개의 빌더, 생성된 패키지 계약, 메모리 큐레이션, 스킬 수명주기, 런타임 어댑터, 동기화 경계.</sub>
+  <sub>그림 1. 요청 셰이핑, 네 개의 빌더, 생성된 패키지 계약, 메모리 큐레이션, 스킬 수명주기, 런타임 어댑터, 동기화 경계.</sub>
 </p>
 
 ---
@@ -386,7 +386,7 @@ Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README�
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.30
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.31
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. Codex 0.117+에서는 custom `/prompts:*` 명령이 제거됐으므로, 설치 후에는 `$hephaestus-network <요청>` 스킬을 호출하세요.*
@@ -453,13 +453,14 @@ Agentlas OS 호스트를 설치하고 패키지 소유자로 로그인해야 합
 ## OS 서브시스템
 
 ### Meta-Agent Factory — 프로세스 생성
-세 개의 빌더를 사용하는 통합 컴파일 팩토리입니다. 생성된 모든 패키지는 전역 명령(`.agentlas/global-commands.json`)을 등록하고 검증 스크립트를 함께 배포합니다 — 사용자가 컴파일된 패키지를 어떻게 실행할지 추측할 필요가 없습니다:
+네 개의 빌더를 사용하는 통합 컴파일 팩토리입니다. 생성된 모든 패키지는 전역 명령(`.agentlas/global-commands.json`)을 등록하고 검증 스크립트를 함께 배포합니다 — 사용자가 컴파일된 패키지를 어떻게 실행할지 추측할 필요가 없습니다:
 
 | 컴파일 모드 | 라우팅 대상 | 산출물 |
 | :--- | :--- | :--- |
 | **싱글 에이전트** | `10-single-agent-builder` | 로컬화된 스킬, 메모리 계약, 런타임 어댑터를 갖춘 독립 워커. |
 | **멀티 에이전트 팀** | `20-multi-agent-team-builder` | PM Orchestrator, Memory Curator, Policy Gate, QA, 검증 스크립트를 포함하는 계층형 팀. |
 | **워크스페이스 패키저** | `30-agentlas-packager` | 런타임 임포트, CLI 실행, GitHub 배포가 가능한 컴파일 번들. |
+| **세션 에이전트 빌더** | `40-session-agent-builder` | 명시적으로 내보낸 세션을 검토 가능한 싱글 에이전트 또는 멀티 에이전트 팀 패키지로 변환하는 빌더. |
 
 *Briefing Interview Gate:* 빌더는 **briefing interview gate**([docs/builder-interview-research-gate.md](docs/builder-interview-research-gate.md))로 프로세스를 시작합니다: 렌즈 기반 질문을 수행하고, 모호성 임계값을 평가하고, 1차 출처를 검색하고, work brief를 출력합니다.
 
@@ -563,7 +564,8 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 ├── agent.md / agents/                     # 단일 워커, HQ/orchestrator, 또는 팀 역할
 │   ├── 10-single-agent-builder/
 │   ├── 20-multi-agent-team-builder/
-│   └── 30-agentlas-packager/
+│   ├── 30-agentlas-packager/
+│   └── 40-session-agent-builder/
 ├── .agentlas/                             # Agentlas OS 시스템 디렉터리
 │   ├── sitemap.json                       # 제품 그래프: 모드, 런타임 어댑터, 메모리, 릴리즈 체크
 │   ├── mode-map.json                      # single-agent / team / packager 분류 계약

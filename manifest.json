@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.0",
   "package": "hephaestus",
-  "version": "1.2.30",
+  "version": "1.2.31",
   "workforceProtocolVersion": "2026-08-21.1",
-  "description": "Portable three-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
+  "description": "Portable four-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
   "entrypoints": {
     "canonical": "AGENTS.md",
     "singleAgent": "agent.md",
@@ -65,12 +65,14 @@
   "coreAgents": [
     "agents/10-single-agent-builder/agent.md",
     "agents/20-multi-agent-team-builder/agent.md",
-    "agents/30-agentlas-packager/agent.md"
+    "agents/30-agentlas-packager/agent.md",
+    "agents/40-session-agent-builder/agent.md"
   ],
   "requiredConcepts": [
     "single-agent-builder",
     "multi-agent-team-builder",
     "agentlas-packager",
+    "session-agent-builder",
     "self-evolving-single-agent",
     "memory-architecture",
     "all-llm-runtime-architecture",

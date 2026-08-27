@@ -276,6 +276,321 @@ def _stormbreaker_result_exit_code(result: Mapping[str, Any]) -> int:
     return 2
 
 
+def _write_session_output(path_value: str, payload: Mapping[str, Any]) -> None:
+    """Write an explicitly requested session report atomically."""
+
+    path = Path(path_value).expanduser()
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    cursor = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        cursor /= part
+        if cursor.is_symlink():
+            raise ValueError("session output may not traverse a symbolic link")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    if temporary.is_symlink():
+        raise ValueError("session temporary output may not be a symbolic link")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _session_brief_from_report(
+    report_path: str,
+    source_digests: list[str],
+    mode: str | None = None,
+) -> dict[str, Any]:
+    from .interview.schema import work_brief_problem
+    from .session_build import SessionBuildError, validate_session_brief_security
+
+    path = Path(report_path).expanduser()
+    if path.is_symlink() or not path.is_file():
+        raise SessionBuildError("report_unreadable", "the supplied session Work Brief report is not a regular file")
+    try:
+        brief = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SessionBuildError("report_unreadable", "the supplied session Work Brief report is not valid UTF-8 JSON") from exc
+    if isinstance(brief, dict) and isinstance(brief.get("workBrief"), dict):
+        brief = brief["workBrief"]
+    if not isinstance(brief, dict):
+        raise SessionBuildError("report_invalid", "the session Work Brief report must be a JSON object")
+    problem = work_brief_problem(brief)
+    if problem:
+        raise SessionBuildError("work_brief_invalid", problem)
+    session = brief.get("session") if isinstance(brief.get("session"), Mapping) else {}
+    reported = sorted(str(item) for item in session.get("sourceDigests") or [])
+    if reported != sorted(source_digests):
+        raise SessionBuildError(
+            "approval_stale",
+            "the Work Brief report was produced from a different session source set",
+            details={"reportedSourceDigests": reported, "currentSourceDigests": sorted(source_digests)},
+        )
+    metadata = brief.get("metadata") if isinstance(brief.get("metadata"), Mapping) else {}
+    if metadata.get("mode") not in {None, "single", "team"}:
+        raise SessionBuildError("report_invalid", "the Work Brief report has an invalid build mode")
+    if mode and metadata.get("mode") and metadata.get("mode") != mode:
+        raise SessionBuildError(
+            "report_mode_mismatch",
+            "the Work Brief report mode does not match the requested build mode",
+            details={"reportedMode": metadata.get("mode"), "requestedMode": mode},
+        )
+    approval = brief.get("approval") if isinstance(brief.get("approval"), Mapping) else {}
+    approved_digests = sorted(str(item) for item in approval.get("sourceDigests") or [])
+    if approval.get("approved") is True and approved_digests != sorted(source_digests):
+        raise SessionBuildError("approval_stale", "the Work Brief approval receipt is bound to a different source digest set")
+    security = validate_session_brief_security(brief)
+    if not security["ok"]:
+        raise SessionBuildError("brief_security_blocked", "the reviewed Work Brief contains unsafe source material", details=security)
+    return brief
+
+
+def _session_command(args: argparse.Namespace) -> int:
+    """Run the local session source/IR/package boundary behind hep-build."""
+
+    from .session_build import (
+        SessionBuildError,
+        build_agent_draft,
+        build_experience_candidate,
+        build_ir,
+        build_receipt,
+        build_session_build_plan,
+        build_work_brief,
+        compile_ir_prompt,
+        load_session_inputs,
+        load_session_validation_inputs,
+        materialize_session_package,
+        merge_sources,
+        request_skill_promotion,
+        slugify,
+        validate_session_source,
+        write_experience_candidate,
+        write_candidate_skill,
+    )
+
+    action = args.session_action or "preview"
+    if action == "promote":
+        try:
+            if not args.project or not args.skill:
+                raise SessionBuildError("promotion_input_required", "promotion requires --project <package> and --skill <slug>")
+            result = request_skill_promotion(
+                args.project,
+                args.skill,
+                trials_path=args.trials,
+                owner_approved=args.owner_approved,
+            )
+            emit({"action": "session", **result})
+            return 0 if result.get("status") == "promotion_pending" else 1
+        except SessionBuildError as exc:
+            emit({"action": "session", "status": "error", "error": exc.code, "message": str(exc), **exc.details})
+            return 2
+
+    input_paths = list(args.session_inputs or []) + list(args.session_positional_inputs or [])
+    try:
+        sources = (
+            load_session_validation_inputs(input_paths, host=args.host)
+            if action == "validate"
+            else load_session_inputs(input_paths, host=args.host)
+        )
+        if action in {"inspect", "normalize", "validate"}:
+            if action == "inspect":
+                inspected = [
+                    {
+                        "sourceId": source.get("sourceId"),
+                        "sourceDigest": source.get("sourceDigest"),
+                        "host": source.get("host"),
+                        "eventCount": source.get("counts", {}).get("events"),
+                        "eventKinds": source.get("eventKinds"),
+                        "security": source.get("security"),
+                        "supported": True,
+                    }
+                    for source in sources
+                ]
+                payload = {"action": "session", "status": "inspected", "sources": inspected, "rawTranscriptIncluded": False}
+            elif action == "normalize":
+                payload = {"action": "session", "status": "normalized", "sources": sources, "rawTranscriptIncluded": False}
+            else:
+                payload = {
+                    "action": "session",
+                    "status": "validated",
+                    "sources": [{"sourceId": source.get("sourceId"), **validate_session_source(source)} for source in sources],
+                    "rawTranscriptIncluded": False,
+                }
+                if not all(item.get("ok") is True for item in payload["sources"]):
+                    payload["status"] = "invalid"
+            if args.output:
+                _write_session_output(args.output, payload)
+            emit(payload)
+            return 0 if action != "validate" or payload.get("status") == "validated" else 1
+        merged = merge_sources(sources)
+        source_digests = sorted(str(source.get("sourceDigest")) for source in sources)
+        if args.report:
+            brief = _session_brief_from_report(args.report, source_digests, args.mode)
+        else:
+            brief = build_work_brief(
+                merged,
+                title=args.title or "",
+                mode=args.mode,
+                approved=args.approve,
+                allow_conflicts=args.allow_conflicts,
+            )
+        conflicts = list((brief.get("session") or {}).get("conflicts") or [])
+        if conflicts and not args.allow_conflicts:
+            payload = {
+                "action": "session",
+                "status": "conflict",
+                "sources": sources,
+                "merge": merged,
+                "workBrief": brief,
+                "conflicts": conflicts,
+            }
+            if args.output:
+                _write_session_output(args.output, payload)
+            emit(payload)
+            return 1
+        if args.report and args.approve:
+            # Keep the user's edited brief intact; approval adds only a new
+            # explicit receipt bound to the already checked source digest set.
+            brief["session"] = dict(brief.get("session") or {})
+            brief["session"]["status"] = "approved"
+            brief["approval"] = {
+                "approved": True,
+                "sourceDigests": source_digests,
+                "scope": "session-build-draft",
+            }
+            from .interview.schema import work_brief_problem
+
+            problem = work_brief_problem(brief)
+            if problem:
+                raise SessionBuildError("work_brief_invalid", problem)
+        approved = bool(args.approve or (brief.get("approval") or {}).get("approved") is True)
+        if action == "preview":
+            payload = {"action": "session", "status": "preview", "sources": sources, "merge": merged, "workBrief": brief}
+            if args.output:
+                _write_session_output(args.output, payload)
+            emit(payload)
+            return 0
+        if action == "merge":
+            payload = {"action": "session", "status": "merged", "sources": sources, "merge": merged}
+            if args.output:
+                _write_session_output(args.output, payload)
+            emit(payload)
+            return 0
+        ir = build_ir(brief, mode=args.mode)
+        if action == "ir":
+            payload = {"action": "session", "status": "ir_ready", "workBrief": brief, "ir": ir}
+            if args.output:
+                _write_session_output(args.output, payload)
+            emit(payload)
+            return 0
+        if action != "compile":
+            raise SessionBuildError("session_action_invalid", f"unsupported session action: {action}")
+        if not approved:
+            payload = {
+                "action": "session",
+                "status": "approval_required",
+                "error": "approval_required",
+                "message": "review the Work Brief and rerun with --approve or an approved --report",
+                "workBrief": brief,
+                "ir": ir,
+            }
+            if args.output:
+                _write_session_output(args.output, payload)
+            emit(payload)
+            return 3
+        global_agent = bool(getattr(args, "global_agent", False))
+        build_candidate_skill = bool(args.candidate_skill or global_agent)
+        if (
+            (build_candidate_skill or args.experience_candidate)
+            and not args.package_target
+            and not args.project
+            and not global_agent
+        ):
+            raise SessionBuildError(
+                "project_required",
+                "candidate skill or Experience output requires an explicit --project, or use --package-target",
+            )
+        package_target = args.package_target
+        if global_agent:
+            if package_target:
+                raise SessionBuildError(
+                    "package_target_conflict",
+                    "choose either --global-agent or --package-target, not both",
+                )
+            from .agent_package_sweep import local_agents_home
+
+            package_target = str(local_agents_home() / slugify(args.slug or args.title or "session-agent"))
+        draft = build_agent_draft(
+            brief,
+            mode=args.mode,
+            slug=args.slug or "session-agent",
+            name=args.name or "Session-derived Agent",
+            approved=True,
+            allow_conflicts=args.allow_conflicts,
+        )
+        skill_receipt = None
+        experience_receipt = None
+        package_receipt = None
+        if package_target:
+            package_receipt = materialize_session_package(
+                brief,
+                draft,
+                package_target,
+                mode=args.mode,
+                slug=args.slug,
+                name=args.name,
+                candidate_skill=build_candidate_skill,
+                experience_candidate=args.experience_candidate,
+                allow_conflicts=args.allow_conflicts,
+            )
+        elif args.candidate_skill:
+            destination = Path(args.project or ".").expanduser()
+            skill_receipt = write_candidate_skill(draft, destination, slug=args.slug)
+        if args.experience_candidate and not package_receipt:
+            item = build_experience_candidate(brief, draft)
+            experience_receipt = write_experience_candidate(args.project or ".", item)
+        receipt = build_receipt(
+            sources,
+            brief,
+            draft,
+            ir,
+            consent={"readSource": True, "writePackage": bool(package_receipt), "activatePermissions": False, "publish": False},
+            package_hash=(package_receipt or {}).get("packageHash") if package_receipt else None,
+            status="verified" if package_receipt else "compiled",
+            candidate_skill=build_candidate_skill,
+            experience_candidate=bool(args.experience_candidate),
+        )
+        plan = build_session_build_plan(
+            brief,
+            draft,
+            package_verified=bool(package_receipt),
+            candidate_skill=build_candidate_skill,
+            experience_candidate=bool(args.experience_candidate),
+        )
+        payload = {
+            "action": "session",
+            "status": "verified" if package_receipt else "compiled",
+            "workBrief": brief,
+            "ir": ir,
+            "compiledPrompt": compile_ir_prompt(ir),
+            "draft": draft,
+            "buildPlan": plan,
+            "receipt": receipt,
+            "skill": skill_receipt or (package_receipt or {}).get("skill"),
+            "experience": experience_receipt or (package_receipt or {}).get("experience"),
+            "package": package_receipt,
+        }
+        if args.output:
+            _write_session_output(args.output, payload)
+        emit(payload)
+        return 0
+    except SessionBuildError as exc:
+        status = "blocked" if exc.code in {"package_contract_blocked", "source_blocked", "source_no_supported_events"} else "error"
+        emit({"action": "session", "status": status, "error": exc.code, "message": str(exc), **exc.details})
+        return 1 if status == "blocked" else 2
+    except (OSError, ValueError, KeyError) as exc:
+        emit({"action": "session", "status": "error", "error": "session_command_failed", "message": str(exc)})
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_utf8_stdio()
     # Wire the resident judge to the host's connected model (if the host opted in
@@ -302,6 +617,37 @@ def main(argv: list[str] | None = None) -> int:
 
     bundle = sub.add_parser("bundle", help="Compile runtime bundle")
     bundle.add_argument("folder")
+
+    session = sub.add_parser(
+        "session",
+        help="Build from the current interactive session; use explicit exports only in terminal/headless mode",
+    )
+    session.add_argument(
+        "session_action",
+        nargs="?",
+        choices=["inspect", "normalize", "validate", "preview", "merge", "ir", "compile", "promote"],
+        default="preview",
+        help="inspect, normalize, validate, preview (default), merge, ir, compile, or promote",
+    )
+    session.add_argument("session_positional_inputs", nargs="*", help=argparse.SUPPRESS)
+    session.add_argument("--input", dest="session_inputs", action="append", default=[], help="Optional explicit JSON/JSONL export for terminal/headless mode; repeatable")
+    session.add_argument("--host", default=None, help="Host adapter label, e.g. claude, cursor, opencode, codex")
+    session.add_argument("--project", default=None, help="Explicit local project/package root for candidate artifacts")
+    session.add_argument("--output", default=None, help="Write the machine-readable session result to this exact file")
+    session.add_argument("--report", default=None, help="Use an edited Work Brief report and verify its source digest set")
+    session.add_argument("--title", default="", help="Optional one-line Work Brief title")
+    session.add_argument("--slug", default=None, help="Candidate package/skill slug")
+    session.add_argument("--name", default=None, help="Candidate package display name")
+    session.add_argument("--mode", choices=["single", "team"], default="single")
+    session.add_argument("--approve", action="store_true", help="Approve the current Work Brief for draft compilation")
+    session.add_argument("--allow-conflicts", action="store_true", help="Continue only after explicitly acknowledging merge conflicts")
+    session.add_argument("--package-target", default=None, help="Exact empty folder for an atomic verified package build")
+    session.add_argument("--global-agent", action="store_true", help="Materialize below the global Agentlas agent home; interactive hosts choose this without exposing a path")
+    session.add_argument("--candidate-skill", action="store_true", help="Write the derived skill as a candidate (never first-class)")
+    session.add_argument("--experience-candidate", action="store_true", help="Write a private candidate Experience item")
+    session.add_argument("--trials", default=None, help="JSONL trial ledger for promote")
+    session.add_argument("--skill", default=None, help="Candidate skill slug for promote")
+    session.add_argument("--owner-approved", action="store_true", help="Record explicit owner approval for the promotion request")
 
     package_cmd = sub.add_parser("package", help="Package and statically review an agent folder for Cloud/Hub upload")
     package_cmd.add_argument("folder")
@@ -1068,7 +1414,7 @@ def main(argv: list[str] | None = None) -> int:
     # Auto-update is the default: every command kicks off a fail-silent,
     # rate-limited background runtime update check. hep-update runs its own
     # synchronous check below, so skip the duplicate spawn for it.
-    if args.command not in {"hep-update", "update"}:
+    if args.command not in {"hep-update", "update", "session"}:
         maybe_auto_update()
         # The background check above never prints anything (fail-silent by
         # design), so a detected update was previously invisible until someone
@@ -1083,12 +1429,15 @@ def main(argv: list[str] | None = None) -> int:
     # never depends on which product (Desktop, terminal, plugin host) the
     # machine happens to use. Project .agentlas writes live in the workspace,
     # so this also works inside host sandboxes.
-    try:
-        from .project_index_backstop import maybe_refresh_project_index
+    if args.command != "session":
+        try:
+            from .project_index_backstop import maybe_refresh_project_index
 
-        maybe_refresh_project_index(Path.cwd())
-    except Exception:
-        pass
+            maybe_refresh_project_index(Path.cwd())
+        except Exception:
+            pass
+    if args.command == "session":
+        return _session_command(args)
     if args.command == "wizard":
         return emit(run_setup_wizard(args.folder, args.name, write=not args.no_write))
     if args.command == "security" and args.security_command == "scan":
@@ -3449,7 +3798,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.2.30",
+            "version": "1.2.31",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

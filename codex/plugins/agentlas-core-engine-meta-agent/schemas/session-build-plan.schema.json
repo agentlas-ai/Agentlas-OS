@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/session-build-plan.schema.json",
+  "title": "Agentlas Session Build Sidecar Plan",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "status", "nodes", "edges", "allowedRelations", "canonicalAoMaterialized", "sourceDigests", "planDigest"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.session-build-plan.v1" },
+    "kind": { "const": "agentlas-session-build-plan" },
+    "status": { "enum": ["candidate", "verified"] },
+    "nodes": { "type": "array", "minItems": 4, "items": { "type": "object", "required": ["id", "kind", "status"], "properties": { "id": { "type": "string" }, "kind": { "type": "string" }, "status": { "type": "string" }, "sourceDigests": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": true } },
+    "edges": { "type": "array", "minItems": 3, "items": { "type": "object", "required": ["from", "to", "relation"], "properties": { "from": { "type": "string" }, "to": { "type": "string" }, "relation": { "enum": ["produces", "consumes", "hands_off_to", "gated_by", "requires_approval_from", "owns_scope"] } }, "additionalProperties": false } },
+    "allowedRelations": { "type": "array", "items": { "type": "string" } },
+    "canonicalAoMaterialized": { "const": false },
+    "sourceDigests": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" } },
+    "planDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  },
+  "additionalProperties": false
+}

@@ -261,6 +261,7 @@ Usage:
   bin/hephaestus contract scaffold <agent-folder> [--mode single|team|package]
   bin/hephaestus contract verify <agent-folder> [--mode single|team|package]
   bin/hephaestus contract prompt [--mode single|team|package]
+  bin/hephaestus session [inspect|normalize|validate|preview|merge|ir|compile|promote] [--input <session.jsonl>] [--global-agent]
   bin/hephaestus package <agent-folder> [--visibility marketplace|private-link]
   bin/hephaestus publish <agent-folder> --visibility marketplace|private-link [--dry-run] [--expected-package-hash <sha256>] [--expected-upload-receipt <sha256>] [--overwrite-cloud-id <id>]
   bin/hephaestus field-test
@@ -412,12 +413,23 @@ case "$command" in
 	    run_python_module agentlas_cloud plugins "$@"
 	    ;;
 	  meta-agent|hep-build|hephaestus-build|Hephaestus-build|build)
+	    # `session` is the deterministic local source/IR boundary used by the
+	    # host-LM /hep-build session flow. Other build requests remain host-LLM
+	    # orchestration and must not silently fall back to this CLI.
+	    if [[ "${1:-}" == "session" ]]; then
+	      shift
+	      run_python_module agentlas_cloud session "$@"
+	      exit $?
+	    fi
 	    request="${*:-Create or package an Agentlas-compatible agent.}"
 	    escaped_request="${request//\\/\\\\}"
 	    escaped_request="${escaped_request//\"/\\\"}"
 	    escaped_request="${escaped_request//$'\n'/\\n}"
 	    printf '{"status":"error","error":"host_llm_required","command":"hep-build","request":"%s","message":"hep-build requires a connected host LLM; run /hep-build in an installed Hephaestus host adapter"}\n' "$escaped_request" >&2
 	    exit 3
+	    ;;
+	  session)
+	    run_python_module agentlas_cloud session "$@"
 	    ;;
 	  network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract|feature-map)
 	    # `contract` was the one subcommand the Python CLI exposed that this

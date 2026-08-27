@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/session-build-receipt.schema.json",
+  "title": "Agentlas Session Build Receipt",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "receiptId", "sourceDigests", "sourceSetHash", "workBriefDigest", "draftDigest", "irDigest", "buildPlanDigest", "consent", "approval", "rawTranscriptIncluded", "metricsEligible", "replayable", "publicExport", "canonicalAoMaterialized", "status", "receiptHash"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.session-build-receipt.v1" },
+    "kind": { "const": "agentlas-session-build-receipt" },
+    "receiptId": { "type": "string", "pattern": "^sbr_[a-f0-9]{24}$" },
+    "sourceDigests": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }, "uniqueItems": true },
+    "sourceSetHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "workBriefDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "draftDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "irDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "buildPlanDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "consent": { "type": "object", "required": ["readSource", "sendSanitizedToProvider", "writePackage", "activatePermissions", "publish"], "properties": { "readSource": { "type": "boolean" }, "sendSanitizedToProvider": { "type": "boolean" }, "writePackage": { "type": "boolean" }, "activatePermissions": { "const": false }, "publish": { "const": false } }, "additionalProperties": false },
+    "approval": { "type": "boolean" },
+    "rawTranscriptIncluded": { "const": false },
+    "metricsEligible": { "const": false },
+    "replayable": { "const": false },
+    "publicExport": { "const": false },
+    "canonicalAoMaterialized": { "const": false },
+    "packageHash": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
+    "status": { "enum": ["candidate", "compiled", "verified", "blocked"] },
+    "receiptHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  },
+  "additionalProperties": false
+}

@@ -1,7 +1,7 @@
 {
   "id": "hephaestus",
   "name": "hephaestus",
-  "version": "1.2.30",
+  "version": "1.2.31",
   "description": "Open Agent OS for Claude Code, Codex, and Cursor: meta-agent builder, A2A Hub routing, local ontology, memory/security gates.",
   "author": {
     "name": "Agentlas",
@@ -22,13 +22,14 @@
   "interface": {
     "displayName": "Hephaestus",
     "shortDescription": "Create Agentlas-compatible agents and teams, or open the local ontology GUI.",
-    "longDescription": "Hephaestus is a portable three-agent meta-agent team with a local-first ontology runtime. It creates self-evolving single agents, full multi-agent teams, packages existing agents into Agentlas architecture, and opens the project ontology GUI.",
+    "longDescription": "Hephaestus is a portable four-agent meta-agent team with a local-first ontology runtime. It creates self-evolving single agents, full multi-agent teams, packages existing agents into Agentlas architecture, compiles explicitly exported sessions into reviewed candidates, and opens the project ontology GUI.",
     "developerName": "Agentlas",
     "category": "AI Agents",
     "capabilities": [
       "single_agent_builder",
       "multi_agent_team_builder",
       "agentlas_packager",
+      "session_agent_builder",
       "runtime_adapters",
       "memory_architecture"
     ],

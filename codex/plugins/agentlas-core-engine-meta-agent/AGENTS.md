@@ -37,7 +37,7 @@ manifest, scan the staged content for secrets/private paths, and stop the
 release if any excluded class appears. A passing test does not authorize
 publishing the test.
 
-This repository is a portable three-agent meta-agent team. Use it to create or
+This repository is a portable four-agent meta-agent team. Use it to create or
 package Agentlas-compatible single agents and multi-agent teams for Codex,
 Claude Code, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes
 Agent, Ollama-served local models (Gemma, DeepSeek — see
@@ -81,9 +81,10 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
   `scripts/verify-experience-assets-contract.sh`.
 - Team members: `agents/10-single-agent-builder/agent.md`,
   `agents/20-multi-agent-team-builder/agent.md`, and
-  `agents/30-agentlas-packager/agent.md`.
+  `agents/30-agentlas-packager/agent.md`, plus
+  `agents/40-session-agent-builder/agent.md`.
 - Mode contracts: `modes/single-agent-creator.md`, `modes/team-builder.md`,
-  and `modes/agentlas-packager.md`.
+  `modes/agentlas-packager.md`, and `modes/session-agent-builder.md`.
 - Portable runtime core: `.agents/agentlas-core-engine-meta-agent/agent.md`.
 - Reusable skills: `.agents/skills/*/SKILL.md` and root `skills/*/SKILL.md`.
 - Agentlas contracts: `.agentlas/mode-map.json`,
@@ -190,13 +191,15 @@ authority model:
    of guessing. Classify the request as one of:
    - create one single agent;
    - create a multi-agent team;
-   - package or repair an existing local/external agent or team.
+   - package or repair an existing local/external agent or team;
+   - compile an explicitly exported session into a reviewed agent or team.
 2. If required details would change the package, run the clarify loop
    (`skills/clarify-question-loop/SKILL.md`) before generating files.
 3. Route to exactly one core team member:
    - `10-single-agent-builder`;
    - `20-multi-agent-team-builder`;
-   - `30-agentlas-packager`.
+   - `30-agentlas-packager`;
+   - `40-session-agent-builder` for an explicitly exported session source.
 4. Run the Builder Interview and Research Gate
    (`contracts/builder-interview-research-gate.md`) before writing substantial
    generated package files. Ask an 8-12 question first batch when the request is
@@ -352,6 +355,8 @@ passing or the run is explicitly reported as blocked.
 - `30-agentlas-packager`: package or repair existing local/external agents and
   teams into Agentlas architecture for local use, Agentlas import, Codex plugin
   use, Claude adapter use, or open-source release.
+- `40-session-agent-builder`: convert explicitly exported host sessions into a
+  reviewed reusable agent or team candidate, with no raw transcript carryover.
 
 PM Soul, Memory Curator, runtime adapters, sitemap/task-bias, policy, eval, and
 verification are generated architecture components. They are not extra members
@@ -434,6 +439,13 @@ direct worker commands were explicitly requested. Team packages must pass
 shape. It adds canonical core files, `.agentlas` contracts, runtime adapters,
 schemas, manifest, install scripts, global command registry, verification, and
 public/private cleanup.
+
+`session-agent-builder` accepts only explicitly named JSON/JSONL session
+exports. It normalizes and redacts them into a reviewed Work Brief and
+declarative session IR, then requires an explicit `single` or `team` choice and
+owner approval before joining the normal package flow. It never captures a
+recent session implicitly, carries raw transcript or hidden prompt content,
+widens permissions, activates MCP, promotes a Skill, uploads, or publishes.
 
 ## Memory Preflight
 

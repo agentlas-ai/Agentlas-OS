@@ -5,9 +5,10 @@ description: "Use whenever a build emits or repairs .agentlas/routing-card.json 
 
 # Routing Card Field Spec — what goes in every field, and where it lands
 
-One card, three builders. `10-single-agent-builder`, `20-multi-agent-team-builder`
-and `30-agentlas-packager` differ in what they assemble, but the routing card is
-the same artifact with the same rules in all three. This file is the reference
+One card, four builders. `10-single-agent-builder`, `20-multi-agent-team-builder`,
+`30-agentlas-packager`, and `40-session-agent-builder` differ in what they
+assemble, but the routing card is the same artifact with the same rules in all
+four. This file is the reference
 they share, and `templates/routing-card.example.json` is a complete card that
 passes `schemas/routing-card.schema.json`.
 

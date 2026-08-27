@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/session-source-set.schema.json",
+  "title": "Agentlas Session Source Set",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "sourceSummaries", "eventCount", "events", "conflicts", "security", "mergeDigest"],
+  "properties": {
+    "schemaVersion": { "const": "agentlas.session-source-set.v1" },
+    "kind": { "const": "agentlas-session-merge" },
+    "sourceSummaries": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "type": "object", "required": ["sourceId", "sourceDigest", "host", "eventCount", "sanitizedDigest", "events"], "properties": { "sourceId": { "type": "string" }, "sourceDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }, "host": { "type": "string" }, "eventCount": { "type": "integer", "minimum": 1 }, "sanitizedDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }, "events": { "type": "array" }, "security": { "type": "object" } }, "additionalProperties": false } },
+    "eventCount": { "type": "integer", "minimum": 1 },
+    "events": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "conflicts": { "type": "array", "items": { "type": "object" } },
+    "security": { "type": "object", "required": ["blocked", "rawTranscriptIncluded", "untrustedEventCount"], "properties": { "blocked": { "const": false }, "rawTranscriptIncluded": { "const": false }, "untrustedEventCount": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
+    "mergeDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  },
+  "additionalProperties": false
+}

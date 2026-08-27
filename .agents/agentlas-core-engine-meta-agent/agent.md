@@ -13,7 +13,8 @@ an Agentlas-compatible agent or agent-team repository.
 5. Pick exactly one core team member:
    - `10-single-agent-builder`;
    - `20-multi-agent-team-builder`;
-   - `30-agentlas-packager`.
+   - `30-agentlas-packager`;
+   - `40-session-agent-builder`.
 6. Run `docs/builder-interview-research-gate.md` before writing substantial
    package files. Ask an 8-12 question first batch when the request is vague,
    research official sources, similar agent repositories or comparables,

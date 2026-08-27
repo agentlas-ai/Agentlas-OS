@@ -135,7 +135,7 @@ Hephaestus classical operating system अवधारणाओं से सी�
 </p>
 
 <p align="center">
-  <sub>चित्र 1. Request shaping, तीन builders, generated package contracts, memory curation, skill lifecycle, runtime adapters और sync boundaries।</sub>
+  <sub>चित्र 1. Request shaping, चार builders, generated package contracts, memory curation, skill lifecycle, runtime adapters और sync boundaries।</sub>
 </p>
 
 ---
@@ -190,7 +190,7 @@ documented bare `/agentlas build` autocomplete के लिए ऊपर का
 
 अपने OS terminal से:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.30
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.31
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:agentlas` in-app entry है।*
@@ -234,13 +234,14 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 ## OS सबसिस्टम
 
 ### Meta-Agent Factory — Process निर्माण
-तीन builders का उपयोग करने वाली एक unified compilation factory। हर generated package अपना global command (`.agentlas/global-commands.json`) register करता है और verification scripts के साथ ship होता है — user को कभी अनुमान नहीं लगाना पड़ता कि compiled package कैसे चलाना है:
+चार builders का उपयोग करने वाली एक unified compilation factory। हर generated package अपना global command (`.agentlas/global-commands.json`) register करता है और verification scripts के साथ ship होता है — user को कभी अनुमान नहीं लगाना पड़ता कि compiled package कैसे चलाना है:
 
 | Compilation Mode | Routing Target | Output Artifact |
 | :--- | :--- | :--- |
 | **Single-Agent** | `10-single-agent-builder` | Localized skills, memory contracts और runtime adapters के साथ standalone worker। |
 | **Multi-Agent Team** | `20-multi-agent-team-builder` | PM Orchestrator, Memory Curator, Policy Gate, QA और validation scripts वाली hierarchical team। |
 | **Workspace Packager** | `30-agentlas-packager` | runtime import, CLI execution या GitHub distribution के लिए तैयार compiled bundle। |
+| **Session Agent Builder** | `40-session-agent-builder` | Explicitly exported sessions को reviewed single-agent या multi-agent team package में बदलता है। |
 
 *Briefing Interview Gate:* Builders प्रक्रिया की शुरुआत **briefing interview gate** ([docs/builder-interview-research-gate.md](docs/builder-interview-research-gate.md)) से करते हैं: lens-driven प्रश्न पूछना, ambiguity threshold का मूल्यांकन करना, primary sources खोजना, और work brief output करना।
 

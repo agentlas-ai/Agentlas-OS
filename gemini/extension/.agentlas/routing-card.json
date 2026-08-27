@@ -40,6 +40,9 @@
     "create_single_agents",
     "build_agent_teams",
     "package_existing_agents",
+    "build_agents_from_sessions",
+    "normalize_session_sources",
+    "compile_session_ir",
     "repair_agent_repos",
     "generate_routing_cards",
     "verify_agent_packages",
@@ -67,7 +70,7 @@
       "agent_package_contracts"
     ]
   },
-  "description": "Portable three-agent Agentlas meta-agent team for creating, repairing, packaging, validating, and publishing Agentlas-compatible agents and multi-agent teams across Codex, Claude Code, Gemini, Antigravity, Cursor, terminal, and AGENTS.md runtimes.",
+  "description": "Portable four-agent Agentlas meta-agent team for creating, repairing, packaging, validating, and compiling session-derived Agentlas agents and multi-agent teams across Codex, Claude Code, Gemini, Antigravity, Cursor, terminal, and AGENTS.md runtimes.",
   "domains": [
     "software",
     "devops",

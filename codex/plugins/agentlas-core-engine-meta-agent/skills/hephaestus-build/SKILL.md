@@ -35,12 +35,21 @@ description: "Use when the user types /prompts:hep-build or /agentlas-build, men
    [ -n "$RUNNER" ] || { echo "Hephaestus runner not found." >&2; exit 1; }
    ```
 
-   Take exactly one folder explicitly named or confirmed by the user as
-   `PACKAGE_TARGET`. If none was named, or multiple candidates exist, stop and
-   ask. Never default to `.`, the cwd, or `$ENGINE`. Run
-   `"$RUNNER" contract resolve-target "$PACKAGE_TARGET" --base "$PWD"` and set
-   `PACKAGE_ROOT` only to the status-`ok` receipt's exact `package_root`.
-   Nonzero or error receipts are blockers.
+   For an interactive request whose first argument is `session`, do not resolve
+   a generic `PACKAGE_TARGET` and do not ask for a JSON/JSONL export. Ask first:
+   "이 세션에서 만든 에이전트를 기본 전역 Agentlas 에이전트 폴더에 만들까요? 다른 위치를 원하면 경로를 알려주세요. 별도 위치를 지정하지 않으면 전역 폴더에 만듭니다."
+   If no alternate location is named, use `AGENTLAS_AGENT_HOME` or
+   `~/.agentlas/agentlas-agent` and create a new safe-slug child package. If a
+   destination is supplied, validate that exact folder. Never overwrite an
+   existing child. The current conversation is the source; do not inspect
+   recent sessions or host databases.
+
+   For every other build request, take exactly one folder explicitly named or
+   confirmed by the user as `PACKAGE_TARGET`. If none was named, or multiple
+   candidates exist, stop and ask. Never default to `.`, the cwd, or `$ENGINE`.
+   Run `"$RUNNER" contract resolve-target "$PACKAGE_TARGET" --base "$PWD"`
+   and set `PACKAGE_ROOT` only to the status-`ok` receipt's exact
+   `package_root`. Nonzero or error receipts are blockers.
 
    Read `$ENGINE/AGENTS.md`, `$ENGINE/.agentlas/mode-map.json`, the selected
    mode contract under `$ENGINE/modes/`, and
@@ -49,6 +58,8 @@ description: "Use when the user types /prompts:hep-build or /agentlas-build, men
 3. Run the public mode classifier by independent ownership boundaries, not by
    keywords such as "team":
    - package or repair existing material -> `30-agentlas-packager`;
+   - current interactive conversation invoked with `session`, or an explicitly
+     exported session in a terminal/headless run -> `40-session-agent-builder`;
    - one independently owned context/tools/success standard ->
      `10-single-agent-builder`;
    - two or more roles with separate context, permissions, success standards,
@@ -62,7 +73,10 @@ description: "Use when the user types /prompts:hep-build or /agentlas-build, men
 4. Run the Builder Interview and Research Gate from
    `$ENGINE/contracts/builder-interview-research-gate.md` before writing substantial package
    files:
-   - ask an 8-12 question first batch when the request is vague;
+   - for an interactive `session` request, treat the current conversation as
+     the source interview and ask only the destination question plus focused
+     gaps that would change scope, permissions, output, or safety;
+   - for other builds, ask an 8-12 question first batch when the request is vague;
    - continue follow-ups until target user, tasks, inputs, outputs, examples,
      role count, separated tools or permissions, final merge needs, execution
      order, memory, failure modes, and evals are clear;
@@ -86,7 +100,14 @@ description: "Use when the user types /prompts:hep-build or /agentlas-build, men
 6. Pick one:
    - `10-single-agent-builder`;
    - `20-multi-agent-team-builder`;
-   - `30-agentlas-packager`.
+   - `30-agentlas-packager`;
+   - `40-session-agent-builder`.
+   For `40-session-agent-builder`, run the current-session two-pass flow: first
+   show a `Generalized Session Report` that extracts reusable intent,
+   procedures, corrections, failed approaches, validation, and conditional
+   `IF / THEN / BECAUSE / AVOID / INSTEAD` rules; then offer `Build Agent` or
+   `Edit`. Only the approved report is converted into the standalone agent
+   prompt and package. Do not present JSON/JSONL as an interactive input.
 7. Load matching support skills.
 8. Write all generated or repaired runtime agent instructions in English:
    `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `agent.md`, skills, workflow/command

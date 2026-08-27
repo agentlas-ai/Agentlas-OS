@@ -28,7 +28,8 @@ Antigravity workflows under `antigravity/` (see `antigravity/README.md`).
 6. Route to one core team member:
    - `10-single-agent-builder`;
    - `20-multi-agent-team-builder`;
-   - `30-agentlas-packager`.
+   - `30-agentlas-packager`;
+   - `40-session-agent-builder`.
 7. Use `.agents/skills/agentlas-auto-activation/SKILL.md` when local project
    continuity or `.agentlas` activation is part of the output.
 8. Use `.agentlas/memory-map.json` for memory routing.
