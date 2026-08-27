@@ -480,7 +480,7 @@ forcing your work into one model provider:
 
 ---
 
-## New In v1.1.0 — The Briefing Interview Engine
+## Briefing Interview Engine (introduced in v1.1.0)
 
 Agents generated from vague, single-sentence prompts fail under real-world edge cases. Hephaestus v1.1.0 positions task specification as a first-class OS service through the **Briefing Interview Engine**:
 
