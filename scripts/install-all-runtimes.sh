@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.2.33}"
+version="${HEPHAESTUS_REF:-v1.2.34}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -874,8 +874,11 @@ install_agents_skills() {
     || { warn "Could not create ~/.agents/skills (is it writable?); universal skills were not installed."; return 1; }
   local name src
   for name in "${managed_skill_names[@]}"; do
-    src="$source_dir/.agents/skills/$name"
-    [[ -d "$src" ]] || src="$source_dir/skills/$name"
+    # `skills/` is canonical. `.agents/skills/` is a rendered mirror and may
+    # come from an older checkout; preferring it here once propagated a stale
+    # personal `Hope` description into every fresh universal-skill install.
+    src="$source_dir/skills/$name"
+    [[ -d "$src" ]] || src="$source_dir/.agents/skills/$name"
     [[ -d "$src" ]] || { warn "canonical $name skill not found."; return 1; }
     rm -rf "$HOME/.agents/skills/$name"
     copy_tree_without_python_cache "$src" "$HOME/.agents/skills/$name" \

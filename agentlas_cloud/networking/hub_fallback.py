@@ -158,10 +158,17 @@ def search_hub(
     )
     cache_path = base / "cache" / _HUB_CACHE_FILE
     _purge_legacy_query_cache(cache_path)
-    cached_hit = _cached_success(cache_path, query_key)
-    if cached_hit is not None:
-        cached_hit["scope"] = scope
-        return cached_hit
+    # Owner-scoped results describe mutable account state. A successful cache
+    # hit here could keep /hep-cloud showing a package after it was replaced or
+    # removed on the server, with no client-side signal that the menu is old.
+    # The typed Workforce path is already source-authoritative; keep this
+    # legacy router path equally fresh while retaining the cache for anonymous
+    # marketplace lookups.
+    if not owner_scoped:
+        cached_hit = _cached_success(cache_path, query_key)
+        if cached_hit is not None:
+            cached_hit["scope"] = scope
+            return cached_hit
 
     url = _hub_url(base) + "/api/mcp/v1"
     # Owner cloud search asks the Hub to restrict results to the authenticated

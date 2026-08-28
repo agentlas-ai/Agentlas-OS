@@ -11,6 +11,11 @@ OS MCP server named `hephaestus-network`, the only host-visible Workforce MCP.
 Core reaches Cloud and Hub through its internal upstream client. Network means all registered
 Local agents, the signed-in owner's Cloud agents, and public Hub agents.
 
+Before every unpinned discovery, Core refreshes the current safe snapshot for
+each active registered Local source. A changed Local folder therefore becomes a
+new candidate release in this search without requiring `network reindex`; the
+selected and prepared release remains immutable after that discovery.
+
 The user does not need to say `goal`. First call `workforce.goal_context` for
 the current project, passing `knownRevisions` with any `goalId -> rosterRevision`
 pairs already in this conversation so unchanged goals come back as one line. If

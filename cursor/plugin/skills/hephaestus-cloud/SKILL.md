@@ -22,6 +22,11 @@ cards.
 - For the combined Local + own Cloud + public Hub menu, use `/hep-network`
   (`sourceScope: "network"`).
 
+Each unpinned Cloud discovery goes to the owner-scoped source for its current
+menu; a successful client cache entry must not hide a newly published,
+replaced, or removed package. Once the host validates and prepares a choice,
+the exact Cloud release remains pinned for that execution.
+
 ## 1. Resolve the runner
 
 Run this resolution in a shell and use the first hit:

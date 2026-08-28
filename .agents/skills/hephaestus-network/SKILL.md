@@ -16,6 +16,13 @@ Source scopes are exact:
 - `cloud`: the signed-in owner's Cloud packages only;
 - `hub`: public Hub packages only.
 
+Before an unpinned search uses the Local source, Core refreshes every active
+registered source folder and creates a new immutable release when its safe
+content snapshot changed. This is discovery freshness; a prepared or
+goal-bound roster remains pinned to its exact release. `network reindex` is a
+rebuildable card-cache operation and is not required to refresh a registered
+Local release. New folders still require explicit `local-register`.
+
 Public demos and distribution proof use explicit `hub` scope. They must not use
 private Local/Cloud inventory as evidence of public availability.
 

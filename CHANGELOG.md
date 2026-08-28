@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 1.2.34 — 2026-08-28
+
+- **Reload feedback remains truthful after the host ledger has already moved.**
+  Reconciliation verifies the target-named cache directly, samples the process
+  table once, and compares Codex/Claude host start times with a durable
+  activation cutoff. Open sessions therefore remain `pending_reload` even when
+  their command line does not expose the cache path or the persistent ledger
+  already points at the new release. Unknown process visibility fails closed,
+  process evidence is scoped to the matching UID and host profile, active hosts
+  never trigger vendor CLI mutation, and Claude migration changes only the exact
+  Agentlas plugin entry rather than every `hephaestus@*` entry.
+- **Network discovery refreshes mutable source inventories without weakening
+  execution pinning.** Owner Cloud searches bypass stale success-cache replay,
+  while Local searches re-snapshot only sources already registered in the
+  roster. New searches can therefore see an edited or removed package, but an
+  existing selection session and its prepared runtime bundle continue to use
+  the exact immutable release they originally selected.
+- **The freshness contract now reaches every supported host adapter.** The
+  canonical `/hep-local` and `/hep-network` bodies are rendered into each host
+  format, and installers/self-updaters use the canonical skill tree so a stale
+  mirror cannot silently ship a different runtime contract.
+
 ## 1.2.33 — 2026-08-28
 
 - **Network staffing now ranks the work, not the host permission vocabulary.**

@@ -6,8 +6,13 @@ Raw request: `the request typed after the command`
 
 Act as the temporary top-level workforce orchestrator. Use the local Agentlas
 OS MCP server `hephaestus-network` and call the Workforce tools with exact
-`sourceScope: "local"`. This command searches only the reconciled registered
-Local inventory; it must not add owner Cloud or public Hub candidates.
+`sourceScope: "local"`. Before every unpinned discovery, Core refreshes the
+current safe snapshot for each active registered Local source, creating a new
+release when the source folder changed. This command searches only that
+registered Local inventory; it must not add owner Cloud or public Hub
+candidates. A prepared or goal-bound selection remains pinned to its exact
+release. `network reindex` rebuilds the card cache but is not the release
+refresh mechanism, and a new source still requires explicit registration.
 
 1. Author a redacted `agentlas.workforce-work-order.v1`; private project
    grounding stays on-host.

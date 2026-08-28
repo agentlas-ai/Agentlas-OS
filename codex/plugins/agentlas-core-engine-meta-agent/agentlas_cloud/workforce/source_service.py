@@ -297,7 +297,7 @@ class WorkforceSourceService:
         remote_capabilities: RemoteCapabilities | None = None,
         lineage_verifier: LineageVerifier | None = None,
         cloud_source_supported: bool | None = None,
-        reconcile_local: bool = False,
+        reconcile_local: bool = True,
         auth_partition: str | None = None,
         prepare_receipt_cache: WorkforcePrepareReceiptCache | None = None,
         remote_circuit: WorkforceRemoteCircuit | None = None,
@@ -776,7 +776,16 @@ class WorkforceSourceService:
             if source == "local":
                 try:
                     if self.reconcile_local:
-                        self.local_registry.reconcile()
+                        # Discovery is the freshness boundary. Prepared and
+                        # bound executions still use their pinned release, but
+                        # an unpinned search must first re-snapshot each source
+                        # already registered in the local roster. Keep the
+                        # reconcile fallback for injected/older registries.
+                        refresh = getattr(self.local_registry, "refresh_registered_sources", None)
+                        if callable(refresh):
+                            refresh()
+                        else:
+                            self.local_registry.reconcile()
                     index = WorkforceIndex(
                         self.local_registry.active_profiles(),
                         # 발행자 문장은 프로필 밖 회수 힌트다 — 읽기 실패는 구조석이

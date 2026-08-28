@@ -889,6 +889,82 @@ class LocalWorkforceRegistry:
         )
         return {"contentDigest": updated["contentDigest"]}
 
+    def refresh_registered_sources(self) -> dict[str, Any]:
+        """Re-import the current bytes for every active registered source.
+
+        A local registration is an immutable execution snapshot, not a live
+        view of its import folder. That is the right property for a prepared
+        execution, but discovery must refresh the unpinned inventory first or
+        an edited source can remain invisible indefinitely. Refresh only roots
+        already present in the local registry: this updates registered agents
+        without silently widening ``/hep-local`` to every card found on disk.
+
+        ``register()`` keeps the old release when a source disappears or fails
+        validation, and returns a new content-addressed release when its safe
+        snapshot changes. Existing ownership (explicit vs networking) is
+        preserved rather than being rewritten as a side effect of discovery.
+        """
+
+        records = [
+            record
+            for record in self._records()
+            if record.get("status") == "active" and record.get("sourceRoot")
+        ]
+        refreshed = 0
+        unchanged = 0
+        missing = 0
+        quarantined: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
+        seen_roots: set[str] = set()
+
+        for record in records:
+            source_root = str(record.get("sourceRoot") or "").strip()
+            if not source_root or source_root in seen_roots:
+                continue
+            seen_roots.add(source_root)
+            try:
+                root = Path(source_root).expanduser()
+                if not root.is_dir():
+                    missing += 1
+                    continue
+                managed_by = str(record.get("managedBy") or "explicit")
+                outcome = self.register(root, managed_by=managed_by)
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                failed.append(
+                    {
+                        "sourceRoot": source_root,
+                        "reasonCode": type(exc).__name__,
+                        "message": str(exc)[:200],
+                    }
+                )
+                continue
+
+            if outcome.get("status") == "active":
+                if outcome.get("idempotent"):
+                    unchanged += 1
+                else:
+                    refreshed += 1
+            elif outcome.get("status") == "quarantined":
+                quarantined.append(
+                    {
+                        key: outcome[key]
+                        for key in ("sourceRoot", "reasonCode", "message", "remediation")
+                        if key in outcome
+                    }
+                )
+
+        return {
+            "status": "refreshed",
+            "registered": len(seen_roots),
+            "refreshed": refreshed,
+            "unchanged": unchanged,
+            "missing": missing,
+            "quarantined": len(quarantined),
+            "quarantinedSources": quarantined[:200],
+            "failed": len(failed),
+            "failedSources": failed[:200],
+        }
+
     def reconcile(self, networking_root: Path | str | None = None) -> dict[str, Any]:
         """Reconcile only paths explicitly registered in networking state.
 

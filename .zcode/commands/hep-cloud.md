@@ -14,6 +14,11 @@ OS MCP server `hephaestus-network` and call the Workforce tools with exact
 `sourceScope: "cloud"`. This command may search only packages owned by the
 signed-in Agentlas account. It must not add Local or public Hub candidates.
 
+Every unpinned Cloud discovery asks the owner-scoped source for its current
+menu; a client success-cache entry must not hide a newly published, replaced,
+or removed package. After validation, preparation remains pinned to the exact
+Cloud release selected from that discovery.
+
 Before the first Cloud source call, reuse the installed Agentlas sign-in.
 Resolve the runner in this order and use it only for authentication; the host
 LLM still performs staffing through the Workforce MCP tools:
