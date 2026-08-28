@@ -21,12 +21,14 @@
   no longer claim routing-ready status.
 
 - **Runtime auto-update repairs exact-version Codex and Claude plugin state.**
-  A machine updating once from v1.2.32 materializes a v1.2.33 cache instead of
-  overwriting a legacy directory in place, migrates Claude's installed-plugin
-  ledger atomically, records every mismatched legacy cache, and reports an
-  already-running host as `pending_reload` until that process exits or reloads.
-  Offline, disabled-update, and runtime-not-installed paths remain fail-closed;
-  no vendor CLI is invoked during this bounded transition.
+  A machine updating once from v1.2.32 materializes a v1.2.33 cache, migrates
+  Claude's installed-plugin ledger atomically, records any old-name cache that
+  the already-running v1.2.32 updater changed before the new bridge could take
+  control, and reports that host as `pending_reload` until its process exits or
+  reloads. From v1.2.33 onward every version-named cache is immutable and only
+  the exact new target is created. Offline, disabled-update, and
+  runtime-not-installed paths remain fail-closed; no vendor CLI is invoked
+  during this bounded transition.
 
 ## 1.2.32 — 2026-08-27
 

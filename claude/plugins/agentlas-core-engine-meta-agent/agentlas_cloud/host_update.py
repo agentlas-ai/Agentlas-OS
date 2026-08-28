@@ -494,6 +494,24 @@ def _reconcile_codex(home: Path, source: Path, target: str, execute: bool) -> di
         }
     if status["current"]:
         return {**status, "status": "current", "reloadRequired": False}
+    # Codex' install/remove commands may replace the whole marketplace cache.
+    # Never run them while any versioned cache is live (or process inspection
+    # is inconclusive), even when the persistent source binding still needs
+    # repair. The next command after closing Codex retries this reconciliation.
+    if status.get("activeProcess") != "inactive":
+        process_state = status.get("activeProcess")
+        return {
+            **status,
+            "status": "pending_restart",
+            "reason": (
+                "active_plugin_process_blocks_persistent_repair"
+                if process_state == "active"
+                else "plugin_process_state_unknown"
+            ),
+            "reloadRequired": True,
+            "retryRequired": True,
+            "retryCommand": "hephaestus hep-update",
+        }
     if not status["cliAvailable"]:
         return {
             **status,

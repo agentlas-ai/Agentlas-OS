@@ -386,12 +386,11 @@ def _adapter_paths(home: Path) -> list[Path]:
     codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
     paths: list[Path] = []
     # Destination-only sweep: derive from what this machine actually has, so a
-    # command installed after the last full update is still swept. Derived ONCE
-    # and reused by every branch below: the plugin-cache branch kept its own
-    # `HEP_COMMANDS` loop after this call site was fixed, so cached adapters for
-    # `agentlas`, `agentlas-one` and `hep-graph` were never swept and kept the
-    # permission-blocked preflight forever on exactly the machines that read the
-    # cache copy first.
+    # command installed after the last full update is still swept. Versioned
+    # plugin-cache directories are intentionally excluded: once a host has
+    # loaded one, changing even a single command file under that old version
+    # breaks the cache-name/content invariant. The next exact-version cache is
+    # sanitized in the release payload and becomes active after reload.
     managed_commands = _managed_command_names(home=home)
     for command in managed_commands:
         paths.extend(
@@ -418,23 +417,6 @@ def _adapter_paths(home: Path) -> list[Path]:
                 home / ".gemini" / "hephaestus-extension-source" / "skills" / skill / "SKILL.md",
             ]
         )
-    cache_roots = [
-        home / ".claude" / "plugins" / "cache" / "agentlas-core-engine" / "hephaestus",
-        codex_home / "plugins" / "cache" / "agentlas-core-engine" / "hephaestus",
-    ]
-    for cache_root in cache_roots:
-        if not cache_root.is_dir():
-            continue
-        for child in cache_root.iterdir():
-            if not child.is_dir() or child.is_symlink():
-                continue
-            for runtime in ("claude", "codex"):
-                command_dir = child / runtime / "plugins" / "agentlas-core-engine-meta-agent" / "commands"
-                if command_dir.is_dir():
-                    for command in managed_commands:
-                        paths.append(command_dir / f"{command}.md")
-            for skill in managed_skills:
-                paths.append(child / "skills" / skill / "SKILL.md")
     return paths
 
 
@@ -1121,11 +1103,12 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
     cache_added: list[str] = []
     cache_preserved: list[str] = []
 
-    # A host-owned plugin cache can be live even while the runtime update worker
-    # is running. Never replace the directory recorded by a host ledger (or a
-    # process command line) in place: a Claude/Codex MCP process may still have
-    # modules loaded from it. A fresh version-named target is materialized below
-    # and the host registry decides when the old process can be switched over.
+    # A host-owned plugin cache is immutable once its version directory exists.
+    # A Claude/Codex MCP process may still have modules loaded from any old
+    # directory, and a directory named for one release must never silently carry
+    # another release's bytes. Materialize only the exact new version target;
+    # ledgers and live-process inspection decide whether that target itself may
+    # be repaired and when the host can switch over.
     protected_cache_paths = _installed_plugin_cache_ledger_paths(home_dir)
     active_cache_paths = _active_plugin_cache_paths(home_dir)
     if active_cache_paths is None:
@@ -1190,8 +1173,9 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
         except Exception as exc:
             failed.append({"path": str(dest), "error": str(exc)})
 
+    target_cache_name = _runtime_version_dir_name(source_release) if source_release else None
     for _, child in _existing_plugin_cache_children(home_dir):
-        if _canonical_path(child) in protected_cache_paths:
+        if child.name != target_cache_name or _canonical_path(child) in protected_cache_paths:
             cache_preserved.append(str(child))
 
     grok_result = _sync_grok_marketplace_cache(home_dir)
@@ -2238,13 +2222,13 @@ def _installed_plugin_cache_targets(
     *,
     protected_paths: set[Path] | None = None,
 ) -> list[tuple[Path, Path]]:
-    """Return existing safe cache targets plus the exact release target.
+    """Return only the exact release cache target for each installed host.
 
-    Existing unreferenced copies remain refreshable for compatibility with
-    older installations. A ledger/process-referenced copy is omitted so the
-    updater cannot replace a live session in place. If the host cache root is
-    present, the new version-named directory is always included and is created
-    atomically by the sync loop even when no such directory existed yet.
+    Version-named cache directories are immutable, including copies that are
+    not currently referenced by a ledger or process. Rewriting an old name with
+    new bytes makes the filesystem disagree with the host registry and makes a
+    later reload impossible to reason about. The exact target is created
+    atomically; a referenced/live exact target is preserved until reload.
     """
 
     targets: list[tuple[Path, Path]] = []
@@ -2257,25 +2241,14 @@ def _installed_plugin_cache_targets(
             or cache_root.is_symlink()
         ):
             continue
-        try:
-            children = list(cache_root.iterdir())
-        except OSError:
-            continue
-        for child in children:
-            if (
-                child.is_dir()
-                and not child.is_symlink()
-                and (child / "bin" / "hephaestus").is_file()
-                and _canonical_path(child) not in protected
-            ):
-                targets.append((src_rel, child))
         if source_release:
             target = cache_root / _runtime_version_dir_name(source_release)
-            if not target.is_symlink() and (not target.exists() or target.is_dir()):
-                if _canonical_path(target) not in {
-                    _canonical_path(dest) for _, dest in targets
-                }:
-                    targets.append((src_rel, target))
+            if (
+                not target.is_symlink()
+                and (not target.exists() or target.is_dir())
+                and _canonical_path(target) not in protected
+            ):
+                targets.append((src_rel, target))
     return targets
 
 
