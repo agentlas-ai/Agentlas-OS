@@ -16,13 +16,10 @@ WHY
     it is a missing safety rule on one runtime.
 
 WHAT IS GENUINELY PER-HOST
-    The frontmatter, and only the frontmatter, for the `hephaestus-*` skills.
-    OpenClaw needs its own `metadata: {"openclaw": {...}}` block and describes
-    its trigger in its own words because it has no `/hep-*` slash commands. So
-    those mirrors keep their own frontmatter verbatim and take the canonical
-    body underneath it. `agentlas-one` is a universal skill, so its complete
-    file is canonical, including frontmatter; it must never inherit an owner's
-    personal name from a stale mirror.
+    The frontmatter, and only the frontmatter. OpenClaw needs its own
+    `metadata: {"openclaw": {...}}` block and describes its trigger in its own
+    words because it has no `/hep-*` slash commands. So each mirror keeps its
+    own frontmatter verbatim and takes the canonical body underneath it.
 
 NOT OWNED HERE
     `agentlas-<verb>` redirect aliases (kimi/skills, codex Agent Skills) belong
@@ -56,13 +53,9 @@ MIRROR_ROOTS = [
     "kimi/skills",
 ]
 
-# Generated elsewhere — see the module docstring. `agentlas-one` is the one
-# exception: it is a real universal skill with a canonical body, not a generated
-# `agentlas-<verb>` redirect alias. Treating it as an alias let the stale
-# `.agents/skills/agentlas-one` copy keep a maintainer's personal name and omit
-# the runner's actual command contract.
+# Generated elsewhere — see the module docstring.
 def _is_alias(name: str) -> bool:
-    return name.startswith("agentlas-") and name != "agentlas-one"
+    return name.startswith("agentlas-")
 
 
 def _split(text: str) -> tuple[str, str]:
@@ -78,15 +71,11 @@ def planned_files() -> dict[Path, str]:
         skill = canonical_dir / "SKILL.md"
         if not skill.is_file() or _is_alias(canonical_dir.name):
             continue
-        canonical_text = skill.read_text(encoding="utf-8")
-        _, canonical_body = _split(canonical_text)
+        _, canonical_body = _split(skill.read_text(encoding="utf-8"))
         for mirror_root in MIRROR_ROOTS:
             target = ROOT / mirror_root / canonical_dir.name / "SKILL.md"
             if not target.is_file():
                 continue  # this runtime does not ship the skill; that is a product choice
-            if canonical_dir.name == "agentlas-one":
-                plan[target] = canonical_text
-                continue
             head, _ = _split(target.read_text(encoding="utf-8"))
             plan[target] = head + canonical_body
     return plan
