@@ -79,8 +79,13 @@ has 'agentlas-one status --drift --ack' agentlas_cloud/runtime_drift.py "the mes
 has '"--ack"' bin/agentlas-one "acknowledging drift must be reachable from the runner"
 has 'host == "codex"' agentlas_cloud/one_workspace.py "One's only notice must reach hosts other than Claude"
 has '_ticket_hash_cache' agentlas_cloud/one_workspace.py "the ledger must not be re-hashed in full every session"
-hasnt 'Hope' skills/agentlas-one/SKILL.md "a shipped skill must not carry one machine's personal agent name"
-has '## Commands' skills/agentlas-one/SKILL.md "the shipped skill must list the verbs the runner actually accepts"
+for shipped_skill in "skills/agentlas-one/SKILL.md" ".agents/skills/agentlas-one/SKILL.md"; do
+  [[ -f "$root/$shipped_skill" ]] || fail "$shipped_skill must ship the universal Agentlas One skill"
+  grep -q 'Hope' "$root/$shipped_skill" \
+    && fail "$shipped_skill must not carry one machine's personal agent name"
+  grep -q '## Commands' "$root/$shipped_skill" \
+    || fail "$shipped_skill must list the verbs the runner actually accepts"
+done
 
 # ── §5.18 훅팩 레지스트리 소비 · §5.19 모든 진입 파일 · §5.20 설치 경로 ────
 has 'pack_kind" = "hookpack"' bin/agentlas-one "hookpack removal must be driven by the registry too"
