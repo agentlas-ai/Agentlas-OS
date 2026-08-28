@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 1.2.35 — 2026-08-28
+
+- **Network menus expose candidates whose semantic fit has no evidence.** A
+  candidate with no structured, lexical, vector, or publisher-trigger evidence
+  now carries `gap:semantic-fit-unsubstantiated`. Core still leaves the final
+  staffing decision to the host model, while validation reports one unmet
+  requirement instead of presenting the selection as fully supported.
+- **Plugin resolution matches actual plugin identities instead of incidental
+  substrings.** Queries use Unicode word tokens, require the complete plugin
+  name or two distinct description-token overlaps, and expose the documented
+  `agentlas_resolve_plugins` MCP tool. A Trello request can therefore remain
+  honestly unresolved rather than matching generic words such as `create` or
+  the `card` substring in Cardputer.
+- **Host memory hooks are installed only when their promoted runtime runner is
+  callable.** Detected hosts now receive a typed
+  `runtime_memory_hook_unavailable` refusal instead of durable hook commands
+  that later exit 127. Machines without a detected host remain a genuine
+  no-op success.
+
 ## 1.2.34 — 2026-08-28
 
 - **Reload feedback remains truthful after the host ledger has already moved.**
