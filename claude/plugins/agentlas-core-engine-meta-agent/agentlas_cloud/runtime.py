@@ -252,6 +252,14 @@ STANDALONE_EXPERIENCE_ASSET_SCHEMA_VERSIONS = frozenset(
 )
 
 
+class RuntimeBundleValidationError(ValueError):
+    """The folder has a manifest but cannot produce an executable bundle."""
+
+    def __init__(self, blockers: list[str]):
+        super().__init__("runtime_bundle_contract_invalid")
+        self.blockers = blockers
+
+
 @dataclass
 class AgentlasManifest:
     schemaVersion: str
@@ -1069,13 +1077,32 @@ def compile_runtime_bundle(root: str | Path) -> dict[str, Any]:
     entry = by_path.get(manifest.entry) or by_path.get("AGENTS.md")
     if not entry:
         raise FileNotFoundError(f"Entry file not found: {manifest.entry}")
+    blockers: list[str] = []
+    if not manifest.skills:
+        blockers.append("agentlas.json.skills must name at least one executable skill")
+    for skill in manifest.skills:
+        skill_path = f"skills/{skill}/SKILL.md"
+        portable_skill_path = f".agents/skills/{skill}/SKILL.md"
+        if skill_path not in by_path and portable_skill_path not in by_path:
+            blockers.append(f"declared skill is missing: {skill}")
+    placeholder = re.compile(r"\{\{[A-Za-z0-9_]+\}\}")
+    for package_file in files:
+        if placeholder.search(package_file.content):
+            blockers.append(f"unresolved placeholder: {package_file.path}")
+    computed_hash = package_hash(
+        [package_file for package_file in files if package_hash_includes(package_file.path)]
+    )
+    if manifest.packageHash != computed_hash:
+        blockers.append("agentlas.json.packageHash does not match the current package bytes")
+    if blockers:
+        raise RuntimeBundleValidationError(sorted(set(blockers)))
     scan = scan_files(files)
     mcp_policy = _load_validated_mcp_policy(base)
     entry_payload, entry_truncated = _entry_payload(entry)
     return {
         "schemaVersion": "1.0",
         "agent": manifest.name,
-        "packageHash": manifest.packageHash,
+        "packageHash": computed_hash,
         "entry": entry_payload,
         **({"entryTruncated": entry_truncated} if entry_truncated else {}),
         "skills": manifest.skills,

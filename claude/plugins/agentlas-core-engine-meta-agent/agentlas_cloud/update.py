@@ -9,6 +9,7 @@ TTL window so the user's command does not wait on network or install work.
 from __future__ import annotations
 
 import errno
+from functools import cmp_to_key
 import hashlib
 import json
 import os
@@ -569,6 +570,125 @@ def _install_or_report(release: dict[str, Any], current: str | None) -> dict[str
         ) from exc
 
 
+def _installed_outcome_status(success_status: str, installed: dict[str, Any]) -> str:
+    activation = installed.get("activation") if isinstance(installed, dict) else None
+    if not isinstance(activation, dict):
+        return success_status
+    if activation.get("status") == "blocked":
+        return "update_incomplete"
+    if activation.get("status") == "pending_reload":
+        return f"{success_status}_pending_reload"
+    return success_status
+
+
+def _apply_observed_install_state(
+    result: dict[str, Any],
+    installed: dict[str, Any],
+    previous_release: str | None,
+) -> None:
+    """Merge an install receipt and expose the release observed after activation."""
+
+    result.update(installed)
+    result["previous"] = previous_release
+    observed = current_release(_runtime_base() / "current")
+    if observed:
+        result["current"] = observed
+
+
+def _canonical_update_marker(
+    previous: dict[str, Any],
+    result: dict[str, Any],
+    runtime_root: Path,
+) -> dict[str, Any]:
+    """Build a marker from re-read state instead of retaining stale fields."""
+
+    checked_epoch = int(result.get("last_checked_epoch") or time.time())
+    canonical: dict[str, Any] = {
+        "markerSchemaVersion": "agentlas.auto-update.v2",
+        "status": result.get("status"),
+        "last_checked_epoch": checked_epoch,
+    }
+    if isinstance(previous.get("last_started_epoch"), (int, float)):
+        canonical["last_started_epoch"] = previous["last_started_epoch"]
+    for key in (
+        "reason",
+        "html_url",
+        "install_command",
+        "desktop_repair",
+        "desktop_updater_cleanup",
+        "archive_digest",
+        "digest_verified",
+        "archive_asset",
+        "adapter_sync",
+        "memory_hook_sync",
+        "global_router_sync",
+        "activation",
+    ):
+        if key in result:
+            canonical[key] = result[key]
+
+    current_link = _runtime_base() / "current"
+    observed_root = current_link if _path_present(current_link) else runtime_root
+    observed_release = current_release(observed_root)
+    if observed_release:
+        try:
+            resolved_root = observed_root.resolve()
+        except OSError:
+            resolved_root = observed_root
+        canonical.update(
+            {
+                "current": observed_release,
+                "targetVersion": observed_release,
+                "updated_to": observed_release,
+                "last_applied_tag": observed_release,
+                "runtime_root": str(resolved_root),
+                "current_link": str(current_link),
+            }
+        )
+        model_root = result.get("model_root") or resolved_root / RUNTIME_MODEL2VEC_PATH
+        canonical["model_root"] = str(model_root)
+        if result.get("last_applied_tag") == observed_release and isinstance(
+            result.get("last_applied_epoch"), (int, float)
+        ):
+            canonical["last_applied_epoch"] = result["last_applied_epoch"]
+        elif previous.get("last_applied_tag") == observed_release and isinstance(
+            previous.get("last_applied_epoch"), (int, float)
+        ):
+            canonical["last_applied_epoch"] = previous["last_applied_epoch"]
+        else:
+            canonical["last_applied_epoch"] = checked_epoch
+    else:
+        canonical["current"] = result.get("current")
+        if result.get("latest"):
+            canonical["latest"] = result["latest"]
+
+    reconciliation = result.get("reconciliation") if isinstance(result.get("reconciliation"), dict) else {}
+    host_sync = result.get("host_plugin_sync") or reconciliation.get("hostPluginSync")
+    cache_sync = result.get("plugin_cache_sync") or reconciliation.get("pluginCacheSync")
+    if isinstance(host_sync, dict):
+        canonical["host_plugin_sync"] = host_sync
+    if isinstance(cache_sync, dict):
+        canonical["plugin_cache_sync"] = cache_sync
+    pending_hosts = result.get("pendingHosts")
+    if pending_hosts is None and isinstance(host_sync, dict):
+        pending_hosts = host_sync.get("pendingHosts")
+    canonical["pendingHosts"] = sorted(set(pending_hosts or []))
+    canonical["reloadRequired"] = bool(
+        result.get("reloadRequired")
+        or (isinstance(host_sync, dict) and host_sync.get("reloadRequired"))
+    )
+    if "latest" in result:
+        canonical["latest"] = result["latest"]
+    return canonical
+
+
+def _persist_update_marker(previous: dict[str, Any], result: dict[str, Any], runtime_root: Path) -> None:
+    _write_json(
+        _runtime_base() / AUTO_UPDATE_MARKER,
+        _canonical_update_marker(previous, result, runtime_root),
+    )
+
+
 def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, Any]:
     runtime_root = root or Path(__file__).resolve().parent.parent
     current = current_release(runtime_root)
@@ -630,13 +750,18 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
         result["reconciliation"] = reconciliation
         if _requires_current_release_rehydrate(current, latest.get("tag_name"), reconciliation):
             installed = _install_or_report(latest, current)
-            result.update(installed)
-            result["status"] = "repaired_current"
+            _apply_observed_install_state(result, installed, current)
+            result["status"] = _installed_outcome_status("repaired_current", installed)
+        _persist_update_marker(_read_json(_runtime_base() / AUTO_UPDATE_MARKER), result, runtime_root)
         return result
 
     installed = _install_or_report(latest, current)
-    result.update(installed)
-    result["status"] = "updated" if status == "update_available" else "recovered_missing_release_marker"
+    _apply_observed_install_state(result, installed, current)
+    success_status = "updated" if status == "update_available" else "recovered_missing_release_marker"
+    result["status"] = _installed_outcome_status(success_status, installed)
+    result["last_applied_tag"] = latest.get("tag_name")
+    result["last_applied_epoch"] = int(time.time())
+    _persist_update_marker(_read_json(_runtime_base() / AUTO_UPDATE_MARKER), result, runtime_root)
     return result
 
 
@@ -768,6 +893,64 @@ def fetch_latest_release(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SEC
     return release
 
 
+def _post_activation_state(
+    target: Path,
+    release_tag: str,
+    model_path: Path,
+    host_plugin_sync: dict[str, Any],
+    plugin_cache_sync: dict[str, Any],
+) -> dict[str, Any]:
+    """Re-read the state that an update claims to have activated."""
+
+    expected = _runtime_version_dir_name(release_tag)
+    current_path = _runtime_base() / "current"
+    try:
+        current_target = current_path.resolve()
+    except OSError:
+        current_target = current_path
+    runtime_current = (
+        current_release(current_path) == release_tag
+        and current_release(target) == release_tag
+        and _canonical_path(current_target) == _canonical_path(target)
+    )
+    model_current = model_path.is_dir()
+    host_blockers: list[dict[str, Any]] = []
+    for host in host_plugin_sync.get("hosts") or []:
+        if not host.get("detected"):
+            continue
+        if host.get("host") == "codex" and not host.get("exactCacheCurrent"):
+            host_blockers.append({"host": "codex", "reason": "exact_target_cache_missing"})
+        if host.get("host") == "claude":
+            if not host.get("exactCacheCurrent"):
+                host_blockers.append({"host": "claude", "reason": "exact_target_cache_missing"})
+            elif not host.get("ledgerCurrent"):
+                host_blockers.append({"host": "claude", "reason": "target_ledger_not_current"})
+    pending_hosts = sorted(set(host_plugin_sync.get("pendingHosts") or []))
+    blockers: list[dict[str, Any]] = []
+    if not runtime_current:
+        blockers.append({"component": "runtime", "reason": "current_link_or_release_mismatch"})
+    if not model_current:
+        blockers.append({"component": "model", "reason": "installed_model_missing"})
+    blockers.extend(host_blockers)
+    if plugin_cache_sync.get("status") not in {"pass", "not_run"}:
+        blockers.append({"component": "plugin_cache", "reason": "cache_reconciliation_incomplete"})
+    status = "blocked" if blockers else "pending_reload" if pending_hosts else "pass"
+    return {
+        "schemaVersion": "agentlas.post-activation.v1",
+        "status": status,
+        "release": f"v{expected}",
+        "runtimeCurrent": runtime_current,
+        "currentLink": str(current_path),
+        "currentTarget": str(current_target),
+        "modelCurrent": model_current,
+        "modelPath": str(model_path),
+        "persistentHostStateCurrent": not host_blockers,
+        "reloadRequired": bool(pending_hosts),
+        "pendingHosts": pending_hosts,
+        "blockers": blockers,
+    }
+
+
 def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     tag = str(release.get("tag_name") or "").strip()
     if not tag:
@@ -780,8 +963,14 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     base = _runtime_base()
     target = base / _runtime_version_dir_name(tag)
     lock = base / ".update.lock"
-    adapter_sync: dict[str, Any] = {"updated": [], "skipped_missing": [], "failed": []}
+    adapter_sync: dict[str, Any] = {
+        "updated": [],
+        "skipped_missing": [],
+        "failed": [],
+        "plugin_cache": {"updated": [], "added": [], "preserved": []},
+    }
     host_plugin_sync: dict[str, Any] = {"status": "not_run", "hosts": []}
+    plugin_cache_sync: dict[str, Any] = {"status": "not_run", "hosts": []}
     memory_hook_sync: dict[str, Any] = {"status": "not_run", "installed": {}, "errors": {}}
     global_router_sync: dict[str, Any] = {"status": "not_run"}
     archive_sha256 = ""
@@ -863,6 +1052,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             from .host_update import reconcile_host_plugins
 
             host_plugin_sync = reconcile_host_plugins(target / HOST_ADAPTER_BUNDLE_DIR, tag)
+            plugin_cache_sync = _prune_installed_plugin_caches(tag)
             memory_hook_sync = sync_installed_memory_hooks(source)
             global_router_sync = _sync_installed_global_router(target)
     finally:
@@ -870,6 +1060,14 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             _remove_path(staged_target)
         _release_lock(lock, lock_token)
 
+    model_path = installed_model_path or target / RUNTIME_MODEL2VEC_PATH
+    activation = _post_activation_state(
+        target,
+        tag,
+        model_path,
+        host_plugin_sync,
+        plugin_cache_sync,
+    )
     return {
         "runtime_root": str(target),
         "current_link": str(base / "current"),
@@ -877,12 +1075,16 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
         "archive_digest": f"sha256:{archive_sha256}",
         "digest_verified": True,
         "archive_asset": archive_asset["name"],
-        "model_root": str(installed_model_path or target / RUNTIME_MODEL2VEC_PATH),
-        "model_verified": True,
+        "model_root": str(model_path),
+        "model_verified": bool(activation["modelCurrent"]),
         "adapter_sync": adapter_sync,
         "host_plugin_sync": host_plugin_sync,
+        "plugin_cache_sync": plugin_cache_sync,
         "memory_hook_sync": memory_hook_sync,
         "global_router_sync": global_router_sync,
+        "activation": activation,
+        "reloadRequired": bool(activation["reloadRequired"]),
+        "pendingHosts": activation["pendingHosts"],
     }
 
 
@@ -915,6 +1117,28 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
     added: list[str] = []
     skipped_missing: list[str] = []
     failed: list[dict[str, str]] = []
+    cache_updated: list[str] = []
+    cache_added: list[str] = []
+    cache_preserved: list[str] = []
+
+    # A host-owned plugin cache can be live even while the runtime update worker
+    # is running. Never replace the directory recorded by a host ledger (or a
+    # process command line) in place: a Claude/Codex MCP process may still have
+    # modules loaded from it. A fresh version-named target is materialized below
+    # and the host registry decides when the old process can be switched over.
+    protected_cache_paths = _installed_plugin_cache_ledger_paths(home_dir)
+    active_cache_paths = _active_plugin_cache_paths(home_dir)
+    if active_cache_paths is None:
+        # Process inspection is unavailable (notably on some Windows hosts).
+        # Keep every existing managed cache until a later run can prove it is
+        # safe to prune; this is deliberately conservative and still permits a
+        # new target directory to be created for the next host process.
+        protected_cache_paths.update(
+            _canonical_path(child)
+            for _, child in _existing_plugin_cache_children(home_dir)
+        )
+    else:
+        protected_cache_paths.update(active_cache_paths)
 
     for src_rel, dest in _installed_adapter_file_targets(source, home_dir):
         src = source / src_rel
@@ -944,20 +1168,31 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
             failed.append({"path": str(dest), "error": str(exc)})
 
     source_release = _source_release_tag(source)
-    for src_rel, dest in _installed_plugin_cache_targets(source, home_dir):
+    for src_rel, dest in _installed_plugin_cache_targets(
+        source,
+        home_dir,
+        protected_paths=protected_cache_paths,
+    ):
         src = source / src_rel
-        if not src.is_dir() or not dest.exists():
+        if not src.is_dir() or (dest.exists() and (not dest.is_dir() or dest.is_symlink())):
             skipped_missing.append(str(dest))
             continue
         try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            existed = dest.is_dir()
             _replace_directory(src, dest)
             if source_release:
                 (dest / "RELEASE").write_text(f"{source_release}\n", encoding="utf-8")
             write_python_shims(dest / "bin", sys.executable)
             write_windows_command_shims(dest / "bin")
             updated.append(str(dest))
+            (cache_updated if existed else cache_added).append(str(dest))
         except Exception as exc:
             failed.append({"path": str(dest), "error": str(exc)})
+
+    for _, child in _existing_plugin_cache_children(home_dir):
+        if _canonical_path(child) in protected_cache_paths:
+            cache_preserved.append(str(child))
 
     grok_result = _sync_grok_marketplace_cache(home_dir)
     updated.extend(grok_result["updated"])
@@ -971,6 +1206,185 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
         "added": added,
         "skipped_missing": skipped_missing,
         "failed": failed,
+        "plugin_cache": {
+            "updated": cache_updated,
+            "added": cache_added,
+            "preserved": cache_preserved,
+        },
+    }
+
+
+def _legacy_in_place_plugin_cache_paths(
+    release_tag: str,
+    home: Path,
+) -> dict[str, list[str]]:
+    """Find cache paths that the v1.2.32 updater rewrote under an old name."""
+
+    target = _runtime_version_dir_name(release_tag)
+    result: dict[str, list[str]] = {"claude": [], "codex": []}
+    for host, _, cache_root in _plugin_cache_roots(home):
+        if not cache_root.is_dir() or cache_root.is_symlink():
+            continue
+        try:
+            children = list(cache_root.iterdir())
+        except OSError:
+            continue
+        for child in children:
+            if not child.is_dir() or child.is_symlink() or child.name == target:
+                continue
+            try:
+                marker = (child / "RELEASE").read_text(encoding="utf-8").strip().lstrip("vV")
+            except OSError:
+                marker = ""
+            manifest = (
+                child / ".claude-plugin" / "plugin.json"
+                if host == "claude"
+                else child / ".codex-plugin" / "plugin.json"
+            )
+            try:
+                manifest_version = str(
+                    json.loads(manifest.read_text(encoding="utf-8")).get("version") or ""
+                ).strip().lstrip("vV")
+            except (OSError, ValueError, AttributeError):
+                manifest_version = ""
+            if marker == target and manifest_version == target:
+                result[host].append(str(child))
+    return {host: sorted(paths) for host, paths in result.items() if paths}
+
+
+def _materialize_exact_plugin_caches(
+    source: Path,
+    release_tag: str,
+    home: Path,
+) -> dict[str, Any]:
+    """Create only exact-version Codex/Claude caches, without vendor commands."""
+
+    target_name = _runtime_version_dir_name(release_tag)
+    ledger_paths = _installed_plugin_cache_ledger_paths(home)
+    active_paths = _active_plugin_cache_paths(home)
+    protected = set(ledger_paths)
+    if active_paths is None:
+        protected.update(_canonical_path(path) for _, path in _existing_plugin_cache_children(home))
+    else:
+        protected.update(active_paths)
+    hosts: list[dict[str, Any]] = []
+    added: list[str] = []
+    current: list[str] = []
+    preserved: list[str] = []
+    failed: list[dict[str, str]] = []
+    for host, src_rel, cache_root in _plugin_cache_roots(home):
+        src = source / src_rel
+        row: dict[str, Any] = {"host": host, "root": str(cache_root)}
+        if not cache_root.is_dir() or cache_root.is_symlink():
+            row["status"] = "not_installed"
+            hosts.append(row)
+            continue
+        target = cache_root / target_name
+        if _plugin_cache_payload_matches(target, release_tag):
+            row.update({"status": "current", "target": str(target)})
+            current.append(str(target))
+            hosts.append(row)
+            continue
+        if not src.is_dir():
+            error = {"path": str(src), "error": "target_plugin_payload_missing"}
+            row.update({"status": "blocked", "reason": error["error"]})
+            failed.append(error)
+            hosts.append(row)
+            continue
+        if target.exists() and _canonical_path(target) in protected:
+            error = {"path": str(target), "error": "protected_target_cache_invalid"}
+            row.update({"status": "blocked", "reason": error["error"]})
+            preserved.append(str(target))
+            failed.append(error)
+            hosts.append(row)
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _replace_directory(src, target)
+            (target / "RELEASE").write_text(f"v{target_name}\n", encoding="utf-8")
+            write_python_shims(target / "bin", sys.executable)
+            write_windows_command_shims(target / "bin")
+            if not _plugin_cache_payload_matches(target, release_tag):
+                raise ValueError("materialized_target_cache_failed_verification")
+            added.append(str(target))
+            row.update({"status": "added", "target": str(target)})
+        except Exception as exc:
+            error = {"path": str(target), "error": str(exc)}
+            failed.append(error)
+            row.update({"status": "blocked", "reason": str(exc)})
+        hosts.append(row)
+    return {
+        "schemaVersion": "agentlas.plugin-cache-materialize.v1",
+        "status": "blocked" if failed else "pass",
+        "release": f"v{target_name}",
+        "bounded": True,
+        "vendorCliInvoked": False,
+        "hosts": hosts,
+        "added": added,
+        "current": current,
+        "preserved": preserved,
+        "failed": failed,
+    }
+
+
+def reconcile_legacy_host_plugin_transition(
+    source: Path,
+    runtime_root: Path,
+    release_tag: str,
+    *,
+    home: Path | None = None,
+) -> dict[str, Any]:
+    """Repair the first hop executed by the still-running v1.2.32 updater.
+
+    This is intentionally separate from ``reconcile_current_installation``:
+    the latter invokes the memory-hook installer and would recurse when called
+    from the target archive's post-activation bridge subprocess.
+    """
+
+    home_dir = (home or Path.home()).expanduser().resolve()
+    target_root = runtime_root.expanduser().resolve()
+    bundle = target_root / HOST_ADAPTER_BUNDLE_DIR
+    try:
+        _validate_host_adapter_bundle(bundle, release_tag)
+    except (OSError, ValueError) as exc:
+        return {
+            "schemaVersion": "agentlas.legacy-host-plugin-transition.v1",
+            "status": "blocked",
+            "reason": "host_adapter_bundle_invalid",
+            "error": str(exc),
+            "bounded": True,
+            "vendorCliInvoked": False,
+        }
+    legacy = _legacy_in_place_plugin_cache_paths(release_tag, home_dir)
+    caches = _materialize_exact_plugin_caches(source, release_tag, home_dir)
+    from .host_update import reconcile_host_plugin_transition_without_cli
+
+    persistent = reconcile_host_plugin_transition_without_cli(
+        bundle,
+        release_tag,
+        home=home_dir,
+        unsafe_legacy_paths=legacy,
+    )
+    preserved_legacy = sorted(
+        path
+        for paths in legacy.values()
+        for path in paths
+        if Path(path).is_dir()
+    )
+    blocked = caches.get("status") != "pass" or persistent.get("status") == "blocked"
+    pending = bool(persistent.get("reloadRequired"))
+    return {
+        "schemaVersion": "agentlas.legacy-host-plugin-transition.v1",
+        "status": "blocked" if blocked else "pending_reload" if pending else "pass",
+        "release": release_tag if str(release_tag).startswith("v") else f"v{release_tag}",
+        "bounded": True,
+        "vendorCliInvoked": False,
+        "reloadRequired": pending,
+        "unsafeLegacyInPlace": bool(legacy),
+        "unsafeLegacyPaths": sorted(path for paths in legacy.values() for path in paths),
+        "preservedLegacyPaths": preserved_legacy,
+        "cacheMaterialization": caches,
+        "persistentState": persistent,
     }
 
 
@@ -999,19 +1413,24 @@ def reconcile_current_installation(
     from .host_update import reconcile_host_plugins
 
     plugins = reconcile_host_plugins(bundle, release, home=home)
+    plugin_cache = _prune_installed_plugin_caches(release, home=home)
     hooks = sync_installed_memory_hooks(bundle, home=home)
     global_router = _sync_installed_global_router(selected_root, home=home)
+    pending_hosts = sorted(set(plugins.get("pendingHosts") or []))
     failed = (
         bool(adapters.get("failed"))
-        or plugins.get("status") != "pass"
+        or plugins.get("status") == "partial"
         or hooks.get("status") == "fail"
         or global_router.get("status") == "failed"
     )
     return {
-        "status": "partial" if failed else "pass",
+        "status": "partial" if failed else "pending_reload" if pending_hosts else "pass",
         "release": release,
+        "reloadRequired": bool(pending_hosts),
+        "pendingHosts": pending_hosts,
         "adapterSync": adapters,
         "hostPluginSync": plugins,
+        "pluginCacheSync": plugin_cache,
         "memoryHookSync": hooks,
         "globalRouterSync": global_router,
     }
@@ -1574,7 +1993,8 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
             "desktop_repair": desktop_repair,
             "desktop_updater_cleanup": desktop_updater_cleanup,
         }
-        _write_json(marker_path, {**marker, **result, "last_checked_epoch": int(time.time())})
+        result["last_checked_epoch"] = int(time.time())
+        _persist_update_marker(marker, result, runtime_root)
         return result
 
     latest = fetch_latest_release(force=False)
@@ -1593,24 +2013,25 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
         result["reconciliation"] = reconciliation
         if _requires_current_release_rehydrate(current, latest_tag, reconciliation):
             installed = install_latest_runtime(latest)
-            result.update(installed)
-            result["status"] = "repaired_current"
+            _apply_observed_install_state(result, installed, current)
+            result["status"] = _installed_outcome_status("repaired_current", installed)
             result["last_applied_tag"] = latest_tag
             result["last_applied_epoch"] = int(time.time())
-        _write_json(marker_path, {**marker, **result})
+        _persist_update_marker(marker, result, runtime_root)
         return result
     if marker.get("last_applied_tag") == latest_tag and _marker_recent(marker.get("last_applied_epoch")):
         result["status"] = "skipped"
         result["reason"] = "already_applied_recently"
-        _write_json(marker_path, {**marker, **result})
+        _persist_update_marker(marker, result, runtime_root)
         return result
 
     installed = install_latest_runtime(latest)
-    result.update(installed)
-    result["status"] = "updated" if status == "update_available" else "recovered_missing_release_marker"
+    _apply_observed_install_state(result, installed, current)
+    success_status = "updated" if status == "update_available" else "recovered_missing_release_marker"
+    result["status"] = _installed_outcome_status(success_status, installed)
     result["last_applied_tag"] = latest_tag
     result["last_applied_epoch"] = int(time.time())
-    _write_json(marker_path, {**marker, **result})
+    _persist_update_marker(marker, result, runtime_root)
     return result
 
 
@@ -1682,31 +2103,314 @@ def _installed_adapter_dir_targets(source: Path, home: Path) -> list[tuple[Path,
     return [(src_rel, dest) for src_rel, dest in targets if (source / src_rel).is_dir()]
 
 
-def _installed_plugin_cache_targets(source: Path, home: Path) -> list[tuple[Path, Path]]:
-    targets: list[tuple[Path, Path]] = []
-    claude_src = Path("claude") / "plugins" / "agentlas-core-engine-meta-agent"
-    codex_src = Path("codex") / "plugins" / "agentlas-core-engine-meta-agent"
-    cache_roots = [
+def _plugin_cache_roots(home: Path) -> list[tuple[str, Path, Path]]:
+    """Return the host plugin-cache roots owned by the Agentlas updater.
+
+    The source-relative path is kept beside the destination so one update pass
+    can refresh Claude and Codex from their matching plugin payload without
+    guessing which host a cache directory belongs to.
+    """
+
+    codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
+    return [
         (
-            claude_src,
+            "claude",
+            Path("claude") / "plugins" / "agentlas-core-engine-meta-agent",
             home / ".claude" / "plugins" / "cache" / "agentlas-core-engine" / "hephaestus",
         ),
         (
-            codex_src,
-            Path(os.environ.get("CODEX_HOME") or home / ".codex")
-            / "plugins"
-            / "cache"
-            / "agentlas-core-engine"
-            / "hephaestus",
+            "codex",
+            Path("codex") / "plugins" / "agentlas-core-engine-meta-agent",
+            codex_home / "plugins" / "cache" / "agentlas-core-engine" / "hephaestus",
         ),
     ]
-    for src_rel, cache_root in cache_roots:
-        if not (source / src_rel).is_dir() or not cache_root.is_dir():
+
+
+def _canonical_path(path: Path) -> Path:
+    try:
+        return path.expanduser().resolve()
+    except OSError:
+        return Path(os.path.abspath(os.path.expanduser(str(path))))
+
+
+def _installed_plugin_cache_ledger_paths(home: Path) -> set[Path]:
+    """Read host install ledgers and return cache paths that must not be replaced.
+
+    Claude records the active plugin directory in ``installed_plugins.json``;
+    Codex versions in the wild may use the same shape. The ledger is a stronger
+    signal than a directory name because an active process can keep using an
+    older version while the runtime updater is installing a new one.
+    """
+
+    codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
+    ledgers = (
+        home / ".claude" / "plugins" / "installed_plugins.json",
+        codex_home / "plugins" / "installed_plugins.json",
+    )
+    protected: set[Path] = set()
+    for ledger_path in ledgers:
+        data = _read_json(ledger_path)
+        plugins = data.get("plugins") if isinstance(data, dict) else None
+        if not isinstance(plugins, dict):
             continue
-        for child in cache_root.iterdir():
-            if child.is_dir() and not child.is_symlink() and (child / "bin" / "hephaestus").exists():
+        for plugin_id, entries in plugins.items():
+            if not str(plugin_id).startswith("hephaestus@"):
+                continue
+            if isinstance(entries, dict):
+                entries = [entries]
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                install_path = entry.get("installPath")
+                if isinstance(install_path, str) and install_path.strip():
+                    protected.add(_canonical_path(Path(install_path)))
+    return protected
+
+
+def _existing_plugin_cache_children(home: Path) -> list[tuple[str, Path]]:
+    """Find valid Agentlas cache version directories without following symlinks."""
+
+    children: list[tuple[str, Path]] = []
+    for host, _, cache_root in _plugin_cache_roots(home):
+        if not cache_root.is_dir() or cache_root.is_symlink():
+            continue
+        try:
+            entries = list(cache_root.iterdir())
+        except OSError:
+            continue
+        for child in entries:
+            if (
+                child.is_dir()
+                and not child.is_symlink()
+                and (child / "bin" / "hephaestus").is_file()
+            ):
+                children.append((host, child))
+    return children
+
+
+def _active_plugin_cache_paths(home: Path) -> set[Path] | None:
+    """Measure cache paths present in live host command lines.
+
+    ``None`` means process inspection was unavailable. Callers must then defer
+    destructive cache work rather than assuming that no process is using it.
+    """
+
+    if os.name == "nt":
+        return None
+    try:
+        result = subprocess.run(
+            ["ps", "-axo", "pid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    cache_children = _existing_plugin_cache_children(home)
+    if not cache_children:
+        return set()
+    active: set[Path] = set()
+    for line in (result.stdout or "").splitlines():
+        try:
+            pid_text, command = line.strip().split(None, 1)
+            if int(pid_text) == os.getpid():
+                continue
+        except (ValueError, IndexError):
+            continue
+        for _, child in cache_children:
+            needle = str(_canonical_path(child))
+            if any(
+                marker in command
+                for marker in (f"{needle}/", f"{needle} ", f"{needle}\t", f'{needle}"', f"{needle}'")
+            ) or command.endswith(needle):
+                active.add(_canonical_path(child))
+    return active
+
+
+def _installed_plugin_cache_targets(
+    source: Path,
+    home: Path,
+    *,
+    protected_paths: set[Path] | None = None,
+) -> list[tuple[Path, Path]]:
+    """Return existing safe cache targets plus the exact release target.
+
+    Existing unreferenced copies remain refreshable for compatibility with
+    older installations. A ledger/process-referenced copy is omitted so the
+    updater cannot replace a live session in place. If the host cache root is
+    present, the new version-named directory is always included and is created
+    atomically by the sync loop even when no such directory existed yet.
+    """
+
+    targets: list[tuple[Path, Path]] = []
+    protected = {_canonical_path(path) for path in (protected_paths or set())}
+    source_release = _source_release_tag(source)
+    for _, src_rel, cache_root in _plugin_cache_roots(home):
+        if (
+            not (source / src_rel).is_dir()
+            or not cache_root.is_dir()
+            or cache_root.is_symlink()
+        ):
+            continue
+        try:
+            children = list(cache_root.iterdir())
+        except OSError:
+            continue
+        for child in children:
+            if (
+                child.is_dir()
+                and not child.is_symlink()
+                and (child / "bin" / "hephaestus").is_file()
+                and _canonical_path(child) not in protected
+            ):
                 targets.append((src_rel, child))
+        if source_release:
+            target = cache_root / _runtime_version_dir_name(source_release)
+            if not target.is_symlink() and (not target.exists() or target.is_dir()):
+                if _canonical_path(target) not in {
+                    _canonical_path(dest) for _, dest in targets
+                }:
+                    targets.append((src_rel, target))
     return targets
+
+
+def _plugin_cache_payload_matches(path: Path, release_tag: str) -> bool:
+    """Verify that a cache target carries the release it is named for."""
+
+    expected = str(release_tag).strip().lstrip("vV")
+    if not expected:
+        return False
+    if not (path.is_dir() and not path.is_symlink() and (path / "bin" / "hephaestus").is_file()):
+        return False
+    try:
+        marker = (path / "RELEASE").read_text(encoding="utf-8").strip().lstrip("vV")
+    except OSError:
+        marker = ""
+    manifest_seen = False
+    for manifest in (
+        path / ".claude-plugin" / "plugin.json",
+        path / ".codex-plugin" / "plugin.json",
+    ):
+        if not manifest.is_file():
+            continue
+        manifest_seen = True
+        try:
+            version = json.loads(manifest.read_text(encoding="utf-8")).get("version")
+        except (OSError, ValueError, AttributeError):
+            return False
+        if str(version or "").strip().lstrip("vV") == expected:
+            return True
+    # Older cache payloads did not carry a plugin manifest, so their RELEASE
+    # marker is the only available identity. A present-but-mismatched manifest
+    # is stronger evidence and must not be overridden by a stale marker.
+    return not manifest_seen and marker == expected
+
+
+def _compare_plugin_cache_paths(left: Path, right: Path) -> int:
+    compared = _compare_semver(left.name, right.name)
+    if compared is not None:
+        return compared
+    return (left.name > right.name) - (left.name < right.name)
+
+
+def _prune_installed_plugin_caches(
+    release_tag: str,
+    *,
+    home: Path | None = None,
+) -> dict[str, Any]:
+    """Prune only proven orphaned cache versions after a target is verified.
+
+    The exact target and one rollback copy are retained. Ledger-referenced or
+    live-process paths are always retained, and all work is deferred when the
+    target is missing or process inspection is unavailable. Unrelated entries
+    (for example a host's ``notes`` directory) are never considered.
+    """
+
+    home_dir = home or Path.home()
+    target_name = _runtime_version_dir_name(release_tag)
+    ledger_paths = _installed_plugin_cache_ledger_paths(home_dir)
+    active_paths = _active_plugin_cache_paths(home_dir)
+    result: dict[str, Any] = {
+        "schemaVersion": "agentlas.plugin-cache-sync.v1",
+        "status": "pass",
+        "release": f"v{target_name}",
+        "hosts": [],
+        "removed": [],
+        "preserved": [],
+        "deferred": [],
+        "failed": [],
+    }
+    for host, _, cache_root in _plugin_cache_roots(home_dir):
+        row: dict[str, Any] = {"host": host, "root": str(cache_root)}
+        if not cache_root.is_dir() or cache_root.is_symlink():
+            row["status"] = "not_installed"
+            result["hosts"].append(row)
+            continue
+        target = cache_root / target_name
+        if not _plugin_cache_payload_matches(target, release_tag):
+            reason = "verified_target_cache_missing"
+            row.update({"status": "deferred", "reason": reason, "target": str(target)})
+            result["deferred"].append(str(target))
+            result["status"] = "partial"
+            result["hosts"].append(row)
+            continue
+        try:
+            children = [
+                child
+                for child in cache_root.iterdir()
+                if child.is_dir()
+                and not child.is_symlink()
+                and (child / "bin" / "hephaestus").is_file()
+                and child.name != target_name
+            ]
+        except OSError as exc:
+            row.update({"status": "failed", "error": str(exc)})
+            result["failed"].append({"path": str(cache_root), "error": str(exc)})
+            result["status"] = "partial"
+            result["hosts"].append(row)
+            continue
+
+        ordered = sorted(children, key=cmp_to_key(_compare_plugin_cache_paths))
+        keep_rollback = ordered[-1] if ordered else None
+        row.update({"status": "updated", "target": str(target), "rollback": str(keep_rollback) if keep_rollback else None})
+        removed: list[str] = []
+        preserved: list[str] = []
+        deferred: list[str] = []
+        for child in ordered:
+            canonical = _canonical_path(child)
+            if canonical in ledger_paths or (active_paths is not None and canonical in active_paths):
+                preserved.append(str(child))
+                result["preserved"].append(str(child))
+                continue
+            if active_paths is None:
+                deferred.append(str(child))
+                result["deferred"].append(str(child))
+                result["status"] = "partial"
+                continue
+            if keep_rollback is not None and child == keep_rollback:
+                preserved.append(str(child))
+                result["preserved"].append(str(child))
+                continue
+            try:
+                _remove_path(child)
+                removed.append(str(child))
+                result["removed"].append(str(child))
+            except OSError as exc:
+                result["failed"].append({"path": str(child), "error": str(exc)})
+                result["status"] = "partial"
+        if preserved:
+            row["preserved"] = preserved
+        if removed:
+            row["removed"] = removed
+        if deferred:
+            row["deferred"] = deferred
+        result["hosts"].append(row)
+    return result
 
 
 # Grok Build has no background auto-refresh of its own: `grok marketplace add`

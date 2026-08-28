@@ -135,8 +135,8 @@
     ],
     "tier": "medium"
   },
-  "routing_status": "routing_ready",
-  "routing_status_reason": "Human-repaired routing-card with concrete triggers, anti-triggers, entrypoint, memory, and upload validation gates.",
+  "routing_status": "searchable",
+  "routing_status_reason": "Searchable metadata is complete; routing-ready remains blocked until 10 private benchmark cases are verified.",
   "schemaVersion": "routing-card/2.0",
   "source": {
     "kind": "local_path",

@@ -153,30 +153,28 @@ def _profile_sets(profile: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-# Every dimension a slot may require and the inventory may leave empty. The
-# demotion below applies to all of them: a work order that names the language it
-# needs must not empty every slot merely because no profile declares a language.
-# `authorities` joined on 2026-07-30. The old exemption ("a security contract
-# must keep full hard-filter force even when no profile declares one") was
-# measured inverted on the live network: capability attaches to the executing
-# runtime, not the BYOM bundle, so almost no card declares authorities, and the
-# gate excluded every relevant candidate while keeping the newest
-# metadata-complete uploads regardless of domain (2 irrelevant -> 6 relevant on
-# the same slot when lifted). Real authority enforcement lives in prepare-time
-# permission policy pins. The Hub applies the same demotion behind its gap-code
-# disclosure rule; Local is in-process and version-locked with its caller, so
-# the population test alone gates it here, like every other dimension.
-_REQUIREMENT_VOCABULARY_KINDS = (
+# Semantic requirements describe who fits the task. Execution requirements
+# describe what the selected release may use on this host. Mixing those axes
+# made tool/authority metadata act like professional expertise and produced
+# source-dependent `missingMandatory` noise. Discovery therefore evaluates only
+# semantic axes; prepare/execution owns the environment contract.
+_SEMANTIC_REQUIREMENT_KINDS = (
     "roles",
     "skills",
     "knowledge",
-    "tools",
     "consumes",
     "produces",
+)
+_EXECUTION_REQUIREMENT_KINDS = (
+    "tools",
     "runtimes",
     "languages",
     "modalities",
     "authorities",
+)
+_REQUIREMENT_VOCABULARY_KINDS = (
+    *_SEMANTIC_REQUIREMENT_KINDS,
+    *_EXECUTION_REQUIREMENT_KINDS,
 )
 # Word-valued semantic dimensions never hard-filter, however full they look.
 # Roles, skills, knowledge and artifacts are open-world claims authored by
@@ -184,18 +182,7 @@ _REQUIREMENT_VOCABULARY_KINDS = (
 # that differently phrased agents are incapable. These dimensions stay in the
 # slot search text and semantic ranking, and every demotion is reported.
 _RANKING_ONLY_KINDS = frozenset(
-    {
-        "roles",
-        "skills",
-        "knowledge",
-        "tools",
-        "consumes",
-        "produces",
-        "runtimes",
-        "languages",
-        "modalities",
-        "authorities",
-    }
+    _SEMANTIC_REQUIREMENT_KINDS
 )
 
 _REQUIREMENT_GAP_KIND = {
@@ -248,15 +235,15 @@ def _inventory_vocabulary(profiles: Iterable[Mapping[str, Any]]) -> dict[str, bo
     contract exists to prevent.
     """
 
-    populated: dict[str, bool] = {kind: False for kind in _REQUIREMENT_VOCABULARY_KINDS}
+    populated: dict[str, bool] = {kind: False for kind in _SEMANTIC_REQUIREMENT_KINDS}
     for profile in profiles:
         if not _can_appear_as_candidate(profile):
             continue
         have = _profile_sets(profile)
-        for kind in _REQUIREMENT_VOCABULARY_KINDS:
+        for kind in _SEMANTIC_REQUIREMENT_KINDS:
             if have[kind]:
                 populated[kind] = True
-        if all(populated.values()):
+        if populated and all(populated.values()):
             break
     return populated
 
@@ -273,19 +260,16 @@ def _unsupported_requirements(
     you wrote was not enforced as written.
     """
 
-    if populated is None:
-        return {
-            kind: (set(req[kind]) if kind in _RANKING_ONLY_KINDS else set())
-            for kind in _REQUIREMENT_VOCABULARY_KINDS
-        }
-    return {
-        kind: (
-            set(req[kind])
-            if kind in _RANKING_ONLY_KINDS or not populated.get(kind)
-            else set()
-        )
-        for kind in _REQUIREMENT_VOCABULARY_KINDS
-    }
+    result = {kind: set() for kind in _REQUIREMENT_VOCABULARY_KINDS}
+    for kind in _SEMANTIC_REQUIREMENT_KINDS:
+        if populated is None or kind in _RANKING_ONLY_KINDS or not populated.get(kind):
+            result[kind] = set(req[kind])
+    # Tool, authority, runtime, language, and modality requirements belong to
+    # the post-selection execution contract. They are deliberately absent from
+    # retrieval vocabulary diagnostics: a host must satisfy them through its
+    # private tool inventory, capability binding plan, permission policy, and
+    # execution receipt, not infer support from publisher metadata.
+    return result
 
 
 def _hard_eligibility(
@@ -293,12 +277,11 @@ def _hard_eligibility(
     slot: Mapping[str, Any],
     populated: Mapping[str, bool] | None = None,
 ) -> tuple[bool, list[str]]:
-    """Apply lifecycle, integrity, and every explicit required contract.
+    """Apply lifecycle, integrity, and semantic discovery constraints.
 
-    Requirements in a dimension the inventory never populates are excluded from
-    the hard filter (they stay in the slot search text, so they still rank) and
-    the caller reports them as an explicit vocabulary gap. Every dimension the
-    inventory does populate keeps full hard-filter force.
+    Tool, authority, runtime, language, and modality requirements are preserved
+    for host-owned prepare/execution validation and never filter semantic
+    candidates here.
     """
 
     reasons: list[str] = []
@@ -326,39 +309,18 @@ def _hard_eligibility(
         reasons.append("missing-required-skill")
     if enforced["knowledge"] - have["knowledge"]:
         reasons.append("missing-required-knowledge")
-    if enforced["tools"] - have["tools"]:
-        reasons.append("missing-required-tool")
     minimum_level = {"declared": 0, "checked": 1, "demonstrated": 2, "attested": 3}.get(
         str(slot.get("minimumEvidenceLevel") or "declared"), 0
     )
     if any(have["skill_levels"].get(item, -1) < minimum_level for item in enforced["skills"]):
         reasons.append("required-skill-evidence-below-minimum")
-    if any(have["tool_levels"].get(item, -1) < minimum_level for item in enforced["tools"]):
-        reasons.append("required-tool-evidence-below-minimum")
     if enforced["consumes"] - have["consumes"]:
         reasons.append("missing-consumed-artifact")
     if enforced["produces"] - have["produces"]:
         reasons.append("missing-produced-artifact")
-    # Authorities demote like every other dimension since 2026-07-30 (see
-    # _REQUIREMENT_VOCABULARY_KINDS), and stay matched by concept family:
-    # the advertised spelling and the declared one differ for every authority
-    # that matters, and set difference let a prohibition pass straight through.
-    if any(not _family_any(have["authorities"], item) for item in enforced["authorities"]):
-        reasons.append("missing-required-authority")
-    # Runtime/tool/authority declarations describe the execution environment,
-    # not the agent's semantic identity. They remain visible for ranking and
-    # prepare-time permission negotiation, but discovery must never erase an
-    # otherwise relevant candidate because a publisher omitted or phrased one
-    # differently. Forbidden authority conflicts are enforced by the pinned
-    # permission policy during preparation.
-    if enforced["runtimes"] and not any(
-        _family_any(have["runtimes"], item) for item in enforced["runtimes"]
-    ):
-        reasons.append("runtime-mismatch")
-    if enforced["languages"] and not enforced["languages"] & have["languages"]:
-        reasons.append("language-mismatch")
-    if enforced["modalities"] and not enforced["modalities"] & have["modalities"]:
-        reasons.append("modality-mismatch")
+    # Execution-environment requirements are carried unchanged into the
+    # ExecutionContext and validated against host-owned runtime/tool evidence.
+    # They never decide semantic candidacy here.
 
     # Positive communities are open-world semantic scope and rank through the
     # graph. Only explicit negative exclusions remain a discovery-time gate.
@@ -372,18 +334,12 @@ def _profile_search_text(profile: Mapping[str, Any]) -> str:
     values: list[Any] = [
         semantic.get("names"), semantic.get("summaries"), semantic.get("communities"),
         semantic.get("roles"), semantic.get("consumes"), semantic.get("produces"),
-        semantic.get("runtimes"), semantic.get("languages"), semantic.get("modalities"),
     ]
     values.extend(
         item.get("concept")
         for key in ("capabilities", "skills", "knowledge")
         for item in (semantic.get(key) or [])
         if isinstance(item, Mapping) and item.get("concept")
-    )
-    values.extend(
-        item.get("capability")
-        for item in (semantic.get("toolCapabilities") or [])
-        if isinstance(item, Mapping) and item.get("capability")
     )
     parts: list[str] = []
     for value in values:
@@ -402,9 +358,7 @@ def _slot_search_text(slot: Mapping[str, Any]) -> str:
                 slot.get("title"), slot.get("task"),
                 *sorted(req["communities"]), *sorted(req["roles"]),
                 *sorted(req["skills"]), *sorted(req["knowledge"]),
-                *sorted(req["tools"]), *sorted(req["consumes"]),
-                *sorted(req["produces"]), *sorted(req["runtimes"]),
-                *sorted(req["languages"]), *sorted(req["modalities"]),
+                *sorted(req["consumes"]), *sorted(req["produces"]),
             ],
             limit=2048,
         )
@@ -453,10 +407,7 @@ def _fit_evidence(
     evidence: list[str] = []
     mandatory_gaps: list[str] = []
     optional_gaps: list[str] = []
-    fit_axes = (
-        "communities", "roles", "skills", "knowledge", "tools", "consumes",
-        "produces", "authorities", "runtimes", "languages", "modalities",
-    )
+    fit_axes = ("communities", "roles", "skills", "knowledge", "consumes", "produces")
     for axis in fit_axes:
         for item in sorted(req[axis] & have[axis]):
             evidence.append(f"fit:{axis}:{item}")
@@ -466,7 +417,6 @@ def _fit_evidence(
         "role": (req["roles"], have["roles"]),
         "skill": (req["skills"], have["skills"]),
         "knowledge": (req["knowledge"], have["knowledge"]),
-        "tool": (req["tools"], have["tools"]),
         "consumes": (req["consumes"], have["consumes"]),
         "produces": (req["produces"], have["produces"]),
     }
@@ -474,7 +424,6 @@ def _fit_evidence(
         "role": "roles",
         "skill": "skills",
         "knowledge": "knowledge",
-        "tool": "tools",
         "consumes": "consumes",
         "produces": "produces",
     }
@@ -489,28 +438,12 @@ def _fit_evidence(
             if item in unenforceable.get(_GAP_AXIS_KIND.get(axis, ""), ()):
                 continue
             mandatory_gaps.append(_missing_id(axis, item))
-    singular_axes = {
-        "runtimes": "runtime",
-        "languages": "language",
-        "modalities": "modality",
-    }
-    for axis, singular_axis in singular_axes.items():
-        enforceable = req[axis] - unenforceable.get(axis, set())
-        if enforceable and not enforceable & have[axis]:
-            mandatory_gaps.extend(
-                _missing_id(singular_axis, item) for item in sorted(enforceable)
-            )
-
     levels = {"declared": 0, "checked": 1, "demonstrated": 2, "attested": 3}
     minimum_name = str(slot.get("minimumEvidenceLevel") or "declared")
     minimum_level = levels.get(minimum_name, 0)
     for item in sorted(req["skills"] & have["skills"]):
         if have["skill_levels"].get(item, -1) < minimum_level:
             mandatory_gaps.append(_missing_id("skill-evidence", f"{item}-{minimum_name}"))
-    for item in sorted(req["tools"] & have["tools"]):
-        if have["tool_levels"].get(item, -1) < minimum_level:
-            mandatory_gaps.append(_missing_id("tool-evidence", f"{item}-{minimum_name}"))
-
     optional_communities = _strings(slot.get("optionalCommunities"))
     optional_skills = _strings(slot.get("optionalSkills"))
     for item in sorted(optional_communities & have["communities"]):

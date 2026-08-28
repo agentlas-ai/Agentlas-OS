@@ -123,7 +123,7 @@ an authoritative group execution contract exists.
 Omit unconstrained runtime, authority, language, and modality arrays. Never
 invent prefixed finite values such as `language:ko` or custom slot/artifact IDs;
 the draft schema exposes the finite values and Core owns mechanical IDs. Use the
-default candidate policy (2 minimum, 8 maximum per role) unless the task has a
+default candidate policy (2 minimum, 30 maximum per role) unless the task has a
 concrete recall reason to widen it. Protocol receipt verification is already an
 independent gate, so do not add a decorative verifier role merely to restate it.
 

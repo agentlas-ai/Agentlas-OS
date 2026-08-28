@@ -1,7 +1,7 @@
 {
   "schemaVersion": "agentlas.command-registry.v2",
   "registryId": "agentlas-core-command-registry",
-  "updatedAt": "2026-08-27",
+  "updatedAt": "2026-08-28",
   "purpose": "Internal command identity and route registry. Host spelling remains a compatibility surface and is never renamed by this file.",
   "compatibility": {
     "canonicalPublicPrefix": "hep-",
@@ -32,6 +32,9 @@
         "hephaestus-build"
       ],
       "engineEntrypoint": "hep-build",
+      "surfaceStatus": "host_model_required",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-build",
       "body": "contracts/commands/hep-build.body.md",
       "routes": {
         "default": {
@@ -51,6 +54,9 @@
       "terminalCommand": "hep-network",
       "aliases": ["/agentlas-network", "/agentlas network", "$hephaestus-network", "/prompts:hep-network", "hephaestus-network"],
       "engineEntrypoint": "hep-network",
+      "surfaceStatus": "host_model_required",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-network",
       "body": "contracts/commands/hep-network.body.md",
       "routes": {"default": {"entrypoint": "hep-network", "inputModes": ["host_request"]}}
     },
@@ -60,6 +66,9 @@
       "terminalCommand": "hep-storm",
       "aliases": ["/agentlas-storm", "/agentlas storm", "$hephaestus-storm", "/prompts:hep-storm", "hephaestus-storm"],
       "engineEntrypoint": "hep-storm",
+      "surfaceStatus": "executable",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-storm",
       "body": "contracts/commands/hep-storm.body.md",
       "routes": {"default": {"entrypoint": "hep-storm", "inputModes": ["host_request"]}}
     },
@@ -69,6 +78,9 @@
       "terminalCommand": "hep-graph",
       "aliases": ["/agentlas-graph", "/agentlas graph", "$hephaestus-graph", "/prompts:hep-graph", "hephaestus-graph"],
       "engineEntrypoint": "hep-graph",
+      "surfaceStatus": "redirect",
+      "owningBinary": "agentlas",
+      "installedEntrypoint": "agentlas",
       "body": "contracts/commands/hep-graph.body.md",
       "routes": {"default": {"entrypoint": "hep-graph", "inputModes": ["host_request"]}}
     },
@@ -78,6 +90,9 @@
       "terminalCommand": "hep-local",
       "aliases": ["/agentlas-local", "/agentlas local", "$hephaestus-local", "/prompts:hep-local", "hephaestus-local"],
       "engineEntrypoint": "hep-local",
+      "surfaceStatus": "host_model_required",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-local",
       "body": "contracts/commands/hep-local.body.md",
       "routes": {"default": {"entrypoint": "hep-local", "inputModes": ["host_request"]}}
     },
@@ -87,6 +102,9 @@
       "terminalCommand": "hep-cloud",
       "aliases": ["/agentlas-cloud", "/agentlas cloud", "$hephaestus-cloud", "/prompts:hep-cloud", "hephaestus-cloud"],
       "engineEntrypoint": "hep-cloud",
+      "surfaceStatus": "host_model_required",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-cloud",
       "body": "contracts/commands/hep-cloud.body.md",
       "routes": {"default": {"entrypoint": "hep-cloud", "inputModes": ["host_request"]}}
     },
@@ -96,6 +114,9 @@
       "terminalCommand": "hep-hub",
       "aliases": ["/agentlas-hub", "/agentlas hub", "$hephaestus-hub", "/prompts:hep-hub", "hephaestus-hub"],
       "engineEntrypoint": "hep-hub",
+      "surfaceStatus": "host_model_required",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-hub",
       "body": "contracts/commands/hep-hub.body.md",
       "routes": {"default": {"entrypoint": "hep-hub", "inputModes": ["host_request"]}}
     },
@@ -105,6 +126,9 @@
       "terminalCommand": "hep-search",
       "aliases": ["/agentlas-search", "/agentlas search", "$hephaestus-search", "/prompts:hep-search", "hephaestus-search"],
       "engineEntrypoint": "hep-search",
+      "surfaceStatus": "executable",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-search",
       "body": "contracts/commands/hep-search.body.md",
       "routes": {"default": {"entrypoint": "hep-search", "inputModes": ["host_request"]}}
     },
@@ -114,6 +138,9 @@
       "terminalCommand": "hep-browser",
       "aliases": ["/agentlas-browser", "/agentlas browser", "$hephaestus-browser", "/prompts:hep-browser", "hephaestus-browser"],
       "engineEntrypoint": "hep-browser",
+      "surfaceStatus": "executable",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-browser",
       "body": "contracts/commands/hep-browser.body.md",
       "routes": {"default": {"entrypoint": "hep-browser", "inputModes": ["host_request"]}}
     },
@@ -123,6 +150,9 @@
       "terminalCommand": "hep-call",
       "aliases": ["/agentlas-call", "/agentlas call", "$hephaestus-call", "/prompts:hep-call", "hephaestus-call"],
       "engineEntrypoint": "hep-call",
+      "surfaceStatus": "executable",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-call",
       "body": "contracts/commands/hep-call.body.md",
       "routes": {"default": {"entrypoint": "hep-call", "inputModes": ["host_request"]}}
     },
@@ -132,6 +162,9 @@
       "terminalCommand": "hep-upload",
       "aliases": ["/agentlas-upload", "/agentlas upload", "$hephaestus-upload", "/prompts:hep-upload", "hephaestus-upload"],
       "engineEntrypoint": "hep-upload",
+      "surfaceStatus": "executable",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-upload",
       "body": "contracts/commands/hep-upload.body.md",
       "routes": {"default": {"entrypoint": "hep-upload", "inputModes": ["host_request"]}}
     },
@@ -141,6 +174,9 @@
       "terminalCommand": "hep-connect",
       "aliases": ["/agentlas-connect", "/agentlas connect", "$hephaestus-connect", "/prompts:hep-connect", "hephaestus-connect"],
       "engineEntrypoint": "hep-connect",
+      "surfaceStatus": "identity_only",
+      "owningBinary": null,
+      "installedEntrypoint": null,
       "body": "contracts/commands/hep-connect.body.md",
       "routes": {"default": {"entrypoint": "hep-connect", "inputModes": ["host_request"]}}
     },
@@ -150,6 +186,9 @@
       "terminalCommand": "hep-login",
       "aliases": ["/agentlas-login", "/agentlas login", "$hephaestus-login", "/prompts:hep-login", "hephaestus-login"],
       "engineEntrypoint": "hep-login",
+      "surfaceStatus": "executable",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hephaestus",
       "body": "contracts/commands/hep-login.body.md",
       "routes": {"default": {"entrypoint": "hep-login", "inputModes": ["host_request"]}}
     },
@@ -159,6 +198,9 @@
       "terminalCommand": "hep-orch",
       "aliases": ["/agentlas-orch", "/agentlas orch", "$hephaestus-orch", "/prompts:hep-orch", "hephaestus-orch"],
       "engineEntrypoint": "hep-orch",
+      "surfaceStatus": "executable",
+      "owningBinary": "agentlas-one",
+      "installedEntrypoint": "hep-orch",
       "body": "contracts/commands/hep-orch.body.md",
       "routes": {"default": {"entrypoint": "hep-orch", "inputModes": ["host_request"]}}
     },
@@ -168,6 +210,9 @@
       "terminalCommand": "hep-update",
       "aliases": ["/agentlas-update", "/agentlas update", "$hephaestus-update", "/prompts:hep-update", "hephaestus-update"],
       "engineEntrypoint": "hep-update",
+      "surfaceStatus": "executable",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-update",
       "body": "contracts/commands/hep-update.body.md",
       "routes": {"default": {"entrypoint": "hep-update", "inputModes": ["host_request"]}}
     }

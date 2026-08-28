@@ -29,6 +29,7 @@ _COMMAND_ID_RE = re.compile(r"^agentlas\.[a-z0-9][a-z0-9-]*$")
 _PUBLIC_COMMAND_RE = re.compile(r"^/hep-[a-z0-9][a-z0-9-]*$")
 _TERMINAL_COMMAND_RE = re.compile(r"^hep-[a-z0-9][a-z0-9-]*$")
 _SAFE_SKILL_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+_SURFACE_STATUSES = {"executable", "host_model_required", "redirect", "identity_only"}
 
 
 class CommandRegistryError(ValueError):
@@ -138,6 +139,9 @@ def validate_registry(
         public_command = command.get("publicCommand")
         terminal_command = command.get("terminalCommand")
         body = command.get("body")
+        surface_status = command.get("surfaceStatus")
+        owning_binary = command.get("owningBinary")
+        installed_entrypoint = command.get("installedEntrypoint")
         if not isinstance(command_id, str) or not _COMMAND_ID_RE.fullmatch(command_id):
             problems.append(f"{prefix}.commandId is invalid: {command_id!r}")
         elif command_id in command_ids:
@@ -166,6 +170,17 @@ def validate_registry(
                 base = _runtime_root(root)
                 if not (base / body).is_file():
                     problems.append(f"{prefix}.body does not exist: {body}")
+        if surface_status not in _SURFACE_STATUSES:
+            problems.append(f"{prefix}.surfaceStatus is invalid: {surface_status!r}")
+        if surface_status == "identity_only":
+            if owning_binary is not None or installed_entrypoint is not None:
+                problems.append(f"{prefix} identity_only commands cannot claim an installed entrypoint")
+        elif not isinstance(owning_binary, str) or not owning_binary:
+            problems.append(f"{prefix}.owningBinary must name the actual executor")
+        elif not isinstance(installed_entrypoint, str) or not installed_entrypoint:
+            problems.append(f"{prefix}.installedEntrypoint must name the installed surface")
+        if surface_status == "redirect" and owning_binary == "hephaestus":
+            problems.append(f"{prefix} redirects must name the receiving binary")
 
         routes = command.get("routes")
         if not isinstance(routes, Mapping) or not isinstance(routes.get("default"), Mapping):
@@ -362,7 +377,13 @@ def resolve_command(
         "route": requested_route,
         "entrypoint": route_spec["entrypoint"],
         "inputModes": list(route_spec["inputModes"]),
-        "hostModelRequired": bool(route_spec.get("hostModelRequired", False)),
+        "hostModelRequired": bool(
+            route_spec.get("hostModelRequired", False)
+            or command.get("surfaceStatus") == "host_model_required"
+        ),
+        "surfaceStatus": command["surfaceStatus"],
+        "owningBinary": command["owningBinary"],
+        "installedEntrypoint": command["installedEntrypoint"],
         "body": command["body"],
         "registrySchemaVersion": registry["schemaVersion"],
         "registryDigest": registry_digest(registry),
@@ -380,6 +401,15 @@ def registry_summary(root: str | Path | None = None) -> dict[str, Any]:
         "commandCount": len(commands),
         "commandIds": [command["commandId"] for command in commands],
         "publicCommands": [command["publicCommand"] for command in commands],
+        "surfaces": [
+            {
+                "commandId": command["commandId"],
+                "status": command["surfaceStatus"],
+                "owningBinary": command["owningBinary"],
+                "installedEntrypoint": command["installedEntrypoint"],
+            }
+            for command in commands
+        ],
         "universalSkills": list(registry["universalSkills"]),
         "publicNamesPreserved": bool(registry["compatibility"]["preserveExistingPublicNames"]),
     }

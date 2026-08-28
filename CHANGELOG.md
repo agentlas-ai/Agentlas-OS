@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## 1.2.33 — 2026-08-28
+
+- **Network staffing now ranks the work, not the host permission vocabulary.**
+  Candidate discovery uses the WorkOrder title and task together with agent
+  names, summaries, roles, skills, knowledge, inputs, outputs, and authored
+  sample tasks. Runtime, language, modality, authority, and tool requirements
+  stay in the execution contract for host-side validation instead of changing
+  semantic fit or manufacturing per-candidate gaps. The supported recall window
+  is consistently 30 candidates across the shipped host adapters.
+
+- **Commands and packages stop reporting preparatory success as completed
+  work.** The command registry now distinguishes executable,
+  host-model-required, redirected, and identity-only surfaces and names the
+  binary that actually owns each action. Contract completion returns blocked
+  when verification still has blockers, runtime bundles refuse invalid package
+  contracts, exact routing-card files are linted, and a zero-case benchmark can
+  no longer claim routing-ready status.
+
+- **Runtime auto-update repairs exact-version Codex and Claude plugin state.**
+  A machine updating once from v1.2.32 materializes a v1.2.33 cache instead of
+  overwriting a legacy directory in place, migrates Claude's installed-plugin
+  ledger atomically, records every mismatched legacy cache, and reports an
+  already-running host as `pending_reload` until that process exits or reloads.
+  Offline, disabled-update, and runtime-not-installed paths remain fail-closed;
+  no vendor CLI is invoked during this bounded transition.
+
 ## 1.2.32 — 2026-08-27
 
 - **`hep-build session` adds the fourth builder route across the supported host

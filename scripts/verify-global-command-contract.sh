@@ -11,6 +11,11 @@ fail() {
 
 required_files=(
   "docs/global-command-contract.md"
+  "docs/command-id-architecture.md"
+  "contracts/command-registry.v2.json"
+  "schemas/command-registry.schema.json"
+  "agentlas_cloud/command_registry.py"
+  "scripts/verify-command-registry.py"
   ".agentlas/global-commands.json"
   "schemas/global-commands.schema.json"
   "templates/global-commands.json.tpl"
@@ -138,6 +143,8 @@ required_files=(
 for path in "${required_files[@]}"; do
   [[ -e "$path" ]] || fail "missing required file: $path"
 done
+
+python3 scripts/verify-command-registry.py
 
 python3 - <<'PY'
 import json

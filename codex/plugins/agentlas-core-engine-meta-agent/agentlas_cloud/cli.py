@@ -12,7 +12,14 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
-from .runtime import AgentlasMockStore, compile_runtime_bundle, read_agent_file, run_setup_wizard, scan_agent_folder
+from .runtime import (
+    AgentlasMockStore,
+    RuntimeBundleValidationError,
+    compile_runtime_bundle,
+    read_agent_file,
+    run_setup_wizard,
+    scan_agent_folder,
+)
 from .update import (
     UpdateUnavailableError,
     maybe_auto_update,
@@ -1508,6 +1515,16 @@ def main(argv: list[str] | None = None) -> int:
         # match a friendly message out of it.
         try:
             return emit(compile_runtime_bundle(args.folder))
+        except RuntimeBundleValidationError as exc:
+            emit({
+                "action": "runtime_bundle",
+                "status": "blocked",
+                "error": "runtime_bundle_contract_invalid",
+                "folder": str(args.folder),
+                "blockerCount": len(exc.blockers),
+                "blockers": exc.blockers,
+            })
+            return 1
         except FileNotFoundError:
             return emit({
                 "action": "runtime_bundle",
@@ -2081,13 +2098,18 @@ def main(argv: list[str] | None = None) -> int:
             command_adapters = materialize_declared_command_adapters(workspace, str(slug))
             written.extend(command_adapters["written"])
             redacted = redact_host_paths(workspace)
+            verification = verify(workspace, mode=mode)
+            completed = bool(verification.get("ok"))
             report = {
                 "action": "contract complete",
                 "workspace": str(workspace),
                 "slug": str(slug),
                 "mode": mode,
-                "status": "ok",
+                "status": "ok" if completed else "blocked",
                 "written": sorted(set(written)),
+                "verified": completed,
+                "blockerCount": len(verification.get("blockers") or []),
+                "blockers": verification.get("blockers") or [],
                 "repairs": {
                     "team_shape": reconciled,
                     "derived": derived.get("derived", []),
@@ -2099,8 +2121,13 @@ def main(argv: list[str] | None = None) -> int:
                 },
             }
             emit(report)
-            _finish_build_telemetry(telemetry, ok=True)
-            return 0
+            _finish_build_telemetry(
+                telemetry,
+                ok=completed,
+                error_code=None if completed else "contract_blockers",
+                blocker_count=len(verification.get("blockers") or []),
+            )
+            return 0 if completed else 1
         if args.contract_command == "verify":
             telemetry = _build_telemetry_tracker("verify", mode=args.mode)
             report = verify(args.folder, mode=args.mode)
@@ -2128,7 +2155,12 @@ def main(argv: list[str] | None = None) -> int:
 
             reports = []
             if args.path:
-                for card_file in sorted(Path(args.path).rglob(".agentlas/routing-card.json")):
+                requested = Path(args.path).expanduser()
+                if requested.is_file():
+                    card_files = [requested]
+                else:
+                    card_files = sorted(requested.rglob(".agentlas/routing-card.json"))
+                for card_file in card_files:
                     payload = read_json(card_file)
                     if isinstance(payload, dict):
                         report = lint_card(payload)
@@ -2147,8 +2179,25 @@ def main(argv: list[str] | None = None) -> int:
                 for item in quarantined:
                     reports.append({"path": item["path"], "errors": [item["reason"]], "allowed_status": "quarantined"})
             errors = sum(1 for report in reports if report.get("errors"))
-            emit({"cards": len(reports), "with_errors": errors, "reports": reports})
-            return 1 if errors else 0
+            blockers = sum(
+                1
+                for report in reports
+                if report.get("claimed_status") == "routing_ready" and report.get("ready_blockers")
+            )
+            routing_ready = bool(reports) and all(
+                report.get("claimed_status") == "routing_ready"
+                and not report.get("errors")
+                and not report.get("ready_blockers")
+                for report in reports
+            )
+            emit({
+                "cards": len(reports),
+                "with_errors": errors,
+                "with_ready_blockers": blockers,
+                "routing_ready": routing_ready,
+                "reports": reports,
+            })
+            return 1 if errors or blockers or not reports else 0
         if args.cards_command == "migrate":
             from .networking.bootstrap import networking_home
             from .networking.card_migrate import migrate_tree
@@ -3849,7 +3898,7 @@ def run_field_test() -> dict[str, Any]:
             "agentId": "agent_private_instagram",
             "ownerId": "owner",
             "creatorId": "creator",
-            "version": "1.2.32",
+            "version": "1.2.33",
             "manifest": wizard["manifest"],
             "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
             "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},

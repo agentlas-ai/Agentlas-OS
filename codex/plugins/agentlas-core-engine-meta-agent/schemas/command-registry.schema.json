@@ -90,6 +90,9 @@
         "terminalCommand",
         "aliases",
         "engineEntrypoint",
+        "surfaceStatus",
+        "owningBinary",
+        "installedEntrypoint",
         "body",
         "routes"
       ],
@@ -114,6 +117,17 @@
         "engineEntrypoint": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "surfaceStatus": {
+          "enum": ["executable", "host_model_required", "redirect", "identity_only"]
+        },
+        "owningBinary": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "installedEntrypoint": {
+          "type": ["string", "null"],
+          "minLength": 1
         },
         "body": {
           "type": "string",

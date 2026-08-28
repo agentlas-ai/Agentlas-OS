@@ -86,7 +86,10 @@ from agentlas_cloud.desktop_updater_cleanup import (
     repair_installed_desktop_updater_cache as run_desktop_updater_cleanup_bridge,
 )
 from agentlas_cloud.memory_hosts import INSTALLABLE_HOSTS, MEMORY_HOOK_HOSTS
-from agentlas_cloud.update import _safe_python_cache_prefix
+from agentlas_cloud.update import (
+    _safe_python_cache_prefix,
+    reconcile_legacy_host_plugin_transition,
+)
 
 
 BEGIN_MARKER = "<!-- AGENTLAS:MEMORY-HOOK:BEGIN -->"
@@ -776,6 +779,38 @@ def repair_managed_runtime_python_shims(
         return {"status": "blocked", "reason": "shim_repair_failed"}
 
 
+def run_host_plugin_transition_bridge(source_dir: Path, home: Path) -> dict[str, Any]:
+    """Run the target release's bounded, non-recursive v1.2.32 transition."""
+
+    try:
+        version, runtime_copies = _managed_runtime_copies(source_dir, home)
+        runtime_root = runtime_copies[-1]
+        if not (runtime_root / "host_adapters").is_dir():
+            return {
+                "schemaVersion": "agentlas.legacy-host-plugin-transition.v1",
+                "status": "not_applicable",
+                "reason": "host_adapter_bundle_missing",
+                "release": f"v{version}",
+                "bounded": True,
+                "vendorCliInvoked": False,
+            }
+        return reconcile_legacy_host_plugin_transition(
+            source_dir,
+            runtime_root,
+            f"v{version}",
+            home=home,
+        )
+    except (InstallError, OSError, ValueError) as exc:
+        return {
+            "schemaVersion": "agentlas.legacy-host-plugin-transition.v1",
+            "status": "not_applicable",
+            "reason": "unverified_runtime_update_context",
+            "error": str(exc),
+            "bounded": True,
+            "vendorCliInvoked": False,
+        }
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -890,9 +925,18 @@ def main(argv: list[str] | None = None) -> int:
     # without an install_<host>() here fails loudly at startup instead of
     # silently missing from `--hosts all`.
     installers = {host: globals()[f"install_{host}"] for host in SUPPORTED_HOSTS}
-    installed: dict[str, list[str]] = {}
+    installed: dict[str, Any] = {}
     errors: dict[str, str] = {}
     runtime_shim_repair = repair_managed_runtime_python_shims(source_dir, home)
+    host_plugin_transition = run_host_plugin_transition_bridge(source_dir, home)
+    # v1.2.32's parent updater preserves only the `installed` and `errors`
+    # objects from this subprocess. Keep the typed receipt under `installed` as
+    # a compatibility envelope, and also expose it directly to newer callers.
+    installed["host_plugin_transition"] = host_plugin_transition
+    if host_plugin_transition.get("status") == "blocked":
+        errors["host_plugin_transition"] = str(
+            host_plugin_transition.get("reason") or "transition_blocked"
+        )
     try:
         # v1.1.56 callers terminate this installer after 30 seconds. Run the
         # bounded v0.8.65/v0.8.66 updater recovery first so an unrelated older
@@ -915,6 +959,7 @@ def main(argv: list[str] | None = None) -> int:
                 "installed": installed,
                 "errors": errors,
                 "runtime_shim_repair": runtime_shim_repair,
+                "host_plugin_transition": host_plugin_transition,
                 "desktop_repair": desktop_repair,
                 "desktop_updater_cleanup": desktop_updater_cleanup,
             },
