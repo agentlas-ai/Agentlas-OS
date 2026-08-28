@@ -234,9 +234,36 @@ def _now() -> str:
 
 def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    base_name = f".{path.name}.tmp-{os.getpid()}-{time.time_ns()}"
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    tmp: Path | None = None
+    descriptor: int | None = None
+    for suffix in range(10_000):
+        name = base_name if suffix == 0 else f"{base_name}.{suffix}"
+        candidate = path.with_name(name)
+        try:
+            descriptor = os.open(candidate, flags, 0o600)
+        except FileExistsError:
+            continue
+        tmp = candidate
+        break
+    if tmp is None or descriptor is None:
+        raise OSError(f"could not allocate a unique temporary file for {path.name}")
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = None
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        tmp.unlink(missing_ok=True)
+        raise
     try:
         os.chmod(path, 0o600)
     except OSError:
@@ -1132,26 +1159,29 @@ def _record_state_transition(root: Path, enabled: bool) -> None:
     if not meta.is_dir():
         return
     observed = meta / ONE_STATE_OBSERVED_FILE
-    prev: bool | None = None
-    try:
-        prev = bool(json.loads(observed.read_text(encoding="utf-8")).get("on"))
-    except (OSError, ValueError):
-        prev = None
-    if prev is not None and prev == enabled:
-        return
-    try:
-        with (meta / INVOCATION_LEDGER_FILE).open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps({
-                "schemaVersion": SCHEMA_VERSION,
-                "agentId": ONE_AGENT_ID,
-                "event": "one_state",
-                "from": prev,
-                "to": enabled,
-                "createdAt": _now(),
-            }, ensure_ascii=False) + "\n")
-        _atomic_write(observed, json.dumps({"on": enabled, "updatedAt": _now()}) + "\n")
-    except OSError:
-        return
+    with _LedgerLock(observed) as acquired:
+        if not acquired:
+            return
+        prev: bool | None = None
+        try:
+            prev = bool(json.loads(observed.read_text(encoding="utf-8")).get("on"))
+        except (OSError, ValueError):
+            prev = None
+        if prev is not None and prev == enabled:
+            return
+        try:
+            with (meta / INVOCATION_LEDGER_FILE).open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({
+                    "schemaVersion": SCHEMA_VERSION,
+                    "agentId": ONE_AGENT_ID,
+                    "event": "one_state",
+                    "from": prev,
+                    "to": enabled,
+                    "createdAt": _now(),
+                }, ensure_ascii=False) + "\n")
+            _atomic_write(observed, json.dumps({"on": enabled, "updatedAt": _now()}) + "\n")
+        except OSError:
+            return
 
 
 HUB_AGENTS_DIR_ENV = "AGENTLAS_HUB_AGENTS_DIR"
@@ -2449,14 +2479,19 @@ def _record_supersede(meta: Path, old_hash: str, new_hash: str) -> None:
     blocks. The old block's text remains recoverable in the file itself.
     """
     path = meta / SUPERSEDED_MAP_FILE
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
+    with _LedgerLock(path) as acquired:
+        if not acquired:
+            # A curator must not record "admit" while silently losing the
+            # pointer that hides the replaced block from recall.
+            raise RuntimeError("superseded_map_busy")
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                data = {}
+        except (OSError, ValueError):
             data = {}
-    except (OSError, ValueError):
-        data = {}
-    data[old_hash] = new_hash
-    _atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1) + "\n")
+        data[old_hash] = new_hash
+        _atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1) + "\n")
 
 
 _DURABLE_BLOCK_RE = re.compile(
@@ -2605,36 +2640,39 @@ def index_durable_blocks(root: Path, rebuild: bool = False) -> dict[str, Any]:
 
     superseded = _superseded_hashes(meta)
     state_path = meta / "index-state.json"
-    try:
-        seen = set(json.loads(state_path.read_text(encoding="utf-8")))
-    except (OSError, ValueError):
-        seen = set()
-    if rebuild:
-        seen = set()
-
-    indexed = 0
-    for block in blocks:
-        digest = _content_hash(block["content"])
-        if digest in superseded or digest in seen:
-            continue
+    with _LedgerLock(state_path) as acquired:
+        if not acquired:
+            return {"indexed": 0, "skipped": "index-state-busy"}
         try:
-            runtime.ingest_experience(
-                agent_id=ONE_AGENT_ID,
-                summary=block["content"],
-                tags=[block["kind"], block["project"]] if block["project"] else [block["kind"]],
-                memory_kind=block["kind"],
-                source_memory_id=digest,
-                suggested_scope="agent_repo",
-                reason="One durable soul projection; the soul file remains authoritative.",
-            )
-        except Exception:
-            continue
-        seen.add(digest)
-        indexed += 1
-    try:
-        _atomic_write(state_path, json.dumps(sorted(seen), ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+            seen = set(json.loads(state_path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            seen = set()
+        if rebuild:
+            seen = set()
+
+        indexed = 0
+        for block in blocks:
+            digest = _content_hash(block["content"])
+            if digest in superseded or digest in seen:
+                continue
+            try:
+                runtime.ingest_experience(
+                    agent_id=ONE_AGENT_ID,
+                    summary=block["content"],
+                    tags=[block["kind"], block["project"]] if block["project"] else [block["kind"]],
+                    memory_kind=block["kind"],
+                    source_memory_id=digest,
+                    suggested_scope="agent_repo",
+                    reason="One durable soul projection; the soul file remains authoritative.",
+                )
+            except Exception:
+                continue
+            seen.add(digest)
+            indexed += 1
+        try:
+            _atomic_write(state_path, json.dumps(sorted(seen), ensure_ascii=False) + "\n")
+        except OSError:
+            pass
     return {"indexed": indexed, "durable": len(blocks), "known": len(seen)}
 
 
@@ -2681,22 +2719,26 @@ def record_recall_receipt(root: Path, block_hashes: list[str]) -> None:
         return
     root = Path(root).expanduser()
     path = root / META_DIR / RECALL_USAGE_FILE
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _LedgerLock(path) as acquired:
+        if not acquired:
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                data = {}
+        except (OSError, ValueError):
             data = {}
-    except (OSError, ValueError):
-        data = {}
-    now = _now()
-    for digest in block_hashes:
-        row = data.get(digest)
-        count = int(row.get("count", 0)) if isinstance(row, dict) else 0
-        data[digest] = {"count": count + 1, "lastAt": now}
-    try:
-        _atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1) + "\n")
-    except OSError:
-        # Observability must never break a session.
-        return
+        now = _now()
+        for digest in block_hashes:
+            row = data.get(digest)
+            count = int(row.get("count", 0)) if isinstance(row, dict) else 0
+            data[digest] = {"count": count + 1, "lastAt": now}
+        try:
+            _atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1) + "\n")
+        except OSError:
+            # Observability must never break a session.
+            return
 
 
 def recall_coverage(root: Path) -> dict[str, Any]:

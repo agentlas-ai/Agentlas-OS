@@ -747,7 +747,8 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
     manifest = build_manifest(files, name or base.name)
     scan = scan_files(files)
     mcp_policy_validation = _validate_mcp_policy_path(base)
-    state = "Ready for MCP call" if mcp_policy_validation["status"] == "valid" else "Blocked"
+    projected_state = "Ready for MCP call" if mcp_policy_validation["status"] == "valid" else "Blocked"
+    state = projected_state if write else "preview"
     manifest_payload = manifest.to_json()
     existing_manifest = _read_existing_manifest(base)
     kept_contract: list[str] = []
@@ -797,12 +798,15 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
         (agentlas_dir / "security-scan.json").write_text(json.dumps(scan.to_json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {
         "status": state,
+        "writeAttempted": write,
+        "writeApplied": write,
+        **({"projectedStatus": projected_state} if not write else {}),
         "manifest": manifest_payload,
         "scanReport": scan.to_json(),
         "stateTransitionLog": [
-            "Started setup wizard",
+            "Started setup wizard" if write else "Started setup wizard preview",
             *(["Seeded missing .agentlas/mcp-policy.json"] if mcp_policy_seeded else []),
-            "Generated agentlas.json",
+            "Generated agentlas.json" if write else "Previewed agentlas.json; no files written",
             *(
                 [f"Kept authored runtime contract: {', '.join(kept_contract)}"]
                 if kept_contract
@@ -818,7 +822,7 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
             ),
             f"Security scan: {scan.verdict}",
             f"MCP policy: {mcp_policy_validation['status']}",
-            state,
+            projected_state if write else f"Projected status: {projected_state}",
         ],
         "blockers": [
             *(

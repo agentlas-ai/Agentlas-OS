@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 BEGIN = "<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->"
 END = "<!-- HEPHAESTUS:GLOBAL-ROUTER:END -->"
@@ -116,9 +118,17 @@ def install_global_router(
         backup_path = None
         if changed and not dry_run:
             target.path.parent.mkdir(parents=True, exist_ok=True)
-            if backup and target.path.exists():
-                backup_path = _backup(target.path)
-            target.path.write_text(new_text, encoding="utf-8")
+            with _target_mutation_lock(target.path):
+                # Re-read after acquiring the cross-process lock. A retry or a
+                # parallel installer may already have applied the exact block;
+                # in that case the truthful result is unchanged and no backup
+                # or byte rewrite should occur.
+                text = _read_text(target.path)
+                new_text, changed = _upsert_block(text, _router_block(target.id))
+                if changed:
+                    if backup and target.path.exists():
+                        backup_path = _backup(target.path, text)
+                    target.path.write_text(new_text, encoding="utf-8")
         results.append(
             {
                 "target": target.id,
@@ -145,9 +155,13 @@ def remove_global_router(
         new_text, changed = _remove_block(text)
         backup_path = None
         if changed and not dry_run:
-            if backup and target.path.exists():
-                backup_path = _backup(target.path)
-            target.path.write_text(new_text, encoding="utf-8")
+            with _target_mutation_lock(target.path):
+                text = _read_text(target.path)
+                new_text, changed = _remove_block(text)
+                if changed:
+                    if backup and target.path.exists():
+                        backup_path = _backup(target.path, text)
+                    target.path.write_text(new_text, encoding="utf-8")
         results.append(
             {
                 "target": target.id,
@@ -280,7 +294,8 @@ def _upsert_block(text: str, block: str) -> tuple[str, bool]:
         end = text.index(END, start) + len(END)
         if end < len(text) and text[end : end + 1] == "\n":
             end += 1
-        new_text = text[:start].rstrip() + "\n\n" + block.rstrip() + "\n" + text[end:].lstrip("\n")
+        prefix = text[:start].rstrip()
+        new_text = (prefix + "\n\n" if prefix else "") + block.rstrip() + "\n" + text[end:].lstrip("\n")
     else:
         prefix = text.rstrip()
         new_text = (prefix + "\n\n" if prefix else "") + block.rstrip() + "\n"
@@ -307,8 +322,77 @@ def _read_text(path: Path) -> str:
         return ""
 
 
-def _backup(path: Path) -> Path:
+@contextmanager
+def _target_mutation_lock(path: Path, *, timeout_seconds: float = 15.0) -> Iterator[None]:
+    """Serialize router mutations without a crash-stale lock contract.
+
+    The small persistent lock file is intentional: advisory locks are released
+    by the OS when a process exits, while unlinking a lock file can let a third
+    process lock a new inode as an existing waiter still owns the old one.
+    """
+
+    lock_path = path.with_name(f".{path.name}.agentlas-router.lock")
+    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        try:
+            os.chmod(lock_path, 0o600)
+        except OSError:
+            pass
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    if os.fstat(descriptor).st_size == 0:
+                        os.write(descriptor, b"\0")
+                    os.lseek(descriptor, 0, os.SEEK_SET)
+                    msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (BlockingIOError, OSError) as exc:
+                if time.monotonic() >= deadline:
+                    raise ValueError(f"global router target is busy: {path.name}") from exc
+                time.sleep(0.02)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                import msvcrt
+
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
+
+
+def _backup(path: Path, content: str) -> Path:
+    """Create an exclusive snapshot and never reuse or overwrite a receipt."""
+
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    backup = path.with_name(f"{path.name}.bak.{stamp}")
-    backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    return backup
+    base_name = f"{path.name}.bak.{stamp}.{time.time_ns()}"
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    for suffix in range(10_000):
+        name = base_name if suffix == 0 else f"{base_name}.{suffix}"
+        backup = path.with_name(name)
+        try:
+            descriptor = os.open(backup, flags, 0o600)
+        except FileExistsError:
+            continue
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException:
+            backup.unlink(missing_ok=True)
+            raise
+        return backup
+    raise OSError(f"could not allocate a unique backup for {path.name}")

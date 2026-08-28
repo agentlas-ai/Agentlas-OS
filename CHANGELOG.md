@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 1.2.37 — 2026-08-29
+
+- **Global router mutations are byte-idempotent and preserve every recovery
+  point.** Repeating an install no longer adds leading blank lines, parallel
+  installs serialize before re-reading the prompt, and each install/remove
+  snapshot uses an exclusive high-resolution backup name that cannot overwrite
+  an earlier receipt.
+- **Wizard previews no longer claim that an unwritten package is executable.**
+  `wizard --no-write` now returns a typed `preview` result with its projected
+  status and an explicit no-write transition; only the writing path reports
+  that `agentlas.json` was generated and is ready for an MCP call.
+- **Parallel One sessions no longer erase recall and evolution evidence.**
+  Recall counters, supersede pointers, semantic index state, and observed One
+  state now serialize each read-modify-write against the target file. Atomic
+  writes use exclusive per-process temporary files, so overlapping hooks retain
+  every increment and mapping instead of silently replacing one another.
+
 ## 1.2.36 — 2026-08-29
 
 - **Runtime updates repair the host's persistent Agentlas source, not only its
