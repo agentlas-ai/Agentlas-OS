@@ -846,6 +846,11 @@ class WorkforceIndex:
                     trigger_affinity[release_id] = affinity
                     # 왜 이 후보가 메뉴에 있는지 호스트가 읽을 수 있어야 한다.
                     evidence.append("fit:publisher-trigger")
+                if not evidence:
+                    mandatory_gaps = sorted({
+                        *mandatory_gaps,
+                        "gap:semantic-fit-unsubstantiated",
+                    })
                 ranked_inputs.append(
                     {
                         "card": _candidate_card(

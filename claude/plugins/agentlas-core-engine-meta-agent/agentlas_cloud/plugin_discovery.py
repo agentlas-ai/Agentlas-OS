@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -40,11 +41,26 @@ but no not
 
 
 def _search_tokens(text: str) -> list[str]:
-    return [
-        token
-        for token in (text or "").lower().split()
-        if len(token) >= 2 and token not in _SEARCH_STOPWORDS
-    ]
+    return list(
+        dict.fromkeys(
+            token
+            for token in re.findall(r"[^\W_]+", (text or "").casefold())
+            if len(token) >= 2 and token not in _SEARCH_STOPWORDS
+        )
+    )
+
+
+def _matches_plugin(query_tokens: list[str], name: str, description: str) -> bool:
+    if not query_tokens:
+        return True
+    query_token_set = set(query_tokens)
+    name_tokens = set(_search_tokens(name))
+    if name_tokens and name_tokens <= query_token_set:
+        return True
+    description_overlap = query_token_set & set(_search_tokens(description))
+    return len(description_overlap) >= 2
+
+
 _HUB_TIMEOUT_SECONDS = 6
 _SCAN_MAX_DEPTH = 6
 
@@ -231,8 +247,11 @@ def resolve_plugins(query: str, project_dir: Path | str = ".", use_hub: bool = T
     tokens = _search_tokens(query)
 
     def matches_local(entry: dict[str, Any]) -> bool:
-        haystack = f"{entry['name']} {entry.get('description', '')}".lower()
-        return any(token in haystack for token in tokens) if tokens else True
+        return _matches_plugin(
+            tokens,
+            str(entry["name"]),
+            str(entry.get("description") or ""),
+        )
 
     local_matches = [entry for entry in local["plugins"] if matches_local(entry)]
     local_names = {entry["name"].lower() for entry in local["plugins"]}

@@ -900,6 +900,34 @@ def _detected_hosts(home: Path) -> list[str]:
     return hosts
 
 
+def _runtime_memory_hook_receipt(home: Path, hosts: list[str]) -> dict[str, Any]:
+    """Prove that every installed hook will point at a callable runner.
+
+    Host hook assets deliberately reference the promoted runtime rather than
+    this source checkout. Writing those assets before `runtime/current` exists
+    creates a durable exit-127 command while this installer reports success.
+    A detected host therefore fails closed until the exact target exists and,
+    on POSIX, is executable. A machine with no detected hosts remains a genuine
+    no-op pass.
+    """
+
+    if not hosts:
+        return {
+            "status": "not_required",
+            "reason": "no_detected_hosts",
+        }
+    runner = home / ".agentlas" / "runtime" / "current" / "bin" / "agentlas-memory-hook"
+    if not runner.is_file() or (os.name != "nt" and not os.access(runner, os.X_OK)):
+        return {
+            "status": "blocked",
+            "reason": "runtime_memory_hook_unavailable",
+        }
+    return {
+        "status": "ready",
+        "reason": "runtime_memory_hook_callable",
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Install merge-safe Agentlas host memory hooks")
     parser.add_argument("--source-dir", type=Path, default=Path(__file__).resolve().parents[1])
@@ -947,11 +975,17 @@ def main(argv: list[str] | None = None) -> int:
         # OS update. Keep the failure typed and retryable on the next launch.
         desktop_updater_cleanup = {"status": "blocked", "reason": "bridge_failed"}
     desktop_repair = run_desktop_repair_bridge(source_dir, home)
-    for host in hosts:
-        try:
-            installed[host] = installers[host](source_dir, home)
-        except (InstallError, OSError) as exc:
-            errors[host] = str(exc)
+    runtime_memory_hook = _runtime_memory_hook_receipt(home, hosts)
+    installed["runtime_memory_hook"] = runtime_memory_hook
+    if runtime_memory_hook["status"] == "blocked":
+        for host in hosts:
+            errors[host] = "runtime_memory_hook_unavailable"
+    else:
+        for host in hosts:
+            try:
+                installed[host] = installers[host](source_dir, home)
+            except (InstallError, OSError) as exc:
+                errors[host] = str(exc)
     print(
         json.dumps(
             {
@@ -962,6 +996,7 @@ def main(argv: list[str] | None = None) -> int:
                 "host_plugin_transition": host_plugin_transition,
                 "desktop_repair": desktop_repair,
                 "desktop_updater_cleanup": desktop_updater_cleanup,
+                "runtime_memory_hook": runtime_memory_hook,
             },
             ensure_ascii=False,
             indent=2,

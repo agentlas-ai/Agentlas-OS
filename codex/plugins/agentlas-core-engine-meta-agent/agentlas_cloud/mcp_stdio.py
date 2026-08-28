@@ -1276,6 +1276,28 @@ def _host_model_allocation_policy() -> dict[str, Any]:
 
 TOOLS: list[dict[str, Any]] = [
     {
+        "name": "agentlas_resolve_plugins",
+        "description": (
+            "Resolve a short, redacted missing capability against installed Agentlas plugins and the "
+            "Agentlas Hub catalog before claiming that no suitable integration exists. Returns exact "
+            "local matches, installable Hub entries, or unresolved=true. This tool never installs or "
+            "enables a plugin; the user must decide after reviewing permissions and credential requirements."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["need"],
+            "properties": {
+                "need": {
+                    "type": "string",
+                    "description": "A short, redacted description of the missing capability; do not include private text.",
+                },
+                "project_dir": {"type": "string", "description": "Project directory to scan (default: cwd)."},
+                "use_hub": {"type": "boolean", "description": "Search Agentlas Hub as well as installed plugins (default: true)."},
+            },
+        },
+    },
+    {
         "name": "agentlas_tool_search",
         "description": (
             "Find the TOOL for a concrete action, not the plugin for a topic. Pass `need` as one "
@@ -3760,6 +3782,17 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if brief_warning:
             invocation["work_brief_warning"] = brief_warning
         return with_bootstrap(invocation)
+    if name == "agentlas_resolve_plugins":
+        from .plugin_discovery import resolve_plugins
+
+        need = str(arguments.get("need") or "").strip()
+        if not need:
+            return {"error": "missing_need", "message": "need is required — one sentence describing the missing capability."}
+        return resolve_plugins(
+            need,
+            arguments.get("project_dir") or ".",
+            use_hub=arguments.get("use_hub") is not False,
+        )
     if name == "agentlas_tool_search":
         from .plugin_discovery import tool_search
 
