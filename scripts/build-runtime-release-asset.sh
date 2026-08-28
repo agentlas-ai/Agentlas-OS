@@ -116,6 +116,7 @@ runtime_paths=(
   "manifest.json"
   "package-contract.json"
   "plugin.json"
+  "release-provenance.json"
   "mcp.json"
   ".agentlas/global-commands.json"
   "agentlas_cloud"
@@ -202,6 +203,7 @@ fi
 required_runtime_paths=(
   "manifest.json"
   "package-contract.json"
+  "release-provenance.json"
   ".agentlas/global-commands.json"
   "contracts/builder-interview-research-gate.md"
   "contracts/runtime-registry.json"

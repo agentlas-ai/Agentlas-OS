@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 1.2.36 — 2026-08-29
+
+- **Runtime updates repair the host's persistent Agentlas source, not only its
+  cache.** Codex and Claude registries are migrated to the stable
+  `runtime/current` adapter path with exact structural readback, while duplicate
+  Codex source assignments and stale refs are removed without changing other
+  marketplace records. An already-running host is reported as
+  `pending_reload`; an inactive host becomes current immediately after the
+  persistent state is verified.
+- **Claude's installed-plugin ledger is pinned to the immutable public release
+  commit.** Runtime archives now carry Git-exported release provenance, and the
+  updater verifies and records that exact commit together with the release and
+  install path. A stale developer checkout or same-version cache can therefore
+  no longer masquerade as the public release that the next Claude session will
+  load.
+
 ## 1.2.35 — 2026-08-28
 
 - **Network menus expose candidates whose semantic fit has no evidence.** A

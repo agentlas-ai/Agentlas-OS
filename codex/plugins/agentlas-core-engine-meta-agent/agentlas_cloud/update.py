@@ -65,7 +65,7 @@ RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "contracts", "ontology"
 #     One directive points at a file that was never created (PRD §3.6). Measured
 #     2026-08-23: ~/.agentlas/runtime/current/skills did not exist at all.
 RUNTIME_OPTIONAL_DIRS = ("schemas", "system-agents", "goose", "openclaw", "skills")
-RUNTIME_FILES = ("package-contract.json",)
+RUNTIME_FILES = ("package-contract.json", "release-provenance.json")
 RUNTIME_BRIDGE_FILES = (
     "desktop-update-bridge-v1.json",
     "scripts/install-memory-hooks.py",
@@ -100,8 +100,11 @@ HOST_ADAPTER_DIRS = (
 )
 HOST_ADAPTER_CONTRACT_PATH = Path("contracts") / "runtime-registry.json"
 COMMAND_REGISTRY_CONTRACT_PATH = Path("contracts") / "command-registry.v2.json"
+RELEASE_PROVENANCE_FILE = "release-provenance.json"
+RELEASE_PROVENANCE_REQUIRED_SINCE = "1.2.36"
 _HOST_ADAPTER_NAME_RE = re.compile(r"^\.?[a-z0-9][a-z0-9._-]*$")
 _COMMAND_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _host_adapter_dirs(source: Path) -> tuple[str, ...]:
@@ -902,11 +905,15 @@ def _post_activation_state(
             continue
         if host.get("host") == "codex" and not host.get("exactCacheCurrent"):
             host_blockers.append({"host": "codex", "reason": "exact_target_cache_missing"})
+        elif host.get("host") == "codex" and not host.get("nextLoadCurrent"):
+            host_blockers.append({"host": "codex", "reason": "persistent_registry_not_current"})
         if host.get("host") == "claude":
             if not host.get("exactCacheCurrent"):
                 host_blockers.append({"host": "claude", "reason": "exact_target_cache_missing"})
             elif not host.get("ledgerCurrent"):
                 host_blockers.append({"host": "claude", "reason": "target_ledger_not_current"})
+            elif not host.get("nextLoadCurrent"):
+                host_blockers.append({"host": "claude", "reason": "persistent_registry_not_current"})
     pending_hosts = sorted(set(host_plugin_sync.get("pendingHosts") or []))
     blockers: list[dict[str, Any]] = []
     if not runtime_current:
@@ -1331,6 +1338,33 @@ def reconcile_legacy_host_plugin_transition(
     home_dir = (home or Path.home()).expanduser().resolve()
     target_root = runtime_root.expanduser().resolve()
     bundle = target_root / HOST_ADAPTER_BUNDLE_DIR
+    release_commit_sha = _release_provenance_commit(source)
+    if _release_requires_provenance(source) and release_commit_sha is None:
+        return {
+            "schemaVersion": "agentlas.legacy-host-plugin-transition.v1",
+            "status": "blocked",
+            "reason": "release_provenance_missing_or_invalid",
+            "bounded": True,
+            "vendorCliInvoked": False,
+        }
+    if release_commit_sha is not None:
+        try:
+            _write_json(
+                target_root / RELEASE_PROVENANCE_FILE,
+                {
+                    "schemaVersion": "agentlas.release-provenance.v1",
+                    "commit": release_commit_sha,
+                },
+            )
+        except OSError as exc:
+            return {
+                "schemaVersion": "agentlas.legacy-host-plugin-transition.v1",
+                "status": "blocked",
+                "reason": "release_provenance_persist_failed",
+                "error": str(exc),
+                "bounded": True,
+                "vendorCliInvoked": False,
+            }
     try:
         _validate_host_adapter_bundle(bundle, release_tag)
     except (OSError, ValueError) as exc:
@@ -1351,6 +1385,7 @@ def reconcile_legacy_host_plugin_transition(
         release_tag,
         home=home_dir,
         unsafe_legacy_paths=legacy,
+        release_commit_sha=release_commit_sha,
     )
     plugin_cache = _prune_installed_plugin_caches(
         release_tag,
@@ -2546,6 +2581,25 @@ def _source_release_tag(source: Path) -> str | None:
     return value if value.startswith("v") else f"v{value}"
 
 
+def _release_provenance_commit(source: Path) -> str | None:
+    """Return the commit substituted by ``git archive`` for this runtime."""
+
+    try:
+        payload = json.loads(
+            (source / RELEASE_PROVENANCE_FILE).read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+    commit = str(payload.get("commit") or "").strip().lower() if isinstance(payload, dict) else ""
+    return commit if _COMMIT_SHA_RE.fullmatch(commit) else None
+
+
+def _release_requires_provenance(source: Path) -> bool:
+    release = _source_release_tag(source)
+    comparison = _compare_semver(release, RELEASE_PROVENANCE_REQUIRED_SINCE)
+    return comparison is not None and comparison >= 0
+
+
 def _runtime_version_dir_name(tag: str) -> str:
     version = tag.lstrip("vV")
     alphanumeric = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -2718,6 +2772,12 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
         ):
             if not (runtime_root / relative).is_file():
                 missing.append(str(relative))
+    if _release_requires_provenance(runtime_root):
+        if _release_provenance_commit(runtime_root) is None:
+            raise ValueError(
+                "release runtime provenance is missing or invalid: "
+                f"{RELEASE_PROVENANCE_FILE} must contain the exact 40-hex release commit"
+            )
     model_path = _model_path(runtime_root, release_source=release_source)
     if model_path is None:
         layout = "assets" if release_source else "models"

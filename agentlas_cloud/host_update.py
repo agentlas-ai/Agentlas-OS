@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 import time
@@ -24,6 +25,8 @@ MARKETPLACE_ID = "agentlas-core-engine"
 COMMAND_TIMEOUT_SECONDS = 90
 HOST_ACTIVATION_MARKER = "host-plugin-activation.json"
 _PROCESS_SNAPSHOT_UNSET = object()
+RELEASE_PROVENANCE_FILE = "release-provenance.json"
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _normal_version(value: Any) -> str:
@@ -110,7 +113,27 @@ def _json_version(path: Path) -> str | None:
     return _normal_version(version) or None
 
 
-def _claude_ledger_state(installed: Path, cache: Path, target: str) -> dict[str, Any]:
+def _release_commit_sha(source: Path) -> str | None:
+    """Read the immutable commit exported into an installed release archive."""
+
+    candidates = (source / RELEASE_PROVENANCE_FILE, source.parent / RELEASE_PROVENANCE_FILE)
+    for path in candidates:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        commit = str(payload.get("commit") or "").strip().lower() if isinstance(payload, dict) else ""
+        if _COMMIT_SHA_RE.fullmatch(commit):
+            return commit
+    return None
+
+
+def _claude_ledger_state(
+    installed: Path,
+    cache: Path,
+    target: str,
+    release_commit_sha: str | None = None,
+) -> dict[str, Any]:
     """Check Claude's version/path ledger against the materialized target.
 
     The updater historically rewrote old cache directories in place, leaving
@@ -159,12 +182,23 @@ def _claude_ledger_state(installed: Path, cache: Path, target: str) -> dict[str,
                     "entryFound": True,
                     "version": recorded or None,
                     "installPath": str(install_path),
+                    "gitCommitSha": str(entry.get("gitCommitSha") or "").strip().lower() or None,
                     "current": False,
                 }
                 if first is None:
                     first = state
                 manifest_version = _json_version(candidate / ".claude-plugin" / "plugin.json")
-                if exact_target and recorded == target and candidate == expected_path and manifest_version == target:
+                commit_current = (
+                    release_commit_sha is None
+                    or state["gitCommitSha"] == release_commit_sha
+                )
+                if (
+                    exact_target
+                    and recorded == target
+                    and candidate == expected_path
+                    and manifest_version == target
+                    and commit_current
+                ):
                     return {**state, "current": True}
     return first or {
         "entryFound": False,
@@ -178,16 +212,54 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     """Persist one host ledger without exposing a partially written file."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode: int | None = None
+    try:
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode):
+            raise OSError(f"refusing to replace symlinked host state: {path}")
+        existing_mode = stat.S_IMODE(metadata.st_mode)
+    except FileNotFoundError:
+        pass
     tmp = path.with_name(f".{path.name}.agentlas-{os.getpid()}")
     try:
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if existing_mode is not None:
+            os.chmod(tmp, existing_mode)
         os.replace(tmp, path)
     finally:
         if tmp.exists():
             tmp.unlink()
 
 
-def _migrate_claude_ledger(installed: Path, cache: Path, target: str) -> dict[str, Any]:
+def _write_text_atomic(path: Path, text: str) -> None:
+    """Persist one host-owned text registry without changing unrelated bytes."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode: int | None = None
+    try:
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode):
+            raise OSError(f"refusing to replace symlinked host state: {path}")
+        existing_mode = stat.S_IMODE(metadata.st_mode)
+    except FileNotFoundError:
+        pass
+    tmp = path.with_name(f".{path.name}.agentlas-{os.getpid()}")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        if existing_mode is not None:
+            os.chmod(tmp, existing_mode)
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+def _migrate_claude_ledger(
+    installed: Path,
+    cache: Path,
+    target: str,
+    release_commit_sha: str | None = None,
+) -> dict[str, Any]:
     """Point Claude's next load at the verified exact-version cache.
 
     This intentionally changes only Agentlas entries in Claude's ledger.  It
@@ -220,9 +292,18 @@ def _migrate_claude_ledger(installed: Path, cache: Path, target: str) -> dict[st
             if not isinstance(entry, dict):
                 continue
             entry_found = True
-            if _normal_version(entry.get("version")) != target or entry.get("installPath") != str(target_path):
+            if (
+                _normal_version(entry.get("version")) != target
+                or entry.get("installPath") != str(target_path)
+                or (
+                    release_commit_sha is not None
+                    and str(entry.get("gitCommitSha") or "").strip().lower() != release_commit_sha
+                )
+            ):
                 entry["version"] = target
                 entry["installPath"] = str(target_path)
+                if release_commit_sha is not None:
+                    entry["gitCommitSha"] = release_commit_sha
                 changed = True
     if not entry_found:
         return {"ok": False, "changed": False, "reason": "ledger_entry_missing"}
@@ -231,13 +312,150 @@ def _migrate_claude_ledger(installed: Path, cache: Path, target: str) -> dict[st
             _write_json_atomic(installed, payload)
         except OSError as exc:
             return {"ok": False, "changed": False, "reason": "ledger_write_failed", "error": str(exc)}
-    verified = _claude_ledger_state(installed, cache, target)
+    verified = _claude_ledger_state(installed, cache, target, release_commit_sha)
     return {
         "ok": bool(verified["current"]),
         "changed": changed,
         "reason": None if verified["current"] else "ledger_verify_failed",
         "ledgerVersion": verified["version"],
         "ledgerInstallPath": verified["installPath"],
+        "ledgerCommitSha": verified.get("gitCommitSha"),
+    }
+
+
+def _codex_table_body(text: str) -> tuple[int, int, str] | None:
+    header = re.search(
+        r"(?m)^\[marketplaces\.agentlas-core-engine\][ \t]*(?:#.*)?$",
+        text,
+    )
+    if header is None:
+        return None
+    following = re.search(r"(?m)^\[", text[header.end() :])
+    end = header.end() + following.start() if following else len(text)
+    return header.end(), end, text[header.end() : end]
+
+
+def _normalized_assignment(body: str, key: str, value: str) -> tuple[str, bool]:
+    """Leave exactly one assignment for a key inside one TOML table body."""
+
+    pattern = re.compile(rf"(?m)^[ \t]*{re.escape(key)}[ \t]*=.*(?:\n|$)")
+    stripped = pattern.sub("", body)
+    suffix = "" if stripped.endswith("\n") or not stripped else "\n"
+    updated = f"{stripped}{suffix}{key} = {value}\n"
+    return updated, updated != body
+
+
+def _assignment_values(body: str, key: str) -> list[str]:
+    return [
+        value.strip()
+        for value in re.findall(
+            rf"(?m)^[ \t]*{re.escape(key)}[ \t]*=[ \t]*(.*)$",
+            body,
+        )
+    ]
+
+
+def _codex_plugin_entry_present(text: str) -> bool:
+    return bool(
+        re.search(
+            rf'(?m)^\[plugins\."{re.escape(PLUGIN_ID)}"\][ \t]*(?:#.*)?$',
+            text,
+        )
+    )
+
+
+def _codex_registry_source_bound(text: str, source: Path) -> bool:
+    table = _codex_table_body(text)
+    if table is None or not _codex_plugin_entry_present(text):
+        return False
+    body = table[2]
+    return (
+        _assignment_values(body, "source_type") == [json.dumps("local")]
+        and _assignment_values(body, "source") == [json.dumps(str(source))]
+        and not _assignment_values(body, "ref")
+    )
+
+
+def _claude_registry_source_bound(text: str, source: Path) -> bool:
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        return False
+    entry = payload.get(MARKETPLACE_ID) if isinstance(payload, dict) else None
+    expected = str(source / "claude")
+    return bool(
+        isinstance(entry, dict)
+        and entry.get("source") == {"source": "directory", "path": expected}
+        and entry.get("installLocation") == expected
+    )
+
+
+def _migrate_codex_registry(config: Path, source: Path) -> dict[str, Any]:
+    """Point the existing Agentlas marketplace at the stable runtime/current bundle."""
+
+    try:
+        text = config.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "changed": False, "reason": "registry_unreadable", "error": str(exc)}
+    if not _codex_plugin_entry_present(text):
+        return {"ok": False, "changed": False, "reason": "plugin_entry_missing"}
+    table = _codex_table_body(text)
+    if table is None:
+        return {"ok": False, "changed": False, "reason": "marketplace_entry_missing"}
+    start, end, body = table
+    body, changed_type = _normalized_assignment(body, "source_type", json.dumps("local"))
+    body, changed_source = _normalized_assignment(body, "source", json.dumps(str(source)))
+    body_without_ref = re.sub(r"(?m)^[ \t]*ref[ \t]*=.*\n?", "", body)
+    changed = changed_type or changed_source or body_without_ref != body
+    updated = f"{text[:start]}{body_without_ref}{text[end:]}"
+    if changed:
+        try:
+            _write_text_atomic(config, updated)
+        except OSError as exc:
+            return {"ok": False, "changed": False, "reason": "registry_write_failed", "error": str(exc)}
+    try:
+        verified_text = config.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "changed": changed, "reason": "registry_readback_failed", "error": str(exc)}
+    current = _codex_registry_source_bound(verified_text, source)
+    return {
+        "ok": current,
+        "changed": changed,
+        "reason": None if current else "registry_verify_failed",
+        "source": str(source),
+    }
+
+
+def _migrate_claude_registry(marketplace: Path, source: Path) -> dict[str, Any]:
+    """Merge only Agentlas' marketplace record and verify the exact stable source."""
+
+    try:
+        payload = json.loads(marketplace.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"ok": False, "changed": False, "reason": "registry_unreadable", "error": str(exc)}
+    entry = payload.get(MARKETPLACE_ID) if isinstance(payload, dict) else None
+    if not isinstance(entry, dict):
+        return {"ok": False, "changed": False, "reason": "marketplace_entry_missing"}
+    expected = str(source / "claude")
+    expected_source = {"source": "directory", "path": expected}
+    changed = entry.get("source") != expected_source or entry.get("installLocation") != expected
+    if changed:
+        entry["source"] = expected_source
+        entry["installLocation"] = expected
+        try:
+            _write_json_atomic(marketplace, payload)
+        except OSError as exc:
+            return {"ok": False, "changed": False, "reason": "registry_write_failed", "error": str(exc)}
+    try:
+        verified_text = marketplace.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "changed": changed, "reason": "registry_readback_failed", "error": str(exc)}
+    current = _claude_registry_source_bound(verified_text, source)
+    return {
+        "ok": current,
+        "changed": changed,
+        "reason": None if current else "registry_verify_failed",
+        "source": expected,
     }
 
 
@@ -790,7 +1008,7 @@ def _codex_status(
         text = config.read_text(encoding="utf-8")
     except OSError:
         text = ""
-    source_bound = _source_bound(text, source) and f'[plugins."{PLUGIN_ID}"]' in text
+    source_bound = _codex_registry_source_bound(text, source)
     manifest = cache / target / ".codex-plugin" / "plugin.json"
     exact_cache_current = _exact_cache_current(
         cache,
@@ -841,6 +1059,7 @@ def _claude_status(
     source: Path,
     target: str,
     process_snapshot: list[dict[str, Any]] | None | object = _PROCESS_SNAPSHOT_UNSET,
+    release_commit_sha: str | None = None,
 ) -> dict[str, Any]:
     snapshot = _process_snapshot() if process_snapshot is _PROCESS_SNAPSHOT_UNSET else process_snapshot
     plugin_root = home / ".claude" / "plugins"
@@ -856,8 +1075,8 @@ def _claude_status(
         marketplace_text = marketplace.read_text(encoding="utf-8")
     except OSError:
         marketplace_text = ""
-    source_bound = _source_bound(marketplace_text, source, "claude")
-    ledger = _claude_ledger_state(installed, cache, target)
+    source_bound = _claude_registry_source_bound(marketplace_text, source)
+    ledger = _claude_ledger_state(installed, cache, target, release_commit_sha)
     active_paths, cache_process_unknown = _active_cache_paths(cache, snapshot)
     target_path = cache / target
     stale_active_paths = [
@@ -895,6 +1114,8 @@ def _claude_status(
         "ledgerCurrent": bool(ledger["current"]),
         "ledgerVersion": ledger["version"],
         "ledgerInstallPath": ledger["installPath"],
+        "ledgerCommitSha": ledger.get("gitCommitSha"),
+        "releaseCommitSha": release_commit_sha,
         "activeProcess": active_process,
         "activeInstallPaths": active_paths,
         "staleActiveInstallPaths": stale_active_paths,
@@ -934,13 +1155,21 @@ def host_plugin_status(source: Path, release_tag: str, *, home: Path | None = No
     home_dir = (home or Path.home()).expanduser().resolve()
     source_root = _stable_adapter_source(source.expanduser().resolve(), home_dir)
     target = _normal_version(release_tag)
+    release_commit_sha = _release_commit_sha(source_root)
     process_snapshot = _process_snapshot()
     return {
         "schemaVersion": "agentlas.host-plugin-status.v1",
         "release": f"v{target}",
+        "releaseCommitSha": release_commit_sha,
         "hosts": [
             _codex_status(home_dir, source_root, target, process_snapshot),
-            _claude_status(home_dir, source_root, target, process_snapshot),
+            _claude_status(
+                home_dir,
+                source_root,
+                target,
+                process_snapshot,
+                release_commit_sha,
+            ),
             _gemini_status(home_dir, source_root, target),
         ],
     }
@@ -952,57 +1181,70 @@ def _reconcile_codex(
     target: str,
     execute: bool,
     process_snapshot: list[dict[str, Any]] | None,
+    initial_registry_migration: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status = _codex_status(home, source, target, process_snapshot)
+    registry_migration: dict[str, Any] = initial_registry_migration or {
+        "ok": bool(status.get("sourceBound")),
+        "changed": False,
+        "reason": None if status.get("sourceBound") else "not_attempted",
+        "source": str(source),
+    }
+    if (
+        execute
+        and initial_registry_migration is None
+        and status.get("detected")
+        and status.get("exactCacheCurrent")
+        and not status.get("sourceBound")
+    ):
+        config = Path(status["codexHome"]) / "config.toml"
+        registry_migration = _migrate_codex_registry(config, source)
+        status = _codex_status(home, source, target, process_snapshot)
+
+    def row(**extra: Any) -> dict[str, Any]:
+        return {**status, "registryMigration": registry_migration, **extra}
+
     if not status["detected"]:
-        return {
-            **status,
-            "status": "not_installed",
-            "reloadRequired": False,
-        }
+        return row(status="not_installed", reloadRequired=False)
     if status["nextLoadCurrent"] and (
         status.get("staleActiveInstallPaths") or status.get("staleHostPids")
     ):
-        return {
-            **status,
-            "status": "pending_reload",
-            "reason": "active_plugin_process",
-            "reloadRequired": True,
-        }
+        return row(
+            status="pending_reload",
+            reason="active_plugin_process",
+            reloadRequired=True,
+        )
     if status["nextLoadCurrent"] and status.get("activeProcess") == "unknown":
-        return {
-            **status,
-            "status": "pending_restart",
-            "reason": "plugin_process_state_unknown",
-            "reloadRequired": True,
-        }
+        return row(
+            status="pending_restart",
+            reason="plugin_process_state_unknown",
+            reloadRequired=True,
+        )
     if status["current"]:
-        return {**status, "status": "current", "reloadRequired": False}
+        return row(status="current", reloadRequired=False)
     # Codex' install/remove commands may replace the whole marketplace cache.
     # Never run them while any versioned cache is live (or process inspection
     # is inconclusive), even when the persistent source binding still needs
     # repair. The next command after closing Codex retries this reconciliation.
     if status.get("activeProcess") != "inactive":
         process_state = status.get("activeProcess")
-        return {
-            **status,
-            "status": "pending_restart",
-            "reason": (
+        return row(
+            status="pending_restart",
+            reason=(
                 "active_plugin_process_blocks_persistent_repair"
                 if process_state == "active"
                 else "plugin_process_state_unknown"
             ),
-            "reloadRequired": True,
-            "retryRequired": True,
-            "retryCommand": "hephaestus hep-update",
-        }
+            reloadRequired=True,
+            retryRequired=True,
+            retryCommand="hephaestus hep-update",
+        )
     if not status["cliAvailable"]:
-        return {
-            **status,
-            "status": "blocked",
-            "reason": "vendor_cli_unavailable",
-            "reloadRequired": False,
-        }
+        return row(
+            status="blocked",
+            reason=registry_migration.get("reason") or "vendor_cli_unavailable",
+            reloadRequired=False,
+        )
     commands = [
         ["codex", "plugin", "remove", PLUGIN_ID],
         ["codex", "plugin", "marketplace", "remove", MARKETPLACE_ID],
@@ -1010,7 +1252,7 @@ def _reconcile_codex(
         ["codex", "plugin", "add", PLUGIN_ID],
     ]
     if not execute:
-        return {**status, "status": "planned", "commands": [command[:3] for command in commands]}
+        return row(status="planned", commands=[command[:3] for command in commands])
     codex_home = Path(status["codexHome"])
     protected = [
         codex_home / "config.toml",
@@ -1023,10 +1265,18 @@ def _reconcile_codex(
         _run_best_effort(commands[1], home=home, steps=steps)
         if not _run_required(commands[2], home=home, steps=steps) or not _run_required(commands[3], home=home, steps=steps):
             snapshot.restore()
-            return {**status, "status": "rolled_back", "steps": steps}
+            return row(status="rolled_back", steps=steps)
     verified = _codex_status(home, source, target, process_snapshot)
+    registry_migration = {
+        "ok": bool(verified.get("sourceBound")),
+        "changed": True,
+        "reason": None if verified.get("sourceBound") else "registry_verify_failed",
+        "source": str(source),
+        "via": "vendor_cli",
+    }
     return {
         **verified,
+        "registryMigration": registry_migration,
         "status": "pending_reload" if verified["current"] else "pending_restart",
         "reloadRequired": True,
         "reason": "host_process_not_reloaded" if verified["current"] else "host_restart_required",
@@ -1040,32 +1290,77 @@ def _reconcile_claude(
     target: str,
     execute: bool,
     process_snapshot: list[dict[str, Any]] | None,
+    release_commit_sha: str | None,
+    initial_ledger_migration: dict[str, Any] | None = None,
+    initial_registry_migration: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    status = _claude_status(home, source, target, process_snapshot)
-    if not status["detected"]:
+    status = _claude_status(
+        home,
+        source,
+        target,
+        process_snapshot,
+        release_commit_sha,
+    )
+    plugin_root = home / ".claude" / "plugins"
+    installed = plugin_root / "installed_plugins.json"
+    marketplace = plugin_root / "known_marketplaces.json"
+    cache = plugin_root / "cache" / MARKETPLACE_ID / "hephaestus"
+    ledger_migration: dict[str, Any] = initial_ledger_migration or {
+        "ok": bool(status.get("ledgerCurrent")),
+        "changed": False,
+        "reason": None if status.get("ledgerCurrent") else "not_attempted",
+    }
+    registry_migration: dict[str, Any] = initial_registry_migration or {
+        "ok": bool(status.get("sourceBound")),
+        "changed": False,
+        "reason": None if status.get("sourceBound") else "not_attempted",
+        "source": str(source / "claude"),
+    }
+    if execute and status.get("detected") and status.get("exactCacheCurrent"):
+        if initial_ledger_migration is None and not status.get("ledgerCurrent"):
+            ledger_migration = _migrate_claude_ledger(
+                installed,
+                cache,
+                target,
+                release_commit_sha,
+            )
+        if initial_registry_migration is None and not status.get("sourceBound"):
+            registry_migration = _migrate_claude_registry(marketplace, source)
+        status = _claude_status(
+            home,
+            source,
+            target,
+            process_snapshot,
+            release_commit_sha,
+        )
+
+    def row(**extra: Any) -> dict[str, Any]:
         return {
             **status,
-            "status": "not_installed",
-            "reloadRequired": False,
+            "ledgerMigration": ledger_migration,
+            "registryMigration": registry_migration,
+            **extra,
         }
+
+    if not status["detected"]:
+        return row(status="not_installed", reloadRequired=False)
     if status["nextLoadCurrent"] and (
         status.get("staleActiveInstallPaths") or status.get("staleHostPids")
     ):
-        return {
-            **status,
-            "status": "pending_reload",
-            "reason": "active_plugin_process",
-            "reloadRequired": True,
-        }
+        return row(
+            status="pending_reload",
+            reason="active_plugin_process",
+            reloadRequired=True,
+        )
     if status["nextLoadCurrent"] and status.get("activeProcess") == "unknown":
-        return {
-            **status,
-            "status": "pending_restart",
-            "reason": "plugin_process_state_unknown",
-            "reloadRequired": True,
-        }
+        return row(
+            status="pending_restart",
+            reason="plugin_process_state_unknown",
+            reloadRequired=True,
+        )
     if status["current"]:
-        return {**status, "status": "current", "reloadRequired": False}
+        changed = bool(ledger_migration.get("changed") or registry_migration.get("changed"))
+        return row(status="updated" if changed else "current", reloadRequired=False)
     marketplace_source = source / "claude"
     commands = [
         ["claude", "plugin", "uninstall", PLUGIN_ID],
@@ -1075,63 +1370,29 @@ def _reconcile_claude(
         ["claude", "plugin", "enable", PLUGIN_ID],
     ]
     if not execute:
-        return {**status, "status": "planned", "commands": [command[:3] for command in commands]}
-    plugin_root = home / ".claude" / "plugins"
-    installed = plugin_root / "installed_plugins.json"
-    cache = plugin_root / "cache" / MARKETPLACE_ID / "hephaestus"
-    previous_install_path = status.get("ledgerInstallPath")
-    previous_process_state = status.get("activeProcess", "inactive")
-    ledger_migration = _migrate_claude_ledger(installed, cache, target)
-    if ledger_migration.get("ok"):
-        verified = _claude_status(home, source, target, process_snapshot)
-        if previous_process_state != "inactive":
-            reason = (
-                "active_plugin_process"
-                if previous_process_state == "active"
-                else "plugin_process_state_unknown"
-            )
-            return {
-                **verified,
-                "status": "pending_reload",
-                "reason": reason,
-                "reloadRequired": True,
-                "loadedReleaseVerified": False,
-                "current": False,
-                "activeProcess": previous_process_state,
-                "activeInstallPath": previous_install_path,
-                "ledgerMigration": ledger_migration,
-            }
-        return {
-            **verified,
-            "status": "updated" if verified["current"] else "pending_reload",
-            "reloadRequired": not bool(verified["current"]),
-            "ledgerMigration": ledger_migration,
-        }
+        return row(status="planned", commands=[command[:3] for command in commands])
 
     # Do not ask Claude to uninstall/reinstall a cache directory while a live
     # Claude/MCP process still points at the old ledger path. The target payload
     # must remain intact and the incomplete persisted transition is explicit.
     if status.get("activeProcess") != "inactive":
-        reason = (
-            "active_plugin_process"
-            if status.get("activeProcess") == "active"
-            else "plugin_process_state_unknown"
+        return row(
+            status="pending_restart",
+            reason="persistent_registry_or_ledger_not_current",
+            reloadRequired=True,
+            retryRequired=True,
+            retryCommand="hephaestus hep-update",
         )
-        return {
-            **status,
-            "status": "pending_reload",
-            "reason": reason,
-            "reloadRequired": True,
-            "ledgerMigration": ledger_migration,
-        }
     if not status["cliAvailable"]:
-        return {
-            **status,
-            "status": "blocked",
-            "reason": "vendor_cli_unavailable",
-            "reloadRequired": False,
-            "ledgerMigration": ledger_migration,
-        }
+        return row(
+            status="blocked",
+            reason=(
+                ledger_migration.get("reason")
+                or registry_migration.get("reason")
+                or "vendor_cli_unavailable"
+            ),
+            reloadRequired=False,
+        )
     protected = [
         plugin_root / "installed_plugins.json",
         plugin_root / "known_marketplaces.json",
@@ -1145,15 +1406,35 @@ def _reconcile_claude(
         for command in commands[2:4]:
             if not _run_required(command, home=home, steps=steps):
                 snapshot.restore()
-                return {**status, "status": "rolled_back", "steps": steps}
+                return row(status="rolled_back", steps=steps)
         _run_best_effort(commands[4], home=home, steps=steps)
-    verified = _claude_status(home, source, target, process_snapshot)
+    ledger_migration = _migrate_claude_ledger(
+        installed,
+        cache,
+        target,
+        release_commit_sha,
+    )
+    verified = _claude_status(
+        home,
+        source,
+        target,
+        process_snapshot,
+        release_commit_sha,
+    )
+    registry_migration = {
+        "ok": bool(verified.get("sourceBound")),
+        "changed": True,
+        "reason": None if verified.get("sourceBound") else "registry_verify_failed",
+        "source": str(marketplace_source),
+        "via": "vendor_cli",
+    }
     return {
         **verified,
         "status": "updated" if verified["current"] else "pending_reload",
         "reloadRequired": not bool(verified["current"]),
         "steps": steps,
         "ledgerMigration": ledger_migration,
+        "registryMigration": registry_migration,
     }
 
 
@@ -1163,19 +1444,21 @@ def reconcile_host_plugin_transition_without_cli(
     *,
     home: Path | None = None,
     unsafe_legacy_paths: dict[str, list[str]] | None = None,
+    release_commit_sha: str | None = None,
 ) -> dict[str, Any]:
     """Finish one legacy-updater transition without invoking vendor CLIs.
 
     The v1.2.32 updater executes the target release's memory-hook installer only
     after it has activated the new runtime. That subprocess has a strict
     30-second parent timeout, so this bridge is deliberately filesystem-only:
-    exact caches must already be materialized, and only Agentlas' Claude ledger
-    entries may be migrated. Host state is then reread from disk.
+    exact caches must already be materialized, and only Agentlas' own registry
+    entries and Claude ledger row may be migrated. Host state is then reread.
     """
 
     home_dir = (home or Path.home()).expanduser().resolve()
     source_root = _stable_adapter_source(source.expanduser().resolve(), home_dir)
     target = _normal_version(release_tag)
+    expected_commit_sha = release_commit_sha or _release_commit_sha(source_root)
     legacy = unsafe_legacy_paths or {}
     if not target:
         return {
@@ -1198,7 +1481,15 @@ def reconcile_host_plugin_transition_without_cli(
         target,
         Path(".codex-plugin") / "plugin.json",
     )
-    codex_source_bound = _source_bound(codex_text, source_root) and f'[plugins."{PLUGIN_ID}"]' in codex_text
+    codex_source_bound = _codex_registry_source_bound(codex_text, source_root)
+    codex_registry_migration: dict[str, Any] = {
+        "ok": codex_source_bound or not codex_detected,
+        "changed": False,
+        "reason": None if codex_source_bound else "host_not_installed" if not codex_detected else "exact_target_cache_missing",
+        "source": str(source_root),
+    }
+    if codex_detected and codex_exact and not codex_source_bound:
+        codex_registry_migration = _migrate_codex_registry(codex_config, source_root)
 
     plugin_root = home_dir / ".claude" / "plugins"
     claude_cache = plugin_root / "cache" / MARKETPLACE_ID / "hephaestus"
@@ -1218,21 +1509,39 @@ def reconcile_host_plugin_transition_without_cli(
         target,
         Path(".claude-plugin") / "plugin.json",
     )
-    claude_source_bound = _source_bound(marketplace_text, source_root, "claude")
-    ledger_before = _claude_ledger_state(installed, claude_cache, target)
+    claude_source_bound = _claude_registry_source_bound(marketplace_text, source_root)
+    ledger_before = _claude_ledger_state(
+        installed,
+        claude_cache,
+        target,
+        expected_commit_sha,
+    )
     ledger_migration: dict[str, Any] = {
         "ok": not claude_detected,
         "changed": False,
         "reason": "host_not_installed" if not claude_detected else "exact_target_cache_missing",
     }
     if claude_detected and claude_exact:
-        ledger_migration = _migrate_claude_ledger(installed, claude_cache, target)
+        ledger_migration = _migrate_claude_ledger(
+            installed,
+            claude_cache,
+            target,
+            expected_commit_sha,
+        )
+    claude_registry_migration: dict[str, Any] = {
+        "ok": claude_source_bound or not claude_detected,
+        "changed": False,
+        "reason": None if claude_source_bound else "host_not_installed" if not claude_detected else "exact_target_cache_missing",
+        "source": str(source_root / "claude"),
+    }
+    if claude_detected and claude_exact and not claude_source_bound:
+        claude_registry_migration = _migrate_claude_registry(marketplace, source_root)
     # The bridge has just materialized/migrated persistent next-load state.
     # Record that host-local activation before comparing already-running host
     # sessions, otherwise an old archive mtime can yield a false first pass.
     marker_seed = [
         _codex_status(home_dir, source_root, target, []),
-        _claude_status(home_dir, source_root, target, []),
+        _claude_status(home_dir, source_root, target, [], expected_commit_sha),
     ]
     _record_activation_markers(home_dir, target, marker_seed)
     process_snapshot = _process_snapshot()
@@ -1256,8 +1565,23 @@ def reconcile_host_plugin_transition_without_cli(
         }
 
     codex_row = transition_row(_codex_status(home_dir, source_root, target, process_snapshot))
-    claude_row = transition_row(_claude_status(home_dir, source_root, target, process_snapshot))
-    claude_row.update({"ledgerBefore": ledger_before, "ledgerMigration": ledger_migration})
+    codex_row.update({"registryMigration": codex_registry_migration})
+    claude_row = transition_row(
+        _claude_status(
+            home_dir,
+            source_root,
+            target,
+            process_snapshot,
+            expected_commit_sha,
+        )
+    )
+    claude_row.update(
+        {
+            "ledgerBefore": ledger_before,
+            "ledgerMigration": ledger_migration,
+            "registryMigration": claude_registry_migration,
+        }
+    )
     hosts = [codex_row, claude_row]
     _record_activation_markers(home_dir, target, hosts)
     blockers = [
@@ -1276,6 +1600,7 @@ def reconcile_host_plugin_transition_without_cli(
         "schemaVersion": "agentlas.host-plugin-transition.v1",
         "status": status,
         "release": f"v{target}",
+        "releaseCommitSha": expected_commit_sha,
         "bounded": True,
         "vendorCliInvoked": False,
         "reloadRequired": bool(pending_hosts),
@@ -1351,23 +1676,78 @@ def reconcile_host_plugins(
     home_dir = (home or Path.home()).expanduser().resolve()
     source_root = _stable_adapter_source(source.expanduser().resolve(), home_dir)
     target = _normal_version(release_tag)
+    release_commit_sha = _release_commit_sha(source_root)
     if not target:
         return {"status": "blocked", "reason": "release_tag_missing", "hosts": []}
+    codex_before = _codex_status(home_dir, source_root, target, [])
+    codex_registry_migration: dict[str, Any] | None = None
+    if (
+        execute
+        and codex_before.get("detected")
+        and codex_before.get("exactCacheCurrent")
+        and not codex_before.get("sourceBound")
+    ):
+        codex_registry_migration = _migrate_codex_registry(
+            Path(codex_before["codexHome"]) / "config.toml",
+            source_root,
+        )
+
+    claude_before = _claude_status(
+        home_dir,
+        source_root,
+        target,
+        [],
+        release_commit_sha,
+    )
+    claude_ledger_migration: dict[str, Any] | None = None
+    claude_registry_migration: dict[str, Any] | None = None
+    if execute and claude_before.get("detected") and claude_before.get("exactCacheCurrent"):
+        plugin_root = home_dir / ".claude" / "plugins"
+        if not claude_before.get("ledgerCurrent"):
+            claude_ledger_migration = _migrate_claude_ledger(
+                plugin_root / "installed_plugins.json",
+                plugin_root / "cache" / MARKETPLACE_ID / "hephaestus",
+                target,
+                release_commit_sha,
+            )
+        if not claude_before.get("sourceBound"):
+            claude_registry_migration = _migrate_claude_registry(
+                plugin_root / "known_marketplaces.json",
+                source_root,
+            )
     # The runtime updater can materialize exact persistent state immediately
     # before this call. Seed its host-local cutoff before evaluating processes
     # that may still retain the previous release.
     marker_seed = [
         _codex_status(home_dir, source_root, target, []),
-        _claude_status(home_dir, source_root, target, []),
+        _claude_status(home_dir, source_root, target, [], release_commit_sha),
     ]
-    _record_activation_markers(home_dir, target, marker_seed)
+    if execute:
+        _record_activation_markers(home_dir, target, marker_seed)
     process_snapshot = _process_snapshot()
     hosts = [
-        _reconcile_codex(home_dir, source_root, target, execute, process_snapshot),
-        _reconcile_claude(home_dir, source_root, target, execute, process_snapshot),
+        _reconcile_codex(
+            home_dir,
+            source_root,
+            target,
+            execute,
+            process_snapshot,
+            codex_registry_migration,
+        ),
+        _reconcile_claude(
+            home_dir,
+            source_root,
+            target,
+            execute,
+            process_snapshot,
+            release_commit_sha,
+            claude_ledger_migration,
+            claude_registry_migration,
+        ),
         _reconcile_gemini(home_dir, source_root, target, execute),
     ]
-    _record_activation_markers(home_dir, target, hosts)
+    if execute:
+        _record_activation_markers(home_dir, target, hosts)
     failed = [host for host in hosts if host.get("status") in {"blocked", "rolled_back"}]
     pending = [
         host["host"]
@@ -1379,6 +1759,7 @@ def reconcile_host_plugins(
         "schemaVersion": "agentlas.host-plugin-reconcile.v1",
         "status": "partial" if failed else "pending_reload" if pending else "pass",
         "release": f"v{target}",
+        "releaseCommitSha": release_commit_sha,
         "reloadRequired": bool(pending),
         "pendingHosts": pending,
         "hosts": hosts,

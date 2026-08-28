@@ -19,6 +19,11 @@
 /claude/plugins/agentlas-core-engine-meta-agent/agentlas_cloud/workforce/ontology_v1.json -text
 /codex/plugins/agentlas-core-engine-meta-agent/agentlas_cloud/workforce/ontology_v1.json -text
 
+# Public runtime archives carry the immutable commit they were built from.
+# The working tree intentionally keeps the placeholder; `git archive` expands
+# it at the tagged commit without creating a circular commit dependency.
+/release-provenance.json export-subst
+
 # Source archives and release snapshots must not expose development-only
 # material. The files can remain available in the private working tree for
 # verification, but a public archive contains the install/runtime surface.

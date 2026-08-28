@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.2.35}"
+version="${HEPHAESTUS_REF:-v1.2.36}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -581,6 +581,23 @@ install_runtime_home() {
     copy_tree_without_python_cache "$source_dir/$pack" "$stage_dir/$pack" || return 1
   done
   cp "$source_dir/package-contract.json" "$stage_dir/package-contract.json" || return 1
+  # git-archive substitutes the exact tagged commit into this public marker.
+  # A maintainer may also run this installer from a checkout, where the tracked
+  # file still contains the literal export-subst placeholder; resolve HEAD in
+  # that one case so Claude's ledger never inherits a stale release commit.
+  local release_commit=""
+  if [[ -f "$source_dir/release-provenance.json" ]]; then
+    release_commit="$(sed -nE 's/.*"commit"[[:space:]]*:[[:space:]]*"([0-9a-f]{40})".*/\1/p' "$source_dir/release-provenance.json" | head -1)"
+  fi
+  if [[ ! "$release_commit" =~ ^[0-9a-f]{40}$ ]] && command -v git >/dev/null 2>&1; then
+    release_commit="$(git -C "$source_dir" rev-parse --verify 'HEAD^{commit}' 2>/dev/null || true)"
+  fi
+  if [[ ! "$release_commit" =~ ^[0-9a-f]{40}$ ]]; then
+    warn "Release provenance is missing or invalid; refusing to install an unpinned runtime."
+    return 1
+  fi
+  printf '{\n  "schemaVersion": "agentlas.release-provenance.v1",\n  "commit": "%s"\n}\n' \
+    "$release_commit" > "$stage_dir/release-provenance.json" || return 1
   mkdir -p "$(dirname "$model_dest")"
   copy_tree_without_python_cache "$model_source" "$model_dest" || return 1
   if ! PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONPATH="$(installer_pythonpath "$stage_dir")" \
