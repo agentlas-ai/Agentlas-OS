@@ -1063,10 +1063,46 @@ def _entry_payload(entry: Any) -> tuple[dict[str, Any], dict[str, Any] | None]:
 
 
 def load_manifest(root: str | Path) -> AgentlasManifest:
-    payload = json.loads((Path(root) / "agentlas.json").read_text(encoding="utf-8"))
+    manifest_path = Path(root) / "agentlas.json"
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeBundleValidationError(
+            [f"agentlas.json is not valid JSON (line {exc.lineno}, column {exc.colno})"]
+        ) from exc
+    except UnicodeError as exc:
+        raise RuntimeBundleValidationError(["agentlas.json must be UTF-8 text"]) from exc
+    if not isinstance(payload, dict):
+        raise RuntimeBundleValidationError(["agentlas.json must contain a JSON object"])
+
+    # A runtime bundle is an executable surface, so it must not bypass the same
+    # manifest schema used by `contract verify`.  This also converts malformed
+    # user input into the typed `runtime_bundle_contract_invalid` result the CLI
+    # already promises instead of leaking an AgentlasManifest constructor trace.
+    # Import locally to avoid a module-load cycle: package_contract imports
+    # runtime helpers only inside its verification functions.
+    from .package_contract import _schema_shape_errors, engine_root
+
+    manifest_problems = _schema_shape_errors(
+        payload,
+        engine_root() / "schemas" / "agentlas-manifest.schema.json",
+    )
+    if manifest_problems:
+        raise RuntimeBundleValidationError(
+            [f"agentlas.json: {problem}" for problem in manifest_problems]
+        )
+
     allowed = {field.name for field in dataclasses.fields(AgentlasManifest)}
     filtered = {key: value for key, value in payload.items() if key in allowed}
-    return AgentlasManifest(**filtered)
+    # `memory` is optional in the public manifest schema; the runtime model uses
+    # an empty collection for the absent value.
+    filtered.setdefault("memory", [])
+    try:
+        return AgentlasManifest(**filtered)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeBundleValidationError(
+            ["agentlas.json could not be loaded as an Agentlas manifest"]
+        ) from exc
 
 
 def compile_runtime_bundle(root: str | Path) -> dict[str, Any]:

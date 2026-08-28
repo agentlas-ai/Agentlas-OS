@@ -311,7 +311,7 @@ def _work_order_draft_schema() -> dict[str, Any]:
                 "additionalProperties": False,
                 "properties": {
                     "minimumCandidatesPerSlot": {"type": "integer", "minimum": 2, "maximum": 30, "default": 2},
-                    "maximumCandidatesPerSlot": {"type": "integer", "minimum": 2, "maximum": 100, "default": 8},
+                    "maximumCandidatesPerSlot": {"type": "integer", "minimum": 2, "maximum": 100, "default": 30},
                 },
             },
         },

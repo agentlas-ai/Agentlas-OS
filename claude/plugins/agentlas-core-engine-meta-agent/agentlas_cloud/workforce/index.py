@@ -154,19 +154,19 @@ def _profile_sets(profile: Mapping[str, Any]) -> dict[str, Any]:
 
 
 # Semantic requirements describe who fits the task. Execution requirements
-# describe what the selected release may use on this host. Mixing those axes
-# made tool/authority metadata act like professional expertise and produced
-# source-dependent `missingMandatory` noise. Discovery therefore evaluates only
-# semantic axes; prepare/execution owns the environment contract.
+# describe the host environment and artifact I/O the selected release must
+# satisfy. Mixing those axes made execution metadata act like professional
+# expertise and produced source-dependent `missingMandatory` noise. Discovery
+# therefore evaluates only semantic axes; prepare/execution owns the rest.
 _SEMANTIC_REQUIREMENT_KINDS = (
     "roles",
     "skills",
     "knowledge",
-    "consumes",
-    "produces",
 )
 _EXECUTION_REQUIREMENT_KINDS = (
     "tools",
+    "consumes",
+    "produces",
     "runtimes",
     "languages",
     "modalities",
@@ -177,10 +177,11 @@ _REQUIREMENT_VOCABULARY_KINDS = (
     *_EXECUTION_REQUIREMENT_KINDS,
 )
 # Word-valued semantic dimensions never hard-filter, however full they look.
-# Roles, skills, knowledge and artifacts are open-world claims authored by
-# different publishers. Exact ID equality is evidence when it occurs, not proof
-# that differently phrased agents are incapable. These dimensions stay in the
-# slot search text and semantic ranking, and every demotion is reported.
+# Roles, skills, and knowledge are open-world claims authored by different
+# publishers. Exact ID equality is evidence when it occurs, not proof that
+# differently phrased agents are incapable. These dimensions stay in the slot
+# search text and semantic ranking, and every demotion is reported. Artifact
+# inputs/outputs describe the eventual execution contract, not occupational fit.
 _RANKING_ONLY_KINDS = frozenset(
     _SEMANTIC_REQUIREMENT_KINDS
 )
@@ -264,11 +265,11 @@ def _unsupported_requirements(
     for kind in _SEMANTIC_REQUIREMENT_KINDS:
         if populated is None or kind in _RANKING_ONLY_KINDS or not populated.get(kind):
             result[kind] = set(req[kind])
-    # Tool, authority, runtime, language, and modality requirements belong to
-    # the post-selection execution contract. They are deliberately absent from
-    # retrieval vocabulary diagnostics: a host must satisfy them through its
-    # private tool inventory, capability binding plan, permission policy, and
-    # execution receipt, not infer support from publisher metadata.
+    # Tool, authority, runtime, language, modality, and artifact I/O requirements
+    # belong to the post-selection execution contract. They are deliberately
+    # absent from retrieval vocabulary diagnostics: a host must satisfy them
+    # through its private inventory, binding/permission policy, prepared task
+    # contract, and execution receipt—not publisher metadata.
     return result
 
 
@@ -279,9 +280,9 @@ def _hard_eligibility(
 ) -> tuple[bool, list[str]]:
     """Apply lifecycle, integrity, and semantic discovery constraints.
 
-    Tool, authority, runtime, language, and modality requirements are preserved
-    for host-owned prepare/execution validation and never filter semantic
-    candidates here.
+    Tool, authority, runtime, language, modality, and artifact I/O requirements
+    are preserved for host-owned prepare/execution validation and never filter
+    semantic candidates here.
     """
 
     reasons: list[str] = []
@@ -314,13 +315,10 @@ def _hard_eligibility(
     )
     if any(have["skill_levels"].get(item, -1) < minimum_level for item in enforced["skills"]):
         reasons.append("required-skill-evidence-below-minimum")
-    if enforced["consumes"] - have["consumes"]:
-        reasons.append("missing-consumed-artifact")
-    if enforced["produces"] - have["produces"]:
-        reasons.append("missing-produced-artifact")
-    # Execution-environment requirements are carried unchanged into the
-    # ExecutionContext and validated against host-owned runtime/tool evidence.
-    # They never decide semantic candidacy here.
+    # Execution-environment and artifact I/O requirements are carried unchanged
+    # into the ExecutionContext and validated against host-owned runtime/tool
+    # evidence and the prepared task contract. They never decide semantic
+    # candidacy here.
 
     # Positive communities are open-world semantic scope and rank through the
     # graph. Only explicit negative exclusions remain a discovery-time gate.
@@ -333,7 +331,7 @@ def _profile_search_text(profile: Mapping[str, Any]) -> str:
     semantic = profile.get("semantic") if isinstance(profile.get("semantic"), Mapping) else {}
     values: list[Any] = [
         semantic.get("names"), semantic.get("summaries"), semantic.get("communities"),
-        semantic.get("roles"), semantic.get("consumes"), semantic.get("produces"),
+        semantic.get("roles"),
     ]
     values.extend(
         item.get("concept")
@@ -358,7 +356,6 @@ def _slot_search_text(slot: Mapping[str, Any]) -> str:
                 slot.get("title"), slot.get("task"),
                 *sorted(req["communities"]), *sorted(req["roles"]),
                 *sorted(req["skills"]), *sorted(req["knowledge"]),
-                *sorted(req["consumes"]), *sorted(req["produces"]),
             ],
             limit=2048,
         )
@@ -407,7 +404,7 @@ def _fit_evidence(
     evidence: list[str] = []
     mandatory_gaps: list[str] = []
     optional_gaps: list[str] = []
-    fit_axes = ("communities", "roles", "skills", "knowledge", "consumes", "produces")
+    fit_axes = ("communities", "roles", "skills", "knowledge")
     for axis in fit_axes:
         for item in sorted(req[axis] & have[axis]):
             evidence.append(f"fit:{axis}:{item}")
@@ -417,15 +414,11 @@ def _fit_evidence(
         "role": (req["roles"], have["roles"]),
         "skill": (req["skills"], have["skills"]),
         "knowledge": (req["knowledge"], have["knowledge"]),
-        "consumes": (req["consumes"], have["consumes"]),
-        "produces": (req["produces"], have["produces"]),
     }
     _GAP_AXIS_KIND = {
         "role": "roles",
         "skill": "skills",
         "knowledge": "knowledge",
-        "consumes": "consumes",
-        "produces": "produces",
     }
     for axis, (required, available) in required_all.items():
         for item in sorted(required - available):

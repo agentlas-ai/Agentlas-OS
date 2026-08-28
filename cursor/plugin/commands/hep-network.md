@@ -50,24 +50,31 @@ done
    no ontology id is obvious — Core normalizes them and reports each rewrite as
    `normalizedConcepts`. Give each role a specific `task`, `cardinality`,
    `criticality`, and — only when they
-   genuinely constrain the hire — required communities/skills/knowledge,
-   runtimes, and `languages`. Leave every other slot field out entirely: an
-   absent list field IS the empty constraint (the wire normalizes absent to
-   []). Do not fill requiredToolCapabilities, requiredAuthorities,
-   forbiddenAuthorities, consumes, produces, requiredRoles, or modalities —
-   tools, authorities, and modalities attach to the executing runtime, not the
-   agent card, so those gates only exclude real candidates; describe ordinary
-   inputs/outputs in the task text and inter-slot handoffs in `edges`. An edge
-   is a declaration of handoff and never a qualification requirement — only what
-   you actually write as a required skill/role/tool narrows the menu. Hand-off
+   genuinely constrain semantic fit — required communities/roles/skills/
+   knowledge. The title, task, publisher summary, and sample request sentences
+   remain the primary fit evidence. Execution requirements are a separate
+   contract: include `requiredToolCapabilities`, required/forbidden authorities,
+   runtimes, languages, or modalities only when the requested action genuinely
+   requires the host to prove them. They do not rank or exclude semantic
+   candidates; Core carries them unchanged into the ExecutionContext, where the
+   host must bind its actual tool inventory and permission receipt. Leave every
+   unconstrained list absent (the wire normalizes absent to `[]`). Keep
+   `consumes`/`produces` absent and describe ordinary inputs/outputs in the task
+   text and inter-slot handoffs in `edges`. An edge
+   is a declaration of handoff and never a qualification requirement. Only
+   semantic communities, roles, skills, and knowledge explicitly required by
+   the task may narrow menu fit. Tool capability, authority, runtime, language,
+   and modality fields never filter or rank that menu; they remain post-selection
+   execution proof. Hand-off
    edges must be acyclic: a review or feedback edge that points back to an
    earlier slot is rejected as `task_force_cycle:<the loop path>` — model review
    as a forward hand-off to the reviewer, not a back-edge (measured 2026-08-19:
    a researcher→research→quality-engineer order with a `reviews` back-edge was
    refused, and because edges live inside the WorkOrder the repair changed
    `workOrderDigest` and forced the whole three-source federation to run again).
-   Size `selectionPolicy.maximumCandidatesPerSlot` generously (the schema
-   allows up to 30) and NEVER to save tokens: the menu is ordered by
+   Keep the default `selectionPolicy.maximumCandidatesPerSlot` at 30 unless a
+   measured recall need justifies widening it (the schema allows up to 100),
+   and NEVER shrink it merely to save tokens: the menu is ordered by
    `canonical_identity_no_rerank`, not by fit — federation performs no scoring
    by design — so truncating the candidate count discards candidates
    arbitrarily, not worst-first. Measured 2026-08-19: the only domain-fit
@@ -78,8 +85,8 @@ done
    inside every slot — it is a per-slot position, not a running number across
    the menu. Keep private
    files, memory, secrets, direct identifiers, and raw local context on-host.
-   Write every discovery-facing field (statement, role descriptions, required
-   skills/knowledge, artifacts) in English, faithfully translating a
+   Write every discovery-facing natural-language field (statement, role
+   descriptions, required skills/knowledge) in English, faithfully translating a
    non-English request rather than passing its original wording through: the
    candidate corpus is English and cross-lingual matching silently buries the
    correct agent (measured: an identical query ranked its target 1st in English
@@ -192,8 +199,8 @@ one runtime enforced was still a rule someone wrote on purpose.
 - First read `workforce.goal_context(projectDir)` and reuse an active binding for the same ongoing work before considering recruitment.
 - Resolve the runner only for authentication; staffing remains in the Workforce MCP tools:
 - Author a redacted `agentlas.workforce-work-order.v1` with substantive role slots.
-- Fill a slot with task/cardinality/criticality plus only the communities/skills/knowledge, runtimes, and languages that genuinely constrain the hire; omit every other list field (absent = empty — the wire normalizes) and never fill requiredToolCapabilities, requiredAuthorities, forbiddenAuthorities, consumes, produces, requiredRoles, or modalities:
-- tools, authorities, and modalities attach to the executing runtime, not the agent card, so those gates only exclude real candidates — put ordinary inputs/outputs in the task text and handoffs in edges.
+- Fill semantic fit from the task sentence plus only genuinely constraining communities/roles/skills/knowledge; title, summary, and publisher sample requests are fit evidence.
+- Keep execution requirements separate: include tool capabilities, authorities, runtimes, languages, or modalities only when the requested action needs host proof. They never rank or exclude semantic candidates; the host binds them against its real tool inventory and permission receipt after selection. Keep ordinary inputs/outputs in task text and handoffs in edges.
 - Write every discovery-facing field in English, faithfully translating a non-English request (the candidate corpus is English and cross-lingual matching buries the correct agent — measured 1st vs 144th for one query); keep an untranslatable term with a short English gloss.
 - `languages` is the delivery language, not the search language — keep it as the required output language even though the order is authored in English.
 - "network"}` and preserve source receipts plus `selectionSessionId`.
@@ -210,7 +217,7 @@ one runtime enforced was still a rule someone wrote on purpose.
 - Do not call legacy `hephaestus_route`, bypass Core with direct remote search, or use popularity/history/price/availability as semantic fit.
 - Exact duplicate releases collapse Local > Cloud > Hub only with verified identical lineage.
 - first read `workforce.goal_context(projectDir)` and reuse any active binding for the same ongoing work.
-- Author a redacted WorkOrder — Fill a slot with task/cardinality/criticality plus only the communities/skills/knowledge, runtimes, and languages that genuinely constrain the hire; omit every other list field (absent = empty — the wire normalizes) and never fill requiredToolCapabilities, requiredAuthorities, forbiddenAuthorities, consumes, produces, requiredRoles, or modalities:
+- Author a redacted WorkOrder — use task/title plus genuinely constraining communities/roles/skills/knowledge for semantic fit, and carry only genuinely required tool/authority/runtime/language/modality fields as a separate post-selection execution contract (absent = empty — the wire normalizes):
 - Write its discovery-facing fields in English, faithfully translating a non-English request (the candidate corpus is English; cross-lingual matching buries the right agent, measured 1st vs 144th for one query), while keeping `languages` as the required delivery language — and call `workforce.search_candidates` with exact `sourceScope:
 - "network"` (registered Local + owner Cloud + public Hub).
 - Retain the projected menu's `selectionSessionId` and every source receipt; do not echo the projected menu as `federationResult`.

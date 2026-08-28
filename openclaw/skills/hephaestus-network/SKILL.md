@@ -110,16 +110,21 @@ ontology version, validates the privacy boundary, and returns a one-hour
 on the host. Create one `roles` entry per materially distinct responsibility.
 Each role may identify:
 
-- role/community and required skill or knowledge concepts, written as plain
+- semantic role/community and required skill or knowledge concepts, written as plain
   English phrases when no ontology id is obvious — Core normalizes them into
-  schema-valid concept ids and reports every rewrite as `normalizedConcepts`;
-- required MCP/tool capabilities;
+  schema-valid concept ids and reports every rewrite as `normalizedConcepts`.
+  Only these semantic communities, roles, skills, and knowledge may narrow menu
+  fit;
+- execution requirements such as required MCP/tool capabilities, runtime,
+  language, modality, and required/forbidden authority. Include these only when
+  the requested action genuinely needs host proof. They never filter, rank, or
+  exclude semantic candidates; Core carries them into the ExecutionContext and the host
+  validates them against its actual tool inventory, capability binding plan,
+  permission policy, and invocation receipt after selection;
 - collaboration edges by 1-based role ordinal. An edge is a declaration of
-  handoff, never a qualification requirement: only what you actually write as a
-  required skill/role/tool filters candidates. Requiring an artifact almost no
+  handoff, never a qualification requirement. Requiring an artifact almost no
   published agent declares does not narrow a menu, it empties it;
-- runtime, language, modality, and entity-kind constraints;
-- required and forbidden authority;
+- executable entity-kind constraints;
 - cardinality, criticality, and collaboration edges;
 - the minimum evidence level: declared, checked, demonstrated, or attested.
 

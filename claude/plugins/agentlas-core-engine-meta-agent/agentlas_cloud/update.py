@@ -914,7 +914,7 @@ def _post_activation_state(
     if not model_current:
         blockers.append({"component": "model", "reason": "installed_model_missing"})
     blockers.extend(host_blockers)
-    if plugin_cache_sync.get("status") not in {"pass", "not_run"}:
+    if plugin_cache_sync.get("status") not in {"pass", "pending_reload", "not_run"}:
         blockers.append({"component": "plugin_cache", "reason": "cache_reconciliation_incomplete"})
     status = "blocked" if blockers else "pending_reload" if pending_hosts else "pass"
     return {
@@ -1034,7 +1034,10 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             from .host_update import reconcile_host_plugins
 
             host_plugin_sync = reconcile_host_plugins(target / HOST_ADAPTER_BUNDLE_DIR, tag)
-            plugin_cache_sync = _prune_installed_plugin_caches(tag)
+            plugin_cache_sync = _prune_installed_plugin_caches(
+                tag,
+                pending_hosts=host_plugin_sync.get("pendingHosts") or [],
+            )
             memory_hook_sync = sync_installed_memory_hooks(source)
             global_router_sync = _sync_installed_global_router(target)
     finally:
@@ -1349,13 +1352,22 @@ def reconcile_legacy_host_plugin_transition(
         home=home_dir,
         unsafe_legacy_paths=legacy,
     )
+    plugin_cache = _prune_installed_plugin_caches(
+        release_tag,
+        home=home_dir,
+        pending_hosts=persistent.get("pendingHosts") or [],
+    )
     preserved_legacy = sorted(
         path
         for paths in legacy.values()
         for path in paths
         if Path(path).is_dir()
     )
-    blocked = caches.get("status") != "pass" or persistent.get("status") == "blocked"
+    blocked = (
+        caches.get("status") != "pass"
+        or persistent.get("status") == "blocked"
+        or plugin_cache.get("status") == "partial"
+    )
     pending = bool(persistent.get("reloadRequired"))
     return {
         "schemaVersion": "agentlas.legacy-host-plugin-transition.v1",
@@ -1368,6 +1380,7 @@ def reconcile_legacy_host_plugin_transition(
         "unsafeLegacyPaths": sorted(path for paths in legacy.values() for path in paths),
         "preservedLegacyPaths": preserved_legacy,
         "cacheMaterialization": caches,
+        "pluginCacheSync": plugin_cache,
         "persistentState": persistent,
     }
 
@@ -1397,13 +1410,18 @@ def reconcile_current_installation(
     from .host_update import reconcile_host_plugins
 
     plugins = reconcile_host_plugins(bundle, release, home=home)
-    plugin_cache = _prune_installed_plugin_caches(release, home=home)
+    plugin_cache = _prune_installed_plugin_caches(
+        release,
+        home=home,
+        pending_hosts=plugins.get("pendingHosts") or [],
+    )
     hooks = sync_installed_memory_hooks(bundle, home=home)
     global_router = _sync_installed_global_router(selected_root, home=home)
     pending_hosts = sorted(set(plugins.get("pendingHosts") or []))
     failed = (
         bool(adapters.get("failed"))
         or plugins.get("status") == "partial"
+        or plugin_cache.get("status") == "partial"
         or hooks.get("status") == "fail"
         or global_router.get("status") == "failed"
     )
@@ -2264,24 +2282,31 @@ def _plugin_cache_payload_matches(path: Path, release_tag: str) -> bool:
         marker = (path / "RELEASE").read_text(encoding="utf-8").strip().lstrip("vV")
     except OSError:
         marker = ""
-    manifest_seen = False
+    # RELEASE is the cache-level identity anchor. Host manifests may add
+    # corroborating identities, but cannot make an unmarked cache exact.
+    if marker != expected:
+        return False
+    manifest_versions: list[str] = []
     for manifest in (
         path / ".claude-plugin" / "plugin.json",
         path / ".codex-plugin" / "plugin.json",
     ):
         if not manifest.is_file():
             continue
-        manifest_seen = True
         try:
             version = json.loads(manifest.read_text(encoding="utf-8")).get("version")
         except (OSError, ValueError, AttributeError):
             return False
-        if str(version or "").strip().lstrip("vV") == expected:
-            return True
+        manifest_versions.append(str(version or "").strip().lstrip("vV"))
+    # Every identity surface that exists must name the exact directory release.
+    # A mixed Claude/Codex payload used to pass as soon as either manifest
+    # matched. A host manifest also must not substitute for RELEASE.
+    if manifest_versions:
+        return all(version == expected for version in manifest_versions)
     # Older cache payloads did not carry a plugin manifest, so their RELEASE
     # marker is the only available identity. A present-but-mismatched manifest
     # is stronger evidence and must not be overridden by a stale marker.
-    return not manifest_seen and marker == expected
+    return True
 
 
 def _compare_plugin_cache_paths(left: Path, right: Path) -> int:
@@ -2295,6 +2320,7 @@ def _prune_installed_plugin_caches(
     release_tag: str,
     *,
     home: Path | None = None,
+    pending_hosts: list[str] | None = None,
 ) -> dict[str, Any]:
     """Prune only proven orphaned cache versions after a target is verified.
 
@@ -2308,6 +2334,7 @@ def _prune_installed_plugin_caches(
     target_name = _runtime_version_dir_name(release_tag)
     ledger_paths = _installed_plugin_cache_ledger_paths(home_dir)
     active_paths = _active_plugin_cache_paths(home_dir)
+    pending = {str(host) for host in (pending_hosts or [])}
     result: dict[str, Any] = {
         "schemaVersion": "agentlas.plugin-cache-sync.v1",
         "status": "pass",
@@ -2349,11 +2376,38 @@ def _prune_installed_plugin_caches(
             continue
 
         ordered = sorted(children, key=cmp_to_key(_compare_plugin_cache_paths))
-        keep_rollback = ordered[-1] if ordered else None
+        # A rollback cache is useful only when its immutable directory name and
+        # payload identity agree. The v1.2.32 updater rewrote old directories in
+        # place before target-release code could run; preserving the newest of
+        # those mismatches as "rollback" made the corruption permanent.
+        rollback_candidates = [
+            child
+            for child in ordered
+            if _plugin_cache_payload_matches(child, f"v{child.name}")
+        ]
+        keep_rollback = rollback_candidates[-1] if rollback_candidates else None
         row.update({"status": "updated", "target": str(target), "rollback": str(keep_rollback) if keep_rollback else None})
         removed: list[str] = []
         preserved: list[str] = []
         deferred: list[str] = []
+        # A host transition marked pending_reload is stronger evidence than a
+        # command-line path scan: a live Codex/Claude process may retain plugin
+        # bytes without spelling its cache path in argv. Preserve every prior
+        # cache for that host until a later reconciliation proves reload.
+        if host in pending:
+            deferred.extend(str(child) for child in ordered)
+            result["deferred"].extend(deferred)
+            row.update(
+                {
+                    "status": "pending_reload",
+                    "reason": "host_process_not_reloaded",
+                    "deferred": deferred,
+                }
+            )
+            if result["status"] == "pass":
+                result["status"] = "pending_reload"
+            result["hosts"].append(row)
+            continue
         for child in ordered:
             canonical = _canonical_path(child)
             if canonical in ledger_paths or (active_paths is not None and canonical in active_paths):
