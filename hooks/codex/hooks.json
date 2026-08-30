@@ -1,6 +1,5 @@
 {
   "description": "Local-only Agentlas context recall plus dependency impact before mutations.",
-  "_windowsPathNote": "The plugin root is normalized with tr before it is used as a path. On Windows the host hands hook commands to Git Bash with a BACKSLASH root and bash reads \\U, \\p, \\s as escapes (anthropics/claude-code#21878); C:/... is accepted and the conversion is a no-op elsewhere. tr is used because bash ${var//x/y} is a syntax error under dash.",
   "hooks": {
     "SessionStart": [
       {

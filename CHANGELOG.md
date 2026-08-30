@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.2.38 — 2026-08-30
+
+- **Host hook manifests now share one verified schema across every adapter.**
+  Unsupported top-level fields are removed, Windows/Linux wiring validation runs
+  before installation, and the public runtime archive carries that verifier so
+  a malformed hook bundle fails closed instead of reaching a user's host.
+
 ## 1.2.37 — 2026-08-29
 
 - **Global router mutations are byte-idempotent and preserve every recovery

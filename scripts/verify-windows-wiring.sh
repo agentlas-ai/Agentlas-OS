@@ -140,6 +140,13 @@ for path in (Path("hooks/claude/hooks.json"), Path("hooks/codex/hooks.json")):
         problems.append(f"missing {path}")
         continue
     payload = json.loads(path.read_text(encoding="utf-8"))
+    unknown = sorted(set(payload) - {"description", "hooks"})
+    if unknown:
+        problems.append(f"{path}: unsupported top-level hook field(s): {', '.join(unknown)}")
+    if not isinstance(payload.get("description"), str) or not payload["description"].strip():
+        problems.append(f"{path}: description must be a non-empty string")
+    if not isinstance(payload.get("hooks"), dict):
+        problems.append(f"{path}: hooks must be an object")
     for event, groups in (payload.get("hooks") or {}).items():
         for group in groups:
             for hook in group.get("hooks", []):

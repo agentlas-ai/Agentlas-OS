@@ -132,6 +132,7 @@ runtime_paths=(
   "templates"
   "system-agents/curator-ruleset.json"
   "scripts/install-all-runtimes.sh"
+  "scripts/verify-windows-wiring.sh"
   "scripts/install-memory-hooks.py"
 )
 
@@ -236,6 +237,7 @@ required_runtime_paths=(
   "assets/model2vec/potion-base-8M-int8/tokenizer.json"
   "assets/model2vec/potion-base-8M-int8/LICENSE.model.txt"
   "scripts/install-all-runtimes.sh"
+  "scripts/verify-windows-wiring.sh"
   "desktop-update-bridge-v1.json"
   "system-agents/curator-ruleset.json"
 )

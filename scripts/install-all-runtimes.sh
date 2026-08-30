@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.2.37}"
+version="${HEPHAESTUS_REF:-v1.2.38}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -61,6 +61,15 @@ load_host_adapter_contract() {
   local registry="$source_dir/contracts/runtime-registry.json"
   local py=""
   [[ -f "$registry" ]] || { warn "host-adapter contract missing: $registry"; return 1; }
+  # Hook manifests are consumed directly by host parsers. Validate their
+  # top-level schema before staging the runtime so an invalid optional field
+  # cannot reach ~/.codex/plugins/cache and make every hook fail to load.
+  if [[ -x "$source_dir/scripts/verify-windows-wiring.sh" ]]; then
+    bash "$source_dir/scripts/verify-windows-wiring.sh" >/dev/null 2>&1 || {
+      warn "hook/platform wiring validation failed; refusing the runtime install"
+      return 1
+    }
+  fi
   py="$(resolve_python_cmd || true)"
   [[ -n "$py" ]] || { warn "python3 is required to read $registry"; return 1; }
   local rendered=""

@@ -1,6 +1,5 @@
 {
   "description": "Local-only Agentlas context recall plus dependency impact before mutations.",
-  "_windowsPathNote": "Every command below starts by normalizing ${CLAUDE_PLUGIN_ROOT} into R with tr (POSIX-safe: bash ${var//x/y} is a syntax error under dash, which is /bin/sh on Debian and Ubuntu). Hook commands run through Git Bash on Windows, and the host expands the plugin root to a BACKSLASH path (C:\\Users\\...); bash then reads \\U, \\p, \\s as escapes and the command word collapses into garbage (anthropics/claude-code#21878). C:/Users/... is accepted by Git Bash and the substitution is a no-op on macOS and Linux, so one form is correct everywhere. Do not inline ${CLAUDE_PLUGIN_ROOT} into a path again.",
   "hooks": {
     "SessionStart": [
       {
