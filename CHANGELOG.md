@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 1.2.39 — 2026-09-01
+
+- **Runtime updates are now verified inside the release transaction.** The
+  release workflow adopts the latest ACP pins, directly initializes every npx
+  adapter, checks native runtimes against the current probe matrix, and creates
+  the pin commit and release tag only after the package gates pass.
+- **Daily version drift is reported as a pending release update, not an
+  outage.** Missing runtimes and failed initialize probes still fail the job;
+  ordinary upstream version changes remain visible without producing a false
+  incident.
+
 ## 1.2.38 — 2026-08-30
 
 - **Host hook manifests now share one verified schema across every adapter.**
