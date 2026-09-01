@@ -1,7 +1,7 @@
 """Agentlas Browser engine adapter.
 
 Drives the user's own `agentlas-browser` launcher (a dependency-free node script that
-opens a dedicated logged-in Chrome profile over CDP, attaches @playwright/mcp, and layers
+opens an Agentlas-owned Chrome for Testing profile over CDP, attaches @playwright/mcp, and layers
 an approval gate + learn-and-replay skills) over MCP stdio. No third-party browser binary.
 
 The launcher .mjs is bundled next to this module and materialized to
@@ -36,8 +36,10 @@ def launcher_path() -> Path:
 
 
 LAUNCHER_CONTRACT_RE = re.compile(rb"@agentlas-browser-cdp-contract\s+(\d+)")
-# This bundle predates the contract marker, so it is contract 1. Desktop ships 2.
-BUNDLED_LAUNCHER_CONTRACT = 1
+# Standalone Core contract 9 is safe and non-windowed. Desktop contract 10 is
+# newer because it also carries the shared lease/guardian implementation and
+# must retain precedence when both products are installed.
+BUNDLED_LAUNCHER_CONTRACT = 9
 
 
 def _launcher_contract(source: bytes) -> int | None:

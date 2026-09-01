@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Agentlas Browser (CDP) — general-purpose engine. Launches the real, already
-// logged-in Chrome profile with a remote debugging port, then attaches
+// @agentlas-browser-cdp-contract 9
+// Agentlas Browser (CDP) — general-purpose engine. Launches an Agentlas-owned
+// Chrome for Testing profile with a remote debugging port, then attaches
 // @playwright/mcp over CDP to provide MCP browser tools. This process proxies
 // stdio between the client and @playwright/mcp, layering on (1) an approval
 // gate for irreversible actions, and (2) a learn-and-replay skill layer.
 // Zero dependencies (pure node). Personal data is used locally only and never sent anywhere.
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,54 +15,118 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const PORT = Number(process.env.AGENTLAS_CDP_PORT || 9222);
 const CDP_PROFILE = process.env.AGENTLAS_CDP_PROFILE || path.join(os.homedir(), '.agentlas', 'chrome-cdp-profile');
-const HEADLESS = String(process.env.AGENTLAS_CDP_HEADLESS || '').toLowerCase() === '1';
+const OWNER_FILE = path.join(CDP_PROFILE, '.agentlas-cdp-owner.json');
+const EXCLUSIVE_LEASE_FILE = path.join(CDP_PROFILE, '.agentlas-cdp-standalone-lease.json');
+const HEADLESS = String(process.env.AGENTLAS_CDP_HEADLESS || '1').toLowerCase() !== '0';
 const SKILLS_DIR = process.env.AGENTLAS_BROWSER_SKILLS_DIR || path.join(os.homedir(), '.agentlas', 'browser-skills');
 const log = (...a) => console.error('[agentlas-browser]', ...a);
 
-function chromeInfo() {
-  const home = os.homedir();
-  if (process.platform === 'darwin') {
-    const exes = [
-      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-      path.join(home, 'Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),
-    ];
-    return { userData: path.join(home, 'Library/Application Support/Google/Chrome'), exe: exes.find(fs.existsSync) || exes[0] };
-  }
-  if (process.platform === 'win32') {
-    const lad = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-    const exes = [
-      path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-      path.join(lad, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    ];
-    return { userData: path.join(lad, 'Google', 'Chrome', 'User Data'), exe: exes.find(fs.existsSync) || exes[0] };
-  }
-  const exes = ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
-  return { userData: path.join(home, '.config', 'google-chrome'), exe: exes.find(fs.existsSync) || exes[0] };
+function processIsLive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return error && error.code === 'EPERM'; }
 }
 
-function seedProfile(srcUserData, dst) {
+function ensurePrivateProfile() {
+  fs.mkdirSync(CDP_PROFILE, { recursive: true, mode: 0o700 });
+  try { fs.chmodSync(CDP_PROFILE, 0o700); } catch (error) {}
+}
+
+function manifestRuntime(root) {
   try {
-    fs.mkdirSync(path.join(dst, 'Default'), { recursive: true });
-    // Cookies + Local State (the key wrapper) are what make the seeded profile arrive
-    // logged in. 'Default/Login Data' (saved passwords) and 'Default/Web Data' (payment
-    // methods / autofill) are deliberately NOT copied — same boundary as the desktop rail
-    // (electron/browser/credential-import.ts):
-    //   (a) they contribute almost nothing to login success (cookies + Local State do it),
-    //   (b) reading Login Data together with Local State is the infostealer signature that
-    //       AV/EDR flags, which can block distribution,
-    //   (c) if a marketplace plugin ever reads this profile dir, the blast radius grows
-    //       from "session hijack" to "everything".
-    const rels = ['Local State', 'Default/Cookies', 'Default/Network/Cookies', 'Default/Preferences'];
-    for (const rel of rels) {
-      const s = path.join(srcUserData, ...rel.split('/'));
-      const d = path.join(dst, ...rel.split('/'));
-      if (fs.existsSync(s)) {
-        fs.mkdirSync(path.dirname(d), { recursive: true });
-        try { fs.copyFileSync(s, d); } catch (e) { log('copy skip', rel, String(e)); }
-      }
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'agentlas-browser-runtime.json'), 'utf8'));
+    if (manifest.schemaVersion !== 'agentlas.browser-runtime.v1' || manifest.runtime !== 'playwright-chrome-for-testing') return null;
+    const executable = path.resolve(root, ...String(manifest.executableRelativePath || '').split('/'));
+    const relative = path.relative(path.resolve(root), executable);
+    if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return null;
+    return fs.statSync(executable, { throwIfNoEntry: false })?.isFile() ? executable : null;
+  } catch (error) { return null; }
+}
+
+function newestCacheRuntime(root) {
+  let entries = [];
+  try { entries = fs.readdirSync(root).filter((entry) => /^chromium-\d+$/.test(entry)).sort().reverse(); }
+  catch (error) { return null; }
+  for (const entry of entries) {
+    const base = path.join(root, entry);
+    const candidates = process.platform === 'darwin'
+      ? [
+        path.join(base, 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        path.join(base, 'chrome-mac', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+      ]
+      : process.platform === 'win32'
+        ? [path.join(base, 'chrome-win64', 'chrome.exe'), path.join(base, 'chrome-win', 'chrome.exe')]
+        : [path.join(base, 'chrome-linux', 'chrome'), path.join(base, 'chrome-linux64', 'chrome')];
+    const executable = candidates.find((candidate) => fs.statSync(candidate, { throwIfNoEntry: false })?.isFile());
+    if (executable) return executable;
+  }
+  return null;
+}
+
+function resolveAgentlasBrowserRuntime() {
+  const override = process.env.AGENTLAS_BROWSER_RUNTIME_EXECUTABLE;
+  if (override && path.isAbsolute(override) && fs.statSync(override, { throwIfNoEntry: false })?.isFile()) return override;
+
+  let cursor = path.dirname(fileURLToPath(import.meta.url));
+  while (true) {
+    const packaged = manifestRuntime(path.join(cursor, 'browser-runtime'));
+    if (packaged) return packaged;
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+
+  const cacheRoot = process.env.PLAYWRIGHT_BROWSERS_PATH
+    || (process.platform === 'darwin'
+      ? path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright')
+      : process.platform === 'win32'
+        ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'ms-playwright')
+        : path.join(os.homedir(), '.cache', 'ms-playwright'));
+  return newestCacheRuntime(cacheRoot);
+}
+
+function acquireExclusiveLease() {
+  ensurePrivateProfile();
+  try {
+    const existing = JSON.parse(fs.readFileSync(EXCLUSIVE_LEASE_FILE, 'utf8'));
+    if (processIsLive(Number(existing.pid))) {
+      throw new Error('Another Agentlas Browser task is already active. Wait for it to finish instead of launching a second browser.');
     }
-  } catch (e) { log('seedProfile failed', String(e)); }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Another Agentlas Browser task')) throw error;
+  }
+  fs.writeFileSync(EXCLUSIVE_LEASE_FILE, JSON.stringify({ pid: process.pid, createdAt: Date.now() }), { encoding: 'utf8', mode: 0o600 });
+}
+
+function releaseExclusiveLease() {
+  try {
+    const existing = JSON.parse(fs.readFileSync(EXCLUSIVE_LEASE_FILE, 'utf8'));
+    if (Number(existing.pid) === process.pid) fs.rmSync(EXCLUSIVE_LEASE_FILE, { force: true });
+  } catch (error) {}
+}
+
+function writeOwner(pid) {
+  ensurePrivateProfile();
+  fs.writeFileSync(OWNER_FILE, JSON.stringify({ pid, port: PORT, profile: path.resolve(CDP_PROFILE) }), { encoding: 'utf8', mode: 0o600 });
+}
+
+function clearOwner(pid) {
+  try {
+    const existing = JSON.parse(fs.readFileSync(OWNER_FILE, 'utf8'));
+    if (Number(existing.pid) === pid) fs.rmSync(OWNER_FILE, { force: true });
+  } catch (error) {}
+}
+
+function resetSessionRestoreArtifacts() {
+  for (const relative of [
+    path.join('Default', 'Sessions'),
+    path.join('Default', 'Current Session'),
+    path.join('Default', 'Current Tabs'),
+    path.join('Default', 'Last Session'),
+    path.join('Default', 'Last Tabs'),
+  ]) {
+    try { fs.rmSync(path.join(CDP_PROFILE, relative), { recursive: true, force: true }); } catch (error) {}
+  }
 }
 
 function portReady(port) {
@@ -72,29 +137,65 @@ function portReady(port) {
   });
 }
 
-function profileSeeded(dst) {
-  return fs.existsSync(path.join(dst, 'Default', 'Cookies')) || fs.existsSync(path.join(dst, 'Default', 'Network', 'Cookies'));
+function waitForProcessExit(pid, timeoutMs) {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const poll = () => {
+      if (!processIsLive(pid) || Date.now() >= deadline) return resolve(!processIsLive(pid));
+      setTimeout(poll, 100);
+    };
+    poll();
+  });
+}
+
+async function terminateOwnedBrowser(child) {
+  if (!child?.pid || !processIsLive(child.pid)) return;
+  try {
+    if (process.platform === 'win32') {
+      await new Promise((resolve) => execFile('taskkill.exe', ['/PID', String(child.pid), '/T'], { windowsHide: true, timeout: 3000 }, () => resolve()));
+    } else process.kill(child.pid, 'SIGTERM');
+  } catch (error) {}
+  if (await waitForProcessExit(child.pid, 2500)) return;
+  try {
+    if (process.platform === 'win32') {
+      await new Promise((resolve) => execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 3000 }, () => resolve()));
+    } else process.kill(child.pid, 'SIGKILL');
+  } catch (error) {}
+  await waitForProcessExit(child.pid, 2500);
 }
 
 async function ensureChrome() {
-  if (await portReady(PORT)) { log('CDP already up on', PORT); return; }
-  const { userData, exe } = chromeInfo();
-  if (!fs.existsSync(exe)) throw new Error('Google Chrome executable could not be found: ' + exe);
-  const force = process.env.AGENTLAS_CDP_SEED === '1';
-  if (force || !profileSeeded(CDP_PROFILE)) { log(force ? 'seeding profile (forced import)' : 'seeding profile (first run)'); seedProfile(userData, CDP_PROFILE); }
-  else { log('reusing persistent dedicated profile (no reseed)'); }
+  if (await portReady(PORT)) {
+    throw new Error('CDP port ' + PORT + ' is already in use. Agentlas will not attach to or terminate an unverified browser.');
+  }
+  const exe = resolveAgentlasBrowserRuntime();
+  if (!exe) throw new Error('Agentlas Chrome for Testing runtime is missing. Install or repair Agentlas Desktop/runtime; system Chrome is never used as an automation fallback.');
+  ensurePrivateProfile();
+  resetSessionRestoreArtifacts();
   const args = [
     '--user-data-dir=' + CDP_PROFILE, '--remote-debugging-port=' + PORT,
-    '--no-first-run', '--no-default-browser-check', '--restore-last-session=false',
+    '--remote-debugging-address=127.0.0.1',
+    '--no-first-run', '--no-default-browser-check',
     '--disable-session-crashed-bubble', '--disable-features=Translate',
+    '--disable-component-update', '--disable-background-networking',
+    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling',
   ];
   if (HEADLESS) args.push('--headless=new');
-  args.push('about:blank');
-  log('launching Chrome on port', PORT, HEADLESS ? '(headless)' : '');
-  const child = spawn(exe, args, { detached: true, stdio: 'ignore' });
-  child.unref();
-  for (let i = 0; i < 40; i++) { if (await portReady(PORT)) { log('CDP ready'); return; } await new Promise((r) => setTimeout(r, 500)); }
-  throw new Error('Chrome CDP port did not open: ' + PORT);
+  args.push('--no-startup-window');
+  log('launching Agentlas Chrome for Testing on port', PORT, HEADLESS ? '(headless)' : '');
+  const child = spawn(exe, args, { detached: false, stdio: 'ignore' });
+  let launchError = null;
+  child.once('error', (error) => { launchError = error; });
+  writeOwner(child.pid);
+  for (let i = 0; i < 40; i++) {
+    if (launchError) break;
+    if (await portReady(PORT)) { log('CDP ready', child.pid); return child; }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  await terminateOwnedBrowser(child);
+  clearOwner(child.pid);
+  throw new Error('Agentlas Chrome for Testing did not open CDP port ' + PORT + (launchError ? ': ' + launchError.message : '.'));
 }
 
 // ── approval gate ──────────────────────────────────────────────────
@@ -176,11 +277,49 @@ function saveSkill(name, steps, description) {
 function loadSkill(name) { const p = skillPath(name); if (!fs.existsSync(p)) return null; return JSON.parse(fs.readFileSync(p, 'utf8')); }
 
 async function main() {
-  await ensureChrome();
+  let browserChild = null;
+  let browserReadyPromise = null;
+  let leaseHeld = false;
+  let closing = false;
+  let cleanupFlight = null;
+  const cleanup = () => {
+    if (cleanupFlight) return cleanupFlight;
+    closing = true;
+    cleanupFlight = (async () => {
+      await terminateOwnedBrowser(browserChild);
+      if (browserChild?.pid) clearOwner(browserChild.pid);
+      if (leaseHeld) {
+        releaseExclusiveLease();
+        leaseHeld = false;
+      }
+    })();
+    return cleanupFlight;
+  };
+  const ensureBrowserForTool = () => {
+    if (browserReadyPromise) return browserReadyPromise;
+    const flight = (async () => {
+      acquireExclusiveLease();
+      leaseHeld = true;
+      if (closing) throw new Error('Agentlas Browser client closed before launch.');
+      browserChild = await ensureChrome();
+      if (closing) throw new Error('Agentlas Browser client closed during launch.');
+    })().catch(async (error) => {
+      await cleanup();
+      throw error;
+    });
+    browserReadyPromise = flight;
+    return flight;
+  };
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const child = spawn(npx, ['-y', '@playwright/mcp@latest', '--cdp-endpoint', 'http://127.0.0.1:' + PORT], { stdio: ['pipe', 'pipe', 'inherit'] });
-  child.on('error', (e) => { log('failed to start @playwright/mcp', String(e)); process.exit(1); });
-  child.on('exit', (code) => process.exit(code == null ? 0 : code));
+  let finishing = false;
+  const finish = (code) => {
+    if (finishing) return;
+    finishing = true;
+    void cleanup().then(() => process.exit(code));
+  };
+  child.on('error', (error) => { log('failed to start @playwright/mcp', String(error)); finish(1); });
+  child.on('exit', (code) => finish(code == null ? 0 : code));
 
   const recording = [];            // sequence of actions that succeeded in this session
   const pending = new Map();       // client's original tools/call: id -> {name, args}
@@ -189,6 +328,14 @@ async function main() {
   let internalSeq = 0;
   const writeClient = (obj) => { try { process.stdout.write(JSON.stringify(obj) + '\n'); } catch (e) {} };
   const forwardRaw = (line) => { try { child.stdin.write(line + '\n'); } catch (e) {} };
+  const writeBrowserStartFailure = (id, error) => writeClient({
+    jsonrpc: '2.0',
+    id,
+    result: {
+      content: [{ type: 'text', text: 'Agentlas Browser could not start safely: ' + String(error?.message || error) }],
+      isError: true,
+    },
+  });
 
   // Shared approval-gate verdict. Pass = null, refuse = reason string.
   const gate = async (name, args, preJudgedKind) => {
@@ -239,20 +386,25 @@ async function main() {
         catch (e) { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'Save failed: ' + String(e) }], isError: true } }); }
         return;
       }
-      if (name === 'browser_skill_replay') { doReplay(args.name, msg.id); return; }
-      // Ordinary action: approval gate + record. If the parent sent a pre-judged verdict via _meta, that verdict wins.
-      if (name === 'browser_navigate' && args.url) currentUrl = String(args.url);
-      const preJudgedKind = (msg.params._meta || {})['agentlas/actionKind'];
-      const actionType = classifyAction(name, args, preJudgedKind);
-      if (actionType) {
-        gate(name, args, preJudgedKind).then((denied) => {
-          if (denied) { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'BLOCKED: The user did not approve this ' + denied + ' browser action.' }], isError: true } }); return; }
-          if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
-          forwardRaw(line);
-        });
-        return;
-      }
-      if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
+      void ensureBrowserForTool().then(() => {
+        if (closing) return;
+        if (name === 'browser_skill_replay') { void doReplay(args.name, msg.id); return; }
+        // Ordinary action: approval gate + record. If the parent sent a pre-judged verdict via _meta, that verdict wins.
+        if (name === 'browser_navigate' && args.url) currentUrl = String(args.url);
+        const preJudgedKind = (msg.params._meta || {})['agentlas/actionKind'];
+        const actionType = classifyAction(name, args, preJudgedKind);
+        if (actionType) {
+          gate(name, args, preJudgedKind).then((denied) => {
+            if (denied) { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'BLOCKED: The user did not approve this ' + denied + ' browser action.' }], isError: true } }); return; }
+            if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
+            forwardRaw(line);
+          });
+          return;
+        }
+        if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
+        forwardRaw(line);
+      }).catch((error) => writeBrowserStartFailure(msg.id, error));
+      return;
     }
     forwardRaw(line);
   };
@@ -288,7 +440,17 @@ async function main() {
     buf += chunk.toString('utf8'); let idx;
     while ((idx = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, idx); buf = buf.slice(idx + 1); handleClientLine(line); }
   });
-  process.stdin.on('end', () => { try { child.stdin.end(); } catch (e) {} });
+  process.stdin.on('end', () => {
+    try { child.stdin.end(); } catch (error) {}
+    const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch (error) {} }, 1500);
+    timer.unref();
+  });
+  const stopForSignal = (code) => {
+    try { child.kill('SIGTERM'); } catch (error) {}
+    finish(code);
+  };
+  process.once('SIGINT', () => stopForSignal(130));
+  process.once('SIGTERM', () => stopForSignal(143));
 }
 // Run only when executed directly; importing the module (tests) must stay
 // side-effect free so classifyAction can be unit-tested without a browser.
