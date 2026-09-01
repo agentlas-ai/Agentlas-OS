@@ -33,18 +33,18 @@ jobs:
       ACP_REGISTRY: runtime-release-inputs/acp-registry.json
       ACP_MATRIX: runtime-release-inputs/protocol-matrix.json
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           # A dispatch prepares a new release from main. A tag event verifies
           # and publishes the immutable commit that was actually tagged.
           ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
@@ -300,7 +300,7 @@ jobs:
 
       - name: Upload release verification evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-release-verification-${{ github.run_id }}
           path: |
