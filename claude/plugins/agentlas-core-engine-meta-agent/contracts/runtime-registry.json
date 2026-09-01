@@ -219,14 +219,14 @@
         "command": "npx",
         "args": [
           "-y",
-          "@xai-official/grok@1.0.14",
+          "@xai-official/grok@1.0.16",
           "agent",
           "stdio"
         ],
         "registryId": "grok-build"
       },
       "pin": {
-        "registryVersion": "1.0.14",
+        "registryVersion": "1.0.16",
         "cliVersion": "1.0.3"
       },
       "notes": "Hand driver classifies tools by guessing `type` strings; ACP normalizes them."
