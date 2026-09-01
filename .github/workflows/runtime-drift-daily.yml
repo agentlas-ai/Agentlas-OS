@@ -1,15 +1,10 @@
 name: Runtime drift (daily)
 
-# Detect automatically, apply by hand (PRD 2026-08-15 OS-10, coverage plan §6).
-#
-# The ACP registry runs a real `initialize` probe against every agent every day
-# and publishes the result (.protocol-matrix/latest.json). We do not rebuild that
-# monitor — we subscribe: compare our pins in contracts/runtime-registry.json to
-# the registry versions, flag agents whose initialize is no longer `success`, and
-# diff capabilities against yesterday's snapshot. Any change fails this job and
-# leaves a JSON artifact for a human to review. Nothing here edits the registry:
-# automatic upstream adoption is what the axios (5 min) / trivy-action (56 min)
-# supply-chain incidents punished. Cooldown before pin bumps: 7 days.
+# Daily drift is an early-warning feed, not a release mechanism. A newer
+# version is expected and is adopted by the release workflow immediately before
+# its compatibility gates. Only an unavailable/missing runtime or a failed
+# initialize probe makes this workflow red; version and capability changes stay
+# visible in the summary and artifact without being mislabeled as an outage.
 
 on:
   schedule:
@@ -36,13 +31,43 @@ jobs:
             -o previous-matrix.json || echo "no snapshot for ${d}"
       - name: Compare pins, health, and capabilities
         run: |
-          set +e
-          prev=""
-          [ -s previous-matrix.json ] && prev="--previous-matrix previous-matrix.json"
-          python3 scripts/check-runtime-drift.py --json $prev | tee runtime-drift.json
-          rc=${PIPESTATUS[0]}
-          python3 scripts/check-runtime-drift.py $prev >> "$GITHUB_STEP_SUMMARY" || true
-          exit $rc
+          set -euo pipefail
+          prev=()
+          [[ -s previous-matrix.json ]] && prev=(--previous-matrix previous-matrix.json)
+          python3 scripts/check-runtime-drift.py --json "${prev[@]}" > runtime-drift.json || rc=$?
+          rc="${rc:-0}"
+          if [[ "$rc" == "2" ]]; then
+            cat runtime-drift.json
+            echo "runtime drift inputs were unavailable" >&2
+            exit 2
+          fi
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("runtime-drift.json").read_text(encoding="utf-8"))
+          findings = report.get("findings") or []
+          blocking = [item for item in findings if item.get("kind") in {"health", "missing"}]
+          pending = [item for item in findings if item.get("kind") == "version"]
+          review = [item for item in findings if item.get("kind") not in {"health", "missing", "version"}]
+
+          summary = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          with summary.open("a", encoding="utf-8") as out:
+              out.write("## Runtime drift\n\n")
+              out.write(f"- Actual runtime failures: **{len(blocking)}**\n")
+              out.write(f"- Updates pending for the next release: **{len(pending)}**\n")
+              out.write(f"- Compatibility changes to review: **{len(review)}**\n\n")
+              for label, rows in (("Actual failures", blocking), ("Release updates", pending), ("Review", review)):
+                  if not rows:
+                      continue
+                  out.write(f"### {label}\n\n")
+                  for item in rows:
+                      out.write(f"- `{item.get('runtime')}` / `{item.get('kind')}`: {item.get('detail')}\n")
+                  out.write("\n")
+          if blocking:
+              raise SystemExit("actual runtime health failure detected")
+          PY
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4

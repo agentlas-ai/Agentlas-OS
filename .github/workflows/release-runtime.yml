@@ -1,6 +1,18 @@
 name: Release verified runtime asset
 
+# The supported release path is workflow_dispatch:
+#   latest ACP versions -> live initialize probes -> package gates -> pin commit
+#   -> immutable tag -> release assets.
+# A manually pushed tag is still accepted only when it already contains the
+# latest verified pins. It can never bypass the same probes and package gates.
+
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag already prepared in manifest.json (vX.Y.Z)"
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -9,34 +21,289 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-runtime-${{ github.ref_name }}
+  group: release-runtime-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   release-runtime:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      ACP_REGISTRY: runtime-release-inputs/acp-registry.json
+      ACP_MATRIX: runtime-release-inputs/protocol-matrix.json
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # A dispatch prepares a new release from main. A tag event verifies
+          # and publishes the immutable commit that was actually tagged.
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # The build step is self-guarding: build-runtime-release-asset.sh builds
-      # from an explicit runtime allowlist and scans the archive manifest for
-      # forbidden paths (tests, fixtures, credentials, signing material, .env),
-      # failing closed if any are present. End-user downloads therefore never
-      # contain test or maintainer-only material — independent of what the repo
-      # tracks. Test suites are intentionally NOT part of this public workflow.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate release input
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo "release tag must be vX.Y.Z: $RELEASE_TAG" >&2
+            exit 2
+          }
+          manifest_version="$(python3 -c 'import json; print(json.load(open("manifest.json", encoding="utf-8"))["version"])')"
+          [[ "v$manifest_version" == "$RELEASE_TAG" ]] || {
+            echo "manifest.json version $manifest_version does not match $RELEASE_TAG" >&2
+            exit 2
+          }
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            git fetch origin main --tags
+            if git rev-parse --verify "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+              echo "tag already exists: $RELEASE_TAG" >&2
+              exit 2
+            fi
+            echo "BASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Fetch the latest runtime registry and probe matrix
+        run: |
+          set -euo pipefail
+          mkdir -p runtime-release-inputs
+          curl -fsSL --retry 3 -A "agentlas-runtime-release/2.0" \
+            "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json" \
+            -o "$ACP_REGISTRY"
+          curl -fsSL --retry 3 -A "agentlas-runtime-release/2.0" \
+            "https://raw.githubusercontent.com/agentclientprotocol/registry/main/.protocol-matrix/latest.json" \
+            -o "$ACP_MATRIX"
+
+      - name: Adopt latest runtime pins before testing
+        env:
+          ADOPT_PINS: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          registry_path = Path("contracts/runtime-registry.json")
+          ours = json.loads(registry_path.read_text(encoding="utf-8"))
+          upstream = json.loads(Path(os.environ["ACP_REGISTRY"]).read_text(encoding="utf-8"))
+          matrix = json.loads(Path(os.environ["ACP_MATRIX"]).read_text(encoding="utf-8"))
+          adopt = os.environ.get("ADOPT_PINS") == "1"
+
+          upstream_by_id = {str(row["id"]): row for row in upstream.get("agents", []) if row.get("id")}
+          matrix_by_id = {str(row["id"]): row for row in matrix.get("agents", []) if row.get("id")}
+          generated = str(matrix.get("generatedAt") or "")
+          try:
+              generated_at = datetime.fromisoformat(generated.replace("Z", "+00:00"))
+          except ValueError:
+              raise SystemExit(f"probe matrix has an invalid generatedAt: {generated!r}")
+          if generated_at < datetime.now(timezone.utc) - timedelta(hours=48):
+              raise SystemExit(f"probe matrix is older than 48 hours: {generated}")
+
+          changed = []
+          errors = []
+          for runtime in ours.get("runtimes", []):
+              acp = runtime.get("acp") or {}
+              registry_id = acp.get("registryId")
+              if not registry_id:
+                  continue
+              live = upstream_by_id.get(str(registry_id))
+              probe = matrix_by_id.get(str(registry_id))
+              if live is None:
+                  errors.append(f"{runtime['id']}: {registry_id} is missing from the ACP registry")
+                  continue
+              if probe is None:
+                  errors.append(f"{runtime['id']}: {registry_id} is missing from the probe matrix")
+                  continue
+
+              latest = str(live.get("version") or "").strip()
+              if not latest:
+                  errors.append(f"{runtime['id']}: {registry_id} has no upstream version")
+                  continue
+              distribution = live.get("distribution") or {}
+              npx = distribution.get("npx") if isinstance(distribution, dict) else None
+
+              # Native/binary runtimes are not downloaded into the Agentlas OS
+              # release. Require the registry's latest exact version to have a
+              # successful upstream initialize probe. Npx adapters are probed
+              # directly by this workflow in the next step, so a short matrix
+              # publication lag does not block their latest patch.
+              if not isinstance(npx, dict):
+                  status = str(((probe.get("initialize") or {}).get("status") or "unknown"))
+                  tested = str(probe.get("registryVersion") or "")
+                  if status != "success" or tested != latest:
+                      errors.append(
+                          f"{runtime['id']}: latest {registry_id}@{latest} has no matching successful matrix probe "
+                          f"(matrix={tested or 'missing'}, status={status})"
+                      )
+                      continue
+
+              desired_pin = latest
+              pin = runtime.setdefault("pin", {})
+              before_pin = str(pin.get("registryVersion") or "")
+              desired_args = None
+              if isinstance(npx, dict):
+                  package = str(npx.get("package") or "").strip()
+                  if not package:
+                      errors.append(f"{runtime['id']}: {registry_id} npx distribution has no package")
+                      continue
+                  desired_args = ["-y", package] + list(npx.get("args") or [])
+
+              pin_changed = before_pin != desired_pin
+              args_changed = desired_args is not None and list(acp.get("args") or []) != desired_args
+              if pin_changed or args_changed:
+                  changed.append({
+                      "runtime": runtime["id"],
+                      "registryId": registry_id,
+                      "from": before_pin,
+                      "to": desired_pin,
+                      "npx": desired_args is not None,
+                  })
+                  if adopt:
+                      pin["registryVersion"] = desired_pin
+                      if desired_args is not None:
+                          acp["command"] = "npx"
+                          acp["args"] = desired_args
+                  else:
+                      errors.append(
+                          f"{runtime['id']}: tagged commit is stale ({before_pin or 'missing'} -> {desired_pin}); "
+                          "run the Release verified runtime asset workflow from main instead of pushing a tag"
+                      )
+
+          if errors:
+              print("\n".join(f"ERROR: {item}" for item in errors), file=sys.stderr)
+              raise SystemExit(1)
+          if adopt and changed:
+              ours["updatedAt"] = datetime.now(timezone.utc).date().isoformat()
+              registry_path.write_text(json.dumps(ours, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          Path("runtime-adoption.json").write_text(
+              json.dumps({"changed": changed, "matrixGeneratedAt": generated}, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps({"changed": changed, "matrixGeneratedAt": generated}, indent=2))
+          PY
+
+          if [[ "$ADOPT_PINS" == "1" ]]; then
+            bash scripts/sync-adapters.sh
+          else
+            bash scripts/sync-adapters.sh --check
+          fi
+
+      - name: Probe every npx ACP runtime at the adopted version
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          from agentlas_cloud.networking.acp_client import AcpClient
+
+          registry = json.loads(Path("contracts/runtime-registry.json").read_text(encoding="utf-8"))
+          probed = []
+          for runtime in registry.get("runtimes", []):
+              acp = runtime.get("acp") or {}
+              if acp.get("command") != "npx":
+                  continue
+              command = ["npx"] + list(acp.get("args") or [])
+              if len(command) < 3:
+                  raise SystemExit(f"{runtime['id']}: invalid npx ACP command: {command}")
+              with AcpClient(command, timeout=75.0, client_info={"name": "agentlas-release-ci", "version": "1"}) as client:
+                  initialized = client.initialize()
+              agent_info = initialized.get("agentInfo") if isinstance(initialized.get("agentInfo"), dict) else {}
+              reported = str(agent_info.get("version") or "")
+              pinned = str((runtime.get("pin") or {}).get("registryVersion") or "")
+              if reported and reported != pinned:
+                  raise SystemExit(f"{runtime['id']}: initialized version {reported} != adopted pin {pinned}")
+              probed.append({"runtime": runtime["id"], "pin": pinned, "reported": reported or None})
+              print(f"PASS initialize {runtime['id']}@{pinned}")
+          if not probed:
+              raise SystemExit("no npx ACP runtimes were probed")
+          Path("runtime-initialize-probes.json").write_text(json.dumps(probed, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Verify adopted registry and release package
+        run: |
+          set -euo pipefail
+          python3 scripts/check-runtime-drift.py \
+            --acp-registry "$ACP_REGISTRY" \
+            --matrix "$ACP_MATRIX"
+          python3 -m compileall -q agentlas_cloud ontology career_graph
+          python3 -m agentlas_cloud.runtime_registry
+          bash scripts/sync-adapters.sh --check
+          bash scripts/verify-runtime-home-parity.sh
+          bash scripts/verify-windows-wiring.sh
+          bash scripts/verify-upload-redaction.sh
+          bash scripts/verify-project-map-selfheal.sh
+          bash scripts/verify-registration-attestation.sh
+          bash scripts/public_safety_check.sh
+
+      - name: Commit verified pins and create release tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          mapfile -t changed_files < <(git diff --name-only)
+          allowed='^(contracts/runtime-registry\.json|claude/plugins/agentlas-core-engine-meta-agent/contracts/runtime-registry\.json|codex/plugins/agentlas-core-engine-meta-agent/contracts/runtime-registry\.json)$'
+          for path in "${changed_files[@]}"; do
+            [[ "$path" =~ $allowed ]] || {
+              echo "release preparation changed a non-allowlisted file: $path" >&2
+              exit 1
+            }
+          done
+
+          if (( ${#changed_files[@]} > 0 )); then
+            git config user.name "agentlas-release[bot]"
+            git config user.email "agentlas-release[bot]@users.noreply.github.com"
+            git add -- \
+              contracts/runtime-registry.json \
+              claude/plugins/agentlas-core-engine-meta-agent/contracts/runtime-registry.json \
+              codex/plugins/agentlas-core-engine-meta-agent/contracts/runtime-registry.json
+            staged="$(git diff --cached --name-only)"
+            [[ -n "$staged" ]] || { echo "runtime pin changes were not staged" >&2; exit 1; }
+            if printf '%s\n' "$staged" | grep -Ev "$allowed"; then
+              echo "staged release content escaped the explicit allowlist" >&2
+              exit 1
+            fi
+            git diff --cached --check
+            git commit -m "chore(runtime): verify latest ACP pins for $RELEASE_TAG [skip ci]"
+          fi
+
+          git fetch origin main
+          [[ "$(git rev-parse origin/main)" == "$BASE_SHA" ]] || {
+            echo "main changed while release verification was running; restart the release workflow" >&2
+            exit 1
+          }
+          if [[ "$(git rev-parse HEAD)" != "$BASE_SHA" ]]; then
+            git push origin HEAD:main
+          fi
+          git tag -a "$RELEASE_TAG" -m "Agentlas OS $RELEASE_TAG"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+      # The build script uses an explicit runtime allowlist and rejects tests,
+      # fixtures, credentials, signing material, private paths, and internal
+      # artifacts before anything can be uploaded.
       - name: Build deterministic runtime archive
-        run: bash scripts/build-runtime-release-asset.sh "$GITHUB_REF_NAME"
+        run: bash scripts/build-runtime-release-asset.sh "$RELEASE_TAG"
 
       - name: Publish release with verified assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          archive="dist/runtime-release/hephaestus-runtime-${GITHUB_REF_NAME}.tar.gz"
+          archive="dist/runtime-release/hephaestus-runtime-${RELEASE_TAG}.tar.gz"
           checksum="${archive}.sha256"
-          bash scripts/publish-runtime-release-assets.sh "$GITHUB_REF_NAME" "$archive" "$checksum"
+          bash scripts/publish-runtime-release-assets.sh "$RELEASE_TAG" "$archive" "$checksum"
+
+      - name: Upload release verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-release-verification-${{ github.run_id }}
+          path: |
+            runtime-adoption.json
+            runtime-initialize-probes.json
+          if-no-files-found: ignore
