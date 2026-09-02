@@ -5,9 +5,14 @@
 </p>
 
 <p align="center">
-  <a href="https://agentlas.cloud">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Agent Lab banner">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="Download Agentlas Desktop">
   </a>
+</p>
+
+<p align="center">
+  <sub>macOS (Apple silicon and Intel) &middot; Windows &middot; Linux &mdash;
+  <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub>
 </p>
 
 <h1 align="center">Agentlas OS</h1>
@@ -137,7 +142,7 @@ security-conscious), open this link in your browser first:
 </p>
 
 <p align="center">
-  <sub>Build, own, borrow, and run agents across your local workspace, private Agent Cloud, and the public Agentlas Hub.</sub>
+  <sub><a href="https://agentlas.cloud/desktop">Build, own, borrow, and run agents across your local workspace, private Agent Cloud, and the public Agentlas Hub.</a></sub>
 </p>
 
 ## Agentlas Desktop in motion
@@ -188,6 +193,8 @@ Use the model account or API key you choose. Your current host performs the work
 </table>
 
 <p align="center">
+  <a href="https://agentlas.cloud/desktop">Download Desktop</a>
+  ·
   <a href="#build-borrow-own">Build · Borrow · Own</a>
   ·
   <a href="#why-agentlas-os">Why Agentlas OS</a>

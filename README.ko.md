@@ -1,7 +1,12 @@
 <p align="center">
-  <a href="https://agentlas.cloud">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Agent Lab banner">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop 다운로드">
   </a>
+</p>
+
+<p align="center">
+  <sub>macOS(애플 실리콘·인텔) &middot; Windows &middot; Linux &mdash;
+  <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a>에서 내 컴퓨터에 맞는 파일을 받습니다.</sub>
 </p>
 
 <h1 align="center">Agentlas OS</h1>

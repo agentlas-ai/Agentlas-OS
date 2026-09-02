@@ -1,7 +1,12 @@
 <p align="center">
-  <a href="https://agentlas.cloud">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Agent Lab banner">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop をダウンロード">
   </a>
+</p>
+
+<p align="center">
+  <sub>macOS（Apple シリコン・Intel） &middot; Windows &middot; Linux &mdash;
+  <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a>で、お使いのコンピューターに合うファイルをダウンロードできます。</sub>
 </p>
 
 <h1 align="center">Hephaestus — モデル非依存のエージェント OS</h1>

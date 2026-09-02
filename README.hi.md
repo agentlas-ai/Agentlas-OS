@@ -1,7 +1,12 @@
 <p align="center">
-  <a href="https://agentlas.cloud">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Agent Lab banner">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop डाउनलोड करें">
   </a>
+</p>
+
+<p align="center">
+  <sub>macOS (Apple silicon और Intel) &middot; Windows &middot; Linux &mdash;
+  अपने कंप्यूटर के लिए सही फ़ाइल <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a> से डाउनलोड करें।</sub>
 </p>
 
 <h1 align="center">Hephaestus — हर model पर चलने वाला Agent OS</h1>

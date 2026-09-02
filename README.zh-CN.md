@@ -1,7 +1,12 @@
 <p align="center">
-  <a href="https://agentlas.cloud">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Agent Lab banner">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="下载 Agentlas Desktop">
   </a>
+</p>
+
+<p align="center">
+  <sub>macOS（Apple 芯片和 Intel） &middot; Windows &middot; Linux &mdash;
+  从 <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a> 下载适合您电脑的文件。</sub>
 </p>
 
 <h1 align="center">Hephaestus — 模型无关的 Agent OS</h1>
