@@ -5,8 +5,8 @@
 
 ## Decisions
 
-- **rule 1** - `agents/10-single-agent-builder/agent.md`;. _(source: CLAUDE.md)_
-- **rule 2** - `agents/20-multi-agent-team-builder/agent.md`;. _(source: CLAUDE.md)_
+- `agents/10-single-agent-builder/agent.md`;. _(source: CLAUDE.md)_
+- `agents/20-multi-agent-team-builder/agent.md`;. _(source: CLAUDE.md)_
 
 ## Being worked on right now
 
