@@ -111,13 +111,13 @@
       "required": ["schemaVersion", "network", "shell", "fileRead", "mcp", "unknownTools"],
       "properties": {
         "schemaVersion": { "const": "agentlas.workforce-permission-policy.v1" },
-        "network": { "enum": ["allow", "ask", "deny"] },
-        "shell": { "enum": ["allow", "ask", "deny"] },
+        "network": { "enum": ["allow", "ask", "deny", "host"] },
+        "shell": { "enum": ["allow", "ask", "deny", "host"] },
         "fileRead": {
           "type": "object", "additionalProperties": false,
           "required": ["mode", "allowPatterns", "denyPatterns"],
           "properties": {
-            "mode": { "enum": ["deny", "manifest-allowlist"] },
+            "mode": { "enum": ["deny", "manifest-allowlist", "host"] },
             "allowPatterns": {
               "type": "array", "maxItems": 128, "uniqueItems": true,
               "items": { "$ref": "#/$defs/packagePattern" }
@@ -129,7 +129,7 @@
           },
           "allOf": [
             {
-              "if": { "properties": { "mode": { "const": "deny" } } },
+              "if": { "properties": { "mode": { "enum": ["deny", "host"] } } },
               "then": {
                 "properties": {
                   "allowPatterns": { "maxItems": 0 },
@@ -149,7 +149,7 @@
           "type": "object", "additionalProperties": false,
           "required": ["mode", "allowedTools"],
           "properties": {
-            "mode": { "enum": ["deny", "allowlist"] },
+            "mode": { "enum": ["deny", "allowlist", "host"] },
             "allowedTools": {
               "type": "array", "maxItems": 128, "uniqueItems": true,
               "items": {
@@ -160,7 +160,7 @@
           },
           "allOf": [
             {
-              "if": { "properties": { "mode": { "const": "deny" } } },
+              "if": { "properties": { "mode": { "enum": ["deny", "host"] } } },
               "then": { "properties": { "allowedTools": { "maxItems": 0 } } },
               "else": { "properties": { "allowedTools": { "minItems": 1 } } }
             }

@@ -183,8 +183,42 @@ def _root_relative_patterns(value: Any, code: str) -> list[str]:
     return patterns
 
 
+def host_permission_policy(
+    *,
+    allow_read: list[str] | None = None,
+    deny_read: list[str] | None = None,
+) -> dict[str, Any]:
+    """The policy every prepared roster row carries since 2026-09-05.
+
+    Owner decision (2026-08-20, reconfirmed 2026-09-05): an agent package carries no
+    tool authority of its own. Which tools run, and with what authority, is decided by
+    the host runtime at execution time (the run's permission tier plus the durable
+    capability_grants / action-time approval chips). Until this date the Workforce path
+    still projected a package "ceiling" (shell/network/mcp deny by default, deny-all
+    when undeclared) and the Desktop executed such rows read-only in a no-authority
+    sandbox, so a staffed design or code agent could not edit a file the user had
+    explicitly granted. `host` names that decision instead of pretending the package
+    decided. The package's own file-read allowlist is kept: it scopes what of the
+    *package* is readable, not what the agent may do.
+    """
+    patterns_declared = bool(allow_read) and bool(deny_read)
+    return {
+        "schemaVersion": WORKFORCE_PERMISSION_POLICY_SCHEMA,
+        "network": "host",
+        "shell": "host",
+        "fileRead": (
+            {"mode": "manifest-allowlist", "allowPatterns": list(allow_read or []), "denyPatterns": list(deny_read or [])}
+            if patterns_declared
+            else {"mode": "host", "allowPatterns": [], "denyPatterns": []}
+        ),
+        "mcp": {"mode": "host", "allowedTools": []},
+        "unknownTools": "deny",
+    }
+
+
 def deny_all_permission_policy() -> dict[str, Any]:
-    """Return the only safe projection for a bundle with no declaration."""
+    """Legacy projection (every authority denied). Kept so plans and receipts prepared
+    before 2026-09-05 still validate; new preparations never produce it."""
 
     return {
         "schemaVersion": WORKFORCE_PERMISSION_POLICY_SCHEMA,
@@ -206,9 +240,9 @@ def validate_permission_policy(policy: Mapping[str, Any]) -> dict[str, Any]:
     )
     if policy.get("schemaVersion") != WORKFORCE_PERMISSION_POLICY_SCHEMA:
         raise ValueError("permission_policy_schema_invalid")
-    if policy.get("network") not in {"allow", "ask", "deny"}:
+    if policy.get("network") not in {"allow", "ask", "deny", "host"}:
         raise ValueError("permission_policy_network_invalid")
-    if policy.get("shell") not in {"allow", "ask", "deny"}:
+    if policy.get("shell") not in {"allow", "ask", "deny", "host"}:
         raise ValueError("permission_policy_shell_invalid")
     if policy.get("unknownTools") != "deny":
         raise ValueError("permission_policy_unknown_tools_must_deny")
@@ -218,11 +252,11 @@ def validate_permission_policy(policy: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("permission_policy_file_read_invalid")
     _exact_keys(file_read, {"mode", "allowPatterns", "denyPatterns"}, "permission_policy_file_read_keys_invalid")
     file_mode = file_read.get("mode")
-    if file_mode not in {"deny", "manifest-allowlist"}:
+    if file_mode not in {"deny", "manifest-allowlist", "host"}:
         raise ValueError("permission_policy_file_read_mode_invalid")
     allow_patterns = _root_relative_patterns(file_read.get("allowPatterns"), "permission_policy_allow_pattern_invalid")
     deny_patterns = _root_relative_patterns(file_read.get("denyPatterns"), "permission_policy_deny_pattern_invalid")
-    if file_mode == "deny" and (allow_patterns or deny_patterns):
+    if file_mode in {"deny", "host"} and (allow_patterns or deny_patterns):
         raise ValueError("permission_policy_denied_file_lists_must_be_empty")
     if file_mode == "manifest-allowlist" and (not allow_patterns or not deny_patterns):
         raise ValueError("permission_policy_file_allowlist_incomplete")
@@ -232,7 +266,7 @@ def validate_permission_policy(policy: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("permission_policy_mcp_invalid")
     _exact_keys(mcp, {"mode", "allowedTools"}, "permission_policy_mcp_keys_invalid")
     mcp_mode = mcp.get("mode")
-    if mcp_mode not in {"deny", "allowlist"}:
+    if mcp_mode not in {"deny", "allowlist", "host"}:
         raise ValueError("permission_policy_mcp_mode_invalid")
     allowed_tools = _string_list(
         mcp.get("allowedTools"),
@@ -241,7 +275,7 @@ def validate_permission_policy(policy: Mapping[str, Any]) -> dict[str, Any]:
         max_length=128,
         pattern=_MCP_TOOL_NAME_RE,
     )
-    if mcp_mode == "deny" and allowed_tools:
+    if mcp_mode in {"deny", "host"} and allowed_tools:
         raise ValueError("permission_policy_denied_mcp_list_must_be_empty")
     if mcp_mode == "allowlist" and not allowed_tools:
         raise ValueError("permission_policy_mcp_allowlist_empty")
@@ -331,42 +365,19 @@ def project_permission_policy(runtime_bundle: Mapping[str, Any]) -> dict[str, An
     allow_read = merged("allowRead", "allow_read")
     deny_read = merged("denyRead", "deny_read")
     allowed_tools = merged("mcpAllowedTools", "mcp_allowed_tools")
-    if permissions is None and allow_read is None and deny_read is None and allowed_tools is None:
-        return deny_all_permission_policy()
-    if permissions is None:
-        permissions = {}
-    if not isinstance(permissions, Mapping) or set(permissions) - {"network", "shell", "fileRead"}:
+    if permissions is not None and (
+        not isinstance(permissions, Mapping) or set(permissions) - {"network", "shell", "fileRead"}
+    ):
         raise ValueError("permission_policy_tool_permissions_invalid")
-
-    network = permissions.get("network", "deny")
-    shell = permissions.get("shell", "deny")
-    file_decision = permissions.get("fileRead", "deny")
-    if file_decision == "manifest-allowlist":
-        file_read = {
-            "mode": "manifest-allowlist",
-            "allowPatterns": allow_read,
-            "denyPatterns": deny_read,
-        }
-    elif file_decision == "deny":
-        if allow_read not in (None, []) or deny_read not in (None, []):
-            raise ValueError("permission_policy_denied_file_source_conflict")
-        file_read = {"mode": "deny", "allowPatterns": [], "denyPatterns": []}
-    else:
-        raise ValueError("permission_policy_file_read_mode_invalid")
-
-    if allowed_tools is None or allowed_tools == []:
-        mcp = {"mode": "deny", "allowedTools": []}
-    else:
-        mcp = {"mode": "allowlist", "allowedTools": allowed_tools}
+    # A package's declared toolPermissions / mcpAllowedTools are recorded in its manifest
+    # but are not authority: the host runtime decides at execution time (owner decision
+    # 2026-08-20, applied to the Workforce path 2026-09-05). Only the package's own
+    # file-read allowlist is carried, because it scopes the package itself.
     return validate_permission_policy(
-        {
-            "schemaVersion": WORKFORCE_PERMISSION_POLICY_SCHEMA,
-            "network": network,
-            "shell": shell,
-            "fileRead": file_read,
-            "mcp": mcp,
-            "unknownTools": "deny",
-        }
+        host_permission_policy(
+            allow_read=list(allow_read) if isinstance(allow_read, list) else None,
+            deny_read=list(deny_read) if isinstance(deny_read, list) else None,
+        )
     )
 
 
@@ -963,9 +974,14 @@ def _capability_assignment_policy_issue(
     tool_id = assignment.get("toolId")
     if provider == "mcp":
         mcp_policy = permission_policy.get("mcp")
+        if not isinstance(mcp_policy, Mapping):
+            return "outside_mcp_policy"
+        # `host` (2026-09-05): the host runtime decides which MCP tools this row may
+        # bind; the package declared no ceiling. Any well-formed tool id is in policy.
+        if mcp_policy.get("mode") == "host":
+            return None
         if (
-            not isinstance(mcp_policy, Mapping)
-            or mcp_policy.get("mode") != "allowlist"
+            mcp_policy.get("mode") != "allowlist"
             or tool_id not in (mcp_policy.get("allowedTools") or [])
         ):
             return "outside_mcp_policy"
@@ -973,11 +989,11 @@ def _capability_assignment_policy_issue(
     if provider == "builtin":
         file_policy = permission_policy.get("fileRead")
         allowed_builtin = {
-            "builtin:network": permission_policy.get("network") in {"allow", "ask"},
-            "builtin:shell": permission_policy.get("shell") in {"allow", "ask"},
+            "builtin:network": permission_policy.get("network") in {"allow", "ask", "host"},
+            "builtin:shell": permission_policy.get("shell") in {"allow", "ask", "host"},
             "builtin:file-read": (
                 isinstance(file_policy, Mapping)
-                and file_policy.get("mode") == "manifest-allowlist"
+                and file_policy.get("mode") in {"manifest-allowlist", "host"}
             ),
         }
         if allowed_builtin.get(tool_id) is not True:
