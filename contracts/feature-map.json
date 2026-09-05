@@ -337,7 +337,7 @@
           "kind": "method",
           "path": "PROTOCOL.md",
           "identifier": "agents.cloudPublishHub",
-          "meaning": "Contract doc: exactly 60 methods including 30 writes; Hub publish methods gated on hub-publish-v1. A pricing failure after a committed publish is never a failed publish."
+          "meaning": "Contract doc: exactly 75 methods including 40 writes (counts pinned in mobile/PROTOCOL.md); Hub publish methods gated on hub-publish-v1. A pricing failure after a committed publish is never a failed publish."
         },
         {
           "repo": "mobile",
@@ -895,7 +895,7 @@
       "featureId": "mobile-bridge-contract",
       "intent": {
         "ko": "모바일↔데스크탑 브리지 프로토콜 v1 — 정확히 60개 메서드(쓰기 30개)가 정본이며, 데스크탑 allowlist·서버와 모바일 transport·PROTOCOL.md 가 같은 메서드 집합을 가져야 한다.",
-        "en": "The mobile↔desktop bridge protocol v1 — exactly 60 methods (30 writes) form the contract; the Desktop allowlist/server and the Mobile transport/PROTOCOL.md must carry the same method set."
+        "en": "The mobile↔desktop bridge protocol v1 — exactly 75 methods (40 writes) form the contract; the Desktop allowlist/server and the Mobile transport/PROTOCOL.md must carry the same method set."
       },
       "ownerSurface": "agentlas_desktop",
       "surfaces": [
@@ -924,8 +924,8 @@
           "repo": "mobile",
           "kind": "method",
           "path": "PROTOCOL.md",
-          "identifier": "exactly 60 methods",
-          "meaning": "Human contract doc pinning the 60/30 counts and capability gating."
+          "identifier": "The source contract currently contains exactly",
+          "meaning": "Human contract doc pinning the method/write counts (75/40 as of 2026-09) and capability gating."
         },
         {
           "repo": "mobile",
