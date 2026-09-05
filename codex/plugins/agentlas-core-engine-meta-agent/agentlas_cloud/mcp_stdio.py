@@ -2386,12 +2386,38 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 return {"action": name, "status": "rejected", "error": f"{label}_invalid"}
             if size > maximum:
                 return {"action": name, "status": "rejected", "error": f"{label}_too_large"}
-        return validate_execution_receipt(
+        result = validate_execution_receipt(
             arguments["receipt"],
             execution_plan=arguments["executionPlan"],
             tool_inventory=arguments["toolInventory"],
             benchmark_mode=arguments.get("benchmarkMode") is True,
         )
+        if isinstance(result, dict) and result.get("status") == "rejected":
+            # A raised stop must carry its way out (2026-09-05). The v2 receipt is a
+            # runtime-produced artifact (invocation evidence, sandbox enforcement,
+            # domain-separated binding digests); a host LLM cannot hand-author it, and
+            # until now the rejection listed issue codes with no pointer to the
+            # contract or to the executors that emit valid receipts. Measured: a
+            # prepared Hub roster stayed "prepared, not executed" because this was
+            # the only answer the host ever got.
+            result = {
+                **result,
+                "receiptContract": {
+                    "schemaVersion": "agentlas.workforce-execution-receipt.v2",
+                    "schemaRef": "schemas/workforce-execution-receipt.schema.json",
+                    "producedBy": [
+                        "agentlas workforce \"<request>\" (Agentlas Terminal executor)",
+                        "Agentlas Desktop Work (borrowed task force executor)",
+                    ],
+                    "hostGuidance": (
+                        "Do not hand-author this receipt. Run the prepared roster through a "
+                        "runtime executor that emits it, or tell the user plainly that the "
+                        "roster is prepared but not executed and record the turn with "
+                        "workforce.record_goal_turn."
+                    ),
+                },
+            }
+        return result
 
     if name in {"hephaestus_route", "hephaestus_cloud_search", "hephaestus_hub_invoke"}:
         from .networking.memory import unsafe_route_refusal
