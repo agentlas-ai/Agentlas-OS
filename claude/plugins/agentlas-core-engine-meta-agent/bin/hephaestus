@@ -474,6 +474,14 @@ case "$command" in
 	    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"network","sources":["local","cloud","hub"],"decisionOwner":"host_llm","legacyRouter":"disabled","detail":"Run /hep-network or @Hephaestus inside an MCP-capable host. Core federates source menus; the host LLM selects the team."}'
 	    exit 3
 	    ;;
+	  connect|hep-connect|hephaestus-connect|agentlas-connect)
+	    # Telegram Connect is a guided Desktop flow (registry: agentlas.connect is
+	    # identity_only, no installed entrypoint). Until 2026-09-05 this verb fell
+	    # through to the generic router and printed a route menu — a dead end for
+	    # the person who typed it. A raised stop must carry its way out.
+	    printf '%s\n' '{"action":"desktop_connect_required","status":"host_llm_required","command":"hep-connect","surface":"desktop","detail":"Telegram Connect runs in Agentlas Desktop → Connect (choose the agent, team, or group; connect the bot; pair a chat; send a test message). From Claude Code or Codex type /hep-connect for the guided flow. This shell form only points the way."}' >&2
+	    exit 3
+	    ;;
 	  hep-local|hephaestus-local)
 	    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"local","sources":["local"],"decisionOwner":"host_llm","legacyRouter":"disabled"}'
 	    exit 3
