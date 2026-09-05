@@ -726,6 +726,11 @@ credentials in the argv JSON. The complete v1 request, response, artifact, and
 failure contract is documented in
 [`agentlas_cloud/workforce/host_executor.py`](agentlas_cloud/workforce/host_executor.py).
 
+Tool inventory distinguishes native host enforcement (`host-native`) from a
+host-owned tool dispatcher (`host-broker`). A bound tool requires its invocation
+receipt to use that same enforcement path; neither label grants authority to a
+package that did not select the host permission policy.
+
 Details: [docs/hephaestus-network-2.0.md](docs/hephaestus-network-2.0.md) · Runtime support matrix: [docs/runtime-fallback-adapters.md](docs/runtime-fallback-adapters.md)
 
 ---

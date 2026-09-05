@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Workforce tool bindings now admit measured host tool brokers.** Native and
+  broker inventory rows remain distinct, and direct and nested invocation
+  receipts must match the enforcement path selected by their bound tools.
+
 - **Prepared Workforce goals can now run through provider-neutral external host adapters.**
   The new `workforce execute --adapter-argv-json` command loads the newest ready
   cached plan, invokes its exact orchestrator, planner, worker or team graph,
