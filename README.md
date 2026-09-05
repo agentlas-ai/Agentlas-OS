@@ -703,6 +703,29 @@ A unified compilation factory using four builders. Every generated package regis
 *   **Pinned Execution:** After validation, Core fetches only the selected immutable releases from their original source sessions and verifies release, package, and content digests before distinct planner, worker, synthesis, and verifier invocations run.
 *   **Evidence-Scored Evaluation:** Retrieval coverage, host selection, immutable preparation, real child invocations, and final verification are scored as separate claims. A benchmark result never replaces the host staffing decision or turns usage history into routing authority.
 
+#### Execute a prepared goal from an external host
+
+An explicitly selected host plugin or executable can run the newest ready plan
+bound to a Workforce goal through the provider-neutral adapter contract:
+
+```bash
+./bin/hephaestus workforce execute \
+  --project . \
+  --goal-id <host-task-id> \
+  --adapter-argv-json '["/absolute/path/to/host-adapter"]'
+```
+
+The adapter reads one versioned JSON request from standard input and writes one
+JSON response to standard output for inventory observation and each required
+orchestrator, planner, worker, synthesis, and verifier invocation. Core retains
+the exact preparation pins, verifies and snapshots output artifacts locally,
+and returns an execution receipt only after the existing receipt validator
+accepts the complete run. The adapter owns its provider authentication and
+native runtime configuration as an independently installed plugin; do not put
+credentials in the argv JSON. The complete v1 request, response, artifact, and
+failure contract is documented in
+[`agentlas_cloud/workforce/host_executor.py`](agentlas_cloud/workforce/host_executor.py).
+
 Details: [docs/hephaestus-network-2.0.md](docs/hephaestus-network-2.0.md) · Runtime support matrix: [docs/runtime-fallback-adapters.md](docs/runtime-fallback-adapters.md)
 
 ---

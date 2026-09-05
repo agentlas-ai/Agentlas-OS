@@ -1336,6 +1336,20 @@ def main(argv: list[str] | None = None) -> int:
     workforce_receipt_validate.add_argument("execution_plan")
     workforce_receipt_validate.add_argument("tool_inventory")
     workforce_receipt_validate.add_argument("--benchmark-mode", action="store_true")
+    workforce_execute = workforce_sub.add_parser(
+        "execute",
+        help="Run one exact cached goal plan through an explicit host adapter",
+    )
+    workforce_execute.add_argument(
+        "--adapter-argv-json",
+        required=True,
+        help="JSON argv array for the provider-neutral host adapter; no shell is used",
+    )
+    workforce_execute.add_argument("--goal-id", default=None)
+    workforce_execute.add_argument("--project", default=".")
+    workforce_execute.add_argument("--timeout-seconds", type=int, default=900)
+    workforce_execute.add_argument("--account-subject", default=None, help=argparse.SUPPRESS)
+    workforce_execute.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
     workforce_goal_bind = workforce_sub.add_parser(
         "goal-bind",
         help="Bind an exact prepared roster until explicit goal completion",
@@ -2246,6 +2260,33 @@ def main(argv: list[str] | None = None) -> int:
                         args.tool_inventory, maximum_bytes=16 * 1024 * 1024
                     ),
                     benchmark_mode=args.benchmark_mode,
+                )
+                emit(result)
+                return 0 if result.get("status") == "accepted" else 2
+            if args.workforce_command == "execute":
+                from .workforce.goal_binding import (
+                    WorkforceGoalStore,
+                    account_partition_for_subject,
+                )
+                from .workforce.host_executor import (
+                    execute_cached_goal_refusal,
+                    parse_adapter_argv,
+                )
+
+                account_partition = (
+                    account_partition_for_subject(
+                        args.account_subject,
+                        base_url=args.hub_base_url,
+                    )
+                    if args.account_subject
+                    else None
+                )
+                result = execute_cached_goal_refusal(
+                    store=WorkforceGoalStore(account_partition=account_partition),
+                    adapter_argv=parse_adapter_argv(args.adapter_argv_json),
+                    project_dir=args.project,
+                    goal_id=args.goal_id,
+                    timeout_seconds=args.timeout_seconds,
                 )
                 emit(result)
                 return 0 if result.get("status") == "accepted" else 2

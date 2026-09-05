@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Prepared Workforce goals can now run through provider-neutral external host adapters.**
+  The new `workforce execute --adapter-argv-json` command loads the newest ready
+  cached plan, invokes its exact orchestrator, planner, worker or team graph,
+  synthesis, and independent verifier nodes without a shell, snapshots measured
+  outputs, and exposes a receipt only after the existing Core validator accepts
+  it. Provider authentication and runtime configuration remain in independently
+  installed plugins.
+
 - **Host permission mode (`host`) is now covered by a tracked CI gate.**
   `permissionPolicy` accepted `host` for `network`/`shell`/`fileRead.mode`/`mcp.mode`
   as of 1.2.41 (a package declares no tool ceiling; the host runtime decides at

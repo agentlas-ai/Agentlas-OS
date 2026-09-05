@@ -486,6 +486,317 @@
         }
       }
     },
+    "brokerObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "brokerKind",
+        "brokerInvocationId",
+        "runtimeKind",
+        "permissionPolicyDigest",
+        "toolInventoryDigest",
+        "permission",
+        "cwd",
+        "requestedConfigDigest",
+        "inventory",
+        "inventoryDigest",
+        "actions",
+        "completed",
+        "observationDigest"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "agentlas.workforce-broker-observation.v1"
+        },
+        "brokerKind": {
+          "const": "agentlas-main-tool-loop"
+        },
+        "brokerInvocationId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$",
+          "minLength": 36,
+          "maxLength": 36
+        },
+        "runtimeKind": {
+          "$ref": "#/$defs/id"
+        },
+        "permissionPolicyDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "toolInventoryDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "permission": {
+          "enum": [
+            "read",
+            "write",
+            "full"
+          ]
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "requestedConfigDigest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inventory": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "toolId",
+              "kind",
+              "descriptorDigest",
+              "serverConfigKey",
+              "serverConfigDigest"
+            ],
+            "properties": {
+              "toolId": {
+                "$ref": "#/$defs/toolId"
+              },
+              "kind": {
+                "enum": [
+                  "builtin",
+                  "mcp"
+                ]
+              },
+              "descriptorDigest": {
+                "$ref": "#/$defs/hash"
+              },
+              "serverConfigKey": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/toolId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "serverConfigDigest": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/hash"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "builtin"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "serverConfigKey": {
+                      "type": "null"
+                    },
+                    "serverConfigDigest": {
+                      "type": "null"
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "serverConfigKey": {
+                      "$ref": "#/$defs/toolId"
+                    },
+                    "serverConfigDigest": {
+                      "$ref": "#/$defs/hash"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "inventoryDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "actions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionId",
+              "providerCallId",
+              "providerCallLocation",
+              "toolId",
+              "decision",
+              "outcome"
+            ],
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "providerCallId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "toolId": {
+                "$ref": "#/$defs/toolId"
+              },
+              "decision": {
+                "enum": [
+                  "not_requested",
+                  "allow_once",
+                  "allow_session",
+                  "deny"
+                ]
+              },
+              "outcome": {
+                "enum": [
+                  "succeeded",
+                  "failed",
+                  "denied",
+                  "not_dispatched"
+                ]
+              },
+              "providerCallLocation": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "required": [
+                  "responseIndex",
+                  "partIndex"
+                ],
+                "properties": {
+                  "responseIndex": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4095
+                  },
+                  "partIndex": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4095
+                  }
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "outcome": {
+                      "enum": [
+                        "succeeded",
+                        "failed"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "decision": {
+                      "enum": [
+                        "allow_once",
+                        "allow_session"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "outcome": {
+                      "enum": [
+                        "denied"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "decision": {
+                      "enum": [
+                        "deny"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "outcome": {
+                      "enum": [
+                        "not_dispatched"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "decision": {
+                      "enum": [
+                        "not_requested"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "anyOf": [
+              {
+                "properties": {
+                  "providerCallId": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "providerCallLocation": {
+                    "type": "object"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "completed": {
+          "const": true
+        },
+        "observationDigest": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
     "permissionEnforcement": {
       "type": "object",
       "additionalProperties": false,
@@ -505,7 +816,8 @@
             "native-sandbox",
             "no-authority-sandbox",
             "zero-tools",
-            "host-native"
+            "host-native",
+            "host-broker"
           ]
         },
         "status": {
@@ -543,7 +855,8 @@
                 "read-only",
                 "no-filesystem",
                 "host-native",
-                "not-applicable"
+                "not-applicable",
+                "host-broker"
               ]
             },
             "toolInventory": {
@@ -551,7 +864,8 @@
                 "empty",
                 "non-authoritative",
                 "policy-filtered",
-                "host-observed"
+                "host-observed",
+                "broker-observed"
               ]
             },
             "disabledCapabilities": {
@@ -584,6 +898,9 @@
             },
             "hostObservation": {
               "$ref": "#/$defs/hostObservation"
+            },
+            "brokerObservation": {
+              "$ref": "#/$defs/brokerObservation"
             }
           }
         },
@@ -753,6 +1070,70 @@
                   "required": [
                     "hostObservation"
                   ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enforcementMode": {
+                "const": "host-broker"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "enforcementEvidence": {
+                "required": [
+                  "brokerObservation"
+                ],
+                "properties": {
+                  "runtimeVersion": {
+                    "type": "null"
+                  },
+                  "sandboxMode": {
+                    "const": "host-broker"
+                  },
+                  "toolInventory": {
+                    "const": "broker-observed"
+                  },
+                  "disabledCapabilities": {
+                    "maxItems": 0
+                  },
+                  "ephemeral": {
+                    "const": false
+                  },
+                  "ignoredUserConfig": {
+                    "const": false
+                  },
+                  "ignoredRules": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "enforcementEvidence": {
+                "not": {
+                  "required": [
+                    "brokerObservation"
+                  ]
+                },
+                "properties": {
+                  "sandboxMode": {
+                    "not": {
+                      "const": "host-broker"
+                    }
+                  },
+                  "toolInventory": {
+                    "not": {
+                      "const": "broker-observed"
+                    }
+                  }
                 }
               }
             }

@@ -37,6 +37,7 @@ _RESERVED_OBJECT_KEYS = frozenset({"__proto__", "prototype", "constructor"})
 _UNICODE_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,255}$")
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_BROKER_UUID_RE = re.compile(r"^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
 _ROOT_RELATIVE_GLOB_RE = re.compile(r"^[A-Za-z0-9._@+~*?/-]{1,240}$")
 _MCP_TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.$:/@+~-]{0,127}$")
 _UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -1251,17 +1252,18 @@ def _invocation(
         if enforcement.get("permissionPolicyDigest") != permission_policy_digest:
             issues.append(f"{label}_permission_policy_digest_mismatch")
         if enforcement.get("enforcementMode") not in {
-            "native-sandbox", "no-authority-sandbox", "zero-tools", "host-native"
+            "native-sandbox", "no-authority-sandbox", "zero-tools", "host-native", "host-broker"
         }:
             issues.append(f"{label}_permission_mode_invalid")
-        if requires_host_observation and enforcement.get("enforcementMode") != "host-native":
+        if requires_host_observation and enforcement.get("enforcementMode") not in {"host-native", "host-broker"}:
             issues.append(f"{label}_host_native_observation_required")
-        if enforcement.get("enforcementMode") == "host-native":
+        if enforcement.get("enforcementMode") in {"host-native", "host-broker"}:
             policy = expected_permission_policy if isinstance(expected_permission_policy, Mapping) else {}
             mcp = policy.get("mcp")
             if not (policy.get("network") == "host" and policy.get("shell") == "host"
                     and isinstance(mcp, Mapping) and mcp.get("mode") == "host"):
-                issues.append(f"{label}_host_native_policy_not_authorized")
+                mode_code = enforcement["enforcementMode"].replace("-", "_")
+                issues.append(f"{label}_{mode_code}_policy_not_authorized")
         if enforcement.get("status") != "enforced":
             issues.append(f"{label}_permission_not_enforced")
         evidence = enforcement.get("enforcementEvidence")
@@ -1284,6 +1286,15 @@ def _invocation(
                     if observed_id in invocation_ids:
                         issues.append("duplicate_host_observation_invocation")
                     invocation_ids.add(observed_id)
+            if enforcement.get("enforcementMode") == "host-broker":
+                evidence_keys.add("brokerObservation")
+                issues.extend(_broker_observation_issues(enforcement, label=label))
+                observed = evidence.get("brokerObservation")
+                if isinstance(observed, Mapping) and isinstance(observed.get("brokerInvocationId"), str):
+                    observed_id = "broker-observation:" + observed["brokerInvocationId"].lower()
+                    if observed_id in invocation_ids:
+                        issues.append("duplicate_broker_observation_invocation")
+                    invocation_ids.add(observed_id)
             if set(evidence) != evidence_keys:
                 issues.append(f"{label}_permission_evidence_keys_invalid")
             if not isinstance(evidence.get("runtimeKind"), str) or not evidence.get("runtimeKind"):
@@ -1293,10 +1304,10 @@ def _invocation(
             ):
                 issues.append(f"{label}_permission_runtime_version_invalid")
             if evidence.get("sandboxMode") not in {
-                "read-only", "no-filesystem", "host-native", "not-applicable"
+                "read-only", "no-filesystem", "host-native", "host-broker", "not-applicable"
             }:
                 issues.append(f"{label}_permission_sandbox_invalid")
-            if evidence.get("toolInventory") not in {"empty", "non-authoritative", "policy-filtered", "host-observed"}:
+            if evidence.get("toolInventory") not in {"empty", "non-authoritative", "policy-filtered", "host-observed", "broker-observed"}:
                 issues.append(f"{label}_permission_inventory_invalid")
             if evidence.get("toolInventoryDigest") != expected_tool_inventory_digest:
                 issues.append(f"{label}_tool_inventory_digest_mismatch")
@@ -1342,6 +1353,19 @@ def _invocation(
                 or any(evidence.get(key) is not False for key in ("ephemeral", "ignoredUserConfig", "ignoredRules"))
             ):
                 issues.append(f"{label}_host_native_evidence_invalid")
+            if mode == "host-broker" and (
+                evidence.get("toolInventory") != "broker-observed"
+                or evidence.get("sandboxMode") != "host-broker"
+                or evidence.get("runtimeVersion") is not None
+                or evidence.get("disabledCapabilities") != []
+                or any(evidence.get(key) is not False for key in ("ephemeral", "ignoredUserConfig", "ignoredRules"))
+            ):
+                issues.append(f"{label}_host_broker_evidence_invalid")
+            if mode != "host-broker" and (
+                evidence.get("sandboxMode") == "host-broker"
+                or evidence.get("toolInventory") == "broker-observed"
+            ):
+                issues.append(f"{label}_host_broker_mode_required")
             if mode == "native-sandbox" and evidence.get("toolInventory") != "policy-filtered":
                 issues.append(f"{label}_native_policy_filter_missing")
         approvals = enforcement.get("approvalReceiptIds")
@@ -1475,6 +1499,127 @@ def _host_inventory_observation_issues(
     except (TypeError, ValueError, KeyError, RecursionError) as exc:
         code = str(exc) if isinstance(exc, ValueError) else "window_invalid"
         return [f"{label}_host_inventory_{code}"]
+    return []
+
+
+def _broker_observation_issues(enforcement: Mapping[str, Any], *, label: str) -> list[str]:
+    """Validate Main's dispatch ledger without claiming native provider isolation."""
+    evidence = enforcement.get("enforcementEvidence")
+    observation = evidence.get("brokerObservation") if isinstance(evidence, Mapping) else None
+    if not isinstance(observation, Mapping):
+        return [f"{label}_broker_observation_missing"]
+    try:
+        _exact_keys(observation, {
+            "schemaVersion", "brokerKind", "brokerInvocationId", "runtimeKind",
+            "permissionPolicyDigest", "toolInventoryDigest", "permission", "cwd",
+            "requestedConfigDigest", "inventory", "inventoryDigest", "actions",
+            "completed", "observationDigest",
+        }, "keys_invalid")
+
+        def text_value(value: Any, maximum: int, pattern: Any = None) -> None:
+            if (not isinstance(value, str) or not value or len(value) > maximum
+                    or _UNICODE_SURROGATE_RE.search(value)
+                    or (pattern is not None and not pattern.fullmatch(value))):
+                raise ValueError("field_invalid")
+
+        def hash_value(value: Any) -> None:
+            text_value(value, 71, _SHA256_RE)
+
+        text_value(observation["brokerInvocationId"], 36, _BROKER_UUID_RE)
+        text_value(observation["runtimeKind"], 256, _ID_RE)
+        if (observation["schemaVersion"] != "agentlas.workforce-broker-observation.v1"
+                or observation["brokerKind"] != "agentlas-main-tool-loop"
+                or observation["completed"] is not True
+                or observation["runtimeKind"] != evidence.get("runtimeKind")
+                or observation["permissionPolicyDigest"] != enforcement.get("permissionPolicyDigest")
+                or observation["toolInventoryDigest"] != evidence.get("toolInventoryDigest")
+                or observation["permission"] not in ("read", "write", "full")):
+            raise ValueError("binding_invalid")
+        for key in ("permissionPolicyDigest", "toolInventoryDigest", "inventoryDigest", "observationDigest"):
+            hash_value(observation[key])
+        if observation["requestedConfigDigest"] is not None:
+            hash_value(observation["requestedConfigDigest"])
+        if observation["cwd"] is not None:
+            text_value(observation["cwd"], 4096)
+
+        inventory = observation["inventory"]
+        if not isinstance(inventory, list) or len(inventory) > 4096:
+            raise ValueError("inventory_invalid")
+        inventory_ids: list[str] = []
+        server_digests: dict[str, str] = {}
+        for item in inventory:
+            if not isinstance(item, Mapping):
+                raise ValueError("inventory_invalid")
+            _exact_keys(item, {"toolId", "kind", "descriptorDigest", "serverConfigKey", "serverConfigDigest"}, "inventory_keys_invalid")
+            text_value(item["toolId"], 128, _MCP_TOOL_NAME_RE)
+            hash_value(item["descriptorDigest"])
+            inventory_ids.append(item["toolId"])
+            if item["kind"] == "mcp":
+                text_value(item["serverConfigKey"], 128, _MCP_TOOL_NAME_RE)
+                hash_value(item["serverConfigDigest"])
+                prefix = f"mcp__{item['serverConfigKey']}__"
+                if not item["toolId"].startswith(prefix) or len(item["toolId"]) <= len(prefix):
+                    raise ValueError("inventory_server_binding_invalid")
+                prior = server_digests.setdefault(item["serverConfigKey"], item["serverConfigDigest"])
+                if prior != item["serverConfigDigest"]:
+                    raise ValueError("server_config_digest_mismatch")
+            elif item["kind"] != "builtin" or item["serverConfigKey"] is not None or item["serverConfigDigest"] is not None:
+                raise ValueError("inventory_kind_invalid")
+        if inventory_ids != sorted(set(inventory_ids)):
+            raise ValueError("inventory_ids_invalid")
+        granted = evidence.get("grantedToolIds")
+        if not isinstance(granted, list) or any(tool not in inventory_ids for tool in granted):
+            raise ValueError("granted_tools_missing")
+        if canonical_digest(inventory) != observation["inventoryDigest"]:
+            raise ValueError("inventory_digest_mismatch")
+
+        actions = observation["actions"]
+        if not isinstance(actions, list) or len(actions) > 256:
+            raise ValueError("actions_invalid")
+        action_ids: set[str] = set()
+        for item in actions:
+            if not isinstance(item, Mapping):
+                raise ValueError("actions_invalid")
+            _exact_keys(item, {"actionId", "providerCallId", "providerCallLocation", "toolId", "decision", "outcome"}, "action_keys_invalid")
+            text_value(item["actionId"], 36, _BROKER_UUID_RE)
+            if item["providerCallId"] is not None:
+                text_value(item["providerCallId"], 256)
+            location = item["providerCallLocation"]
+            if location is not None:
+                if not isinstance(location, Mapping):
+                    raise ValueError("action_location_invalid")
+                _exact_keys(location, {"responseIndex", "partIndex"}, "action_location_keys_invalid")
+                if any(isinstance(index, bool) or not isinstance(index, int) or not 0 <= index <= 4095
+                       for index in location.values()):
+                    raise ValueError("action_location_invalid")
+            # A measured response position identifies an ID-less call without
+            # inventing a provider-issued identifier.
+            if item["providerCallId"] is None and location is None:
+                raise ValueError("action_identity_missing")
+            text_value(item["toolId"], 128, _MCP_TOOL_NAME_RE)
+            action_id = item["actionId"].lower()
+            if action_id in action_ids:
+                raise ValueError("action_id_duplicate")
+            action_ids.add(action_id)
+            decision, outcome = item["decision"], item["outcome"]
+            if outcome in ("succeeded", "failed"):
+                valid = decision in ("allow_once", "allow_session")
+            elif outcome == "denied":
+                valid = decision == "deny"
+            elif outcome == "not_dispatched":
+                valid = decision == "not_requested"
+            else:
+                valid = False
+            if not valid or (item["toolId"] not in inventory_ids and outcome != "not_dispatched"):
+                raise ValueError("action_dispatch_invalid")
+        if canonical_digest({key: value for key, value in observation.items() if key != "observationDigest"}) != observation["observationDigest"]:
+            raise ValueError("digest_mismatch")
+    except (ValueError, TypeError, RecursionError) as exc:
+        code = str(exc) if isinstance(exc, ValueError) else "invalid"
+        # Only locally authored validation codes may reach receipt diagnostics.
+        if not re.fullmatch(r"[a-z_]{1,64}", code):
+            code = "invalid"
+        return [f"{label}_broker_observation_{code}"]
     return []
 
 
