@@ -205,13 +205,22 @@ def validate_hub_selection_boundary(
                             issues,
                             f"assignments[{index}].reasonCodes[{reason_index}]",
                             "selection_reason_code_not_public_finite",
-                            # Bounded, and ordered so the candidate's own fit
-                            # evidence — the codes a correct selection actually
-                            # uses — comes before the generic vocabulary.
+                            # Bounded, and ordered so the codes a host can actually
+                            # write come first: the candidate's own fit:* evidence,
+                            # then the public reason:* vocabulary, then opaque
+                            # evidence:* hashes. Until 2026-09-05 the sort put every
+                            # non-vocabulary item first alphabetically, so 24
+                            # `evidence:<hash>` rows filled the bound and the
+                            # rejection never showed a code a host could use
+                            # (measured live: fit:languages:ko was allowed but the
+                            # list offered only hashes).
                             allowed=sorted(
                                 allowed_reasons,
                                 key=lambda item: (
-                                    item in WORKFORCE_SELECTION_REASON_CODES,
+                                    0 if item.startswith("fit:")
+                                    else 1 if item in WORKFORCE_SELECTION_REASON_CODES
+                                    else 2 if not item.startswith("evidence:")
+                                    else 3,
                                     item,
                                 ),
                             )[:24],
