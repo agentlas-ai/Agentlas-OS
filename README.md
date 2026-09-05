@@ -523,6 +523,13 @@ adapter; the next command or reloaded session uses the new release. Releases
 v1.1.63 through v1.1.68 briefly installed a separate six-hour OS scheduler.
 Current installs remove that retired scheduler automatically.
 
+Offline or air-gapped install: set `HEPHAESTUS_SOURCE_DIR=/path/to/checkout`
+before running the installer to skip the GitHub release download and verified
+checksum step entirely and install straight from a local Agentlas-OS checkout
+instead, e.g. `HEPHAESTUS_SOURCE_DIR=$(pwd) bash scripts/install-all-runtimes.sh`.
+Use it when you already have the source on disk (a git clone or an
+already-extracted release) and want a fully local install.
+
 ### Optional Global Router
 ```bash
 hephaestus global install

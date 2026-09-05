@@ -362,6 +362,13 @@ Desktop 시작과 모든 `/hep-*` 명령은 동일한 무결성 검증·횟수 �
 v1.1.68까지 잠시 설치됐던 별도 6시간 OS 예약 서비스는 현재 설치 과정과
 다음 `/hep-*` 실행에서 자동 제거됩니다.
 
+오프라인/폐쇄망 설치: 설치기를 실행하기 전에 `HEPHAESTUS_SOURCE_DIR=/path/to/checkout`
+를 지정하면 GitHub 릴리스 다운로드와 체크섬 검증 단계를 건너뛰고 로컬에 있는
+Agentlas-OS 체크아웃에서 바로 설치합니다. 예:
+`HEPHAESTUS_SOURCE_DIR=$(pwd) bash scripts/install-all-runtimes.sh`. 이미
+소스가 디스크에 있을 때(git clone 또는 이미 압축을 푼 릴리스) 완전히
+로컬로 설치하고 싶다면 이 변수를 사용하세요.
+
 ### 선택형 전역 라우터
 ```bash
 hep-global install
