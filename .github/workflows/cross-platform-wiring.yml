@@ -81,6 +81,12 @@ jobs:
       # only against that hash failed the publish after the agent was on the Hub.
       - name: A published agent is not reported as a failure
         run: bash scripts/verify-registration-attestation.sh
+      # `host` permission mode (2026-09-05, 26d5025a) means a package declares
+      # no tool ceiling and the host runtime decides at execution time; the
+      # only evidence that decision was enforced is Desktop's native-sandbox
+      # receipt. tests/ is gitignored, so this must be a tracked gate.
+      - name: Host authority permission contract holds
+        run: bash scripts/verify-host-authority-contract.sh
 
   wiring:
     strategy:
