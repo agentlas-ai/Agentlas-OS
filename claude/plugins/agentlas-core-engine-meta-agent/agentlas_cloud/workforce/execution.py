@@ -1159,6 +1159,7 @@ def _invocation(
     issues: list[str],
     invocation_ids: set[str],
     permission_policy_digest: str | None = None,
+    expected_permission_policy: Mapping[str, Any] | None = None,
     expected_tool_inventory_digest: str | None = None,
     expected_granted_tool_ids: list[str] | None = None,
     eligible_runtime_ids: set[str] | None = None,
@@ -1249,9 +1250,15 @@ def _invocation(
         if enforcement.get("permissionPolicyDigest") != permission_policy_digest:
             issues.append(f"{label}_permission_policy_digest_mismatch")
         if enforcement.get("enforcementMode") not in {
-            "native-sandbox", "no-authority-sandbox", "zero-tools"
+            "native-sandbox", "no-authority-sandbox", "zero-tools", "host-native"
         }:
             issues.append(f"{label}_permission_mode_invalid")
+        if enforcement.get("enforcementMode") == "host-native":
+            policy = expected_permission_policy if isinstance(expected_permission_policy, Mapping) else {}
+            mcp = policy.get("mcp")
+            if not (policy.get("network") == "host" and policy.get("shell") == "host"
+                    and isinstance(mcp, Mapping) and mcp.get("mode") == "host"):
+                issues.append(f"{label}_host_native_policy_not_authorized")
         if enforcement.get("status") != "enforced":
             issues.append(f"{label}_permission_not_enforced")
         evidence = enforcement.get("enforcementEvidence")
@@ -1263,6 +1270,17 @@ def _invocation(
                 "disabledCapabilities", "ephemeral", "ignoredUserConfig", "ignoredRules",
                 "toolInventoryDigest", "grantedToolIds",
             }
+            if enforcement.get("enforcementMode") == "host-native":
+                evidence_keys.add("hostObservation")
+                issues.extend(_host_observation_issues(enforcement, label=label))
+                observed = evidence.get("hostObservation")
+                if isinstance(observed, Mapping) and all(isinstance(observed.get(key), str) for key in ("runtimeKind", "sessionId", "turnId")):
+                    observed_id = "host-observation:" + canonical_digest({
+                        key: observed[key] for key in ("runtimeKind", "sessionId", "turnId")
+                    })
+                    if observed_id in invocation_ids:
+                        issues.append("duplicate_host_observation_invocation")
+                    invocation_ids.add(observed_id)
             if set(evidence) != evidence_keys:
                 issues.append(f"{label}_permission_evidence_keys_invalid")
             if not isinstance(evidence.get("runtimeKind"), str) or not evidence.get("runtimeKind"):
@@ -1275,7 +1293,7 @@ def _invocation(
                 "read-only", "no-filesystem", "host-native", "not-applicable"
             }:
                 issues.append(f"{label}_permission_sandbox_invalid")
-            if evidence.get("toolInventory") not in {"empty", "non-authoritative", "policy-filtered"}:
+            if evidence.get("toolInventory") not in {"empty", "non-authoritative", "policy-filtered", "host-observed"}:
                 issues.append(f"{label}_permission_inventory_invalid")
             if evidence.get("toolInventoryDigest") != expected_tool_inventory_digest:
                 issues.append(f"{label}_tool_inventory_digest_mismatch")
@@ -1315,6 +1333,12 @@ def _invocation(
                 or evidence.get("ignoredRules") is not True
             ):
                 issues.append(f"{label}_isolated_runtime_evidence_invalid")
+            if mode == "host-native" and (
+                evidence.get("toolInventory") != "host-observed"
+                or evidence.get("sandboxMode") != "host-native"
+                or any(evidence.get(key) is not False for key in ("ephemeral", "ignoredUserConfig", "ignoredRules"))
+            ):
+                issues.append(f"{label}_host_native_evidence_invalid")
             if mode == "native-sandbox" and evidence.get("toolInventory") != "policy-filtered":
                 issues.append(f"{label}_native_policy_filter_missing")
         approvals = enforcement.get("approvalReceiptIds")
@@ -1327,6 +1351,42 @@ def _invocation(
         granted_tool_ids = evidence.get("grantedToolIds") if isinstance(evidence, Mapping) else None
         if enforcement.get("enforcementMode") in {"no-authority-sandbox", "zero-tools"} and granted_tool_ids:
             issues.append(f"{label}_no_authority_has_granted_tools")
+
+
+def _host_observation_issues(enforcement: Mapping[str, Any], *, label: str) -> list[str]:
+    """Validate a native runner observation without interpreting it as package isolation."""
+    evidence = enforcement.get("enforcementEvidence")
+    if not isinstance(evidence, Mapping):
+        return [f"{label}_host_observation_missing"]
+    observation = evidence.get("hostObservation")
+    if not isinstance(observation, Mapping):
+        return [f"{label}_host_observation_missing"]
+    issues: list[str] = []
+    if (
+        observation.get("schemaVersion") != "agentlas.workforce-host-observation.v1"
+        or observation.get("completed") is not True
+        or observation.get("runtimeKind") != evidence.get("runtimeKind")
+        or observation.get("runtimeVersion") != evidence.get("runtimeVersion")
+        or not observation.get("runtimeVersion")
+        or observation.get("permissionPolicyDigest") != enforcement.get("permissionPolicyDigest")
+        or observation.get("toolInventoryDigest") != evidence.get("toolInventoryDigest")
+        or observation.get("nativeToolsEnumerated") is not (observation.get("inventoryScope") == "native-init-tools")
+        or observation.get("inventoryScope") not in {"connected-mcp-tools", "native-init-tools"}
+    ):
+        issues.append(f"{label}_host_observation_binding_invalid")
+    try:
+        expected_digest = canonical_digest({k: v for k, v in observation.items() if k != "observationDigest"})
+        if observation.get("observationDigest") != expected_digest:
+            issues.append(f"{label}_host_observation_digest_mismatch")
+    except (TypeError, ValueError, RecursionError):
+        issues.append(f"{label}_host_observation_digest_invalid")
+    observed_tools = observation.get("toolIds")
+    granted_tools = evidence.get("grantedToolIds")
+    if not isinstance(observed_tools, list) or not isinstance(granted_tools, list) or any(
+        tool not in observed_tools for tool in granted_tools
+    ):
+        issues.append(f"{label}_host_observation_granted_tools_missing")
+    return issues
 
 
 def validate_execution_receipt(
@@ -1603,6 +1663,7 @@ def validate_execution_receipt(
                     issues=issues,
                     invocation_ids=invocation_ids,
                     permission_policy_digest=str(row.get("permissionPolicyDigest") or ""),
+                    expected_permission_policy=row.get("permissionPolicy"),
                     expected_tool_inventory_digest=tool_inventory_digest,
                     expected_granted_tool_ids=granted_tool_ids,
                     eligible_runtime_ids=eligible_runtime_ids,
@@ -1615,6 +1676,7 @@ def validate_execution_receipt(
                 issues=issues,
                 invocation_ids=invocation_ids,
                 permission_policy_digest=str(row.get("permissionPolicyDigest") or ""),
+                expected_permission_policy=row.get("permissionPolicy"),
                 expected_tool_inventory_digest=tool_inventory_digest,
                 expected_granted_tool_ids=granted_tool_ids,
                 eligible_runtime_ids=eligible_runtime_ids,
@@ -1690,6 +1752,7 @@ def validate_execution_receipt(
             issues=issues,
             invocation_ids=invocation_ids,
             permission_policy_digest=permission_digest,
+            expected_permission_policy=row.get("permissionPolicy"),
             expected_tool_inventory_digest=row.get("_toolInventoryDigest"),
             expected_granted_tool_ids=row.get("_grantedToolIds"),
             eligible_runtime_ids=row.get("_eligibleRuntimeIds"),
@@ -1718,6 +1781,7 @@ def validate_execution_receipt(
                 issues=issues,
                 invocation_ids=invocation_ids,
                 permission_policy_digest=permission_digest,
+                expected_permission_policy=row.get("permissionPolicy"),
                 expected_tool_inventory_digest=row.get("_toolInventoryDigest"),
                 expected_granted_tool_ids=row.get("_grantedToolIds"),
                 eligible_runtime_ids=row.get("_eligibleRuntimeIds"),
@@ -1730,6 +1794,7 @@ def validate_execution_receipt(
             issues=issues,
             invocation_ids=invocation_ids,
             permission_policy_digest=permission_digest,
+            expected_permission_policy=row.get("permissionPolicy"),
             expected_tool_inventory_digest=row.get("_toolInventoryDigest"),
             expected_granted_tool_ids=row.get("_grantedToolIds"),
             eligible_runtime_ids=row.get("_eligibleRuntimeIds"),

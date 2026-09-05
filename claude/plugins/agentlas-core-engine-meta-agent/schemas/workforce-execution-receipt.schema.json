@@ -210,96 +210,399 @@
         "status": { "const": "bound" }
       }
     },
-    "permissionEnforcement": {
-      "type": "object", "additionalProperties": false,
+    "hostObservation": {
+      "type": "object",
+      "additionalProperties": false,
       "required": [
-        "permissionPolicyDigest", "enforcementMode", "status", "approvalReceiptIds",
+        "schemaVersion",
+        "permissionPolicyDigest",
+        "toolInventoryDigest",
+        "runtimeKind",
+        "runtimeVersion",
+        "sessionId",
+        "turnId",
+        "nativePolicy",
+        "toolIds",
+        "connectedServers",
+        "approvalEvents",
+        "completed",
+        "inventoryScope",
+        "nativeToolsEnumerated",
+        "requestedConfigDigest",
+        "observationDigest"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "agentlas.workforce-host-observation.v1"
+        },
+        "permissionPolicyDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "toolInventoryDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "runtimeKind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "runtimeVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "turnId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "nativePolicy": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 32
+        },
+        "toolIds": {
+          "type": "array",
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.$:/@+~-]{0,127}$"
+          }
+        },
+        "connectedServers": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.$:/@+~-]{0,127}$"
+          }
+        },
+        "approvalEvents": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requestId",
+              "decision"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "decision": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            }
+          }
+        },
+        "completed": {
+          "const": true
+        },
+        "inventoryScope": {
+          "enum": [
+            "connected-mcp-tools",
+            "native-init-tools"
+          ]
+        },
+        "nativeToolsEnumerated": {
+          "type": "boolean"
+        },
+        "requestedConfigDigest": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/hash"
+            }
+          ]
+        },
+        "observationDigest": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "permissionEnforcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "permissionPolicyDigest",
+        "enforcementMode",
+        "status",
+        "approvalReceiptIds",
         "enforcementEvidence"
       ],
       "properties": {
-        "permissionPolicyDigest": { "$ref": "#/$defs/hash" },
-        "enforcementMode": { "enum": ["native-sandbox", "no-authority-sandbox", "zero-tools"] },
-        "status": { "const": "enforced" },
+        "permissionPolicyDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "enforcementMode": {
+          "enum": [
+            "native-sandbox",
+            "no-authority-sandbox",
+            "zero-tools",
+            "host-native"
+          ]
+        },
+        "status": {
+          "const": "enforced"
+        },
         "enforcementEvidence": {
-          "type": "object", "additionalProperties": false,
+          "type": "object",
+          "additionalProperties": false,
           "required": [
-            "runtimeKind", "runtimeVersion", "sandboxMode", "toolInventory",
-            "disabledCapabilities", "ephemeral", "ignoredUserConfig", "ignoredRules",
-            "toolInventoryDigest", "grantedToolIds"
+            "runtimeKind",
+            "runtimeVersion",
+            "sandboxMode",
+            "toolInventory",
+            "disabledCapabilities",
+            "ephemeral",
+            "ignoredUserConfig",
+            "ignoredRules",
+            "toolInventoryDigest",
+            "grantedToolIds"
           ],
           "properties": {
-            "runtimeKind": { "$ref": "#/$defs/id" },
-            "runtimeVersion": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
-            "sandboxMode": { "enum": ["read-only", "no-filesystem", "host-native", "not-applicable"] },
-            "toolInventory": { "enum": ["empty", "non-authoritative", "policy-filtered"] },
-            "disabledCapabilities": {
-              "type": "array", "maxItems": 128, "uniqueItems": true,
-              "items": { "$ref": "#/$defs/id" }
+            "runtimeKind": {
+              "$ref": "#/$defs/id"
             },
-            "ephemeral": { "type": "boolean" },
-            "ignoredUserConfig": { "type": "boolean" },
-            "ignoredRules": { "type": "boolean" },
-            "toolInventoryDigest": { "$ref": "#/$defs/hash" },
+            "runtimeVersion": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "sandboxMode": {
+              "enum": [
+                "read-only",
+                "no-filesystem",
+                "host-native",
+                "not-applicable"
+              ]
+            },
+            "toolInventory": {
+              "enum": [
+                "empty",
+                "non-authoritative",
+                "policy-filtered",
+                "host-observed"
+              ]
+            },
+            "disabledCapabilities": {
+              "type": "array",
+              "maxItems": 128,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/id"
+              }
+            },
+            "ephemeral": {
+              "type": "boolean"
+            },
+            "ignoredUserConfig": {
+              "type": "boolean"
+            },
+            "ignoredRules": {
+              "type": "boolean"
+            },
+            "toolInventoryDigest": {
+              "$ref": "#/$defs/hash"
+            },
             "grantedToolIds": {
-              "type": "array", "maxItems": 128, "uniqueItems": true,
-              "items": { "$ref": "#/$defs/toolId" }
+              "type": "array",
+              "maxItems": 128,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/toolId"
+              }
+            },
+            "hostObservation": {
+              "$ref": "#/$defs/hostObservation"
             }
           }
         },
         "approvalReceiptIds": {
-          "type": "array", "maxItems": 64, "uniqueItems": true,
-          "items": { "$ref": "#/$defs/id" }
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
         }
       },
       "allOf": [
         {
           "if": {
             "properties": {
-              "enforcementMode": { "enum": ["no-authority-sandbox", "zero-tools"] }
+              "enforcementMode": {
+                "enum": [
+                  "no-authority-sandbox",
+                  "zero-tools"
+                ]
+              }
             }
           },
-          "then": { "properties": { "approvalReceiptIds": { "maxItems": 0 } } }
+          "then": {
+            "properties": {
+              "approvalReceiptIds": {
+                "maxItems": 0
+              }
+            }
+          }
         },
         {
-          "if": { "properties": { "enforcementMode": { "const": "zero-tools" } } },
+          "if": {
+            "properties": {
+              "enforcementMode": {
+                "const": "zero-tools"
+              }
+            }
+          },
           "then": {
             "properties": {
               "enforcementEvidence": {
                 "properties": {
-                  "toolInventory": { "const": "empty" },
-                  "grantedToolIds": { "maxItems": 0 },
-                  "ephemeral": { "const": true },
-                  "ignoredUserConfig": { "const": true },
-                  "ignoredRules": { "const": true }
+                  "toolInventory": {
+                    "const": "empty"
+                  },
+                  "grantedToolIds": {
+                    "maxItems": 0
+                  },
+                  "ephemeral": {
+                    "const": true
+                  },
+                  "ignoredUserConfig": {
+                    "const": true
+                  },
+                  "ignoredRules": {
+                    "const": true
+                  }
                 }
               }
             }
           }
         },
         {
-          "if": { "properties": { "enforcementMode": { "const": "no-authority-sandbox" } } },
+          "if": {
+            "properties": {
+              "enforcementMode": {
+                "const": "no-authority-sandbox"
+              }
+            }
+          },
           "then": {
             "properties": {
               "enforcementEvidence": {
                 "properties": {
-                  "sandboxMode": { "enum": ["read-only", "no-filesystem"] },
-                  "toolInventory": { "enum": ["empty", "non-authoritative"] },
-                  "disabledCapabilities": { "minItems": 1 },
-                  "grantedToolIds": { "maxItems": 0 },
-                  "ephemeral": { "const": true },
-                  "ignoredUserConfig": { "const": true },
-                  "ignoredRules": { "const": true }
+                  "sandboxMode": {
+                    "enum": [
+                      "read-only",
+                      "no-filesystem"
+                    ]
+                  },
+                  "toolInventory": {
+                    "enum": [
+                      "empty",
+                      "non-authoritative"
+                    ]
+                  },
+                  "disabledCapabilities": {
+                    "minItems": 1
+                  },
+                  "grantedToolIds": {
+                    "maxItems": 0
+                  },
+                  "ephemeral": {
+                    "const": true
+                  },
+                  "ignoredUserConfig": {
+                    "const": true
+                  },
+                  "ignoredRules": {
+                    "const": true
+                  }
                 }
               }
             }
           }
         },
         {
-          "if": { "properties": { "enforcementMode": { "const": "native-sandbox" } } },
+          "if": {
+            "properties": {
+              "enforcementMode": {
+                "const": "native-sandbox"
+              }
+            }
+          },
           "then": {
             "properties": {
               "enforcementEvidence": {
-                "properties": { "toolInventory": { "const": "policy-filtered" } }
+                "properties": {
+                  "toolInventory": {
+                    "const": "policy-filtered"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enforcementMode": {
+                "const": "host-native"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "enforcementEvidence": {
+                "required": [
+                  "hostObservation"
+                ],
+                "properties": {
+                  "sandboxMode": {
+                    "const": "host-native"
+                  },
+                  "toolInventory": {
+                    "const": "host-observed"
+                  },
+                  "ephemeral": {
+                    "const": false
+                  },
+                  "ignoredUserConfig": {
+                    "const": false
+                  },
+                  "ignoredRules": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "enforcementEvidence": {
+                "not": {
+                  "required": [
+                    "hostObservation"
+                  ]
+                }
               }
             }
           }
