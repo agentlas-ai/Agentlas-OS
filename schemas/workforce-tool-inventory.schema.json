@@ -54,7 +54,7 @@
           "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true,
           "items": { "$ref": "#/$defs/id" }
         },
-        "selectiveEnforcement": { "const": "exact-tool-allowlist" },
+        "selectiveEnforcement": { "enum": ["exact-tool-allowlist", "host-native"] },
         "capabilityIds": {
           "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true,
           "items": { "$ref": "#/$defs/id" }

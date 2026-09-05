@@ -749,7 +749,7 @@ def workforce_execution_context_digest(context: Mapping[str, Any]) -> str:
 
 
 def validate_tool_inventory(tool_inventory: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate one local, private, policy-filtered JIT tool snapshot."""
+    """Validate one local JIT snapshot; enforcement authority is checked against its prepared roster."""
 
     if not isinstance(tool_inventory, Mapping):
         raise ValueError("tool_inventory_missing")
@@ -825,7 +825,7 @@ def validate_tool_inventory(tool_inventory: Mapping[str, Any]) -> dict[str, Any]
         )
         if not runtime_ids or not capability_ids:
             raise ValueError("tool_inventory_entry_coverage_empty")
-        if raw.get("selectiveEnforcement") != "exact-tool-allowlist":
+        if raw.get("selectiveEnforcement") not in {"exact-tool-allowlist", "host-native"}:
             raise ValueError("tool_inventory_entry_enforcement_invalid")
         if raw.get("status") != "ready":
             raise ValueError("tool_inventory_entry_not_ready")
@@ -843,7 +843,7 @@ def validate_tool_inventory(tool_inventory: Mapping[str, Any]) -> dict[str, Any]
             "description": description,
             "inputSchemaDigest": input_schema_digest,
             "runtimeIds": runtime_ids,
-            "selectiveEnforcement": "exact-tool-allowlist",
+            "selectiveEnforcement": raw["selectiveEnforcement"],
             "capabilityIds": capability_ids,
             "status": "ready",
         })
@@ -1163,6 +1163,7 @@ def _invocation(
     expected_tool_inventory_digest: str | None = None,
     expected_granted_tool_ids: list[str] | None = None,
     eligible_runtime_ids: set[str] | None = None,
+    requires_host_observation: bool = False,
 ) -> None:
     if not isinstance(value, Mapping):
         issues.append(f"{label}_invocation_invalid")
@@ -1253,6 +1254,8 @@ def _invocation(
             "native-sandbox", "no-authority-sandbox", "zero-tools", "host-native"
         }:
             issues.append(f"{label}_permission_mode_invalid")
+        if requires_host_observation and enforcement.get("enforcementMode") != "host-native":
+            issues.append(f"{label}_host_native_observation_required")
         if enforcement.get("enforcementMode") == "host-native":
             policy = expected_permission_policy if isinstance(expected_permission_policy, Mapping) else {}
             mcp = policy.get("mcp")
@@ -1489,6 +1492,7 @@ def validate_execution_receipt(
 
     planned_bindings_by_pair: dict[tuple[str, str], list[dict[str, str]]] = {}
     eligible_runtime_ids_by_pair: dict[tuple[str, str], set[str] | None] = {}
+    host_observation_pairs: set[tuple[str, str]] = set()
     external_entries = {
         (
             entry["slotId"], entry["agentReleaseId"], entry["provider"], entry["toolId"],
@@ -1525,6 +1529,13 @@ def validate_execution_receipt(
                 if isinstance(roster_row.get("permissionPolicy"), Mapping)
                 else {}
             )
+            if external is not None and external.get("selectiveEnforcement") == "host-native":
+                mcp_policy = permission_policy.get("mcp")
+                if not (permission_policy.get("network") == "host"
+                        and permission_policy.get("shell") == "host"
+                        and isinstance(mcp_policy, Mapping) and mcp_policy.get("mode") == "host"):
+                    issues.append(f"capability_binding_plan_host_native_policy_not_authorized:{pair[0]}")
+                host_observation_pairs.add(pair)
             policy_issue = _capability_assignment_policy_issue(bound_row, permission_policy)
             if policy_issue:
                 issues.append(f"capability_binding_plan_{policy_issue}:{pair[0]}:{bound_row['toolId']}")
@@ -1667,6 +1678,7 @@ def validate_execution_receipt(
                     expected_tool_inventory_digest=tool_inventory_digest,
                     expected_granted_tool_ids=granted_tool_ids,
                     eligible_runtime_ids=eligible_runtime_ids,
+                    requires_host_observation=pair in host_observation_pairs,
                 )
                 if not isinstance(prior_invocation, Mapping) or prior_invocation.get("role") != "worker":
                     issues.append(f"direct_worker_{index}_prior_role_invalid")
@@ -1680,6 +1692,7 @@ def validate_execution_receipt(
                 expected_tool_inventory_digest=tool_inventory_digest,
                 expected_granted_tool_ids=granted_tool_ids,
                 eligible_runtime_ids=eligible_runtime_ids,
+                requires_host_observation=pair in host_observation_pairs,
             )
             direct_invocation = worker.get("directInvocation")
             if prior_invocations and (
@@ -1718,6 +1731,7 @@ def validate_execution_receipt(
                     "_toolInventoryDigest": tool_inventory_digest,
                     "_grantedToolIds": granted_tool_ids,
                     "_eligibleRuntimeIds": eligible_runtime_ids,
+                    "_requiresHostObservation": pair in host_observation_pairs,
                 }
 
     nested = receipt.get("nestedExecutions") if isinstance(receipt.get("nestedExecutions"), list) else []
@@ -1756,6 +1770,7 @@ def validate_execution_receipt(
             expected_tool_inventory_digest=row.get("_toolInventoryDigest"),
             expected_granted_tool_ids=row.get("_grantedToolIds"),
             eligible_runtime_ids=row.get("_eligibleRuntimeIds"),
+            requires_host_observation=row.get("_requiresHostObservation") is True,
         )
         if not isinstance(manager_plan, Mapping) or manager_plan.get("parseSuccess") is not True:
             issues.append("nested_manager_plan_structured_output_failed")
@@ -1785,6 +1800,7 @@ def validate_execution_receipt(
                 expected_tool_inventory_digest=row.get("_toolInventoryDigest"),
                 expected_granted_tool_ids=row.get("_grantedToolIds"),
                 eligible_runtime_ids=row.get("_eligibleRuntimeIds"),
+                requires_host_observation=row.get("_requiresHostObservation") is True,
             )
             nested_actual_invocations.append(graph_worker)
         manager_synthesis = item.get("managerSynthesis")
@@ -1798,6 +1814,7 @@ def validate_execution_receipt(
             expected_tool_inventory_digest=row.get("_toolInventoryDigest"),
             expected_granted_tool_ids=row.get("_grantedToolIds"),
             eligible_runtime_ids=row.get("_eligibleRuntimeIds"),
+            requires_host_observation=row.get("_requiresHostObservation") is True,
         )
         if isinstance(manager_synthesis, Mapping):
             nested_actual_invocations.append(manager_synthesis)
