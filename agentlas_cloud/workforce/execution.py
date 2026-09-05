@@ -1356,6 +1356,128 @@ def _invocation(
             issues.append(f"{label}_no_authority_has_granted_tools")
 
 
+def _validate_host_inventory_snapshot(value: Any, granted_tools: list[str]) -> dict[str, Any]:
+    """Check the exported inventory projection; source descriptor hashes stay opaque."""
+    if not isinstance(value, Mapping):
+        raise ValueError("snapshot_invalid")
+    _exact_keys(value, {
+        "toolIds", "connectedServers", "serverStates", "selectedBindings",
+        "selectedServers", "inventoryDigest", "selectedBindingDigest",
+    }, "snapshot_keys_invalid")
+
+    def ids(items: Any, *, maximum: int) -> list[str]:
+        result = _string_list(items, code="snapshot_ids_invalid", max_items=maximum,
+                              max_length=128, pattern=_MCP_TOOL_NAME_RE)
+        if result != sorted(result):
+            raise ValueError("snapshot_ids_unsorted")
+        return result
+
+    def rows(items: Any, *, maximum: int, keys: set[str], identity: str) -> list[Mapping[str, Any]]:
+        if not isinstance(items, list) or len(items) > maximum:
+            raise ValueError("snapshot_rows_invalid")
+        for item in items:
+            if not isinstance(item, Mapping):
+                raise ValueError("snapshot_rows_invalid")
+            _exact_keys(item, keys, "snapshot_row_keys_invalid")
+        ids([item[identity] for item in items], maximum=maximum)
+        return items
+
+    def hash_value(item: Any) -> None:
+        if not isinstance(item, str) or not _SHA256_RE.fullmatch(item):
+            raise ValueError("snapshot_hash_invalid")
+
+    tool_ids = ids(value["toolIds"], maximum=4096)
+    connected = ids(value["connectedServers"], maximum=256)
+    states = rows(value["serverStates"], maximum=256, identity="name", keys={
+        "name", "runtimeStatus", "toolsDigest", "serverInfoDigest", "toolsError",
+    })
+    for state in states:
+        if state["runtimeStatus"] not in {
+            "notStarted", "starting", "connected", "authenticationRequired",
+            "failed", "cancelled", "disabled",
+        } or type(state["toolsError"]) is not bool:
+            raise ValueError("snapshot_server_state_invalid")
+        hash_value(state["toolsDigest"])
+        hash_value(state["serverInfoDigest"])
+    expected_connected = [state["name"] for state in states
+                          if state["runtimeStatus"] == "connected" and not state["toolsError"]]
+    if connected != expected_connected:
+        raise ValueError("snapshot_connected_servers_mismatch")
+    if any(not any(tool.startswith(f"mcp__{name}__") and len(tool) > len(name) + 7
+                   for name in connected) for tool in tool_ids):
+        raise ValueError("snapshot_tool_server_missing")
+
+    bindings = rows(value["selectedBindings"], maximum=128, identity="toolId", keys={
+        "toolId", "serverName", "descriptorDigest",
+    })
+    if [binding["toolId"] for binding in bindings] != sorted(granted_tools):
+        raise ValueError("snapshot_granted_bindings_mismatch")
+    for binding in bindings:
+        name = binding["serverName"]
+        if not isinstance(name, str) or name not in connected or binding["toolId"] not in tool_ids:
+            raise ValueError("snapshot_selected_tool_unavailable")
+        if not binding["toolId"].startswith(f"mcp__{name}__"):
+            raise ValueError("snapshot_selected_server_mismatch")
+        hash_value(binding["descriptorDigest"])
+    selected_servers = rows(value["selectedServers"], maximum=64, identity="name", keys={
+        "name", "serverInfoDigest",
+    })
+    states_by_name = {state["name"]: state for state in states}
+    for server in selected_servers:
+        hash_value(server["serverInfoDigest"])
+        if server["name"] not in connected or server["serverInfoDigest"] != states_by_name[server["name"]]["serverInfoDigest"]:
+            raise ValueError("snapshot_selected_server_unavailable")
+    selected_names = {server["name"] for server in selected_servers}
+    if any(binding["serverName"] not in selected_names for binding in bindings):
+        raise ValueError("snapshot_selected_server_missing")
+    # Additional selected servers may be explicitly pinned by the native host
+    # even when no tool is selected from them; they must remain connected/stable.
+    hash_value(value["inventoryDigest"])
+    hash_value(value["selectedBindingDigest"])
+    if value["inventoryDigest"] != canonical_digest({
+        "toolIds": tool_ids, "connectedServers": connected, "serverStates": states,
+    }):
+        raise ValueError("snapshot_inventory_digest_mismatch")
+    if value["selectedBindingDigest"] != canonical_digest({
+        "selectedBindings": bindings, "selectedServers": selected_servers,
+    }):
+        raise ValueError("snapshot_selected_digest_mismatch")
+    return dict(value)
+
+
+def _host_inventory_observation_issues(
+    observation: Mapping[str, Any], granted_tools: Any, *, label: str,
+) -> list[str]:
+    """Allow unrelated host inventory changes only with stable selected bindings."""
+    if "inventoryEvidence" not in observation:
+        return []
+    try:
+        window = observation["inventoryEvidence"]
+        if not isinstance(window, Mapping):
+            raise ValueError("window_invalid")
+        _exact_keys(window, {"schemaVersion", "stability", "before", "after"}, "window_keys_invalid")
+        if (window["schemaVersion"] != "agentlas.workforce-host-inventory-observation.v1"
+                or window["stability"] != "selected-grant-bindings"
+                or observation.get("inventoryScope") != "connected-mcp-tools"
+                or observation.get("nativeToolsEnumerated") is not False):
+            raise ValueError("window_scope_invalid")
+        grants = _string_list(granted_tools, code="window_grants_invalid", max_items=128,
+                              max_length=128, pattern=_MCP_TOOL_NAME_RE)
+        before = _validate_host_inventory_snapshot(window["before"], grants)
+        after = _validate_host_inventory_snapshot(window["after"], grants)
+        if (before["selectedBindings"] != after["selectedBindings"]
+                or before["selectedServers"] != after["selectedServers"]
+                or before["selectedBindingDigest"] != after["selectedBindingDigest"]):
+            raise ValueError("selected_bindings_changed")
+        if (observation.get("toolIds") != after["toolIds"]
+                or observation.get("connectedServers") != after["connectedServers"]):
+            raise ValueError("after_projection_mismatch")
+    except (TypeError, ValueError, KeyError, RecursionError) as exc:
+        code = str(exc) if isinstance(exc, ValueError) else "window_invalid"
+        return [f"{label}_host_inventory_{code}"]
+    return []
+
+
 def _host_observation_issues(enforcement: Mapping[str, Any], *, label: str) -> list[str]:
     """Validate a native runner observation without interpreting it as package isolation."""
     evidence = enforcement.get("enforcementEvidence")
@@ -1389,6 +1511,7 @@ def _host_observation_issues(enforcement: Mapping[str, Any], *, label: str) -> l
         tool not in observed_tools for tool in granted_tools
     ):
         issues.append(f"{label}_host_observation_granted_tools_missing")
+    issues.extend(_host_inventory_observation_issues(observation, granted_tools, label=label))
     return issues
 
 

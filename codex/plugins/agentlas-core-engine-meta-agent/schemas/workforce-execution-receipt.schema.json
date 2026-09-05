@@ -210,6 +210,154 @@
         "status": { "const": "bound" }
       }
     },
+    "hostInventorySnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "toolIds",
+        "connectedServers",
+        "serverStates",
+        "selectedBindings",
+        "selectedServers",
+        "inventoryDigest",
+        "selectedBindingDigest"
+      ],
+      "properties": {
+        "toolIds": {
+          "type": "array",
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/toolId"
+          }
+        },
+        "connectedServers": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/toolId"
+          }
+        },
+        "serverStates": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "runtimeStatus",
+              "toolsDigest",
+              "serverInfoDigest",
+              "toolsError"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/toolId"
+              },
+              "runtimeStatus": {
+                "enum": [
+                  "notStarted",
+                  "starting",
+                  "connected",
+                  "authenticationRequired",
+                  "failed",
+                  "cancelled",
+                  "disabled"
+                ]
+              },
+              "toolsDigest": {
+                "$ref": "#/$defs/hash"
+              },
+              "serverInfoDigest": {
+                "$ref": "#/$defs/hash"
+              },
+              "toolsError": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "selectedBindings": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "toolId",
+              "serverName",
+              "descriptorDigest"
+            ],
+            "properties": {
+              "toolId": {
+                "$ref": "#/$defs/toolId"
+              },
+              "serverName": {
+                "$ref": "#/$defs/toolId"
+              },
+              "descriptorDigest": {
+                "$ref": "#/$defs/hash"
+              }
+            }
+          }
+        },
+        "selectedServers": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "serverInfoDigest"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/toolId"
+              },
+              "serverInfoDigest": {
+                "$ref": "#/$defs/hash"
+              }
+            }
+          }
+        },
+        "inventoryDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "selectedBindingDigest": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "hostInventoryObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "stability",
+        "before",
+        "after"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "agentlas.workforce-host-inventory-observation.v1"
+        },
+        "stability": {
+          "const": "selected-grant-bindings"
+        },
+        "before": {
+          "$ref": "#/$defs/hostInventorySnapshot"
+        },
+        "after": {
+          "$ref": "#/$defs/hostInventorySnapshot"
+        }
+      }
+    },
     "hostObservation": {
       "type": "object",
       "additionalProperties": false,
@@ -329,6 +477,9 @@
               "$ref": "#/$defs/hash"
             }
           ]
+        },
+        "inventoryEvidence": {
+          "$ref": "#/$defs/hostInventoryObservation"
         },
         "observationDigest": {
           "$ref": "#/$defs/hash"
