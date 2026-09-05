@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Host permission mode (`host`) is now covered by a tracked CI gate.**
+  `permissionPolicy` accepted `host` for `network`/`shell`/`fileRead.mode`/`mcp.mode`
+  as of 1.2.41 (a package declares no tool ceiling; the host runtime decides at
+  execution time, and Desktop emits a native-sandbox enforcement receipt for
+  those rows), but nothing in CI checked that contract — `tests/` is
+  gitignored, so a tests/-only check never ran there. `scripts/verify-host-authority-contract.sh`
+  now calls the real Workforce functions (`host_permission_policy`,
+  `deny_all_permission_policy`, `validate_permission_policy`) against
+  `schemas/workforce-execution-plan.schema.json`, proves the gate can fail red
+  by rejecting a no-authority-sandbox receipt carrying approvals, and runs in
+  the cross-platform-wiring workflow's contract-gates job.
+
 ## 1.2.39 — 2026-09-01
 
 - **Runtime updates are now verified inside the release transaction.** The
