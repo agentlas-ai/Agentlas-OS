@@ -3,7 +3,7 @@
 The explicit ``hephaestus hep-update`` command can install the latest runtime into
 ``~/.agentlas/runtime/<version>`` and atomically point ``current`` at it. Normal
 command paths start a detached, fail-silent auto-update worker at most once per
-TTL window so the user's command does not wait on network or install work.
+metadata-check window so the user's command does not wait on network or install work.
 """
 
 from __future__ import annotations
@@ -33,6 +33,8 @@ LATEST_RELEASE_URL = os.environ.get(
     "https://api.github.com/repos/agentlas-ai/Agentlas-OS/releases/latest",
 )
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
+METADATA_TTL_SECONDS = 15 * 60
+UPDATE_RETRY_SECONDS = (60, 5 * 60, 15 * 60)
 LOCK_STALE_SECONDS = 60 * 60
 HEALTHCHECK_TIMEOUT_SECONDS = 15
 MEMORY_HOOK_SYNC_TIMEOUT_SECONDS = 30
@@ -801,23 +803,32 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
             if not _remove_stale_lock(lock_path):
                 return
             recovered_stale_lock = True
-        marker_path = base / AUTO_UPDATE_MARKER
-        marker = _read_json(marker_path)
-        if not recovered_stale_lock and _marker_recent(marker.get("last_started_epoch")):
+        # Serialize admission only; installation retains its separate lock.
+        check_lock = base / ".update-check.lock"
+        try:
+            check_token = _acquire_lock(check_lock)
+        except RuntimeError:
             return
-        _write_json(
-            marker_path,
-            {
-                **marker,
-                "last_started_epoch": int(time.time()),
-                "current": current,
-                "runtime_root": str(runtime_root),
-            },
-        )
-        if background:
-            _spawn_auto_update_worker(runtime_root)
-        else:
-            _run_auto_update_once(runtime_root)
+        try:
+            marker_path = base / AUTO_UPDATE_MARKER
+            marker = _read_json(marker_path)
+            failures = marker.get("failure_count", 0)
+            retry_delay = METADATA_TTL_SECONDS
+            if isinstance(failures, int) and failures > 0:
+                retry_delay = UPDATE_RETRY_SECONDS[min(failures - 1, len(UPDATE_RETRY_SECONDS) - 1)]
+            if not recovered_stale_lock and _marker_recent(marker.get("last_started_epoch"), retry_delay):
+                return
+            _write_json(marker_path, {**marker, "last_started_epoch": int(time.time()),
+                                      "current": current, "runtime_root": str(runtime_root)})
+            if background:
+                try:
+                    _spawn_auto_update_worker(runtime_root)
+                except Exception:
+                    _record_auto_update_failure("spawn_failed")
+            else:
+                _run_auto_update_guarded(runtime_root)
+        finally:
+            _release_lock(check_lock, check_token)
     except Exception:
         return
 
@@ -842,13 +853,13 @@ def maybe_print_update_notice(root: Path | None = None) -> None:
     )
 
 
-def fetch_latest_release(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> dict[str, Any]:
+def fetch_latest_release(force: bool = False, ttl_seconds: int = METADATA_TTL_SECONDS) -> dict[str, Any]:
     cache_path = _runtime_base() / "update-check.json"
     if not force:
         cached = _read_json(cache_path)
         epoch = cached.get("epoch") if isinstance(cached, dict) else None
         release = cached.get("release") if isinstance(cached, dict) else None
-        if isinstance(epoch, (int, float)) and isinstance(release, dict) and time.time() - float(epoch) < ttl_seconds:
+        if isinstance(epoch, (int, float)) and isinstance(release, dict) and 0 <= time.time() - float(epoch) < ttl_seconds:
             return release
 
     request = urllib.request.Request(
@@ -2006,7 +2017,7 @@ def _auto_update_disabled() -> bool:
 
 
 def _marker_recent(epoch: Any, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
-    return isinstance(epoch, (int, float)) and time.time() - float(epoch) < ttl_seconds
+    return isinstance(epoch, (int, float)) and 0 <= time.time() - float(epoch) < ttl_seconds
 
 
 def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
@@ -2070,6 +2081,25 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
     result["last_applied_epoch"] = int(time.time())
     _persist_update_marker(marker, result, runtime_root)
     return result
+
+
+def _record_auto_update_failure(code: str) -> None:
+    # Never persist exception text: it can contain URLs, paths or credentials.
+    marker_path = _runtime_base() / AUTO_UPDATE_MARKER
+    marker = _read_json(marker_path)
+    previous = marker.get("failure_count", 0)
+    count = min(previous + 1, len(UPDATE_RETRY_SECONDS)) if isinstance(previous, int) and previous >= 0 else 1
+    _write_json(marker_path, {**marker, "status": "failed", "errorCode": code,
+                              "failure_count": count, "last_failed_epoch": int(time.time())})
+
+
+def _run_auto_update_guarded(runtime_root: Path) -> None:
+    try:
+        _run_auto_update_once(runtime_root)
+    except (urllib.error.URLError, TimeoutError):
+        _record_auto_update_failure("network_unavailable")
+    except Exception:
+        _record_auto_update_failure("update_failed")
 
 
 def _spawn_auto_update_worker(runtime_root: Path) -> None:
@@ -3219,8 +3249,9 @@ def _main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     if len(args) == 2 and args[0] == "--auto-update-worker":
         try:
-            _run_auto_update_once(Path(args[1]))
+            _run_auto_update_guarded(Path(args[1]))
         except Exception:
+            # A read-only home must not break the caller either.
             return 0
         return 0
     return 2
