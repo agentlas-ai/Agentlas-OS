@@ -595,8 +595,9 @@ def _canonical_update_marker(
         "status": result.get("status"),
         "last_checked_epoch": checked_epoch,
     }
-    if isinstance(previous.get("last_started_epoch"), (int, float)):
-        canonical["last_started_epoch"] = previous["last_started_epoch"]
+    for field in ("last_started_epoch", "last_maintenance_epoch"):
+        if isinstance(previous.get(field), (int, float)):
+            canonical[field] = previous[field]
     for key in (
         "reason",
         "html_url",
@@ -2021,18 +2022,25 @@ def _marker_recent(epoch: Any, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
 
 
 def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
-    try:
-        from .auto_update_service import retire_auto_update_service
-
-        retire_auto_update_service()
-    except Exception:
-        pass
     runtime_root = root or Path(__file__).resolve().parent.parent
-    desktop_repair = retry_installed_desktop_repair(runtime_root)
-    desktop_updater_cleanup = retry_installed_desktop_updater_cleanup(runtime_root)
     current = current_release(runtime_root)
     marker_path = _runtime_base() / AUTO_UPDATE_MARKER
     marker = _read_json(marker_path)
+    # Metadata checks must not increase the cadence of legacy repair work.
+    maintenance_due = not _marker_recent(marker.get("last_maintenance_epoch"))
+    desktop_repair = marker.get("desktop_repair") or {"status": "deferred"}
+    desktop_updater_cleanup = marker.get("desktop_updater_cleanup") or {"status": "deferred"}
+    if maintenance_due:
+        marker["last_maintenance_epoch"] = int(time.time())
+        _write_json(marker_path, marker)
+        try:
+            from .auto_update_service import retire_auto_update_service
+
+            retire_auto_update_service()
+        except Exception:
+            pass
+        desktop_repair = retry_installed_desktop_repair(runtime_root)
+        desktop_updater_cleanup = retry_installed_desktop_updater_cleanup(runtime_root)
     if current is not None and not _is_comparable_release(current):
         result = {
             "status": "skipped",
@@ -2057,7 +2065,7 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
         "desktop_updater_cleanup": desktop_updater_cleanup,
     }
     if status not in {"update_available", "missing_release_marker"}:
-        reconciliation = reconcile_current_installation(runtime_root)
+        reconciliation = reconcile_current_installation(runtime_root) if maintenance_due else {}
         result["reconciliation"] = reconciliation
         if _requires_current_release_rehydrate(current, latest_tag, reconciliation):
             installed = install_latest_runtime(latest)
