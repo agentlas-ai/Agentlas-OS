@@ -85,6 +85,7 @@ HOST_ADAPTER_DIRS = (
     ".claude",
     ".claude-plugin",
     ".gemini",
+    ".zcode",
     "antigravity",
     "claude",
     "codex",

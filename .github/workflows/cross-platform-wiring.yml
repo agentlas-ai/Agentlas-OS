@@ -87,6 +87,17 @@ jobs:
       # receipt. tests/ is gitignored, so this must be a tracked gate.
       - name: Host authority permission contract holds
         run: bash scripts/verify-host-authority-contract.sh
+      # scripts/render-host-commands.py's HOSTS, scripts/render-host-skills.py's
+      # MIRROR_ROOTS, and contracts/runtime-registry.json's hostAdapters.dirs
+      # used to be three hand-kept lists of "which hosts get adapters". Measured
+      # 2026-09-06 by building the real release archive: `.zcode/commands` had
+      # 31 files rendered and kept in sync by render-host-commands.py --check,
+      # and zero of them ever reached the tarball, because hostAdapters.dirs
+      # never carried `.zcode` — the render gate only ever compared its own
+      # output against itself. This fails on either a rendered-but-undeclared
+      # host or a declared-but-empty one (the historical amp/warp/amazonq case).
+      - name: Every rendered host adapter is declared and delivered
+        run: bash scripts/verify-host-adapter-delivery.sh
 
   wiring:
     strategy:

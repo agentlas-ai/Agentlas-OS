@@ -31,11 +31,24 @@ from __future__ import annotations
 
 import pathlib
 import json
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BODIES = ROOT / "contracts" / "commands"
 COMMAND_REGISTRY = ROOT / "contracts" / "command-registry.v2.json"
+# The one place a host is declared deliverable: contracts/runtime-registry.json
+# -> hostAdapters.dirs. scripts/build-runtime-release-asset.sh,
+# agentlas_cloud/update.py, and scripts/install-all-runtimes.sh all read that
+# same block for what ships. Measured 2026-09-06: `.zcode/commands` below had
+# 31 rendered files kept perfectly in sync with the canonical bodies, and
+# `.zcode` was never in hostAdapters.dirs — every one of those files was built
+# and re-checked here and then silently dropped before the release archive or
+# even the local runtime home, because nothing that assembles a delivery
+# reads this HOSTS list. A host cannot be rendered here without also being
+# declared there; check that instead of trusting three lists to agree by hand.
+RUNTIME_REGISTRY = ROOT / "contracts" / "runtime-registry.json"
+_HOST_ADAPTER_NAME_RE = re.compile(r"^\.?[a-z0-9][a-z0-9._-]*$")
 
 # (directory, file format, args token, frontmatter lines)
 # `args` is None when the host passes the user's text some other way and the
@@ -168,12 +181,61 @@ def registry_command_names() -> set[str]:
     }
 
 
+def declared_release_host_dirs() -> set[str]:
+    """The host-adapter directories the release/runtime-home actually ships.
+
+    Single source: contracts/runtime-registry.json -> hostAdapters.dirs.
+    """
+    block = json.loads(RUNTIME_REGISTRY.read_text(encoding="utf-8")).get("hostAdapters")
+    if not isinstance(block, dict):
+        raise ValueError(f"{RUNTIME_REGISTRY.relative_to(ROOT)} has no hostAdapters block")
+    dirs = block.get("dirs")
+    if not isinstance(dirs, list) or not dirs:
+        raise ValueError(f"{RUNTIME_REGISTRY.relative_to(ROOT)} hostAdapters.dirs is empty or malformed")
+    names = {
+        name for name in dirs
+        if isinstance(name, str) and name not in (".", "..") and _HOST_ADAPTER_NAME_RE.match(name)
+    }
+    if not names:
+        raise ValueError(f"{RUNTIME_REGISTRY.relative_to(ROOT)} hostAdapters.dirs has no valid entries")
+    return names
+
+
+def verify_hosts_are_deliverable() -> list[str]:
+    """Every HOSTS directory's top-level component must be a declared, shipped host.
+
+    Rendering a command into a directory nothing ships from is not caught by
+    diffing the render against itself — the render is internally consistent
+    and still never reaches a user. Cross-check against the one place
+    delivery is declared instead.
+    """
+    declared = declared_release_host_dirs()
+    problems = []
+    for directory, *_rest in HOSTS:
+        top = directory.split("/", 1)[0]
+        if top not in declared:
+            problems.append(
+                f"{directory} is rendered here but {top!r} is not in "
+                f"{RUNTIME_REGISTRY.relative_to(ROOT)} hostAdapters.dirs — it would never ship"
+            )
+    return problems
+
+
 def main() -> int:
     check = "--check" in sys.argv[1:]
     try:
         registered = registry_command_names()
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print(f"command registry unreadable: {exc}")
+        return 1
+    try:
+        delivery_problems = verify_hosts_are_deliverable()
+    except (OSError, ValueError) as exc:
+        print(f"host-adapter delivery contract unreadable: {exc}")
+        return 1
+    if delivery_problems:
+        for problem in delivery_problems:
+            print(f"  FAIL  {problem}")
         return 1
     body_names = {p.stem.removesuffix(".body") for p in BODIES.glob("*.body.md")}
     if body_names != registered:

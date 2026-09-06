@@ -36,6 +36,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -43,6 +44,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CANONICAL_ROOT = ROOT / "skills"
 FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.DOTALL)
+# The one place a host is declared deliverable: contracts/runtime-registry.json
+# -> hostAdapters.dirs (also read by scripts/build-runtime-release-asset.sh,
+# agentlas_cloud/update.py, and scripts/install-all-runtimes.sh). A mirror root
+# below whose top-level directory is not declared there would keep being
+# refreshed forever without ever reaching a release or a runtime home — see
+# scripts/render-host-commands.py's identical check for the `.zcode` case this
+# caught 2026-09-06.
+RUNTIME_REGISTRY = ROOT / "contracts" / "runtime-registry.json"
+_HOST_ADAPTER_NAME_RE = re.compile(r"^\.?[a-z0-9][a-z0-9._-]*$")
 
 # Roots that carry a mirror of a canonical skill.
 MIRROR_ROOTS = [
@@ -92,8 +102,47 @@ def planned_files() -> dict[Path, str]:
     return plan
 
 
+def declared_release_host_dirs() -> set[str]:
+    """The host-adapter directories the release/runtime-home actually ships."""
+    block = json.loads(RUNTIME_REGISTRY.read_text(encoding="utf-8")).get("hostAdapters")
+    if not isinstance(block, dict):
+        raise ValueError(f"{RUNTIME_REGISTRY.relative_to(ROOT)} has no hostAdapters block")
+    dirs = block.get("dirs")
+    if not isinstance(dirs, list) or not dirs:
+        raise ValueError(f"{RUNTIME_REGISTRY.relative_to(ROOT)} hostAdapters.dirs is empty or malformed")
+    names = {
+        name for name in dirs
+        if isinstance(name, str) and name not in (".", "..") and _HOST_ADAPTER_NAME_RE.match(name)
+    }
+    if not names:
+        raise ValueError(f"{RUNTIME_REGISTRY.relative_to(ROOT)} hostAdapters.dirs has no valid entries")
+    return names
+
+
+def verify_mirror_roots_are_deliverable() -> list[str]:
+    declared = declared_release_host_dirs()
+    problems = []
+    for root in MIRROR_ROOTS:
+        top = root.split("/", 1)[0]
+        if top not in declared:
+            problems.append(
+                f"{root} is mirrored here but {top!r} is not in "
+                f"{RUNTIME_REGISTRY.relative_to(ROOT)} hostAdapters.dirs — it would never ship"
+            )
+    return problems
+
+
 def main(argv: list[str]) -> int:
     check = "--check" in argv
+    try:
+        delivery_problems = verify_mirror_roots_are_deliverable()
+    except (OSError, ValueError) as exc:
+        print(f"host-adapter delivery contract unreadable: {exc}", file=sys.stderr)
+        return 1
+    if delivery_problems:
+        for problem in delivery_problems:
+            print(f"  FAIL  {problem}", file=sys.stderr)
+        return 1
     plan = planned_files()
     drift: list[str] = []
     for path, desired in plan.items():
