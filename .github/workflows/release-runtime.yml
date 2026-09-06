@@ -256,9 +256,14 @@ jobs:
             }
           done
 
+          # The annotated tag below needs an identity too, so set it once here.
+          # Setting it only inside the "pins changed" branch made the release fail
+          # with "empty ident name" on any run where the pins were already current
+          # (measured 2026-09-06 on v1.2.44, right after v1.2.43 had verified them).
+          git config user.name "agentlas-release[bot]"
+          git config user.email "agentlas-release[bot]@users.noreply.github.com"
+
           if (( ${#changed_files[@]} > 0 )); then
-            git config user.name "agentlas-release[bot]"
-            git config user.email "agentlas-release[bot]@users.noreply.github.com"
             git add -- \
               contracts/runtime-registry.json \
               claude/plugins/agentlas-core-engine-meta-agent/contracts/runtime-registry.json \
