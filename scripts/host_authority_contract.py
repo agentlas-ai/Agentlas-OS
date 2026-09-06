@@ -140,7 +140,7 @@ def check_enforcement_receipt(host_policy: dict) -> None:
     def make_invocation(**enforcement_overrides) -> dict:
         evidence = {
             "runtimeKind": "desktop",
-            "runtimeVersion": "1.2.42",
+            "runtimeVersion": "1.2.43",
             "sandboxMode": "host-native",
             "toolInventory": "policy-filtered",
             "disabledCapabilities": [],
