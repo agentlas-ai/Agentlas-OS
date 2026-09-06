@@ -1,6 +1,6 @@
 {
   "schemaVersion": "agentlas.runtime-registry.v1",
-  "updatedAt": "2026-09-05",
+  "updatedAt": "2026-09-06",
   "note": "Declarative seed of the runtime x model matrix (PRD 2026-08-15 §3.1). Rows are role-in-invocation, not tool names. `accessPath` answers ONE question only — does this runtime need runtime-specific code (subscription-cli) or the generic API/local path; exact capabilities come from live discovery (ACP session/new, models.dev, probes). `pin` values are what we last verified, not what a machine must have. Live rows are merged over this seed (Orca-style seed + live merge); the seed is never the whole universe.",
   "grades": {
     "A": "hand-coded native stream driver kept (token accounting / latency)",
@@ -64,12 +64,12 @@
         "command": "npx",
         "args": [
           "-y",
-          "@agentclientprotocol/claude-agent-acp@0.74.0"
+          "@agentclientprotocol/claude-agent-acp@0.75.1"
         ],
         "registryId": "claude-acp"
       },
       "pin": {
-        "registryVersion": "0.74.0"
+        "registryVersion": "0.75.1"
       },
       "notes": "Native stream-json keeps true input/output tokens; ACP usage_update is context occupancy only. Stays A."
     },
