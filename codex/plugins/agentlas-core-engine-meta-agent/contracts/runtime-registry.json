@@ -1,6 +1,6 @@
 {
   "schemaVersion": "agentlas.runtime-registry.v1",
-  "updatedAt": "2026-09-01",
+  "updatedAt": "2026-09-05",
   "note": "Declarative seed of the runtime x model matrix (PRD 2026-08-15 §3.1). Rows are role-in-invocation, not tool names. `accessPath` answers ONE question only — does this runtime need runtime-specific code (subscription-cli) or the generic API/local path; exact capabilities come from live discovery (ACP session/new, models.dev, probes). `pin` values are what we last verified, not what a machine must have. Live rows are merged over this seed (Orca-style seed + live merge); the seed is never the whole universe.",
   "grades": {
     "A": "hand-coded native stream driver kept (token accounting / latency)",
@@ -64,12 +64,12 @@
         "command": "npx",
         "args": [
           "-y",
-          "@agentclientprotocol/claude-agent-acp@0.70.0"
+          "@agentclientprotocol/claude-agent-acp@0.74.0"
         ],
         "registryId": "claude-acp"
       },
       "pin": {
-        "registryVersion": "0.70.0"
+        "registryVersion": "0.74.0"
       },
       "notes": "Native stream-json keeps true input/output tokens; ACP usage_update is context occupancy only. Stays A."
     },
@@ -96,12 +96,12 @@
         "command": "npx",
         "args": [
           "-y",
-          "@agentclientprotocol/codex-acp@1.7.0"
+          "@agentclientprotocol/codex-acp@1.10.0"
         ],
         "registryId": "codex-acp"
       },
       "pin": {
-        "registryVersion": "1.7.0"
+        "registryVersion": "1.10.0"
       },
       "notes": "ACP path measured stable (11-13s). Promotion candidate to B when token accounting loss is acceptable."
     },
@@ -155,13 +155,13 @@
         "command": "npx",
         "args": [
           "-y",
-          "@google/gemini-cli@0.57.0",
+          "@google/gemini-cli@0.58.0",
           "--acp"
         ],
         "registryId": "gemini"
       },
       "pin": {
-        "registryVersion": "0.57.0"
+        "registryVersion": "0.58.0"
       },
       "notes": "Individual-tier service ended 2026-06-18; enterprise only. Successor is Antigravity."
     },
@@ -195,7 +195,7 @@
         "registryId": "cursor"
       },
       "pin": {
-        "registryVersion": "2026.08.11"
+        "registryVersion": "2026.09.02"
       },
       "notes": "Composer has no public API — CLI-only. Hand driver shows no tool calls; ACP fixes that."
     },
@@ -220,14 +220,14 @@
         "command": "npx",
         "args": [
           "-y",
-          "@xai-official/grok@1.0.16",
+          "@xai-official/grok@1.0.21",
           "agent",
           "stdio"
         ],
         "registryId": "grok-build"
       },
       "pin": {
-        "registryVersion": "1.0.16",
+        "registryVersion": "1.0.21",
         "cliVersion": "1.0.3"
       },
       "notes": "Hand driver classifies tools by guessing `type` strings; ACP normalizes them."
@@ -258,7 +258,7 @@
         "registryId": "kimi"
       },
       "pin": {
-        "registryVersion": "1.49.0"
+        "registryVersion": "1.50.0"
       },
       "notes": "Terminal rejects it as 'no driver'; ACP closes that gap without a third hand driver."
     },
@@ -288,7 +288,7 @@
         "registryId": "opencode"
       },
       "pin": {
-        "registryVersion": "1.18.25",
+        "registryVersion": "1.18.29",
         "cliVersion": "1.18.16"
       },
       "notes": "Desktop has a settings slot only; no driver. ACP is the integration."
@@ -320,7 +320,7 @@
         "registryId": "goose"
       },
       "pin": {
-        "registryVersion": "1.48.0",
+        "registryVersion": "1.49.0",
         "cliVersion": "1.45.0"
       }
     },
@@ -346,13 +346,13 @@
         "command": "npx",
         "args": [
           "-y",
-          "@github/copilot@1.0.82",
+          "@github/copilot@1.0.83",
           "--acp"
         ],
         "registryId": "github-copilot-cli"
       },
       "pin": {
-        "registryVersion": "1.0.82"
+        "registryVersion": "1.0.83"
       }
     },
     {
