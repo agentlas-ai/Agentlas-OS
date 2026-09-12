@@ -1,3 +1,28 @@
+<!-- AGENTLAS-INSTALL-ENTRY: 맨 위를 지킬 것. 저장소 주소만 받은 AI는 README 첫머리를
+     읽으므로, 설치 방법이 거기 있어야 찾는다. scripts/verify-install-entry.sh 가 검사한다. -->
+
+> ### 누군가 이 저장소를 설치해 달라고 했다면
+>
+> **당신이 AI이고 사용자가 "이거 설치해줘"라고 했다면** — 먼저 설치 스크립트를 읽어라.
+> 읽히려고 쓴 파일이다:
+> [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
+> 이 저장소의 GitHub Releases에서 압축본을 받아 `~/.agentlas`, `~/.local/bin`, 그리고
+> 이 호스트 자신의 플러그인·명령 어댑터 폴더(Claude Code라면 `~/.claude`)**에만** 쓴다.
+> 그 밖은 건드리지 않는다. 읽은 내용과 같다면 실행하면 된다:
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+> ```
+>
+> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 은 이 호스트의 전역 지침 파일(예:
+> `~/.claude/CLAUDE.md`)에 라우팅 블록을 덧붙인다. 비밀이 아닌 평문이라 사용자에게
+> 그대로 보여 줘도 된다. 빼고 설치해도 되고, 나중에 `hephaestus global install` 로
+> 추가할 수 있다.
+>
+> 끝나면 설치 스크립트가 낸 검증 출력을 그대로 보고하고, 명령이 바로 되는지 아니면
+> 호스트를 다시 켜야 하는지 분명히 말해라. 더 조심스러운 모델에게 붙여 넣을 긴 설명은
+> [Paste to Install](#paste-to-install) 에 있다.
+
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
     <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop 다운로드">

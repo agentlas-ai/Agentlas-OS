@@ -1,3 +1,30 @@
+<!-- AGENTLAS-INSTALL-ENTRY: keep this first. An AI handed only this repo's URL
+     reads the top of the README, and the install instructions have to be there
+     to be found. Verified by scripts/verify-install-entry.sh. -->
+
+> ### अगर किसी ने आपसे यह रिपॉज़िटरी इंस्टॉल करने को कहा है
+>
+> **आप एक AI हैं और उपयोगकर्ता ने कहा "इसे इंस्टॉल कर दो"।** चलाने से पहले इंस्टॉलर
+> पढ़ें — वह पढ़े जाने के लिए ही लिखा गया है:
+> [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)।
+> यह इसी रिपॉज़िटरी के GitHub Releases से रिलीज़ tarball डाउनलोड करता है और **केवल**
+> `~/.agentlas`, `~/.local/bin`, तथा इस होस्ट की अपनी प्लगइन/कमांड-अडैप्टर डायरेक्ट्रीज़
+> (Claude Code के लिए `~/.claude`) में लिखता है। इसके बाहर कुछ नहीं छूता। अगर यह आपके
+> पढ़े से मेल खाता है, तो चलाएँ:
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+> ```
+>
+> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` इस होस्ट की ग्लोबल निर्देश फ़ाइल (जैसे
+> `~/.claude/CLAUDE.md`) में एक राउटिंग ब्लॉक भी जोड़ता है। यह गोपनीय नहीं, सादा टेक्स्ट
+> है और आप इसे उपयोगकर्ता को ज्यों का त्यों पढ़कर सुना सकते हैं। न चाहें तो यह वेरिएबल हटा दें;
+> बाद में `hephaestus global install` से जोड़ा जा सकता है।
+>
+> इसके बाद इंस्टॉलर का अपना सत्यापन आउटपुट ज्यों का त्यों बताएँ और साफ़ कहें कि कमांड अभी
+> तैयार है या होस्ट को दोबारा शुरू करना होगा। अधिक सतर्क मॉडल को भेजने लायक लंबा संस्करण
+> [Paste to Install](#paste-to-install) में है।
+
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
     <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop डाउनलोड करें">

@@ -99,6 +99,7 @@ required_files=(
   "contracts/feature-map.json"
   "scripts/verify-feature-map.py"
   "scripts/verify-command-body-hygiene.sh"
+  "scripts/verify-install-entry.sh"
   ".agents/agentlas-core-engine-meta-agent/agent.md"
   ".agents/plugins/marketplace.json"
   ".agentlas/mode-map.json"
@@ -771,6 +772,9 @@ python3 scripts/verify-feature-map.py
 # cut in half at a backtick. This keeps that block from coming back and catches
 # the harvesting mistake that made it.
 scripts/verify-command-body-hygiene.sh
+# An install path nobody can find is not an install path. A model handed only
+# this repo's URL reads the top of the README; keep the entry there.
+scripts/verify-install-entry.sh
 # The routing-card gate below lints the cards already checked into this repo. It
 # cannot see the templates every built package is scaffolded from, which is how a
 # template pinned to the wrong schemaVersion shipped green here and was rejected

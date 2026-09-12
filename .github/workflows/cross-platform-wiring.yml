@@ -112,6 +112,14 @@ jobs:
       # places a month later, including the creator-facing upload price table.
       - name: A retired spelling is not taught anywhere that ships
         run: python3 scripts/verify-feature-map.py
+      # The product's first step is a user pasting this repo's URL at whatever
+      # model they already have open. That model reads the top of the README —
+      # which was banners and badges, with the install section 57 lines down —
+      # or AGENTS.md, which is the contributor constitution and mentions no
+      # installer at all. A careful model with no visible instructions and a
+      # curl-pipe-bash ahead of it stalls, and the funnel ends there.
+      - name: Install instructions stay where a model will find them
+        run: bash scripts/verify-install-entry.sh
 
   wiring:
     strategy:

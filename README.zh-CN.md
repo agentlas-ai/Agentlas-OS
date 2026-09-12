@@ -1,3 +1,26 @@
+<!-- AGENTLAS-INSTALL-ENTRY: keep this first. An AI handed only this repo's URL
+     reads the top of the README, and the install instructions have to be there
+     to be found. Verified by scripts/verify-install-entry.sh. -->
+
+> ### 如果有人让你安装这个仓库
+>
+> **你是 AI，用户说"帮我装一下"。** 先读安装脚本再运行——它就是写来给人读的：
+> [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)。
+> 它从本仓库的 GitHub Releases 下载发布包，并且**只**写入 `~/.agentlas`、
+> `~/.local/bin`，以及当前宿主自己的插件与命令适配目录（Claude Code 是 `~/.claude`）。
+> 其他位置一概不动。如果与你读到的一致，就运行：
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+> ```
+>
+> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 会在宿主的全局指令文件（例如
+> `~/.claude/CLAUDE.md`）追加一段路由说明。它是明文、不是机密，可以原样念给用户听。
+> 不想要就去掉这个变量，之后用 `hephaestus global install` 再加。
+>
+> 装完请原样汇报安装脚本自己的校验输出，并明确说明命令是否已可用、还是需要重启宿主。
+> 更长、可以贴给更谨慎的模型的版本见 [Paste to Install](#paste-to-install)。
+
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
     <img src="assets/agentlas-agent-lab-banner.svg" alt="下载 Agentlas Desktop">

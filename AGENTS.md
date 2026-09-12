@@ -1,5 +1,13 @@
 # Agentlas Core Engine Meta-Agent Team
 
+<!-- AGENTLAS-INSTALL-ENTRY -->
+> **Asked to install this repo, not to work on it?** This file is the
+> contributor constitution and will not help you. Read the install block at the
+> top of [README.md](README.md): it points at
+> `scripts/install-all-runtimes.sh`, which writes only under `~/.agentlas`,
+> `~/.local/bin`, and this host's own plugin/command-adapter directories.
+
+
 ## Repository Constitution: Local Main Only
 
 This repository uses one canonical development line: the local `main` branch

@@ -1,5 +1,13 @@
 # Claude Code Adapter
 
+<!-- AGENTLAS-INSTALL-ENTRY -->
+> **Asked to install this repo, not to work on it?** This file is the
+> contributor constitution and will not help you. Read the install block at the
+> top of [README.md](README.md): it points at
+> `scripts/install-all-runtimes.sh`, which writes only under `~/.agentlas`,
+> `~/.local/bin`, and this host's own plugin/command-adapter directories.
+
+
 This file adapts the Agentlas Core Engine Meta-Agent Team for Claude Code.
 `AGENTS.md` is canonical; this file stays thin.
 

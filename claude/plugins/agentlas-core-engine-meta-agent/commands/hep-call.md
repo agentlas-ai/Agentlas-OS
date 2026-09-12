@@ -14,6 +14,21 @@ Syntax: `/hep-call agent-a, agent-b {context}`. The text before `{` is the
 agent list; the text inside braces is the context. If braces are omitted, the
 first token is the agent list and the rest is context.
 
+## If the user wants it to keep running
+
+A Hub call is charged **every time it runs** — the 24-hour auto-lease was
+retired 2026-08-18, so paying once does not make the next call free. A job that
+wakes on a schedule pays on every wake-up: a five-minute watcher is 288 calls a
+day.
+
+When the request is a standing or recurring one, quote
+`hephaestus.quote_agent_lease` for the named agent before the first run, show
+the user the per-call total at that cadence beside the lease price, and **ask
+how many days they want**. Only then call `hephaestus.purchase_agent_lease`
+with `confirm: true`. Never buy a lease the user did not agree to; if
+`leaseOffered` is false the creator set no per-day price and it is genuinely
+not for sale — say so and quote the per-call cost instead.
+
 ## How to run
 
 Run the shell block below **verbatim**, replacing only the `RAW` value with the
