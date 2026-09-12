@@ -98,6 +98,20 @@ jobs:
       # host or a declared-but-empty one (the historical amp/warp/amazonq case).
       - name: Every rendered host adapter is declared and delivered
         run: bash scripts/verify-host-adapter-delivery.sh
+      # Unifying ten hand-maintained host copies (2026-08-17) appended every
+      # divergent line under "Rules carried from the other runtime copies"
+      # instead of merging it. Nobody took the safety net in: measured
+      # 2026-09-13 it was 326 bullets, 24% of the canonical command contracts
+      # and 48% of hep-connect, with 16 sentences cut in half at a backtick and
+      # bash fragments shipped as rules. Every host LLM read all of it.
+      - name: Canonical command bodies stay whole and singly-sourced
+        run: bash scripts/verify-command-body-hygiene.sh
+      # contracts/feature-map.json marks a spelling `retired` and says it "must
+      # not reappear in new copy" — and for the 24-hour auto-lease, retired
+      # 2026-08-18, nothing enforced that, so it was still being taught in 52
+      # places a month later, including the creator-facing upload price table.
+      - name: A retired spelling is not taught anywhere that ships
+        run: python3 scripts/verify-feature-map.py
 
   wiring:
     strategy:

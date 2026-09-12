@@ -98,6 +98,7 @@ required_files=(
   "scripts/verify-experience-assets-contract.sh"
   "contracts/feature-map.json"
   "scripts/verify-feature-map.py"
+  "scripts/verify-command-body-hygiene.sh"
   ".agents/agentlas-core-engine-meta-agent/agent.md"
   ".agents/plugins/marketplace.json"
   ".agentlas/mode-map.json"
@@ -763,6 +764,13 @@ scripts/sync-worker-memory-directive.sh
 # rename alarm over those bindings. Sibling checkouts that are absent SKIP with
 # the reason; a present sibling with a missing identifier FAILs.
 python3 scripts/verify-feature-map.py
+# The canonical /hep-* bodies are the contract every host LLM reads. Unifying
+# ten hand-maintained copies (2026-08-17) appended every divergent line under a
+# "Rules carried from the other runtime copies" heading instead of merging it,
+# and nobody took the net in: 326 bullets, 24% of the contracts, 16 sentences
+# cut in half at a backtick. This keeps that block from coming back and catches
+# the harvesting mistake that made it.
+scripts/verify-command-body-hygiene.sh
 # The routing-card gate below lints the cards already checked into this repo. It
 # cannot see the templates every built package is scaffolded from, which is how a
 # template pinned to the wrong schemaVersion shipped green here and was rejected

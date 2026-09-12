@@ -175,7 +175,9 @@ done
 8. Report `executed` only when the execution receipt proves every selected
    invocation, handoff, synthesis, and an independent passing verifier.
    Otherwise report the last truthful state: `selected`, `prepared`,
-   `source_unavailable`, `blocked`, or `failed`.
+   `source_unavailable`, `blocked`, or `failed`. For `partial` or `failed`,
+   report each source receipt's exact `failureCode`: never collapse several
+   receipts into one, substitute a different code, or relabel the outcome.
 
 The roster remains bound across turns, sessions, restarts, and context
 compaction until the whole goal is explicitly completed/cancelled through
@@ -189,63 +191,3 @@ for Core federation, or use popularity/history/price/local availability as
 semantic fit. Exact duplicate releases may collapse Local > Cloud > Hub only
 when Core returns verified identical lineage; a name or slug match is not
 enough. Name the actual workers in the result.
-
-## Rules carried from the other runtime copies
-
-These lines existed in one runtime's hand-maintained copy and not in the
-longest one. They are kept verbatim rather than dropped — a rule that only
-one runtime enforced was still a rule someone wrote on purpose.
-
-- # Hephaestus Workforce Network Raw request:
-- Use MCP server `hephaestus-network`, the local Agentlas OS Core and only host-visible Workforce MCP.
-- Network means registered Local + signed-in owner Cloud + public Hub.
-- First read `workforce.goal_context(projectDir)` and reuse an active binding for the same ongoing work before considering recruitment.
-- Resolve the runner only for authentication; staffing remains in the Workforce MCP tools:
-- Author a redacted `agentlas.workforce-work-order.v1` with substantive role slots.
-- Fill semantic fit from the task sentence plus only genuinely constraining communities/roles/skills/knowledge; title, summary, and publisher sample requests are fit evidence.
-- Keep execution requirements separate: include tool capabilities, authorities, runtimes, languages, or modalities only when the requested action needs host proof. They never rank or exclude semantic candidates; the host binds them against its real tool inventory and permission receipt after selection. Keep ordinary inputs/outputs in task text and handoffs in edges.
-- Write every discovery-facing field in English, faithfully translating a non-English request (the candidate corpus is English and cross-lingual matching buries the correct agent — measured 1st vs 144th for one query); keep an untranslatable term with a short English gloss.
-- `languages` is the delivery language, not the search language — keep it as the required output language even though the order is authored in English.
-- "network"}` and preserve source receipts plus `selectionSessionId`.
-- The default response is a projected menu, not a complete `federationResult`; do not echo it as one.
-- From content and qualification evidence, author `agentlas.workforce-selection.v1` yourself.
-- `projectDir` is mandatory; pass the incumbent `goalId` when continuing.
-- Otherwise Core derives it from the WorkOrder id and automatically binds the successful plan before execution.
-- Every later turn reads `workforce.goal_context`, reuses the incumbent roster plus local skills when sufficient, and recruits only a real additive gap using the same `goalId`.
-- Record the turn posture through `workforce.record_goal_turn`.
-- Spawn only the useful bound planner/manager, worker, synthesis, and verifier invocations with explicit artifact handoffs; preserve authoritative Team graphs.
-- Lease expiry affects only the next Hub charge; it never dismisses the roster.
-- Memory/Experience accrue on actual invocations.
-- Report `executed` only from a receipt proving every child invocation, handoff, synthesis, and a passing independent verifier.
-- Do not call legacy `hephaestus_route`, bypass Core with direct remote search, or use popularity/history/price/availability as semantic fit.
-- Exact duplicate releases collapse Local > Cloud > Hub only with verified identical lineage.
-- first read `workforce.goal_context(projectDir)` and reuse any active binding for the same ongoing work.
-- Author a redacted WorkOrder — use task/title plus genuinely constraining communities/roles/skills/knowledge for semantic fit, and carry only genuinely required tool/authority/runtime/language/modality fields as a separate post-selection execution contract (absent = empty — the wire normalizes):
-- Write its discovery-facing fields in English, faithfully translating a non-English request (the candidate corpus is English; cross-lingual matching buries the right agent, measured 1st vs 144th for one query), while keeping `languages` as the required delivery language — and call `workforce.search_candidates` with exact `sourceScope:
-- "network"` (registered Local + owner Cloud + public Hub).
-- Retain the projected menu's `selectionSessionId` and every source receipt; do not echo the projected menu as `federationResult`.
-- Core resolves the complete federation state locally from that session.
-- Author the final Selection yourself from content/qualification evidence, call `workforce.validate_selection` with `{selection}` (Core restores the pinned WorkOrder and menu from `selection.selectionSessionId`), keep the accepted `federatedSelectionDigest`, then call `workforce.prepare_execution` with `{selection, federatedSelectionDigest, projectDir, goalId?, fullDossier: false}`; resolve each prepared roster row's content from `bundleContents` by its `contentDigest` (projection prepare.v2).
-- Otherwise Core derives one from the WorkOrder id and automatically binds the successful plan.
-- Preserve source receipts, provenance, immutable source/release/package/content/runtime/ permission/context pins, and authoritative Team graphs.
-- Execute distinct planner/manager, worker, synthesis, and verifier invocations with handoffs.
-- On every later turn read `workforce.goal_context`, reuse the incumbent roster plus local skills when sufficient, recruit only a real additive gap using the same `goalId`, and record `reuse|local-only|recruit|standby|blocked` with `workforce.record_goal_turn`.
-- Keep the roster across sessions, restarts, compaction, and lease expiry; release it only with `workforce.complete_goal(explicitCompletion=true)` after explicit whole-goal completion/cancellation.
-- A 24-hour lease controls only the next Hub charge; standby is not a continuously running model.
-- For `partial` or `failed`, report each source receipt's exact `failureCode`; never collapse, substitute, or relabel it.
-- Never call legacy `hephaestus_route`, bypass Core, accept deterministic staffing, silently substitute, or claim execution without complete receipts.
-- Author the final Selection yourself, call `workforce.validate_selection` with `{selection}`, keep the accepted `federatedSelectionDigest`, then call `workforce.prepare_execution` with `{selection, federatedSelectionDigest, projectDir, goalId?, fullDossier: false}`.
-- Preserve source receipts/provenance and all immutable pins.
-- Execute planner/manager, workers, synthesis, and verifier as distinct invocations with handoffs and preserved Team graphs.
-- Never use legacy `hephaestus_route`, direct remote search, deterministic staffing, silent substitution, or preparation as execution proof.
-- # /hep-network Use the exact request after `/hep-network`.
-- Act as the active top-level workforce orchestrator and use local MCP server `hephaestus-network`, the only host-visible Workforce MCP.
-- Author a redacted `agentlas.workforce-work-order.v1`; keep private project grounding on-host.
-- Author `agentlas.workforce-selection.v1` yourself from content and qualification evidence; call `workforce.validate_selection` with `{selection}` and keep the accepted `federatedSelectionDigest`.
-- `projectDir` is mandatory; pass an incumbent `goalId` when continuing.
-- Execute only useful bound planner/manager, worker, synthesis, and verifier invocations with explicit artifact handoffs and preserved Team graphs.
-- Keep the roster across turns, sessions, restarts, compaction, and Hub lease expiry.
-- Release it only through `workforce.complete_goal(explicitCompletion=true)` after explicit whole-goal completion/cancellation.
-- A 24-hour lease controls only the next server charge; standby is durable availability, not a continuously running model.
-- Report `executed` only from a receipt proving every child invocation and a passing verifier.
-- Otherwise report the last truthful state and source outages.

@@ -127,22 +127,3 @@ edits the card for you: use stable English `role:*`, `community:*`, `skill:*`,
 and `knowledge:*` IDs that actually describe the agent. Returned examples are
 aliases, not an allowlist. Rerun the upload and repeat until registration
 succeeds.
-
-## Rules carried from the other runtime copies
-
-These lines existed in one runtime's hand-maintained copy and not in the
-longest one. They are kept verbatim rather than dropped — a rule that only
-one runtime enforced was still a rule someone wrote on purpose.
-
-- After the user chooses a destination, run the app-host auto-update preflight inside this host app and resolve the runner.
-- Run the installer first." >&2; exit 1; } ``` Use one explicit `hep-upload` command.
-- Never run `package` and then `publish`, because that packages twice and can submit bytes different from the review:
-- `"$RUNNER" hep-upload <agent-folder> --visibility private-link` - Agentlas Hub/marketplace:
-- If the user asks for a preview, add `--dry-run`, retain both `manifest.packageHash` and `uploadReceipt.receipt`, and append `--expected-package-hash <manifest.packageHash> --expected-upload-receipt <uploadReceipt.receipt>` to the later one-shot publish.
-- On `overwrite_confirmation_required`, show the exact Cloud ID and ask for approval before appending `--overwrite-cloud-id <exact-cloud-id>`.
-- # Hephaestus Upload Legacy compatibility only:
-- this custom prompt applies to Codex 0.116 and earlier.
-- Codex 0.117 and later use the installed `$hephaestus-upload` skill.
-- Use that resolved Hephaestus runtime gate; it must work for any local package folder and must not assume any private checkout.
-- After the user chooses a destination, first run the `hephaestus-network` skill's app-host auto-update preflight inside Cursor, then resolve `RUNNER`.
-- Never run `package` and then `publish`; that packages twice.
