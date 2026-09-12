@@ -55,12 +55,21 @@ _FINITE_HUB_TOOL_ERROR_CODES = frozenset(
     }
 )
 
+_FINITE_LEASE_ERROR_CODES = _FINITE_HUB_TOOL_ERROR_CODES | frozenset({
+    "not_found", "not_a_cloud_package", "not_published", "invalid_slug",
+    "lease_state_unavailable", "lease_recovery_incomplete", "idempotency_key_conflict",
+    "not_enabled", "invalid_idempotency_key", "invalid_body", "already_yours",
+    "origin_unattributable", "origin_not_priceable", "lease_not_offered", "price_changed",
+    "lease_not_chargeable", "charge_failed", "lease_commit_unknown",
+})
+
 
 def finite_hub_tool_error_code(
     value: Any,
     *,
     allowed_codes: Collection[str] | None = None,
     default: str = "source_unavailable",
+    structured_only: bool = False,
 ) -> str:
     """Extract one allowlisted error code from a bounded nested payload.
 
@@ -109,7 +118,10 @@ def finite_hub_tool_error_code(
         text = current.strip()
         if not text:
             continue
-        for token in re.findall(r"[a-z][a-z0-9_]{1,95}", text.lower()):
+        tokens = (
+            [text] if origin in {"code", "signal"} and text in allowed else []
+        ) if structured_only else re.findall(r"[a-z][a-z0-9_]{1,95}", text.lower())
+        for token in tokens:
             if token in allowed and token not in buckets[origin]:
                 buckets[origin].append(token)
         if text[:1] in {"{", "["}:
@@ -159,8 +171,8 @@ def _http_error_detail(exc: urllib.error.HTTPError, *, label: str) -> Any:
         return text
 
 
-def _http_error_code(exc: urllib.error.HTTPError, detail: Any) -> str:
-    code = finite_hub_tool_error_code(detail, default="")
+def _http_error_code(exc: urllib.error.HTTPError, detail: Any, *, allowed_codes: Collection[str] | None = None, structured_only: bool = False) -> str:
+    code = finite_hub_tool_error_code(detail, allowed_codes=allowed_codes, structured_only=structured_only, default="")
     if code:
         return code
     return {
@@ -226,13 +238,17 @@ def call_hub_tool(
     home: Path | str | None = None,
     timeout: int = _HUB_TIMEOUT_SECONDS,
     auto_auth: bool = True,
+    endpoint_path: str = "/api/mcp/v1",
 ) -> dict[str, Any]:
     """Call an Agentlas Hub MCP tool and return its parsed JSON payload."""
 
+    if endpoint_path not in {"/api/mcp/v1", "/api/mcp/hephaestus-network"}:
+        raise ValueError("unsupported Hub MCP endpoint")
+    endpoint_options = {"endpoint_path": endpoint_path} if endpoint_path != "/api/mcp/v1" else {}
     base_url = hub_url(home)
     token = ensure_access_token(base_url, interactive=False)
     try:
-        return _call_hub_tool_once(name, arguments or {}, base_url=base_url, timeout=timeout, token=token)
+        return _call_hub_tool_once(name, arguments or {}, base_url=base_url, timeout=timeout, token=token, **endpoint_options)
     except HubAuthRequiredError:
         # The server just told us this credential is not accepted. The stored
         # record cannot know that on its own — its `expires_at` can sit months
@@ -258,7 +274,7 @@ def call_hub_tool(
                 )
         if not token:
             raise
-        return _call_hub_tool_once(name, arguments or {}, base_url=base_url, timeout=timeout, token=token)
+        return _call_hub_tool_once(name, arguments or {}, base_url=base_url, timeout=timeout, token=token, **endpoint_options)
 
 
 def list_hub_tools(
@@ -328,8 +344,12 @@ def _call_hub_tool_once(
     base_url: str,
     timeout: int,
     token: str | None,
+    endpoint_path: str = "/api/mcp/v1",
 ) -> dict[str, Any]:
-    url = base_url + "/api/mcp/v1"
+    if endpoint_path not in {"/api/mcp/v1", "/api/mcp/hephaestus-network"}:
+        raise ValueError("unsupported Hub MCP endpoint")
+    url = base_url + endpoint_path
+    error_options = {"allowed_codes": _FINITE_LEASE_ERROR_CODES, "structured_only": True} if endpoint_path == "/api/mcp/hephaestus-network" else {}
     body = json.dumps(
         {
             "jsonrpc": "2.0",
@@ -362,7 +382,7 @@ def _call_hub_tool_once(
         detail = _http_error_detail(exc, label=f"hub tool {name} error")
         if exc.code == 401 or _is_auth_required(detail):
             raise HubAuthRequiredError(f"hub tool {name} requires Agentlas sign-in") from exc
-        code = _http_error_code(exc, detail)
+        code = _http_error_code(exc, detail, **error_options)
         raise HubToolError(
             f"hub tool {name} failed: HTTP {exc.code} ({code})",
             code=code,
@@ -377,7 +397,7 @@ def _call_hub_tool_once(
             raise HubAuthRequiredError(f"hub tool {name} requires Agentlas sign-in")
         raise HubToolError(
             f"hub tool {name} error: {payload['error']}",
-            code=finite_hub_tool_error_code(payload["error"]),
+            code=finite_hub_tool_error_code({"error": payload["error"]}, **error_options),
         )
 
     result = payload.get("result")
@@ -389,7 +409,7 @@ def _call_hub_tool_once(
             raise HubAuthRequiredError(f"hub tool {name} requires Agentlas sign-in")
         raise HubToolError(
             f"hub tool {name} error: {text or result}",
-            code=finite_hub_tool_error_code(text or result),
+            code=finite_hub_tool_error_code(text or result, **error_options),
         )
 
     text = _first_text(result)

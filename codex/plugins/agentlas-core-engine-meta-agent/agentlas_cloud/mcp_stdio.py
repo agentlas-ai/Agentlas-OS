@@ -48,6 +48,7 @@ from .workforce.provenance import (
     WORKFORCE_FEDERATED_PREPARATION_SCHEMA,
     WORKFORCE_FEDERATED_SELECTION_SCHEMA,
 )
+from .networking.lease_tools import LEASE_TOOLS, PURCHASE as LEASE_PURCHASE, QUOTE as LEASE_QUOTE, call_agent_lease_tool
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.44"}
@@ -2234,6 +2235,9 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
+TOOLS.extend(LEASE_TOOLS)
+
+
 class UnknownToolError(LookupError):
     """Raised only when this server implements no tool with the given name.
 
@@ -2353,6 +2357,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             ),
             "repairable": True,
         }
+
+    if name in {LEASE_QUOTE, LEASE_PURCHASE}:
+        return call_agent_lease_tool(name, arguments)
 
     if name in {"hephaestus_route", "hephaestus_cloud_search"} and os.environ.get(
         "HEPHAESTUS_LEGACY_ROUTER"
