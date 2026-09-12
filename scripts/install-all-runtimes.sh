@@ -103,6 +103,7 @@ PY
 ok=0
 failed=0
 tmp_source_dir=""
+prepared_source_key=""
 runtime_stage_dir=""
 
 cleanup() {
@@ -190,100 +191,40 @@ PY
 promote_runtime_home() {
   local runtime_root="$1" home_dir="$2" stage_dir="$3" expected_release="$4" py="$5"
   local plain="${home_dir##*/}"
-  local previous_dir="$runtime_root/.${plain}.previous.$$"
   local current_link="$runtime_root/current"
-  local current_tmp="$runtime_root/.current.$$"
-  local current_rollback="$runtime_root/.current.rollback.$$"
-  local legacy_current_backup="$runtime_root/.current.previous.$$"
-  local old_current_target=""
-  local promoted_target=""
-  local promoted_release=""
+  local generation="" current_tmp=""
 
   if [[ "$(cat "$stage_dir/RELEASE" 2>/dev/null || true)" != "$expected_release" ]]; then
     warn "Staged runtime RELEASE does not match $expected_release; refusing promotion."
     return 1
   fi
-  if [[ -e "$previous_dir" || -L "$previous_dir" \
-    || -e "$current_tmp" || -L "$current_tmp" \
-    || -e "$current_rollback" || -L "$current_rollback" \
-    || -e "$legacy_current_backup" || -L "$legacy_current_backup" ]]; then
-    warn "Runtime staging collision; refusing to replace the live runtime."
+  # A directory-copy installation cannot be atomically replaced by a symlink.
+  # Preserve it rather than introduce a missing-current window during migration.
+  if [[ -e "$current_link" && ! -L "$current_link" ]]; then
+    warn "Runtime current is not a symlink; atomic upgrade is unavailable. The existing runtime was preserved."
     return 1
   fi
-
-  if [[ -L "$current_link" ]]; then
-    old_current_target="$(readlink "$current_link")" || return 1
-    ln -s "$old_current_target" "$current_rollback" || return 1
-  elif [[ -e "$current_link" ]]; then
-    mv "$current_link" "$legacy_current_backup" || return 1
-  fi
-  if [[ -e "$home_dir" || -L "$home_dir" ]]; then
-    mv "$home_dir" "$previous_dir" || {
-      [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]] \
-        && mv "$legacy_current_backup" "$current_link" 2>/dev/null || true
-      rm -f "$current_rollback"
-      return 1
-    }
-  fi
-  if ! mv "$stage_dir" "$home_dir"; then
-    [[ -e "$previous_dir" || -L "$previous_dir" ]] \
-      && mv "$previous_dir" "$home_dir" 2>/dev/null || true
-    [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]] \
-      && mv "$legacy_current_backup" "$current_link" 2>/dev/null || true
-    rm -f "$current_rollback"
-    return 1
-  fi
+  # Never move or overwrite an installed generation, including a same-version
+  # reinstall. SIGKILL before/after the single pointer replacement leaves the
+  # old/new target intact. Unreferenced generations are safe recovery material.
+  mkdir -p "$runtime_root/.generations" || return 1
+  generation="$(mktemp -d "$runtime_root/.generations/${plain}.XXXXXX")" || return 1
+  rmdir "$generation" || return 1
+  mv "$stage_dir" "$generation" || return 1
   runtime_stage_dir=""
-  if ! ln -s "$home_dir" "$current_tmp" \
-    || ! atomic_replace_path "$current_tmp" "$current_link" "$py"; then
-    rm -f "$current_tmp"
-    if [[ -L "$current_rollback" ]]; then
-      atomic_replace_path "$current_rollback" "$current_link" "$py" 2>/dev/null || true
-    elif [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]]; then
-      mv "$legacy_current_backup" "$current_link" 2>/dev/null || true
-    fi
-    rm -rf "$home_dir"
-    [[ -e "$previous_dir" || -L "$previous_dir" ]] \
-      && mv "$previous_dir" "$home_dir" 2>/dev/null || true
+  current_tmp="$generation.current"
+  if ! ln -s "$generation" "$current_tmp"; then
+    warn "Could not prepare the new runtime pointer; the existing runtime was preserved."
     return 1
   fi
-
-  promoted_target="$(readlink "$current_link" 2>/dev/null || true)"
-  promoted_release="$(cat "$current_link/RELEASE" 2>/dev/null || true)"
-  # Git Bash without symlink privilege turns `ln -s` into a directory copy, so
-  # readlink is empty there while `current` is a complete runtime home. The
-  # RELEASE marker is the version truth (measured 2026-08-15 on windows-latest:
-  # every install verified-then-rolled-back on this exact check, so Windows
-  # never had a runtime home). Accept a non-symlink `current` when it carries
-  # the expected RELEASE and the runner.
-  promoted_ok=0
-  if [[ "$promoted_release" == "$expected_release" ]]; then
-    if [[ "$promoted_target" == "$home_dir" ]]; then
-      promoted_ok=1
-    elif [[ -z "$promoted_target" && ! -L "$current_link" && -d "$current_link" && -f "$current_link/bin/hephaestus" ]]; then
-      promoted_ok=1
-    fi
-  fi
-  if [[ "$promoted_ok" -ne 1 ]]; then
-    warn "Runtime current verification failed after promotion; restoring the prior runtime."
-    if [[ -L "$current_rollback" ]]; then
-      atomic_replace_path "$current_rollback" "$current_link" "$py" 2>/dev/null || true
-    elif [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]]; then
-      rm -f "$current_link"
-      mv "$legacy_current_backup" "$current_link" 2>/dev/null || true
-    else
-      rm -f "$current_link"
-    fi
-    rm -rf "$home_dir"
-    [[ -e "$previous_dir" || -L "$previous_dir" ]] \
-      && mv "$previous_dir" "$home_dir" 2>/dev/null || true
+  if [[ "$(cat "$current_tmp/RELEASE" 2>/dev/null || true)" != "$expected_release" ]]; then
+    warn "Prepared runtime pointer verification failed; the existing runtime was preserved."
     return 1
   fi
-
-  rm -f "$current_rollback"
-  [[ -e "$previous_dir" || -L "$previous_dir" ]] && rm -rf "$previous_dir"
-  [[ -e "$legacy_current_backup" || -L "$legacy_current_backup" ]] \
-    && rm -rf "$legacy_current_backup"
+  if ! atomic_replace_path "$current_tmp" "$current_link" "$py"; then
+    warn "Could not atomically replace the runtime pointer; the existing runtime was preserved."
+    return 1
+  fi
   return 0
 }
 
@@ -476,57 +417,218 @@ preflight_git() {
   return 1
 }
 
-ensure_downloaded_source() {
-  if [[ -n "$source_dir" ]]; then
+# Extraction must not source code from the archive to find its own verifier.
+# This bootstrap uses only Python's standard library; runtime dependency checks
+# still use the canonical platform helper after the source has been verified.
+resolve_archive_python_cmd() {
+  local candidate
+  if [[ -n "${HEPHAESTUS_PYTHON:-}" ]]; then
+    run_resolved_python "$HEPHAESTUS_PYTHON" -c 'import sys; sys.exit(sys.version_info < (3, 9))' >/dev/null 2>&1 || return 1
+    printf '%s\n' "$HEPHAESTUS_PYTHON"
     return 0
   fi
-  if [[ -n "$tmp_source_dir" ]]; then
+  for candidate in python3 python "py -3"; do
+    if run_resolved_python "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 9))' >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+prepare_release_source() {
+  local destination="$1" py="$2"
+  local asset="hephaestus-runtime-$version.tar.gz"
+  local archive_url="https://github.com/$repo/releases/download/$version/$asset"
+  run_resolved_python "$py" - "$destination" "$archive_url" <<'PY_RELEASE'
+import gzip, hashlib, os, re, signal, subprocess, sys, tarfile, time
+from pathlib import Path, PurePosixPath
+
+# Match the updater's compressed archive ceiling; bound work before extraction
+# and never use tar's link/device/overwrite semantics.
+MAX_ARCHIVE = 256 * 1024 * 1024
+MAX_EXPANDED = 2 * 1024 * 1024 * 1024
+MAX_MEMBERS = 50000
+MAX_METADATA = 64 * 1024
+CHUNK = 1024 * 1024
+root = Path(sys.argv[1])
+url = sys.argv[2]
+
+def interrupted(signum, frame):
+    raise InterruptedError("release_preparation_cancelled")
+signal.signal(signal.SIGTERM, interrupted)
+
+def download(address, target, limit, seconds):
+    child = subprocess.Popen([
+        "curl", "--proto", "=https", "--proto-redir", "=https", "--tlsv1.2",
+        "-fsSL", "--connect-timeout", "15", "--max-time", str(seconds),
+        "--speed-limit", "1024", "--speed-time", "30", "--max-filesize", str(limit),
+        "--", address,
+    ], stdout=subprocess.PIPE)
+    try:
+        count = 0
+        with target.open("xb") as output:
+            while True:
+                block = child.stdout.read(CHUNK)
+                if not block:
+                    break
+                count += len(block)
+                if count > limit:
+                    raise ValueError("release_download_size_exceeded")
+                output.write(block)
+        if child.wait() != 0:
+            raise ValueError("release_download_failed")
+    finally:
+        child.stdout.close()
+        if child.poll() is None:
+            child.kill()
+        child.wait()
+
+class BoundedMetadata(tarfile.TarInfo):
+    def _proc_sparse(self, archive):
+        raise ValueError("release_member_type_rejected")
+    def _proc_pax(self, archive):
+        if self.size > MAX_METADATA:
+            raise ValueError("release_metadata_size_exceeded")
+        result = super()._proc_pax(archive)
+        for fields in (archive.pax_headers, result.pax_headers):
+            if len(fields) > 64 or sum(len(str(key)) + len(str(value)) for key, value in fields.items()) > MAX_METADATA:
+                raise ValueError("release_metadata_size_exceeded")
+        return result
+    def _proc_gnulong(self, archive):
+        if self.size > MAX_METADATA:
+            raise ValueError("release_metadata_size_exceeded")
+        return super()._proc_gnulong(archive)
+
+class BoundedTarStream:
+    def __init__(self, stream):
+        self.stream, self.count = stream, 0
+        self.deadline = time.monotonic() + 120
+    def read(self, size):
+        if time.monotonic() > self.deadline:
+            raise ValueError("release_extraction_timeout")
+        block = self.stream.read(min(size, CHUNK))
+        self.count += len(block)
+        if self.count > MAX_EXPANDED:
+            raise ValueError("release_expanded_size_exceeded")
+        return block
+
+try:
+    archive = root / "release.tar.gz"
+    checksum = root / "release.sha256"
+    download(url, archive, MAX_ARCHIVE, 300)
+    download(url + ".sha256", checksum, 4096, 30)
+    tokens = checksum.read_text(encoding="ascii").split()
+    if not tokens or not re.fullmatch(r"[0-9a-fA-F]{64}", tokens[0]):
+        raise ValueError("release_checksum_invalid")
+    digest = hashlib.sha256()
+    with archive.open("rb") as source:
+        for block in iter(lambda: source.read(CHUNK), b""):
+            digest.update(block)
+    if digest.hexdigest() != tokens[0].lower():
+        raise ValueError("release_checksum_mismatch")
+    destination = root / "unpacked"
+    destination.mkdir()
+    seen, roots = set(), set()
+    expanded = 0
+    with gzip.open(archive, "rb") as compressed:
+        with tarfile.open(fileobj=BoundedTarStream(compressed), mode="r|", tarinfo=BoundedMetadata) as tf:
+            for member in tf:
+                # Older Python versions cache TarInfo even in r| mode. Links
+                # are forbidden, so no later member lookup needs this history.
+                tf.members.clear()
+                if len(seen) >= MAX_MEMBERS:
+                    raise ValueError("release_member_count_exceeded")
+                if member.sparse is not None or (not member.isdir() and not member.isreg()):
+                    raise ValueError("release_member_type_rejected")
+                name = member.name
+                if not name or len(name.encode("utf-8")) > 4096 or "\x00" in name or "\\" in name:
+                    raise ValueError("release_path_rejected")
+                relative = PurePosixPath(name)
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise ValueError("release_path_rejected")
+                parts = relative.parts
+                if not parts or not re.fullmatch(r"(?:Agentlas-OS|Hephaestus)-[A-Za-z0-9._-]+", parts[0]):
+                    raise ValueError("release_root_rejected")
+                # Also reject Windows drive/ADS/device aliases and normalized
+                # path collisions on case-insensitive host filesystems.
+                if any(":" in part or part.endswith((" ", ".")) or
+                       re.fullmatch(r"(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", part)
+                       for part in parts):
+                    raise ValueError("release_path_rejected")
+                roots.add(parts[0])
+                if len(roots) != 1:
+                    raise ValueError("release_multiple_roots")
+                key = hashlib.sha256(str(relative).casefold().encode("utf-8")).digest()
+                if key in seen:
+                    raise ValueError("release_duplicate_path")
+                seen.add(key)
+                if member.size < 0 or member.size > MAX_EXPANDED - expanded:
+                    raise ValueError("release_expanded_size_exceeded")
+                expanded += member.size
+                target = destination.joinpath(*parts)
+                if member.isdir():
+                    if member.size:
+                        raise ValueError("release_directory_data_rejected")
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                if len(parts) == 1:
+                    raise ValueError("release_root_not_directory")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source = tf.extractfile(member)
+                if source is None:
+                    raise ValueError("release_member_unreadable")
+                remaining = member.size
+                with source, target.open("xb") as output:
+                    while remaining:
+                        block = source.read(min(remaining, CHUNK))
+                        if not block:
+                            raise ValueError("release_member_truncated")
+                        output.write(block)
+                        remaining -= len(block)
+                target.chmod(0o755 if member.mode & 0o111 else 0o644)
+    if len(roots) != 1:
+        raise ValueError("release_root_missing")
+    os.replace(destination / next(iter(roots)), root / "source")
+    (root / ".source-ready").write_text(digest.hexdigest(), encoding="ascii")
+except (Exception, KeyboardInterrupt) as exc:
+    # Finite local errors only: never echo archive-controlled paths or URLs.
+    code = str(exc) if isinstance(exc, (ValueError, InterruptedError)) and re.fullmatch(r"release_[a-z_]+", str(exc)) else "release_preparation_failed"
+    print("WARN: " + code, file=sys.stderr)
+    raise SystemExit(1)
+PY_RELEASE
+}
+
+ensure_downloaded_source() {
+  if [[ -n "$requested_source_dir" ]]; then
+    [[ -d "$requested_source_dir" ]] || return 1
+    source_dir="$requested_source_dir"
+    return 0
+  fi
+  if [[ -n "$tmp_source_dir" && "$prepared_source_key" == "$repo@$version" \
+    && -f "$tmp_source_dir/.source-ready" && ! -L "$tmp_source_dir/.source-ready" \
+    && "$(wc -c < "$tmp_source_dir/.source-ready" | tr -d '[:space:]')" == 64 \
+    && "$(cat "$tmp_source_dir/.source-ready")" =~ ^[0-9a-f]{64}$ \
+    && -d "$tmp_source_dir/source" && ! -L "$tmp_source_dir/source" ]]; then
     source_dir="$tmp_source_dir/source"
     return 0
   fi
-  if ! have curl || ! have tar; then
-    warn "curl and tar are required for runtime install from a remote release."
+  # A failed or interrupted preparation is never a reusable source snapshot.
+  source_dir=""
+  prepared_source_key=""
+  [[ -z "$tmp_source_dir" ]] || rm -rf "$tmp_source_dir"
+  tmp_source_dir=""
+  have curl || { warn "curl is required for runtime install from a remote release."; return 1; }
+  local py=""
+  py="$(resolve_archive_python_cmd)" || { warn "Python 3.9+ is required to safely verify the runtime archive."; return 1; }
+  tmp_source_dir="$(mktemp -d)" || return 1
+  if ! prepare_release_source "$tmp_source_dir" "$py"; then
+    rm -rf "$tmp_source_dir"
+    tmp_source_dir=""
     return 1
   fi
-
-  tmp_source_dir="$(mktemp -d)"
-  local asset="hephaestus-runtime-$version.tar.gz"
-  local archive="$tmp_source_dir/$asset"
-  local checksum="$archive.sha256"
-  local archive_url="https://github.com/$repo/releases/download/$version/$asset"
-  local checksum_url="$archive_url.sha256"
-  log "+ downloading verified release asset $asset"
-  curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "$archive_url" -o "$archive" || return 1
-  curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "$checksum_url" -o "$checksum" || return 1
-  local expected actual
-  expected="$(awk 'NR == 1 { print tolower($1) }' "$checksum")"
-  if [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
-    warn "Release checksum metadata is invalid for $asset."
-    return 1
-  fi
-  if have shasum; then
-    actual="$(shasum -a 256 "$archive" | awk '{print tolower($1)}')"
-  elif have sha256sum; then
-    actual="$(sha256sum "$archive" | awk '{print tolower($1)}')"
-  elif have openssl; then
-    actual="$(openssl dgst -sha256 "$archive" | awk '{print tolower($NF)}')"
-  else
-    warn "shasum, sha256sum, or openssl is required to verify the runtime release."
-    return 1
-  fi
-  if [[ "$actual" != "$expected" ]]; then
-    warn "Runtime release SHA-256 mismatch; refusing to install."
-    return 1
-  fi
-  tar -xzf "$archive" -C "$tmp_source_dir" || return 1
-  local extracted
-  extracted="$(find "$tmp_source_dir" -maxdepth 1 -type d \( -name 'Agentlas-OS-*' -o -name 'Hephaestus-*' \) | head -n 1)"
-  if [[ -z "$extracted" ]]; then
-    warn "Downloaded Hephaestus source was not found in archive."
-    return 1
-  fi
-  mv "$extracted" "$tmp_source_dir/source"
   source_dir="$tmp_source_dir/source"
+  prepared_source_key="$repo@$version"
 }
 
 # Runtime-neutral install: every adapter (skills, commands, prompts, MCP)
