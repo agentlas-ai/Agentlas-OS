@@ -87,6 +87,126 @@ def validate_schema(registry: object, skips: list[str], failures: list[str]) -> 
         failures.append(f"schema violation: …and {len(errors) - 20} more")
 
 
+#: Copy that actually ships to a user or a host LLM. A retired alias may still
+#: be written down in history (CHANGELOG, docs, this gate's own docstring) — it
+#: may not be *taught*. Anything outside this list is history and is not scanned.
+RETIRED_SCAN_SUFFIXES = (".md", ".py", ".json", ".txt", ".toml")
+RETIRED_SCAN_EXCLUDE_PREFIXES = (
+    "docs/",
+    "tests/",
+    "benchmarks/",
+    "ledgers/",
+    "cache/",
+    "dist/",
+    "assets/",
+    "scripts/",
+    "CHANGELOG.md",
+)
+RETIRED_SCAN_EXCLUDE_NAMES = ("feature-map.json",)
+
+
+def tracked_copy_files(workspace: Path, skips: list[str]) -> list[Path] | None:
+    """Tracked, user-facing text files, via git.
+
+    git is the enumerator on purpose: it already knows what ships and what is a
+    build artifact, so the scan cannot be fooled by a stale dist/ or an ignored
+    scratch file. No git, no enumeration — an honest skip, never a silent pass.
+    """
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(workspace), "ls-files", "-z"],
+            capture_output=True,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as error:
+        skips.append(
+            f"SKIP (git could not list tracked files in {workspace}: {error}) — "
+            "retired-alias copy scan not performed"
+        )
+        return None
+
+    files: list[Path] = []
+    for raw in out.split(b"\0"):
+        if not raw:
+            continue
+        rel = raw.decode("utf-8", errors="replace")
+        if not rel.endswith(RETIRED_SCAN_SUFFIXES):
+            continue
+        if rel.startswith(RETIRED_SCAN_EXCLUDE_PREFIXES):
+            continue
+        if rel.rsplit("/", 1)[-1] in RETIRED_SCAN_EXCLUDE_NAMES:
+            continue
+        files.append(workspace / rel)
+    return files
+
+
+def check_retired_copy(
+    features: list, workspace: Path, skips: list[str], failures: list[str]
+) -> int:
+    """A `retired` alias must not reappear in shipping copy.
+
+    The map already said so in prose — "Retired 2026-08-18; must not reappear in
+    new copy" — and nothing enforced it, so on 2026-09-13 the retired 24-hour
+    lease was still being taught in 52 places across the host adapters. A rule
+    written only in a note is a rule nobody runs.
+
+    An alias may carry `allowedIn: ["<path substring>", ...]` for the places
+    that legitimately explain the retirement rather than teach it.
+    """
+    retired: list[tuple[str, str, dict, list[str]]] = []
+    for feature in features:
+        feature_id = feature.get("featureId", "<missing featureId>")
+        intent = feature.get("intent", {})
+        for alias in feature.get("aliases", []) or []:
+            if alias.get("status") != "retired":
+                continue
+            name = str(alias.get("name", "")).strip()
+            if not name:
+                failures.append(f"feature {feature_id}: retired alias with no name")
+                continue
+            allowed = [str(a) for a in (alias.get("allowedIn") or [])]
+            retired.append((feature_id, name, intent, allowed))
+
+    if not retired:
+        return 0
+
+    files = tracked_copy_files(workspace, skips)
+    if files is None:
+        return 0
+
+    scanned = 0
+    for path in files:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        scanned += 1
+        rel = str(path.relative_to(workspace))
+        for feature_id, name, intent, allowed in retired:
+            if name not in text:
+                continue
+            if any(fragment in rel for fragment in allowed):
+                continue
+            line_no = next(
+                (i for i, line in enumerate(text.splitlines(), 1) if name in line), 0
+            )
+            failures.append(
+                "\n".join(
+                    [
+                        f"feature {feature_id}: RETIRED alias still taught — '{name}'",
+                        f"    in file: {rel}:{line_no}",
+                        f"    say instead (ko): {intent.get('ko', '<none>')}",
+                        f"    say instead (en): {intent.get('en', '<none>')}",
+                        "    (if this line explains the retirement rather than teaches it, "
+                        "add the path to that alias's allowedIn)",
+                    ]
+                )
+            )
+    return scanned
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -219,6 +339,8 @@ def main() -> int:
                     )
                 )
 
+    copy_scanned = check_retired_copy(features, workspace, skips, failures)
+
     for line in skips:
         print(f"{GATE} {line}")
 
@@ -230,7 +352,8 @@ def main() -> int:
 
     print(
         f"{GATE} PASS — {checked} surface identifier(s) verified across "
-        f"{len(features)} feature(s); {len(skips)} skip(s); map: {map_path}"
+        f"{len(features)} feature(s); {copy_scanned} shipping file(s) scanned for "
+        f"retired copy; {len(skips)} skip(s); map: {map_path}"
     )
     return 0
 

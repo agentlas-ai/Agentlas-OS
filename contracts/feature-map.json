@@ -66,11 +66,26 @@
           "note": "Retired 2026-08-18; must not reappear in new copy."
         },
         {
-          "name": "빌리기 / Rent · 작업 1건당 / per work order",
+          "name": "워크오더 1건 · 24시간",
+          "status": "retired",
+          "note": "The upload price table taught creators the retired 24h window until 2026-09-13. A one-shot is charged on every call; it opens no window."
+        },
+        {
+          "name": "Rent (per work order, 24h)",
+          "status": "retired",
+          "note": "English half of the same retired price-table label (agentlas_cloud/pricing.py KIND_LABEL)."
+        },
+        {
+          "name": "원샷 / One-shot · 작업 1건당 / per work order",
           "status": "display"
+        },
+        {
+          "name": "빌리기 / Rent",
+          "status": "display",
+          "note": "Earlier display spelling, still correct where it appears without the retired 24h unit."
         }
       ],
-      "lastVerified": "2026-08-18"
+      "lastVerified": "2026-09-13"
     },
     {
       "featureId": "agent-day-lease",
@@ -143,10 +158,21 @@
         {
           "name": "프로젝트 인제스트",
           "status": "retired",
-          "note": "Old product framing (project ingest). Still literally present in Agentlas-OS agentlas_cloud/pricing.py PRICE_LABELS — stale copy, do not propagate."
+          "note": "Old product framing (project ingest). The Agentlas-OS pricing label it named was replaced 2026-09-13; the lease is one agent for one day, account-wide.",
+          "allowedIn": ["contracts/feature-map.md"]
+        },
+        {
+          "name": "인제스트 / Ingest",
+          "status": "retired",
+          "note": "Wire spelling leaked into the creator-facing upload price table until 2026-09-13. Show 장기대여 / Long-term lease; the --ingest-credits flag keeps the wire name."
+        },
+        {
+          "name": "프로젝트 1개 · 하루",
+          "status": "retired",
+          "note": "Misdescribed the unit: the lease key is workspace + agent, with no project in it, so one purchase covers every project on the account."
         }
       ],
-      "lastVerified": "2026-08-18"
+      "lastVerified": "2026-09-13"
     },
     {
       "featureId": "fork",

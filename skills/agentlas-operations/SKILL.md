@@ -17,7 +17,9 @@ description: Agentlas 시스템 운용 절차 — hep-network 편성, hep-graph 
 3. 선발은 **호스트 LLM이** 한다(연합은 점수 매기지 않는다) → `workforce.validate_selection`
    (연합 결과 원본 그대로 — 축약본은 거절됨) → `workforce.prepare_execution`(projectDir 필수).
 4. 준비 성공은 자동으로 로스터에 바인딩된다. 바인딩은 명시적 `workforce.complete_goal`까지 유지
-   — 24시간 Hub 리스는 과금 단위지 바인딩 종료가 아니다.
+   — Hub 리스는 과금 단위지 바인딩 종료가 아니다. 자동 리스는 없다: 허브 빌림은
+   **부를 때마다** 과금되고, 명시적으로 산 일 단위 대여(1~30일, 그 에이전트에 대해 계정 전체)나
+   계정이 소유한 자산만 0크레딧이다.
 5. 소스 스코프는 정확하게: network=전체, local/cloud/hub는 제한 스코프이지 폴백 계층이 아니다.
 6. **워커를 띄우기 직전마다** 살아 있는 세션을 알리고 `model.resolve_allocation`을 부른다
    (stage=`planner`/`worker`/`synthesis`/`verifier`). 영수증의 provider·model·effort를 그대로 쓴다.

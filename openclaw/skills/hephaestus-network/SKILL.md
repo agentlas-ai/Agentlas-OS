@@ -256,10 +256,15 @@ The active host LLM must choose exactly one turn posture:
 
 Record that content-free decision with `workforce.record_goal_turn`. A turn
 ending, session closing, runtime restarting, context compaction, worker
-invocation completing, or a 24-hour Hub lease expiring must not release the
-roster. The Hub/Web account authority alone decides whether the next actual
-remote preparation is covered by an existing same-account lease or creates a
-new charge. Never manufacture lease state locally.
+invocation completing, or a Hub lease expiring must not release the roster.
+The Hub/Web account authority alone decides whether the next actual remote
+preparation is covered by an existing same-account lease or creates a new
+charge. Never manufacture lease state locally.
+
+There is no automatic lease. A Hub borrow is charged **per call, every time**;
+paying once does not make the next call free. The only thing that rides at 0
+is an explicitly purchased day lease (1–30 days, account-wide for that agent)
+or an asset the account already owns.
 
 `standby` means a durable roster binding available to later turns. It does not
 mean a continuously running model, process, socket, or background token burn.

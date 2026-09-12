@@ -37,18 +37,21 @@ PRICE_KINDS: tuple[str, ...] = ("RENT", "INGEST", "FORK")
 #: Mirrors the server's PRICE_KIND_SPEC. The server checks again and wins; this
 #: only avoids spending a round trip on an obviously bad number.
 PRICE_KIND_BOUNDS: dict[str, dict[str, int | None]] = {
-    # A work order is a 24-hour lease a buyer opens many of, so the ceiling is
-    # deliberately low — the same job must not cost more for being split up.
+    # One work order, charged every time it is called — a buyer opens many of
+    # them, so the ceiling is deliberately low: the same job must not cost more
+    # for being split up. (The 24-hour auto-lease was retired 2026-08-18; a
+    # charge no longer opens a free reuse window.)
     "RENT": {"min": 1, "max": 100},
-    # A day of a whole project, not one task. Twenty times the rent ceiling.
+    # A whole day of one agent, account-wide — not one project, not one task.
+    # Twenty times the one-shot ceiling.
     "INGEST": {"min": 1, "max": 2_000},
     # A copy sold once. No repeat, so nothing for a ceiling to protect against.
     "FORK": {"min": 1, "max": None},
 }
 
 KIND_LABEL: dict[str, tuple[str, str]] = {
-    "RENT": ("빌리기 (워크오더 1건 · 24시간)", "Rent (per work order, 24h)"),
-    "INGEST": ("장기대여 (에이전트 1일당)", "Long-term lease (per agent-day)"),
+    "RENT": ("원샷 (작업 1건, 부를 때마다)", "One-shot (per work order, every call)"),
+    "INGEST": ("장기대여 (에이전트 1일당, 계정 전체)", "Long-term lease (per agent-day, account-wide)"),
     "FORK": ("포크 (사본 1개)", "Fork (one copy)"),
 }
 

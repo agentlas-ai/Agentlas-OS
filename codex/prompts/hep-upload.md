@@ -39,18 +39,27 @@ nobody can hire it.
 값을 정하시겠어요? 비워 두면 그 항목은 팔지 않습니다.
 Set a price? Leave one out and that kind is simply not sold.
 
-  빌리기 / Rent      워크오더 1건 · 24시간   1-100 크레딧
-  인제스트 / Ingest   프로젝트 1개 · 하루     1-2000 크레딧
-  포크 / Fork        사본 1개 · 1회         1 크레딧 이상
+  원샷 / One-shot    작업 1건, 부를 때마다           1-100 크레딧
+  장기대여 / Lease   에이전트 1개 · 하루 (계정 전체)   1-2000 크레딧
+  포크 / Fork       사본 1개 · 1회                 1 크레딧 이상
 
 전부 비워 두면 무료로 불립니다. 나중에 agentlas.cloud 수익 페이지에서도 정할 수 있습니다.
 Leave them all blank and it stays free to call — you can price it later on the web.
 ```
 
+If this agent is meant to keep running — a watcher, a poller, anything that
+wakes on a schedule — say so plainly and **press for a lease price**: without
+one, the buyer's only option is paying per call, every wake-up, and a
+five-minute watch costs them 288 calls a day. An unpriced lease is not sold at
+all; the server refuses it as `lease_not_offered` rather than inventing a
+default.
+
 Blank is NOT zero: leave the flag out entirely. Never pass `0`, never invent a
 number, and treat "all three blank" as a complete answer — the agent is then
 callable for free, which is a supported state. Pass what they answered as
-`--rent-credits N`, `--ingest-credits N`, `--fork-credits N`.
+`--rent-credits N` (one-shot), `--ingest-credits N` (lease, per day), and
+`--fork-credits N` — the flag names are the older wire spelling and are not
+what the user should be shown.
 
 ## Step 2 — Resolve the runner
 

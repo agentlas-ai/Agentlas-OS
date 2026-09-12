@@ -1,6 +1,6 @@
 ---
 name: agentlas-upload
-description: Upload an Agentlas agent after asking Cloud vs Hub first.
+description: Publish an Agentlas package to Agent Cloud or the public Hub.
 ---
 # agentlas-upload
 

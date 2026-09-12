@@ -64,6 +64,13 @@ HOSTS = [
     ("cursor/plugin/commands", "md", None, "none"),
     (".gemini/commands", "toml", "{{args}}", "toml"),
     ("gemini/extension/commands", "toml", "{{args}}", "toml"),
+    # Kimi spells a command as a skill directory (`<verb>/SKILL.md`), which is
+    # why neither generator owned it until 2026-09-13: the command renderer
+    # looked for `hep-hub.md` and the skill renderer looked for a canonical
+    # skill named `hep-hub`. Twelve hand-maintained copies drifted behind in the
+    # gap — Kimi's `hep-network` was 89 lines against the canonical 248 — and
+    # `render-command-aliases.py` then read those stale bodies as its source.
+    ("kimi/skills", "skill", "$ARGUMENTS", "skill"),
 ]
 
 DEFAULT_TOOLS = "Bash, Read, Glob, Grep"
@@ -148,6 +155,9 @@ def head(name: str, style: str, title_override: str | None = None) -> str:
         return ""
     if style == "toml":
         return f'description = "{meta["description"]}"\nprompt = """\n'
+    if style == "skill":
+        # A skill is addressed by its own name, so the name must be in the file.
+        return f"---\nname: {name}\ndescription: {meta['description']}\n---\n"
     lines = [f"description: {meta['description']}"]
     if style == "full":
         lines.append(f"argument-hint: {meta['argument-hint']}")
@@ -259,8 +269,16 @@ def main() -> int:
             problems.append(f"no canonical body for {name}")
             continue
         for directory, kind, args_token, style in HOSTS:
-            target = ROOT / directory / f"{name}.{kind}"
-            if not target.parent.exists():
+            target = (
+                ROOT / directory / name / "SKILL.md"
+                if kind == "skill"
+                else ROOT / directory / f"{name}.{kind}"
+            )
+            # "Is this host installed here?" is the host root, not the file's
+            # own folder — a skill-shaped host keeps each command in its own
+            # directory, so asking about the parent would silently skip every
+            # command that host has not shipped yet instead of reporting it.
+            if not (ROOT / directory).is_dir():
                 continue
             # Unifying the copies that exist is a formatting decision. Creating a
             # command where a host never shipped one is a product decision, so

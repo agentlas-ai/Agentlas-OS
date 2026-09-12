@@ -4,12 +4,12 @@ description: Build an Agentlas automation by describing it, list saved ones, or 
 ---
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
-# Hephaestus Graph
+# /hep-graph
 
 Saved automation graphs live in the local Agentlas database, shared with the
 desktop app. This command reads that database and can ask for a graph to run.
 
-Raw arguments: everything the user typed after `/skill:hep-graph`.
+Raw arguments: `$ARGUMENTS`
 
 **What this command can and cannot do.** It lists graphs, shows what a graph
 does, and *requests* a run. It does not execute the graph — the desktop app is
@@ -48,6 +48,9 @@ Rules that matter here:
 
 - **Never invent an answer.** If the user has not said when it runs, ask them — do not pick
   a time. The whole point of the interview is that these come from the person.
+- The interview **proposes a grading checklist** for steps that repeat until good enough
+  (what must exist / what must not appear). Relay those items so the user can confirm or
+  edit them — they are the pass/fail criteria, and the person should see them before saving.
 - If the user does not know or says you decide, pass that through verbatim
   (`알아서 해주세요` / `you decide`). The CLI then takes the most conservative option and
   says what it chose. Do not decide on their behalf yourself.
@@ -80,9 +83,12 @@ With `show <name>`:
 
 The output is a tree, not a list — indentation is the wiring. Relay it as
 wiring, because on a surface with no canvas this is the only way the user can
-see where a graph branches. Four marks must survive into your summary:
+see where a graph branches. These marks must survive into your summary:
 a step that **changes something outside**, a step that **asks first**,
-a branch's `[yes]`/`[no]` sides, and a `↩ back to …` line (a repeat).
+a branch's `[yes]`/`[no]` sides, a `↩ back to …` line (a repeat),
+a **checklist** under a verification step (the `· [must] / [must not]` lines —
+those items are exactly what the result is graded on), and a **code** step
+(a script the AI wrote runs there, not a model prompt).
 If the graph starts from a value the user provides, the output says so —
 carry that into the summary too.
 
@@ -120,3 +126,24 @@ and its reason rather than retrying.
 
 If the CLI exits non-zero, show its message verbatim and stop. Do not
 substitute a guess about why, and do not retry a run request.
+
+## Rules carried from the other runtime copies
+
+These lines existed in one runtime's hand-maintained copy and not in the
+longest one. They are kept verbatim rather than dropped — a rule that only
+one runtime enforced was still a rule someone wrote on purpose.
+
+- # Hephaestus Graph Saved automation graphs live in the local Agentlas database, shared with the desktop app.
+- # /hep-graph Treat the text after `/hep-graph` as one of:
+- `new <request>`, `list`, `show <name>`, or `run <name>`.
+- This workflow requests work from the independent Agentlas CLI; it must not substitute Gemini CLI, Hephaestus routing, or Hub search.
+- ## Resolve the Agentlas CLI ```bash CLI="" for candidate in \ "$(command -v agentlas 2>/dev/null)" \ "$HOME/.agentlas/runtime/current/bin/agentlas" \ "./bin/agentlas" do if [ -n "$candidate" ] && [ -x "$candidate" ]; then CLI="$candidate"; break; fi done [ -n "$CLI" ] || { echo "Agentlas CLI not found.
+- npm i -g agentlas" >&2; exit 1; } ``` ## Behavior - No arguments or `list`:
+- run `"$CLI" graph list` and report trigger, step count, and on/off state.
+- run `"$CLI" graph show "<name>"` and preserve the tree wiring, external-effect and ask-first marks, branch sides, repeat edges, verification checklist, code steps, and required input.
+- Relay every unanswered question and never invent schedule, external-effect, repetition, or checklist answers.
+- The final save confirmation is the graph's approval.
+- the direct command is authority to request the run; do not ask for a second approval.
+- If a value is required, obtain that missing input without guessing, then run `"$CLI" graph run "<name>" -y` with `--input "<value>"` when needed.
+- The CLI only requests execution from Agentlas Desktop.
+- On non-zero exit, relay the exact refusal and stop.

@@ -1,35 +1,89 @@
 ---
 name: hep-search
-description: Search Agentlas Cloud and Hub candidates without invoking agents.
+description: Search Agentlas Cloud and Hub agent candidates without invoking.
 ---
+
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
+# /hep-search
 
-# Hephaestus Search
+Find matching agents **without calling them**. Return two sections: my Agentlas
+Cloud packages first, then the public Agentlas Hub.
 
+The request is the exact text the user typed after `/hep-search`.
 
-Raw arguments: everything the user typed after `/skill:hep-search`.
+## How to run
 
-Codex plugins cannot register slash commands, so this custom prompt is the
-explicit entrypoint: `/prompts:hep-search`.
+Run the shell block below **verbatim**, replacing only the `REQUEST` value. The
+runner is resolved by **absolute path** — nothing to install, nothing to add to
+`PATH`.
 
-1. Resolve the runner:
+> Guardrails: do NOT diagnose `command not found`/`PATH`, do NOT edit
+> `~/.zshrc`, and do NOT create/commit/stash/push any git branch or claim you
+> did. This workflow changes no source files and invokes no agent. If the runner
+> is missing, say so and stop — never fabricate results.
 
 ```bash
+REQUEST="<replace with the exact text the user typed after /hep-search>"
+
+case "$REQUEST" in
+  "<replace"*) echo "REQUEST placeholder not filled — substitute the user's request first." >&2; exit 2 ;;
+esac
+
 RUNNER=""
-for c in "$HOME/.agentlas/runtime/current/bin/hephaestus" ./bin/hephaestus; do
-  [ -x "$c" ] && RUNNER="$c" && break
+for candidate in \
+  "$HOME/.agentlas/runtime/current/bin/hephaestus" \
+  "./bin/hephaestus"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
+if [ -z "$RUNNER" ]; then
+  for cache in "$HOME/.claude/plugins/cache/agentlas-core-engine/hephaestus" \
+               "${CODEX_HOME:-$HOME/.codex}/plugins/cache/agentlas-core-engine/hephaestus"; do
+    newest="$(ls -d "$cache"/*/bin/hephaestus 2>/dev/null | sort -V | tail -1)"
+    if [ -n "$newest" ] && [ -x "$newest" ]; then RUNNER="$newest"; break; fi
+  done
+fi
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
 if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
   "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
 fi
-"$RUNNER" search "$ARGUMENTS" --runtime codex --limit 10
+"$RUNNER" search "$REQUEST" --runtime antigravity --limit 10
 ```
 
-2. Present the JSON as two sections:
-   - `cloud`: my own Agentlas Cloud packages.
-   - `hub`: public Agentlas Hub marketplace.
+## Answer shape
 
-3. Include rank, name, slug, description, callable/routing status, and why.
-   Do not invoke agents from this prompt. Use `/prompts:hep-call` next
-   when the user names exact slugs.
+1. Show `sections.cloud.results` first, then `sections.hub.results`.
+2. For each candidate include rank, name, slug, description, callable/routing
+   status, and why it matched.
+3. Do not invoke any agent. If the user wants to run exact agents next, use
+   `/hep-call agent-slug-1, agent-slug-2 {context}`.
+4. Include `receipt_id` in the final line.
+
+## Examples
+
+```text
+/hep-search 시장 리포트 써야 하는데 쓸만한 에이전트 찾아줘
+/hep-search find agents for ASO review replies
+```
+
+---
+
+Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요.
+업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
+
+## Rules carried from the other runtime copies
+
+These lines existed in one runtime's hand-maintained copy and not in the
+longest one. They are kept verbatim rather than dropped — a rule that only
+one runtime enforced was still a rule someone wrote on purpose.
+
+- `$ARGUMENTS` ## Search ```bash RUNNER="" for candidate in \ "$HOME/.agentlas/runtime/current/bin/hephaestus" \ "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \ "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \ "./bin/hephaestus" do if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
+- `$ARGUMENTS` Codex plugins cannot register slash commands, so this custom prompt is the explicit entrypoint:
+- ```bash RUNNER="" for c in "$HOME/.agentlas/runtime/current/bin/hephaestus" ./bin/hephaestus; do [ -x "$c" ] && RUNNER="$c" && break done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.
+- Use `/prompts:hep-call` next when the user names exact slugs.
+- # Hephaestus Search Search Agentlas Cloud and public Hub candidates without invoking agents.
+- First run the `hephaestus-network` skill's app-host auto-update preflight inside Cursor; do not ask the user to open a separate terminal.
+- Resolve the runner (`~/.agentlas/runtime/current/bin/hephaestus`, then `./bin/hephaestus`), run `"$RUNNER" auth ensure --timeout 180`, then run `"$RUNNER" search "<request>" --runtime cursor --limit 10`.
+- Show `cloud` and `hub` sections with rank, name, slug, description, callable/routing status, why, and `receipt_id`.
+- Do not invoke candidates from this command.
+- `$ARGUMENTS` ```bash RUNNER="" for c in "$HOME/.agentlas/runtime/current/bin/hephaestus" ./bin/hephaestus; do [ -x "$c" ] && RUNNER="$c" && break done [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found.

@@ -1,6 +1,6 @@
 ---
 name: agentlas-connect
-description: Start the Agentlas Connect flow for Telegram.
+description: Connect Agentlas agents or teams to Telegram.
 ---
 # agentlas-connect
 

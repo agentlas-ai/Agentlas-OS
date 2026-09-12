@@ -181,9 +181,9 @@ done
 
 The roster remains bound across turns, sessions, restarts, and context
 compaction until the whole goal is explicitly completed/cancelled through
-`workforce.complete_goal(explicitCompletion=true)`. A 24-hour Hub lease only
-controls whether the next real borrow is charged; it never ends the goal
-binding. Standby is durable availability, not a continuously running model.
+`workforce.complete_goal(explicitCompletion=true)`. A Hub lease only controls
+whether the next real borrow is charged; it never ends the goal binding.
+Standby is durable availability, not a continuously running model.
 Memory Curator/Experience continue on actual worker invocations only.
 
 Do not call legacy `hephaestus_route`, register or use direct remote search as a substitute
