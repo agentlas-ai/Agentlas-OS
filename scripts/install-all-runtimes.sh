@@ -36,6 +36,8 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 export PYTHONPYCACHEPREFIX
 
 version="${HEPHAESTUS_REF:-v1.2.44}"
+repo_was_explicit="${HEPHAESTUS_REPO:-}"
+github_url_was_explicit="${HEPHAESTUS_GITHUB_URL:-}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
 github_url="${HEPHAESTUS_GITHUB_URL:-https://github.com/$repo}"
 marketplace_name="${HEPHAESTUS_MARKETPLACE:-agentlas-core-engine}"
@@ -105,6 +107,7 @@ failed=0
 tmp_source_dir=""
 prepared_source_key=""
 runtime_stage_dir=""
+installed_runtime_generation=""
 
 cleanup() {
   if [[ -n "$tmp_source_dir" ]]; then
@@ -126,6 +129,38 @@ warn() {
 
 have() {
   command -v "$1" >/dev/null 2>&1
+}
+
+resolve_install_source_identity() {
+  # Validate before download, CLI registration, removal or cache maintenance.
+  # Local sources have no remote repo/URL identity to reconcile.
+  if [[ -n "$requested_source_dir" ]]; then
+    [[ -d "$requested_source_dir" ]] || { warn "install_source_directory_missing"; return 1; }
+    return 0
+  fi
+  local canonical_repo="${repo%.git}" url_repo="" canonical_url=""
+  canonical_repo="$(printf '%s' "$canonical_repo" | tr '[:upper:]' '[:lower:]')"
+  canonical_url="$(printf '%s' "$github_url" | tr '[:upper:]' '[:lower:]')"
+  canonical_url="${canonical_url%/}"
+  if [[ "$canonical_url" != https://github.com/* ]]; then
+    warn "install_source_url_unsupported"
+    return 1
+  fi
+  url_repo="${canonical_url#https://github.com/}"
+  url_repo="${url_repo%.git}"
+  local repo_pattern='^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9._-]*$'
+  if [[ ! "$canonical_repo" =~ $repo_pattern || ! "$url_repo" =~ $repo_pattern ]]; then
+    warn "install_source_repository_invalid"
+    return 1
+  fi
+  if [[ -n "$github_url_was_explicit" && -z "$repo_was_explicit" ]]; then
+    canonical_repo="$url_repo"
+  elif [[ "$canonical_repo" != "$url_repo" ]]; then
+    warn "install_source_identity_conflict"
+    return 1
+  fi
+  repo="$canonical_repo"
+  github_url="https://github.com/$canonical_repo"
 }
 
 resolve_python_cmd() {
@@ -193,6 +228,7 @@ promote_runtime_home() {
   local plain="${home_dir##*/}"
   local current_link="$runtime_root/current"
   local generation="" current_tmp=""
+  installed_runtime_generation=""
 
   if [[ "$(cat "$stage_dir/RELEASE" 2>/dev/null || true)" != "$expected_release" ]]; then
     warn "Staged runtime RELEASE does not match $expected_release; refusing promotion."
@@ -225,6 +261,7 @@ promote_runtime_home() {
     warn "Could not atomically replace the runtime pointer; the existing runtime was preserved."
     return 1
   fi
+  installed_runtime_generation="$generation"
   return 0
 }
 
@@ -600,6 +637,7 @@ PY_RELEASE
 }
 
 ensure_downloaded_source() {
+  resolve_install_source_identity || return 1
   if [[ -n "$requested_source_dir" ]]; then
     [[ -d "$requested_source_dir" ]] || return 1
     source_dir="$requested_source_dir"
@@ -1030,38 +1068,126 @@ remove_claude_existing() {
   rm -rf "$HOME/.claude/plugins/cache/$marketplace_name/$old_plugin_name" 2>/dev/null || true
 }
 
+# Resolve only the immutable generation successfully promoted by this process.
+# Neither the mutable current pointer nor the downloaded temporary tree is a
+# durable marketplace source. Existing registrations are read, never replaced.
+accepted_marketplace_source() {
+  local host="$1" py=""
+  [[ -n "$installed_runtime_generation" ]] || { warn "marketplace_generation_unavailable"; return 1; }
+  py="$(resolve_archive_python_cmd)" || return 1
+  run_resolved_python "$py" - "$installed_runtime_generation" "$HOST_ADAPTER_BUNDLE_DIR" "$host" "$marketplace_name" "$plugin_name" "$version" <<'PY_SOURCE'
+import json, sys
+from pathlib import Path
+try:
+    generation = Path(sys.argv[1]).resolve(strict=True)
+    bundle = (generation / sys.argv[2]).resolve(strict=True)
+    if generation not in bundle.parents:
+        raise ValueError()
+    host, name, plugin, version = sys.argv[3:]
+    if (generation / "RELEASE").read_text(encoding="ascii").strip() != version:
+        raise ValueError()
+    root = (bundle / "claude").resolve(strict=True) if host == "claude" else bundle
+    if root != bundle and bundle not in root.parents:
+        raise ValueError()
+    metadata = root / (".claude-plugin/marketplace.json" if host == "claude" else ".agents/plugins/marketplace.json")
+    if root not in metadata.resolve(strict=True).parents or metadata.stat().st_size > 1024 * 1024:
+        raise ValueError()
+    document = json.loads(metadata.read_text(encoding="utf-8"))
+    if document.get("name") != name:
+        raise ValueError()
+    entries = [item for item in document.get("plugins", []) if isinstance(item, dict) and item.get("name") == plugin]
+    if len(entries) != 1:
+        raise ValueError()
+    declared = entries[0].get("source")
+    if host == "codex":
+        if not isinstance(declared, dict) or declared.get("source") != "local":
+            raise ValueError()
+        declared = declared.get("path")
+    if not isinstance(declared, str) or Path(declared).is_absolute():
+        raise ValueError()
+    content = (root / declared).resolve(strict=True)
+    if root not in content.parents or not content.is_dir():
+        raise ValueError()
+    plugin_manifest = content / (".claude-plugin/plugin.json" if host == "claude" else ".codex-plugin/plugin.json")
+    if content not in plugin_manifest.resolve(strict=True).parents or plugin_manifest.stat().st_size > 1024 * 1024:
+        raise ValueError()
+    plugin_document = json.loads(plugin_manifest.read_text(encoding="utf-8"))
+    if plugin_document.get("name") != plugin or plugin_document.get("version") != version.removeprefix("v"):
+        raise ValueError()
+    print(root)
+except Exception:
+    print("WARN: marketplace_generation_invalid", file=sys.stderr)
+    raise SystemExit(1)
+PY_SOURCE
+}
+
+marketplace_registration_status() {
+  local host="$1" desired="$2" py=""
+  py="$(resolve_archive_python_cmd)" || return 1
+  run_resolved_python "$py" - "$host" "$desired" "$marketplace_name" <<'PY_REGISTRY'
+import json, subprocess, sys
+from pathlib import Path
+try:
+    host, desired, name = sys.argv[1:]
+    if not Path(desired).is_absolute() or str(Path(desired).resolve(strict=True)) != desired:
+        raise ValueError()
+    reply = subprocess.run([host, "plugin", "marketplace", "list", "--json"], capture_output=True, timeout=15)
+    if reply.returncode or len(reply.stdout) > 1024 * 1024:
+        raise ValueError()
+    document = json.loads(reply.stdout)
+    entries = document if host == "claude" else document.get("marketplaces")
+    if not isinstance(entries, list) or any(not isinstance(item, dict) for item in entries):
+        raise ValueError()
+    matches = [item for item in entries if item.get("name") == name]
+    if not matches:
+        print("absent")
+    elif len(matches) != 1:
+        print("conflict")
+    else:
+        item = matches[0]
+        if host == "claude":
+            actual = item.get("path") if item.get("source") == "directory" else None
+        else:
+            origin = item.get("marketplaceSource")
+            actual = item.get("root") if isinstance(origin, dict) and origin.get("sourceType") == "local" else None
+            if not isinstance(origin, dict) or not isinstance(origin.get("source"), str) or not Path(origin["source"]).is_absolute() or origin["source"] != desired:
+                actual = None
+        exact = isinstance(actual, str) and Path(actual).is_absolute() and actual == desired and str(Path(actual).resolve(strict=True)) == desired
+        print("exact" if exact else "conflict")
+except Exception:
+    print("WARN: marketplace_registry_unavailable", file=sys.stderr)
+    raise SystemExit(1)
+PY_REGISTRY
+}
+
+ensure_exact_marketplace_registration() {
+  local host="$1" desired="" state=""
+  desired="$(accepted_marketplace_source "$host")" || return 1
+  state="$(marketplace_registration_status "$host" "$desired")" || return 1
+  case "$state" in
+    exact) return 0 ;;
+    absent)
+      run "$host" plugin marketplace add "$desired" || { warn "marketplace_registration_failed"; return 1; }
+      state="$(marketplace_registration_status "$host" "$desired")" || return 1
+      [[ "$state" == exact ]] || { warn "marketplace_registration_unverified"; return 1; }
+      ;;
+    *) warn "marketplace_source_conflict"; return 1 ;;
+  esac
+}
+
 install_claude() {
   if ! have claude; then
     warn "Claude CLI not found; skipped Claude plugin install."
     return 0
   fi
 
+  resolve_install_source_identity || return 1
   log "== Claude Code plugin =="
-  if [[ "$force" == "1" ]]; then
-    remove_claude_existing
-  else
-    try claude plugin marketplace update "$marketplace_name" >/dev/null 2>&1 || true
-  fi
-
-  # `marketplace add` fails when the marketplace is already registered, and a
-  # hard `return 1` here used to abandon the whole Claude step: no plugin
-  # install, no command refresh, and the previous release's plugin cache left in
-  # place as the live one. An already-registered marketplace is a success state
-  # for this installer, so absorb it with `update` and keep going.
-  local marketplace_source=""
-  if [[ -n "$requested_source_dir" ]]; then
-    marketplace_source="$source_dir/claude"
-    run claude plugin marketplace add "$marketplace_source" \
-      || try claude plugin marketplace update "$marketplace_name" >/dev/null 2>&1 \
-      || warn "Marketplace $marketplace_name could not be added or updated; continuing with the registered copy."
-  else
-    run claude plugin marketplace add "$github_url" --sparse .claude-plugin claude/plugins \
-      || try claude plugin marketplace update "$marketplace_name" >/dev/null 2>&1 \
-      || warn "Marketplace $marketplace_name could not be added or updated; continuing with the registered copy."
-  fi
+  ensure_exact_marketplace_registration claude || return 1
 
   run claude plugin install "$plugin_name@$marketplace_name" || return 1
-  try claude plugin enable "$plugin_name@$marketplace_name" >/dev/null 2>&1 || true
+  try claude plugin enable "$plugin_name@$marketplace_name" >/dev/null 2>&1 \
+    || { warn "plugin_enable_failed"; return 1; }
   write_claude_commands || {
     warn "Claude global command refresh failed; bare /hep-* autocomplete will not persist into the next session."
     return 1
@@ -1283,18 +1409,9 @@ install_codex() {
     return 0
   fi
 
+  resolve_install_source_identity || return 1
   log "== Codex plugin =="
-  if [[ "$force" == "1" ]]; then
-    remove_codex_existing
-  else
-    try codex plugin marketplace upgrade "$marketplace_name" >/dev/null 2>&1 || true
-  fi
-
-  if [[ -n "$requested_source_dir" ]]; then
-    run codex plugin marketplace add "$source_dir" || return 1
-  else
-    run codex plugin marketplace add "$repo" --ref "$version" || return 1
-  fi
+  ensure_exact_marketplace_registration codex || return 1
 
   run codex plugin add "$plugin_name@$marketplace_name" || return 1
   write_codex_prompts || warn "Codex command-surface install failed; reinstall the Hephaestus plugin skills."
@@ -1302,27 +1419,8 @@ install_codex() {
   ok=$((ok + 1))
 }
 
-stamp_plugin_cache_releases() {
-  local root dir count=0
-  for root in \
-    "$HOME/.claude/plugins/cache/$marketplace_name/$plugin_name" \
-    "${CODEX_HOME:-$HOME/.codex}/plugins/cache/$marketplace_name/$plugin_name"
-  do
-    [[ -d "$root" ]] || continue
-    while IFS= read -r -d '' dir; do
-      [[ -f "$dir/bin/hephaestus" ]] || continue
-      printf '%s\n' "$version" > "$dir/RELEASE" || true
-      write_python3_shim "$dir/bin" || true
-      # Same rule as the runtime bin: a bash command with no .cmd sibling does not
-      # exist to cmd.exe. Swept here too so the plugin cache cannot drift from it.
-      write_windows_command_shims "$dir/bin" || true
-      count=$((count + 1))
-    done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
-  done
-  if [[ "$count" -gt 0 ]]; then
-    log "Stamped plugin cache release markers: $count"
-  fi
-}
+# Installed plugin RELEASE/provenance and launchers belong to their accepted
+# package. Never sweep or relabel old caches after a host registration failure.
 
 # The Codex plugin doesn't support MCP bundles, so register directly in config.toml.
 # Workforce must have one canonical MCP entrypoint. Remove the old direct
@@ -1913,6 +2011,7 @@ prune_legacy_public_surfaces() {
 }
 
 main() {
+  resolve_install_source_identity || exit 1
   log "Hephaestus one-touch install/update"
   log "repo: $repo"
   log "ref:  $version"
@@ -1925,7 +2024,6 @@ main() {
   install_agents_skills || { warn "Universal ~/.agents/skills install failed."; failed=$((failed + 1)); }
   install_claude || { warn "Claude install failed."; failed=$((failed + 1)); }
   install_codex || { warn "Codex install failed."; failed=$((failed + 1)); }
-  stamp_plugin_cache_releases || warn "Plugin cache release marker refresh failed."
   install_gemini || { warn "Gemini install failed."; failed=$((failed + 1)); }
   install_antigravity || { warn "Antigravity install failed."; failed=$((failed + 1)); }
   install_cursor || { warn "Cursor install failed."; failed=$((failed + 1)); }
