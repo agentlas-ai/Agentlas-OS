@@ -248,6 +248,12 @@ promote_runtime_home() {
   rmdir "$generation" || return 1
   mv "$stage_dir" "$generation" || return 1
   runtime_stage_dir=""
+  if [[ "${6:-}" == record-adapters ]]; then
+    # Normalize only our own newly minted path (for example a symlinked home).
+    # Registry-provided paths must still be literal canonical strings.
+    generation="$(run_resolved_python "$py" -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve(strict=True))' "$generation")" || return 1
+    generation_adapter_receipt record "$generation" || return 1
+  fi
   current_tmp="$generation.current"
   if ! ln -s "$generation" "$current_tmp"; then
     warn "Could not prepare the new runtime pointer; the existing runtime was preserved."
@@ -813,7 +819,7 @@ install_runtime_home() {
   # Commit only after the staged runtime is complete. Python's os.replace is a
   # same-filesystem atomic rename on both macOS and Linux and, unlike `mv -f`,
   # does not follow an existing `current` symlink as a destination directory.
-  promote_runtime_home "$runtime_root" "$home_dir" "$stage_dir" "$version" "$py" \
+  promote_runtime_home "$runtime_root" "$home_dir" "$stage_dir" "$version" "$py" record-adapters \
     || return 1
   log "Installed runner: $HOME/.agentlas/runtime/current/bin/hephaestus"
   prune_runtime_homes || warn "Old runtime home versions were left in place."
@@ -1121,6 +1127,244 @@ except Exception:
 PY_SOURCE
 }
 
+# A receipt in a release tree is not authority. Each completed installer run
+# separately records its generation in owner-only state outside that tree.
+# Reuse is bounded to identical adapters and source provenance, never version.
+generation_adapter_receipt() {
+  local action="$1" generation="$2" candidate="${3:-}" host="${4:-}" py="" mode="remote" digest=""
+  py="$(resolve_archive_python_cmd)" || return 1
+  if [[ -n "$requested_source_dir" ]]; then
+    mode="local"
+  elif [[ "$action" == record ]]; then
+    [[ "$prepared_source_key" == "$repo@$version" && -n "$tmp_source_dir" ]] || { warn "generation_source_receipt_unavailable"; return 1; }
+    digest="$(cat "$tmp_source_dir/.source-ready" 2>/dev/null)" || return 1
+  fi
+  run_resolved_python "$py" - "$action" "$generation" "$candidate" "$host" "$HOST_ADAPTER_BUNDLE_DIR" "$repo" "$version" "$mode" "$digest" <<'PY_GENERATION'
+import hashlib, json, os, re, stat, sys, time, uuid
+from pathlib import Path
+
+# Bounds apply to the entire tree, not individual files. No silent truncation.
+MAX_ENTRIES, MAX_BYTES, MAX_PATH, CHUNK = 20000, 512 * 1024 * 1024, 4096, 1024 * 1024
+DEADLINE = time.monotonic() + 120
+observed_trees = []
+observed_metadata = []
+
+def check_time():
+    if time.monotonic() > DEADLINE:
+        raise ValueError("generation_tree_timeout")
+
+def signature(s):
+    return (s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns, s.st_ctime_ns, s.st_nlink)
+
+def canonical(value):
+    p = Path(value)
+    if not p.is_absolute() or str(p.resolve(strict=True)) != value:
+        raise ValueError("generation_path_invalid")
+    return p
+
+def owned_directory(p):
+    s = p.lstat()
+    if not stat.S_ISDIR(s.st_mode) or s.st_uid != os.getuid() or s.st_mode & 0o022:
+        raise ValueError("generation_owner_unavailable")
+    return signature(s)
+
+def open_file(path, limit):
+    # Metadata reads use the same no-follow, regular-file and identity fence.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > limit:
+            raise ValueError("generation_metadata_invalid")
+        data = b""
+        while len(data) <= limit:
+            check_time()
+            part = os.read(fd, min(CHUNK, limit + 1 - len(data)))
+            if not part:
+                break
+            data += part
+        if len(data) > limit or signature(before) != signature(os.fstat(fd)) or signature(before) != signature(os.stat(path, follow_symlinks=False)):
+            raise ValueError("generation_metadata_changed")
+        observed_metadata.append((path, signature(before)))
+        return data
+    finally:
+        os.close(fd)
+
+def verify_metadata():
+    for path, observed in observed_metadata:
+        check_time()
+        if observed != signature(os.stat(path, follow_symlinks=False)):
+            raise ValueError("generation_metadata_changed")
+
+def tree_digest(root):
+    def scan(hash_files):
+        entries, total, digests = {}, 0, []
+        def walk(fd, prefix):
+            nonlocal total
+            check_time()
+            before = os.fstat(fd)
+            with os.scandir(fd) as iterator:
+                names = []
+                for row in iterator:
+                    check_time()
+                    if len(names) + len(entries) >= MAX_ENTRIES:
+                        raise ValueError("generation_tree_entry_limit")
+                    names.append(row.name)
+            for name in sorted(names):
+                check_time()
+                relative = prefix + name
+                if len(relative.encode('utf-8')) > MAX_PATH or len(entries) >= MAX_ENTRIES:
+                    raise ValueError("generation_tree_entry_limit")
+                observed = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                if not stat.S_ISREG(observed.st_mode) and not stat.S_ISDIR(observed.st_mode):
+                    raise ValueError("generation_tree_type_invalid")
+                child = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_DIRECTORY if stat.S_ISDIR(observed.st_mode) else 0), dir_fd=fd)
+                try:
+                    s = os.fstat(child)
+                    if signature(s) != signature(observed):
+                        raise ValueError("generation_tree_changed")
+                    entries[relative] = signature(s)
+                    checksum = None
+                    if stat.S_ISDIR(s.st_mode):
+                        walk(child, relative + '/')
+                    else:
+                        total += s.st_size
+                        if s.st_nlink != 1 or total > MAX_BYTES:
+                            raise ValueError("generation_tree_byte_limit")
+                        if hash_files:
+                            digest = hashlib.sha256()
+                            count = 0
+                            while True:
+                                check_time()
+                                block = os.read(child, CHUNK)
+                                if not block:
+                                    break
+                                count += len(block)
+                                if count > s.st_size:
+                                    raise ValueError("generation_tree_changed")
+                                digest.update(block)
+                            if count != s.st_size:
+                                raise ValueError("generation_tree_changed")
+                            checksum = digest.hexdigest()
+                    if signature(s) != signature(os.fstat(child)) or signature(s) != signature(os.stat(name, dir_fd=fd, follow_symlinks=False)):
+                        raise ValueError("generation_tree_changed")
+                    digests.append([relative, stat.S_IMODE(s.st_mode), 'directory' if stat.S_ISDIR(s.st_mode) else 'file', checksum])
+                finally:
+                    os.close(child)
+            if signature(before) != signature(os.fstat(fd)):
+                raise ValueError("generation_tree_changed")
+        fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            anchor = signature(os.fstat(fd))
+            walk(fd, '')
+            if anchor != signature(os.stat(root, follow_symlinks=False)):
+                raise ValueError("generation_tree_changed")
+        finally:
+            os.close(fd)
+        return entries, digests, anchor
+    first, digests, anchor = scan(True)
+    second, _, second_anchor = scan(False)
+    if first != second or anchor != second_anchor:
+        raise ValueError("generation_tree_changed")
+    def verify_observation():
+        final, _, final_anchor = scan(False)
+        if final != first or final_anchor != anchor:
+            raise ValueError("generation_tree_changed")
+    observed_trees.append(verify_observation)
+    return hashlib.sha256(json.dumps([stat.S_IMODE(anchor[2]), sorted(digests)], ensure_ascii=True, separators=(',', ':')).encode()).hexdigest()
+
+def production_binding(generation, bundle):
+    release = open_file(generation / 'RELEASE', 256).decode('ascii').strip()
+    provenance = json.loads(open_file(generation / 'release-provenance.json', 4096))
+    if not isinstance(provenance, dict) or provenance.get('schemaVersion') != 'agentlas.release-provenance.v1' or not re.fullmatch('[0-9a-f]{40}', str(provenance.get('commit', ''))):
+        raise ValueError("generation_provenance_invalid")
+    return {'release': release, 'provenance': provenance, 'adapterDigest': tree_digest(canonical(str(generation / bundle)))}
+
+def write_exclusive(path, data):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'wb') as out:
+        out.write(data)
+        out.flush()
+        os.fsync(out.fileno())
+
+try:
+    action, fresh, actual, host, bundle, repo, ref, mode, archive = sys.argv[1:]
+    # Native Windows ownership/ACL verification needs a separate implementation.
+    if os.name != 'posix' or not hasattr(os, 'O_NOFOLLOW') or not hasattr(os, 'getuid'):
+        if action == 'record':
+            print('WARN: generation_reuse_ownership_unsupported', file=sys.stderr)
+            raise SystemExit(0)
+        raise ValueError("generation_owner_unavailable")
+    generation = canonical(fresh)
+    generations = canonical(str(generation.parent))
+    if generations.name != '.generations' or '/' in bundle or bundle in ('', '.', '..'):
+        raise ValueError("generation_path_invalid")
+    runtime = canonical(str(generations.parent))
+    anchors = [(p, owned_directory(p)[:2]) for p in (runtime, generations, generation)]
+    index = runtime / '.generation-receipts'
+    if action == 'record':
+        index.mkdir(mode=0o700, exist_ok=True)
+    owned_directory(index)
+    index_anchor = signature(index.stat())[:2]
+    if action == 'record':
+        if mode not in ('local', 'remote') or (mode == 'remote' and not re.fullmatch('[0-9a-f]{64}', archive)):
+            raise ValueError("generation_source_receipt_unavailable")
+        binding = production_binding(generation, bundle)
+        if binding['release'] != ref:
+            raise ValueError("generation_provenance_invalid")
+        receipt = {'schema': 'agentlas.installer-generation.v1', 'generation': str(generation), 'binding': binding,
+                   'source': {'mode': mode, 'repo': repo, 'ref': ref, 'archiveSha256': archive if mode == 'remote' else None}}
+        data = json.dumps(receipt, sort_keys=True, separators=(',', ':')).encode()
+        # An archive cannot supply the independent authority entry. Never adopt
+        # an existing receipt, even if it happens to contain matching fields.
+        for verify in observed_trees:
+            verify()
+        verify_metadata()
+        write_exclusive(generation / '.adapter-receipt.json', data)
+        temporary = index / ('.pending-' + uuid.uuid4().hex)
+        try:
+            write_exclusive(temporary, data)
+            os.link(temporary, index / (generation.name + '.json'))
+        finally:
+            temporary.unlink(missing_ok=True)
+    elif action == 'compare':
+        old_root = canonical(actual)
+        old = old_root.parent.parent if host == 'claude' else old_root.parent
+        expected_root = old / bundle / 'claude' if host == 'claude' else old / bundle
+        if old.parent != generations or old_root != expected_root:
+            raise ValueError("generation_path_invalid")
+        def read_receipt(candidate):
+            owned_directory(candidate)
+            authority = index / (candidate.name + '.json')
+            state = authority.lstat()
+            if state.st_uid != os.getuid() or state.st_mode & 0o077:
+                raise ValueError("generation_owner_unavailable")
+            data = open_file(authority, 16384)
+            if data != open_file(candidate / '.adapter-receipt.json', 16384):
+                raise ValueError("generation_receipt_changed")
+            receipt = json.loads(data)
+            if receipt.get('schema') != 'agentlas.installer-generation.v1' or receipt.get('generation') != str(candidate) or receipt.get('binding') != production_binding(candidate, bundle):
+                raise ValueError("generation_receipt_changed")
+            if data != open_file(authority, 16384) or data != open_file(candidate / '.adapter-receipt.json', 16384):
+                raise ValueError("generation_receipt_changed")
+            return receipt
+        left, right = read_receipt(generation), read_receipt(old)
+        if left['source'] != right['source'] or left['binding'] != right['binding']:
+            raise ValueError("generation_source_conflict")
+        for verify in observed_trees:
+            verify()
+        verify_metadata()
+        if signature(index.stat())[:2] != index_anchor or any(owned_directory(p)[:2] != anchor for p, anchor in anchors):
+            raise ValueError("generation_receipt_changed")
+        print(old_root)
+    else:
+        raise ValueError("generation_action_invalid")
+except (Exception, KeyboardInterrupt) as exc:
+    code = str(exc) if isinstance(exc, ValueError) and re.fullmatch('generation_[a-z_]+', str(exc)) else 'generation_receipt_unavailable'
+    print('WARN: ' + code, file=sys.stderr)
+    raise SystemExit(1)
+PY_GENERATION
+}
+
 marketplace_registration_status() {
   local host="$1" desired="$2" py=""
   py="$(resolve_archive_python_cmd)" || return 1
@@ -1150,10 +1394,11 @@ try:
         else:
             origin = item.get("marketplaceSource")
             actual = item.get("root") if isinstance(origin, dict) and origin.get("sourceType") == "local" else None
-            if not isinstance(origin, dict) or not isinstance(origin.get("source"), str) or not Path(origin["source"]).is_absolute() or origin["source"] != desired:
+            if not isinstance(origin, dict) or not isinstance(origin.get("source"), str) or not Path(origin["source"]).is_absolute() or origin["source"] != actual:
                 actual = None
         exact = isinstance(actual, str) and Path(actual).is_absolute() and actual == desired and str(Path(actual).resolve(strict=True)) == desired
-        print("exact" if exact else "conflict")
+        canonical_actual = isinstance(actual, str) and Path(actual).is_absolute() and str(Path(actual).resolve(strict=True)) == actual
+        print("exact" if exact else "candidate:" + actual if canonical_actual else "conflict")
 except Exception:
     print("WARN: marketplace_registry_unavailable", file=sys.stderr)
     raise SystemExit(1)
@@ -1166,6 +1411,12 @@ ensure_exact_marketplace_registration() {
   state="$(marketplace_registration_status "$host" "$desired")" || return 1
   case "$state" in
     exact) return 0 ;;
+    candidate:*)
+      local candidate="${state#candidate:}"
+      [[ "$(marketplace_registration_status "$host" "$candidate")" == exact ]] || { warn "marketplace_source_conflict"; return 1; }
+      generation_adapter_receipt compare "$installed_runtime_generation" "$candidate" "$host" >/dev/null || return 1
+      [[ "$(marketplace_registration_status "$host" "$candidate")" == exact ]] || { warn "marketplace_source_conflict"; return 1; }
+      ;;
     absent)
       run "$host" plugin marketplace add "$desired" || { warn "marketplace_registration_failed"; return 1; }
       state="$(marketplace_registration_status "$host" "$desired")" || return 1
