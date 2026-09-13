@@ -622,6 +622,15 @@ def login(
         code_challenge=challenge,
     )
     server.expected_state = state
+    # HEPHAESTUS_AUTH_AUTOPOPUP=0 is the escape hatch six shipped documents tell
+    # CI and headless users to set, and until 2026-09-13 it existed in exactly
+    # those documents and in no line of code — measured by running a signed-out
+    # command with it set and watching the browser open anyway. Honour it here,
+    # where the browser is actually opened; the URL is still printed below, so
+    # nothing is lost, the popup just does not fire.
+    autopopup = os.environ.get("HEPHAESTUS_AUTH_AUTOPOPUP", "1").strip().lower()
+    if autopopup in {"0", "false", "no", "off"}:
+        open_browser = False
     opened = False
     if open_browser:
         opened = bool(webbrowser.open(auth_url, new=1, autoraise=True))

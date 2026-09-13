@@ -483,11 +483,11 @@ case "$command" in
 	    exit 3
 	    ;;
 	  hep-local|hephaestus-local)
-	    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"local","sources":["local"],"decisionOwner":"host_llm","legacyRouter":"disabled"}'
+	    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"local","sources":["local"],"decisionOwner":"host_llm","legacyRouter":"disabled","detail":"Run /hep-local inside an MCP-capable host (Claude Code, Codex, Cursor, Gemini, ...). Core federates the registered Local menu; the host LLM does the staffing, so this shell form has nothing to select with."}'
 	    exit 3
 	    ;;
 	  hep-hub|hephaestus-hub)
-	    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"hub","sources":["hub"],"decisionOwner":"host_llm","legacyRouter":"disabled"}'
+	    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"hub","sources":["hub"],"decisionOwner":"host_llm","legacyRouter":"disabled","detail":"Run /hep-hub inside an MCP-capable host (Claude Code, Codex, Cursor, Gemini, ...). Core federates the public Hub menu; the host LLM does the staffing, so this shell form has nothing to select with."}'
 	    exit 3
 	    ;;
 		  stormbreaker)
@@ -530,7 +530,7 @@ case "$command" in
 		    run_python_module agentlas_cloud auth login "$@"
 		    ;;
 		  cloud|hep-cloud|hephaestus-cloud)
-		    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"cloud","sources":["cloud"],"decisionOwner":"host_llm","legacyRouter":"disabled"}'
+		    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"cloud","sources":["cloud"],"decisionOwner":"host_llm","legacyRouter":"disabled","detail":"Run /hep-cloud inside an MCP-capable host (Claude Code, Codex, Cursor, Gemini, ...). Core federates the owner Cloud menu; the host LLM does the staffing, so this shell form has nothing to select with."}'
 		    exit 3
 		    ;;
       upload|hep-upload|hephaestus-upload)
