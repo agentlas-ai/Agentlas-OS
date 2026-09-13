@@ -16,15 +16,22 @@
 > curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 > ```
 >
-> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 은 이 호스트의 전역 지침 파일(예:
-> `~/.claude/CLAUDE.md`)에 라우팅 블록을 덧붙인다 — 앞으로 **모든 프로젝트에서**
-> 큰 작업을 어떻게 배분할지 바꾸는 100줄쯤이다. 설치의 나머지보다 무거운 결정이니
-> **무엇이 덧붙는지 사용자에게 보여 주고 승낙을 받아라.** 비밀이 아닌 평문이라 그대로
-> 인용해도 된다. 덮어쓰지 않고 덧붙이며 원본 옆에 시각이 찍힌 `.bak` 을 남기므로
-> 되돌릴 수 있다. 빼고 설치한 뒤 나중에 `hephaestus global install` 로 추가해도 된다.
+> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 은 **발견된 모든 지원 호스트**의 전역 지침
+> 파일에 라우팅 블록을 덧붙인다 — 빈 기계 실측으로 `~/.claude/CLAUDE.md`,
+> `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` **세 개**였다(하나가 아니다).
+> 앞으로 **모든 프로젝트에서** 큰 작업을 어떻게 배분할지 바꾸는 75줄쯤이다.
+> 설치의 나머지보다 무거운 결정이니 **무엇이 덧붙는지 사용자에게 보여 주고 승낙을
+> 받아라.** 비밀이 아닌 평문이라 그대로 인용해도 된다. 덮어쓰지 않고 덧붙이고,
+> 파일마다 시각이 찍힌 `.bak` 을 남기고, 두 번 돌려도 같은 결과이며,
+> `<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->` 로 감싸 있어
+> `hephaestus global remove` 로 걷어낼 수 있다. 빼고 설치한 뒤 나중에
+> `hephaestus global install` 로 추가해도 된다.
 >
-> 끝나면 설치 스크립트가 낸 검증 출력을 그대로 보고하고, 명령이 바로 되는지 아니면
-> 호스트를 다시 켜야 하는지 분명히 말해라. 더 조심스러운 모델에게 붙여 넣을 긴 설명은
+> 끝나면 `hephaestus doctor` 를 돌려(`~/.local/bin` 에 있고, 안 잡히면 절대경로
+> `~/.agentlas/runtime/current/bin/hephaestus`) 그 출력을 그대로 보고하고, 명령이
+> 바로 되는지 아니면 호스트를 다시 켜야 하는지 분명히 말해라. `~/.local/bin` 은
+> `PATH` 에 자동으로 안 들어간다 — 이름으로 안 잡히면 그게 이유이고, 절대경로는
+> 항상 된다. 더 조심스러운 모델에게 붙여 넣을 긴 설명은
 > [붙여넣어 설치하기](#붙여넣어-설치하기) 에 있다.
 
 <details>

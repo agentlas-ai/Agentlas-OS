@@ -880,7 +880,19 @@ EOF
     if [[ -x "$user_bin/hephaestus" ]]; then
       case ":$PATH:" in
 	        *":$user_bin:"*) log "Installed shell commands: ${shell_commands[*]}" ;;
-        *) log "Installed shell commands in $user_bin (add ~/.local/bin to PATH to use them)" ;;
+        *)
+          # "add it to PATH" with no line to add is where a clean exit-0
+          # install leaves someone unable to run anything by name. Measured on
+          # a fresh account: every wrapper works by absolute path and none by
+          # name. Give the exact command, and the path that always works.
+          log "Installed shell commands in $user_bin"
+          if ! printf '%s' ":${PATH}:" | grep -q ":${user_bin}:"; then
+            log "  $user_bin is not on your PATH yet. To use them by name:"
+            log "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc && exec zsh"
+            log "  Until then the absolute path always works:"
+            log "    $HOME/.agentlas/runtime/current/bin/hephaestus doctor"
+          fi
+          ;;
       esac
     fi
     if [[ "$windows_shims" -gt 0 ]]; then

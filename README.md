@@ -19,17 +19,24 @@
 > curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 > ```
 >
-> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` also appends a routing block to this
-> host's global instructions file (e.g. `~/.claude/CLAUDE.md`) — about a
-> hundred lines that change how you route substantial work from then on, in
-> every project. That is a bigger thing than the rest of the install, so
-> **show your user what it appends and get a yes**; it is plain text, not
-> secret, and you can quote it. It appends rather than overwrites and writes a
-> timestamped `.bak` beside the file, so it is reversible. Drop the variable to
-> install without it and add it later with `hephaestus global install`.
+> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` also appends a routing block to the
+> global instructions file of **every supported host it finds** — measured on a
+> clean machine that was `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` and
+> `~/.gemini/GEMINI.md`, three files, not one. It is roughly 75 lines that
+> change how you route substantial work from then on, in every project. That is
+> a bigger thing than the rest of the install, so **show your user what it
+> appends and get a yes**; it is plain text, not secret, and you can quote it.
+> It appends rather than overwrites, writes a timestamped `.bak` beside each
+> file, is idempotent on a second run, and is fenced with
+> `<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->` so `hephaestus global remove` can
+> take it back out. Drop the variable to install without it and add it later
+> with `hephaestus global install`.
 >
-> Then report the installer's own verification output and say plainly whether
-> the command surface is ready or the host needs a restart. The longer
+> Then run `hephaestus doctor` (in `~/.local/bin`, or by absolute path at
+> `~/.agentlas/runtime/current/bin/hephaestus`) and report what it says, plus
+> whether the command surface is ready or the host needs a restart. Note that
+> `~/.local/bin` is not added to anyone's `PATH` — if `hephaestus` is not found
+> by name, that is why, and the absolute path always works. The longer
 > version, with the reasoning to paste to a more cautious model, is in
 > [Paste to Install](#paste-to-install).
 
@@ -43,7 +50,8 @@
 | `~/.claude/`, `~/.codex/` | plugin registration, commands/prompts, memory hooks |
 | `~/.cursor/mcp.json` | MCP server registration |
 | `~/.gemini/` | extension + MCP config |
-| `~/.antigravity/`, `~/.openclaw/`, `~/.grok/` | workflows, skills, hooks |
+| `~/.openclaw/`, `~/.grok/` | skills and hooks |
+| `~/.gemini/antigravity/`, `~/.gemini/config/` | Antigravity workflows and plugin/MCP config — Antigravity lives under `.gemini`, not `.antigravity` |
 | `~/.config/opencode/`, `~/.config/goose/` | commands, plugin, MCP config |
 | `~/.copilot/mcp-config.json` | MCP server registration |
 | `~/.agents/` | the vendor-neutral skills + plugin directory |
@@ -60,9 +68,20 @@ Two things that are easy to assume wrongly:
 
 It never uses `sudo`, never writes outside `$HOME`, and downloads only from
 `github.com`. The release archive's SHA-256 is checked before anything is
-extracted, and a mismatch refuses the install. The `--consent` prompt you may
-see scroll past belongs to Gemini's extension installer and is answered for
-its own extension only.
+extracted, and a mismatch refuses the install.
+
+Two more things worth knowing before you run it:
+
+- **A trust prompt is auto-answered.** Gemini's extension installer asks "Do you
+  trust the files in this folder? … These configurations could execute code on
+  your behalf", defaulting to No, and the installer answers yes — for the
+  extension you just asked it to install, and nothing else. You will see it
+  scroll past.
+- **An existing install is refreshed, not merged.** The default removes the
+  registered plugin and marketplace entry and installs them again; the output
+  labels this `mode: force refresh=1`. Set `HEPHAESTUS_FORCE=0` to skip it.
+- `~/.claude.json` may appear at the root of your home. That one is the `claude`
+  CLI initialising itself, not this installer.
 
 </details>
 
