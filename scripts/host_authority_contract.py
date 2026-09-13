@@ -230,9 +230,17 @@ def check_plan_schema(host_policy: dict) -> None:
     schema_path = REPO_ROOT / "schemas" / "workforce-execution-plan.schema.json"
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
+    # No $id on purpose. Giving this wrapper the document's $id plus a fragment
+    # made "#/$defs/permissionPolicy" resolve against that absolute base URI
+    # instead of against this object, so jsonschema went to the network for
+    # https://agentlas.ai/schemas/workforce-execution-plan.schema.json. On a
+    # developer machine that quietly succeeded; in CI it raised KeyError then
+    # URLError, and because this is an early step in contract-gates it failed
+    # the job and SKIPPED every gate after it — the workflow had been red on
+    # every push since this gate was added on 2026-09-05, through two releases.
+    # Without $id the pointer is internal and resolves offline, everywhere.
     permission_policy_schema = {
         "$schema": schema["$schema"],
-        "$id": schema["$id"] + "#permission-policy-check",
         "$ref": "#/$defs/permissionPolicy",
         "$defs": schema["$defs"],
     }
