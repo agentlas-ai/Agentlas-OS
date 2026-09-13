@@ -189,8 +189,9 @@ things that ride at 0 credits are an agent this workspace owns and an
 explicitly purchased **장기대여 / long-term lease** of 1-30 days.
 
 That is invisible for a single task and brutal for anything that wakes on a
-schedule: a five-minute watcher runs 288 times a day, so a 3-credit agent costs
-864 credits a day to keep alive.
+schedule: a five-minute watcher runs 288 times a day, so an agent priced at 3
+credits a call costs 864 credits a day to keep alive. Read the real figures for
+the agent in hand rather than reusing that one.
 
 So when the work keeps running — a watcher, a poller, a daily report, anything
 the user describes with "계속", "매일", "~할 때마다", "every N minutes":
@@ -203,11 +204,15 @@ the user describes with "계속", "매일", "~할 때마다", "every N minutes":
 
    ```text
    계속 감시하려면 장기대여가 필요합니다.
-     호출당        6 크레딧  (5분마다면 하루 288번 = 1,728 크레딧)
-     장기대여      하루 120 크레딧
+     호출당        <perCallCredits> 크레딧  (5분마다면 하루 288번 = <288 x perCallCredits> 크레딧)
+     장기대여      하루 <perDayCredits> 크레딧
      현재 크레딧   <balance.remainingCredits>
    며칠 대여할까요?
    ```
+
+   Every number there comes from the quote. Do not carry an example figure over
+   from this page — prices differ per agent, and a wrong number quoted
+   confidently is worse than no number.
 
    **며칠인지 물어라.** 일수를 대신 고르지 마라.
 3. Only after they answer, call `hephaestus.purchase_agent_lease` with
