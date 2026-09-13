@@ -1437,8 +1437,16 @@ install_claude() {
   ensure_exact_marketplace_registration claude || return 1
 
   run claude plugin install "$plugin_name@$marketplace_name" || return 1
-  try claude plugin enable "$plugin_name@$marketplace_name" >/dev/null 2>&1 \
-    || { warn "plugin_enable_failed"; return 1; }
+  # `plugin install` already enables it, and `plugin enable` then exits
+  # non-zero with "is already enabled". Treating that exit code as failure
+  # made EVERY fresh install report "Claude install failed" and the whole
+  # installer exit 1 — on the host most people arrive through — while the
+  # plugin sat there installed and enabled. Ask the state, not the exit code.
+  try claude plugin enable "$plugin_name@$marketplace_name" >/dev/null 2>&1 || true
+  if ! claude plugin list 2>/dev/null | grep -A 3 -F "$plugin_name@$marketplace_name" | grep -qi "enabled"; then
+    warn "plugin_enable_failed: '$plugin_name@$marketplace_name' is not enabled. Run: claude plugin enable $plugin_name@$marketplace_name"
+    return 1
+  fi
   write_claude_commands || {
     warn "Claude global command refresh failed; bare /hep-* autocomplete will not persist into the next session."
     return 1
