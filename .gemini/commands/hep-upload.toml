@@ -65,6 +65,18 @@ callable for free, which is a supported state. Pass what they answered as
 `--fork-credits N` — the flag names are the older wire spelling and are not
 what the user should be shown.
 
+## Taking it back down
+
+Publishing is not one-way. If the user wants a published agent unlisted, call
+`hephaestus.unpublish_agent` with its slug — it returns what would happen and
+asks first, and only `confirm: true` acts. A hub-public package is
+soft-unpublished from Hub routing with its bytes retained for audit and
+recovery; an owner-private one has its stored bytes removed. Local installs are
+never touched. The same thing is on the web at agentlas.cloud/cargo.
+
+Only your own agents. `owner_only` means it is not yours; repeat that rather
+than trying another route.
+
 ## Step 2 — Resolve the runner
 
 After the user has chosen a destination, resolve the runner by **absolute

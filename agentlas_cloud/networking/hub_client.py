@@ -70,6 +70,8 @@ _FINITE_LEASE_ERROR_CODES = _FINITE_HUB_TOOL_ERROR_CODES | frozenset({
     # for the days chosen. Both are things the user can act on, and both used
     # to arrive as "source_unavailable".
     "sign_in_required", "confirmation_token_required", "balance_unavailable",
+    # Takedown refusals a user can act on: it is not yours, or it is not there.
+    "owner_only", "agent_not_found", "missing_slug", "forbidden",
 })
 
 

@@ -1,6 +1,6 @@
 # Agentlas 도구 색인 (자동 생성 — 손으로 편집 금지)
 
-생성원: `agentlas_cloud/mcp_stdio.py` TOOLS (30개). 재생성: `python3 scripts/generate-ops-skill-index.py`.
+생성원: `agentlas_cloud/mcp_stdio.py` TOOLS (31개). 재생성: `python3 scripts/generate-ops-skill-index.py`.
 
 | 도구 | 요지 |
 |---|---|
@@ -34,3 +34,4 @@
 | `context.verify` | Completion gate: fail closed while any impacted file is neither changed, reviewed, nor explicitly waived. |
 | `hephaestus.quote_agent_lease` | Quote a public Hub agent's explicit 1-30 day lease without spending credits. |
 | `hephaestus.purchase_agent_lease` | Buy a day-based Hub agent lease only after the user approves the displayed day count and total. |
+| `hephaestus.unpublish_agent` | Take one of YOUR OWN published agents back down from the public Agentlas Hub. |
