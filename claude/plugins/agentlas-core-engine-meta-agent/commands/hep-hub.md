@@ -25,8 +25,11 @@ staffed, so do not make them sit through a staffing ceremony to get there:
    they asked for.
 2. Before preparing anything, tell them in plain words:
    - what the agent does, from its own card;
-   - what it will need from them — logins, API keys, a phone number, a
-     schedule — so they can decide before spending anything;
+   - what it will need from them. Read `prerequisites`, `envRequirements` and
+     `mcpServers` off the card. If all three are empty, **say that the card
+     declares nothing** rather than implying it needs nothing — plenty of
+     agents want a login they never wrote down, and the user should hear that
+     before they start, not when the run stops to ask;
    - what it costs: the per-call price, and the lease price when it has one.
 3. Ask for whatever it needs, then prepare and run it, keeping the exact
    release pins below.

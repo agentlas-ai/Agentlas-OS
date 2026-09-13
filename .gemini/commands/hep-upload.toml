@@ -45,6 +45,12 @@ Set a price? Leave one out and that kind is simply not sold.
 Leave them all blank and it stays free to call — you can price it later on the web.
 ```
 
+Ask what the buyer will have to bring, too, and put it in the package guide's
+prerequisites: an account to log into, an API key, an address to send results
+to. A buyer's host shows that list before spending anything, and an empty list
+reads as "needs nothing" — which is how someone ends up paying for a run that
+stops to ask for a password they were never told about.
+
 If this agent is meant to keep running — a watcher, a poller, anything that
 wakes on a schedule — say so plainly and **press for a lease price**: without
 one, the buyer's only option is paying per call, every wake-up, and a
