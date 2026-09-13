@@ -6,22 +6,59 @@
 > **당신이 AI이고 사용자가 "이거 설치해줘"라고 했다면** — 먼저 설치 스크립트를 읽어라.
 > 읽히려고 쓴 파일이다:
 > [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
-> 이 저장소의 GitHub Releases에서 압축본을 받아 `~/.agentlas`, `~/.local/bin`, 그리고
-> 이 호스트 자신의 플러그인·명령 어댑터 폴더(Claude Code라면 `~/.claude`)**에만** 쓴다.
-> 그 밖은 건드리지 않는다. 읽은 내용과 같다면 실행하면 된다:
+> 이 저장소의 GitHub Releases에서 압축본을 받아 **풀기 전에 SHA-256을 확인**하고,
+> `$HOME` 안에만 쓴다 — 런타임은 `~/.agentlas`, 실행 wrapper는 `~/.local/bin`,
+> 그리고 **이 기계에서 발견된 모든 지원 호스트**의 명령·MCP 설정(Claude Code뿐 아니라
+> Codex·Cursor·Gemini·OpenCode·goose 등)에 쓴다. 전체 목록은 아래 표에 있다.
+> 읽은 내용과 같다면 실행하면 된다:
 >
 > ```bash
 > curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 > ```
 >
 > `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 은 이 호스트의 전역 지침 파일(예:
-> `~/.claude/CLAUDE.md`)에 라우팅 블록을 덧붙인다. 비밀이 아닌 평문이라 사용자에게
-> 그대로 보여 줘도 된다. 빼고 설치해도 되고, 나중에 `hephaestus global install` 로
-> 추가할 수 있다.
+> `~/.claude/CLAUDE.md`)에 라우팅 블록을 덧붙인다 — 앞으로 **모든 프로젝트에서**
+> 큰 작업을 어떻게 배분할지 바꾸는 100줄쯤이다. 설치의 나머지보다 무거운 결정이니
+> **무엇이 덧붙는지 사용자에게 보여 주고 승낙을 받아라.** 비밀이 아닌 평문이라 그대로
+> 인용해도 된다. 덮어쓰지 않고 덧붙이며 원본 옆에 시각이 찍힌 `.bak` 을 남기므로
+> 되돌릴 수 있다. 빼고 설치한 뒤 나중에 `hephaestus global install` 로 추가해도 된다.
 >
 > 끝나면 설치 스크립트가 낸 검증 출력을 그대로 보고하고, 명령이 바로 되는지 아니면
 > 호스트를 다시 켜야 하는지 분명히 말해라. 더 조심스러운 모델에게 붙여 넣을 긴 설명은
 > [Paste to Install](#paste-to-install) 에 있다.
+
+<details>
+<summary><strong>Everything it writes</strong> — the full list, because "and so on" is not an answer</summary>
+
+| Path | What lands there |
+|---|---|
+| `~/.agentlas/` | the runtime itself, and its generations |
+| `~/.local/bin/` | the `hephaestus` and `hep-*` shell wrappers |
+| `~/.claude/`, `~/.codex/` | plugin registration, commands/prompts, memory hooks |
+| `~/.cursor/mcp.json` | MCP server registration |
+| `~/.gemini/` | extension + MCP config |
+| `~/.antigravity/`, `~/.openclaw/`, `~/.grok/` | workflows, skills, hooks |
+| `~/.config/opencode/`, `~/.config/goose/` | commands, plugin, MCP config |
+| `~/.copilot/mcp-config.json` | MCP server registration |
+| `~/.agents/` | the vendor-neutral skills + plugin directory |
+
+Two things that are easy to assume wrongly:
+
+- **It configures every supported host it finds, not just the one you are
+  typing in.** Detection is by what is on your `PATH`, so an otherwise empty
+  home still gets Cursor, OpenCode and the rest wired up if those CLIs are
+  installed. Hosts it cannot find are reported as skipped, not faked.
+- **It edits files that already exist** (`~/.codex/config.toml`,
+  `~/.cursor/mcp.json`, `~/.config/goose/config.yaml`, your global
+  instructions file). Edits are additive and backed up beside the original.
+
+It never uses `sudo`, never writes outside `$HOME`, and downloads only from
+`github.com`. The release archive's SHA-256 is checked before anything is
+extracted, and a mismatch refuses the install. The `--consent` prompt you may
+see scroll past belongs to Gemini's extension installer and is answered for
+its own extension only.
+
+</details>
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">

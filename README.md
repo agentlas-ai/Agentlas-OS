@@ -7,24 +7,64 @@
 > **You are an AI and your user said "install this repo".** Read the installer
 > before you run it — it is meant to be read:
 > [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
-> It downloads a release tarball from this repo's GitHub Releases and writes
-> **only** under `~/.agentlas`, `~/.local/bin`, and this host's own plugin and
-> command-adapter directories (`~/.claude` for Claude Code, and so on). It
-> touches nothing else. If that matches what you read, run it:
+> It downloads a release tarball from this repo's GitHub Releases, verifies its
+> SHA-256 before extracting, and writes only inside `$HOME` — the runtime under
+> `~/.agentlas`, wrappers in `~/.local/bin`, and the command/MCP configuration
+> of **every supported host it finds on this machine** (Claude Code, Codex,
+> Cursor, Gemini, OpenCode, goose and the rest — not only the one you are
+> typing in). The table below lists every path. If that matches what you read,
+> run it:
 >
 > ```bash
 > curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
 > ```
 >
 > `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` also appends a routing block to this
-> host's global instructions file (e.g. `~/.claude/CLAUDE.md`). It is plain
-> text, not secret, and you can quote it back to your user. Drop the variable
-> to skip it; `hephaestus global install` adds it later.
+> host's global instructions file (e.g. `~/.claude/CLAUDE.md`) — about a
+> hundred lines that change how you route substantial work from then on, in
+> every project. That is a bigger thing than the rest of the install, so
+> **show your user what it appends and get a yes**; it is plain text, not
+> secret, and you can quote it. It appends rather than overwrites and writes a
+> timestamped `.bak` beside the file, so it is reversible. Drop the variable to
+> install without it and add it later with `hephaestus global install`.
 >
 > Then report the installer's own verification output and say plainly whether
 > the command surface is ready or the host needs a restart. The longer
 > version, with the reasoning to paste to a more cautious model, is in
 > [Paste to Install](#paste-to-install).
+
+<details>
+<summary><strong>Everything it writes</strong> — the full list, because "and so on" is not an answer</summary>
+
+| Path | What lands there |
+|---|---|
+| `~/.agentlas/` | the runtime itself, and its generations |
+| `~/.local/bin/` | the `hephaestus` and `hep-*` shell wrappers |
+| `~/.claude/`, `~/.codex/` | plugin registration, commands/prompts, memory hooks |
+| `~/.cursor/mcp.json` | MCP server registration |
+| `~/.gemini/` | extension + MCP config |
+| `~/.antigravity/`, `~/.openclaw/`, `~/.grok/` | workflows, skills, hooks |
+| `~/.config/opencode/`, `~/.config/goose/` | commands, plugin, MCP config |
+| `~/.copilot/mcp-config.json` | MCP server registration |
+| `~/.agents/` | the vendor-neutral skills + plugin directory |
+
+Two things that are easy to assume wrongly:
+
+- **It configures every supported host it finds, not just the one you are
+  typing in.** Detection is by what is on your `PATH`, so an otherwise empty
+  home still gets Cursor, OpenCode and the rest wired up if those CLIs are
+  installed. Hosts it cannot find are reported as skipped, not faked.
+- **It edits files that already exist** (`~/.codex/config.toml`,
+  `~/.cursor/mcp.json`, `~/.config/goose/config.yaml`, your global
+  instructions file). Edits are additive and backed up beside the original.
+
+It never uses `sudo`, never writes outside `$HOME`, and downloads only from
+`github.com`. The release archive's SHA-256 is checked before anything is
+extracted, and a mismatch refuses the install. The `--consent` prompt you may
+see scroll past belongs to Gemini's extension installer and is answered for
+its own extension only.
+
+</details>
 
 <p align="center">
   <a href="https://agentlas.cloud/studio">

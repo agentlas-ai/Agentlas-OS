@@ -156,8 +156,19 @@ if grep -q 'experimental_use_rmcp_client = true' scripts/install-all-runtimes.sh
 fi
 grep -q 'releases/download/\$version/\$asset' scripts/install-all-runtimes.sh \
   || fail "one-touch installer must use the digest-bearing release asset"
-grep -q 'SHA-256 mismatch' scripts/install-all-runtimes.sh \
-  || fail "one-touch installer must fail closed on release digest mismatch"
+# The installer DOES fail closed — it hashes the downloaded archive and raises
+# release_checksum_mismatch before anything is extracted. This gate used to look
+# for the prose "SHA-256 mismatch", which the installer has not said for some
+# time, so a correct guard was being reported as missing and verify-package.sh
+# could not pass. Assert the identifiers the code actually raises, and assert
+# the comparison that raises them, so a guard that is deleted still turns this
+# red while a reworded message does not.
+for guard in release_checksum_invalid release_checksum_mismatch; do
+  grep -q "raise ValueError(\"$guard\")" scripts/install-all-runtimes.sh \
+    || fail "one-touch installer must fail closed on release digest mismatch (missing $guard)"
+done
+grep -q 'digest.hexdigest() != tokens\[0\].lower()' scripts/install-all-runtimes.sh \
+  || fail "one-touch installer must compare the computed digest against the published one before extracting"
 
 python3 - <<'PY'
 import json
