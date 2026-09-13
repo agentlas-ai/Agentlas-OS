@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.2.45}"
+version="${HEPHAESTUS_REF:-v1.2.46}"
 repo_was_explicit="${HEPHAESTUS_REPO:-}"
 github_url_was_explicit="${HEPHAESTUS_GITHUB_URL:-}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
