@@ -34,7 +34,7 @@ for candidate in \
 do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
-[ -n "$RUNNER" ] && "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+[ -n "$RUNNER" ] && "$RUNNER" auth ensure >/dev/null 2>&1 || true
 ```
 
 1. Author a redacted `agentlas.workforce-work-order.v1`; private project

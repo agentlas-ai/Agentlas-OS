@@ -17,10 +17,10 @@ Always ask this before doing anything else, even if the arguments already say
 upload, publish, add, Cloud, Hub, or a target folder:
 
 ```text
-Cloud에 업로드 할까요? 다른사람들이 볼 수 없어요.
+Cloud에 업로드할까요? 다른 사람들은 볼 수 없어요.
 Upload to Cloud? Other people cannot see it.
 
-Agentlas Hub에 업로드 할까요? 다른 사람들이 빌려 쓸 수 있어요.
+Agentlas Hub에 업로드할까요? 다른 사람들이 빌려 쓸 수 있어요.
 Upload to Agentlas Hub? Other people can borrow it.
 ```
 
@@ -34,7 +34,7 @@ uploading. Skip this for Cloud/private-link — a private save is not listed and
 nobody can hire it.
 
 ```text
-값을 정하시겠어요? 비워 두면 그 항목은 팔지 않습니다.
+가격을 정하시겠어요? 비워 두면 그 항목은 팔지 않아요.
 Set a price? Leave one out and that kind is simply not sold.
 
   원샷 / One-shot    작업 1건, 부를 때마다           1-100 크레딧

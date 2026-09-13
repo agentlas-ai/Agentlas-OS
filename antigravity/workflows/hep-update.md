@@ -5,7 +5,7 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 Update the installed Agentlas runtime and every host adapter on this machine.
 
-Raw request: `$ARGUMENTS`
+Raw request: `the request typed after the command`
 
 Updates normally happen on their own. This command exists for the moment they
 did not: a host still loading an old bundle, a command that should exist and

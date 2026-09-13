@@ -38,7 +38,7 @@ for candidate in \
 do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
-[ -n "$RUNNER" ] && "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+[ -n "$RUNNER" ] && "$RUNNER" auth ensure >/dev/null 2>&1 || true
 ```
 
 1. Call `workforce.preflight_work_order` with a compact draft: `taskBrief`,
@@ -210,9 +210,12 @@ the user describes with "계속", "매일", "~할 때마다", "every N minutes":
    confidently is worse than no number.
 
    **며칠인지 물어라.** 일수를 대신 고르지 마라.
-3. Only after they answer, call `hephaestus.purchase_agent_lease` with
-   `confirm: true` and the token from its quote. Never buy a lease the user did
-   not agree to.
+3. Only after they answer, call `hephaestus.purchase_agent_lease`. A confirmed
+   purchase is refused unless it carries **all** of these, so send them
+   together: `confirm: true`, the `days` they chose, the `confirmationToken`,
+   the `expectedPerDayCredits` and `expectedTotalCredits` exactly as the quote
+   returned them, and a stable `idempotencyKey` you reuse on any retry. Never
+   buy a lease the user did not agree to.
 4. If the quote says `insufficient_credits`, do **not** ask them to approve a
    purchase that cannot go through. Say how short they are and give the top-up
    link it returned. If it says `leaseOffered: false`, the creator set no
@@ -225,7 +228,8 @@ not the source of the numbers: ask `prepare_execution` for a `costAdvisory`
 only if your host tolerates extra fields on the plan, and take the numbers from
 the quote tool otherwise.
 
-Ask about the lease and nothing else: a one-shot call needs no extra question.
+Beyond what the agent itself needs, ask only about the lease: a one-shot call
+needs no extra question.
 
 The roster remains bound across turns, sessions, restarts, and context
 compaction until the whole goal is explicitly completed/cancelled through

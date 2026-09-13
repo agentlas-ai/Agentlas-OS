@@ -8,4 +8,4 @@ description: "Use when the user types /agentlas-upload, /agentlas upload, $hepha
 Package security scan and distribution gate for Agentlas agents and teams.
 Alias for `hephaestus-upload` and `/agentlas upload`.
 
-See [hephaestus-upload](hephaestus-upload/SKILL.md) for full execution protocol.
+See [hephaestus-upload](../hephaestus-upload/SKILL.md) for full execution protocol.

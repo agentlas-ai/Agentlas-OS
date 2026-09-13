@@ -27,7 +27,10 @@ answers in one shot — per-day price, total for the days considered, the
 workspace's current balance, and the shortfall plus a top-up link when the
 balance is short. Show all of it in one message and **ask how many days they
 want**; do not choose for them. Only then call
-`hephaestus.purchase_agent_lease` with `confirm: true`.
+`hephaestus.purchase_agent_lease` — a confirmed purchase needs `confirm: true`,
+the chosen `days`, the `confirmationToken`, the `expectedPerDayCredits` and
+`expectedTotalCredits` from the quote, and a stable `idempotencyKey`, or it is
+refused.
 
 Never buy a lease the user did not agree to. On `insufficient_credits`, say how
 short they are and give the top-up link instead of asking them to approve a
@@ -69,7 +72,7 @@ if [ -z "$RUNNER" ]; then
 fi
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
 if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
-  "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+  "$RUNNER" auth ensure >/dev/null 2>&1 || true
 fi
 if printf '%s' "$RAW" | grep -q '{'; then
   AGENTS="${RAW%%\{*}"
@@ -81,7 +84,7 @@ else
 fi
 AGENTS="$(printf '%s' "$AGENTS" | sed 's/[[:space:]]*$//')"
 CONTEXT="$(printf '%s' "$CONTEXT" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-"$RUNNER" call "$AGENTS" "$CONTEXT" --runtime antigravity
+"$RUNNER" call "$AGENTS" "$CONTEXT" --runtime "${AGENTLAS_HOST_RUNTIME:-terminal}"
 ```
 
 ## Answer shape

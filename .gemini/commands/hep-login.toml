@@ -20,7 +20,8 @@ for candidate in \
 do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
-"$RUNNER" auth login --timeout 570
+[ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
+"$RUNNER" auth login
 ```
 
 1. Run the login command above in the foreground and wait for it — it opens

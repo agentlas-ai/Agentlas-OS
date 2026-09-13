@@ -71,7 +71,7 @@ Before routing, ensure Agentlas is signed in:
 
 ```bash
 if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
-  "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+  "$RUNNER" auth ensure >/dev/null 2>&1 || true
 fi
 ```
 

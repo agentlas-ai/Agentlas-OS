@@ -8,4 +8,4 @@ description: "Use when the user types /agentlas-graph, /agentlas graph, or /hep-
 Create, inspect, schedule, and execute Agentlas DAG automation graphs.
 Alias for `hephaestus-graph` and `/agentlas graph`.
 
-See [hephaestus-graph](hephaestus-graph/SKILL.md) for full execution protocol.
+See [hephaestus-graph](../hephaestus-graph/SKILL.md) for full execution protocol.

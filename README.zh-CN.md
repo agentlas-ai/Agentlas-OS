@@ -19,7 +19,7 @@
 > 不想要就去掉这个变量，之后用 `hephaestus global install` 再加。
 >
 > 装完请原样汇报安装脚本自己的校验输出，并明确说明命令是否已可用、还是需要重启宿主。
-> 更长、可以贴给更谨慎的模型的版本见 [Paste to Install](#paste-to-install)。
+> 更长、可以贴给更谨慎的模型的版本见 [粘贴即安装](#粘贴即安装)。
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">

@@ -186,7 +186,7 @@ Route to the Agentlas Core Engine Meta-Agent team, using the `$ENGINE` and
    nonzero exit or any error receipt is a blocker. Then:
 
    ```bash
-   "$RUNNER" contract scaffold "$PACKAGE_ROOT" --mode single|team|package
+   "$RUNNER" contract scaffold "$PACKAGE_ROOT" --mode "<single|team|package>"   # substitute exactly one; the angle brackets are not literal
    ```
 
    Then, as soon as the routing card exists, let the engine answer every hole it

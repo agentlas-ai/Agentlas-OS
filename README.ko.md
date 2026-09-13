@@ -25,7 +25,7 @@
 >
 > 끝나면 설치 스크립트가 낸 검증 출력을 그대로 보고하고, 명령이 바로 되는지 아니면
 > 호스트를 다시 켜야 하는지 분명히 말해라. 더 조심스러운 모델에게 붙여 넣을 긴 설명은
-> [Paste to Install](#paste-to-install) 에 있다.
+> [붙여넣어 설치하기](#붙여넣어-설치하기) 에 있다.
 
 <details>
 <summary><strong>Everything it writes</strong> — the full list, because "and so on" is not an answer</summary>

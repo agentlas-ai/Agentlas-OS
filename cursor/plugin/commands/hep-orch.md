@@ -2,7 +2,7 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 Set or show which model runs the orchestrator and which runs the workers.
 
-Raw request: `$ARGUMENTS`
+Raw request: `the request typed after the command`
 
 A role split only saves anything when the roles actually run on different
 models. Before this policy existed the allocator had nothing to read, so every

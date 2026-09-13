@@ -132,11 +132,18 @@ def tracked_copy_files(workspace: Path, skips: list[str]) -> list[Path] | None:
         if not raw:
             continue
         rel = raw.decode("utf-8", errors="replace")
-        if not rel.endswith(RETIRED_SCAN_SUFFIXES):
+        name = rel.rsplit("/", 1)[-1]
+        # An extension list alone has a hole exactly where the product talks
+        # most: `bin/hephaestus` is the CLI a seller reads prices from and it
+        # has no suffix, so it went unscanned and kept teaching the retired
+        # 24-hour lease for a month after everything else was corrected.
+        # Extensionless tracked files are text here (scripts, runners); a
+        # binary is rejected by the NUL check at read time.
+        if not (rel.endswith(RETIRED_SCAN_SUFFIXES) or "." not in name):
             continue
         if rel.startswith(RETIRED_SCAN_EXCLUDE_PREFIXES):
             continue
-        if rel.rsplit("/", 1)[-1] in RETIRED_SCAN_EXCLUDE_NAMES:
+        if name in RETIRED_SCAN_EXCLUDE_NAMES:
             continue
         files.append(workspace / rel)
     return files
@@ -179,9 +186,12 @@ def check_retired_copy(
     scanned = 0
     for path in files:
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            raw = path.read_bytes()
         except OSError:
             continue
+        if b"\x00" in raw[:4096]:
+            continue  # binary; an extensionless tracked file may still be one
+        text = raw.decode("utf-8", errors="replace")
         scanned += 1
         rel = str(path.relative_to(workspace))
         for feature_id, name, intent, allowed in retired:

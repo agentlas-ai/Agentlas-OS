@@ -8,7 +8,7 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 # /hep-storm
 
 Drive a goal through the **Stormbreaker Loop** — Hephaestus' force-robust,
-verifier-first execution loop — inside this Antigravity workspace. Unlike a
+verifier-first execution loop — inside this workspace. Unlike a
 one-shot answer or a generic parallel fan-out, Stormbreaker **routes the goal to
 real Agentlas specialists**, structures the work as a dependency-ordered pipeline
 fabric, drives each work packet as a **hardened goal loop** (it does not stall,
@@ -70,12 +70,12 @@ if [ -z "$RUNNER" ]; then
 fi
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
 if [ "${HEPHAESTUS_AUTH_AUTOPOPUP:-1}" != "0" ]; then
-  "$RUNNER" auth ensure --timeout 180 >/dev/null 2>&1 || true
+  "$RUNNER" auth ensure >/dev/null 2>&1 || true
 fi
 # Route + materialize the pipeline fabric for THIS goal. No --executor-command:
 # the host model (you) executes each packet natively. --research-evidence grounds
 # plan/research packets with Research Engine receipts.
-FABRIC="$("$RUNNER" hep-storm "$GOAL" --research-evidence --runtime antigravity)"
+FABRIC="$("$RUNNER" hep-storm "$GOAL" --research-evidence --runtime "${AGENTLAS_HOST_RUNTIME:-terminal}")"
 printf '%s\n' "$FABRIC"
 ```
 

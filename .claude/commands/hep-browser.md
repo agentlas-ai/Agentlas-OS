@@ -48,7 +48,11 @@ do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then RUNNER="$candidate"; break; fi
 done
 [ -n "$RUNNER" ] || { echo "Hephaestus runtime not found. Run the installer first." >&2; exit 1; }
-"$RUNNER" hep-browser "$ARGUMENTS"
+# Unquoted on purpose: quoting collapses the request into one argv entry,
+# so --act/--cdp/--wait-ms/--click-text/--keep-open become literal text
+# inside the URL and are never parsed.
+# shellcheck disable=SC2086
+"$RUNNER" hep-browser $ARGUMENTS
 ```
 
 ## Answer Shape

@@ -8,4 +8,4 @@ description: "Use when the user types /agentlas-storm, /agentlas storm, /hep-sto
 Drive a goal through the **Stormbreaker Loop** — Hephaestus' force-robust, verifier-first execution loop.
 Alias for `hephaestus-storm` and `/agentlas storm`.
 
-See [hephaestus-storm](hephaestus-storm/SKILL.md) for full execution protocol.
+See [hephaestus-storm](../hephaestus-storm/SKILL.md) for full execution protocol.

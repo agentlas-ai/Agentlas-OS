@@ -16,4 +16,4 @@ workforce.prepare_execution(workOrder=..., selection=..., federatedSelection=...
 workforce.validate_execution_receipt(receipt=..., executionPlan=..., toolInventory=...)
 ```
 
-See [hephaestus-network](hephaestus-network/SKILL.md) for full execution protocol.
+See [hephaestus-network](../hephaestus-network/SKILL.md) for full execution protocol.

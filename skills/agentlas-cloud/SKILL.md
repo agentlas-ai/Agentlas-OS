@@ -8,4 +8,4 @@ description: "Use when the user types /agentlas-cloud, /agentlas cloud, or /hep-
 Staff specialist roles specifically from the owner's private Agentlas Cloud repository.
 Alias for `hephaestus-cloud` and `/agentlas cloud`.
 
-See [hephaestus-cloud](hephaestus-cloud/SKILL.md) for full execution protocol.
+See [hephaestus-cloud](../hephaestus-cloud/SKILL.md) for full execution protocol.

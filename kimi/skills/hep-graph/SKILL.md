@@ -57,7 +57,7 @@ Rules that matter here:
 - The last line must be `y` to save. Until then nothing is written.
 - It is created **switched off**. Say so, and relay the two commands the CLI prints
   (`graph show` to look it over, `automation on` to turn it on).
-- If the CLI stops with "answer 를 받지 못해 멈췄습니다" / "Stopped without an answer to",
+- If the CLI stops with "답을 받지 못해 여기서 멈췄습니다: <질문>" / "Stopped here without an answer to: <question>",
   it needed one more answer. Relay that exact question to the user and run again with the
   fuller list. Do not retry with a guess.
 
