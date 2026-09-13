@@ -18,13 +18,19 @@ retired 2026-08-18, so paying once does not make the next call free. A job that
 wakes on a schedule pays on every wake-up: a five-minute watcher is 288 calls a
 day.
 
-When the request is a standing or recurring one, quote
-`hephaestus.quote_agent_lease` for the named agent before the first run, show
-the user the per-call total at that cadence beside the lease price, and **ask
-how many days they want**. Only then call `hephaestus.purchase_agent_lease`
-with `confirm: true`. Never buy a lease the user did not agree to; if
-`leaseOffered` is false the creator set no per-day price and it is genuinely
-not for sale — say so and quote the per-call cost instead.
+When the request is a standing or recurring one, call
+`hephaestus.quote_agent_lease` for the named agent **before the first run**. It
+answers in one shot — per-day price, total for the days considered, the
+workspace's current balance, and the shortfall plus a top-up link when the
+balance is short. Show all of it in one message and **ask how many days they
+want**; do not choose for them. Only then call
+`hephaestus.purchase_agent_lease` with `confirm: true`.
+
+Never buy a lease the user did not agree to. On `insufficient_credits`, say how
+short they are and give the top-up link instead of asking them to approve a
+purchase that cannot go through. On `leaseOffered: false` the creator set no
+per-day price and it is genuinely not for sale — say so and quote the per-call
+cost instead.
 
 ## How to run
 
