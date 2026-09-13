@@ -51,7 +51,7 @@ from .workforce.provenance import (
 from .networking.lease_tools import LEASE_TOOLS, PURCHASE as LEASE_PURCHASE, QUOTE as LEASE_QUOTE, call_agent_lease_tool
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.44"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.45"}
 
 # Roots this process has already seeded, so only the first tool call in a
 # session pays the bootstrap cost.
