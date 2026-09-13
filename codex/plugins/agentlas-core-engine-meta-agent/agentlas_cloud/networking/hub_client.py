@@ -61,6 +61,15 @@ _FINITE_LEASE_ERROR_CODES = _FINITE_HUB_TOOL_ERROR_CODES | frozenset({
     "not_enabled", "invalid_idempotency_key", "invalid_body", "already_yours",
     "origin_unattributable", "origin_not_priceable", "lease_not_offered", "price_changed",
     "lease_not_chargeable", "charge_failed", "lease_commit_unknown",
+    # Version skew, not an outage. A host that updated before the service did
+    # asks for a tool the service has never heard of; without this the refusal
+    # collapses to the default source_unavailable and the user is told the Hub
+    # is down. It is not down — their runtime is ahead of it.
+    "unknown_tool",
+    # Raised by the service when the caller is not signed in or has no credits
+    # for the days chosen. Both are things the user can act on, and both used
+    # to arrive as "source_unavailable".
+    "sign_in_required", "confirmation_token_required", "balance_unavailable",
 })
 
 
