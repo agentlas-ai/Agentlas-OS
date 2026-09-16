@@ -249,6 +249,9 @@ security-conscious), open this link in your browser first:
 > curl -fL "$url" -o Agentlas.dmg && open Agentlas.dmg
 > ```
 >
+> <details>
+> <summary>Linux and Windows one-liners</summary>
+>
 > **Linux (.deb — Debian/Ubuntu):**
 >
 > ```bash
@@ -272,6 +275,8 @@ security-conscious), open this link in your browser first:
 > $u = ($r.assets | Where-Object { $_.name -like '*Windows-x64-Setup.exe' }).browser_download_url
 > Invoke-WebRequest $u -OutFile "$env:TEMP\AgentlasSetup.exe"; Start-Process "$env:TEMP\AgentlasSetup.exe"
 > ```
+>
+> </details>
 >
 > This is a separate product from the CLI runtime installed via
 > [Paste to Install](#paste-to-install) above — the two don't conflict and can
