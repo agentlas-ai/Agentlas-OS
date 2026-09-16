@@ -232,6 +232,54 @@ security-conscious), open this link in your browser first:
   <sub><a href="https://agentlas.cloud/desktop">Build, own, borrow, and run agents across your local workspace, private Agent Cloud, and the public Agentlas Hub.</a></sub>
 </p>
 
+> ### If someone asked you to install Agentlas Desktop
+>
+> **You are an AI and your user said "install Agentlas Desktop"** — the
+> visual GUI app below, not the CLI runtime installed above. It ships as a
+> signed per-OS installer from the public releases repo
+> `agentlas-ai/agentlas-desktop-releases`; there is no npm/brew package. Fetch
+> the latest asset and run it:
+>
+> **macOS** (auto-detects Apple silicon vs Intel):
+>
+> ```bash
+> arch=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
+> url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
+>   | grep -o "https://[^\"]*-${arch}\.dmg" | head -1)
+> curl -fL "$url" -o Agentlas.dmg && open Agentlas.dmg
+> ```
+>
+> **Linux (.deb — Debian/Ubuntu):**
+>
+> ```bash
+> url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
+>   | grep -o 'https://[^"]*\.deb' | head -1)
+> curl -fL "$url" -o agentlas.deb && sudo dpkg -i agentlas.deb
+> ```
+>
+> **Linux (AppImage — any distro):**
+>
+> ```bash
+> url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
+>   | grep -o 'https://[^"]*\.AppImage' | head -1)
+> curl -fL "$url" -o Agentlas.AppImage && chmod +x Agentlas.AppImage && ./Agentlas.AppImage
+> ```
+>
+> **Windows (PowerShell):**
+>
+> ```powershell
+> $r = Invoke-RestMethod https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest
+> $u = ($r.assets | Where-Object { $_.name -like '*Windows-x64-Setup.exe' }).browser_download_url
+> Invoke-WebRequest $u -OutFile "$env:TEMP\AgentlasSetup.exe"; Start-Process "$env:TEMP\AgentlasSetup.exe"
+> ```
+>
+> This is a separate product from the CLI runtime installed via
+> [Paste to Install](#paste-to-install) above — the two don't conflict and can
+> both be present. If your user only wants the CLI/router (no GUI app), use
+> that installer instead. No prebuilt asset for your OS/arch? Point your user
+> at [agentlas.cloud/desktop](https://agentlas.cloud/desktop) or the
+> [Releases page](https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest).
+
 ## Agentlas Desktop in motion
 
 <table>
