@@ -87,6 +87,12 @@ standardised.
   the tokens drop to a quarter.
 - Measured across **849 local profiles** and **188 published listings.**
 
+And the specialist does not arrive empty-handed. The code map, the sitemap and the
+project's memory ride along with the task. Which files are in scope, what to read
+first, and whether the work is actually finished are all computed before staffing
+and handed over with it. There are tools that sell memory on its own; here memory
+is one part bolted to staffing, execution and verification.
+
 ## This is where most tools stop
 
 |  | No task split | Task split |
@@ -133,6 +139,10 @@ public Hub at once.
 
 **The list has no ranking.** Your model picks, and the reason is recorded.
 
+Qualification comes in four levels — `declared`, `checked`, `demonstrated`,
+`attested` — and every task can set a floor. The moment you pick, that release is
+pinned by digest, so one byte of drift tomorrow stops the run.
+
 </td>
 <td width="56%">
   <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-make-group-v2.gif" alt="Staffing a specialist agent onto each task" width="100%"></a>
@@ -145,8 +155,10 @@ public Hub at once.
 
 Planning, work, synthesis and verification each run as separate invocations.
 
-**An independent verifier has to pass it before anything is called done.**
-Otherwise you get the name of the place it stopped.
+**An independent verifier has to pass it before anything is called done.** Every
+invocation, every handoff and the synthesis have to be proven by receipt.
+Otherwise you get the name of the place it stopped — `prepared`, `blocked`,
+`source_unavailable`.
 
 </td>
 <td width="56%">
@@ -159,21 +171,9 @@ Otherwise you get the name of the place it stopped.
 
 ## Questions you probably have
 
+
+
 <details open>
-<summary><strong>How do I trust an agent a stranger built?</strong></summary>
-
-<br>
-
-Qualification comes in four levels — **`declared` / `checked` / `demonstrated` /
-`attested`** — and every task can set a floor. "Self-declared does not qualify
-for this one" is something you can put in the order.
-
-A prompt-made role has nowhere to record that. A backstory is a self-introduction,
-not a résumé.
-
-</details>
-
-<details>
 <summary><strong>So you recommend one to me in the end, right?</strong></summary>
 
 <br>
@@ -190,30 +190,9 @@ candidates as they are, and your model picks.
 
 </details>
 
-<details>
-<summary><strong>What if what works today changes tomorrow?</strong></summary>
 
-<br>
 
-The moment you pick, the release, package, content and bundle digests are
-pinned. One byte of drift and the run stops.
 
-Code has had lockfiles for years. Agents didn't.
-
-</details>
-
-<details>
-<summary><strong>What if it says it finished and it didn't?</strong></summary>
-
-<br>
-
-Every invocation, every handoff, the synthesis, and an **independent verifier**
-have to be proven before anything reports `executed`.
-
-Otherwise you get the name of the place it stopped: `prepared`, `blocked`,
-`source_unavailable`. Nothing here declares its own success.
-
-</details>
 
 <details>
 <summary><strong>Is this only for developers?</strong></summary>
@@ -506,7 +485,7 @@ An agent you create should remain an asset you can move, rather than a
 setting trapped in one chat, one model-vendor workspace, or one computer.
 Agentlas separates three jobs that ordinary agent builders blur together:
 
-This is the public [Agent Trust contract](docs/agent-trust-contract.md): a
+This is the public Agent Trust contract: a
 portable, owner-scoped, inspectable, and restorable package contract—not a
 claim of regulated financial or legal trust services.
 
@@ -665,13 +644,13 @@ fits the work.
 
 
 <details>
-<summary><strong>The Agent OS Stack — OS abstractions, mapped</strong></summary>
+<summary><strong>What's inside — routing, permissions, memory, retrieval, packaging</strong></summary>
 
 
 Agentlas maps agent work to operating-system-like responsibilities without
 forcing your work into one model provider:
 
-| OS Abstraction | Implementation in Hephaestus |
+| What it handles | Implementation in Hephaestus |
 | :--- | :--- |
 | **Kernel / Policy Gate** | Deterministic router + security gates. Every routing action yields an auditable receipt; tool execution permissions are enforced by the active host and runtime. |
 | **Processes / Threads** | Independent agents and multi-agent teams compiled as packages with explicit, typed contracts (Routing Cards, anti-scopes, memory boundaries, and verification shims). |
@@ -878,7 +857,7 @@ Custom `/prompts:*` commands were removed from Codex 0.117+.
 
 
 <details>
-<summary><strong>The OS Subsystems — Network 2.0, Stormbreaker, memory, ontology</strong></summary>
+<summary><strong>Deeper — the routing scheduler, the execution gate, memory, the retrieval engine</strong></summary>
 
 
 ### Meta-Agent Factory — Process Creation
@@ -891,7 +870,7 @@ A unified compilation factory using four builders. Every generated package regis
 | **Workspace Packager** | `30-agentlas-packager` | Compiled bundle ready for runtime import, CLI execution, or GitHub distribution. |
 | **Session Agent Builder** | `40-session-agent-builder` | Converts explicitly exported sessions into a reviewed single-agent or multi-agent team package. |
 
-*Briefing Interview Gate:* Builders initiate the process using the **briefing interview gate** ([docs/builder-interview-research-gate.md](docs/builder-interview-research-gate.md)): conducting lens-driven questions, evaluating the ambiguity threshold, searching primary sources, and outputting the work brief.
+*Briefing Interview Gate:* Builders initiate the process using the **briefing interview gate** : conducting lens-driven questions, evaluating the ambiguity threshold, searching primary sources, and outputting the work brief.
 
 ---
 
@@ -937,7 +916,6 @@ host-owned tool dispatcher (`host-broker`). A bound tool requires its invocation
 receipt to use that same enforcement path; neither label grants authority to a
 package that did not select the host permission policy.
 
-Details: [docs/hephaestus-network-2.0.md](docs/hephaestus-network-2.0.md) · Runtime support matrix: [docs/runtime-fallback-adapters.md](docs/runtime-fallback-adapters.md)
 
 ---
 
@@ -951,7 +929,6 @@ Kernel Gating Envelope:
 
 A local run journal makes long executions resumable after interruption. Execution packets carry the Work Brief so that anti-scope rules and exit criteria govern all parallel subprocesses. Stormbreaker reports explicit completion states (**verified / unverified / blocked**) to prevent autonomous completion theater.
 
-Execution protocol: [docs/robustness-protocol.md](docs/robustness-protocol.md) · Benchmarks & Evals: [docs/robustness-eval.md](docs/robustness-eval.md)
 
 ---
 
@@ -1011,8 +988,7 @@ Plain Claude Code and Codex sessions receive bounded recall through
 `PreInvocation` ephemeral message, OpenCode uses an experimental local plugin,
 and Grok refreshes a workspace-scoped cache because its passive hooks do not
 inject stdout. These hooks supplement live `AGENTS.md`/`CLAUDE.md` policy rather
-than copying it. Details: [docs/ontology-runtime.md](docs/ontology-runtime.md) ·
-[docs/runtime-memory-hooks.md](docs/runtime-memory-hooks.md)
+than copying it.
 
 ---
 
@@ -1079,7 +1055,6 @@ Hephaestus packages agents into a standard directory layout that any workspace r
 ├── .claude/ codex/ .gemini/ .agents/      # Thin runtime adapters over the same core
 ├── claude/ codex/ gemini/ antigravity/    # Plugin/extension/workflow distributions
 ├── cursor/ hermes/ openclaw/              # Additional runtime shims and skill mirrors
-├── docs/                                  # Architecture, chain map, memory, ontology, routing, eval docs
 │   ├── source-of-truth.md
 │   ├── chain-map.md
 │   ├── memory-architecture.md
@@ -1159,26 +1134,11 @@ or Context Map contents.
 |---|---|
 | Understand the canonical route | [`AGENTS.md`](AGENTS.md) |
 | See the full team contract | [`agent.md`](agent.md) |
-| Architecture source of truth | [`docs/source-of-truth.md`](docs/source-of-truth.md) |
-| Runtime boundaries | [`docs/runtime-sync-boundaries.md`](docs/runtime-sync-boundaries.md) |
-| Context Map v3 | [`docs/context-map-v3.md`](docs/context-map-v3.md) |
 | Sitemap contract | [`.agentlas/sitemap.json`](.agentlas/sitemap.json) and [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
 | Mode map | [`.agentlas/mode-map.json`](.agentlas/mode-map.json) |
 | Routing card | [`.agentlas/routing-card.json`](.agentlas/routing-card.json) and [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
 | Memory map | [`.agentlas/memory-map.json`](.agentlas/memory-map.json) and [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
-| Briefing interview & research gate | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
-| Network 2.0 routing | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
-| Stormbreaker protocol | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |
-| Canonical Goal + UltraCode harness | [`docs/stormbreaker-goal-ultracode-harness.md`](docs/stormbreaker-goal-ultracode-harness.md) |
-| Ontology runtime | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
-| Memory architecture | [`docs/memory-architecture.md`](docs/memory-architecture.md) |
-| Runtime memory hooks | [`docs/runtime-memory-hooks.md`](docs/runtime-memory-hooks.md) |
-| Experience and Taste assets | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
-| MCP build resolution | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
 | Plugin contributions | [`PLUGIN_CONTRIBUTIONS.md`](PLUGIN_CONTRIBUTIONS.md) |
-| Model allocation | [`docs/model-allocation.md`](docs/model-allocation.md) |
-| Skill lifecycle promotion | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
-| Cloud runtime bundles | [`docs/agentlas-cloud-runtime.md`](docs/agentlas-cloud-runtime.md) |
 | Verify a package | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
 | Public safety check | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 

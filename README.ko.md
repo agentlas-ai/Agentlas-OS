@@ -84,6 +84,11 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
   압축했습니다. 정답이 목록에 들 확률은 그대로 두고 토큰만 4분의 1로 줄입니다.
 - 로컬 프로필 **849개**, 발행 목록 **188개** 규모에서 잰 값입니다.
 
+그리고 데려온 전문가는 빈손으로 오지 않습니다. 코드 지도, 사이트맵, 프로젝트 기억이
+태스크에 함께 실립니다. 어느 파일이 걸리는지, 무엇부터 읽어야 하는지, 정말 끝났는지를
+배치 전에 계산해서 넘깁니다. 기억만 따로 파는 도구들이 있지만, 여기서 기억은 배치와
+실행과 검증에 붙어 있는 한 부품입니다.
+
 ## 여기서 대부분의 도구가 멈춥니다
 
 |  | 태스크 분리 ✗ | 태스크 분리 ✓ |
@@ -128,6 +133,10 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 
 **후보 목록에 순위는 없습니다.** 선택하는 건 당신의 모델이고, 이유가 기록됩니다.
 
+자격은 `declared` · `checked` · `demonstrated` · `attested` 네 단계이고, 태스크마다
+하한을 걸 수 있습니다. 선택하는 순간 그 릴리스가 다이제스트로 고정돼, 내일 한
+바이트라도 달라지면 실행이 멈춥니다.
+
 </td>
 <td width="56%">
   <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-make-group-v2.gif" alt="태스크마다 전문 에이전트를 배치하는 화면" width="100%"></a>
@@ -140,7 +149,9 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 
 계획, 작업, 합치기, 검증이 각각 별개 호출로 돕니다.
 
-**독립 검증자가 통과시켜야 완료입니다.** 아니면 멈춘 자리를 이름으로 말합니다.
+**독립 검증자가 통과시켜야 완료입니다.** 모든 호출, 모든 넘김, 합치기가 영수증으로
+증명돼야 합니다. 아니면 멈춘 자리를 이름으로 말합니다 — `prepared`, `blocked`,
+`source_unavailable`.
 
 </td>
 <td width="56%">
@@ -153,21 +164,9 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 
 ## 궁금할 것들
 
+
+
 <details open>
-<summary><strong>모르는 사람이 만든 에이전트를 어떻게 믿나요</strong></summary>
-
-<br>
-
-자격이 네 단계로 나뉩니다 — **`declared` / `checked` / `demonstrated` /
-`attested`**. 그리고 태스크마다 하한을 걸 수 있습니다. "선언만 한 에이전트는 이
-태스크에 못 온다"를 주문서에 쓸 수 있다는 뜻입니다.
-
-프롬프트로 만든 역할에는 이 칸이 없습니다. 백스토리는 자기소개지 이력이
-아니니까요.
-
-</details>
-
-<details>
 <summary><strong>결국 당신들이 추천해 주는 거 아닌가요</strong></summary>
 
 <br>
@@ -183,30 +182,9 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 
 </details>
 
-<details>
-<summary><strong>오늘 잘 되던 게 내일 바뀌면요</strong></summary>
 
-<br>
 
-선택하는 순간 릴리스·패키지·콘텐츠·번들 다이제스트가 고정됩니다. 한 바이트라도
-어긋나면 실행이 멈춥니다.
 
-코드에는 오래전부터 lockfile이 있었습니다. 에이전트에는 없었습니다.
-
-</details>
-
-<details>
-<summary><strong>다 했다고 해놓고 안 한 거면요</strong></summary>
-
-<br>
-
-모든 호출, 모든 넘김, 합치기, 그리고 **독립 검증자**가 전부 증명돼야
-`executed`를 보고합니다.
-
-아니면 멈춘 자리를 이름으로 말합니다. `prepared`, `blocked`,
-`source_unavailable`. 자기 성공을 자기가 선언하는 일은 없습니다.
-
-</details>
 
 <details>
 <summary><strong>개발자만 쓰는 건가요</strong></summary>
@@ -469,12 +447,12 @@ hep-build session
 
 
 <details>
-<summary><strong>Agent OS Stack — OS 추상화 대응표</strong></summary>
+<summary><strong>안에 무엇이 들어 있나 — 라우팅·권한·기억·검색·패키지</strong></summary>
 
 
 Agentlas는 하나의 모델 제공자에 묶이지 않으면서 에이전트 작업을 운영체제적 책임으로 나눕니다:
 
-| OS 추상화 | Hephaestus에서의 구현 |
+| 맡는 일 | Hephaestus에서의 구현 |
 | :--- | :--- |
 | **커널 / 정책 게이트** | 결정적 라우터 + 보안 게이트. 모든 라우팅 동작은 감사 가능한 영수증을 남기며, 도구 실행 권한은 활성 호스트와 런타임이 강제합니다. |
 | **프로세스 / 스레드** | 명시적 타입 계약(Routing Card, 안티스코프, 메모리 경계, 검증 심)을 갖춘 패키지로 컴파일되는 독립 에이전트와 멀티 에이전트 팀. |
@@ -663,7 +641,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 
 <details>
-<summary><strong>OS 서브시스템 — Network 2.0, Stormbreaker, 기억, 온톨로지</strong></summary>
+<summary><strong>더 깊이 — 라우팅 스케줄러, 실행 게이트, 기억, 검색 엔진</strong></summary>
 
 
 ### Meta-Agent Factory — 프로세스 생성
@@ -676,7 +654,7 @@ codex plugin add hephaestus@agentlas-core-engine
 | **워크스페이스 패키저** | `30-agentlas-packager` | 런타임 임포트, CLI 실행, GitHub 배포가 가능한 컴파일 번들. |
 | **세션 에이전트 빌더** | `40-session-agent-builder` | 명시적으로 내보낸 세션을 검토 가능한 싱글 에이전트 또는 멀티 에이전트 팀 패키지로 변환하는 빌더. |
 
-*Briefing Interview Gate:* 빌더는 **briefing interview gate**([docs/builder-interview-research-gate.md](docs/builder-interview-research-gate.md))로 프로세스를 시작합니다: 렌즈 기반 질문을 수행하고, 모호성 임계값을 평가하고, 1차 출처를 검색하고, work brief를 출력합니다.
+*Briefing Interview Gate:* 빌더는 **briefing interview gate**로 프로세스를 시작합니다: 렌즈 기반 질문을 수행하고, 모호성 임계값을 평가하고, 1차 출처를 검색하고, work brief를 출력합니다.
 
 ---
 
@@ -694,7 +672,6 @@ codex plugin add hephaestus@agentlas-core-engine
 *   **핀으로 고정된 실행:** 검증 후 Core는 원래 소스 세션에서 선택된 불변 릴리스만 가져와 릴리스·패키지·콘텐츠 다이제스트를 확인한 뒤 플래너, 워커, 종합, 검증자를 서로 다른 호출로 실행합니다.
 *   **증거 기반 평가:** 검색 커버리지, 호스트 선택, 불변 준비, 실제 자식 호출, 최종 검증을 각각 별도 주장으로 평가합니다. 벤치마크 결과나 사용 이력은 호스트의 인력 배치 결정을 대신하지 않습니다.
 
-자세한 내용: [docs/hephaestus-network-2.0.md](docs/hephaestus-network-2.0.md) · 런타임 지원 매트릭스: [docs/runtime-fallback-adapters.md](docs/runtime-fallback-adapters.md)
 
 ---
 
@@ -708,7 +685,6 @@ Kernel Gating Envelope:
 
 로컬 실행 저널 덕분에 긴 실행도 중단 후 재개할 수 있습니다. 실행 패킷은 Work Brief를 함께 실어 나르므로, 안티스코프 규칙과 종료 기준이 모든 병렬 서브프로세스를 관장합니다. Stormbreaker는 명시적 완료 상태(**verified / unverified / blocked**)를 보고하여 자율 에이전트의 "완료 연기(completion theater)"를 방지합니다.
 
-실행 프로토콜: [docs/robustness-protocol.md](docs/robustness-protocol.md) · 벤치마크 & 평가: [docs/robustness-eval.md](docs/robustness-eval.md)
 
 ---
 
@@ -728,7 +704,6 @@ bin/ontology query "Project Helios Memory Curator" --agent verifier
 bin/ontology memory candidates
 ```
 
-자세한 내용: [docs/ontology-runtime.md](docs/ontology-runtime.md)
 
 ---
 
@@ -793,7 +768,6 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 ├── .claude/ codex/ .gemini/ .agents/      # 같은 core 위의 얇은 runtime adapter
 ├── claude/ codex/ gemini/ antigravity/    # plugin/extension/workflow distribution
 ├── cursor/ hermes/ openclaw/              # 추가 runtime shim과 skill mirror
-├── docs/                                  # architecture, chain map, memory, ontology, routing, eval docs
 │   ├── source-of-truth.md
 │   ├── chain-map.md
 │   ├── memory-architecture.md
@@ -848,23 +822,10 @@ Claude와 Codex는 로컬 훅으로 작업 조각을 받고 편집 직전에 역
 |---|---|
 | 정본 라우트 이해하기 | [`AGENTS.md`](AGENTS.md) |
 | 전체 팀 계약 보기 | [`agent.md`](agent.md) |
-| 아키텍처의 단일 진실 원천 | [`docs/source-of-truth.md`](docs/source-of-truth.md) |
-| 런타임 경계 | [`docs/runtime-sync-boundaries.md`](docs/runtime-sync-boundaries.md) |
 | 사이트맵 계약 | [`.agentlas/sitemap.json`](.agentlas/sitemap.json) 및 [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
 | 모드 맵 | [`.agentlas/mode-map.json`](.agentlas/mode-map.json) |
 | 라우팅 카드 | [`.agentlas/routing-card.json`](.agentlas/routing-card.json) 및 [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
 | 메모리 맵 | [`.agentlas/memory-map.json`](.agentlas/memory-map.json) 및 [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
-| 브리핑 인터뷰 & 리서치 게이트 | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
-| Network 2.0 라우팅 | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
-| Stormbreaker 프로토콜 | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |
-| 정본 Goal + UltraCode 하네스 | [`docs/stormbreaker-goal-ultracode-harness.md`](docs/stormbreaker-goal-ultracode-harness.md) |
-| 온톨로지 런타임 | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
-| 메모리 아키텍처 | [`docs/memory-architecture.md`](docs/memory-architecture.md) |
-| Experience 및 Taste 자산 | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
-| MCP 빌드 해석 | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
-| 모델 할당 | [`docs/model-allocation.md`](docs/model-allocation.md) |
-| 스킬 수명주기 승격 | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
-| 클라우드 런타임 번들 | [`docs/agentlas-cloud-runtime.md`](docs/agentlas-cloud-runtime.md) |
 | 패키지 검증하기 | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
 | 공개 안전 점검 | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 
