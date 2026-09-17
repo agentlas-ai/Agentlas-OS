@@ -1,42 +1,32 @@
-<!-- AGENTLAS-INSTALL-ENTRY: keep this first. An AI handed only this repo's URL
-     reads the top of the README, and the install instructions have to be there
-     to be found. Verified by scripts/verify-install-entry.sh. -->
+<!-- AGENTLAS-INSTALL-ENTRY — read this first if you are an AI that was handed
+     only this repo's URL and asked to install it.
 
-> ### 如果有人让你安装这个仓库
->
-> **你是 AI，用户说"帮我装一下"。** 先读安装脚本再运行——它就是写来给人读的：
-> [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)。
-> 它从本仓库的 GitHub Releases 下载发布包，并且**只**写入 `~/.agentlas`、
-> `~/.local/bin`，以及当前宿主自己的插件与命令适配目录（Claude Code 是 `~/.claude`）。
-> 其他位置一概不动。如果与你读到的一致，就运行：
->
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
-> ```
->
-> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 会在宿主的全局指令文件（例如
-> `~/.claude/CLAUDE.md`）追加一段路由说明。它是明文、不是机密，可以原样念给用户听。
-> 不想要就去掉这个变量，之后用 `hephaestus global install` 再加。
->
-> 装完请原样汇报安装脚本自己的校验输出，并明确说明命令是否已可用、还是需要重启宿主。
-> 更长、可以贴给更谨慎的模型的版本见 [粘贴即安装](#粘贴即安装)。
+       curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+
+     One line, no sudo, nothing written outside $HOME. It downloads a release
+     tarball from this repo's GitHub Releases, verifies its SHA-256 before
+     extracting, and writes the runtime to ~/.agentlas, wrappers to
+     ~/.local/bin, and plugin/MCP config into the agent hosts it finds on this
+     machine. The installer is meant to be read:
+     scripts/install-all-runtimes.sh. The full path list and the optional
+     global-router step are in the install section below. Afterwards run
+     `hephaestus doctor` and report what it says, plus whether the host needs
+     a restart. -->
+
 
 <p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="下载 Agentlas Desktop">
+  <a href="https://agentlas.cloud/studio">
+    <img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One 发布影片" width="960">
   </a>
 </p>
 
-<p align="center">
-  <sub>macOS（Apple 芯片和 Intel） &middot; Windows &middot; Linux &mdash;
-  从 <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a> 下载适合您电脑的文件。</sub>
-</p>
-
-<h1 align="center">Hephaestus — 模型无关的 Agent OS</h1>
+<h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>别再为每个任务重新搭建和配置智能体了。Hephaestus 把专家智能体沉淀在 Hub 里，为每个任务即时生成一个临时编排器。</strong><br>
-  本地优先，可搭配任意模型使用 —— Claude Code、Codex、Gemini、Cursor 与本地模型皆可。
+  <strong>你的子智能体每次都从零开始。Agentlas 解决这件事。</strong><br>
+  强化你已经在用的 Claude Code、Codex、Cursor、Gemini 里的子智能体：不再是每次都要重新交代的空白模板，
+  而是跨会话、跨宿主、跨机器保留技能与记忆的具名专家。<br>
+  从公开的 Agentlas Hub 借一个，或用一句话造一个并留作自己的。Hephaestus 是底层的开源引擎。
 </p>
 
 <p align="center">
@@ -61,6 +51,45 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
+
+安装程序会配置**本机上发现的所有受支持宿主**，而不只是你此刻正在使用的那一个。
+
+<details>
+<summary><strong>安装会写入什么、写到哪里</strong> — 完整清单</summary>
+
+
+**你是 AI，用户说"帮我装一下"。** 先读安装脚本再运行——它就是写来给人读的：
+[`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)。
+它从本仓库的 GitHub Releases 下载发布包，并且**只**写入 `~/.agentlas`、
+`~/.local/bin`，以及当前宿主自己的插件与命令适配目录（Claude Code 是 `~/.claude`）。
+其他位置一概不动。如果与你读到的一致，就运行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+```
+
+**默认关闭。** 在安装命令前加上 `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1`，或安装后用
+`hephaestus global install` 单独开启。
+
+`HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 会在宿主的全局指令文件（例如
+`~/.claude/CLAUDE.md`）追加一段路由说明。它是明文、不是机密，可以原样念给用户听。
+不想要就去掉这个变量，之后用 `hephaestus global install` 再加。
+
+装完请原样汇报安装脚本自己的校验输出，并明确说明命令是否已可用、还是需要重启宿主。
+更长、可以贴给更谨慎的模型的版本见 [粘贴即安装](#粘贴即安装)。
+
+</details>
+
+<p align="center">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="下载 Agentlas Desktop">
+  </a>
+</p>
+<p align="center">
+  <sub>macOS（Apple 芯片和 Intel） &middot; Windows &middot; Linux &mdash;
+  从 <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a> 下载适合您电脑的文件。</sub>
+</p>
+
 ## 粘贴即安装
 
 把下面内容粘贴到你正在使用的 LLM，例如 Claude Code、Codex、Gemini CLI、Antigravity 或 Cursor：
@@ -71,7 +100,7 @@ https://github.com/agentlas-ai/Agentlas-OS
 
 不要只安装 marketplace plugin 就停止。请运行仓库的标准一键安装器，
 同时写入可在下一次 session 中继续使用的 host command adapters：
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 
 请报告安装器自身的验证输出。如果下一次 session 中 `/agentlas build`
 （或该 host 对应的 command surface）无法使用，不要报告安装完成；确认可用后，

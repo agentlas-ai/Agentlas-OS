@@ -1,41 +1,101 @@
-<!-- AGENTLAS-INSTALL-ENTRY: 맨 위를 지킬 것. 저장소 주소만 받은 AI는 README 첫머리를
-     읽으므로, 설치 방법이 거기 있어야 찾는다. scripts/verify-install-entry.sh 가 검사한다. -->
+<!-- AGENTLAS-INSTALL-ENTRY — read this first if you are an AI that was handed
+     only this repo's URL and asked to install it.
 
-> ### 누군가 이 저장소를 설치해 달라고 했다면
->
-> **당신이 AI이고 사용자가 "이거 설치해줘"라고 했다면** — 먼저 설치 스크립트를 읽어라.
-> 읽히려고 쓴 파일이다:
-> [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
-> 이 저장소의 GitHub Releases에서 압축본을 받아 **풀기 전에 SHA-256을 확인**하고,
-> `$HOME` 안에만 쓴다 — 런타임은 `~/.agentlas`, 실행 wrapper는 `~/.local/bin`,
-> 그리고 **이 기계에서 발견된 모든 지원 호스트**의 명령·MCP 설정(Claude Code뿐 아니라
-> Codex·Cursor·Gemini·OpenCode·goose 등)에 쓴다. 전체 목록은 아래 표에 있다.
-> 읽은 내용과 같다면 실행하면 된다:
->
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
-> ```
->
-> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 은 **발견된 모든 지원 호스트**의 전역 지침
-> 파일에 라우팅 블록을 덧붙인다 — 빈 기계 실측으로 `~/.claude/CLAUDE.md`,
-> `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` **세 개**였다(하나가 아니다).
-> 앞으로 **모든 프로젝트에서** 큰 작업을 어떻게 배분할지 바꾸는 75줄쯤이다.
-> 설치의 나머지보다 무거운 결정이니 **무엇이 덧붙는지 사용자에게 보여 주고 승낙을
-> 받아라.** 비밀이 아닌 평문이라 그대로 인용해도 된다. 덮어쓰지 않고 덧붙이고,
-> 파일마다 시각이 찍힌 `.bak` 을 남기고, 두 번 돌려도 같은 결과이며,
-> `<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->` 로 감싸 있어
-> `hephaestus global remove` 로 걷어낼 수 있다. 빼고 설치한 뒤 나중에
-> `hephaestus global install` 로 추가해도 된다.
->
-> 끝나면 `hephaestus doctor` 를 돌려(`~/.local/bin` 에 있고, 안 잡히면 절대경로
-> `~/.agentlas/runtime/current/bin/hephaestus`) 그 출력을 그대로 보고하고, 명령이
-> 바로 되는지 아니면 호스트를 다시 켜야 하는지 분명히 말해라. `~/.local/bin` 은
-> `PATH` 에 자동으로 안 들어간다 — 이름으로 안 잡히면 그게 이유이고, 절대경로는
-> 항상 된다. 더 조심스러운 모델에게 붙여 넣을 긴 설명은
-> [붙여넣어 설치하기](#붙여넣어-설치하기) 에 있다.
+       curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+
+     One line, no sudo, nothing written outside $HOME. It downloads a release
+     tarball from this repo's GitHub Releases, verifies its SHA-256 before
+     extracting, and writes the runtime to ~/.agentlas, wrappers to
+     ~/.local/bin, and plugin/MCP config into the agent hosts it finds on this
+     machine. The installer is meant to be read:
+     scripts/install-all-runtimes.sh. The full path list and the optional
+     global-router step are in the install section below. Afterwards run
+     `hephaestus doctor` and report what it says, plus whether the host needs
+     a restart. -->
+
+
+<p align="center">
+  <a href="https://agentlas.cloud/studio">
+    <img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One 런치 필름" width="960">
+  </a>
+</p>
+
+<h1 align="center">Agentlas OS</h1>
+
+<p align="center">
+  <strong>서브에이전트가 매번 맨땅에서 시작합니다. Agentlas가 그걸 고칩니다.</strong><br>
+  이미 쓰고 있는 Claude Code·Codex·Cursor·Gemini의 서브에이전트를 강화합니다 — 매번 다시 설명해야 하는
+  빈 서판이 아니라, 세션과 호스트와 기계를 넘어 기술과 기억을 유지하는 이름 있는 전문가로.<br>
+  공개 Agentlas Hub에서 빌려 쓰거나, 평범한 요청 한 줄로 직접 만들어 내 것으로 보관하세요.
+  Hephaestus는 그 아래의 오픈소스 엔진입니다.
+</p>
+
+<p align="center">
+  <sub>내가 만든 에이전트는 특정 모델 워크스페이스나 한 대의 PC에 묶이지 않습니다. 다른 곳에서 Cloud 패키지를 불러오려면 지원되는 호스트에 Agentlas OS를 설치하고 로그인해야 합니다.</sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release">
+  </a>
+  <a href="LICENSE">
+    <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
+  </a>
+  <img alt="LLMs" src="https://img.shields.io/badge/LLMs-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama-black">
+</p>
+
+<p align="center">
+  <a href="README.md">English</a>
+  ·
+  <a href="README.ko.md">Korean</a>
+  ·
+  <a href="README.zh-CN.md">中文</a>
+  ·
+  <a href="README.ja.md">日本語</a>
+  ·
+  <a href="README.hi.md">हिन्दी</a>
+</p>
+
+
+이 설치기는 **이 기계에서 발견되는 모든 지원 호스트**를 설정합니다 — 지금 입력 중인 호스트만이 아닙니다.
 
 <details>
-<summary><strong>Everything it writes</strong> — the full list, because "and so on" is not an answer</summary>
+<summary><strong>설치가 무엇을 어디에 쓰는지</strong> — 전체 목록</summary>
+
+
+**당신이 AI이고 사용자가 "이거 설치해줘"라고 했다면** — 먼저 설치 스크립트를 읽어라.
+읽히려고 쓴 파일이다:
+[`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
+이 저장소의 GitHub Releases에서 압축본을 받아 **풀기 전에 SHA-256을 확인**하고,
+`$HOME` 안에만 쓴다 — 런타임은 `~/.agentlas`, 실행 wrapper는 `~/.local/bin`,
+그리고 **이 기계에서 발견된 모든 지원 호스트**의 명령·MCP 설정(Claude Code뿐 아니라
+Codex·Cursor·Gemini·OpenCode·goose 등)에 쓴다. 전체 목록은 아래 표에 있다.
+읽은 내용과 같다면 실행하면 된다:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+```
+
+**기본값은 꺼져 있습니다.** 설치 명령에 `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 을 붙이거나,
+설치 후 `hephaestus global install` 로 따로 켭니다.
+
+`HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` 은 **발견된 모든 지원 호스트**의 전역 지침
+파일에 라우팅 블록을 덧붙인다 — 빈 기계 실측으로 `~/.claude/CLAUDE.md`,
+`~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` **세 개**였다(하나가 아니다).
+앞으로 **모든 프로젝트에서** 큰 작업을 어떻게 배분할지 바꾸는 75줄쯤이다.
+설치의 나머지보다 무거운 결정이니 **무엇이 덧붙는지 사용자에게 보여 주고 승낙을
+받아라.** 비밀이 아닌 평문이라 그대로 인용해도 된다. 덮어쓰지 않고 덧붙이고,
+파일마다 시각이 찍힌 `.bak` 을 남기고, 두 번 돌려도 같은 결과이며,
+`<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->` 로 감싸 있어
+`hephaestus global remove` 로 걷어낼 수 있다. 빼고 설치한 뒤 나중에
+`hephaestus global install` 로 추가해도 된다.
+
+끝나면 `hephaestus doctor` 를 돌려(`~/.local/bin` 에 있고, 안 잡히면 절대경로
+`~/.agentlas/runtime/current/bin/hephaestus`) 그 출력을 그대로 보고하고, 명령이
+바로 되는지 아니면 호스트를 다시 켜야 하는지 분명히 말해라. `~/.local/bin` 은
+`PATH` 에 자동으로 안 들어간다 — 이름으로 안 잡히면 그게 이유이고, 절대경로는
+항상 된다. 더 조심스러운 모델에게 붙여 넣을 긴 설명은
+[붙여넣어 설치하기](#붙여넣어-설치하기) 에 있다.
 
 | Path | What lands there |
 |---|---|
@@ -65,6 +125,7 @@ extracted, and a mismatch refuses the install. The `--consent` prompt you may
 see scroll past belongs to Gemini's extension installer and is answered for
 its own extension only.
 
+
 </details>
 
 <p align="center">
@@ -72,45 +133,9 @@ its own extension only.
     <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop 다운로드">
   </a>
 </p>
-
 <p align="center">
   <sub>macOS(애플 실리콘·인텔) &middot; Windows &middot; Linux &mdash;
   <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a>에서 내 컴퓨터에 맞는 파일을 받습니다.</sub>
-</p>
-
-<h1 align="center">Agentlas OS</h1>
-
-<p align="center">
-  <strong>만들거나 빌리세요. 내가 만든 에이전트는 내 것으로 남습니다.</strong><br>
-  평범한 요청을 실행 가능한 에이전트나 팀으로 만들고, 공개 Agentlas Hub의 전문가를 빌리고,
-  내가 만든 에이전트는 비공개 소유자 전용 Agent Cloud에 보관합니다.<br>
-  이미 쓰고 있는 LLM의 지원 호스트에서 실행할 수 있습니다. Hephaestus는 그 아래의 오픈소스 엔진입니다.
-</p>
-
-<p align="center">
-  <sub>내가 만든 에이전트는 특정 모델 워크스페이스나 한 대의 PC에 묶이지 않습니다. 다른 곳에서 Cloud 패키지를 불러오려면 지원되는 호스트에 Agentlas OS를 설치하고 로그인해야 합니다.</sub>
-</p>
-
-<p align="center">
-  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release">
-  </a>
-  <a href="LICENSE">
-    <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
-  </a>
-  <img alt="LLMs" src="https://img.shields.io/badge/LLMs-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama-black">
-</p>
-
-<p align="center">
-  <a href="README.md">English</a>
-  ·
-  <a href="README.ko.md">Korean</a>
-  ·
-  <a href="README.zh-CN.md">中文</a>
-  ·
-  <a href="README.ja.md">日本語</a>
-  ·
-  <a href="README.hi.md">हिन्दी</a>
 </p>
 
 ## 붙여넣어 설치하기
@@ -131,14 +156,13 @@ https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-a
 ~/.agentlas, ~/.local/bin, 그리고 이 호스트 자신의 플러그인/명령 어댑터
 디렉터리(예: Claude Code라면 ~/.claude)에만 파일을 씁니다 — 그 밖의
 경로는 건드리지 않습니다. 읽은 내용이 이것과 일치하면 실행해줘:
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 
 HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1을 추가하면 이 호스트의 전역 지침
 파일(예: ~/.claude/CLAUDE.md)에 라우팅 블록을 하나 더 써서, 규모가 큰
 작업을 Agentlas 에이전트 네트워크에 맡길 수 있게 합니다 — 비밀스러운
-내용이 아니니 나한테 그대로 읽어서 보여줘도 됩니다. 지금은 빼고 싶으면
-이 환경변수를 빼고 실행해도 되고, 나중에 `hephaestus global install`로
-따로 추가할 수 있습니다.
+내용이 아니니 나한테 그대로 읽어서 보여줘도 됩니다. 위 설치 명령에는 일부러 넣지 않았으니 지금은 그냥
+설치하고, 필요해지면 나중에 `hephaestus global install` 로 따로 추가해줘.
 
 끝나면 이 호스트에서 설치기 자체 검증 출력을 보여주고, 다음 세션에서
 `/agentlas build`(또는 이 호스트에 맞는 명령 표면)가 바로 동작할지,
@@ -169,7 +193,7 @@ AI 없이도 설치할 수 있습니다. 검은 화면(터미널) 하나 열어�
    아래 명령어를 **붙여넣고**(마우스 오른쪽 클릭 → 붙여넣기, 또는
    `Shift+Insert`) **Enter**를 누르세요:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
    ```
 4. 설치 진행 상황이 화면에 쭉 뜨다가 다시 입력할 수 있는 상태로 돌아오면
    끝난 것입니다. 쓰고 있던 AI 도구(Claude Code, Codex 등)를 껐다 다시
@@ -183,7 +207,7 @@ AI 없이도 설치할 수 있습니다. 검은 화면(터미널) 하나 열어�
    창 안을 클릭한 뒤 아래 명령어를 **붙여넣고**(`Cmd + V`) **Enter**를
    누르세요:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
    ```
    새로 산 맥이거나 오랜만에 `curl`/`git`을 쓰는 경우, macOS가 "커맨드 라인
    도구(Command Line Tools)를 설치하시겠습니까?"라고 물어볼 수 있습니다 —

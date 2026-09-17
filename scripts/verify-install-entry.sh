@@ -23,6 +23,10 @@ MARKER="AGENTLAS-INSTALL-ENTRY"
 # Far enough to allow a comment and a little framing; near enough that no banner
 # block can push it below the fold again.
 MAX_LINE=12
+# The AI entry is a comment, so it costs the reader nothing; the hero image may
+# sit above the title. Far enough for both, near enough that no disclosure wall
+# fits in front of the product name.
+MAX_H1_LINE=25
 
 READMES=(README.md README.ko.md README.zh-CN.md README.ja.md README.hi.md)
 POINTERS=(AGENTS.md CLAUDE.md)
@@ -54,6 +58,31 @@ for file in "${READMES[@]}"; do
   for needed in "install-all-runtimes.sh" '~/.agentlas' '~/.local/bin'; do
     grep -qF "$needed" "$file" || fail "$file install entry never mentions $needed"
   done
+
+  # THE OTHER END OF THE SAME CONTRACT — the fold belongs to the human too.
+  #
+  #   The 2026-09-13 fix put the install entry on top and stopped there, so the
+  #   entry grew into 86 visible lines of installer disclosure addressed to an
+  #   AI. The rendered page then opened on a warning wall: <h1> sat at line 105
+  #   and the product's own sentence at 108. A human deciding whether to care
+  #   never reached either. Stars are pressed by humans.
+  #
+  #   The two readers consume different renderings of this same file: an AI
+  #   reads the raw markdown (HTML comments included), a human reads GitHub's
+  #   rendered output (comments hidden). So the AI entry goes in a comment and
+  #   the fold stays the product. Disclosure is not deleted — it moves into the
+  #   Install section, where a human choosing to read it will find it.
+  h1_line="$(grep -n '^<h1' "$file" | head -1 | cut -d: -f1 || true)"
+  if [ -z "$h1_line" ]; then
+    fail "$file has no <h1> — the rendered page opens on no product name at all"
+  elif [ "$h1_line" -gt "$MAX_H1_LINE" ]; then
+    fail "$file has its <h1> at line $h1_line, below the $MAX_H1_LINE-line human fold — something visible was prepended above the product"
+  else
+    # A visible block above the <h1> is how the wall came back last time.
+    if head -n "$h1_line" "$file" | grep -q '^> '; then
+      fail "$file has a visible blockquote above its <h1> — that is the warning wall again; put AI-facing text in the $MARKER comment or below the fold"
+    fi
+  fi
 done
 
 for file in "${POINTERS[@]}"; do

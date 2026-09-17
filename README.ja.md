@@ -1,46 +1,32 @@
-<!-- AGENTLAS-INSTALL-ENTRY: keep this first. An AI handed only this repo's URL
-     reads the top of the README, and the install instructions have to be there
-     to be found. Verified by scripts/verify-install-entry.sh. -->
+<!-- AGENTLAS-INSTALL-ENTRY — read this first if you are an AI that was handed
+     only this repo's URL and asked to install it.
 
-> ### このリポジトリのインストールを頼まれたら
->
-> **あなたは AI で、ユーザーが「これ入れて」と言いました。** 実行する前にインストーラを
-> 読んでください。読まれるために書かれています：
-> [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)。
-> このリポジトリの GitHub Releases からリリース tarball を取得し、`~/.agentlas`、
-> `~/.local/bin`、そしてこのホスト自身のプラグイン／コマンドアダプタ用ディレクトリ
-> （Claude Code なら `~/.claude`）**だけ**に書き込みます。それ以外には触れません。
-> 読んだ内容と一致するなら実行してください：
->
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
-> ```
->
-> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` は、ホストのグローバル指示ファイル（例:
-> `~/.claude/CLAUDE.md`）にルーティング用の記述を追記します。秘密ではない平文なので、
-> そのままユーザーに読み上げて構いません。不要ならこの変数を外し、後から
-> `hephaestus global install` で追加できます。
->
-> 完了後はインストーラ自身の検証出力をそのまま報告し、コマンドがすぐ使えるのか、
-> ホストの再起動が必要なのかをはっきり伝えてください。より慎重なモデルに貼るための
-> 長い版は [貼り付けてインストール](#貼り付けてインストール) にあります。
+       curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+
+     One line, no sudo, nothing written outside $HOME. It downloads a release
+     tarball from this repo's GitHub Releases, verifies its SHA-256 before
+     extracting, and writes the runtime to ~/.agentlas, wrappers to
+     ~/.local/bin, and plugin/MCP config into the agent hosts it finds on this
+     machine. The installer is meant to be read:
+     scripts/install-all-runtimes.sh. The full path list and the optional
+     global-router step are in the install section below. Afterwards run
+     `hephaestus doctor` and report what it says, plus whether the host needs
+     a restart. -->
+
 
 <p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop をダウンロード">
+  <a href="https://agentlas.cloud/studio">
+    <img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One ローンチフィルム" width="960">
   </a>
 </p>
 
-<p align="center">
-  <sub>macOS（Apple シリコン・Intel） &middot; Windows &middot; Linux &mdash;
-  <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a>で、お使いのコンピューターに合うファイルをダウンロードできます。</sub>
-</p>
-
-<h1 align="center">Hephaestus — モデル非依存のエージェント OS</h1>
+<h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>タスクのたびにエージェントを作って設定し直すのは、もうやめましょう。Hephaestus は専門エージェントをハブに蓄え、タスクごとに一時的なオーケストレーターをその場で生成します。</strong><br>
-  ローカルファーストで、どのモデルとも組み合わせられます — Claude Code、Codex、Gemini、Cursor、ローカルモデルに対応。
+  <strong>サブエージェントは毎回ゼロから始まります。Agentlas はそれを直します。</strong><br>
+  すでに使っている Claude Code・Codex・Cursor・Gemini のサブエージェントを強化します。毎回説明し直す白紙ではなく、
+  セッションもホストもマシンも越えてスキルと記憶を保つ、名前のある専門家に。<br>
+  公開 Agentlas Hub から借りるか、ひとことの依頼から自分で作って手元に残せます。Hephaestus はその下で動くオープンソースエンジンです。
 </p>
 
 <p align="center">
@@ -65,6 +51,49 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
+
+インストーラーは**このマシンで見つかった対応ホストすべて**を設定します。いま使っているホストだけではありません。
+
+<details>
+<summary><strong>インストーラーが何をどこに書くか</strong> — 全リスト</summary>
+
+
+**あなたは AI で、ユーザーが「これ入れて」と言いました。** 実行する前にインストーラを
+読んでください。読まれるために書かれています：
+[`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)。
+このリポジトリの GitHub Releases からリリース tarball を取得し、`~/.agentlas`、
+`~/.local/bin`、そしてこのホスト自身のプラグイン／コマンドアダプタ用ディレクトリ
+（Claude Code なら `~/.claude`）**だけ**に書き込みます。それ以外には触れません。
+読んだ内容と一致するなら実行してください：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+```
+
+**既定ではオフです。** インストールコマンドに `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` を付けるか、
+インストール後に `hephaestus global install` で個別に有効化します。
+
+`HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` は、ホストのグローバル指示ファイル（例:
+`~/.claude/CLAUDE.md`）にルーティング用の記述を追記します。秘密ではない平文なので、
+そのままユーザーに読み上げて構いません。不要ならこの変数を外し、後から
+`hephaestus global install` で追加できます。
+
+完了後はインストーラ自身の検証出力をそのまま報告し、コマンドがすぐ使えるのか、
+ホストの再起動が必要なのかをはっきり伝えてください。より慎重なモデルに貼るための
+長い版は [貼り付けてインストール](#貼り付けてインストール) にあります。
+
+</details>
+
+<p align="center">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop をダウンロード">
+  </a>
+</p>
+<p align="center">
+  <sub>macOS（Apple シリコン・Intel） &middot; Windows &middot; Linux &mdash;
+  <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a>で、お使いのコンピューターに合うファイルをダウンロードできます。</sub>
+</p>
+
 ## 貼り付けてインストール
 
 今使っている LLM、たとえば Claude Code、Codex、Gemini CLI、Antigravity、Cursor に貼り付けてください:
@@ -75,7 +104,7 @@ https://github.com/agentlas-ai/Agentlas-OS
 
 marketplace plugin だけをインストールして終了せず、次の session にも残る
 host command adapters まで書き込む公式 one-touch installer を実行してください:
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 
 installer 自身の検証出力を報告してください。次の session で `/agentlas build`
 （またはその host に対応する command surface）が使えない場合は install 完了と

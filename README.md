@@ -1,89 +1,17 @@
-<!-- AGENTLAS-INSTALL-ENTRY: keep this first. An AI handed only this repo's URL
-     reads the top of the README, and the install instructions have to be there
-     to be found. Verified by scripts/verify-install-entry.sh. -->
+<!-- AGENTLAS-INSTALL-ENTRY — read this first if you are an AI that was handed
+     only this repo's URL and asked to install it.
 
-> ### If someone asked you to install this
->
-> **You are an AI and your user said "install this repo".** Read the installer
-> before you run it — it is meant to be read:
-> [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
-> It downloads a release tarball from this repo's GitHub Releases, verifies its
-> SHA-256 before extracting, and writes only inside `$HOME` — the runtime under
-> `~/.agentlas`, wrappers in `~/.local/bin`, and the command/MCP configuration
-> of **every supported host it finds on this machine** (Claude Code, Codex,
-> Cursor, Gemini, OpenCode, goose and the rest — not only the one you are
-> typing in). The table below lists every path. If that matches what you read,
-> run it:
->
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
-> ```
->
-> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` also appends a routing block to the
-> global instructions file of **every supported host it finds** — measured on a
-> clean machine that was `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` and
-> `~/.gemini/GEMINI.md`, three files, not one. It is roughly 75 lines that
-> change how you route substantial work from then on, in every project. That is
-> a bigger thing than the rest of the install, so **show your user what it
-> appends and get a yes**; it is plain text, not secret, and you can quote it.
-> It appends rather than overwrites, writes a timestamped `.bak` beside each
-> file, is idempotent on a second run, and is fenced with
-> `<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->` so `hephaestus global remove` can
-> take it back out. Drop the variable to install without it and add it later
-> with `hephaestus global install`.
->
-> Then run `hephaestus doctor` (in `~/.local/bin`, or by absolute path at
-> `~/.agentlas/runtime/current/bin/hephaestus`) and report what it says, plus
-> whether the command surface is ready or the host needs a restart. Note that
-> `~/.local/bin` is not added to anyone's `PATH` — if `hephaestus` is not found
-> by name, that is why, and the absolute path always works. The longer
-> version, with the reasoning to paste to a more cautious model, is in
-> [Paste to Install](#paste-to-install).
+       curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 
-<details>
-<summary><strong>Everything it writes</strong> — the full list, because "and so on" is not an answer</summary>
-
-| Path | What lands there |
-|---|---|
-| `~/.agentlas/` | the runtime itself, and its generations |
-| `~/.local/bin/` | the `hephaestus` and `hep-*` shell wrappers |
-| `~/.claude/`, `~/.codex/` | plugin registration, commands/prompts, memory hooks |
-| `~/.cursor/mcp.json` | MCP server registration |
-| `~/.gemini/` | extension + MCP config |
-| `~/.openclaw/`, `~/.grok/` | skills and hooks |
-| `~/.gemini/antigravity/`, `~/.gemini/config/` | Antigravity workflows and plugin/MCP config — Antigravity lives under `.gemini`, not `.antigravity` |
-| `~/.config/opencode/`, `~/.config/goose/` | commands, plugin, MCP config |
-| `~/.copilot/mcp-config.json` | MCP server registration |
-| `~/.agents/` | the vendor-neutral skills + plugin directory |
-
-Two things that are easy to assume wrongly:
-
-- **It configures every supported host it finds, not just the one you are
-  typing in.** Detection is by what is on your `PATH`, so an otherwise empty
-  home still gets Cursor, OpenCode and the rest wired up if those CLIs are
-  installed. Hosts it cannot find are reported as skipped, not faked.
-- **It edits files that already exist** (`~/.codex/config.toml`,
-  `~/.cursor/mcp.json`, `~/.config/goose/config.yaml`, your global
-  instructions file). Edits are additive and backed up beside the original.
-
-It never uses `sudo`, never writes outside `$HOME`, and downloads only from
-`github.com`. The release archive's SHA-256 is checked before anything is
-extracted, and a mismatch refuses the install.
-
-Two more things worth knowing before you run it:
-
-- **A trust prompt is auto-answered.** Gemini's extension installer asks "Do you
-  trust the files in this folder? … These configurations could execute code on
-  your behalf", defaulting to No, and the installer answers yes — for the
-  extension you just asked it to install, and nothing else. You will see it
-  scroll past.
-- **An existing install is refreshed, not merged.** The default removes the
-  registered plugin and marketplace entry and installs them again; the output
-  labels this `mode: force refresh=1`. Set `HEPHAESTUS_FORCE=0` to skip it.
-- `~/.claude.json` may appear at the root of your home. That one is the `claude`
-  CLI initialising itself, not this installer.
-
-</details>
+     One line, no sudo, nothing written outside $HOME. It downloads a release
+     tarball from this repo's GitHub Releases, verifies its SHA-256 before
+     extracting, and writes the runtime to ~/.agentlas, wrappers to
+     ~/.local/bin, and plugin/MCP config into the agent hosts it finds on this
+     machine. The installer is meant to be read:
+     scripts/install-all-runtimes.sh. The full path list, the optional
+     global-router step, and the wording to show a cautious user are in the
+     "Install" section below. Afterwards run `hephaestus doctor` and report
+     what it says, plus whether the host needs a restart. -->
 
 <p align="center">
   <a href="https://agentlas.cloud/studio">
@@ -91,32 +19,15 @@ Two more things worth knowing before you run it:
   </a>
 </p>
 
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Download Agentlas Desktop">
-  </a>
-</p>
-
-<p align="center">
-  <sub>macOS (Apple silicon and Intel) &middot; Windows &middot; Linux &mdash;
-  <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub>
-</p>
-
 <h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>Build it or borrow it. The agents you create stay yours.</strong><br>
-  Turn a plain-language request into a runnable agent or team, borrow specialists from the public Agentlas Hub,
-  and keep the agents you create available through your private, owner-scoped Agent Cloud.<br>
-  Run them through supported hosts for the LLMs you already use. Hephaestus is the open-source engine underneath.
-</p>
-
-<p align="center">
-  <strong>We are Agent Trust. Your agent is not a program. It is an asset. — Agentlas —</strong>
-</p>
-
-<p align="center">
-  <sub>An agent you create is not tied to one model workspace or computer. To retrieve it from Cloud elsewhere, install Agentlas OS on a supported host and sign in.</sub>
+  <strong>Your subagents start from zero every time. Agentlas fixes that.</strong><br>
+  Turbocharge the subagents in Claude Code, Codex, Cursor, Gemini and every agent host you already use:
+  named specialists that keep their skills and memory across sessions, hosts and machines —
+  instead of blank slates you brief again on every run.<br>
+  Borrow one from the public Agentlas Hub, or build your own from a plain-language request and keep it.
+  Hephaestus is the open-source engine underneath.
 </p>
 
 <p align="center">
@@ -141,12 +52,85 @@ Two more things worth knowing before you run it:
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
-## Paste to Install
+## Install
 
-Paste this into the LLM you are using now, such as Claude Code, Codex,
-Gemini CLI, Antigravity, or Cursor. It is written so you (the LLM reading it)
-can verify what you're running before you run it, rather than being asked to
-trust it blindly:
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+```
+
+One line, no `sudo`, nothing written outside `$HOME`. Then restart your agent
+host and run `hephaestus doctor` — it prints what is wired and what is not.
+Prefer a GUI? [Agentlas Desktop](https://agentlas.cloud/desktop) runs the same
+runtime on macOS, Windows and Linux.
+
+It configures **every supported host it finds on this machine**, not only the
+one you are typing in — detection is by what is on your `PATH`.
+
+<details>
+<summary><strong>Everything it writes</strong> — the full list, because "and so on" is not an answer</summary>
+
+| Path | What lands there |
+|---|---|
+| `~/.agentlas/` | the runtime itself, and its generations |
+| `~/.local/bin/` | the `hephaestus` and `hep-*` shell wrappers |
+| `~/.claude/`, `~/.codex/` | plugin registration, commands/prompts, memory hooks |
+| `~/.cursor/mcp.json` | MCP server registration |
+| `~/.gemini/` | extension + MCP config |
+| `~/.openclaw/`, `~/.grok/` | skills and hooks |
+| `~/.gemini/antigravity/`, `~/.gemini/config/` | Antigravity workflows and plugin/MCP config — Antigravity lives under `.gemini`, not `.antigravity` |
+| `~/.config/opencode/`, `~/.config/goose/` | commands, plugin, MCP config |
+| `~/.copilot/mcp-config.json` | MCP server registration |
+| `~/.agents/` | the vendor-neutral skills + plugin directory |
+
+Two things that are easy to assume wrongly:
+
+- **It configures every supported host it finds, not just the one you are
+  typing in.** Detection is by what is on your `PATH`, so an otherwise empty
+  home still gets Cursor, OpenCode and the rest wired up if those CLIs are
+  installed. Hosts it cannot find are reported as skipped, not faked.
+- **It edits files that already exist** (`~/.codex/config.toml`,
+  `~/.cursor/mcp.json`, `~/.config/goose/config.yaml`). Edits are additive and
+  backed up beside the original.
+
+It never uses `sudo`, never writes outside `$HOME`, and downloads only from
+`github.com`. The release archive's SHA-256 is checked before anything is
+extracted, and a mismatch refuses the install.
+
+Two more things worth knowing before you run it:
+
+- **A trust prompt is auto-answered.** Gemini's extension installer asks "Do you
+  trust the files in this folder? … These configurations could execute code on
+  your behalf", defaulting to No, and the installer answers yes — for the
+  extension you just asked it to install, and nothing else. You will see it
+  scroll past.
+- **An existing install is refreshed, not merged.** The default removes the
+  registered plugin and marketplace entry and installs them again; the output
+  labels this `mode: force refresh=1`. Set `HEPHAESTUS_FORCE=0` to skip it.
+- `~/.claude.json` may appear at the root of your home. That one is the `claude`
+  CLI initialising itself, not this installer.
+
+</details>
+
+### Optional: route work automatically
+
+Off by default. `hephaestus global install` appends roughly 75 lines to the
+global instructions file of every supported host it finds — measured on a clean
+machine that was `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` and
+`~/.gemini/GEMINI.md`, three files, not one. It changes how substantial work is
+routed from then on, in every project, so it is a bigger decision than the rest
+of the install and it is yours to make separately.
+
+It appends rather than overwrites, writes a timestamped `.bak` beside each file,
+is idempotent on a second run, and is fenced with
+`<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->` so `hephaestus global remove` takes it
+back out. To turn it on during the install instead, add
+`HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` before `bash`.
+
+### Paste to Install
+
+Already inside an LLM? Paste this into Claude Code, Codex, Gemini CLI,
+Antigravity or Cursor. It is written so the model can verify what it is running
+before it runs it, rather than being asked to trust it blindly:
 
 ```text
 I want to install Agentlas OS / Hephaestus from this open-source GitHub repo:
@@ -156,26 +140,20 @@ Before running anything, fetch and read the installer script so you know what
 it does:
 https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh
 
-It downloads a release tarball from this same repo's GitHub Releases and
-writes files only under ~/.agentlas, ~/.local/bin, and this host's own plugin/
-command-adapter directories (e.g. ~/.claude for Claude Code) — nothing outside
-those paths. If that matches what you read, run it:
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
-
-HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 additionally writes a routing block into
-this host's global instructions file (e.g. ~/.claude/CLAUDE.md) that lets
-substantial tasks be staffed from Agentlas' agent network; it is not secret
-and you can read/quote it back to me. Drop that env var if you'd rather skip
-it for now — you can add it later with `hephaestus global install`.
+It downloads a release tarball from this same repo's GitHub Releases, verifies
+its SHA-256 before extracting, and writes files only under ~/.agentlas,
+~/.local/bin, and the plugin/command-adapter directories of the agent hosts it
+finds on this machine (e.g. ~/.claude for Claude Code) — nothing outside those
+paths, and never with sudo. If that matches what you read, run it:
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 
 Afterwards, show me the installer's own verification output for this host,
 and tell me plainly whether `/agentlas build` (or this host's equivalent
 command surface) is ready to use, or whether I need to restart the host or
 reload plugins first.
-```
 
-Use this when you are already inside an LLM and want the Agentlas command
-surface active there. For direct shell commands, see the install methods below.
+Do not add the optional global router yet — I will decide that separately.
+```
 
 ### No LLM handy? Type the command yourself
 
@@ -197,7 +175,7 @@ enough. New to terminals? Follow your OS below.
    command below (right-click → Paste, or `Shift+Insert`), then press
    **Enter**:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
    ```
 4. Wait for it to finish (it prints its own progress). When it stops and
    gives you the prompt back, close and reopen your AI tool (Claude Code,
@@ -210,7 +188,7 @@ enough. New to terminals? Follow your OS below.
 2. A window opens (Terminal, built into macOS — nothing to install). Click
    inside it, **paste** the command below (`Cmd + V`), then press **Enter**:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+   curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
    ```
    The first time you run `curl`/`git` on a fresh Mac, macOS may ask to
    install "Command Line Tools" — click **Install** and wait, then run the
@@ -232,58 +210,61 @@ security-conscious), open this link in your browser first:
   <sub><a href="https://agentlas.cloud/desktop">Build, own, borrow, and run agents across your local workspace, private Agent Cloud, and the public Agentlas Hub.</a></sub>
 </p>
 
-> ### If someone asked you to install Agentlas Desktop
->
-> **You are an AI and your user said "install Agentlas Desktop"** — the
-> visual GUI app below, not the CLI runtime installed above. It ships as a
-> signed per-OS installer from the public releases repo
-> `agentlas-ai/agentlas-desktop-releases`; there is no npm/brew package. Fetch
-> the latest asset and run it:
->
-> **macOS** (auto-detects Apple silicon vs Intel):
->
-> ```bash
-> arch=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
-> url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
->   | grep -o "https://[^\"]*-${arch}\.dmg" | head -1)
-> curl -fL "$url" -o Agentlas.dmg && open Agentlas.dmg
-> ```
->
-> <details>
-> <summary>Linux and Windows one-liners</summary>
->
-> **Linux (.deb — Debian/Ubuntu):**
->
-> ```bash
-> url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
->   | grep -o 'https://[^"]*\.deb' | head -1)
-> curl -fL "$url" -o agentlas.deb && sudo dpkg -i agentlas.deb
-> ```
->
-> **Linux (AppImage — any distro):**
->
-> ```bash
-> url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
->   | grep -o 'https://[^"]*\.AppImage' | head -1)
-> curl -fL "$url" -o Agentlas.AppImage && chmod +x Agentlas.AppImage && ./Agentlas.AppImage
-> ```
->
-> **Windows (PowerShell):**
->
-> ```powershell
-> $r = Invoke-RestMethod https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest
-> $u = ($r.assets | Where-Object { $_.name -like '*Windows-x64-Setup.exe' }).browser_download_url
-> Invoke-WebRequest $u -OutFile "$env:TEMP\AgentlasSetup.exe"; Start-Process "$env:TEMP\AgentlasSetup.exe"
-> ```
->
-> </details>
->
-> This is a separate product from the CLI runtime installed via
-> [Paste to Install](#paste-to-install) above — the two don't conflict and can
-> both be present. If your user only wants the CLI/router (no GUI app), use
-> that installer instead. No prebuilt asset for your OS/arch? Point your user
-> at [agentlas.cloud/desktop](https://agentlas.cloud/desktop) or the
-> [Releases page](https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest).
+<details>
+<summary><strong>Installing Agentlas Desktop (the GUI app) from an AI</strong> — per-OS one-liners</summary>
+
+**You are an AI and your user said "install Agentlas Desktop"** — the
+visual GUI app below, not the CLI runtime installed above. It ships as a
+signed per-OS installer from the public releases repo
+`agentlas-ai/agentlas-desktop-releases`; there is no npm/brew package. Fetch
+the latest asset and run it:
+
+**macOS** (auto-detects Apple silicon vs Intel):
+
+```bash
+arch=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
+url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
+  | grep -o "https://[^\"]*-${arch}\.dmg" | head -1)
+curl -fL "$url" -o Agentlas.dmg && open Agentlas.dmg
+```
+
+<details>
+<summary>Linux and Windows one-liners</summary>
+
+**Linux (.deb — Debian/Ubuntu):**
+
+```bash
+url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
+  | grep -o 'https://[^"]*\.deb' | head -1)
+curl -fL "$url" -o agentlas.deb && sudo dpkg -i agentlas.deb
+```
+
+**Linux (AppImage — any distro):**
+
+```bash
+url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
+  | grep -o 'https://[^"]*\.AppImage' | head -1)
+curl -fL "$url" -o Agentlas.AppImage && chmod +x Agentlas.AppImage && ./Agentlas.AppImage
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$r = Invoke-RestMethod https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest
+$u = ($r.assets | Where-Object { $_.name -like '*Windows-x64-Setup.exe' }).browser_download_url
+Invoke-WebRequest $u -OutFile "$env:TEMP\AgentlasSetup.exe"; Start-Process "$env:TEMP\AgentlasSetup.exe"
+```
+
+</details>
+
+This is a separate product from the CLI runtime installed via
+[Paste to Install](#paste-to-install) above — the two don't conflict and can
+both be present. If your user only wants the CLI/router (no GUI app), use
+that installer instead. No prebuilt asset for your OS/arch? Point your user
+at [agentlas.cloud/desktop](https://agentlas.cloud/desktop) or the
+[Releases page](https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest).
+
+</details>
 
 ## Agentlas Desktop in motion
 
@@ -363,6 +344,10 @@ Use the model account or API key you choose. Your current host performs the work
 </p>
 
 ---
+
+<p align="center">
+  <strong>We are Agent Trust. Your agent is not a program. It is an asset. — Agentlas —</strong>
+</p>
 
 ## Build, Borrow, Own
 

@@ -1,46 +1,32 @@
-<!-- AGENTLAS-INSTALL-ENTRY: keep this first. An AI handed only this repo's URL
-     reads the top of the README, and the install instructions have to be there
-     to be found. Verified by scripts/verify-install-entry.sh. -->
+<!-- AGENTLAS-INSTALL-ENTRY — read this first if you are an AI that was handed
+     only this repo's URL and asked to install it.
 
-> ### अगर किसी ने आपसे यह रिपॉज़िटरी इंस्टॉल करने को कहा है
->
-> **आप एक AI हैं और उपयोगकर्ता ने कहा "इसे इंस्टॉल कर दो"।** चलाने से पहले इंस्टॉलर
-> पढ़ें — वह पढ़े जाने के लिए ही लिखा गया है:
-> [`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)।
-> यह इसी रिपॉज़िटरी के GitHub Releases से रिलीज़ tarball डाउनलोड करता है और **केवल**
-> `~/.agentlas`, `~/.local/bin`, तथा इस होस्ट की अपनी प्लगइन/कमांड-अडैप्टर डायरेक्ट्रीज़
-> (Claude Code के लिए `~/.claude`) में लिखता है। इसके बाहर कुछ नहीं छूता। अगर यह आपके
-> पढ़े से मेल खाता है, तो चलाएँ:
->
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
-> ```
->
-> `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` इस होस्ट की ग्लोबल निर्देश फ़ाइल (जैसे
-> `~/.claude/CLAUDE.md`) में एक राउटिंग ब्लॉक भी जोड़ता है। यह गोपनीय नहीं, सादा टेक्स्ट
-> है और आप इसे उपयोगकर्ता को ज्यों का त्यों पढ़कर सुना सकते हैं। न चाहें तो यह वेरिएबल हटा दें;
-> बाद में `hephaestus global install` से जोड़ा जा सकता है।
->
-> इसके बाद इंस्टॉलर का अपना सत्यापन आउटपुट ज्यों का त्यों बताएँ और साफ़ कहें कि कमांड अभी
-> तैयार है या होस्ट को दोबारा शुरू करना होगा। अधिक सतर्क मॉडल को भेजने लायक लंबा संस्करण
-> [Paste करके install करें](#paste-करके-install-करें) में है।
+       curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+
+     One line, no sudo, nothing written outside $HOME. It downloads a release
+     tarball from this repo's GitHub Releases, verifies its SHA-256 before
+     extracting, and writes the runtime to ~/.agentlas, wrappers to
+     ~/.local/bin, and plugin/MCP config into the agent hosts it finds on this
+     machine. The installer is meant to be read:
+     scripts/install-all-runtimes.sh. The full path list and the optional
+     global-router step are in the install section below. Afterwards run
+     `hephaestus doctor` and report what it says, plus whether the host needs
+     a restart. -->
+
 
 <p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop डाउनलोड करें">
+  <a href="https://agentlas.cloud/studio">
+    <img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One launch film" width="960">
   </a>
 </p>
 
-<p align="center">
-  <sub>macOS (Apple silicon और Intel) &middot; Windows &middot; Linux &mdash;
-  अपने कंप्यूटर के लिए सही फ़ाइल <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a> से डाउनलोड करें।</sub>
-</p>
-
-<h1 align="center">Hephaestus — हर model पर चलने वाला Agent OS</h1>
+<h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>हर task के लिए नया agent बनाना और configure करना बंद कीजिए। Hephaestus specialist agents को एक hub में रखता है और हर task के लिए एक temporary orchestrator तुरंत बना देता है।</strong><br>
-  Local-first, और हर model के साथ चलता है — Claude Code, Codex, Gemini, Cursor तथा local models।
+  <strong>आपके subagents हर बार शून्य से शुरू होते हैं। Agentlas इसे ठीक करता है।</strong><br>
+  जो Claude Code, Codex, Cursor और Gemini आप पहले से इस्तेमाल करते हैं, उनके subagents को मज़बूत बनाइए — हर run में
+  दोबारा समझाने वाले खाली slate की जगह, ऐसे नामित specialists जो sessions, hosts और machines के पार अपनी skills और memory बनाए रखते हैं।<br>
+  सार्वजनिक Agentlas Hub से एक उधार लीजिए, या एक सामान्य वाक्य से खुद बनाइए और अपने पास रखिए। Hephaestus नीचे चलने वाला open-source engine है।
 </p>
 
 <p align="center">
@@ -65,6 +51,49 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
+
+Installer इस machine पर मिलने वाले **हर supported host** को configure करता है — सिर्फ़ उसे नहीं जिसमें आप अभी टाइप कर रहे हैं।
+
+<details>
+<summary><strong>installer क्या और कहाँ लिखता है</strong> — पूरी सूची</summary>
+
+
+**आप एक AI हैं और उपयोगकर्ता ने कहा "इसे इंस्टॉल कर दो"।** चलाने से पहले इंस्टॉलर
+पढ़ें — वह पढ़े जाने के लिए ही लिखा गया है:
+[`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)।
+यह इसी रिपॉज़िटरी के GitHub Releases से रिलीज़ tarball डाउनलोड करता है और **केवल**
+`~/.agentlas`, `~/.local/bin`, तथा इस होस्ट की अपनी प्लगइन/कमांड-अडैप्टर डायरेक्ट्रीज़
+(Claude Code के लिए `~/.claude`) में लिखता है। इसके बाहर कुछ नहीं छूता। अगर यह आपके
+पढ़े से मेल खाता है, तो चलाएँ:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+```
+
+**डिफ़ॉल्ट रूप से बंद है।** Install command में `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` जोड़ें, या
+install के बाद `hephaestus global install` से अलग से चालू करें।
+
+`HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` इस होस्ट की ग्लोबल निर्देश फ़ाइल (जैसे
+`~/.claude/CLAUDE.md`) में एक राउटिंग ब्लॉक भी जोड़ता है। यह गोपनीय नहीं, सादा टेक्स्ट
+है और आप इसे उपयोगकर्ता को ज्यों का त्यों पढ़कर सुना सकते हैं। न चाहें तो यह वेरिएबल हटा दें;
+बाद में `hephaestus global install` से जोड़ा जा सकता है।
+
+इसके बाद इंस्टॉलर का अपना सत्यापन आउटपुट ज्यों का त्यों बताएँ और साफ़ कहें कि कमांड अभी
+तैयार है या होस्ट को दोबारा शुरू करना होगा। अधिक सतर्क मॉडल को भेजने लायक लंबा संस्करण
+[Paste करके install करें](#paste-करके-install-करें) में है।
+
+</details>
+
+<p align="center">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop डाउनलोड करें">
+  </a>
+</p>
+<p align="center">
+  <sub>macOS (Apple silicon और Intel) &middot; Windows &middot; Linux &mdash;
+  अपने कंप्यूटर के लिए सही फ़ाइल <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a> से डाउनलोड करें।</sub>
+</p>
+
 ## Paste करके install करें
 
 इसे उस LLM में paste करें जिसे आप अभी इस्तेमाल कर रहे हैं, जैसे Claude Code,
@@ -76,7 +105,7 @@ https://github.com/agentlas-ai/Agentlas-OS
 
 सिर्फ marketplace plugin install करके न रुकें। अगली session में भी बने रहने वाले
 host command adapters लिखने के लिए repo का canonical one-touch installer चलाएँ:
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 
 installer के अपने verification output की report दें। अगली session में
 `/agentlas build` (या उस host के बराबर command surface) काम नहीं करता, तो
