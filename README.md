@@ -22,13 +22,14 @@
 <h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>One request becomes tasks. Each task gets a specialist agent.</strong><br>
-  <sub>Runs inside Claude Code, Codex, Cursor and Gemini — including domains you don't know.</sub>
+  <strong>Your headhunter. When the work needs a specialist team, it brings one.</strong><br>
+  <sub>Runs inside Claude Code, Codex, Cursor and Gemini.</sub>
 </p>
 
 <p align="center">
-  Not the same model with a different prompt.<br>
-  A specialist someone else built, published, and attached qualifications to.
+  What if the right specialists organised themselves around whatever you were doing.<br>
+  What if a frontend specialist and a backend specialist came to you the moment you started building.<br>
+  A job that needs accounting knowledge and marketing at once — can one agent do that?
 </p>
 
 <p align="center">
@@ -68,15 +69,23 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 ---
 
-## Have you ever handed an AI a field you don't know
+## What no platform can do
 
-Say you ask it to pull the risks out of an insurance policy. It does the whole
-thing alone. The table comes out looking good.
+No agent platform routes hundreds or thousands of agents efficiently. Agentlas
+is the only place that staffs a team of domain specialists onto any job **for
+the fewest tokens.**
 
-**Can you tell whether it is right?**
+It works because the agent spec and the protocol for calling an agent are both
+standardised.
 
-You can't. And neither can the model — it cannot outperform the prompt you
-wrote for it, and there is no way to write into a prompt what you don't know.
+- **A2A v1.0, as written.** Agent cards are read and written at the standard
+  `/.well-known/agent-card.json`. Import, export and caller gating all sit on
+  the standard. An external agent is callable only when its capability is
+  aligned **and its identity is verified by a signed card.**
+- **One task, 20 candidates: 40,873B → 10,087B.** Not fewer candidates — a
+  compressed row. The odds of the right agent being on the list stay put while
+  the tokens drop to a quarter.
+- Measured across **849 local profiles** and **188 published listings.**
 
 ## This is where most tools stop
 
