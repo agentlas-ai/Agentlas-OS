@@ -13,7 +13,6 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-
 <p align="center">
   <a href="https://agentlas.cloud/studio">
     <img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One ローンチフィルム" width="960">
@@ -23,78 +22,208 @@
 <h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>サブエージェントは毎回ゼロから始まります。Agentlas はそれを直します。</strong><br>
-  すでに使っている Claude Code・Codex・Cursor・Gemini のサブエージェントを強化します。毎回説明し直す白紙ではなく、
-  セッションもホストもマシンも越えてスキルと記憶を保つ、名前のある専門家に。<br>
-  公開 Agentlas Hub から借りるか、ひとことの依頼から自分で作って手元に残せます。Hephaestus はその下で動くオープンソースエンジンです。
+  <strong>あなたのヘッドハンター。専門チームが要る仕事には、連れてきます。</strong><br>
+  <sub>Claude Code・Codex・Cursor・Gemini の中でそのまま動きます。</sub>
 </p>
 
 <p align="center">
-  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release">
-  </a>
-  <a href="LICENSE">
-    <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
-  </a>
-  <img alt="LLMs" src="https://img.shields.io/badge/LLMs-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama-black">
+  何をしていても、ふさわしい専門家が勝手に組まれるとしたら。<br>
+  サービスを作り始めた瞬間、フロントエンドとバックエンドの専門家の方から来てくれるとしたら。<br>
+  会計の知識も要りマーケティングもやる仕事を、エージェント一体でこなせますか。
 </p>
 
 <p align="center">
-  <a href="README.md">English</a>
-  ·
-  <a href="README.ko.md">Korean</a>
-  ·
-  <a href="README.zh-CN.md">中文</a>
-  ·
-  <a href="README.ja.md">日本語</a>
-  ·
+  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
+  <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
+  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
+  <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.ko.md">한국어</a> ·
+  <a href="README.zh-CN.md">中文</a> ·
+  <a href="README.ja.md">日本語</a> ·
   <a href="README.hi.md">हिन्दी</a>
 </p>
-
-
-インストーラーは**このマシンで見つかった対応ホストすべて**を設定します。いま使っているホストだけではありません。
-
-<details>
-<summary><strong>インストーラーが何をどこに書くか</strong> — 全リスト</summary>
-
-
-**あなたは AI で、ユーザーが「これ入れて」と言いました。** 実行する前にインストーラを
-読んでください。読まれるために書かれています：
-[`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)。
-このリポジトリの GitHub Releases からリリース tarball を取得し、`~/.agentlas`、
-`~/.local/bin`、そしてこのホスト自身のプラグイン／コマンドアダプタ用ディレクトリ
-（Claude Code なら `~/.claude`）**だけ**に書き込みます。それ以外には触れません。
-読んだ内容と一致するなら実行してください：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-**既定ではオフです。** インストールコマンドに `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` を付けるか、
-インストール後に `hephaestus global install` で個別に有効化します。
-
-`HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` は、ホストのグローバル指示ファイル（例:
-`~/.claude/CLAUDE.md`）にルーティング用の記述を追記します。秘密ではない平文なので、
-そのままユーザーに読み上げて構いません。不要ならこの変数を外し、後から
-`hephaestus global install` で追加できます。
-
-完了後はインストーラ自身の検証出力をそのまま報告し、コマンドがすぐ使えるのか、
-ホストの再起動が必要なのかをはっきり伝えてください。より慎重なモデルに貼るための
-長い版は [貼り付けてインストール](#貼り付けてインストール) にあります。
-
-</details>
+<p align="center">
+  <sub>一行。<code>sudo</code> なし。<code>$HOME</code> の外には何も書きません。<br>インストール後はお使いの AI ツールを再起動し、<code>hephaestus doctor</code> を実行してください。</sub>
+</p>
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop をダウンロード">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop を入手">
   </a>
 </p>
+
 <p align="center">
-  <sub>macOS（Apple シリコン・Intel） &middot; Windows &middot; Linux &mdash;
-  <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a>で、お使いのコンピューターに合うファイルをダウンロードできます。</sub>
+  <sub>ターミナルより画面がよければ · macOS · Windows · Linux · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub>
 </p>
 
-## 貼り付けてインストール
+---
+
+## どのプラットフォームにもできないこと
+
+数百、数千のエージェントを効率よくルーティングできるエージェントプラットフォームは存在しません。どんな仕事にも各分野の専門家を**最小のトークンで**チームとして配置できるのは Agentlas だけです。
+
+エージェントの規格と、エージェントを呼ぶプロトコルの両方を標準化したから成り立ちます。
+
+- **A2A v1.0 をそのまま。** エージェントカードは標準パス `/.well-known/agent-card.json` で読み書きします。インポート、エクスポート、呼び出し側の検証がすべて標準の上にあります。外部エージェントは能力が整合し、**かつ署名済みカードで身元が確認された**ときだけ呼べます。
+- **1 タスク・候補 20 件：40,873B → 10,087B。** 候補を減らしたのではなく、行を圧縮しています。正解が名簿に載る確率はそのままで、トークンだけが 4 分の 1 になります。
+- **ローカルプロファイル 849 件**、**公開リスト 188 件**の規模で計測した値です。
+
+そして連れてきた専門家は手ぶらで来ません。コードマップ、サイトマップ、プロジェクトの記憶がタスクと一緒に運ばれます。どのファイルが範囲に入るか、何から読むべきか、本当に終わったのか。配置の前に計算して一緒に渡します。記憶だけを売るツールもありますが、ここで記憶は配置と実行と検証に留められた一部品です。
+
+## ほとんどのツールはここで止まります
+
+|  | タスク分割なし | タスク分割あり |
+| --- | --- | --- |
+| **専門家の調達なし** | チャット一つが丸ごと処理 | 同じモデル、プロンプトだけ差し替え |
+| **専門家の調達あり** | ストアから一つ選んで使う | **Agentlas** |
+
+タスクを分けてくれるツールはあります。しかし分かれたタスクを受け持つのは、同じモデルにプロンプトを変えただけのものです。専門家を売る場所もあります。しかしそこには分割がありません。一つ選んで使うだけです。
+
+**他所で分かれたタスクは、あなたが書いたプロンプトです。ここでは求人票です。**
+タスク一つひとつが、あなたのマシン、あなたのプライベートクラウド、公開 Hub の三か所に同時に出ます。
+
+---
+
+## 三つのステップ
+
+<table>
+<tr>
+<td width="44%" valign="middle">
+
+### 1. タスク分割
+
+一文を入れるとタスクが出てきます。役割、引き継ぐ順序、それぞれが出すべき成果物まで。
+
+レビューが前のタスクへ戻る組織図は**実行前に差し戻され**、どこで回っているかを名前で教えます。
+
+</td>
+<td width="56%">
+  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-build-pipeline.gif" alt="リクエストがタスクに分割される画面" width="100%"></a>
+</td>
+</tr>
+<tr>
+<td width="44%" valign="middle">
+
+### 2. エージェント配置
+
+タスクごとに候補が返ります。あなたのマシン、あなたのクラウド、公開 Hub から一度に。
+
+**名簿に順位はありません。** 選ぶのはあなたのモデルで、理由が記録されます。
+
+資格は `declared`・`checked`・`demonstrated`・`attested` の四段階で、タスクごとに下限を課せます。選んだ瞬間そのリリースはダイジェストで固定され、翌日 1 バイトでも違えば実行が止まります。
+
+</td>
+<td width="56%">
+  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-make-group-v2.gif" alt="タスクごとに専門エージェントを配置する画面" width="100%"></a>
+</td>
+</tr>
+<tr>
+<td width="44%" valign="middle">
+
+### 3. 実行と検証
+
+計画、作業、統合、検証がそれぞれ別の呼び出しとして走ります。
+
+**独立した検証者が通して初めて完了です。** すべての呼び出し、すべての引き継ぎ、統合がレシートで証明されなければなりません。そうでなければ止まった場所を名前で返します — `prepared`、`blocked`、`source_unavailable`。
+
+</td>
+<td width="56%">
+  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-run-v2.gif" alt="実行と検証の画面" width="100%"></a>
+</td>
+</tr>
+</table>
+
+---
+
+## たぶん気になること
+
+<details open>
+<summary><strong>結局そちらが薦めてくるのでは？</strong></summary>
+
+<br>
+
+エージェントを売る場所はどこも順位をつけます。それが稼ぎ方だからです。人は上にあるものを押し、誰が上に来るかはその会社が決めます。
+
+私たちは順位を作りません。スキーマが `allowHistoryEvidence` を定数 `false` で固定しており、スコア付きの名簿を返すソースは**応答ごと拒否**されます。
+
+評価、インストール数、先月の販売数 — どれも読みません。候補はそのまま渡され、選ぶのはあなたのモデルです。
+
+</details>
+
+<details>
+<summary><strong>開発者だけのものですか？</strong></summary>
+
+<br>
+
+いいえ。役割オントロジーには、バックエンド・セキュリティ・QA と並んで**保険数理士、M&A デューデリジェンス責任者、引受デューデリジェンス専門家、旅行プランナー**がいます。
+
+保険だけで領域が四つあります。リストにない領域も塞ぎません。
+
+</details>
+
+---
+
+## 自分たちの案を入れて、そして外しました
+
+発行者自身が書いた「こういうときに呼んで」という文をランキング信号に入れてみました。正解が 1 位に来る割合が **73.1% から 57.0% へ下がりました**。外しました。今その文は名簿末尾の三席を予約するだけです。順位を変える権限ではなく、消されない権利だけ。
+
+日本語で尋ねると正解のエージェントは **144 位**でした。同じ問いを英語にすると **1 位**。だからワークオーダーは英語で書き、成果物の言語は別のフィールドで受け取ります。
+
+候補を 10、20、30、50 件見せたとき、正解が名簿に入る割合は **73、83、87、93%** でした。既定値は 30 です。
+
+---
+
+<p align="center">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/readme/agentlas-desktop-hero-v2.png" alt="Agentlas Desktop のワークスペース" width="880">
+  </a>
+</p>
+
+<h2 align="center">Desktop でもっと効率よく</h2>
+
+Desktop はホストそのものなので、実行が始まる**前に**コードが決めます。一人で足りる仕事か、チームが要る仕事か。その判断は提案ではなく、予約された実行として記録されます。すでにインストール済みのエージェントだけを配置し、費用のかかる外部の専門家を呼ぶときは必ず先に尋ねます。
+
+使っている LLM をすべて一か所に。すでに契約しているコーディング CLI（Claude Code、Codex、Antigravity/Gemini、Cursor、Grok、Kimi）、自分で入れた 11 プロバイダの API キー、そしてローカルモデルまで。署名検証済みの llama.cpp エンジンを同梱し、Hugging Face から GGUF を取得して動かします。LM Studio と MLX にもつながります。
+
+**そして使っているモデルの利用量が尽きたら、そのターンをあなた自身が決めた優先順位の次のモデルで走り直します。** 保存したモデル選択は変わりません。上限が解けたら元のモデルへ自動で戻ります。
+
+<p align="center">
+  <strong><a href="https://agentlas.cloud/desktop">Agentlas Desktop を入手 →</a></strong><br>
+  <sub>macOS（Apple シリコン · Intel）· Windows · Linux</sub>
+</p>
+
+| 面 | 役割 |
+| --- | --- |
+| **Agentlas Desktop** | エージェントチーム、記憶、ブラウザ作業、Hub の専門家を扱うローカルのビジュアル OS |
+| **Hephaestus プラグイン** | このリポジトリ — CLI ホスト向けのオープンソースエンジンとコマンド面 |
+| **Agentlas Hub** | 専門家を公開し借りるためのパブリック面 |
+| **Agentlas Cloud** | 自分が作ったエージェントを非公開で保管し取り出すオーナー専用ストア |
+
+---
+
+<h2 align="center">一行で始める</h2>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+```
+
+<p align="center">
+  <sub>このインストーラーは<strong>このマシンで見つかった対応ホストすべて</strong>を設定します。いま使っている一つだけではありません。何をどこに書くかは下にすべて記してあります。</sub>
+</p>
+
+---
+
+## インストール：すべての方法と、何をどこに書くか
 
 今使っている LLM、たとえば Claude Code、Codex、Gemini CLI、Antigravity、Cursor に貼り付けてください:
 
@@ -145,28 +274,10 @@ shell で手動インストールする場合は、下の全インストール�
 
 ---
 
-## もう一つのエンジンではなく、標準を
 
-> **Agentlas は新しいグラフエンジンを作りません。**
-> 複数のグラフエンジンとランタイムが共通して使えるエージェント標準と、
-> それを運ぶ流通網を設計します。
+<details>
+<summary><strong>中身は何か — ルーティング・権限・記憶・検索・パッケージ</strong></summary>
 
-エンジンは入れ替わり続けます。その入れ替わりを越えて残るべきものは、エージェント自身が
-携える契約です。何であるか、どう呼び出されるか、何に触れてよいか、何を記憶するか、
-結果をどう証明するか。この契約は意図的にエンジン中立です。
-
-- **一つの定義、複数のランタイム。** マニフェスト・ルーティングカード・権限・メモリ規則が
-  ベンダーではなくエージェントと共に動くため、同じパッケージが Claude Code、Codex、Gemini、
-  Antigravity、Cursor、ローカルモデルのいずれでも動きます。
-- **チャットの外の寿命。** パッケージ契約・レシート・検証ゲートは、それを生んだセッションより
-  長く残ります。
-- **他者へ届く経路。** 公開 Hub に発行するか、所有者スコープの Cloud に保管するか。いずれも
-  コピーされたプロンプトではなくパッケージとして移動します。
-
-Hephaestus はこの標準を実装した一つのエンジンです。標準が検証され、フォークされ、再実装
-され得るようにオープンソースにしています。
-
-## エージェント OS の時代
 
 業界はすでに、ステートレスでその場しのぎの「ツール付きチャットボット」の段階を越えました。Google をはじめとする主要 AI ラボが開発者戦略を**エージェントオペレーティングシステム**（Antigravity オーケストレーションプラットフォームや Gemini Spark デーモンプロセスなど）を軸に再構成する中で、AI エージェントは正式にオペレーティングシステムの第一級プリミティブ — 固有のアイデンティティ、リレーショナルなメモリシステム、セキュリティ権限、ネイティブなツール呼び出し環境を備えた、長寿命でステートフルなプロセス — になりました。
 
@@ -200,7 +311,12 @@ Hephaestus は、古典的なオペレーティングシステムの概念に直
 
 ---
 
-## v1.1.0 の新機能 — Briefing Interview Engine
+</details>
+
+
+<details>
+<summary><strong>Briefing Interview Engine</strong></summary>
+
 
 曖昧な一文プロンプトから生成されたエージェントは、実世界のエッジケースで破綻します。Hephaestus v1.1.0 は、**Briefing Interview Engine** によってタスクの仕様化を OS の第一級サービスとして位置づけます:
 
@@ -212,7 +328,12 @@ Hephaestus は、古典的なオペレーティングシステムの概念に直
 
 ---
 
-## すべてのインストール方法
+</details>
+
+
+<details>
+<summary><strong>すべてのインストール方法 — ソース・オフライン・ホスト別</strong></summary>
+
 
 ### 手動 LLM Adapter インストール
 
@@ -269,7 +390,12 @@ codex plugin add hephaestus@agentlas-core-engine
 
 ---
 
-## コマンドサーフェス
+</details>
+
+
+<details>
+<summary><strong>コマンドサーフェス — すべてのコマンド</strong></summary>
+
 
 ネイティブ Agentlas 環境内では、Hephaestus はコマンドレスで動作します。外部 LLM tools では、意図的に小さく保たれた可視コマンドセットを使用します。Stormbreaker、リサーチロードアウト、設定テーブルといったシステムレベルのユーティリティは、コンテキストから自動的にアタッチされます:
 
@@ -292,7 +418,12 @@ codex plugin add hephaestus@agentlas-core-engine
 
 ---
 
-## OS サブシステム
+</details>
+
+
+<details>
+<summary><strong>さらに深く — ルーティングスケジューラ、実行ゲート、記憶、検索エンジン</strong></summary>
+
 
 ### Meta-Agent Factory — プロセス生成
 4 つのビルダーを用いる統合コンパイルファクトリーです。生成されるすべてのパッケージはグローバルコマンド（`.agentlas/global-commands.json`）を登録し、検証スクリプトを同梱します — コンパイル済みパッケージの実行方法をユーザーが推測する必要は一切ありません:
@@ -304,7 +435,7 @@ codex plugin add hephaestus@agentlas-core-engine
 | **ワークスペースパッケージャー** | `30-agentlas-packager` | ランタイムへのインポート、CLI 実行、GitHub 配布に対応したコンパイル済みバンドル。 |
 | **セッションエージェントビルダー** | `40-session-agent-builder` | 明示的にエクスポートされたセッションを、レビュー済みのシングルエージェントまたはマルチエージェントチームパッケージに変換します。 |
 
-*Briefing Interview Gate:* ビルダーは **briefing interview gate**（[docs/builder-interview-research-gate.md](docs/builder-interview-research-gate.md)）を用いてプロセスを開始します: レンズ駆動の質問を行い、曖昧さのしきい値を評価し、一次情報源を検索し、Work Brief を出力します。
+*Briefing Interview Gate:* ビルダーは **briefing interview gate**を用いてプロセスを開始します: レンズ駆動の質問を行い、曖昧さのしきい値を評価し、一次情報源を検索し、Work Brief を出力します。
 
 ---
 
@@ -322,7 +453,6 @@ codex plugin add hephaestus@agentlas-core-engine
 *   **固定された実行:** 検証後、Core は元のソースセッションから選択済みの不変リリースだけを取得し、リリース、パッケージ、コンテンツのダイジェストを検証してから、プランナー、ワーカー、統合、検証を個別の呼び出しで実行します。
 *   **証拠ベースの評価:** 検索カバレッジ、ホスト選択、不変な準備、実際の子呼び出し、最終検証を別々の主張として評価します。ベンチマークや利用履歴がホストの人員配置判断に置き換わることはありません。
 
-詳細: [docs/hephaestus-network-2.0.md](docs/hephaestus-network-2.0.md) · ランタイムサポートマトリクス: [docs/runtime-fallback-adapters.md](docs/runtime-fallback-adapters.md)
 
 ---
 
@@ -336,7 +466,6 @@ Kernel Gating Envelope:
 
 ローカルの実行ジャーナルにより、長時間の実行は中断後も再開可能です。実行パケットは Work Brief を携行するため、アンチスコープルールと終了基準がすべての並列サブプロセスを統制します。Stormbreaker は明示的な完了状態（**verified / unverified / blocked**）を報告し、自律実行における「完了の演出」を防ぎます。
 
-実行プロトコル: [docs/robustness-protocol.md](docs/robustness-protocol.md) · ベンチマークと評価: [docs/robustness-eval.md](docs/robustness-eval.md)
 
 ---
 
@@ -356,7 +485,6 @@ bin/ontology query "Project Helios Memory Curator" --agent verifier
 bin/ontology memory candidates
 ```
 
-詳細: [docs/ontology-runtime.md](docs/ontology-runtime.md)
 
 ---
 
@@ -379,22 +507,12 @@ agentlas-cloud route "run the release check" --caller local/orchestrator .
 
 ---
 
-## エンタープライズのための設計
+</details>
 
-エンタープライズに必要なのは、孤立した Python エージェントを書くためのもう 1 つの方法ではありません。必要なのは、それらを**統制されたワークフォースとして運用する**ことです。Hephaestus は、まさにこの運用モデルのために設計されています:
 
-*   **調達レバレッジとしてのモデル中立性:** エージェント、メモリリポジトリ、知識ドメインは、あなたの管理下にあるローカル資産として保存されます。新しいモデルプロバイダーへの移行（あるいは Ollama や Llama のようなローカルモデル、DeepSeek・GLM・Gemini・Claude のようなエンタープライズエンジンの活用）は、コードベースの移行ではなく、単なる設定の更新です。
-*   **構造としての監査可能性:** すべてのルーティング決定、実行ステップ、メモリ候補、キュレーター決定はテキストファイルとして記録されます。diff・監査・コミットが可能です。作業は検証済みであるか、未検証としてフラグ付けされるかのいずれかです。
-*   **決定的なパイプラインゲート:** セキュリティフィルター、アンチスコープ、ルーティングカードのトリガー、プロンプトのサニタイズは OS パイプラインにハードコードされており、LLM のシステム指示やガイドラインには依存しません。
-*   **生成前の仕様化:** Briefing Interview Engine はリクエストの曖昧さを測定し、そのスコアを Work Brief に刻印します。これにより、タスクの実行は常に「合意された内容」まで遡って監査できます。
-*   **ローカルファーストのデータ境界:** 生のテキスト、ドキュメント、データベースファイルはローカルに留まります。外部とのトランザクションはレダクションされ、オプトインです。
+<details>
+<summary><strong>生成される成果物 — プロセスパッケージング</strong></summary>
 
-### フレームワークの位置づけ
-CrewAI、LangChain、ベンダー製エージェント SDK は**ライブラリ**として機能します — 単一プロセス内でカスタムエージェントロジックを書くには優れた選択肢です。Hephaestus は**ランタイム基盤**として動作します: ワークスペースランタイムをまたいでエージェントを仕様化し、パッケージ化し、ルーティングし、実行し、監査し、移行します。フレームワークのコードは Hephaestus パッケージの内部で動作し、カーネルが要求するのは、エージェントがディレクトリコントラクトと Routing Card を守ることだけです。
-
----
-
-## 生成される成果物（プロセスパッケージング）
 
 Hephaestus は、任意のワークスペースランタイムがパース・インストール・検証・実行できる標準ディレクトリレイアウトへエージェントをパッケージします:
 
@@ -411,11 +529,11 @@ Hephaestus は、任意のワークスペースランタイムがパース・イ
 ├── scripts/
 │   ├── verify-package.sh              # Package structure verifier
 │   └── public_safety_check.sh         # Secret and credentials scanner
-└── docs/                              # Briefing records, tool specifications,
-                                       # and prompt contracts
 ```
 
 ---
+
+</details>
 
 ## 目的別ドキュメント
 
@@ -423,19 +541,6 @@ Hephaestus は、任意のワークスペースランタイムがパース・イ
 |---|---|
 | 正準ルートを理解する | [`AGENTS.md`](AGENTS.md) |
 | チームコントラクト全体を見る | [`agent.md`](agent.md) |
-| アーキテクチャの一次情報源 | [`docs/source-of-truth.md`](docs/source-of-truth.md) |
-| ランタイム境界 | [`docs/runtime-sync-boundaries.md`](docs/runtime-sync-boundaries.md) |
-| ブリーフィングインタビューとリサーチゲート | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
-| Network 2.0 ルーティング | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
-| Stormbreaker プロトコル | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |
-| 正準 Goal + UltraCode ハーネス | [`docs/stormbreaker-goal-ultracode-harness.md`](docs/stormbreaker-goal-ultracode-harness.md) |
-| Ontology ランタイム | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
-| メモリアーキテクチャ | [`docs/memory-architecture.md`](docs/memory-architecture.md) |
-| Experience と Taste アセット | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
-| MCP ビルド解決 | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
-| モデル割り当て | [`docs/model-allocation.md`](docs/model-allocation.md) |
-| スキルライフサイクルの昇格 | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
-| Cloud ランタイムバンドル | [`docs/agentlas-cloud-runtime.md`](docs/agentlas-cloud-runtime.md) |
 | パッケージの検証 | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
 | 公開セーフティチェック | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 

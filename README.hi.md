@@ -13,7 +13,6 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-
 <p align="center">
   <a href="https://agentlas.cloud/studio">
     <img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One launch film" width="960">
@@ -23,78 +22,208 @@
 <h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>आपके subagents हर बार शून्य से शुरू होते हैं। Agentlas इसे ठीक करता है।</strong><br>
-  जो Claude Code, Codex, Cursor और Gemini आप पहले से इस्तेमाल करते हैं, उनके subagents को मज़बूत बनाइए — हर run में
-  दोबारा समझाने वाले खाली slate की जगह, ऐसे नामित specialists जो sessions, hosts और machines के पार अपनी skills और memory बनाए रखते हैं।<br>
-  सार्वजनिक Agentlas Hub से एक उधार लीजिए, या एक सामान्य वाक्य से खुद बनाइए और अपने पास रखिए। Hephaestus नीचे चलने वाला open-source engine है।
+  <strong>आपका headhunter. काम को specialist टीम चाहिए, तो वह ले आता है।</strong><br>
+  <sub>Claude Code, Codex, Cursor और Gemini के भीतर वैसे ही चलता है।</sub>
 </p>
 
 <p align="center">
-  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release">
-  </a>
-  <a href="LICENSE">
-    <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green">
-  </a>
-  <img alt="LLMs" src="https://img.shields.io/badge/LLMs-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Antigravity%20%7C%20Cursor%20%7C%20DeepSeek%20%7C%20GLM%20%7C%20Ollama-black">
+  आप जो भी कर रहे हों, सही specialists अपने आप संगठित हो जाएँ तो कैसा हो।<br>
+  service बनाना शुरू करते ही frontend और backend specialist खुद आपके पास आ जाएँ तो कैसा हो।<br>
+  जिस काम में accounting भी आनी चाहिए और marketing भी करनी है — क्या एक अकेला agent वह कर सकता है?
 </p>
 
 <p align="center">
-  <a href="README.md">English</a>
-  ·
-  <a href="README.ko.md">Korean</a>
-  ·
-  <a href="README.zh-CN.md">中文</a>
-  ·
-  <a href="README.ja.md">日本語</a>
-  ·
+  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
+  <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
+  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
+  <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.ko.md">한국어</a> ·
+  <a href="README.zh-CN.md">中文</a> ·
+  <a href="README.ja.md">日本語</a> ·
   <a href="README.hi.md">हिन्दी</a>
 </p>
-
-
-Installer इस machine पर मिलने वाले **हर supported host** को configure करता है — सिर्फ़ उसे नहीं जिसमें आप अभी टाइप कर रहे हैं।
-
-<details>
-<summary><strong>installer क्या और कहाँ लिखता है</strong> — पूरी सूची</summary>
-
-
-**आप एक AI हैं और उपयोगकर्ता ने कहा "इसे इंस्टॉल कर दो"।** चलाने से पहले इंस्टॉलर
-पढ़ें — वह पढ़े जाने के लिए ही लिखा गया है:
-[`scripts/install-all-runtimes.sh`](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh)।
-यह इसी रिपॉज़िटरी के GitHub Releases से रिलीज़ tarball डाउनलोड करता है और **केवल**
-`~/.agentlas`, `~/.local/bin`, तथा इस होस्ट की अपनी प्लगइन/कमांड-अडैप्टर डायरेक्ट्रीज़
-(Claude Code के लिए `~/.claude`) में लिखता है। इसके बाहर कुछ नहीं छूता। अगर यह आपके
-पढ़े से मेल खाता है, तो चलाएँ:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-**डिफ़ॉल्ट रूप से बंद है।** Install command में `HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` जोड़ें, या
-install के बाद `hephaestus global install` से अलग से चालू करें।
-
-`HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` इस होस्ट की ग्लोबल निर्देश फ़ाइल (जैसे
-`~/.claude/CLAUDE.md`) में एक राउटिंग ब्लॉक भी जोड़ता है। यह गोपनीय नहीं, सादा टेक्स्ट
-है और आप इसे उपयोगकर्ता को ज्यों का त्यों पढ़कर सुना सकते हैं। न चाहें तो यह वेरिएबल हटा दें;
-बाद में `hephaestus global install` से जोड़ा जा सकता है।
-
-इसके बाद इंस्टॉलर का अपना सत्यापन आउटपुट ज्यों का त्यों बताएँ और साफ़ कहें कि कमांड अभी
-तैयार है या होस्ट को दोबारा शुरू करना होगा। अधिक सतर्क मॉडल को भेजने लायक लंबा संस्करण
-[Paste करके install करें](#paste-करके-install-करें) में है।
-
-</details>
+<p align="center">
+  <sub>एक लाइन। <code>sudo</code> नहीं। <code>$HOME</code> के बाहर कुछ नहीं लिखता।<br>इसके बाद अपना AI टूल दोबारा शुरू करें और <code>hephaestus doctor</code> चलाएँ।</sub>
+</p>
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop डाउनलोड करें">
+    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop लें">
   </a>
 </p>
+
 <p align="center">
-  <sub>macOS (Apple silicon और Intel) &middot; Windows &middot; Linux &mdash;
-  अपने कंप्यूटर के लिए सही फ़ाइल <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a> से डाउनलोड करें।</sub>
+  <sub>terminal के बजाय एक window · macOS · Windows · Linux · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub>
 </p>
 
-## Paste करके install करें
+---
+
+## जो कोई platform नहीं कर पाता
+
+कोई भी agent platform सैकड़ों-हज़ारों agents को कुशलता से route नहीं कर पाता। किसी भी काम पर हर क्षेत्र के specialists को **सबसे कम tokens में** एक टीम के रूप में लगाने वाली जगह सिर्फ़ Agentlas है।
+
+यह इसलिए संभव है क्योंकि agent का spec और agent को बुलाने का protocol, दोनों मानकीकृत हैं।
+
+- **A2A v1.0, जैसा लिखा है वैसा।** Agent cards मानक पथ `/.well-known/agent-card.json` पर पढ़े और लिखे जाते हैं। Import, export और caller gating सब मानक पर टिके हैं। कोई बाहरी agent तभी बुलाया जा सकता है जब उसकी capability aligned हो **और हस्ताक्षरित card से उसकी पहचान सत्यापित हो।**
+- **एक task, 20 candidates: 40,873B → 10,087B.** candidates घटाए नहीं गए — पंक्ति compress की गई। सही agent के सूची में होने की संभावना वही रहती है, tokens एक-चौथाई रह जाते हैं।
+- ये आँकड़े **849 local profiles** और **188 प्रकाशित listings** पर मापे गए हैं।
+
+और जो specialist आता है, खाली हाथ नहीं आता। code map, sitemap और project की memory task के साथ ही चलती है। कौन-सी फ़ाइलें दायरे में हैं, पहले क्या पढ़ना है, काम सचमुच पूरा हुआ या नहीं — यह सब staffing से पहले गणना करके साथ सौंपा जाता है। कुछ tools अकेले memory बेचते हैं; यहाँ memory staffing, execution और verification से जुड़ा एक पुर्ज़ा भर है।
+
+## यहीं अधिकांश tools रुक जाते हैं
+
+|  | task विभाजन नहीं | task विभाजन है |
+| --- | --- | --- |
+| **specialist sourcing नहीं** | एक chat पूरा हिस्सा संभालता है | वही model, अलग prompt |
+| **specialist sourcing है** | store से एक चुनकर इस्तेमाल | **Agentlas** |
+
+कुछ tools काम बाँटते ज़रूर हैं। पर हर task जो संभालता है वह वही model होता है, बस prompt बदला हुआ। कुछ जगहें specialists बेचती भी हैं। पर वहाँ विभाजन नहीं है — आप एक चुनते हैं और इस्तेमाल करते हैं।
+
+**कहीं और बँटा हुआ task वह prompt है जो आपने लिखा। यहाँ वह एक नौकरी का विज्ञापन है।**
+हर task एक साथ आपकी मशीन, आपके private cloud और सार्वजनिक Hub तक जाता है।
+
+---
+
+## तीन चरण
+
+<table>
+<tr>
+<td width="44%" valign="middle">
+
+### 1. Task विभाजन
+
+एक वाक्य जाता है, tasks निकलते हैं — भूमिकाएँ, handoff का क्रम, और हर एक को क्या देना है।
+
+जिस org chart में review पिछले task पर लौटता हो, वह **कुछ भी चलने से पहले अस्वीकार** हो जाता है, और loop का नाम बता दिया जाता है।
+
+</td>
+<td width="56%">
+  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-build-pipeline.gif" alt="request को tasks में बाँटने की स्क्रीन" width="100%"></a>
+</td>
+</tr>
+<tr>
+<td width="44%" valign="middle">
+
+### 2. Agent staffing
+
+हर task के लिए candidates लौटते हैं — आपकी मशीन, आपके cloud और सार्वजनिक Hub से एक साथ।
+
+**सूची में कोई ranking नहीं है।** चुनाव आपका model करता है, और कारण दर्ज होता है।
+
+योग्यता चार स्तरों में है: `declared`, `checked`, `demonstrated`, `attested` — और हर task पर न्यूनतम स्तर तय किया जा सकता है। चुनते ही वह release digest से pin हो जाता है, इसलिए कल एक byte भी बदला तो run रुक जाता है।
+
+</td>
+<td width="56%">
+  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-make-group-v2.gif" alt="हर task पर specialist agent लगाने की स्क्रीन" width="100%"></a>
+</td>
+</tr>
+<tr>
+<td width="44%" valign="middle">
+
+### 3. चलाना और सत्यापन
+
+योजना, काम, संश्लेषण और सत्यापन — हर एक अलग invocation के रूप में चलता है।
+
+**जब तक एक स्वतंत्र verifier पास न करे, कुछ भी पूरा नहीं कहलाता।** हर invocation, हर handoff और संश्लेषण receipt से सिद्ध होने चाहिए। वरना आपको वह जगह नाम से मिलती है जहाँ यह रुका — `prepared`, `blocked`, `source_unavailable`।
+
+</td>
+<td width="56%">
+  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-run-v2.gif" alt="चलाने और सत्यापन की स्क्रीन" width="100%"></a>
+</td>
+</tr>
+</table>
+
+---
+
+## जो सवाल शायद आपके मन में हैं
+
+<details open>
+<summary><strong>आख़िर में आप ही एक की सिफ़ारिश कर देते हैं, है ना?</strong></summary>
+
+<br>
+
+agents बेचने वाली हर जगह उन्हें rank करती है। कमाई का तरीका यही है। लोग ऊपर वाले पर click करते हैं, और ऊपर कौन आएगा यह वह कंपनी तय करती है।
+
+हम ranking बनाते ही नहीं। schema `allowHistoryEvidence` को स्थिरांक `false` पर pin करता है, और जो source scored सूची लौटाए उसका **पूरा उत्तर अस्वीकार** कर दिया जाता है।
+
+Ratings, install counts, पिछले महीने की बिक्री — हम इनमें से कुछ नहीं पढ़ते। candidates जैसे हैं वैसे मिलते हैं, और चुनाव आपका model करता है।
+
+</details>
+
+<details>
+<summary><strong>क्या यह सिर्फ़ developers के लिए है?</strong></summary>
+
+<br>
+
+नहीं। role ontology में backend, security और QA के साथ-साथ **insurance actuary, M&A diligence lead, underwriting diligence specialist और travel planner** भी हैं।
+
+अकेले insurance के चार क्षेत्र हैं। सूची से बाहर के क्षेत्र भी रोके नहीं जाते।
+
+</details>
+
+---
+
+## हमने अपना ही विचार जोड़ा, फिर हटा दिया
+
+हमने publisher के अपने लिखे "मुझे तब बुलाइए…" वाक्यों को ranking signal की तरह आज़माया। सही agent के पहले स्थान पर आने का अनुपात **73.1% से गिरकर 57.0%** हो गया। हमने हटा दिया। अब वे वाक्य सूची के अंत में तीन सीटें भर आरक्षित करते हैं — सूची से न हटाए जाने का अधिकार, rank बदलने का अधिकार नहीं।
+
+हिंदी में पूछने पर सही agent **144वें** स्थान पर आया। वही सवाल अंग्रेज़ी में पूछने पर **पहले**। इसलिए work order अंग्रेज़ी में लिखा जाता है, और deliverable की भाषा एक अलग field है।
+
+10, 20, 30 और 50 candidates दिखाने पर सही वाला सूची में **73, 83, 87 और 93%** बार आया। डिफ़ॉल्ट 30 है।
+
+---
+
+<p align="center">
+  <a href="https://agentlas.cloud/desktop">
+    <img src="assets/readme/agentlas-desktop-hero-v2.png" alt="Agentlas Desktop workspace" width="880">
+  </a>
+</p>
+
+<h2 align="center">Desktop पर और असरदार</h2>
+
+Desktop खुद host है, इसलिए run शुरू होने से **पहले** ही code तय कर लेता है कि काम एक agent से बनेगा या टीम चाहिए। वह निर्णय सुझाव नहीं, एक आरक्षित run के रूप में दर्ज होता है। यह सिर्फ़ उन्हीं agents को लगाता है जो आपने पहले से install किए हैं, और पैसे वाली बाहरी मदद बुलाने से पहले हमेशा पूछता है।
+
+आप जितने LLM इस्तेमाल करते हैं, सब एक जगह: जिन coding CLIs की आप पहले से subscription लेते हैं (Claude Code, Codex, Antigravity/Gemini, Cursor, Grok, Kimi), 11 providers की आपकी अपनी API keys, और local models भी। एक हस्ताक्षर-सत्यापित llama.cpp engine साथ आता है, Hugging Face से GGUF models लाता है, और LM Studio तथा MLX से भी जुड़ता है।
+
+**और जिस model पर आप हैं उसका quota ख़त्म हो जाए, तो वह turn आपकी अपनी priority के अगले model पर दोबारा चलाया जाता है।** आपका सहेजा हुआ model चुनाव नहीं बदलता, और limit हटते ही मूल model अपने आप लौट आता है।
+
+<p align="center">
+  <strong><a href="https://agentlas.cloud/desktop">Agentlas Desktop लें →</a></strong><br>
+  <sub>macOS (Apple silicon · Intel) · Windows · Linux</sub>
+</p>
+
+| सतह | भूमिका |
+| --- | --- |
+| **Agentlas Desktop** | agent teams, memory, browser काम और Hub specialists के लिए स्थानीय visual OS |
+| **Hephaestus plugin** | यही repo — CLI hosts के लिए open-source engine और command surface |
+| **Agentlas Hub** | specialists प्रकाशित करने और उधार लेने की सार्वजनिक सतह |
+| **Agentlas Cloud** | अपने बनाए agents को निजी तौर पर रखने और वापस लाने का owner-only store |
+
+---
+
+<h2 align="center">एक लाइन से शुरू करें</h2>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+```
+
+<p align="center">
+  <sub>यह installer <strong>इस मशीन पर मिले हर supported host</strong> को configure करता है, सिर्फ़ उसे नहीं जिसमें आप अभी टाइप कर रहे हैं। यह क्या और कहाँ लिखता है, नीचे पूरा दिया है।</sub>
+</p>
+
+---
+
+## Install: सभी तरीक़े, और यह क्या लिखता है
 
 इसे उस LLM में paste करें जिसे आप अभी इस्तेमाल कर रहे हैं, जैसे Claude Code,
 Codex, Gemini CLI, Antigravity या Cursor:
@@ -146,28 +275,10 @@ plugin reload करने को कहें।
 
 ---
 
-## एक और engine नहीं, standard
 
-> **Agentlas एक और graph engine नहीं बना रहा है।**
-> यह वह agent standard design कर रहा है — और उसे ले जाने वाला distribution network —
-> जिसे कई graph engines और runtimes साझा कर सकें।
+<details>
+<summary><strong>अंदर क्या है — routing, permissions, memory, retrieval, packaging</strong></summary>
 
-Engines बदलते रहते हैं। इस बदलाव के पार जो बचना चाहिए, वह है वह contract जो agent अपने साथ
-लेकर चलता है: वह क्या है, कैसे invoke होता है, किसे छू सकता है, क्या याद रखता है, और उसका
-परिणाम कैसे सिद्ध होता है। यह contract जानबूझकर engine-neutral है।
-
-- **एक definition, कई runtimes.** Manifest, routing card, permissions और memory rules
-  vendor के नहीं, agent के साथ चलते हैं — इसलिए वही package Claude Code, Codex, Gemini,
-  Antigravity, Cursor या किसी local model पर चलता है।
-- **Chat के बाहर जीवन.** Package contracts, receipts और verification gates उस session से
-  अधिक समय तक बने रहते हैं जिसने उन्हें बनाया।
-- **दूसरों तक पहुँचने का रास्ता.** सार्वजनिक Hub पर publish करें, या अपने owner-scoped Cloud
-  में रखें। दोनों ही स्थिति में यह copied prompt नहीं, एक package की तरह चलता है।
-
-Hephaestus इस standard को implement करने वाला एक engine है। इसे open source इसलिए रखा गया है
-ताकि standard को जाँचा, fork और फिर से implement किया जा सके।
-
-## Agent OS का युग
 
 इंडस्ट्री अब stateless, ad-hoc "tools वाले chatbots" से आगे निकल चुकी है। Google और प्रमुख AI labs द्वारा developer रणनीतियों को **Agent Operating Systems** (जैसे Antigravity orchestration platform और Gemini Spark daemon processes) के इर्द-गिर्द पुनर्परिभाषित करने के साथ, AI agents आधिकारिक रूप से first-class operating-system primitives बन चुके हैं — विशिष्ट पहचान, relational memory systems, security permissions और native tool-calling environments वाली long-lived, stateful processes।
 
@@ -201,7 +312,12 @@ Hephaestus classical operating system अवधारणाओं से सी�
 
 ---
 
-## v1.1.0 में नया — Briefing Interview Engine
+</details>
+
+
+<details>
+<summary><strong>Briefing Interview Engine</strong></summary>
+
 
 अस्पष्ट, एक-वाक्य वाले prompts से generate किए गए agents वास्तविक दुनिया के edge cases में विफल हो जाते हैं। Hephaestus v1.1.0, **Briefing Interview Engine** के माध्यम से task specification को एक first-class OS service के रूप में स्थापित करता है:
 
@@ -213,7 +329,12 @@ Hephaestus classical operating system अवधारणाओं से सी�
 
 ---
 
-## सभी Install Methods
+</details>
+
+
+<details>
+<summary><strong>सभी Install Methods — source, offline, host-wise</strong></summary>
+
 
 ### Manual LLM Adapter Install
 
@@ -269,7 +390,12 @@ Repo को clone करें और `AGENTS.md`, `agent.md`, `agents/`, `skill
 
 ---
 
-## कमांड सरफेस
+</details>
+
+
+<details>
+<summary><strong>कमांड सरफेस — सभी commands</strong></summary>
+
 
 Native Agentlas environments के अंदर Hephaestus commandless चलता है। External LLM tools जान-बूझकर छोटा रखा गया visible command set उपयोग करते हैं। Stormbreaker, research loadouts और configuration tables जैसी system-level utilities context से अपने-आप जुड़ जाती हैं:
 
@@ -292,7 +418,12 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 
 ---
 
-## OS सबसिस्टम
+</details>
+
+
+<details>
+<summary><strong>और गहराई में — routing scheduler, execution gate, memory, retrieval engine</strong></summary>
+
 
 ### Meta-Agent Factory — Process निर्माण
 चार builders का उपयोग करने वाली एक unified compilation factory। हर generated package अपना global command (`.agentlas/global-commands.json`) register करता है और verification scripts के साथ ship होता है — user को कभी अनुमान नहीं लगाना पड़ता कि compiled package कैसे चलाना है:
@@ -304,7 +435,7 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 | **Workspace Packager** | `30-agentlas-packager` | runtime import, CLI execution या GitHub distribution के लिए तैयार compiled bundle। |
 | **Session Agent Builder** | `40-session-agent-builder` | Explicitly exported sessions को reviewed single-agent या multi-agent team package में बदलता है। |
 
-*Briefing Interview Gate:* Builders प्रक्रिया की शुरुआत **briefing interview gate** ([docs/builder-interview-research-gate.md](docs/builder-interview-research-gate.md)) से करते हैं: lens-driven प्रश्न पूछना, ambiguity threshold का मूल्यांकन करना, primary sources खोजना, और work brief output करना।
+*Briefing Interview Gate:* Builders प्रक्रिया की शुरुआत **briefing interview gate** से करते हैं: lens-driven प्रश्न पूछना, ambiguity threshold का मूल्यांकन करना, primary sources खोजना, और work brief output करना।
 
 ---
 
@@ -322,7 +453,6 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 *   **Pinned Execution:** Validation के बाद Core original source session से केवल selected immutable releases लाता है, release/package/content digests जाँचता है, फिर planner, worker, synthesis और verifier को अलग invocations में चलाता है।
 *   **Evidence-Scored Evaluation:** Retrieval coverage, host selection, immutable preparation, real child invocations और final verification अलग claims के रूप में score होते हैं। Benchmark या usage history host staffing decision की जगह नहीं लेते।
 
-विवरण: [docs/hephaestus-network-2.0.md](docs/hephaestus-network-2.0.md) · Runtime support matrix: [docs/runtime-fallback-adapters.md](docs/runtime-fallback-adapters.md)
 
 ---
 
@@ -336,7 +466,6 @@ Kernel Gating Envelope:
 
 एक local run journal लंबे executions को रुकावट के बाद resumable बनाता है। Execution packets अपने साथ Work Brief लेकर चलते हैं, ताकि anti-scope नियम और exit criteria सभी parallel subprocesses पर लागू रहें। Stormbreaker स्पष्ट completion states (**verified / unverified / blocked**) रिपोर्ट करता है, ताकि autonomous completion theater न होने पाए।
 
-Execution protocol: [docs/robustness-protocol.md](docs/robustness-protocol.md) · Benchmarks & Evals: [docs/robustness-eval.md](docs/robustness-eval.md)
 
 ---
 
@@ -356,7 +485,6 @@ bin/ontology query "Project Helios Memory Curator" --agent verifier
 bin/ontology memory candidates
 ```
 
-विवरण: [docs/ontology-runtime.md](docs/ontology-runtime.md)
 
 ---
 
@@ -379,22 +507,12 @@ Import एक proposal की तरह काम करता है (automatic
 
 ---
 
-## एंटरप्राइज के लिए निर्मित
+</details>
 
-Enterprises को isolated Python agents लिखने का एक और तरीका नहीं चाहिए। उन्हें ऐसे agents का **governed workforce संचालित** करना है। Hephaestus विशेष रूप से इसी operational model के लिए डिज़ाइन किया गया है:
 
-*   **Procurement Leverage के रूप में Model Neutrality:** Agents, memory repositories और knowledge domains आपके नियंत्रण में local assets के रूप में संग्रहीत रहते हैं। किसी नए model provider पर जाना (या Ollama, Llama जैसे local models और DeepSeek, GLM, Gemini या Claude जैसे enterprise engines का उपयोग) एक साधारण configuration update है — codebase migration नहीं।
-*   **निर्माण से ही Auditability:** हर routing decision, execution step, memory candidate और curator decision एक text file के रूप में log होता है। आप उन्हें diff, audit और commit कर सकते हैं। काम या तो verified होता है या unverified के रूप में flag किया जाता है।
-*   **Deterministic Pipeline Gates:** Security filters, anti-scopes, routing card triggers और prompt sanitizations OS pipeline में hardcoded हैं — वे LLM system instructions या guidelines पर निर्भर नहीं करते।
-*   **Generation से पहले Specification:** Briefing Interview Engine request की ambiguity मापता है और score को Work Brief पर stamp करता है, जिससे task execution का audit हमेशा उसी पर वापस ले जाया जा सके जो तय हुआ था।
-*   **Local-First Data Boundary:** Raw text, documents और database files local रहते हैं। External transactions redacted और opt-in होते हैं।
+<details>
+<summary><strong>यह क्या बनाता है — process packaging</strong></summary>
 
-### Frameworks कहाँ फिट होते हैं
-CrewAI, LangChain और vendor agent SDKs **libraries** की तरह काम करते हैं — किसी single process के अंदर custom agent logic लिखने के लिए बेहतरीन। Hephaestus **runtime substrate** के रूप में काम करता है: यह workspace runtimes के आर-पार agents को specify, package, route, run, audit और migrate करता है। Framework code Hephaestus packages के अंदर चलता है; kernel केवल इतना माँगता है कि agents अपने directory contracts और Routing Cards का पालन करें।
-
----
-
-## यह क्या बनाता है (Process Packaging)
 
 Hephaestus agents को एक standard directory layout में package करता है, जिसे कोई भी workspace runtime parse, install, verify और run कर सकता है:
 
@@ -411,11 +529,11 @@ Hephaestus agents को एक standard directory layout में package क�
 ├── scripts/
 │   ├── verify-package.sh              # Package structure verifier
 │   └── public_safety_check.sh         # Secret and credentials scanner
-└── docs/                              # Briefing records, tool specifications,
-                                       # and prompt contracts
 ```
 
 ---
+
+</details>
 
 ## लक्ष्य के अनुसार Docs
 
@@ -423,19 +541,6 @@ Hephaestus agents को एक standard directory layout में package क�
 |---|---|
 | Canonical route को समझें | [`AGENTS.md`](AGENTS.md) |
 | पूरा team contract देखें | [`agent.md`](agent.md) |
-| Architecture का source of truth | [`docs/source-of-truth.md`](docs/source-of-truth.md) |
-| Runtime सीमाएँ | [`docs/runtime-sync-boundaries.md`](docs/runtime-sync-boundaries.md) |
-| Briefing interview और research gate | [`docs/builder-interview-research-gate.md`](docs/builder-interview-research-gate.md) |
-| Network 2.0 routing | [`docs/hephaestus-network-2.0.md`](docs/hephaestus-network-2.0.md) |
-| Stormbreaker protocol | [`docs/robustness-protocol.md`](docs/robustness-protocol.md) |
-| Canonical Goal + UltraCode harness | [`docs/stormbreaker-goal-ultracode-harness.md`](docs/stormbreaker-goal-ultracode-harness.md) |
-| Ontology runtime | [`docs/ontology-runtime.md`](docs/ontology-runtime.md) |
-| Memory आर्किटेक्चर | [`docs/memory-architecture.md`](docs/memory-architecture.md) |
-| Experience और Taste assets | [`docs/agent-experience-assets.md`](docs/agent-experience-assets.md) |
-| MCP build resolution | [`docs/mcp-build-resolution.md`](docs/mcp-build-resolution.md) |
-| Model allocation | [`docs/model-allocation.md`](docs/model-allocation.md) |
-| Skill lifecycle promotion | [`docs/skill-lifecycle-promotion.md`](docs/skill-lifecycle-promotion.md) |
-| Cloud runtime bundles | [`docs/agentlas-cloud-runtime.md`](docs/agentlas-cloud-runtime.md) |
 | Package verify करें | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
 | Public safety check | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 
