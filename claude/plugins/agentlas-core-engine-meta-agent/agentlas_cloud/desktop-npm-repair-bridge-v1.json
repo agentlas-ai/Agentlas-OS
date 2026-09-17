@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "purpose": "quarantine-agentlas-desktop-unsealed-claude-grok",
+  "bundleIdentifier": "com.agentlas.desktop",
+  "teamIdentifier": "F469CGM7T5",
+  "versions": ["1.2.14", "1.2.15"]
+}

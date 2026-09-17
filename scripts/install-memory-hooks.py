@@ -85,6 +85,9 @@ from agentlas_cloud.desktop_repair import (
 from agentlas_cloud.desktop_updater_cleanup import (
     repair_installed_desktop_updater_cache as run_desktop_updater_cleanup_bridge,
 )
+from agentlas_cloud.desktop_npm_repair import (
+    repair_installed_desktop_npm_seal as run_desktop_npm_repair_bridge,
+)
 from agentlas_cloud.memory_hosts import INSTALLABLE_HOSTS, MEMORY_HOOK_HOSTS
 from agentlas_cloud.update import (
     _safe_python_cache_prefix,
@@ -955,6 +958,22 @@ def main(argv: list[str] | None = None) -> int:
     installers = {host: globals()[f"install_{host}"] for host in SUPPORTED_HOSTS}
     installed: dict[str, Any] = {}
     errors: dict[str, str] = {}
+    # Existing 1.2.44/1.2.46 parents run this freshly verified release script
+    # with a 30-second timeout. Attempt the bounded repair before other hooks,
+    # and retain its receipt in the envelope those old callers preserve.
+    try:
+        desktop_npm_repair = run_desktop_npm_repair_bridge(source_dir, home)
+    except Exception:
+        desktop_npm_repair = {"status": "blocked", "reason": "bridge_failed"}
+    installed["desktop_npm_repair"] = desktop_npm_repair
+    if desktop_npm_repair.get("status") in {"repaired", "blocked"}:
+        # Return the compatible receipt within the OLD parent's timeout. Other
+        # hooks are deferred, not reported as installed; ordinary maintenance
+        # can resume them after this bounded Desktop recovery attempt.
+        installed["remaining_hooks"] = {"status": "deferred", "reason": "desktop_recovery_budget"}
+        print(json.dumps({"status": "pass", "installed": installed, "errors": errors,
+                          "desktop_npm_repair": desktop_npm_repair}, sort_keys=True))
+        return 0
     runtime_shim_repair = repair_managed_runtime_python_shims(source_dir, home)
     host_plugin_transition = run_host_plugin_transition_bridge(source_dir, home)
     # v1.2.32's parent updater preserves only the `installed` and `errors`
@@ -996,6 +1015,7 @@ def main(argv: list[str] | None = None) -> int:
                 "host_plugin_transition": host_plugin_transition,
                 "desktop_repair": desktop_repair,
                 "desktop_updater_cleanup": desktop_updater_cleanup,
+                "desktop_npm_repair": desktop_npm_repair,
                 "runtime_memory_hook": runtime_memory_hook,
             },
             ensure_ascii=False,

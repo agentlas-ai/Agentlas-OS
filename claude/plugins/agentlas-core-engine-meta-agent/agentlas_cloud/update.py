@@ -105,6 +105,7 @@ HOST_ADAPTER_CONTRACT_PATH = Path("contracts") / "runtime-registry.json"
 COMMAND_REGISTRY_CONTRACT_PATH = Path("contracts") / "command-registry.v2.json"
 RELEASE_PROVENANCE_FILE = "release-provenance.json"
 RELEASE_PROVENANCE_REQUIRED_SINCE = "1.2.36"
+DESKTOP_NPM_BRIDGE_REQUIRED_SINCE = "1.2.47"
 _HOST_ADAPTER_NAME_RE = re.compile(r"^\.?[a-z0-9][a-z0-9._-]*$")
 _COMMAND_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -605,6 +606,7 @@ def _canonical_update_marker(
         "install_command",
         "desktop_repair",
         "desktop_updater_cleanup",
+        "desktop_npm_repair",
         "archive_digest",
         "digest_verified",
         "archive_asset",
@@ -1086,6 +1088,9 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
         "host_plugin_sync": host_plugin_sync,
         "plugin_cache_sync": plugin_cache_sync,
         "memory_hook_sync": memory_hook_sync,
+        "desktop_npm_repair": memory_hook_sync.get("desktop_npm_repair") or {
+            "status": "not_applicable", "reason": "not_reported",
+        },
         "global_router_sync": global_router_sync,
         "activation": activation,
         "reloadRequired": bool(activation["reloadRequired"]),
@@ -1610,13 +1615,30 @@ def sync_installed_memory_hooks(source: Path, home: Path | None = None) -> dict[
     desktop_updater_cleanup = payload.get("desktop_updater_cleanup")
     if not isinstance(desktop_updater_cleanup, dict):
         desktop_updater_cleanup = {"status": "not_applicable", "reason": "not_reported"}
+    desktop_npm_repair = payload.get("desktop_npm_repair")
+    if not isinstance(desktop_npm_repair, dict):
+        desktop_npm_repair = installed.get("desktop_npm_repair")
+    if not isinstance(desktop_npm_repair, dict):
+        desktop_npm_repair = {"status": "not_applicable", "reason": "not_reported"}
     return {
         "status": status,
         "installed": installed,
         "errors": errors,
         "desktop_repair": desktop_repair,
         "desktop_updater_cleanup": desktop_updater_cleanup,
+        "desktop_npm_repair": desktop_npm_repair,
     }
+
+
+def retry_installed_desktop_npm_repair(source: Path, home: Path | None = None) -> dict[str, Any]:
+    """Recover interrupted npm quarantines independently of the 24h maintenance gate."""
+    try:
+        from .desktop_npm_repair import repair_installed_desktop_npm_seal
+
+        return repair_installed_desktop_npm_seal(source, home)
+    except Exception:
+        # Recovery failure is observable but never invalidates the OS release.
+        return {"status": "blocked", "reason": "bridge_failed"}
 
 
 def retry_installed_desktop_repair(source: Path, home: Path | None = None) -> dict[str, Any]:
@@ -2031,6 +2053,11 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
     maintenance_due = not _marker_recent(marker.get("last_maintenance_epoch"))
     desktop_repair = marker.get("desktop_repair") or {"status": "deferred"}
     desktop_updater_cleanup = marker.get("desktop_updater_cleanup") or {"status": "deferred"}
+    desktop_npm_repair = retry_installed_desktop_npm_repair(runtime_root)
+    # A later offline metadata check must not erase a completed local repair or
+    # hide a rollback conflict. This receipt is independent of OS version state.
+    marker["desktop_npm_repair"] = desktop_npm_repair
+    _write_json(marker_path, marker)
     if maintenance_due:
         marker["last_maintenance_epoch"] = int(time.time())
         _write_json(marker_path, marker)
@@ -2049,6 +2076,7 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
             "current": current,
             "desktop_repair": desktop_repair,
             "desktop_updater_cleanup": desktop_updater_cleanup,
+            "desktop_npm_repair": desktop_npm_repair,
         }
         result["last_checked_epoch"] = int(time.time())
         _persist_update_marker(marker, result, runtime_root)
@@ -2064,6 +2092,7 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
         "last_checked_epoch": int(time.time()),
         "desktop_repair": desktop_repair,
         "desktop_updater_cleanup": desktop_updater_cleanup,
+        "desktop_npm_repair": desktop_npm_repair,
     }
     if status not in {"update_available", "missing_release_marker"}:
         reconciliation = reconcile_current_installation(runtime_root) if maintenance_due else {}
@@ -2783,6 +2812,27 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
     ):
         if not (runtime_root / relative).is_file():
             missing.append(str(relative))
+    # Legitimate older archives predate this bridge and remain eligible for
+    # rollback. New releases cannot opt out by omitting both files, and a
+    # backport that carries either part must carry the complete capability.
+    npm_bridge_files = (
+        Path("agentlas_cloud") / "desktop_npm_repair.py",
+        Path("agentlas_cloud") / "desktop-npm-repair-bridge-v1.json",
+    )
+    npm_bridge_floor = _compare_semver(
+        _source_release_tag(runtime_root), DESKTOP_NPM_BRIDGE_REQUIRED_SINCE
+    )
+    if (
+        npm_bridge_floor is None
+        or npm_bridge_floor >= 0
+        or any(
+            (runtime_root / relative).exists() or (runtime_root / relative).is_symlink()
+            for relative in npm_bridge_files
+        )
+    ):
+        for relative in npm_bridge_files:
+            if not (runtime_root / relative).is_file():
+                missing.append(str(relative))
     if release_source:
         for relative in (
             Path("antigravity") / "hooks" / "agentlas-memory.json",

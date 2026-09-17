@@ -26,6 +26,16 @@
   by rejecting a no-authority-sandbox receipt carrying approvals, and runs in
   the cross-platform-wiring workflow's contract-gates job.
 
+## 1.2.47 — 2026-09-17
+
+- Existing Desktop 1.2.14 and 1.2.15 installations can recover known unsigned
+  Claude/Grok npm additions through the verified engine-update path. Recovery
+  preserves the files outside the app and requires the original Developer ID
+  signature and Gatekeeper assessment to pass before reporting success.
+- Interrupted recovery restores moved files before another attempt. Conflicts,
+  active writers, changed signing metadata, and unknown additions remain blocked.
+  Desktop 1.2.16 supplies the separate CLI update-path prevention fix.
+
 ## 1.2.39 — 2026-09-01
 
 - **Runtime updates are now verified inside the release transaction.** The
