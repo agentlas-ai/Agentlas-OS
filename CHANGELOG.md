@@ -34,7 +34,7 @@
   signature and Gatekeeper assessment to pass before reporting success.
 - Interrupted recovery restores moved files before another attempt. Conflicts,
   active writers, changed signing metadata, and unknown additions remain blocked.
-  Desktop 1.2.17 supplies the separate CLI update-path prevention fix.
+  Desktop 1.2.18 supplies the separate CLI update-path prevention fix.
 
 ## 1.2.39 — 2026-09-01
 
