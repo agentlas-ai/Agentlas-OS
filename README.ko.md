@@ -36,7 +36,7 @@
   <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
-  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Ollama-black">
+  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
 </p>
 
@@ -221,11 +221,22 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
   </a>
 </p>
 
-<h2 align="center">같은 것을, 화면으로</h2>
+<h2 align="center">데스크탑으로 더 효율적으로</h2>
+
+데스크탑은 호스트 그 자체라, 실행이 시작되기 **전에** 한 명으로 될 일인지 팀이
+필요한 일인지 코드가 먼저 정합니다. 그 판단은 제안이 아니라 예약된 실행으로
+기록됩니다. 이미 설치해 둔 에이전트만 배치하고, 돈이 드는 외부 전문가를 부를
+때는 항상 먼저 묻습니다.
+
+쓰는 LLM을 전부 한곳에 겁니다. 이미 구독 중인 코딩 CLI(Claude Code, Codex,
+Antigravity/Gemini, Cursor, Grok, Kimi), 직접 넣은 API 키 11종, 그리고 로컬
+모델까지. 검증된 llama.cpp 엔진이 동봉돼 있어 Hugging Face에서 GGUF를 받아
+바로 돌리고, LM Studio와 MLX에도 붙습니다.
+
+**그리고 쓰던 모델의 사용량이 소진되면, 그 턴을 다음 순위 모델로 다시 돌립니다.**
+저장된 모델 선택은 바뀌지 않습니다. 한도가 풀리면 원래 모델로 알아서 돌아옵니다.
 
 <p align="center">
-  같은 엔진, 같은 태스크, 같은 영수증. 워커 모델 우선순위, 연결된 호스트, 로컬
-  에이전트가 한 화면에 있습니다.<br>
   <strong><a href="https://agentlas.cloud/desktop">Agentlas Desktop 받기 →</a></strong><br>
   <sub>macOS (애플 실리콘 · 인텔) · Windows · Linux</sub>
 </p>

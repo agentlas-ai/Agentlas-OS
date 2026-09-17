@@ -36,7 +36,7 @@
   <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
-  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Ollama-black">
+  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
 </p>
 
@@ -231,11 +231,23 @@ and 93%** of the time. The default is 30.
   </a>
 </p>
 
-<h2 align="center">The same thing, in a window</h2>
+<h2 align="center">Get more out of it on Desktop</h2>
+
+Desktop is the host itself, so it decides in code — **before** a run starts —
+whether the work needs one agent or a team. That decision is recorded as a
+reserved run, not a suggestion. It staffs only the agents you already installed,
+and bringing in paid outside help always asks first.
+
+Every LLM you use, in one place: the coding CLIs you already subscribe to
+(Claude Code, Codex, Antigravity/Gemini, Cursor, Grok, Kimi), your own API keys
+across 11 providers, and local models. A verified llama.cpp engine ships with it,
+pulls GGUF models from Hugging Face, and it also talks to LM Studio and MLX.
+
+**And when the model you are on runs out of quota, the turn is re-run on the next
+model in your own priority order.** Your saved model choice is not touched, and
+the original model comes back on its own once the limit clears.
 
 <p align="center">
-  Same engine, same tasks, same receipts. Worker model priorities, connected hosts
-  and local agents on one screen.<br>
   <strong><a href="https://agentlas.cloud/desktop">Get Agentlas Desktop →</a></strong><br>
   <sub>macOS (Apple silicon · Intel) · Windows · Linux</sub>
 </p>
