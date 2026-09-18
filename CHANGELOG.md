@@ -35,6 +35,13 @@
 - Interrupted recovery restores moved files before another attempt. Conflicts,
   active writers, changed signing metadata, and unknown additions remain blocked.
   Desktop 1.2.18 supplies the separate CLI update-path prevention fix.
+- An install that is missing one of the engine's own modules no longer takes
+  down every MCP tool that seeds a project first. Project bootstrap now skips
+  the derived half of the context map, records it, and lands the rest of the
+  seed. When one of our modules really is absent, the tool error says so and
+  says that the other tools on the server still work and that the background
+  updater repairs the runtime, so a host does not abandon its Workforce roster
+  after a single failure.
 
 ## 1.2.39 — 2026-09-01
 
