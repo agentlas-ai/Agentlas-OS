@@ -3937,12 +3937,7 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
             return _result(
                 msg_id,
                 {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"hephaestus tool {name} failed: {type(exc).__name__}: {exc}",
-                        }
-                    ],
+                    "content": [{"type": "text", "text": _tool_failure_text(name, exc)}],
                     "isError": True,
                 },
             )
@@ -3961,6 +3956,39 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
             tool_result["isError"] = True
         return _result(msg_id, tool_result)
     return _error(msg_id, -32601, f"method not found: {method}")
+
+
+def _tool_failure_text(name: str, exc: BaseException) -> str:
+    """One tool's failure, said so the host does not write off the server.
+
+    Name the exception type: a KeyError stringifies to the bare key
+    ("'request'"), which reads like nothing at all and used to be mislabeled as
+    an unknown tool. The tool exists and the call failed — say that.
+
+    An incomplete install gets one sentence more. When our own package is
+    missing one of its modules, exactly the tools that touch that module break
+    and every other tool on this server still answers. Without that sentence a
+    model reads one traceback as "Workforce MCP is unusable" and abandons the
+    roster for the whole session — measured 2026-09-18 on a user's Windows
+    install, where a missing `agentlas_cloud.context_map_authoring` sent the
+    rest of a research goal to local skills. The remedy is not the user's to
+    run: the updater the host already starts in the background replaces the
+    runtime tree wholesale.
+    """
+
+    text = f"hephaestus tool {name} failed: {type(exc).__name__}: {exc}"
+    missing = getattr(exc, "name", None) if isinstance(exc, ModuleNotFoundError) else None
+    if isinstance(missing, str) and (
+        missing == "agentlas_cloud" or missing.startswith("agentlas_cloud.")
+    ):
+        text += (
+            f"\nThis is an incomplete Agentlas runtime install, not a broken tool: the file set "
+            f"is missing its own module `{missing}`. Only tools that reach that module fail — "
+            f"every other hephaestus tool on this server still works, so keep using them instead "
+            f"of treating the Workforce MCP as unavailable. The background updater replaces the "
+            f"runtime tree on its next run; nothing is required from the user."
+        )
+    return text
 
 
 def _result(msg_id: Any, result: dict[str, Any]) -> dict[str, Any]:

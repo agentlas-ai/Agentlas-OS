@@ -3334,9 +3334,29 @@ def ensure_project(project: str | Path, *, reason: str = "host-first-contact", f
         # note asking a human to fill it. Nothing ever did, on any machine, so
         # the declared half of every context slice was boilerplate. Derive it
         # from the ledgers this project already keeps, right after the seed.
-        from .context_map_authoring import refresh_declared_context
-
-        declared_context = refresh_declared_context(root)
+        #
+        # Guarded, because an install that is missing ONE of our own modules
+        # must not take the whole bootstrap down — and with it every MCP tool
+        # that bootstraps first. Measured on a user's Windows install
+        # (2026-09-18): `workforce.goal_context` came back as
+        # `ModuleNotFoundError: No module named 'agentlas_cloud.context_map_authoring'`,
+        # and the host read that single traceback as "Workforce MCP is
+        # unusable" and fell back to local skills for the rest of the session.
+        # Declared context is derived, not load-bearing: skip it, say so in
+        # warnings, and let the rest of the seed land. memory_hook.py already
+        # guards the same import; this was the one copy that did not.
+        try:
+            from .context_map_authoring import refresh_declared_context
+        except ImportError as exc:
+            declared_context = {
+                "action": "refresh_declared_context",
+                "status": "module_unavailable",
+                "detail": f"{type(exc).__name__}: {exc}",
+                "written": False,
+            }
+            seed_warnings.append("declared_context_skipped:module_unavailable")
+        else:
+            declared_context = refresh_declared_context(root)
         # The seed above may have rewritten a map source. Re-derive the map
         # before anyone routes against it.
         ontology_created, ontology_warnings = _refresh_materialized_ontology(root)
