@@ -80,15 +80,33 @@ def check_drift(
             continue
         pin = (row.get("pin") or {}).get("registryVersion")
         live = acp_agents.get(rid)
+        probe = matrix_agents.get(rid)
+        # The newest version upstream itself started successfully. Our release
+        # pins native runtimes to exactly this, because it is the strongest
+        # claim anyone can make about a runtime we never launch ourselves.
+        verified = None
+        if probe is not None:
+            _init = probe.get("initialize") if isinstance(probe.get("initialize"), Mapping) else {}
+            if str(_init.get("status") or "") == "success":
+                verified = str(probe.get("registryVersion") or "") or None
         if acp_agents and live is None:
             findings.append({"runtime": row["id"], "kind": "missing", "detail": f"{rid} not in ACP registry"})
         elif live is not None and pin and str(live.get("version")) != str(pin):
-            findings.append({
-                "runtime": row["id"], "kind": "version",
-                "detail": f"pin {pin} != registry {live.get('version')} ({rid})",
-                "pinned": pin, "upstream": live.get("version"),
-            })
-        probe = matrix_agents.get(rid)
+            # A pin sitting on the newest VERIFIED version is not drift, even
+            # when upstream has already declared a newer one it has not probed.
+            # Upstream publishes the registry and the probe matrix on different
+            # clocks (2026-09-15: cursor declared 2026.09.15, probed 2026.09.10),
+            # and calling that gap "our pin is stale" was wrong twice over — it
+            # blamed us for someone else's publication order, and it turned the
+            # release drift check into a hard block on a lag we cannot fix.
+            if verified is not None and str(pin) == verified:
+                pass
+            else:
+                findings.append({
+                    "runtime": row["id"], "kind": "version",
+                    "detail": f"pin {pin} != registry {live.get('version')} ({rid})",
+                    "pinned": pin, "upstream": live.get("version"),
+                })
         if probe is not None:
             init = probe.get("initialize") if isinstance(probe.get("initialize"), Mapping) else {}
             status = str(init.get("status") or "unknown")

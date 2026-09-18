@@ -131,19 +131,32 @@ jobs:
               npx = distribution.get("npx") if isinstance(distribution, dict) else None
 
               # Native/binary runtimes are not downloaded into the Agentlas OS
-              # release. Require the registry's latest exact version to have a
-              # successful upstream initialize probe. Npx adapters are probed
-              # directly by this workflow in the next step, so a short matrix
-              # publication lag does not block their latest patch.
+              # release, and this job cannot start them, so their pin can only
+              # be as good as upstream's own initialize probe. Npx adapters are
+              # probed directly by this workflow in the next step, so a short
+              # matrix publication lag does not block their latest patch.
+              #
+              # We pin what upstream actually VERIFIED, not what it merely
+              # DECLARED. The two are published on different clocks: from
+              # 2026-09-15 the registry named cursor 2026.09.15 and goose 1.51.0
+              # while the probe matrix still carried 2026.09.10 and 1.50.1 —
+              # both probed successfully. Requiring the two to agree handed a
+              # third party's publication order a veto over our releases, and it
+              # used it for three days (runs 35229779499, 35299947666) while a
+              # user-facing fix sat undelivered. Taking the probed version keeps
+              # the guarantee that matters — nothing unpinned by a successful
+              # probe ever ships — and drops the one that was never ours to
+              # make, that upstream publishes its two files in step.
               if not isinstance(npx, dict):
                   status = str(((probe.get("initialize") or {}).get("status") or "unknown"))
                   tested = str(probe.get("registryVersion") or "")
-                  if status != "success" or tested != latest:
+                  if status != "success" or not tested:
                       errors.append(
-                          f"{runtime['id']}: latest {registry_id}@{latest} has no matching successful matrix probe "
+                          f"{runtime['id']}: {registry_id} has no successful matrix probe to pin "
                           f"(matrix={tested or 'missing'}, status={status})"
                       )
                       continue
+                  latest = tested
 
               desired_pin = latest
               pin = runtime.setdefault("pin", {})
