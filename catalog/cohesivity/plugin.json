@@ -1,0 +1,87 @@
+{
+  "$schema": "agentlas.plugin/v1",
+  "name": "cohesivity",
+  "slug": "cohesivity",
+  "version": "0.2.0",
+  "architecture": "third-party-connector",
+  "description": "Infra and on-the-fly backend for agentic tasks and projects by cohesivity.ai. Offers Postgres, hosting, storage, AI gateway, email inbox, and more through one API/MCP. No account or API key needed to get started.",
+  "category": "Backend Services",
+  "developer": {
+    "name": "Cohesivity",
+    "url": "https://cohesivity.ai",
+    "source": "https://github.com/cohesivity-org/cohesivity"
+  },
+  "license": "Apache-2.0",
+  "capabilities": [
+    {
+      "operation": "Create and manage tenants",
+      "type": "write"
+    },
+    {
+      "operation": "Provision hosting",
+      "type": "write"
+    },
+    {
+      "operation": "Provision Postgres database",
+      "type": "write"
+    },
+    {
+      "operation": "Provision object storage",
+      "type": "write"
+    },
+    {
+      "operation": "Provision email inbox",
+      "type": "write"
+    },
+    {
+      "operation": "Provision AI gateway",
+      "type": "write"
+    },
+    {
+      "operation": "Provision Redis, vector DB, realtime, auth, and other services",
+      "type": "write"
+    },
+    {
+      "operation": "Deploy source to hosting",
+      "type": "write"
+    },
+    {
+      "operation": "Query tenant status and resources",
+      "type": "read"
+    },
+    {
+      "operation": "Read offering documentation",
+      "type": "read"
+    }
+  ],
+  "authentication": {
+    "type": "api-key",
+    "fields": ["coh_management_key", "coh_application_key"],
+    "setup": "Keys are created automatically by `npx --yes @cohesivity/init@0.8.3` and written to a local `.cohesivity` file. No account, sign-up, or OAuth needed."
+  },
+  "allowedHosts": [
+    "cohesivity.ai",
+    "*.cohesivity.app"
+  ],
+  "privacy": {
+    "disclosure": "Source code, database contents, and stored files reside on Cohesivity infrastructure. Ephemeral tenants and all data expire after 72 hours unless claimed.",
+    "terms": "https://cohesivity.ai/privacy",
+    "retention": "https://cohesivity.ai/terms"
+  },
+  "lifecycle": {
+    "install": "Loads the canonical skill from cohesivity.ai/skill.md. Creates nothing until a task needs infrastructure.",
+    "disable": "Unloads the skill. No background processes to stop.",
+    "uninstall": "Remove the plugin and any project-local `.cohesivity` credential file."
+  },
+  "failure": {
+    "noCredentials": "Skill instructs the agent to bootstrap via npx @cohesivity/init. If bootstrap fails, the agent reports the error and stops.",
+    "offline": "HTTP calls return a network error; the agent reports it and stops. No retry loop.",
+    "providerError": "Non-2xx responses are reported with status and body. No secrets are included in error output.",
+    "bounds": "API responses are JSON with bounded size. The skill does not stream unbounded content or generate provider-sourced conclusions."
+  },
+  "skill": {
+    "canonical": "https://cohesivity.ai/skill.md",
+    "loading": "triggered-only"
+  },
+  "surfaces": ["Terminal", "Desktop"]
+}
