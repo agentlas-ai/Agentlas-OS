@@ -817,6 +817,13 @@ def main(argv: list[str] | None = None) -> int:
     project_ensure.add_argument("--refresh-code-map", action="store_true")
     project_status = project_sub.add_parser("status", help="Inspect bootstrap and privacy state without writing")
     project_status.add_argument("--project", default=".")
+    project_ingest = project_sub.add_parser(
+        "ingest",
+        help="Snapshot and ingest every eligible project document into the project ontology",
+    )
+    project_ingest.add_argument("--project", default=".")
+    project_ingest.add_argument("--reason", default="explicit-project-ingest")
+    project_ingest.add_argument("--status", action="store_true", help="Show the last ingest state without writing")
 
     context_cmd = sub.add_parser("context", help="Dependency-aware project context map and impact gates")
     context_sub = context_cmd.add_subparsers(dest="context_command", required=True)
@@ -1788,6 +1795,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "project":
         from .project_bootstrap import ensure_project, project_status
 
+        if args.project_command == "ingest":
+            from .project_full_ingest import run_full_ingest, status as full_ingest_status
+
+            try:
+                if args.status:
+                    return emit(full_ingest_status(args.project))
+                receipt = run_full_ingest(args.project, reason=args.reason)
+            except (OSError, ValueError) as exc:
+                return emit(_project_bootstrap_error(str(exc))) or 2
+            emit(receipt)
+            return 2 if receipt.get("status") == "failed" else 0
         try:
             if args.project_command == "ensure":
                 return emit(

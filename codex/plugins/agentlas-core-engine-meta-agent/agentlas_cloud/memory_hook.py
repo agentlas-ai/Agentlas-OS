@@ -1190,13 +1190,59 @@ def _spawn_project_ensure(target: Path, *, reason: str) -> bool:
     return True
 
 
+def _spawn_project_ingest(target: Path, *, reason: str) -> bool:
+    """Run `project ingest` detached. True when the spawn was issued.
+
+    Full-project ingest reads every document in the project and embeds it —
+    minutes on a large tree, against hook contracts of 10–20s. The hook only
+    decides; the detached process does the work and writes its own receipt.
+    """
+
+    try:
+        runtime_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        existing = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
+        with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentlas_cloud.cli",
+                    "project",
+                    "ingest",
+                    "--project",
+                    str(target),
+                    "--reason",
+                    reason,
+                ],
+                cwd=str(target),
+                env=env,
+                stdin=stdin,
+                stdout=out,
+                stderr=out,
+                close_fds=True,
+                start_new_session=True,
+            )
+    except Exception:
+        return False
+    return True
+
+
 # A shipped map-format change has to reach the projects that already exist, not
 # only the ones created after it. First-contact seeding returns early on any
 # folder that already has .agentlas, so without this ladder a project seeded
 # before a format landed keeps the old layout forever — measured: a v1 sitemap
 # stayed v1 across repeated sessions. Each id runs at most once per project and
 # leaves a receipt, so a machine already migrated costs one small file read.
-PROJECT_MIGRATIONS = ("sitemap-packed-edges.v1",)
+#
+# `project-full-ingest.v1` is different in kind: it is not a format fix that
+# `project ensure` applies in a second, it is an ingest of every project
+# document that can take minutes. Its detached worker writes its own receipt
+# on completion — or a `kind: migration-failed` record with the reason — so the
+# hook never marks it done merely because a process was launched.
+PROJECT_MIGRATIONS = ("sitemap-packed-edges.v1", "project-full-ingest.v1")
+SELF_RECEIPTED_MIGRATIONS = frozenset({"project-full-ingest.v1"})
 MIGRATION_LEDGER = "migrations.jsonl"
 
 
@@ -1214,6 +1260,12 @@ def _applied_migrations(root: Path) -> set[str]:
                 try:
                     record = json.loads(stripped)
                 except ValueError:
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                # A failure receipt is a record, not a completion: the step
+                # stays pending and is retried after its backoff.
+                if record.get("kind") == "migration-failed":
                     continue
                 identifier = str(record.get("id") or "")
                 if identifier:
@@ -1242,11 +1294,39 @@ def _maybe_migrate_project(root: Path) -> None:
     try:
         applied = _applied_migrations(root)
         pending = [name for name in PROJECT_MIGRATIONS if name not in applied]
-        if not pending:
-            return
-        if _spawn_project_ensure(root, reason="hook-format-migration"):
-            _record_migrations(root, pending)
+        ensure_pending = [name for name in pending if name not in SELF_RECEIPTED_MIGRATIONS]
+        if ensure_pending and _spawn_project_ensure(root, reason="hook-format-migration"):
+            _record_migrations(root, ensure_pending)
     except Exception:
+        return
+    _maybe_full_ingest(root, migration_pending="project-full-ingest.v1" in pending)
+
+
+def _maybe_full_ingest(root: Path, *, migration_pending: bool) -> None:
+    """Launch the detached full-project ingest when it is due. Never blocks.
+
+    Due means: the migration has not landed yet, or the last completed run is
+    older than the refresh window (documents keep changing after migration).
+    The decision is one small JSON read; a run in flight, a failure still in
+    backoff, or a fresh completion all leave the hook untouched.
+    """
+
+    try:
+        from .project_full_ingest import mark_spawned, record_migration_failure, spawn_reason
+
+        runtime_root = os.environ.get("HEPHAESTUS_RUNTIME_ROOT")
+        if runtime_root and root.resolve() == Path(runtime_root).expanduser().resolve():
+            return
+        reason = spawn_reason(root, migration_pending=migration_pending)
+        if reason is None:
+            return
+        if _spawn_project_ingest(root, reason=f"hook-{reason}"):
+            mark_spawned(root, reason)
+        elif migration_pending:
+            record_migration_failure(root, "spawn_failed: detached ingest process could not start")
+    except Exception as exc:
+        if os.environ.get("AGENTLAS_MEMORY_HOOK_DEBUG") == "1":
+            print(f"agentlas-memory-hook: full-ingest: {type(exc).__name__}: {exc}", file=sys.stderr)
         return
 
 
