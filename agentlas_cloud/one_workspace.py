@@ -19,6 +19,7 @@ import os
 import platform
 import re
 import sqlite3
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -2382,10 +2383,16 @@ def _curate_pending(
 
     # Keep the semantic projection current. Incremental and idempotent; a failure
     # only costs semantic rank for the new blocks, never the curation result.
-    try:
-        index_durable_blocks(root)
-    except Exception:
-        pass
+    #
+    # ★ 2026-09-23 — this used to be `index_durable_blocks(root)` under
+    #   `except: pass`, inline in a Stop hook with a 10s contract. A first full
+    #   backfill of a 2,078-block drawer takes ~93s, so every session end killed
+    #   it mid-way, its progress was only saved at the very end, and the next
+    #   session started again from zero. The index file never existed on the
+    #   owner's machine for eight months and nobody could see why. Now a small
+    #   gap is indexed inline under a hard budget, a large one goes to a detached
+    #   process, progress is checkpointed, and every failure is recorded.
+    schedule_durable_index(root)
 
     return {
         "pending": len(pending),
@@ -2618,12 +2625,101 @@ def _one_runtime(root: Path, create: bool = False):
     return runtime
 
 
-def index_durable_blocks(root: Path, rebuild: bool = False) -> dict[str, Any]:
+INDEX_STATUS_FILE = "index-status.json"
+# Blocks per state checkpoint. Measured ~45ms per block, so a checkpoint lands
+# every ~2s and a killed run loses at most that much work.
+INDEX_CHECKPOINT_EVERY = 40
+# Inline budget inside the curator (the Stop hook contract is 10s and curation
+# itself has to fit first). Anything larger goes to the detached indexer.
+INDEX_INLINE_BUDGET_SECONDS = 2.5
+INDEX_INLINE_MAX_GAP = 30
+
+
+def _write_index_status(meta: Path, **fields: Any) -> None:
+    """The one place a user (and `agentlas one status`) can see the index state."""
+    path = meta / INDEX_STATUS_FILE
+    try:
+        current = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(current, dict):
+            current = {}
+    except (OSError, ValueError):
+        current = {}
+    current.update(fields)
+    current["updatedAt"] = _now()
+    try:
+        _atomic_write(path, json.dumps(current, ensure_ascii=False, sort_keys=True) + "\n")
+    except OSError:
+        pass
+
+
+def _unindexed_gap(root: Path) -> tuple[int, int]:
+    """(durable blocks not yet in index-state, durable total). Cheap: no engine."""
+    meta = Path(root).expanduser() / META_DIR
+    try:
+        blocks = parse_durable_blocks((meta / PROJECT_SOUL_FILE).read_text(encoding="utf-8"))
+    except OSError:
+        return 0, 0
+    try:
+        seen = set(json.loads((meta / "index-state.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        seen = set()
+    superseded = _superseded_hashes(meta)
+    gap = sum(1 for block in blocks
+              if (digest := _content_hash(block["content"])) not in seen and digest not in superseded)
+    return gap, len(blocks)
+
+
+def _spawn_detached_index(root: Path) -> bool:
+    """Backfill in a detached process — same shape as project first-contact seeding."""
+    try:
+        runtime_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        existing = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
+        with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
+            subprocess.Popen(
+                [sys.executable, "-m", "agentlas_cloud.one_workspace", "index", "--root", str(root)],
+                cwd=str(runtime_root), env=env, stdin=stdin, stdout=out, stderr=out,
+                close_fds=True, start_new_session=True,
+            )
+    except Exception as exc:  # noqa: BLE001 — recorded, never raised into a hook
+        _write_index_status(Path(root).expanduser() / META_DIR,
+                            lastError=f"spawn-failed:{type(exc).__name__}")
+        return False
+    return True
+
+
+def schedule_durable_index(root: Path) -> dict[str, Any]:
+    """Keep the semantic index current without ever blowing a hook budget."""
+    root = Path(root).expanduser()
+    meta = root / META_DIR
+    try:
+        gap, total = _unindexed_gap(root)
+        if gap == 0:
+            return {"scheduled": "up-to-date", "durable": total}
+        if gap <= INDEX_INLINE_MAX_GAP:
+            result = index_durable_blocks(root, budget_seconds=INDEX_INLINE_BUDGET_SECONDS)
+            if not result.get("partial") and not result.get("skipped"):
+                return {"scheduled": "inline", **result}
+        spawned = _spawn_detached_index(root)
+        return {"scheduled": "detached" if spawned else "spawn-failed", "gap": gap, "durable": total}
+    except Exception as exc:  # noqa: BLE001 — curation result must never depend on this
+        _write_index_status(meta, lastError=f"schedule-failed:{type(exc).__name__}:{str(exc)[:160]}")
+        return {"scheduled": "failed"}
+
+
+def index_durable_blocks(
+    root: Path, rebuild: bool = False, budget_seconds: float | None = None,
+) -> dict[str, Any]:
     """Project durable soul blocks into the semantic index.
 
     The soul file stays authoritative — this is a rebuildable projection, which
     is exactly what `ingest_experience` is for. Idempotent: the content hash is
     the source id, so re-running costs nothing and never duplicates.
+
+    Resumable: progress is checkpointed every INDEX_CHECKPOINT_EVERY blocks, so a
+    killed run keeps what it finished. `budget_seconds` stops early and reports
+    `partial` instead of being killed by a hook timeout.
     """
     root = Path(root).expanduser()
     meta = root / META_DIR
@@ -2633,10 +2729,20 @@ def index_durable_blocks(root: Path, rebuild: bool = False) -> dict[str, Any]:
     try:
         blocks = parse_durable_blocks(soul.read_text(encoding="utf-8"))
     except OSError:
+        _write_index_status(meta, lastError="unreadable-soul")
         return {"indexed": 0, "skipped": "unreadable-soul"}
     runtime = _one_runtime(root, create=True)
     if runtime is None:
-        return {"indexed": 0, "skipped": "no-ontology-runtime"}
+        # Previously a silent skip — the reason the index never existed was
+        # invisible. Say which part is missing.
+        try:
+            import ontology  # noqa: F401,PLC0415
+            reason = "ontology-runtime-open-failed"
+        except Exception as exc:  # noqa: BLE001
+            reason = f"ontology-import-failed:{type(exc).__name__}"
+        _write_index_status(meta, lastError=reason, durableBlocks=len(blocks))
+        return {"indexed": 0, "skipped": "no-ontology-runtime", "reason": reason}
+    deadline = time.monotonic() + budget_seconds if budget_seconds else None
 
     superseded = _superseded_hashes(meta)
     state_path = meta / "index-state.json"
@@ -2650,11 +2756,23 @@ def index_durable_blocks(root: Path, rebuild: bool = False) -> dict[str, Any]:
         if rebuild:
             seen = set()
 
+        def checkpoint() -> None:
+            try:
+                _atomic_write(state_path, json.dumps(sorted(seen), ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+
         indexed = 0
+        failed = 0
+        last_error = ""
+        partial = False
         for block in blocks:
             digest = _content_hash(block["content"])
             if digest in superseded or digest in seen:
                 continue
+            if deadline is not None and time.monotonic() >= deadline:
+                partial = True
+                break
             try:
                 runtime.ingest_experience(
                     agent_id=ONE_AGENT_ID,
@@ -2665,15 +2783,31 @@ def index_durable_blocks(root: Path, rebuild: bool = False) -> dict[str, Any]:
                     suggested_scope="agent_repo",
                     reason="One durable soul projection; the soul file remains authoritative.",
                 )
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 — one bad block must not stop the rest
+                failed += 1
+                last_error = f"ingest-failed:{type(exc).__name__}:{str(exc)[:120]}"
                 continue
             seen.add(digest)
             indexed += 1
-        try:
-            _atomic_write(state_path, json.dumps(sorted(seen), ensure_ascii=False) + "\n")
-        except OSError:
-            pass
-    return {"indexed": indexed, "durable": len(blocks), "known": len(seen)}
+            if indexed % INDEX_CHECKPOINT_EVERY == 0:
+                checkpoint()
+        checkpoint()
+    fields: dict[str, Any] = {
+        "durableBlocks": len(blocks),
+        "indexedBlocks": len(seen),
+        "lastRunIndexed": indexed,
+        "lastRunFailed": failed,
+        "partial": partial,
+    }
+    if indexed:
+        fields["lastIndexedAt"] = _now()
+    fields["lastError"] = last_error or None
+    try:
+        fields["indexBytes"] = (meta / ONE_INDEX_FILE).stat().st_size
+    except OSError:
+        pass
+    _write_index_status(meta, **fields)
+    return {"indexed": indexed, "durable": len(blocks), "known": len(seen), "failed": failed, "partial": partial}
 
 
 def _semantic_candidates(root: Path, question: str, top_k: int) -> dict[str, float]:
@@ -3017,7 +3151,20 @@ def status(root: Path) -> dict[str, Any]:
         "promotedChips": promoted_chips,
         "chipsAwaitingDecision": pending_chips,
         "soulBytes": (meta / PROJECT_SOUL_FILE).stat().st_size if (meta / PROJECT_SOUL_FILE).exists() else -1,
+        # Semantic index — indexedBlocks == durableBlocks is healthy. lastError is
+        # never swallowed any more; a missing index now says why.
+        "semanticIndex": _read_index_status(meta),
     }
+
+
+def _read_index_status(meta: Path) -> dict[str, Any]:
+    try:
+        value = json.loads((meta / INDEX_STATUS_FILE).read_text(encoding="utf-8"))
+        status_value = value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        status_value = {}
+    status_value.setdefault("present", (meta / ONE_INDEX_FILE).exists())
+    return status_value
 
 
 def _main(argv: list[str]) -> int:
@@ -3027,7 +3174,7 @@ def _main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="one_workspace")
     parser.add_argument("command", choices=[
         "seed", "status", "emit", "receipt", "stop-hook", "curate",
-        "chips", "promote", "reject", "recall-coverage",
+        "chips", "promote", "reject", "recall-coverage", "index",
     ])
     parser.add_argument("--chip", default="")
     parser.add_argument("--reason", default="")
@@ -3061,6 +3208,10 @@ def _main(argv: list[str]) -> int:
         ) or {"skipped": "duplicate-or-locked", "hint": "same content already ticketed, or ledger lock busy — retry"}
     elif args.command == "curate":
         out = curate(root)
+    elif args.command == "index":
+        # Detached backfill entry (schedule_durable_index). Holds the index-state
+        # lock, so concurrent spawns return "index-state-busy" instead of racing.
+        out = index_durable_blocks(root)
     elif args.command == "chips":
         out = {"chips": list_chips(root, args.chip_status)}
     elif args.command in ("promote", "reject"):
