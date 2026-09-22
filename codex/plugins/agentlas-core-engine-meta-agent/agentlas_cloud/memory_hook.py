@@ -670,7 +670,7 @@ def build_capsule(
         try:
             # Honour AGENTLAS_ONE_DIR: a hard-coded home path wrote personal
             # receipts into the real drawer even under an isolated override.
-            record_recall_receipt(one_root, one_hashes)
+            record_recall_receipt(one_root, one_hashes, _session_key_raw(payload))
         except Exception:
             pass
         _record_context_markers(
@@ -886,6 +886,13 @@ def _append_contact_ledger(
 
 
 MAX_INTENT_CHARS = 240
+
+
+def _session_key_raw(payload: dict[str, Any]) -> str:
+    """The One exposure ledger's key — must equal one_workspace.hook_session_key."""
+    from .one_workspace import hook_session_key
+
+    return hook_session_key(payload)
 
 
 def _session_key(payload: dict[str, Any]) -> str:

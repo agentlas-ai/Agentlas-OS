@@ -1798,6 +1798,8 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         if not summary and transcripts:
             summary = host_turn_seed(transcripts[0], workspace)
         record_turn_summary(root, workspace, summary)
+        if transcripts:
+            record_block_use(root, hook_session_key(payload), transcripts[0])
     except Exception:  # noqa: BLE001 — a query seed must never cost a session end
         pass
 
@@ -3037,7 +3039,130 @@ def _semantic_candidates(root: Path, question: str, top_k: int) -> dict[str, flo
     return scores
 
 
-def record_recall_receipt(root: Path, block_hashes: list[str]) -> None:
+EXPOSURE_FILE = "exposure-sessions.json"
+USE_LEDGER_FILE = "use-ledger.json"
+_EXPOSURE_MAX_SESSIONS = 64
+_TOOL_INPUT_MAX_CHARS = 2_000_000
+_IDENTIFIER_RE = re.compile(
+    r"\b(?:[A-Za-z_][A-Za-z0-9]*(?:[A-Z][a-z0-9]+|_[A-Za-z0-9]+)+[A-Za-z0-9_]*"  # camelCase / snake_case
+    r"|[A-Za-z0-9_-]{3,}\.(?:ts|tsx|js|cjs|mjs|py|md|json|yml|yaml|sh|toml|sql|rs|go|swift|kt))\b"
+)
+
+
+def hook_session_key(payload: dict[str, Any]) -> str:
+    """Same key memory_hook._session_key derives, so exposure (prompt hook) and
+    use (stop hook) meet. Empty when the host sends no session id."""
+    for name in ("session_id", "sessionId", "conversation_id"):
+        value = payload.get(name) if isinstance(payload, dict) else None
+        if isinstance(value, str) and value.strip():
+            return hashlib.sha256(value.strip().encode("utf-8")).hexdigest()[:16]
+    return ""
+
+
+def _read_json_dict(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _record_exposure(meta: Path, session_key: str, block_hashes: list[str]) -> None:
+    """Exposure ledger: what recall SHOWED in this session. Kept apart from use —
+    research 2026-09-23 §0: counting delivery as use makes brightness feed itself
+    (top block 16.9% of 127,184 deliveries, top four 55%)."""
+    if not session_key or not block_hashes:
+        return
+    path = meta / EXPOSURE_FILE
+    with _LedgerLock(path) as acquired:
+        if not acquired:
+            return
+        data = _read_json_dict(path)
+        row = data.get(session_key) if isinstance(data.get(session_key), dict) else {}
+        hashes = list(dict.fromkeys([*(row.get("hashes") or []), *block_hashes]))[-200:]
+        data[session_key] = {"at": _now(), "hashes": hashes}
+        if len(data) > _EXPOSURE_MAX_SESSIONS:
+            for key, _value in sorted(data.items(), key=lambda item: str((item[1] or {}).get("at", "")))[
+                    : len(data) - _EXPOSURE_MAX_SESSIONS]:
+                data.pop(key, None)
+        try:
+            _atomic_write(path, json.dumps(data) + "\n")
+        except OSError:
+            pass
+
+
+def _tool_input_text(path: str) -> str:
+    """Tool-call arguments of the session (bounded). Read locally, never stored."""
+    chunks: list[str] = []
+    size = 0
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if '"tool_use"' not in line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                for block in ((row.get("message") or {}).get("content")) or []:
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        text = json.dumps(block.get("input") or {}, ensure_ascii=False)
+                        chunks.append(text)
+                        size += len(text)
+                        if size >= _TOOL_INPUT_MAX_CHARS:
+                            return "\n".join(chunks)
+    except OSError:
+        return ""
+    return "\n".join(chunks)
+
+
+def record_block_use(root: Path, session_key: str, transcript: str) -> dict[str, int]:
+    """Use ledger: which SHOWN blocks the session demonstrably acted on.
+
+    Deterministic, no model: a block counts as used when a file its evidence
+    names was edited, or an identifier it contains (camelCase, snake_case, a
+    file name) appears in the session's tool arguments. Blocks that were shown
+    and not used get nothing — that absence is the signal the delivery counter
+    could never give.
+    """
+    root = Path(root).expanduser()
+    meta = root / META_DIR
+    exposure = _read_json_dict(meta / EXPOSURE_FILE)
+    shown = set(((exposure.get(session_key) or {}).get("hashes")) or []) if session_key else set()
+    if not shown or not transcript:
+        return {"shown": len(shown), "used": 0}
+    try:
+        blocks = parse_durable_blocks((meta / PROJECT_SOUL_FILE).read_text(encoding="utf-8"))
+    except OSError:
+        return {"shown": len(shown), "used": 0}
+    tool_text = _tool_input_text(transcript)
+    edited = set(_edited_file_names(transcript, limit=200))
+    used: list[str] = []
+    for block in blocks:
+        digest = _content_hash(block["content"])
+        if digest not in shown:
+            continue
+        evidence_files = {os.path.basename(part.split(":")[0].strip("` ")) for part in block["evidence"].split(",")}
+        identifiers = set(_IDENTIFIER_RE.findall(block["content"] + " " + block["evidence"]))
+        if (evidence_files & edited) or any(ident in tool_text for ident in identifiers if len(ident) >= 6):
+            used.append(digest)
+    path = meta / USE_LEDGER_FILE
+    with _LedgerLock(path) as acquired:
+        if acquired:
+            data = _read_json_dict(path)
+            now = _now()
+            for digest in used:
+                row = data.get(digest) if isinstance(data.get(digest), dict) else {}
+                data[digest] = {"uses": int(row.get("uses", 0)) + 1, "lastUseAt": now}
+            if used:
+                try:
+                    _atomic_write(path, json.dumps(data, indent=1) + "\n")
+                except OSError:
+                    pass
+    return {"shown": len(shown), "used": len(used)}
+
+
+def record_recall_receipt(root: Path, block_hashes: list[str], session_key: str = "") -> None:
     """Count which durable blocks recall actually delivered.
 
     Kept as a bounded counter sidecar rather than a ledger line: the file can
@@ -3050,6 +3175,10 @@ def record_recall_receipt(root: Path, block_hashes: list[str]) -> None:
     if not block_hashes:
         return
     root = Path(root).expanduser()
+    try:
+        _record_exposure(root / META_DIR, session_key, block_hashes)
+    except Exception:  # noqa: BLE001 — observability never breaks a session
+        pass
     path = root / META_DIR / RECALL_USAGE_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     with _LedgerLock(path) as acquired:
