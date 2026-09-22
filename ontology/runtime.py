@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import sqlite3
 import stat
@@ -23,6 +24,7 @@ from .embeddings import (
     tokenize,
     vector_adapter_metadata,
 )
+from . import graph_spread
 from .parsers import ParsedRecord, SourceParserRegistry
 from .utils import clamp, content_hash, estimate_tokens, json_dumps, json_loads, normalize_name, normalized_key, stable_hash, utc_now
 
@@ -66,6 +68,20 @@ MODEL2VEC_CJK_MIN_VECTOR_SCORE = 0.12
 VECTOR_RELATIVE_FLOOR = 0.72
 DEFAULT_EXPERIENCE_TOKEN_BUDGET = 800
 DEFAULT_EXPERIENCE_TOP_K = 8
+# Graph spread (Personalized PageRank, stage 4) defaults, chosen by measurement
+# (recall-repair plan §12, 2026-09-23). Multi-hop set: 21 questions whose answer
+# shares no content word with the question, 774-memory haystack from this repo's
+# commit history + real ledger/code map. Single-hop guard: LongMemEval-S, 100
+# questions, One path.
+#   seeds=5 d=0.85 w=2.0 admit=5: multi-hop hit@10 0/21 -> 21/21; single-hop
+#   recall@5 96% -> 96% (seed block is untouchable), recall@10 99% -> 98%.
+#   seeds=3 lifted multi-hop hit@5 (0 -> 10/21) but cost single-hop @5 (96 -> 93);
+#   damping 0.5 or weight 1.0 left most file/co-edit hops below rank 10.
+DEFAULT_PPR_DAMPING = 0.85
+DEFAULT_PPR_WEIGHT = 2.0
+PPR_SEED_COUNT = 5
+PPR_ADMITTED = 5
+PPR_MIN_RELATIVE_MASS = 0.01
 ACTIVE_EXPERIENCE_STATUSES = (
     "active",
     "accepted",
@@ -103,6 +119,10 @@ class RuntimeConfig:
     vector_adapter_name: str = "auto"
     local_model_path: Path | str | None = None
     read_only: bool = False
+    # Project whose contact ledger and code map feed co_edited/references edges
+    # into experience graph spread. Default: the directory holding .agentlas/
+    # when the database lives there; otherwise no project edges.
+    graph_project_root: Path | str | None = None
 
 
 class OntologyRuntime:
@@ -371,6 +391,24 @@ class OntologyRuntime:
                   PRIMARY KEY (agent_id, src_key, dst_key, predicate)
                 );
                 CREATE INDEX IF NOT EXISTS idx_exp_relations_src ON experience_relations(agent_id, src_key);
+
+                -- Graph-spread neighborhood (stage 4, Personalized PageRank).
+                -- Machine-derived, rebuildable, never curator-authored: the
+                -- nearest neighbors each memory saw in the cosine scan that
+                -- ingest already runs (>= 0.55, 5 per node, the desktop
+                -- memory_relation_edges contract). relation_type is stored so
+                -- correlation edges are never read as causal ones.
+                CREATE TABLE IF NOT EXISTS experience_graph_edges (
+                  agent_id TEXT NOT NULL,
+                  src_ticket TEXT NOT NULL REFERENCES memory_candidates(ticket_id) ON DELETE CASCADE,
+                  dst_ticket TEXT NOT NULL REFERENCES memory_candidates(ticket_id) ON DELETE CASCADE,
+                  relation_type TEXT NOT NULL,
+                  weight REAL NOT NULL,
+                  basis TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  PRIMARY KEY (agent_id, src_ticket, dst_ticket, relation_type)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exp_graph_dst ON experience_graph_edges(agent_id, dst_ticket);
                 """
             )
             self._ensure_memory_candidate_columns(conn)
@@ -590,6 +628,8 @@ class OntologyRuntime:
                     row["ticket_id"],
                 ),
             )
+        # Neighborhoods were measured in the old vector space.
+        conn.execute("DELETE FROM experience_graph_edges WHERE relation_type = 'similar_to'")
         self._register_vector_adapter(conn)
 
     def ingest_path(self, path: str | Path, access_scope: str = "internal", parent_source_id: str | None = None) -> dict[str, Any]:
@@ -1349,6 +1389,7 @@ class OntologyRuntime:
         query_tokens = set(tokenize(question))
         query_vector = self.vector_adapter.embed(question)
         scored: list[dict[str, Any]] = []
+        stored_vectors: dict[str, list[float]] = {}
         for row in rows:
             item = self._memory_candidate_row(row)
             searchable = f"{item['candidate_text']} {' '.join(item['tags'])}"
@@ -1362,6 +1403,8 @@ class OntologyRuntime:
                 stored_adapter = self.vector_adapter.name
             compatible = self._vector_adapter_matches(stored_adapter) and len(stored_vector) == len(query_vector)
             semantic = max(0.0, cosine_similarity(query_vector, stored_vector)) if compatible else 0.0
+            if compatible:
+                stored_vectors[item["ticket_id"]] = stored_vector
             item["lexical_score"] = round(lexical, 6)
             item["vector_score"] = round(semantic, 6)
             item["token_estimate"] = estimate_tokens(item["candidate_text"])
@@ -1392,6 +1435,24 @@ class OntologyRuntime:
             question=question,
             seed_tickets=[item["ticket_id"] for item in vector_seed],
         )
+        # Graph spread (stage 4): Personalized PageRank from the direct hits over
+        # the free edges (similar_to, mentions_file, co_edited, references). When
+        # it runs it IS the graph channel — the entity signal above, if enabled,
+        # becomes extra seed mass rather than a second graph channel. When there
+        # is no graph around the seeds it returns nothing and the fusion below is
+        # exactly the channels that ran before it existed.
+        ppr_signal, graph_report = self._experience_ppr_signal(
+            conn,
+            agent_id=agent_id,
+            all_scored=all_scored,
+            floor_passed=floor_passed,
+            stored_vectors=stored_vectors,
+            semantic_floor=semantic_floor,
+            entity_signal=graph_signal,
+            top_k=top_k,
+        )
+        if ppr_signal:
+            graph_signal = ppr_signal
         scored = list(floor_passed)
         seen_tickets = {item["ticket_id"] for item in scored}
         for item in all_scored:
@@ -1419,13 +1480,22 @@ class OntologyRuntime:
             for item in sorted(scored, key=lambda value: (value["vector_score"], value["updated_at"]), reverse=True)
             if item["vector_score"] >= semantic_floor
         ]
-        graph_order = [
-            ticket for ticket, _signal in sorted(graph_signal.items(), key=lambda kv: kv[1], reverse=True)
-        ]
+        if ppr_signal:
+            # Already in channel order: the seed block first, then what the walk reached.
+            graph_order = list(ppr_signal)
+        else:
+            graph_order = [
+                ticket for ticket, _signal in sorted(graph_signal.items(), key=lambda kv: kv[1], reverse=True)
+            ]
         lexical_rank = {ticket: index for index, ticket in enumerate(lexical_order)}
         vector_rank = {ticket: index for index, ticket in enumerate(vector_order)}
         graph_rank = {ticket: index for index, ticket in enumerate(graph_order)}
-        graph_weight = float(os.environ.get("AGENTLAS_EXPERIENCE_GRAPH_WEIGHT", "1.0")) if graph_signal else 0.0
+        if ppr_signal:
+            graph_weight = self._env_float("AGENTLAS_EXPERIENCE_PPR_WEIGHT", DEFAULT_PPR_WEIGHT)
+        elif graph_signal:
+            graph_weight = self._env_float("AGENTLAS_EXPERIENCE_GRAPH_WEIGHT", 1.0)
+        else:
+            graph_weight = 0.0
         max_rrf = (2.0 + graph_weight) / RRF_K
         for item in scored:
             ticket = item["ticket_id"]
@@ -1488,7 +1558,269 @@ class OntologyRuntime:
                 "superseded_hidden": True,
             },
             "fusion": "rrf_lexical_cosine_with_salience_prior",
+            "graph": graph_report,
         }
+
+    @staticmethod
+    def _env_float(name: str, default: float) -> float:
+        try:
+            value = float(os.environ.get(name, "") or default)
+        except ValueError:
+            return default
+        return value if math.isfinite(value) and value >= 0 else default
+
+    def _experience_ppr_signal(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        agent_id: str,
+        all_scored: list[dict[str, Any]],
+        floor_passed: list[dict[str, Any]],
+        stored_vectors: dict[str, list[float]],
+        semantic_floor: float,
+        entity_signal: dict[str, float],
+        top_k: int,
+    ) -> tuple[dict[str, float], dict[str, Any]]:
+        """Personalized PageRank over free edges, as ``({ticket: mass}, report)``.
+
+        Seeds are the direct hits (top lexical+vector RRF); the walk spreads
+        their mass over similar_to / mentions_file / co_edited / references and
+        the tickets it reaches become the third RRF channel. Every failure is
+        fail-open: ``({}, report)`` and recall proceeds on its other channels.
+        """
+        report: dict[str, Any] = {"channel": "ppr", "active": False}
+        if os.environ.get("AGENTLAS_EXPERIENCE_PPR", "1") == "0":
+            report["reason"] = "disabled"
+            return {}, report
+        if not floor_passed and not entity_signal:
+            report["reason"] = "no-seeds"
+            return {}, report
+        import time as _time
+
+        started = _time.perf_counter()
+        try:
+            signal, details = self._experience_ppr_signal_unguarded(
+                conn,
+                agent_id=agent_id,
+                all_scored=all_scored,
+                floor_passed=floor_passed,
+                stored_vectors=stored_vectors,
+                semantic_floor=semantic_floor,
+                entity_signal=entity_signal,
+                top_k=top_k,
+            )
+        except Exception as exc:  # noqa: BLE001 — recall must never depend on the graph
+            report["reason"] = f"error:{type(exc).__name__}"
+            return {}, report
+        report.update(details)
+        report["active"] = bool(signal)
+        report["ms"] = round((_time.perf_counter() - started) * 1000, 2)
+        return signal, report
+
+    def _graph_project_root(self) -> Path | None:
+        configured = getattr(self.config, "graph_project_root", None)
+        if configured:
+            return Path(configured).expanduser()
+        parent = self.db_path.parent
+        if parent.name == ".agentlas":
+            return parent.parent
+        return None
+
+    def _experience_ppr_signal_unguarded(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        agent_id: str,
+        all_scored: list[dict[str, Any]],
+        floor_passed: list[dict[str, Any]],
+        stored_vectors: dict[str, list[float]],
+        semantic_floor: float,
+        entity_signal: dict[str, float],
+        top_k: int,
+    ) -> tuple[dict[str, float], dict[str, Any]]:
+        eligible = {item["ticket_id"]: item for item in all_scored}
+        # Seeds: the same two-channel RRF the fusion uses, top PPR_SEED_COUNT.
+        lexical_order = [
+            item["ticket_id"]
+            for item in sorted(floor_passed, key=lambda value: (value["lexical_score"], value["updated_at"]), reverse=True)
+            if item["lexical_score"] > 0.0
+        ]
+        vector_order = [
+            item["ticket_id"]
+            for item in sorted(floor_passed, key=lambda value: (value["vector_score"], value["updated_at"]), reverse=True)
+            if item["vector_score"] >= semantic_floor
+        ]
+        seed_score: dict[str, float] = {}
+        for order in (lexical_order, vector_order):
+            for index, ticket in enumerate(order):
+                seed_score[ticket] = seed_score.get(ticket, 0.0) + 1.0 / (RRF_K + index)
+        seed_count = max(1, int(self._env_float("AGENTLAS_EXPERIENCE_PPR_SEEDS", PPR_SEED_COUNT)))
+        seeds = dict(sorted(seed_score.items(), key=lambda kv: (-kv[1], kv[0]))[:seed_count])
+        if entity_signal:
+            peak = max(entity_signal.values()) or 1.0
+            top_seed = max(seeds.values(), default=1.0 / RRF_K)
+            for ticket, value in entity_signal.items():
+                if ticket in eligible:
+                    seeds[ticket] = seeds.get(ticket, 0.0) + 0.5 * top_seed * value / peak
+        if not seeds:
+            return {}, {"reason": "no-seeds"}
+
+        graph = graph_spread.TypedGraph()
+        node = graph_spread.TICKET_PREFIX
+
+        # similar_to: stored neighborhoods (ingest-time) + curator-era links.
+        has_neighbors: set[str] = set()
+        try:
+            for row in conn.execute(
+                "SELECT src_ticket, dst_ticket, weight FROM experience_graph_edges "
+                "WHERE agent_id = ? AND relation_type = 'similar_to'",
+                (agent_id,),
+            ):
+                src, dst = row["src_ticket"], row["dst_ticket"]
+                has_neighbors.add(src)
+                if src != dst and src in eligible and dst in eligible:
+                    graph.add(node + src, node + dst, "similar_to", float(row["weight"]))
+        except sqlite3.OperationalError:
+            pass  # read-only database from before the table existed
+        for row in conn.execute(
+            "SELECT from_ticket, to_ticket, score FROM memory_links WHERE link_type = 'similar_to'"
+        ):
+            src, dst = row["from_ticket"], row["to_ticket"]
+            if src in eligible and dst in eligible:
+                graph.add(node + src, node + dst, "similar_to", float(row["score"] or 0.0))
+        # Seeds indexed before neighborhoods were stored: find theirs now, from
+        # vectors this query already decoded. Bounded to the seeds.
+        missing = [ticket for ticket in seeds if ticket not in has_neighbors and ticket in stored_vectors]
+        computed_on_the_fly = 0
+        if missing:
+            units = {
+                ticket: unit
+                for ticket, vector in stored_vectors.items()
+                for unit in (graph_spread.unit_vector(vector),)
+                if unit is not None
+            }
+            for ticket in missing:
+                own = units.get(ticket)
+                if own is None:
+                    continue
+                neighbors = sorted(
+                    (
+                        (score, other)
+                        for other, unit in units.items()
+                        if other != ticket
+                        for score in (graph_spread.dot(own, unit),)
+                        if score >= graph_spread.SIMILAR_EDGE_THRESHOLD
+                    ),
+                    key=lambda pair: (-pair[0], pair[1]),
+                )[: graph_spread.SIMILAR_EDGE_PER_NODE]
+                for score, other in neighbors:
+                    graph.add(node + ticket, node + other, "similar_to", score)
+                computed_on_the_fly += 1
+
+        # Files: what each memory names, joined through the project's ledger
+        # (co_edited) and code map (references).
+        root = self._graph_project_root()
+        code_map = graph_spread.code_map_edges(root)
+        units_edited = graph_spread.co_edit_units(root)
+        known_files: set[str] = set(code_map.get("files") or ())
+        for unit in units_edited:
+            known_files |= unit
+        resolver = graph_spread.FileResolver(root, known_files)
+        definitions = code_map.get("definitions") or {}
+        files_by_ticket: dict[str, set[str]] = {}
+        tickets_by_file: dict[str, set[str]] = {}
+        for ticket, item in eligible.items():
+            mentions = {
+                resolver.resolve(mention)
+                for mention in graph_spread.extract_file_mentions(item["candidate_text"], item.get("source_refs"))
+            }
+            mentions |= graph_spread.symbol_files(item["candidate_text"], definitions)
+            if mentions:
+                files_by_ticket[ticket] = mentions
+                for path in mentions:
+                    tickets_by_file.setdefault(path, set()).add(ticket)
+        # A file named by a large share of memories bridges everything to everything.
+        hub_cap = max(8, int(len(eligible) * 0.05))
+        linked_files = {path for path, tickets in tickets_by_file.items() if len(tickets) <= hub_cap}
+        for ticket, paths in files_by_ticket.items():
+            for path in paths & linked_files:
+                graph.add(node + ticket, graph_spread.FILE_PREFIX + path, "mentions_file")
+        if linked_files and units_edited:
+            pair_weight: dict[tuple[str, str], float] = {}
+            for unit in units_edited:
+                shared = sorted(unit & linked_files)
+                if len(shared) < 2:
+                    continue
+                breadth = 1.0 if len(unit) <= graph_spread.MAX_SESSION_FILES else graph_spread.MAX_SESSION_FILES / len(unit)
+                for index, left in enumerate(shared):
+                    for right in shared[index + 1 :]:
+                        pair_weight[(left, right)] = pair_weight.get((left, right), 0.0) + breadth
+            for (left, right), count in pair_weight.items():
+                graph.add(
+                    graph_spread.FILE_PREFIX + left,
+                    graph_spread.FILE_PREFIX + right,
+                    "co_edited",
+                    count / (count + 1.0),
+                )
+        dependencies = code_map.get("dependencies") or {}
+        for path in linked_files:
+            for target in dependencies.get(path, ()):  # file-level def/ref edge
+                if target in linked_files:
+                    graph.add(graph_spread.FILE_PREFIX + path, graph_spread.FILE_PREFIX + target, "references")
+
+        details: dict[str, Any] = {
+            "seeds": len(seeds),
+            "nodes": graph.node_count,
+            "edges": dict(sorted(graph.edge_counts.items())),
+            "relation_types": {
+                name: {"causal": spec["causal"], "basis": spec["basis"]}
+                for name, spec in graph_spread.RELATION_TYPES.items()
+                if name in graph.edge_counts
+            },
+            "seed_neighbors_computed": computed_on_the_fly,
+        }
+        seed_nodes = {node + ticket: weight for ticket, weight in seeds.items()}
+        if not any(seed in graph.adjacency for seed in seed_nodes):
+            details["reason"] = "seeds-unconnected"
+            return {}, details
+        damping = self._env_float("AGENTLAS_EXPERIENCE_PPR_DAMPING", DEFAULT_PPR_DAMPING)
+        damping = min(0.95, damping)
+        rank = graph_spread.personalized_pagerank(graph.adjacency, seed_nodes, damping=damping)
+        details["damping"] = damping
+        tickets = {
+            key[len(node):]: value
+            for key, value in rank.items()
+            if key.startswith(node) and value > 0 and key[len(node):] in eligible
+        }
+        # Channel order: the seed block first, in its own order, then the
+        # strongest few tickets the walk reached. Seeds are the direct hits, so
+        # they keep the lead they earned — measured: ranking seeds by their PPR
+        # mass or leaving them out of the channel let their neighbors overtake
+        # them and single-hop recall@5 fell from 96% to 11-45% (LongMemEval-S,
+        # 100 questions). With the seed block kept intact, the walk can only
+        # fill the slots right after the direct hits, never displace them.
+        # RRF is rank-based, so a long tail of weakly reached nodes would all get
+        # near-equal credit; only the top few by mass (and at least a fraction of
+        # the top seed's mass) enter.
+        seed_order = [ticket for ticket, _weight in sorted(seeds.items(), key=lambda kv: (-kv[1], kv[0]))]
+        seed_peak = max((tickets.get(ticket, 0.0) for ticket in seeds), default=0.0)
+        min_mass = seed_peak * self._env_float("AGENTLAS_EXPERIENCE_PPR_MIN_RELATIVE", PPR_MIN_RELATIVE_MASS)
+        reached = sorted(
+            (ticket for ticket, value in tickets.items() if ticket not in seeds and value >= min_mass),
+            key=lambda ticket: (-tickets[ticket], ticket),
+        )
+        limit = max(1, int(self._env_float("AGENTLAS_EXPERIENCE_PPR_ADMIT", PPR_ADMITTED)))
+        if not reached:
+            details["reason"] = "nothing-reached"
+            return {}, details
+        signal: dict[str, float] = {}
+        for ticket in seed_order:
+            signal[ticket] = round(tickets.get(ticket, 0.0), 6)
+        for ticket in reached[:limit]:
+            signal[ticket] = round(tickets[ticket], 6)
+        details["reached"] = len(reached)
+        details["admitted"] = min(len(reached), limit)
+        return signal, details
 
     @staticmethod
     def _empty_experience_result(question: str, agent_id: str | None, token_budget: int) -> dict[str, Any]:
@@ -1572,6 +1904,7 @@ class OntologyRuntime:
             (ticket_id, agent_id, privacy_scope, *ACTIVE_EXPERIENCE_STATUSES),
         ).fetchall()
         links: list[dict[str, Any]] = []
+        neighbors: list[tuple[float, str]] = []
         for row in rows:
             if not self._vector_adapter_matches(row["embedding_adapter"]):
                 continue
@@ -1579,6 +1912,8 @@ class OntologyRuntime:
             if len(other) != len(vector):
                 continue
             score = max(0.0, cosine_similarity(vector, other))
+            if score >= graph_spread.SIMILAR_EDGE_THRESHOLD:
+                neighbors.append((score, row["ticket_id"]))
             if score < threshold:
                 continue
             first, second = sorted((ticket_id, row["ticket_id"]))
@@ -1593,7 +1928,131 @@ class OntologyRuntime:
                     require_exists=False,
                 )
             )
+        # The graph-spread neighborhood comes out of this same scan for free.
+        self._write_similar_neighbors(conn, agent_id=agent_id, ticket_id=ticket_id, neighbors=neighbors)
         return links
+
+    @staticmethod
+    def _write_similar_neighbors(
+        conn: sqlite3.Connection,
+        *,
+        agent_id: str,
+        ticket_id: str,
+        neighbors: list[tuple[float, str]],
+        now: str | None = None,
+    ) -> int:
+        """Replace this ticket's own nearest-neighbor edges (top 5, >= 0.55).
+
+        Edges are stored once per unordered pair; a pair another ticket chose
+        survives until that ticket is re-scanned. Returns edges written.
+        """
+        conn.execute(
+            """
+            DELETE FROM experience_graph_edges
+            WHERE agent_id = ? AND src_ticket = ? AND relation_type = 'similar_to'
+            """,
+            (agent_id, ticket_id),
+        )
+        chosen = sorted(neighbors, key=lambda pair: (-pair[0], pair[1]))[: graph_spread.SIMILAR_EDGE_PER_NODE]
+        stamp = now or utc_now()
+        # Self-row marks "scanned" so a memory with no neighbor above the
+        # threshold is not rescanned on every query. Weight 0, never an edge.
+        conn.execute(
+            """
+            INSERT INTO experience_graph_edges(
+              agent_id, src_ticket, dst_ticket, relation_type, weight, basis, created_at
+            ) VALUES (?, ?, ?, 'similar_to', 0, 'neighborhood_scanned', ?)
+            """,
+            (agent_id, ticket_id, ticket_id, stamp),
+        )
+        for score, other in chosen:
+            conn.execute(
+                """
+                INSERT INTO experience_graph_edges(
+                  agent_id, src_ticket, dst_ticket, relation_type, weight, basis, created_at
+                ) VALUES (?, ?, ?, 'similar_to', ?, 'vector_cosine', ?)
+                ON CONFLICT(agent_id, src_ticket, dst_ticket, relation_type) DO UPDATE SET
+                  weight = excluded.weight, created_at = excluded.created_at
+                """,
+                (agent_id, ticket_id, other, round(float(score), 6), stamp),
+            )
+        return len(chosen)
+
+    def backfill_experience_graph(
+        self,
+        *,
+        agent_id: str | None = None,
+        only_missing: bool = True,
+        budget_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """Build the similar_to neighborhood for memories indexed before it existed.
+
+        Rows ingested after this table was added already carry their edges;
+        older rows get them here. O(n^2) cosine in pure python, so it is meant
+        for idle/background time (dreaming, index refresh), bounded by
+        ``budget_seconds`` and resumable: ``only_missing`` skips tickets that
+        already chose their neighbors.
+        """
+        import time as _time
+
+        deadline = _time.monotonic() + budget_seconds if budget_seconds else None
+        status_marks = ", ".join(["?"] * len(ACTIVE_EXPERIENCE_STATUSES))
+        processed = 0
+        written = 0
+        partial = False
+        with closing(self.connect()) as conn, conn:
+            params: list[Any] = [*ACTIVE_EXPERIENCE_STATUSES]
+            agent_clause = ""
+            if agent_id is not None:
+                agent_clause = "AND agent_id = ?"
+                params.append(agent_id)
+            rows = conn.execute(
+                f"""
+                SELECT ticket_id, agent_id, privacy_scope, embedding_adapter, embedding_json
+                FROM memory_candidates
+                WHERE memory_kind != 'candidate' AND status IN ({status_marks}) {agent_clause}
+                ORDER BY agent_id, ticket_id
+                """,
+                params,
+            ).fetchall()
+            done: set[str] = set()
+            if only_missing:
+                done = {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT DISTINCT src_ticket FROM experience_graph_edges WHERE relation_type = 'similar_to'"
+                    )
+                }
+            groups: dict[tuple[str, str], list[tuple[str, list[float]]]] = {}
+            for row in rows:
+                if not self._vector_adapter_matches(row["embedding_adapter"]):
+                    continue
+                unit = graph_spread.unit_vector(json_loads(row["embedding_json"], []))
+                if unit is None:
+                    continue
+                groups.setdefault((row["agent_id"], row["privacy_scope"]), []).append((row["ticket_id"], unit))
+            now = utc_now()
+            for (group_agent, _scope), members in groups.items():
+                for ticket, unit in members:
+                    if ticket in done:
+                        continue
+                    if deadline is not None and _time.monotonic() >= deadline:
+                        partial = True
+                        break
+                    neighbors = [
+                        (score, other)
+                        for other, other_unit in members
+                        if other != ticket
+                        for score in (graph_spread.dot(unit, other_unit),)
+                        if score >= graph_spread.SIMILAR_EDGE_THRESHOLD
+                    ]
+                    written += self._write_similar_neighbors(
+                        conn, agent_id=group_agent, ticket_id=ticket, neighbors=neighbors, now=now
+                    )
+                    processed += 1
+                if partial:
+                    break
+        return {"status": "partial" if partial else "ok", "processed": processed, "edges_written": written}
 
     def graph_entity(self, name: str, allowed_scopes: Iterable[str] | None = None) -> dict[str, Any]:
         document_scopes = list(allowed_scopes) if allowed_scopes is not None else ["public", "internal"]

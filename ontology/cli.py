@@ -84,6 +84,13 @@ def main(argv: list[str] | None = None) -> int:
     experience_query.add_argument("--scope", action="append", choices=["public", "internal", "private"])
     experience_query.add_argument("--token-budget", type=int, default=800)
     experience_query.add_argument("--top-k", type=int, default=8)
+    experience_backfill = experience_sub.add_parser(
+        "graph-backfill",
+        help="Build similar_to neighborhoods (graph spread) for memories indexed before they existed",
+    )
+    experience_backfill.add_argument("--agent", help="Limit to one agent id (default: all)")
+    experience_backfill.add_argument("--budget-seconds", type=float, help="Stop early and report partial")
+    experience_backfill.add_argument("--all", action="store_true", help="Rescan tickets that already have neighbors")
 
     graph = sub.add_parser("graph", help="Graph commands")
     graph_sub = graph.add_subparsers(dest="graph_command", required=True)
@@ -267,6 +274,14 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         emit(result)
         return payload_exit_code(result)
+    if args.command == "experience" and args.experience_command == "graph-backfill":
+        return emit(
+            runtime.backfill_experience_graph(
+                agent_id=args.agent,
+                only_missing=not args.all,
+                budget_seconds=args.budget_seconds,
+            )
+        )
     if args.command == "graph" and args.graph_command == "entity":
         result = runtime.graph_entity(args.name)
         emit(result)
