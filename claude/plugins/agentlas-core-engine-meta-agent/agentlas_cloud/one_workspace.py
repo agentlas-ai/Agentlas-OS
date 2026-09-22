@@ -2992,7 +2992,22 @@ def index_durable_blocks(
             if indexed % INDEX_CHECKPOINT_EVERY == 0:
                 checkpoint()
         checkpoint()
+    # Stage 4 graph spread reads stored similar_to neighbours; blocks indexed
+    # before that table existed have none. Fill them within whatever budget is
+    # left (resumable, only_missing) — the detached indexer has no budget, the
+    # inline curator path keeps its hard limit.
+    graph_note: dict[str, Any] = {}
+    if not partial and hasattr(runtime, "backfill_experience_graph"):
+        remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+        if remaining is None or remaining > 0.2:
+            try:
+                graph_note = runtime.backfill_experience_graph(
+                    agent_id=ONE_AGENT_ID, only_missing=True, budget_seconds=remaining if remaining is not None else 120.0,
+                ) or {}
+            except Exception as exc:  # noqa: BLE001 — recorded, never raised into a hook
+                graph_note = {"status": "failed", "error": type(exc).__name__}
     fields: dict[str, Any] = {
+        "graphBackfill": {k: graph_note.get(k) for k in ("status", "processed", "edges_written", "error") if k in graph_note},
         "durableBlocks": len(blocks),
         "indexedBlocks": len(seen),
         "lastRunIndexed": indexed,

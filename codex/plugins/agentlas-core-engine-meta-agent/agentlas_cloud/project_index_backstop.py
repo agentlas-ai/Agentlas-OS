@@ -79,6 +79,37 @@ def _index_is_fresh(index_path: Path) -> bool:
         return False
 
 
+def _database_lags_index(project_root: Path, index_path: Path) -> bool:
+    """True when the index file on disk is not what the ontology last ingested.
+
+    The query engine fails closed on a changed source (stale_index), so a fresh
+    index file whose detached re-ingest was killed or failed left project recall
+    empty until the file itself aged past STALE_AFTER_SECONDS — the freshness
+    check only looked at the file, never at the database (measured 2026-09-23 on
+    Agentlas-OS: stale_index persisted; one manual `ontology auto` cleared it).
+    One indexed row read; any doubt counts as "not lagging" so this never adds
+    ingest churn on its own.
+    """
+    import hashlib
+    import sqlite3
+
+    db_path = project_root / ".agentlas" / ONTOLOGY_DB_FILE
+    if not db_path.exists() or not index_path.exists():
+        return False
+    try:
+        digest = hashlib.sha256(index_path.read_bytes()).hexdigest()
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.2)
+        try:
+            row = conn.execute(
+                "SELECT content_hash FROM sources WHERE uri = ?", (index_path.resolve().as_uri(),)
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return False
+    return row is not None and str(row[0] or "") != digest
+
+
 def _pm_layer_newer_than_index(project_root: Path, index_path: Path) -> bool:
     """True when any bounded ``.agentlas/pm`` document outdates the index.
 
@@ -311,6 +342,8 @@ def maybe_refresh_project_index(cwd: Path | str | None) -> bool:
         inbox_path = project_root / ".agentlas" / INBOX_DIR
         index_path = inbox_path / INDEX_FILE
         if _index_is_fresh(index_path) and not _pm_layer_newer_than_index(project_root, index_path):
+            if _database_lags_index(project_root, index_path):
+                _spawn_detached_ingest(project_root)
             return False
         content = build_project_index(project_root)
         inbox_path.mkdir(parents=True, exist_ok=True)
