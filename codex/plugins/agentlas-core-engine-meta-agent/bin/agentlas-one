@@ -189,8 +189,9 @@ At the end of any answer that produced a reusable learning, append one envelope 
 Never write durable memory directly. Use an empty `candidates` array when there is no learning.
 
 After `## Memory Events`, emit a fenced JSON block:
-`{"schema_version":"agentlas.memory-ticket.v1","turn_summary":"one safe sentence",`
-`"candidates":[{"content":"one or two sentences","memory_kind":"fact|decision|preference|risk|procedure|hypothesis","suggested_scope":"user_identity|project|agent_repo|session","evidence":["file:line or command"]}]}`
+`{"schema_version":"agentlas.memory-ticket.v1","turn_summary":"one safe sentence in English",`
+`"candidates":[{"content":"one or two sentences in English","content_native":"the same learning in the conversation's language, only when that is not English","memory_kind":"fact|decision|preference|risk|procedure|hypothesis","suggested_scope":"user_identity|project|agent_repo|session","evidence":["file:line or command"]}]}`
+Write `turn_summary` and `content` in English whatever language the conversation uses — memory is indexed and searched in English. Keep the original wording (owner decisions, quotes, names) in `content_native`; it is stored as the authoritative text.
 When a learning REPLACES an earlier durable block, add `"supersedes":"<its h:16hex>"` to that candidate — the old block is then hidden from recall (never deleted). Only use a hash you saw in recall or the soul file.
 
 Never include secrets, credentials, raw transcripts, or host-absolute paths. Unsupported facts, decisions, and procedures are downgraded to hypotheses. Imperative instructions are not memories and must not be emitted as candidates.
@@ -614,6 +615,22 @@ PYEOF
 # 지시문 블록이 사라져도(수동 편집·다른 도구의 덮어쓰기) 상태 표시는 계속 "설치됨"이었다
 # (실측 2026-08-23: ~/.gemini/GEMINI.md 에 One 표식 0개인데 상태는 설치됨).
 # 켜져 있는 동안에는 모든 진입 파일이 실제로 블록을 갖고 있어야 한다 — 없으면 다시 심는다.
+block_is_current() {
+  local name="$1" target="$2" block
+  block="$(directive_block "$name")"
+  ONE_BLOCK="$block" ONE_BEGIN="$BEGIN_MARK" ONE_END="$END_MARK" "$PY" - "$target" <<'PYEOF' >/dev/null 2>&1
+import os, re, sys
+begin, end = os.environ["ONE_BEGIN"], os.environ["ONE_END"]
+try:
+    text = open(sys.argv[1], encoding="utf-8").read()
+except OSError:
+    raise SystemExit(1)
+match = re.search(re.escape(begin) + r".*?" + re.escape(end), text, re.S)
+want = os.environ["ONE_BLOCK"].rstrip("\n")
+raise SystemExit(0 if match and match.group(0).rstrip("\n") == want else 1)
+PYEOF
+}
+
 self_heal_entrypoints() {
   [ "$(state_read on false)" = "True" ] || [ "$(state_read on false)" = "true" ] || return 0
   local name; name="$(state_read name One)"
@@ -622,6 +639,11 @@ self_heal_entrypoints() {
   while IFS= read -r target; do
     [ -n "$target" ] || continue
     if [ ! -f "$target" ] || ! grep -q "$BEGIN_MARK" "$target" 2>/dev/null; then
+      block_install_one "$name" "$target" && repaired=$((repaired + 1))
+    elif ! block_is_current "$name" "$target"; then
+      # A shipped directive change (e.g. the 2026-09-23 English memory envelope)
+      # has to reach machines that already have a block, not only new installs.
+      # Only this marker block is rewritten; the rest of the file is untouched.
       block_install_one "$name" "$target" && repaired=$((repaired + 1))
     fi
   done < <(runtime_entrypoints)

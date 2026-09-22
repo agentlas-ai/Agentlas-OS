@@ -754,6 +754,7 @@ def emit_ticket(
     workspace: str = "",
     project_slug: str = "",
     supersedes: str = "",
+    content_native: str = "",
 ) -> dict[str, Any] | None:
     """Emit a memory ticket without writing durable memory directly.
 
@@ -785,6 +786,9 @@ def emit_ticket(
     if scheme != "content-hash":
         raise ValueError(f"unsupported ticketIdScheme: {scheme}")
     key = _content_hash(body)
+    native_body = str(content_native or "").strip()[: int(_rule("limits.ticketContentMaxChars", 600))]
+    if native_body == body:
+        native_body = ""
     supersedes_arg = str(supersedes or "")
     ticket = {
         "schemaVersion": SCHEMA_VERSION,
@@ -800,6 +804,7 @@ def emit_ticket(
             "type": kind,
             "scope": scope,
             "content": body,
+            **({"contentNative": native_body} if native_body else {}),
             "evidence": evidence[: int(_rule("limits.evidenceMaxItems", 8))],
             **({"supersedes": supersedes_arg} if supersedes_arg else {}),
         },
@@ -1002,8 +1007,14 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
                 agent_slug = str(candidate.get("agent_slug") or "").strip().lower()
                 if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", agent_slug):
                     agent_slug = ""
+                # §9-8 English-only index: `content` is the English search
+                # surface; `content_native` keeps the author's original wording
+                # as the authority channel (quotes, owner decisions). Optional —
+                # absent when the learning was written in English already.
+                native = str(candidate.get("content_native") or "").strip()[:_MAX_CONTENT_CHARS]
                 found.append({
                     "content": content,
+                    **({"content_native": native} if native and native != content else {}),
                     "kind": str(candidate.get("memory_kind") or "hypothesis"),
                     "scope": str(candidate.get("suggested_scope") or "agent_repo"),
                     "evidence": [str(item)[:_MAX_EVIDENCE_ITEM_CHARS] for item in evidence][:8] if isinstance(evidence, list) else [],
@@ -1013,6 +1024,121 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
                     "agent_slug": agent_slug,
                 })
     return found
+
+
+TURN_SUMMARY_FILE = "turn-summaries.json"
+QUERY_LANGUAGE_FILE = "query-language.json"
+_TURN_SUMMARY_MAX_CHARS = 300
+_TURN_SUMMARY_MAX_WORKSPACES = 64
+
+
+def latest_turn_summary(texts: Any) -> str:
+    """The last envelope's `turn_summary` — the English query seed (§9-8, 1.6).
+
+    The envelope asks for it in English, so the next turn's recall can search
+    the English index even when the person writes in another language.
+    """
+    last = ""
+    for text in texts or []:
+        if not isinstance(text, str):
+            continue
+        text = text[-_MAX_TEXT_BYTES:]
+        matches = list(_MEMORY_ENVELOPE_FENCED_RE.finditer(text)) or list(_MEMORY_ENVELOPE_BARE_RE.finditer(text))
+        for match in matches:
+            raw = match.group(1)
+            if len(raw) > _MAX_ENVELOPE_BYTES:
+                continue
+            try:
+                envelope = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(envelope, dict):
+                summary = " ".join(str(envelope.get("turn_summary") or "").split())[:_TURN_SUMMARY_MAX_CHARS]
+                if summary:
+                    last = summary
+    return last
+
+
+def _workspace_key(workspace: str) -> str:
+    return _content_hash(os.path.realpath(workspace) if workspace else "")
+
+
+def record_turn_summary(root: Path, workspace: str, summary: str) -> None:
+    if not summary:
+        return
+    path = Path(root).expanduser() / META_DIR / TURN_SUMMARY_FILE
+    with _LedgerLock(path) as acquired:
+        if not acquired:
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                data = {}
+        except (OSError, ValueError):
+            data = {}
+        data[_workspace_key(workspace)] = {"summary": summary, "at": _now()}
+        if len(data) > _TURN_SUMMARY_MAX_WORKSPACES:
+            for key, _row in sorted(data.items(), key=lambda item: str((item[1] or {}).get("at", "")))[
+                    : len(data) - _TURN_SUMMARY_MAX_WORKSPACES]:
+                data.pop(key, None)
+        try:
+            _atomic_write(path, json.dumps(data, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+
+def _latin_ratio(text: str) -> float:
+    """Share of words written in ASCII. Words, not letters: one long identifier
+    (`mobilePairError`) must not make a Korean sentence count as English."""
+    words = [word for word in re.findall(r"\w+", text) if any(ch.isalpha() for ch in word)]
+    if not words:
+        return 1.0
+    return sum(1 for word in words if word.isascii()) / len(words)
+
+
+def english_recall_query(root: Path, question: str, workspace: str = "") -> tuple[str, str]:
+    """Return (semantic query, mode) for the English-only index.
+
+    English question -> itself. Otherwise: the previous turn's English summary
+    for this workspace plus the English identifiers already in the question
+    (`mobilePairError`, `st_ctime`, file names). Measured: a Korean question
+    against English memory ranks the answer at median 1,476 / 2,077, an English
+    one at 2 — so a non-English question must never be the semantic query alone.
+    """
+    question = question or ""
+    if _latin_ratio(question) >= 0.6:
+        return question, "english"
+    identifiers = " ".join(re.findall(r"[A-Za-z][A-Za-z0-9_./-]{2,}", question))
+    summary = ""
+    try:
+        data = json.loads((Path(root).expanduser() / META_DIR / TURN_SUMMARY_FILE).read_text(encoding="utf-8"))
+        row = data.get(_workspace_key(workspace)) if isinstance(data, dict) else None
+        summary = str((row or {}).get("summary") or "")
+    except (OSError, ValueError):
+        summary = ""
+    seed = " ".join(part for part in (summary, identifiers) if part).strip()
+    if seed:
+        return seed, "seeded" if summary else "identifiers"
+    return question, "native"
+
+
+def _count_query_language(root: Path, mode: str) -> None:
+    """The §12 gate metric: share of recalls that searched in English."""
+    path = Path(root).expanduser() / META_DIR / QUERY_LANGUAGE_FILE
+    with _LedgerLock(path) as acquired:
+        if not acquired:
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                data = {}
+        except (OSError, ValueError):
+            data = {}
+        data[mode] = int(data.get(mode, 0)) + 1
+        try:
+            _atomic_write(path, json.dumps(data, sort_keys=True) + "\n")
+        except OSError:
+            pass
 
 
 def resolve_transcript(payload: dict[str, Any], host: str = "") -> str:
@@ -1611,6 +1737,16 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         supplied = [supplied]
     if isinstance(supplied, list):
         events.extend(harvest_memory_events_from_texts(supplied))
+    # 1.6 — keep the last English turn_summary as the next turn's query seed.
+    try:
+        summary_texts: list[str] = []
+        for path in transcripts[:1]:
+            summary_texts.extend(_iter_assistant_text(path))
+        if isinstance(supplied, list):
+            summary_texts.extend(text for text in supplied if isinstance(text, str))
+        record_turn_summary(root, workspace, latest_turn_summary(summary_texts))
+    except Exception:  # noqa: BLE001 — a query seed must never cost a session end
+        pass
 
     tool_uses, edits = _scan_transcript(transcript) if transcript else (0, 0)
     # Record receipts only for edits or sufficiently tool-heavy work, not casual chat.
@@ -1703,6 +1839,7 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
             workspace=workspace,
             project_slug=project_slug,
             supersedes=str(event.get("supersedes") or ""),
+            content_native=str(event.get("content_native") or ""),
         ):
             harvested += 1
 
@@ -2022,6 +2159,12 @@ def _append_durable(
         f"{project_line}"
         f"  - Ticket: `{ticket_id}` · {_now()}  <!-- h:{_content_hash(content)} -->\n"
     )
+    # The original-language wording is the authority (§9-8): it is kept in the
+    # soul, AFTER the ticket line so every existing parser (which stops at the
+    # ticket line) is unaffected. The English line above is the search surface.
+    native = " ".join(str(candidate.get("contentNative") or "").split())
+    if native and native != content:
+        block += f"  - Native: {native}\n"
     with soul_path.open("a", encoding="utf-8") as handle:
         handle.write(block)
 
@@ -2505,7 +2648,8 @@ _DURABLE_BLOCK_RE = re.compile(
     r"^- \*\*\[(?P<kind>\w+)\]\*\* (?P<content>.+?)\n"
     r"(?:  - (?:근거|Evidence): (?P<evidence>.*?)\n)?"
     r"(?:  - Project: (?P<project>.*?)\n)?"
-    r"  - (?:티켓|Ticket): `(?P<ticket>[^`]+)`",
+    r"  - (?:티켓|Ticket): `(?P<ticket>[^`]+)`[^\n]*"
+    r"(?:\n  - (?:원문|Native): (?P<native>[^\n]*))?",
     re.MULTILINE,
 )
 
@@ -2520,6 +2664,7 @@ def parse_durable_blocks(soul_text: str) -> list[dict[str, str]]:
             "evidence": (match.group("evidence") or "").strip(),
             "project": (match.group("project") or "").strip(),
             "ticket": match.group("ticket"),
+            "native": (match.group("native") or "").strip(),
         })
     return rows
 
@@ -3036,7 +3181,20 @@ def select_one_recall(
     # Semantic half of the hybrid. The same engine already serves every other
     # memory layer; here it contributes rank, and lexical contributes the rest,
     # so a block phrased differently from the question can still be found.
-    semantic = _semantic_candidates(root, question, max_blocks * 4)
+    semantic_query, query_mode = english_recall_query(root, question, workspace)
+    _count_query_language(root, query_mode)
+    semantic = _semantic_candidates(root, semantic_query, max_blocks * 4)
+    if semantic_query != question:
+        # Transition without regression: blocks stored before the English switch
+        # are still native-language, and an English query ranks them worse than
+        # the native question does (measured median 216 vs 82). Search both and
+        # keep each block's better reciprocal rank.
+        for digest, score in _semantic_candidates(root, question, max_blocks * 4).items():
+            if score > semantic.get(digest, 0.0):
+                semantic[digest] = score
+        # Lexical sees both: the person's own words still match native-language
+        # blocks from before the English switch (no regression during migration).
+        q_tokens = q_tokens | _recall_tokens(semantic_query)
     semantic_weight = float(_rule("recallBudgets.one.semanticWeight", 1.0))
 
     relevant = rank_one_blocks(
