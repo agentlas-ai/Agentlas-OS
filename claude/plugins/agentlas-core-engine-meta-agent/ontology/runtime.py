@@ -18,6 +18,7 @@ from .embeddings import (
     LATIN_TOKEN_PATTERN,
     VectorAdapter,
     cosine_similarity,
+    encode_vector,
     select_vector_adapter,
     tokenize,
     vector_adapter_metadata,
@@ -563,7 +564,7 @@ class OntologyRuntime:
         for row in rows:
             conn.execute(
                 "UPDATE chunks SET vector_json = ?, updated_at = ? WHERE chunk_id = ?",
-                (json_dumps(self.vector_adapter.embed(row["text"])), now, row["chunk_id"]),
+                (json_dumps(encode_vector(self.vector_adapter.embed(row["text"]))), now, row["chunk_id"]),
             )
         self._rebuild_fts_rows(conn)
 
@@ -583,7 +584,7 @@ class OntologyRuntime:
                 (
                     self.vector_adapter.name,
                     len(vector),
-                    json_dumps(vector),
+                    json_dumps(encode_vector(vector)),
                     content_hash(text.encode("utf-8")),
                     now,
                     row["ticket_id"],
@@ -1013,7 +1014,7 @@ class OntologyRuntime:
                     source_updated_at,
                     self.vector_adapter.name,
                     len(vector),
-                    json_dumps(vector),
+                    json_dumps(encode_vector(vector)),
                     content_hash(text.encode("utf-8")),
                     now,
                     now,
@@ -2323,7 +2324,7 @@ class OntologyRuntime:
                 checksum,
                 privacy_scope,
                 json_dumps(lineage),
-                json_dumps(vector),
+                json_dumps(encode_vector(vector)),
                 now,
                 now,
             ),
@@ -2709,7 +2710,7 @@ class OntologyRuntime:
                 "private" if any(chunk["privacy_scope"] == "private" for chunk in chunks) else "internal",
                 self.vector_adapter.name,
                 len(vector),
-                json_dumps(vector),
+                json_dumps(encode_vector(vector)),
                 content_hash(candidate_text.encode("utf-8")),
                 now,
                 now,
