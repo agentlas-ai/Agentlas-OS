@@ -855,6 +855,56 @@ def record_session_receipt(
     return receipt
 
 
+def _edited_file_names(path: str, limit: int = 6) -> list[str]:
+    """Base names of files the session edited, newest last. Names only — never
+    paths or contents — so they can seed an English recall query."""
+    editors = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+    names: list[str] = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if '"tool_use"' not in line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                content = ((row.get("message") or {}).get("content")) or []
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not (isinstance(block, dict) and block.get("type") == "tool_use"
+                            and block.get("name") in editors):
+                        continue
+                    target = str((block.get("input") or {}).get("file_path")
+                                 or (block.get("input") or {}).get("notebook_path") or "")
+                    name = os.path.basename(target)
+                    if name and name.isascii():
+                        if name in names:
+                            names.remove(name)
+                        names.append(name)
+    except OSError:
+        return []
+    return names[-limit:]
+
+
+def host_turn_seed(transcript: str, workspace: str) -> str:
+    """English query seed written by the host when the model sent no envelope.
+
+    Research 2026-09-23 §P6: 41% of turns carry no Memory Events envelope, so
+    stage 1.6's summary seed was missing exactly there and those turns fell
+    back to the native-language path (median rank 1,476 against English
+    memory). File names are English identifiers already; no model is needed.
+    """
+    names = _edited_file_names(transcript) if transcript else []
+    if not names:
+        return ""
+    project = os.path.basename(workspace.rstrip("/")) if workspace else ""
+    project = project if project.isascii() else ""
+    where = f" in {project}" if project else ""
+    return f"Worked on {', '.join(names)}{where}."
+
+
 def _scan_transcript(path: str) -> tuple[int, int]:
     """Count tool and edit calls without reading transcript content."""
     tool_uses = edits = 0
@@ -1744,7 +1794,10 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
             summary_texts.extend(_iter_assistant_text(path))
         if isinstance(supplied, list):
             summary_texts.extend(text for text in supplied if isinstance(text, str))
-        record_turn_summary(root, workspace, latest_turn_summary(summary_texts))
+        summary = latest_turn_summary(summary_texts)
+        if not summary and transcripts:
+            summary = host_turn_seed(transcripts[0], workspace)
+        record_turn_summary(root, workspace, summary)
     except Exception:  # noqa: BLE001 — a query seed must never cost a session end
         pass
 
