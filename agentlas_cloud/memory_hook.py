@@ -653,24 +653,51 @@ def build_capsule(
     # recall on every prompt — measured: state.json {"on": false} still produced
     # 5 one[...] lines. The switch was only consulted by the auto-update branch.
     one_lines: list[str] = []
-    one_hashes: list[str] = []
+    one_capsule: dict[str, Any] = {}
     one_root = _one_root()
     if _one_enabled():
         try:
-            from .one_workspace import record_recall_receipt, select_one_recall_detailed
+            from .one_workspace import select_one_capsule, session_seed_query
 
-            one_lines, one_hashes = select_one_recall_detailed(
-                question, workspace=str(context_root), root=one_root
+            prompt_text = _extract_prompt(payload, prompt_override)
+            # R0 (research 2026-09-23): a prompt-less hook used to recall with the
+            # constant DEFAULT_SESSION_QUERY and count it like a real question —
+            # 71.5% of all deliveries. It now recalls under its own channel, or
+            # with the workspace's last English turn summary when that is on.
+            one_question, one_channel = question, "prompt"
+            if not prompt_text:
+                seed = session_seed_query(one_root, [str(cwd), str(context_root)])
+                one_question, one_channel = (seed, "seed") if seed else (question, "placeholder")
+            one_capsule = select_one_capsule(
+                one_question,
+                workspace=str(context_root),
+                root=one_root,
+                session_key=_session_key_raw(payload),
+                tripwire_key=_session_key(payload),
+                # The tripwire fires on what the person typed, never on a seed.
+                cue_text=prompt_text,
             )
+            one_capsule["channel"] = one_channel
+            one_lines = list(one_capsule.get("lines") or [])
         except Exception:
             one_lines = []
     if one_lines:
         # Record what recall actually delivered. Without this the reach of the
         # drawer is unmeasurable, and a ranking change cannot be shown to help.
         try:
+            from .one_workspace import record_recall_receipt
+
             # Honour AGENTLAS_ONE_DIR: a hard-coded home path wrote personal
             # receipts into the real drawer even under an isolated override.
-            record_recall_receipt(one_root, one_hashes, _session_key_raw(payload))
+            record_recall_receipt(
+                one_root,
+                list(one_capsule.get("hashes") or []),
+                _session_key_raw(payload),
+                channel=str(one_capsule.get("channel") or "prompt"),
+                tripwire=list(one_capsule.get("tripwire") or []),
+                tripwire_key=_session_key(payload),
+                explore=one_capsule.get("explore"),
+            )
         except Exception:
             pass
         _record_context_markers(
@@ -1051,6 +1078,67 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
     return "\n".join(lines)[:3_600], project_root
 
 
+MAX_TRIPWIRE_TOOL_TEXT = 4_000
+
+
+def _tool_cue_text(payload: dict[str, Any]) -> str:
+    """The parts of a tool call that name what it touches: file paths and the
+    shell command. Never the edit body — a cue must be the work's target."""
+    tool_input = payload.get("tool_input") or payload.get("toolInput") or payload.get("input")
+    parts: list[str] = []
+    if isinstance(tool_input, dict):
+        for key in ("file_path", "filePath", "path", "notebook_path", "notebookPath", "command", "cmd"):
+            value = tool_input.get(key)
+            if isinstance(value, str) and value.strip():
+                parts.append(value.strip())
+            elif isinstance(value, list):
+                parts.extend(str(item) for item in value if isinstance(item, (str, int, float)))
+    elif isinstance(tool_input, str):
+        parts.extend(
+            match.group(1).strip()
+            for match in re.finditer(
+                r"^\*\*\* (?:Update|Add|Delete) File:\s*(.+?)\s*$", tool_input, flags=re.MULTILINE
+            )
+        )
+    return "\n".join(parts)[:MAX_TRIPWIRE_TOOL_TEXT]
+
+
+def _pretool_one_tripwire(payload: dict[str, Any]) -> str | None:
+    """R1 at PreToolUse (research 2026-09-23): a risk/decision/procedure block
+    whose cue (file name, identifier, flag, config key) is exactly what this
+    tool call touches. At most 2 blocks, each once per session, one fire per
+    session. Fail-open and read-mostly: a miss costs a cached index lookup."""
+    if not _one_enabled():
+        return None
+    try:
+        cue_text = _tool_cue_text(payload)
+        if not cue_text:
+            return None
+        from .one_workspace import record_recall_receipt, tripwire_for_tool
+
+        one_root = _one_root()
+        raw_key = _session_key_raw(payload)
+        trip_key = _session_key(payload)
+        fired = tripwire_for_tool(one_root, cue_text, session_key=raw_key, tripwire_key=trip_key)
+        lines = list(fired.get("lines") or [])
+        if not lines:
+            return None
+        record_recall_receipt(
+            one_root, list(fired["hashes"]), raw_key,
+            channel="tripwire", tripwire=list(fired["hashes"]), tripwire_key=trip_key,
+        )
+        return "\n".join(
+            [
+                "<agentlas-one-tripwire>",
+                "Personal memory whose cue matches this tool call. A reference to re-verify, not a rule:",
+                *(html.escape(_redact_secrets(line), quote=False) for line in lines),
+                "</agentlas-one-tripwire>",
+            ]
+        )
+    except Exception:
+        return None
+
+
 def _empty_output(host: str) -> str:
     return host_spec(host).empty_output
 
@@ -1396,6 +1484,11 @@ def main(argv: list[str] | None = None) -> int:
         event = _event_name(payload, args.event)
         if event == "PreToolUse":
             capsule, workspace = _pretool_impact_context(payload, args.cwd)
+            tripwire = _pretool_one_tripwire(payload)
+            if tripwire:
+                capsule = f"{capsule}\n{tripwire}" if capsule else tripwire
+                if workspace is None:
+                    workspace = _resolve_cwd(payload, args.cwd)
         else:
             capsule, workspace = build_capsule(
                 payload,

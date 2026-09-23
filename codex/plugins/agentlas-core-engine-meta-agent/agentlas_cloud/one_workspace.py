@@ -3082,10 +3082,26 @@ def _read_json_dict(path: Path) -> dict[str, Any]:
         return {}
 
 
-def _record_exposure(meta: Path, session_key: str, block_hashes: list[str]) -> None:
+RECALL_CHANNELS = ("prompt", "seed", "placeholder", "tripwire")
+
+
+def _record_exposure(
+    meta: Path,
+    session_key: str,
+    block_hashes: list[str],
+    channel: str = "prompt",
+    tripwire: list[str] | None = None,
+    explore: dict[str, Any] | None = None,
+) -> None:
     """Exposure ledger: what recall SHOWED in this session. Kept apart from use —
     research 2026-09-23 §0: counting delivery as use makes brightness feed itself
-    (top block 16.9% of 127,184 deliveries, top four 55%)."""
+    (top block 16.9% of 127,184 deliveries, top four 55%).
+
+    Placeholder deliveries (no prompt, constant fallback query) go to their own
+    list and never into `hashes`, so the use ledger cannot credit them and any
+    use/exposure analysis sees only prompted recall (research R0). Tripwire and
+    explore picks are listed by name; explore keeps its selection probability
+    so use can later be inverse-propensity weighted (R4)."""
     if not session_key or not block_hashes:
         return
     path = meta / EXPOSURE_FILE
@@ -3094,8 +3110,20 @@ def _record_exposure(meta: Path, session_key: str, block_hashes: list[str]) -> N
             return
         data = _read_json_dict(path)
         row = data.get(session_key) if isinstance(data.get(session_key), dict) else {}
-        hashes = list(dict.fromkeys([*(row.get("hashes") or []), *block_hashes]))[-200:]
-        data[session_key] = {"at": _now(), "hashes": hashes}
+        new_row: dict[str, Any] = {"at": _now(), "hashes": list(row.get("hashes") or [])[-200:]}
+        if channel == "placeholder":
+            new_row["placeholder"] = list(dict.fromkeys([*(row.get("placeholder") or []), *block_hashes]))[-50:]
+        else:
+            new_row["hashes"] = list(dict.fromkeys([*new_row["hashes"], *block_hashes]))[-200:]
+            if row.get("placeholder"):
+                new_row["placeholder"] = row["placeholder"]
+        trip = list(dict.fromkeys([*(row.get("tripwire") or []), *(tripwire or [])]))[-50:]
+        if trip:
+            new_row["tripwire"] = trip
+        explored = [*(row.get("explore") or []), *([{**explore, "at": _now()}] if explore else [])][-50:]
+        if explored:
+            new_row["explore"] = explored
+        data[session_key] = new_row
         if len(data) > _EXPOSURE_MAX_SESSIONS:
             for key, _value in sorted(data.items(), key=lambda item: str((item[1] or {}).get("at", "")))[
                     : len(data) - _EXPOSURE_MAX_SESSIONS]:
@@ -3177,23 +3205,48 @@ def record_block_use(root: Path, session_key: str, transcript: str) -> dict[str,
     return {"shown": len(shown), "used": len(used)}
 
 
-def record_recall_receipt(root: Path, block_hashes: list[str], session_key: str = "") -> None:
+def record_recall_receipt(
+    root: Path,
+    block_hashes: list[str],
+    session_key: str = "",
+    *,
+    channel: str = "prompt",
+    tripwire: list[str] | None = None,
+    tripwire_key: str = "",
+    explore: dict[str, Any] | None = None,
+) -> None:
     """Count which durable blocks recall actually delivered.
 
     Kept as a bounded counter sidecar rather than a ledger line: the file can
     never grow past the number of durable blocks, while an append-per-session
     ledger would grow without limit for a signal that only needs a total.
 
+    `count` is the prompt channel only. Deliveries made for the prompt-less
+    placeholder query (and the session seed, and tripwire fires) land in
+    `ch.<channel>` instead: 71.5% of the historical counter was the placeholder
+    string, and a count that measures a constant must not steer anything
+    (research 2026-09-23 R0). Tripwire blocks inside a prompt capsule are
+    counted in `ch.tripwire`, not `count`, for the same reason.
+
     Recall itself stays pure — the caller decides to record, so read-only
     measurement never mutates the drawer.
     """
     if not block_hashes:
         return
+    channel = channel if channel in RECALL_CHANNELS else "prompt"
+    if channel == "placeholder":
+        explore = None  # a constant query's exploration says nothing about use
     root = Path(root).expanduser()
+    trip = [digest for digest in (tripwire or []) if digest in block_hashes]
     try:
-        _record_exposure(root / META_DIR, session_key, block_hashes)
+        _record_exposure(root / META_DIR, session_key, block_hashes, channel, trip, explore)
     except Exception:  # noqa: BLE001 — observability never breaks a session
         pass
+    if trip:
+        try:
+            _record_tripwire_fire(root / META_DIR, tripwire_key or session_key, trip)
+        except Exception:  # noqa: BLE001
+            pass
     path = root / META_DIR / RECALL_USAGE_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     with _LedgerLock(path) as acquired:
@@ -3206,10 +3259,21 @@ def record_recall_receipt(root: Path, block_hashes: list[str], session_key: str 
         except (OSError, ValueError):
             data = {}
         now = _now()
+        trip_set = set(trip)
         for digest in block_hashes:
-            row = data.get(digest)
-            count = int(row.get("count", 0)) if isinstance(row, dict) else 0
-            data[digest] = {"count": count + 1, "lastAt": now}
+            row = data.get(digest) if isinstance(data.get(digest), dict) else {}
+            lane = "tripwire" if digest in trip_set else channel
+            new_row = dict(row)
+            new_row.setdefault("count", 0)
+            if lane == "prompt":
+                new_row["count"] = int(row.get("count", 0)) + 1
+                new_row["lastAt"] = now
+            else:
+                lanes = dict(row.get("ch") or {}) if isinstance(row.get("ch"), dict) else {}
+                lanes[lane] = int(lanes.get(lane, 0)) + 1
+                new_row["ch"] = lanes
+                new_row[f"{lane}LastAt"] = now
+            data[digest] = new_row
         try:
             _atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1) + "\n")
         except OSError:
@@ -3233,15 +3297,23 @@ def recall_coverage(root: Path) -> dict[str, Any]:
         data = json.loads((meta / RECALL_USAGE_FILE).read_text(encoding="utf-8"))
         seen = set(data) if isinstance(data, dict) else set()
     except (OSError, ValueError):
-        seen = set()
+        data, seen = {}, set()
     digests = {_content_hash(block["content"]) for block in blocks}
-    reached = len(digests & seen)
+    # R0 — a block only the placeholder query ever delivered was never reached
+    # by anything the person asked; count it apart instead of as reach.
+    placeholder_only = {
+        digest for digest in seen
+        if isinstance(data.get(digest), dict) and int(data[digest].get("count", 0) or 0) <= 0
+        and not any(int(v or 0) > 0 for k, v in (data[digest].get("ch") or {}).items() if k != "placeholder")
+    } if isinstance(data, dict) else set()
+    reached = len(digests & (seen - placeholder_only))
     total = len(digests)
     return {
         "durable": total,
         "everRecalled": reached,
         "neverRecalled": total - reached,
         "reachedPct": round(reached * 100.0 / total, 1) if total else 0.0,
+        "placeholderOnly": len(digests & placeholder_only),
     }
 
 
@@ -3303,18 +3375,532 @@ def rank_one_blocks(
     return ranked
 
 
+# ---------------------------------------------------------------- capsule v2
+# Research 2026-09-23 "memory prioritization" §8-§9. Relevance owns the order,
+# importance gets its own slot (the tripwire), frequency never ranks: delivery
+# counts were measured to be 71.5% produced by the prompt-less placeholder
+# query, and brightness built on them lost 1.7-9.0 points of capsule hit.
+# Every piece sits behind recallBudgets.one.capsuleV2.<key> so a failed gate
+# turns it off in the ruleset, without a code change. All deterministic; the
+# explore slot draws from a seeded generator and records its propensity.
+
+CAPSULE_V2_RULE = "recallBudgets.one.capsuleV2"
+TRIPWIRE_INDEX_FILE = "tripwire-index.json"
+TRIPWIRE_SESSIONS_FILE = "tripwire-sessions.json"
+_TRIPWIRE_MAX_SESSIONS = 64
+_TRIPWIRE_INDEX_VERSION = 1
+_CAPSULE_V2_DEFAULTS: dict[str, Any] = {
+    # R2 — a block that does not fit is skipped, not a reason to stop packing
+    # (+0.6 pts, 4.02 -> 4.47 blocks per capsule).
+    "skipPacking": True,
+    # R3 — a very weak lift for risk/decision (+1.1 pts at 0.1; 1.0 cost -28.3).
+    # Clamped below 0.3 in code: the ruleset cannot turn it into a floor again.
+    "kindFloor": 0.1,
+    "kindFloorKinds": ["risk", "decision"],
+    "rerankDepth": 40,
+    # R1 — cue-triggered slot inside the same 1,200 chars (+13.7 pts reserved).
+    "tripwire": True,
+    "tripwireKinds": {"risk": 1.0, "decision": 0.8, "procedure": 0.6},
+    "tripwireMaxDf": 8,
+    "tripwireMinCueChars": 5,
+    # An all-caps plain word (RELEASE, CHANGELOG, NEVER) is emphasis, not a
+    # config key; lower-cased it equals an ordinary prompt word and fires on
+    # chat. Keys keep a separator or digit (AGENTLAS_ONE_DIR, HTTP2).
+    "tripwirePlainCapsCues": False,
+    "tripwireMaxBlocks": 2,
+    "tripwireMaxChars": 600,
+    "tripwireMaxFiresPerSession": 1,
+    # R4 — one Thompson exploration slot over relevant ranks 6..20, taking only
+    # room relevance left. OFF: gated by research §9 on reach (+5 pts); replayed
+    # on 1,560 sessions it added +3.8 alone but +0.1 on top of R1-R3 (the skip
+    # packer leaves it room in ~11% of capsules). Flip to start the online trial;
+    # its propensity is recorded in the exposure ledger for IPS.
+    "explore": False,
+    "exploreFrom": 5,
+    "exploreTo": 20,
+    "propensityDraws": 256,
+    # R0 — prompt-less hooks seed recall with the workspace's last English turn
+    # summary instead of the constant placeholder query. Replayed on 353
+    # sessions: needed-hit 0.0% (constant) -> 9.8% (seed; own query 14.0%),
+    # top-1% share of those capsules 100% -> 17.4%.
+    "sessionStartSeed": True,
+}
+
+_CUE_FILE_RE = re.compile(
+    r"[A-Za-z0-9_.-]+\.(?:py|ts|tsx|js|cjs|mjs|md|json|sh|yml|yaml|toml|sql|rs|swift|kt|go|html|css|txt)\b"
+)
+_CUE_IDENT_RE = re.compile(
+    r"\b(?:[A-Za-z_][A-Za-z0-9]*(?:[A-Z][a-z0-9]+|_[A-Za-z0-9]+)+[A-Za-z0-9_]*"  # camelCase / snake_case
+    r"|--[a-z][a-z0-9-]{2,}"                                                    # --flag
+    r"|[A-Z][A-Z0-9_]{4,})\b"                                                   # CONFIG_KEY
+)
+_CUE_WORD_RE = re.compile(r"[A-Za-z0-9_.-]{5,}")
+_CUE_TEXT_MAX_CHARS = 20_000
+
+
+def capsule_v2_config(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Resolved capsule-v2 switches: code defaults < ruleset < explicit overrides."""
+    cfg = {key: (dict(value) if isinstance(value, dict) else list(value) if isinstance(value, list) else value)
+           for key, value in _CAPSULE_V2_DEFAULTS.items()}
+    for layer in (_rule(CAPSULE_V2_RULE, {}), overrides or {}):
+        if not isinstance(layer, dict):
+            continue
+        for key, value in layer.items():
+            default = _CAPSULE_V2_DEFAULTS.get(key)
+            if default is None:
+                continue
+            try:
+                if isinstance(default, bool):
+                    cfg[key] = bool(value)
+                elif isinstance(default, int):
+                    cfg[key] = int(value)
+                elif isinstance(default, float):
+                    cfg[key] = float(value)
+                elif isinstance(default, dict) and isinstance(value, dict):
+                    cfg[key] = {str(k): float(v) for k, v in value.items()}
+                elif isinstance(default, list) and isinstance(value, list):
+                    cfg[key] = [str(v) for v in value]
+            except (TypeError, ValueError):
+                continue
+    # Research §5: 0.3 already loses, 1.0 loses 28 points. Never a floor again.
+    cfg["kindFloor"] = min(max(float(cfg["kindFloor"]), 0.0), 0.29)
+    return cfg
+
+
+def _capsule_line(block: dict[str, str], channel: str = "") -> str:
+    tag = f" {block['slug']}" if block.get("slug") else ""
+    mark = "tripwire " if channel == "tripwire" else ""
+    return f"one[{mark}{block['kind']}{tag}]: {block['content']}"
+
+
+def _line_cost(block: dict[str, str], channel: str = "") -> int:
+    # +1: the hook joins lines with a newline and _trim_layer charges it, so a
+    # capsule packed without it could lose its last line after selection.
+    return len(_capsule_line(block, channel)) + 1
+
+
+def order_one_candidates(relevant: list[dict[str, str]], config: dict[str, Any]) -> list[dict[str, str]]:
+    """Relevance order, deduplicated, with the R3 kind lift over the head.
+
+    score = 1/(1+position) + kindFloor * [kind in kindFloorKinds] — the exact
+    form measured offline; the lift only reorders inside the top `rerankDepth`
+    relevant blocks, so nothing irrelevant is ever promoted.
+    """
+    order: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for block in relevant:
+        digest = _content_hash(block["content"])
+        if digest in seen:
+            continue
+        seen.add(digest)
+        order.append(block)
+    lam = float(config.get("kindFloor", 0.0))
+    if lam <= 0.0 or not order:
+        return order
+    depth = max(1, int(config.get("rerankDepth", 40)))
+    kinds = set(config.get("kindFloorKinds") or ())
+    head = sorted(
+        ((1.0 / (1 + position) + (lam if block["kind"] in kinds else 0.0), position, block)
+         for position, block in enumerate(order[:depth])),
+        key=lambda item: (-item[0], item[1]),
+    )
+    return [block for _score, _position, block in head] + order[depth:]
+
+
+def pack_one_capsule(
+    order: list[dict[str, str]],
+    *,
+    max_blocks: int,
+    max_chars: int,
+    fact_slots: int,
+    skip: bool,
+    exclude: set[str] | frozenset[str] = frozenset(),
+) -> list[dict[str, str]]:
+    """Fill the relevance part of the capsule in order.
+
+    skip=False is the pre-v2 rule (stop at the first block that does not fit —
+    one long block ended the capsule at ~4 of 6 slots); skip=True keeps trying
+    the next block (first-fit, R2).
+    """
+    out: list[dict[str, str]] = []
+    if max_blocks <= 0 or max_chars <= 0:
+        return out
+    used = 0
+    facts = 0
+    for block in order:
+        if _content_hash(block["content"]) in exclude:
+            continue
+        if block["kind"] == "fact" and facts >= fact_slots:
+            continue
+        cost = _line_cost(block)
+        if used + cost > max_chars:
+            if skip:
+                continue
+            break
+        out.append(block)
+        used += cost
+        if block["kind"] == "fact":
+            facts += 1
+        if len(out) >= max_blocks:
+            break
+    return out
+
+
+# ---- R1 tripwire: cue index -------------------------------------------------
+
+def _evidence_cues(evidence: str) -> list[str]:
+    cues: list[str] = []
+    for name in _CUE_FILE_RE.findall(evidence):
+        cues.append(name)
+    for ident in _CUE_IDENT_RE.findall(evidence):
+        if ident not in cues and not any(ident in name for name in cues):
+            cues.append(ident)
+    return cues[:4]
+
+
+_PLAIN_CAPS_RE = re.compile(r"[A-Z]+")
+
+
+def block_cues(block: dict[str, str], min_chars: int = 5, plain_caps: bool = False) -> set[str]:
+    """Deterministic cue extractor: evidence file/symbol/flag cues plus file
+    names and code identifiers in the body. Lower-cased; short cues dropped."""
+    cues = set(_evidence_cues(block.get("evidence") or ""))
+    cues |= set(_CUE_FILE_RE.findall(block["content"]))
+    cues |= set(_CUE_IDENT_RE.findall(block["content"]))
+    return {
+        cue.lower() for cue in cues
+        if len(cue) >= min_chars and (plain_caps or not _PLAIN_CAPS_RE.fullmatch(cue))
+    }
+
+
+def query_cues(text: str) -> set[str]:
+    """Cues present in a prompt or in tool arguments (paths, commands)."""
+    text = (text or "")[:_CUE_TEXT_MAX_CHARS]
+    found = set(_CUE_FILE_RE.findall(text)) | set(_CUE_IDENT_RE.findall(text))
+    found |= set(_CUE_WORD_RE.findall(text))
+    return {cue.lower() for cue in found}
+
+
+def build_tripwire_index(eligible: list[dict[str, str]], config: dict[str, Any]) -> dict[str, Any]:
+    """cue -> (idf, [block hash]) over the tripwire kinds, keeping only cues that
+    appear in at most `tripwireMaxDf` eligible blocks — a cue half the drawer
+    carries is not a warning, it is noise."""
+    kinds = dict(config.get("tripwireKinds") or {})
+    max_df = int(config.get("tripwireMaxDf", 8))
+    min_chars = int(config.get("tripwireMinCueChars", 5))
+    plain_caps = bool(config.get("tripwirePlainCapsCues", False))
+    cues_of: dict[str, set[str]] = {}
+    kind_of: dict[str, str] = {}
+    df: dict[str, int] = {}
+    for block in eligible:
+        digest = _content_hash(block["content"])
+        if digest in cues_of:
+            continue
+        cues = block_cues(block, min_chars, plain_caps)
+        cues_of[digest] = cues
+        kind_of[digest] = block["kind"]
+        for cue in cues:
+            df[cue] = df.get(cue, 0) + 1
+    total = max(1, len(cues_of))
+    index: dict[str, list[Any]] = {}
+    for digest, cues in cues_of.items():
+        if kind_of[digest] not in kinds:
+            continue
+        for cue in cues:
+            if df[cue] <= max_df:
+                entry = index.setdefault(cue, [round(math.log(1 + total / df[cue]), 6), []])
+                entry[1].append(digest)
+    return {
+        "version": _TRIPWIRE_INDEX_VERSION,
+        "cues": index,
+        "kinds": {digest: kind_of[digest] for entry in index.values() for digest in entry[1]},
+    }
+
+
+def _tripwire_signature(meta: Path, config: dict[str, Any]) -> str:
+    parts = [str(_TRIPWIRE_INDEX_VERSION), load_ruleset()[1]]
+    for name in (PROJECT_SOUL_FILE, SUPERSEDED_MAP_FILE, TICKET_SLUGS_FILE):
+        try:
+            stat = (meta / name).stat()
+            parts.append(f"{stat.st_mtime_ns}:{stat.st_size}")
+        except OSError:
+            parts.append("-")
+    parts.append(json.dumps([config.get("tripwireKinds"), config.get("tripwireMaxDf"),
+                             config.get("tripwireMinCueChars"), config.get("tripwirePlainCapsCues")],
+                            sort_keys=True))
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:20]
+
+
+_TRIPWIRE_INDEX_MEMO: dict[str, tuple[str, dict[str, Any]]] = {}
+
+
+def load_tripwire_index(
+    root: Path, config: dict[str, Any], eligible: list[dict[str, str]] | None = None
+) -> dict[str, Any]:
+    """The cue index, rebuilt only when the soul (or superseded map, slugs,
+    ruleset) changed. Cached in-process and as a small sidecar so the
+    PreToolUse hook — a fresh process with a 10s contract — pays a stat and a
+    JSON load, not a rebuild. Fail-open: any error yields an empty index."""
+    meta = Path(root).expanduser() / META_DIR
+    try:
+        signature = _tripwire_signature(meta, config)
+        memo = _TRIPWIRE_INDEX_MEMO.get(str(meta))
+        if memo and memo[0] == signature:
+            return memo[1]
+        path = meta / TRIPWIRE_INDEX_FILE
+        cached = _read_json_dict(path)
+        if cached.get("signature") == signature and isinstance(cached.get("cues"), dict):
+            _TRIPWIRE_INDEX_MEMO[str(meta)] = (signature, cached)
+            return cached
+        if eligible is None:
+            eligible = [block for _index, block in _one_eligible_blocks(Path(root).expanduser())[0]]
+        index = build_tripwire_index(eligible, config)
+        index["signature"] = signature
+        try:
+            _atomic_write(path, json.dumps(index, separators=(",", ":")) + "\n")
+        except OSError:
+            pass
+        _TRIPWIRE_INDEX_MEMO[str(meta)] = (signature, index)
+        return index
+    except Exception:  # noqa: BLE001 — a warning slot must never cost recall
+        return {"cues": {}, "kinds": {}}
+
+
+def tripwire_candidates(
+    index: dict[str, Any], cue_text: str, config: dict[str, Any], *, skip: set[str] | frozenset[str] = frozenset()
+) -> list[str]:
+    """Block hashes whose cues occur in `cue_text`, strongest first.
+    Exact cue equality only (one dictionary lookup per cue)."""
+    cues = index.get("cues") or {}
+    kinds = index.get("kinds") or {}
+    weights = dict(config.get("tripwireKinds") or {})
+    scores: dict[str, float] = {}
+    for cue in query_cues(cue_text):
+        entry = cues.get(cue)
+        if not entry:
+            continue
+        idf, digests = entry[0], entry[1]
+        for digest in digests:
+            if digest in skip:
+                continue
+            scores[digest] = scores.get(digest, 0.0) + float(idf) * weights.get(kinds.get(digest, ""), 0.0)
+    return [digest for digest, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))]
+
+
+def _tripwire_session(meta: Path, key: str) -> dict[str, Any]:
+    if not key:
+        return {}
+    row = _read_json_dict(meta / TRIPWIRE_SESSIONS_FILE).get(key)
+    return row if isinstance(row, dict) else {}
+
+
+def _record_tripwire_fire(meta: Path, key: str, hashes: list[str]) -> None:
+    """Per-session shown set + fire count (bounded to the newest 64 sessions)."""
+    if not key or not hashes:
+        return
+    path = meta / TRIPWIRE_SESSIONS_FILE
+    with _LedgerLock(path) as acquired:
+        if not acquired:
+            return
+        data = _read_json_dict(path)
+        row = data.get(key) if isinstance(data.get(key), dict) else {}
+        shown = list(dict.fromkeys([*(row.get("shown") or []), *hashes]))[-64:]
+        data[key] = {"at": _now(), "shown": shown, "fires": int(row.get("fires", 0)) + 1}
+        if len(data) > _TRIPWIRE_MAX_SESSIONS:
+            for old, _value in sorted(data.items(), key=lambda item: str((item[1] or {}).get("at", "")))[
+                    : len(data) - _TRIPWIRE_MAX_SESSIONS]:
+                data.pop(old, None)
+        try:
+            _atomic_write(path, json.dumps(data) + "\n")
+        except OSError:
+            pass
+
+
+def _tripwire_skip(meta: Path, config: dict[str, Any], tripwire_key: str, session_key: str) -> set[str] | None:
+    """Blocks the tripwire must not show again this session, or None when the
+    session already spent its fires (research §4: capped per session)."""
+    state = _tripwire_session(meta, tripwire_key)
+    if int(state.get("fires", 0)) >= int(config.get("tripwireMaxFiresPerSession", 1)):
+        return None
+    skip = set(state.get("shown") or [])
+    if session_key:
+        row = _read_json_dict(meta / EXPOSURE_FILE).get(session_key)
+        if isinstance(row, dict):
+            skip |= set(row.get("hashes") or [])
+    return skip
+
+
+# ---- R4 explore slot ----------------------------------------------------------
+
+def _seeded_rng(seed: str):
+    import random  # noqa: PLC0415 — only the explore slot needs it
+
+    return random.Random(int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16], 16))
+
+
+def _explore_pick(
+    pool: list[str], uses: dict[str, float], exposures: dict[str, float], seed: str, draws: int
+) -> tuple[str, float]:
+    """Thompson pick among `pool` with Beta(use+1, exposure-use+1), plus the
+    probability that this policy picks it (Monte-Carlo over the same posterior)
+    — the propensity inverse-propensity scoring needs later (research R4)."""
+    def sample(rng) -> dict[str, float]:
+        return {
+            h: rng.betavariate(uses.get(h, 0.0) + 1.0, max(exposures.get(h, 0.0) - uses.get(h, 0.0), 0.0) + 1.0)
+            for h in pool
+        }
+
+    rng = _seeded_rng(seed)
+    first = sample(rng)
+    chosen = max(pool, key=lambda h: (first[h], h))
+    wins = 0
+    for _ in range(max(1, draws)):
+        drawn = sample(rng)
+        wins += max(pool, key=lambda h: (drawn[h], h)) == chosen
+    return chosen, round(wins / max(1, draws), 4)
+
+
+def _explore_stats(meta: Path) -> tuple[dict[str, float], dict[str, float]]:
+    """(uses, prompt-channel exposures). Placeholder deliveries are not in
+    `count` (R0), so the constant fallback query cannot steer exploration."""
+    uses = {h: float(row.get("uses", 0)) for h, row in _read_json_dict(meta / USE_LEDGER_FILE).items()
+            if isinstance(row, dict)}
+    exposures = {h: float(row.get("count", 0)) for h, row in _read_json_dict(meta / RECALL_USAGE_FILE).items()
+                 if isinstance(row, dict)}
+    return uses, exposures
+
+
+def compose_one_capsule(
+    order: list[dict[str, str]],
+    config: dict[str, Any],
+    *,
+    max_blocks: int,
+    max_chars: int,
+    fact_slots: int,
+    trip_hashes: list[str] | None = None,
+    blocks_by_hash: dict[str, dict[str, str]] | None = None,
+    explore_stats: tuple[dict[str, float], dict[str, float]] | None = None,
+    seed: str = "",
+) -> dict[str, Any]:
+    """Assemble the One layer: tripwire slot, relevance slot, explore slot —
+    all inside the same block/char budget. Pure given its inputs (the offline
+    harness and the hook call this same function)."""
+    skip = bool(config.get("skipPacking"))
+    trip: list[dict[str, str]] = []
+    trip_used = 0
+    if trip_hashes and blocks_by_hash:
+        # A block relevance already shows is not worth a fire.
+        plain = {_content_hash(b["content"]) for b in pack_one_capsule(
+            order, max_blocks=max_blocks, max_chars=max_chars, fact_slots=fact_slots, skip=skip)}
+        for digest in trip_hashes:
+            block = blocks_by_hash.get(digest)
+            if block is None or digest in plain:
+                continue
+            cost = _line_cost(block, "tripwire")
+            if len(trip) >= int(config.get("tripwireMaxBlocks", 2)) or trip_used + cost > int(
+                    config.get("tripwireMaxChars", 600)):
+                continue
+            trip.append(block)
+            trip_used += cost
+    trip_set = {_content_hash(b["content"]) for b in trip}
+    explore_on = bool(config.get("explore")) and explore_stats is not None
+    exploit_blocks = max_blocks - len(trip) - (1 if explore_on else 0)
+    relevance = pack_one_capsule(
+        order, max_blocks=exploit_blocks, max_chars=max_chars - trip_used,
+        fact_slots=fact_slots, skip=skip, exclude=trip_set,
+    )
+    explore_record: dict[str, Any] | None = None
+    extra: list[dict[str, str]] = []
+    if explore_on:
+        # The slot takes only the room relevance left over. Reserving room for
+        # it first was measured: -14.6 pts capsule hit (the capsule is bound by
+        # characters, so one reserved slot costs ~1.5 relevant blocks).
+        taken = trip_set | {_content_hash(b["content"]) for b in relevance}
+        used = trip_used + sum(_line_cost(b) for b in relevance)
+        facts = sum(1 for b in relevance if b["kind"] == "fact")
+        pool_blocks: dict[str, dict[str, str]] = {}
+        for block in order[int(config.get("exploreFrom", 5)): int(config.get("exploreTo", 20))]:
+            digest = _content_hash(block["content"])
+            if digest in taken or used + _line_cost(block) > max_chars:
+                continue
+            if block["kind"] == "fact" and facts >= fact_slots:
+                continue
+            pool_blocks.setdefault(digest, block)
+        if pool_blocks:
+            uses, exposures = explore_stats  # type: ignore[misc]
+            pool = sorted(pool_blocks)
+            chosen, propensity = _explore_pick(pool, uses, exposures, seed or "one-explore",
+                                               int(config.get("propensityDraws", 256)))
+            extra.append(pool_blocks[chosen])
+            explore_record = {"h": chosen, "p": propensity, "pool": len(pool)}
+        else:
+            # Nothing explorable fits: give the slot back to relevance.
+            relevance = pack_one_capsule(
+                order, max_blocks=max_blocks - len(trip), max_chars=max_chars - trip_used,
+                fact_slots=fact_slots, skip=skip, exclude=trip_set,
+            )
+    chosen_blocks = [(b, "tripwire") for b in trip] + [(b, "relevance") for b in relevance] + [
+        (b, "explore") for b in extra]
+    return {
+        "lines": [_capsule_line(b, channel) for b, channel in chosen_blocks],
+        "hashes": [_content_hash(b["content"]) for b, _channel in chosen_blocks],
+        "channels": [channel for _b, channel in chosen_blocks],
+        "tripwire": [_content_hash(b["content"]) for b in trip],
+        "explore": explore_record,
+    }
+
+
+def _one_eligible_blocks(root: Path) -> tuple[list[tuple[int, dict[str, str]]], set[str]]:
+    """Recall-eligible durable blocks (L1 kinds + facts, not superseded) with
+    their project slug, and the L1 kind set. Empty when the drawer is absent."""
+    meta = root / META_DIR
+    try:
+        blocks = parse_durable_blocks((meta / PROJECT_SOUL_FILE).read_text(encoding="utf-8"))
+    except OSError:
+        return [], set()
+    try:
+        sidecar = json.loads((meta / TICKET_SLUGS_FILE).read_text(encoding="utf-8"))
+        if not isinstance(sidecar, dict):
+            sidecar = {}
+    except (OSError, ValueError):
+        sidecar = {}
+    superseded = _superseded_hashes(meta)
+    l1_kinds = set(_rule("recallBudgets.one.l1Kinds", ["procedure", "decision", "risk"]))
+    eligible: list[tuple[int, dict[str, str]]] = []
+    for index, block in enumerate(blocks):
+        if block["kind"] not in l1_kinds and block["kind"] != "fact":
+            continue
+        # G8 — explicitly superseded blocks never resurface in recall.
+        if _content_hash(block["content"]) in superseded:
+            continue
+        slug = block["project"] or str((sidecar.get(block["ticket"]) or {}).get("slug") or "")
+        eligible.append((index, {**block, "slug": slug}))
+    return eligible, l1_kinds
+
+
+def session_seed_query(root: Path | None, workspaces: list[str]) -> str:
+    """R0 — the workspace's last English turn summary (stage 1.6), for hooks
+    that carry no prompt. Empty when switched off or nothing is recorded."""
+    if not capsule_v2_config().get("sessionStartSeed"):
+        return ""
+    root = (root or Path("~/.agentlas/one")).expanduser()
+    data = _read_json_dict(root / META_DIR / TURN_SUMMARY_FILE)
+    for workspace in workspaces:
+        row = data.get(_workspace_key(workspace)) if workspace else None
+        summary = str(row.get("summary") or "").strip() if isinstance(row, dict) else ""
+        if summary:
+            return summary
+    return ""
+
+
 def select_one_recall_detailed(
     question: str,
     workspace: str = "",
     root: Path | None = None,
 ) -> tuple[list[str], list[str]]:
     """Recall lines plus the content hash of each selected block, for receipts."""
-    lines = select_one_recall(question, workspace=workspace, root=root)
-    hashes: list[str] = []
-    for line in lines:
-        body = line.split("]: ", 1)[-1]
-        hashes.append(_content_hash(body))
-    return lines, hashes
+    capsule = select_one_capsule(question, workspace=workspace, root=root)
+    return capsule["lines"], capsule["hashes"]
 
 
 def select_one_recall(
@@ -3322,7 +3908,21 @@ def select_one_recall(
     workspace: str = "",
     root: Path | None = None,
 ) -> list[str]:
-    """P3 — pick the One know-how lines for a session capsule.
+    """P3 — pick the One know-how lines for a session capsule (select_one_capsule)."""
+    return select_one_capsule(question, workspace=workspace, root=root)["lines"]
+
+
+def select_one_capsule(
+    question: str,
+    workspace: str = "",
+    root: Path | None = None,
+    *,
+    session_key: str = "",
+    tripwire_key: str = "",
+    cue_text: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Pick the One layer of a session capsule, with per-line provenance.
 
     Relevance owns the budget. A question that matches nothing gets the small
     current-project fallback instead of the whole budget, because the previous
@@ -3333,25 +3933,22 @@ def select_one_recall(
     Facts get their own small slot rather than the L1 kinds list: they were
     excluded outright, and the ruleset's claim that the project layer recalls
     them instead has no code path for the One drawer.
+
+    Capsule v2 (research 2026-09-23): the tripwire slot fires on cues in
+    `cue_text` (defaults to the question; pass "" for prompt-less hooks), the
+    explore slot records its propensity, and neither widens the budget.
+    Read-only — the caller records what was delivered (record_recall_receipt).
     """
+    empty: dict[str, Any] = {"lines": [], "hashes": [], "channels": [], "tripwire": [], "explore": None}
     root = (root or Path("~/.agentlas/one")).expanduser()
     if not (root / "state.json").exists():
-        return []
+        return empty
     meta = root / META_DIR
-    soul = meta / PROJECT_SOUL_FILE
-    try:
-        blocks = parse_durable_blocks(soul.read_text(encoding="utf-8"))
-    except OSError:
-        return []
-    if not blocks:
-        return []
-    try:
-        sidecar = json.loads((meta / TICKET_SLUGS_FILE).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        sidecar = {}
-    superseded = _superseded_hashes(meta)
+    eligible, l1_kinds = _one_eligible_blocks(root)
+    if not eligible:
+        return empty
+    cfg = config if config is not None else capsule_v2_config()
 
-    l1_kinds = set(_rule("recallBudgets.one.l1Kinds", ["procedure", "decision", "risk"]))
     max_blocks = int(_rule("recallBudgets.one.l1MaxBlocks", 6))
     max_chars = int(_rule("recallBudgets.one.l1MaxChars", 1200))
     boost = float(_rule("recallBudgets.one.currentSlugBoost", 1.5))
@@ -3359,18 +3956,6 @@ def select_one_recall(
     off_topic_max = int(_rule("recallBudgets.one.offTopicMaxBlocks", 2))
     min_relevance = float(_rule("recallBudgets.one.minRelevanceScore", 0.35))
     current_slug = resolve_project_slug(workspace)
-
-    eligible: list[tuple[int, dict[str, str]]] = []
-    for index, block in enumerate(blocks):
-        if block["kind"] not in l1_kinds and block["kind"] != "fact":
-            continue
-        # G8 — explicitly superseded blocks never resurface in recall.
-        if _content_hash(block["content"]) in superseded:
-            continue
-        slug = block["project"] or str((sidecar.get(block["ticket"]) or {}).get("slug") or "")
-        eligible.append((index, {**block, "slug": slug}))
-    if not eligible:
-        return []
 
     q_tokens = _recall_tokens(question)
     idf = _idf_table([block for _index, block in eligible]) if q_tokens else {}
@@ -3399,18 +3984,8 @@ def select_one_recall(
         semantic=semantic, idf=idf, q_tokens=q_tokens,
         min_relevance=min_relevance, boost=boost, semantic_weight=semantic_weight,
     )
-
-    picks: list[dict[str, str]] = []
     if relevant:
-        facts_taken = 0
-        for _score, _index, block in relevant:
-            if block["kind"] == "fact":
-                if facts_taken >= fact_slots:
-                    continue
-                facts_taken += 1
-            picks.append(block)
-            if len(picks) >= max_blocks:
-                break
+        order = order_one_candidates([block for _score, _index, block in relevant], cfg)
     else:
         # Nothing matched. Fall back to the newest current-project craft, capped
         # well below the full budget so an unrelated question cannot spend it.
@@ -3419,25 +3994,70 @@ def select_one_recall(
             block for _index, block in eligible
             if block["kind"] in l1_kinds and (not current_slug or block["slug"] == current_slug)
         ]
-        picks = fallback[-limit:][::-1] if limit else []
+        order = fallback[-limit:][::-1] if limit else []
+        max_blocks = min(max_blocks, max(limit, 0))
 
-    lines: list[str] = []
+    trip_hashes: list[str] = []
+    by_hash: dict[str, dict[str, str]] = {}
+    text = question if cue_text is None else cue_text
+    if cfg.get("tripwire") and text:
+        skip = _tripwire_skip(meta, cfg, tripwire_key, session_key)
+        if skip is not None:
+            blocks_only = [block for _index, block in eligible]
+            index = load_tripwire_index(root, cfg, blocks_only)
+            trip_hashes = tripwire_candidates(index, text, cfg, skip=skip)
+            if trip_hashes:
+                for block in blocks_only:
+                    by_hash.setdefault(_content_hash(block["content"]), block)
+    explore_stats = _explore_stats(meta) if cfg.get("explore") and relevant else None
+    return compose_one_capsule(
+        order, cfg if relevant else {**cfg, "explore": False},
+        max_blocks=max_blocks, max_chars=max_chars, fact_slots=fact_slots,
+        trip_hashes=trip_hashes, blocks_by_hash=by_hash, explore_stats=explore_stats,
+        seed=f"{session_key}\0{question}",
+    )
+
+
+def tripwire_for_tool(
+    root: Path | None,
+    cue_text: str,
+    *,
+    session_key: str = "",
+    tripwire_key: str = "",
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """R1 at PreToolUse: the risk/decision/procedure blocks whose cues match the
+    tool's arguments (file paths, command). Read-only; the caller records the
+    fire. Cheap on a miss: a few stats, a cached JSON index and dict lookups."""
+    out: dict[str, Any] = {"lines": [], "hashes": []}
+    root = (root or Path("~/.agentlas/one")).expanduser()
+    cfg = config if config is not None else capsule_v2_config()
+    if not cfg.get("tripwire") or not cue_text or not (root / "state.json").exists():
+        return out
+    meta = root / META_DIR
+    skip = _tripwire_skip(meta, cfg, tripwire_key, session_key)
+    if skip is None:
+        return out
+    index = load_tripwire_index(root, cfg)
+    candidates = tripwire_candidates(index, cue_text, cfg, skip=skip)
+    if not candidates:
+        return out
+    by_hash: dict[str, dict[str, str]] = {}
+    for _index, block in _one_eligible_blocks(root)[0]:
+        by_hash.setdefault(_content_hash(block["content"]), block)
     used = 0
-    seen: set[str] = set()
-    for block in picks:
-        # Pre-G6 double-hook eras left literal duplicate durable blocks;
-        # recall must not spend budget saying the same thing twice.
-        key = _content_hash(block["content"])
-        if key in seen:
+    for digest in candidates:
+        block = by_hash.get(digest)
+        if block is None:
             continue
-        seen.add(key)
-        tag = f" {block['slug']}" if block.get("slug") else ""
-        line = f"one[{block['kind']}{tag}]: {block['content']}"
-        if used + len(line) > max_chars or len(lines) >= max_blocks:
-            break
-        lines.append(line)
-        used += len(line)
-    return lines
+        cost = _line_cost(block, "tripwire")
+        if len(out["hashes"]) >= int(cfg.get("tripwireMaxBlocks", 2)) or used + cost > int(
+                cfg.get("tripwireMaxChars", 600)):
+            continue
+        out["lines"].append(_capsule_line(block, "tripwire"))
+        out["hashes"].append(digest)
+        used += cost
+    return out
 
 
 def status(root: Path) -> dict[str, Any]:
