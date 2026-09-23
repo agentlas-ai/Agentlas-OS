@@ -1431,8 +1431,11 @@ def _spawn_project_ingest(target: Path, *, reason: str) -> bool:
 # document that can take minutes. Its detached worker writes its own receipt
 # on completion — or a `kind: migration-failed` record with the reason — so the
 # hook never marks it done merely because a process was launched.
-PROJECT_MIGRATIONS = ("sitemap-packed-edges.v1", "project-full-ingest.v1")
-SELF_RECEIPTED_MIGRATIONS = frozenset({"project-full-ingest.v1"})
+PROJECT_MIGRATIONS = ("sitemap-packed-edges.v1", "project-full-ingest.v1", "project-english-surface.v1")
+# project-english-surface.v1 (2026-09-23 English-only memory): non-English
+# document chunks get an English index surface from a detached, budgeted
+# worker (memory_translate); it writes its own receipt when nothing is left.
+SELF_RECEIPTED_MIGRATIONS = frozenset({"project-full-ingest.v1", "project-english-surface.v1"})
 MIGRATION_LEDGER = "migrations.jsonl"
 
 
@@ -1490,6 +1493,21 @@ def _maybe_migrate_project(root: Path) -> None:
     except Exception:
         return
     _maybe_full_ingest(root, migration_pending="project-full-ingest.v1" in pending)
+    _maybe_english_surface(root)
+
+
+def _maybe_english_surface(root: Path) -> None:
+    """Spawn the project English-surface worker when due. Never blocks."""
+
+    try:
+        runtime_root = os.environ.get("HEPHAESTUS_RUNTIME_ROOT")
+        if runtime_root and root.resolve() == Path(runtime_root).expanduser().resolve():
+            return
+        from .memory_translate import schedule_project_translation
+
+        schedule_project_translation(root)
+    except Exception:
+        return
 
 
 def _maybe_full_ingest(root: Path, *, migration_pending: bool) -> None:
@@ -1579,6 +1597,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompt")
     parser.add_argument("--locale", choices=("en", "ko"), default=None)
     args = parser.parse_args(argv)
+    if os.environ.get("AGENTLAS_TRANSLATE_WORKER"):
+        # A headless translator session (memory_translate): no recall capsule
+        # in its prompt, no project seeding, no updates — it only translates.
+        empty = _empty_output(args.host)
+        if empty:
+            sys.stdout.write(empty + "\n")
+        return 0
     payload = _read_payload()
     locale = args.locale or ("ko" if os.environ.get("AGENTLAS_LOCALE", "").lower().startswith("ko") else "en")
     event = ""

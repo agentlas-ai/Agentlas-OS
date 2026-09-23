@@ -1762,6 +1762,11 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     Preserve results by recording a missing capsule instead of forcing one.
     """
     root = Path(root).expanduser()
+    if os.environ.get("AGENTLAS_TRANSLATE_WORKER"):
+        # A headless translator session (memory_translate) must not harvest,
+        # curate or schedule anything — that would be memory about translating
+        # memory, and it would ask for more translation.
+        return {"skipped": "translate-worker"}
     enabled = (root / "state.json").exists()
     _record_state_transition(root, enabled)
 
@@ -1863,6 +1868,10 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         migrate_one_workspace(root)
     except Exception:
         pass  # migration must never block a session; curate() retries it
+    # english-memory-backfill.v1 — the one-time English migration of the drawer
+    # (and the translate-on-write queue). Decides in a few stats; the work runs
+    # in a detached, budgeted worker. Never blocks.
+    _schedule_english_migration(root)
 
     harvested = 0
     declined: dict[str, int] = {}
@@ -2717,6 +2726,7 @@ def _curate_pending(
 ) -> dict[str, Any]:
     """curate() 의 결정 구간. 호출자가 원장 잠금을 잡은 상태로만 부른다(PRD §4.20)."""
     project_items: list[tuple[dict[str, Any], str]] = []
+    to_translate: list[str] = []
     with decisions_path.open("a", encoding="utf-8") as handle:
         for ticket in pending:
             candidate = ticket.get("candidate") or {}
@@ -2753,6 +2763,12 @@ def _curate_pending(
                 _append_durable(soul_path, candidate, str(ticket.get("ticketId")),
                                 project_slug=ticket_slug)
                 durable.add(_content_hash(str(candidate.get("content") or "")))
+                # Translate on write (D): a block admitted in another language
+                # with no English surface is queued for the detached worker —
+                # never translated inside this hook.
+                admitted_text = str(candidate.get("content") or "")
+                if not candidate.get("contentNative") and _latin_ratio(admitted_text) < 0.6:
+                    to_translate.append(_content_hash(admitted_text))
                 # Project write: only `project` scope (declared or narrowed —
                 # never user_identity/agent_repo), and only for the project this
                 # stop hook is running in, matched by the ticket's own slug.
@@ -2829,6 +2845,14 @@ def _curate_pending(
     #   gap is indexed inline under a hard budget, a large one goes to a detached
     #   process, progress is checkpointed, and every failure is recorded.
     schedule_durable_index(root)
+    if to_translate:
+        try:
+            from .memory_translate import queue_for_translation  # noqa: PLC0415
+
+            queue_for_translation(root, to_translate)
+        except Exception:  # noqa: BLE001 — the backfill still finds them later
+            pass
+    _schedule_english_migration(root)
 
     result: dict[str, Any] = {
         "pending": len(pending),
@@ -2844,7 +2868,18 @@ def _curate_pending(
     return result
 
 
+def _schedule_english_migration(root: Path) -> dict[str, Any]:
+    """Hook-side trigger for memory_translate (lazy import, never raises)."""
+    try:
+        from .memory_translate import schedule_drawer_translation  # noqa: PLC0415
+
+        return schedule_drawer_translation(root)
+    except Exception as exc:  # noqa: BLE001
+        return {"scheduled": "failed", "error": type(exc).__name__}
+
+
 SUPERSEDED_MAP_FILE = "superseded-map.json"
+TRANSLATION_MAP_FILE = "translation-map.json"  # memory_translate.MAP_FILE (old native h -> English h)
 ARCHIVE_DIR = "archive"
 
 
@@ -2999,12 +3034,21 @@ def _token_matches(block_token: str, q_tokens: set[str]) -> bool:
     return False
 
 
+def _lexical_surface(block: dict[str, str]) -> str:
+    """What the lexical channel matches: the English search text plus, for a
+    translated block, its original wording — a question in the person's own
+    language keeps matching the words they actually wrote (no regression while
+    the English migration runs; §9-8 keeps the original as the authority)."""
+    native = block.get("native") or ""
+    return f"{block['content']} {native}" if native else block["content"]
+
+
 def _idf_table(blocks: list[dict[str, str]]) -> dict[str, float]:
     """Document frequency over the durable corpus — a common term must weigh less."""
     total = max(len(blocks), 1)
     df: dict[str, int] = {}
     for block in blocks:
-        for tok in _recall_tokens(block["content"]):
+        for tok in _recall_tokens(_lexical_surface(block)):
             df[tok] = df.get(tok, 0) + 1
     return {tok: math.log(1.0 + total / count) for tok, count in df.items()}
 
@@ -3295,6 +3339,15 @@ def _semantic_candidates(root: Path, question: str, top_k: int) -> dict[str, flo
             # Reciprocal rank: position matters, absolute engine scores do not
             # have to be commensurable with the lexical score.
             scores.setdefault(digest, 1.0 / (1.0 + position))
+    # English migration continuity: a translated block's original vector is
+    # still in the index. When it matches (a native-language question), credit
+    # its English successor, so migrating never loses what the native question
+    # used to find. The original itself stays hidden (superseded).
+    translated = _read_json_dict(Path(root).expanduser() / META_DIR / TRANSLATION_MAP_FILE) if scores else {}
+    for old, score in list(scores.items()):
+        new = translated.get(old)
+        if isinstance(new, str) and new and score > scores.get(new, 0.0):
+            scores[new] = score
     return scores
 
 
@@ -3605,7 +3658,7 @@ def rank_one_blocks(
             # Above every locally scored block, ordered by the engine's own rank.
             score = _ENGINE_TIER + semantic_weight * engine_rank
         else:
-            score = _relevance_score(block["content"], q_tokens, idf)
+            score = _relevance_score(_lexical_surface(block), q_tokens, idf)
             if score < min_relevance:
                 continue
             # The current project is a weight, not a filter — personal craft has
@@ -4379,7 +4432,17 @@ def status(root: Path) -> dict[str, Any]:
         # Semantic index — indexedBlocks == durableBlocks is healthy. lastError is
         # never swallowed any more; a missing index now says why.
         "semanticIndex": _read_index_status(meta),
+        "englishMigration": _english_migration_status(root),
     }
+
+
+def _english_migration_status(root: Path) -> dict[str, Any]:
+    try:
+        from .memory_translate import drawer_status  # noqa: PLC0415
+
+        return drawer_status(root)
+    except Exception as exc:  # noqa: BLE001
+        return {"error": type(exc).__name__}
 
 
 def _read_index_status(meta: Path) -> dict[str, Any]:

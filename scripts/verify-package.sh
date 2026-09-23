@@ -4,6 +4,11 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+# Verification must never call a model: the English-memory worker
+# (agentlas_cloud/memory_translate.py) would otherwise be spawned by the
+# curator/stop-hook checks below and reach for the signed-in CLI.
+export AGENTLAS_TRANSLATE="${AGENTLAS_TRANSLATE:-off}"
+
 fail() {
   echo "verify-package: $*" >&2
   exit 1
