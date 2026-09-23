@@ -324,15 +324,66 @@ def _query_runtime(
     # local-only default. The runtime may choose its verified bundled model and
     # explicitly degrades to hashing when that asset is unavailable.
     runtime = OntologyRuntime(RuntimeConfig(db_path=db_path))
-    return runtime.query(
-        question,
-        agent_id=agent_id,
-        allowed_scopes=allowed_scopes or ["public", "internal"],
-        limit=8,
-        record_memory=False,
-        experience_token_budget=450,
-        experience_top_k=6,
-    )
+
+    def run(text: str) -> dict[str, Any]:
+        return runtime.query(
+            text,
+            agent_id=agent_id,
+            allowed_scopes=allowed_scopes or ["public", "internal"],
+            limit=8,
+            record_memory=False,
+            experience_token_budget=450,
+            experience_top_k=6,
+        )
+
+    result = run(question)
+    seed = _english_project_seed(question, db_path)
+    if not seed or result.get("status") not in (None, "ok"):
+        return result
+    # Plan §9-8 / 1.6 for the project layer: a non-English question that names
+    # no identifier found 0/8 answers (ontology study 2026-09-23) while the same
+    # questions in English found 6/6. The question's own results stay first —
+    # the English seed only fills the tail, so nothing the question found is
+    # displaced (no-regression rule of the English switch).
+    try:
+        seeded = run(seed)
+    except Exception:  # noqa: BLE001 — recall is fail-open
+        return result
+    if seeded.get("status") not in (None, "ok"):
+        return result
+    chunks = list(result.get("chunks") or [])
+    seen = {str(item.get("chunk_id") or "") for item in chunks}
+    keep = max(4, len(chunks) - 2)
+    merged = chunks[:keep]
+    for item in seeded.get("chunks") or []:
+        if len(merged) >= 8:
+            break
+        key = str(item.get("chunk_id") or "")
+        if key and key in seen:
+            continue
+        merged.append(item)
+        seen.add(key)
+    for item in chunks[keep:]:
+        if len(merged) >= 8:
+            break
+        merged.append(item)
+    edges = list(result.get("relation_edges") or [])
+    for edge in seeded.get("relation_edges") or []:
+        if edge not in edges and len(edges) < 12:
+            edges.append(edge)
+    return {**result, "chunks": merged, "relation_edges": edges, "englishSeed": True}
+
+
+def _english_project_seed(question: str, db_path: Path) -> str:
+    """The workspace's English query seed for a non-English question, or ""."""
+    try:
+        from .one_workspace import english_recall_query
+
+        workspace = str(db_path.parent.parent)
+        query, mode = english_recall_query(_one_root(), question, workspace)
+    except Exception:  # noqa: BLE001
+        return ""
+    return query if mode in ("seeded", "identifiers") and query != question else ""
 
 
 def _source_label(item: dict[str, Any]) -> str:
