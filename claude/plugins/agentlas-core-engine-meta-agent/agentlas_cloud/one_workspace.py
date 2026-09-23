@@ -1931,7 +1931,15 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     # Curate once at session end so tickets do not accumulate indefinitely.
     # Curator failure must never block session completion.
     try:
-        receipt["curated"] = curate(root)["decisions"]
+        curated = curate(
+            root,
+            project_root=resolve_project_memory_root(workspace) if workspace else None,
+            project_slug=project_slug,
+        )
+        receipt["curated"] = curated["decisions"]
+        if curated.get("projectMemory"):
+            # Counts only — the project root never enters a receipt.
+            receipt["projectMemory"] = curated["projectMemory"]
     except Exception as exc:
         receipt["curated"] = {"error": str(exc)[:120]}
     return _out(receipt)
@@ -2204,6 +2212,21 @@ def _append_durable(
     project_slug: str = "",
 ) -> None:
     """Persist durable memory as a human-readable Markdown capsule."""
+    block = _durable_block_text(candidate, ticket_id, project_slug=project_slug)
+    with soul_path.open("a", encoding="utf-8") as handle:
+        handle.write(block)
+
+
+def _durable_block_text(
+    candidate: dict[str, Any],
+    ticket_id: str,
+    project_slug: str = "",
+    *,
+    native_ok: bool = True,
+) -> str:
+    """One durable block — the single spelling both the One drawer and a
+    project's soul use, so `parse_durable_blocks` and the `h:` dedupe read
+    either file the same way."""
     content = str(candidate.get("content") or "").strip()
     kind = str(candidate.get("type") or "fact")
     evidence = ", ".join(str(item) for item in (candidate.get("evidence") or [])[:4])
@@ -2218,10 +2241,200 @@ def _append_durable(
     # soul, AFTER the ticket line so every existing parser (which stops at the
     # ticket line) is unaffected. The English line above is the search surface.
     native = " ".join(str(candidate.get("contentNative") or "").split())
-    if native and native != content:
+    if native and native != content and native_ok:
         block += f"  - Native: {native}\n"
-    with soul_path.open("a", encoding="utf-8") as handle:
-        handle.write(block)
+    return block
+
+
+# ---------------------------------------------------------------------------
+# Project memory writes (2026-09-23)
+#
+# Measured: every session's Memory Events envelope reached the One drawer, and
+# candidates the model scoped `project` were tagged with a project slug there —
+# but nothing ever reached the project itself. `<project>/.agentlas/
+# project-soul-memory.md` had last changed 08-29 / 07-16 on the owner's three
+# main checkouts while the One drawer grew every day. The project layer is
+# what every host and product reads for that folder (Desktop readProjectSoul,
+# Terminal cliMemoryContext, the ontology project layer), so a project learning
+# that lives only in a personal drawer is invisible to all of them.
+#
+# Now the One curator, when it admits a `project`-scoped block (explicit, or
+# narrowed by the project-specifics guard) for the project the SAME stop hook
+# is running in, also appends that block to the project's soul under the
+# Desktop's `## Auto-curated memory` section. The resolved root is passed
+# through the curate call and never stored: tickets and every shared ledger
+# keep only the basename/slug.
+# ---------------------------------------------------------------------------
+
+PROJECT_AUTO_SECTION = "## Auto-curated memory"  # Desktop project-files.ts AUTO_SECTION
+PROJECT_MEMORY_LOG_FILE = "memory-log.jsonl"
+
+
+def resolve_project_memory_root(workspace: str) -> Path | None:
+    """The project whose soul a `project` learning from this session belongs to.
+
+    Same walk the recall hook uses (memory_hook._agentlas_project_root), so a
+    learning is written to exactly the project recall reads for this folder.
+    Never the runtime's own home (`~/.agentlas`, One's drawer), never a
+    symlinked `.agentlas`.
+    """
+    if not workspace:
+        return None
+    try:
+        cwd = Path(workspace).expanduser()
+        if not cwd.is_dir():
+            return None
+        from .memory_hook import _agentlas_project_root
+
+        project = _agentlas_project_root(cwd)
+        if project is None:
+            return None
+        project = project.resolve()
+        runtime_home = (Path.home() / ".agentlas").resolve()
+        one_home = Path(os.environ.get("AGENTLAS_ONE_DIR") or (runtime_home / "one")).expanduser().resolve()
+        for forbidden in (runtime_home, one_home):
+            if project == forbidden or forbidden in project.parents:
+                return None
+        meta = project / META_DIR
+        if meta.is_symlink() or not meta.is_dir():
+            return None
+        return project
+    except Exception:  # noqa: BLE001 — resolving a target must never cost a session end
+        return None
+
+
+def _project_soul_header(project_root: Path) -> str:
+    # Mirrors Desktop soulTemplate's shape (title + auto section) — a name, never a path.
+    return (
+        f"# Project Soul Memory: {project_root.name or 'Project'}\n\n"
+        "Durable memory for this project folder, maintained by the Agentlas PM Soul.\n"
+        "Keep it concise. Auto-curated items are appended under the last section.\n\n"
+        f"{PROJECT_AUTO_SECTION}\n"
+    )
+
+
+def append_project_durable(
+    project_root: Path,
+    items: list[tuple[dict[str, Any], str]],
+) -> dict[str, Any]:
+    """Append admitted project blocks to `<project>/.agentlas/project-soul-memory.md`.
+
+    Idempotent by the block's `h:` content hash (the same key the One drawer
+    uses), serialized by the G6 ledger lock, and bounded per call and by file
+    size. Fail-open: returns a receipt, never raises.
+    """
+    receipt: dict[str, Any] = {"written": 0, "duplicate": 0, "skipped": 0}
+    if not items:
+        return receipt
+    try:
+        meta = Path(project_root) / META_DIR
+        if meta.is_symlink() or not meta.is_dir():
+            return {**receipt, "error": "project_not_initialized"}
+        soul = meta / PROJECT_SOUL_FILE
+        if soul.is_symlink() or (soul.exists() and not soul.is_file()):
+            return {**receipt, "error": "unsafe_soul_file"}
+        max_blocks = int(_rule("projectWrite.maxBlocksPerStop", 12))
+        max_bytes = int(_rule("projectWrite.maxSoulBytes", 2_000_000))
+        try:
+            if soul.exists() and soul.stat().st_size >= max_bytes:
+                return {**receipt, "skipped": len(items), "error": "soul_size_cap"}
+        except OSError:
+            pass
+        secret_kv, secret_shape = _rule_re("secretKeyValue"), _rule_re("secretValueShapes")
+        host_re = _rule_re("hostAbsolutePath")
+        written_rows: list[dict[str, Any]] = []
+        with _LedgerLock(soul) as acquired:
+            if not acquired:
+                return {**receipt, "skipped": len(items), "error": "soul_busy"}
+            existing = _durable_hashes(soul)
+            try:
+                current = soul.read_text(encoding="utf-8") if soul.exists() else ""
+            except (OSError, UnicodeDecodeError):
+                return {**receipt, "skipped": len(items), "error": "soul_unreadable"}
+            chunks: list[str] = []
+            if not current:
+                chunks.append(_project_soul_header(Path(project_root)))
+            elif PROJECT_AUTO_SECTION not in current:
+                chunks.append(("" if current.endswith("\n") else "\n") + f"\n{PROJECT_AUTO_SECTION}\n")
+            for candidate, ticket_id in items:
+                content = str(candidate.get("content") or "").strip()
+                key = _content_hash(content)
+                if key in existing:
+                    receipt["duplicate"] += 1
+                    continue
+                if len(written_rows) >= max_blocks:
+                    receipt["skipped"] += 1
+                    continue
+                # The curator screened content and evidence; the native wording
+                # was never screened, so it only rides along when it is clean.
+                native = str(candidate.get("contentNative") or "")
+                native_ok = not (secret_kv.search(native) or secret_shape.search(native) or host_re.search(native))
+                chunks.append(_durable_block_text(candidate, ticket_id, native_ok=native_ok))
+                existing.add(key)
+                written_rows.append({
+                    "action": "written",
+                    "scope": "project",
+                    "kind": str(candidate.get("type") or "fact"),
+                    "content": content,
+                    "h": key,
+                    "ticket": ticket_id,
+                    "source_provenance": "one-curator",
+                    "at": _now(),
+                })
+            if not written_rows and len(chunks) <= 1 and current:
+                return receipt
+            if written_rows:
+                with soul.open("a", encoding="utf-8") as handle:
+                    handle.write("".join(chunks))
+        receipt["written"] = len(written_rows)
+        if written_rows:
+            try:
+                with (meta / PROJECT_MEMORY_LOG_FILE).open("a", encoding="utf-8") as log:
+                    for row in written_rows:
+                        log.write(json.dumps(row, ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+        return receipt
+    except Exception as exc:  # noqa: BLE001
+        return {**receipt, "error": f"{type(exc).__name__}"[:60]}
+
+
+def _spawn_project_soul_refresh(project_root: Path) -> bool:
+    """Re-ingest just the project soul, detached (hooks run on a 10s contract).
+
+    `AGENTLAS_PROJECT_SOUL_REFRESH=inline` runs it in-process (tests and
+    measurements), `off` disables it.
+    """
+    mode = os.environ.get("AGENTLAS_PROJECT_SOUL_REFRESH", "").strip().lower()
+    if mode == "off":
+        return False
+    if mode == "inline":
+        try:
+            from .project_full_ingest import refresh_project_soul
+
+            return refresh_project_soul(project_root).get("status") == "complete"
+        except Exception:  # noqa: BLE001
+            return False
+    try:
+        runtime_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        existing = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
+        with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
+            subprocess.Popen(
+                [sys.executable, "-m", "agentlas_cloud.project_full_ingest",
+                 "--project", str(project_root), "--soul-only"],
+                cwd=str(project_root),
+                env=env,
+                stdin=stdin,
+                stdout=out,
+                stderr=out,
+                close_fds=True,
+                start_new_session=True,
+            )
+    except Exception:  # noqa: BLE001
+        return False
+    return True
 
 
 def _ensure_pack(conn: sqlite3.Connection, scope_key: str) -> str:
@@ -2376,11 +2589,21 @@ def list_chips(root: Path, status: str = "", limit: int = 20) -> list[dict[str, 
         conn.close()
 
 
-def curate(root: Path) -> dict[str, Any]:
+def curate(
+    root: Path,
+    *,
+    project_root: Path | None = None,
+    project_slug: str = "",
+) -> dict[str, Any]:
     """Record ticket decisions and promote only admitted content.
 
     Keep the ticket ledger append-only. A decision marks a ticket as consumed,
     avoiding races caused by rewriting the ledger.
+
+    ``project_root``/``project_slug`` come only from the stop hook that is
+    curating its own session: an admitted ``project``-scope block whose ticket
+    carries that slug is also appended to that project's soul. The root is
+    never written into any One ledger.
     """
     root = Path(root).expanduser()
     meta = root / META_DIR
@@ -2468,6 +2691,8 @@ def curate(root: Path) -> dict[str, Any]:
             ruleset_sha=ruleset_sha,
             slug_sidecar=slug_sidecar,
             exp_db=exp_db,
+            project_root=project_root,
+            project_slug=project_slug,
         )
 
 
@@ -2487,8 +2712,11 @@ def _curate_pending(
     legacy_ok: bool,
     ruleset_sha: str,
     slug_sidecar: dict[str, Any],
+    project_root: Path | None = None,
+    project_slug: str = "",
 ) -> dict[str, Any]:
     """curate() 의 결정 구간. 호출자가 원장 잠금을 잡은 상태로만 부른다(PRD §4.20)."""
+    project_items: list[tuple[dict[str, Any], str]] = []
     with decisions_path.open("a", encoding="utf-8") as handle:
         for ticket in pending:
             candidate = ticket.get("candidate") or {}
@@ -2525,6 +2753,16 @@ def _curate_pending(
                 _append_durable(soul_path, candidate, str(ticket.get("ticketId")),
                                 project_slug=ticket_slug)
                 durable.add(_content_hash(str(candidate.get("content") or "")))
+                # Project write: only `project` scope (declared or narrowed —
+                # never user_identity/agent_repo), and only for the project this
+                # stop hook is running in, matched by the ticket's own slug.
+                if (
+                    project_root is not None
+                    and project_slug
+                    and ticket_slug == project_slug
+                    and str(candidate.get("scope") or "") == "project"
+                ):
+                    project_items.append((candidate, str(ticket.get("ticketId") or "")))
                 if str(candidate.get("type")) in CRAFT_KINDS and exp_db.exists():
                     # Cluster key (D4): agent_repo/user_identity chips are
                     # cross-project ("global"); project-scope chips carry their
@@ -2592,12 +2830,18 @@ def _curate_pending(
     #   process, progress is checkpointed, and every failure is recorded.
     schedule_durable_index(root)
 
-    return {
+    result: dict[str, Any] = {
         "pending": len(pending),
         "decisions": counts,
         "experienceChips": chips,
         "agentId": ONE_AGENT_ID,
     }
+    if project_items and project_root is not None:
+        project_receipt = append_project_durable(project_root, project_items)
+        if project_receipt.get("written"):
+            project_receipt["ingestScheduled"] = _spawn_project_soul_refresh(project_root)
+        result["projectMemory"] = project_receipt
+    return result
 
 
 SUPERSEDED_MAP_FILE = "superseded-map.json"

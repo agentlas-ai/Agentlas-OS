@@ -450,8 +450,51 @@ def _is_host_policy_chunk(item: dict[str, Any]) -> bool:
     return basename in HOST_POLICY_BASENAMES
 
 
+_SOUL_BLOCK_START = re.compile(r"(?=- \*\*\[\w+\]\*\* )")
+_SOUL_BLOCK_KEY = re.compile(r"h:([0-9a-f]{16})")
+
+
+def _drop_delivered_blocks(text: str, delivered: set[str]) -> str:
+    """Remove soul blocks the One layer already put in this capsule.
+
+    A project learning is written to BOTH the One drawer and the project soul
+    (2026-09-23), and the project soul is now in the project ontology. Without
+    this, one turn could show the same block twice — once as `one[...]`, once
+    inside a `project[...]` chunk. Blocks are matched by their `h:` key, the
+    content hash both files share. A chunk that starts mid-block drops that
+    leading tail when its key is a delivered one.
+    """
+
+    if not delivered or "h:" not in text:
+        return text
+    kept: list[str] = []
+    for segment in _SOUL_BLOCK_START.split(text):
+        # A segment is either one whole block or, first in the chunk, the tail
+        # of a block whose header the chunker cut off. Either way a delivered
+        # key means the whole segment is that block.
+        if set(_SOUL_BLOCK_KEY.findall(segment)) & delivered:
+            continue
+        kept.append(segment)
+    return "".join(kept)
+
+
+_SOUL_TICKET_TAIL = re.compile(r"- Ticket: `[^`]*`[^<\n]*<!--\s*h:([0-9a-f]{16})\s*-->")
+
+
+def _compact_soul_markup(text: str) -> str:
+    """`- Ticket: `one-tkt-…` · <time>  <!-- h:KEY -->` -> `h:KEY`.
+
+    The key is what a model needs (to cite `supersedes`); the ticket id and
+    timestamp only spend the project layer's budget.
+    """
+
+    return _SOUL_TICKET_TAIL.sub(lambda match: f"h:{match.group(1)}", text) if "<!--" in text else text
+
+
 def _context_lines(
-    project_result: dict[str, Any], agent_result: dict[str, Any] | None
+    project_result: dict[str, Any],
+    agent_result: dict[str, Any] | None,
+    delivered_one_hashes: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return the project layer and the experience layer separately.
 
@@ -470,7 +513,10 @@ def _context_lines(
         # file, so the capsule excludes them by source identity.
         if _is_host_policy_chunk(chunk):
             continue
-        text = _compact_text(chunk.get("text"), 720)
+        raw_text = str(chunk.get("text") or "")
+        if delivered_one_hashes:
+            raw_text = _drop_delivered_blocks(raw_text, delivered_one_hashes)
+        text = _compact_text(_compact_soul_markup(raw_text), 720)
         if text:
             age_tag, directive = _source_staleness(chunk)
             if directive:
@@ -757,7 +803,12 @@ def build_capsule(
             host,
         )
 
-    project_lines, experience_lines = _context_lines(project_result, agent_result)
+    # Hashes the One layer actually delivers (after its own budget trim), so the
+    # project layer never repeats them and never drops one the One layer lost.
+    delivered_one = set(
+        list(one_capsule.get("hashes") or [])[: len(_trim_layer(one_lines, LAYER_BUDGETS["one"]))]
+    ) if one_lines else set()
+    project_lines, experience_lines = _context_lines(project_result, agent_result, delivered_one)
     if (
         not project_lines
         and not experience_lines

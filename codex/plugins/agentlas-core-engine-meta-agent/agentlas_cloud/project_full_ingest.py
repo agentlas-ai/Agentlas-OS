@@ -54,6 +54,13 @@ STATE_FILE = "project-full-ingest.json"
 LOCK_FILE = ".project-full-ingest.lock"
 SNAPSHOT_DIR = "ontology-project-docs"
 ONTOLOGY_DB_FILE = "ontology-runtime.sqlite"
+# The project's own durable memory. It lives under `.agentlas/`, which the walk
+# skips as a dot-directory, so until 2026-09-23 no project soul ever reached
+# its project's recall layer. It is ingested like any other document (as a
+# snapshot), first, so it always owns its plain snapshot name.
+PROJECT_SOUL_RELATIVE = ".agentlas/project-soul-memory.md"
+SOUL_REFRESH_STATE_FILE = "project-soul-refresh.json"
+SOUL_REFRESH_LOCK_WAIT_SECONDS = 120
 
 # Scheduling (read by the hook through spawn_reason; all cheap).
 REFRESH_AFTER_SECONDS = 6 * 60 * 60
@@ -413,6 +420,17 @@ def _document_kind(relative_parts: tuple[str, ...]) -> bool:
     return False
 
 
+def _project_soul(root: Path) -> Path | None:
+    agentlas = _agentlas(root)
+    soul = root / PROJECT_SOUL_RELATIVE
+    try:
+        if agentlas.is_symlink() or not agentlas.is_dir() or soul.is_symlink():
+            return None
+        return soul if stat.S_ISREG(soul.lstat().st_mode) else None
+    except OSError:
+        return None
+
+
 def discover(root: Path, *, deadline: float | None = None) -> dict[str, Any]:
     """Walk the project once. Returns documents, code files and skip counts."""
 
@@ -423,6 +441,10 @@ def discover(root: Path, *, deadline: float | None = None) -> dict[str, Any]:
 
     def skip(reason: str) -> None:
         skipped[reason] = skipped.get(reason, 0) + 1
+
+    soul = _project_soul(root)
+    if soul is not None:
+        documents.append((PROJECT_SOUL_RELATIVE, soul))
 
     root_str = str(root)
     for current, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
@@ -838,6 +860,120 @@ def run_full_ingest(project: str | Path, *, reason: str = "explicit") -> dict[st
     return {"action": "project_full_ingest", **state}
 
 
+def _prepare_document(root: Path, relative: str, path: Path) -> tuple[str, float, str] | str:
+    """(snapshot body, mtime, raw digest) for one document, or a skip reason."""
+
+    import hashlib
+
+    from ontology.runtime import MAX_INGEST_FILE_BYTES
+
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            return "not_regular_file"
+        if info.st_size > MAX_INGEST_FILE_BYTES:
+            return "file_too_large"
+        raw = path.read_bytes()
+    except OSError:
+        return "unreadable"
+    text = _decode_text(raw)
+    if text is None:
+        return "binary_or_not_utf8"
+    if not text.strip():
+        return "empty"
+    if looks_secret(text):
+        return "secret"
+    body = f"Project document: {relative}\n\n{_localize(text, root)}"
+    return body, info.st_mtime, hashlib.sha256(raw).hexdigest()
+
+
+def refresh_project_soul(project: str | Path, *, wait_seconds: float = SOUL_REFRESH_LOCK_WAIT_SECONDS) -> dict[str, Any]:
+    """Re-snapshot and re-ingest ONLY the project soul — seconds, not minutes.
+
+    Called detached by the One stop hook right after it appends a project
+    learning, so the next session's project-layer recall already sees it
+    instead of waiting for the 6-hour full refresh. Shares the full ingest's
+    lock (one writer per ontology) and its snapshot name, so a later full run
+    finds the snapshot unchanged. Records its own small receipt.
+    """
+
+    from .project_bootstrap import _project_root, _release_advisory_lock, _try_advisory_lock
+
+    root = _project_root(project)
+    agentlas = _agentlas(root)
+    base = {"action": "project_soul_refresh"}
+    if not agentlas.is_dir() or agentlas.is_symlink():
+        return {**base, "status": "skipped", "detail": "project_not_initialized"}
+    db = agentlas / ONTOLOGY_DB_FILE
+    if not db.is_file() or db.is_symlink():
+        # Never create a project's ontology from here; `project ensure` owns that.
+        return {**base, "status": "skipped", "detail": "no_ontology"}
+    soul = _project_soul(root)
+    if soul is None:
+        return {**base, "status": "skipped", "detail": "no_soul"}
+    started = time.monotonic()
+    descriptor = os.open(agentlas / LOCK_FILE, os.O_CREAT | os.O_RDWR, 0o600)
+    acquired = False
+    try:
+        deadline = started + max(0.0, wait_seconds)
+        while True:
+            if _try_advisory_lock(descriptor):
+                acquired = True
+                break
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.25)
+        if not acquired:
+            receipt = {**base, "status": "busy"}
+        else:
+            try:
+                receipt = {**base, **_refresh_soul_locked(root, soul)}
+            finally:
+                _release_advisory_lock(descriptor)
+    except Exception as exc:  # recorded, never swallowed
+        receipt = {**base, "status": "failed", "error": _bounded_reason(f"{type(exc).__name__}: {exc}")}
+    finally:
+        os.close(descriptor)
+    receipt["finishedAt"] = utc_now()
+    receipt["durationSeconds"] = round(time.monotonic() - started, 3)
+    try:
+        target = agentlas / SOUL_REFRESH_STATE_FILE
+        temporary = target.with_name(f".{target.name}.tmp.{os.getpid()}")
+        temporary.write_text(json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.replace(target)
+    except OSError:
+        pass
+    return receipt
+
+
+def _refresh_soul_locked(root: Path, soul: Path) -> dict[str, Any]:
+    snapshot_root = _agentlas(root) / SNAPSHOT_DIR
+    snapshot_root.mkdir(mode=0o700, exist_ok=True)
+    target = snapshot_root / snapshot_name(PROJECT_SOUL_RELATIVE)
+    runtime = _open_runtime(root)
+    prepared = _prepare_document(root, PROJECT_SOUL_RELATIVE, soul)
+    if isinstance(prepared, str):
+        # Same verdict the full run would reach: the snapshot must not keep
+        # serving content the live file no longer passes (e.g. a secret).
+        removed = 0
+        if target.is_file() and not target.is_symlink():
+            uri = target.resolve().as_uri()
+            try:
+                target.unlink()
+            except OSError:
+                pass
+            removed = _purge_sources(runtime, [uri])
+        return {"status": "skipped", "detail": prepared, "removed": removed}
+    body, mtime, _digest = prepared
+    _write_snapshot(target, body.encode("utf-8"), mtime)
+    result = runtime.ingest_path(target, refresh_graph=False)
+    return {
+        "status": "complete",
+        "chunksWritten": int(result.get("chunks_written") or 0),
+        "unchanged": int(result.get("idempotent_skips") or 0) >= 1,
+    }
+
+
 def _ingest(root: Path, started_monotonic: float) -> dict[str, Any]:
     deadline = started_monotonic + RUN_DEADLINE_SECONDS
     runtime = _open_runtime(root)
@@ -884,44 +1020,23 @@ def _ingest(root: Path, started_monotonic: float) -> dict[str, Any]:
         names_taken[name] = relative
         return name
 
-    from ontology.runtime import MAX_INGEST_FILE_BYTES
-
     for relative, path in found["documents"]:
         if time.monotonic() >= deadline:
             stop = "deadline"
             break
-        try:
-            info = path.lstat()
-            if not stat.S_ISREG(info.st_mode):
-                count("not_regular_file")
-                continue
-            if info.st_size > MAX_INGEST_FILE_BYTES:
-                count("file_too_large")
-                continue
-            raw = path.read_bytes()
-        except OSError:
-            count("unreadable")
-            continue
-        text = _decode_text(raw)
-        if text is None:
-            count("binary_or_not_utf8")
-            continue
-        if not text.strip():
-            count("empty")
-            continue
-        if looks_secret(text):
-            count("secret")
-            if len(secret_paths) < MAX_RECORDED_PATHS:
+        prepared = _prepare_document(root, relative, path)
+        if isinstance(prepared, str):
+            count(prepared)
+            if prepared == "secret" and len(secret_paths) < MAX_RECORDED_PATHS:
                 secret_paths.append(relative)
             continue
-        digest = hashlib.sha256(raw).hexdigest()
+        body, mtime, digest = prepared
         if digest in seen_content:
             count("duplicate_content")
             continue
         seen_content.add(digest)
-        body = f"Project document: {relative}\n\n{_localize(text, root)}"
         try:
-            ingest_one(relative, unique_name(relative), body, info.st_mtime)
+            ingest_one(relative, unique_name(relative), body, mtime)
         except Exception as exc:
             if len(errors) < 20:
                 errors.append({"path": relative, "error": _bounded_reason(f"{type(exc).__name__}: {exc}")})
@@ -1010,8 +1125,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - thin wrapp
     parser.add_argument("--project", default=".")
     parser.add_argument("--reason", default="explicit")
     parser.add_argument("--status", action="store_true")
+    parser.add_argument("--soul-only", action="store_true", help="re-ingest only .agentlas/project-soul-memory.md")
     args = parser.parse_args(argv)
-    payload = status(args.project) if args.status else run_full_ingest(args.project, reason=args.reason)
+    if args.soul_only:
+        payload = refresh_project_soul(args.project)
+    else:
+        payload = status(args.project) if args.status else run_full_ingest(args.project, reason=args.reason)
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if payload.get("status") not in {"failed"} else 2
 
