@@ -434,6 +434,7 @@ required_files=(
   "ontology/__main__.py"
   "ontology/cli.py"
   "ontology/embeddings.py"
+  "ontology/entities.py"
   "ontology/graph_spread.py"
   "ontology/model_assets.py"
   "ontology/parsers.py"

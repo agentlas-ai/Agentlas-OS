@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sqlite3
 import stat
 import tempfile
@@ -24,6 +25,7 @@ from .embeddings import (
     tokenize,
     vector_adapter_metadata,
 )
+from . import entities as entity_layer
 from . import graph_spread
 from .parsers import ParsedRecord, SourceParserRegistry
 from .utils import clamp, content_hash, estimate_tokens, json_dumps, json_loads, normalize_name, normalized_key, stable_hash, utc_now
@@ -91,6 +93,80 @@ ACTIVE_EXPERIENCE_STATUSES = (
 )
 
 
+# Relations since the code-aware entity layer (2026-09-23). Additive to schema
+# 4, so SCHEMA_VERSION stays 4: every installed reader checks
+# ``max(version) == SCHEMA_VERSION`` exactly (read-only open raises otherwise)
+# and a bump also forces a full re-embed of every chunk. What changed:
+#   basis          where the edge came from (entities.BASIS_*); correlation and
+#                  ledger edges are never causal.
+#   evidence_ref   the non-chunk evidence of structural edges (code-map
+#                  snapshotId, contact ledger).
+#   evidence_chunk_id / source_id may be NULL, but only for code_map/ledger
+#                  edges; every other edge still proves itself with a chunk.
+# Older readers inner-join chunks on evidence_chunk_id, so they simply never
+# see the NULL-evidence rows.
+RELATIONS_TABLE_DDL = """
+                CREATE TABLE {if_not_exists}{table} (
+                  relation_id TEXT PRIMARY KEY,
+                  subject_entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
+                  object_entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
+                  relation_type TEXT NOT NULL,
+                  confidence REAL NOT NULL,
+                  evidence_chunk_id TEXT REFERENCES chunks(chunk_id) ON DELETE CASCADE,
+                  source_id TEXT REFERENCES sources(source_id) ON DELETE CASCADE,
+                  privacy_scope TEXT NOT NULL DEFAULT 'private',
+                  source_lineage_json TEXT NOT NULL,
+                  valid_from TEXT,
+                  valid_to TEXT,
+                  observed_at TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  basis TEXT NOT NULL DEFAULT 'asserted',
+                  evidence_ref TEXT,
+                  UNIQUE(subject_entity_id, object_entity_id, relation_type, evidence_chunk_id)
+                );
+"""
+RELATION_COLUMNS = (
+    "relation_id",
+    "subject_entity_id",
+    "object_entity_id",
+    "relation_type",
+    "confidence",
+    "evidence_chunk_id",
+    "source_id",
+    "privacy_scope",
+    "source_lineage_json",
+    "valid_from",
+    "valid_to",
+    "observed_at",
+    "status",
+    "created_at",
+    "updated_at",
+    "basis",
+    "evidence_ref",
+)
+ENTITY_LAYER_ADAPTER = "entity_layer"
+# Structural (code map / ledger) edges describe the project's own code, which
+# is internal to the project: never public, never elevated to private-only.
+STRUCTURAL_SCOPE = "internal"
+CODE_ENTITY_TYPES = frozenset(
+    {"file", "doc", "path", "symbol", "command", "env_var", "key", "code_id", "package", "version"}
+)
+MAX_RELATION_EDGES = 20
+# RRF weight of the entity channel when the question named no code token and
+# linked only through a word-split phrase ("research decision"). Measured on
+# the desktop known-item control: at full weight one plain-prose sentence lost
+# its own chunk from the top 5.
+WORDS_SEED_WEIGHT = 0.5
+# RRF weight of the entity channel against the lexical and vector channels
+# (1.0 each). The measured value of this layer is mostly the relation lines;
+# at 1.0 the extra channel displaced known items as often as it rescued them.
+ENTITY_CHANNEL_WEIGHT = 0.5
+MAX_ENTITY_CHANNEL = 20
+ENTITY_CHANNEL_CANDIDATES = 200
+
+
 class DirectDurableMemoryWriteBlocked(RuntimeError):
     """Raised when a caller tries to bypass Memory Curator candidate tickets."""
 
@@ -136,6 +212,11 @@ class OntologyRuntime:
         )
         self.fts_tokenizer = "unicode61"
         self._expansion_cache: dict[str, list[str]] = {}
+        # Whether this database carries the code-aware entity layer. A
+        # read-only open of a database no writer has upgraded yet still
+        # answers queries, just without the entity channel.
+        self._entity_layer_ready = False
+        self._code_index: entity_layer.CodeIndex | None = None
         if self.config.read_only:
             if not self.db_path.is_file():
                 raise FileNotFoundError(f"ontology runtime database does not exist: {self.db_path}")
@@ -180,6 +261,18 @@ class OntologyRuntime:
             ).fetchone()
             if row is not None:
                 self.fts_tokenizer = str(json_loads(row["config_json"], {}).get("tokenizer") or "unicode61")
+            self._entity_layer_ready = self._has_entity_layer(conn)
+
+    @staticmethod
+    def _has_entity_layer(conn: sqlite3.Connection) -> bool:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('entity_mentions', 'entity_keys')"
+            )
+        }
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(relations)")}
+        return tables == {"entity_mentions", "entity_keys"} and {"basis", "evidence_ref"} <= columns
 
     def migrate(self) -> None:
         with closing(self.connect()) as conn, conn:
@@ -251,24 +344,9 @@ class OntologyRuntime:
                   created_at TEXT NOT NULL
                 );
 
-                CREATE TABLE IF NOT EXISTS relations (
-                  relation_id TEXT PRIMARY KEY,
-                  subject_entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
-                  object_entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
-                  relation_type TEXT NOT NULL,
-                  confidence REAL NOT NULL,
-                  evidence_chunk_id TEXT NOT NULL REFERENCES chunks(chunk_id) ON DELETE CASCADE,
-                  source_id TEXT NOT NULL REFERENCES sources(source_id) ON DELETE CASCADE,
-                  privacy_scope TEXT NOT NULL DEFAULT 'private',
-                  source_lineage_json TEXT NOT NULL,
-                  valid_from TEXT,
-                  valid_to TEXT,
-                  observed_at TEXT NOT NULL,
-                  status TEXT NOT NULL,
-                  created_at TEXT NOT NULL,
-                  updated_at TEXT NOT NULL,
-                  UNIQUE(subject_entity_id, object_entity_id, relation_type, evidence_chunk_id)
-                );
+                """
+                + RELATIONS_TABLE_DDL.format(table="relations", if_not_exists="IF NOT EXISTS ")
+                + """
 
                 CREATE TABLE IF NOT EXISTS memory_candidates (
                   ticket_id TEXT PRIMARY KEY,
@@ -412,6 +490,7 @@ class OntologyRuntime:
                 """
             )
             self._ensure_memory_candidate_columns(conn)
+            self._ensure_entity_layer_schema(conn)
             self._ensure_relation_privacy_scope(conn)
             self.fts_tokenizer = self._ensure_fts_table(conn)
             applied = {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
@@ -449,6 +528,7 @@ class OntologyRuntime:
                 self._upsert_runtime_adapter(
                     conn, name=name, kind="parser", status=status, config_json="{}"
                 )
+            self._entity_layer_ready = self._has_entity_layer(conn)
 
     @staticmethod
     def _ensure_memory_candidate_columns(conn: sqlite3.Connection) -> None:
@@ -469,6 +549,84 @@ class OntologyRuntime:
         for name, ddl in additions.items():
             if name not in existing:
                 conn.execute(f"ALTER TABLE memory_candidates ADD COLUMN {name} {ddl}")
+
+    @staticmethod
+    def _ensure_entity_layer_schema(conn: sqlite3.Connection) -> None:
+        """Idempotent, in-place upgrade to the code-aware entity layer.
+
+        Keeps every existing row. The only non-additive step is relaxing
+        ``relations.evidence_chunk_id`` / ``source_id`` to NULL-able, which
+        SQLite can only do by rebuilding the table; it runs once (the
+        NOT NULL flag is the marker), inside a savepoint, and copies every row.
+        """
+
+        info = {row["name"]: row for row in conn.execute("PRAGMA table_info(relations)")}
+        needs_rebuild = bool(info) and (
+            int(info["evidence_chunk_id"]["notnull"]) == 1 or int(info["source_id"]["notnull"]) == 1
+        )
+        if needs_rebuild:
+            # A trigger or view naming the table would break the rename (and
+            # this schema defines none): leave the table as it is, fail open.
+            dependents = [
+                row["name"]
+                for row in conn.execute(
+                    "SELECT name, sql FROM sqlite_master WHERE type IN ('trigger', 'view') AND sql IS NOT NULL"
+                )
+                if re.search(r"\brelations\b", row["sql"] or "")
+            ]
+            if not dependents:
+                copy = [name for name in RELATION_COLUMNS if name in info]
+                conn.execute("SAVEPOINT entity_layer_relations")
+                try:
+                    conn.execute("DROP TABLE IF EXISTS relations__entity_layer")
+                    conn.execute(RELATIONS_TABLE_DDL.format(table="relations__entity_layer", if_not_exists=""))
+                    columns = ", ".join(copy)
+                    conn.execute(
+                        f"INSERT INTO relations__entity_layer({columns}) SELECT {columns} FROM relations"
+                    )
+                    conn.execute("DROP TABLE relations")
+                    conn.execute("ALTER TABLE relations__entity_layer RENAME TO relations")
+                    conn.execute("RELEASE entity_layer_relations")
+                except sqlite3.DatabaseError:
+                    conn.execute("ROLLBACK TO entity_layer_relations")
+                    conn.execute("RELEASE entity_layer_relations")
+                    raise
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(relations)")}
+        if "basis" not in existing:
+            conn.execute("ALTER TABLE relations ADD COLUMN basis TEXT NOT NULL DEFAULT 'asserted'")
+        if "evidence_ref" not in existing:
+            conn.execute("ALTER TABLE relations ADD COLUMN evidence_ref TEXT")
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_relations_subject ON relations(subject_entity_id);
+            CREATE INDEX IF NOT EXISTS idx_relations_object ON relations(object_entity_id);
+            CREATE INDEX IF NOT EXISTS idx_relations_evidence ON relations(evidence_chunk_id);
+            CREATE INDEX IF NOT EXISTS idx_relations_basis ON relations(basis);
+
+            -- entity <-> chunk. An entity lives while it is mentioned OR related
+            -- (was: related only, which pruned every mention-only name). role
+            -- 'self' marks the document entity of the chunk's own source.
+            CREATE TABLE IF NOT EXISTS entity_mentions (
+              entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
+              chunk_id TEXT NOT NULL REFERENCES chunks(chunk_id) ON DELETE CASCADE,
+              source_id TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'mention',
+              PRIMARY KEY (entity_id, chunk_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_entity_mentions_chunk ON entity_mentions(chunk_id);
+
+            -- Question-linking keys (many entities may share one: "runtime.py").
+            -- entity_aliases.normalized_alias is globally UNIQUE and keeps its
+            -- job (exact lookup for graph_entity); these are the linker's.
+            CREATE TABLE IF NOT EXISTS entity_keys (
+              key TEXT NOT NULL,
+              entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
+              kind TEXT NOT NULL,
+              PRIMARY KEY (key, entity_id)
+            ) WITHOUT ROWID;
+            CREATE INDEX IF NOT EXISTS idx_entity_keys_entity ON entity_keys(entity_id);
+            """
+        )
 
     @staticmethod
     def _ensure_relation_privacy_scope(conn: sqlite3.Connection) -> None:
@@ -510,11 +668,17 @@ class OntologyRuntime:
         # Imported or manually edited rows can still carry an invalid or
         # provenance-mismatched scope. Fail closed on every startup rather than
         # trusting an unproved label.
+        structural = ", ".join(f"'{basis}'" for basis in entity_layer.STRUCTURAL_BASES)
+        # Chunk-evidenced rows (index range on evidence_chunk_id, so the many
+        # structural rows are never visited on this every-open pass) ...
         conn.execute(
             """
             UPDATE relations
             SET privacy_scope = 'private'
-            WHERE privacy_scope NOT IN ('public', 'internal', 'private')
+            WHERE evidence_chunk_id IS NOT NULL
+              AND privacy_scope != 'private'
+              AND (
+               privacy_scope NOT IN ('public', 'internal', 'private')
                OR NOT EXISTS (
                  SELECT 1
                  FROM chunks c
@@ -523,8 +687,25 @@ class OntologyRuntime:
                    AND c.source_id = relations.source_id
                    AND c.privacy_scope = relations.privacy_scope
                    AND s.privacy_scope = relations.privacy_scope
-               )
+               ))
             """
+        )
+        # ... and evidence-less rows that are not structural: unprovable.
+        conn.execute(
+            f"""
+            UPDATE relations SET privacy_scope = 'private'
+            WHERE evidence_chunk_id IS NULL AND basis NOT IN ({structural}) AND privacy_scope != 'private'
+            """
+        )
+        # Structural edges have no chunk to prove a scope with; they are the
+        # project's own code facts, pinned to one scope (an older writer that
+        # does not know them fails them closed to private — undo only that).
+        conn.execute(
+            f"""
+            UPDATE relations SET privacy_scope = ?
+            WHERE evidence_chunk_id IS NULL AND basis IN ({structural}) AND privacy_scope != ?
+            """,
+            (STRUCTURAL_SCOPE, STRUCTURAL_SCOPE),
         )
 
     def _register_vector_adapter(self, conn: sqlite3.Connection) -> None:
@@ -632,7 +813,20 @@ class OntologyRuntime:
         conn.execute("DELETE FROM experience_graph_edges WHERE relation_type = 'similar_to'")
         self._register_vector_adapter(conn)
 
-    def ingest_path(self, path: str | Path, access_scope: str = "internal", parent_source_id: str | None = None) -> dict[str, Any]:
+    def ingest_path(
+        self,
+        path: str | Path,
+        access_scope: str = "internal",
+        parent_source_id: str | None = None,
+        *,
+        refresh_graph: bool = True,
+    ) -> dict[str, Any]:
+        """Ingest a file or directory.
+
+        ``refresh_graph=False`` skips the corpus-level entity refresh (code map,
+        ledger, co-occurrence) for callers that ingest many single files in a
+        row and call :meth:`refresh_entity_graph` once at the end.
+        """
         root = Path(path)
         synchronize_directory = root.is_dir() and not root.is_symlink()
         files, skipped_sources = self._bounded_source_files(root)
@@ -670,6 +864,8 @@ class OntologyRuntime:
                 summary["idempotent_skips"] += 1 if result["unchanged"] else 0
             if synchronize_directory:
                 summary["deleted_sources"] = self._delete_missing_sources_under_root(conn, root, files)
+            if refresh_graph:
+                summary["entity_graph"] = self._refresh_entity_graph_guarded(conn)
             self._prune_orphan_entities(conn)
         return summary
 
@@ -771,10 +967,26 @@ class OntologyRuntime:
 
     @staticmethod
     def _prune_orphan_entities(conn: sqlite3.Connection) -> None:
+        """Drop entities nothing refers to any more.
+
+        An entity is kept while it is mentioned by a chunk OR related to
+        another entity. Relation-only survival (the old rule) deleted every
+        name a document merely mentioned, which is exactly what question
+        linking needs.
+        """
+        has_mentions = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entity_mentions'"
+        ).fetchone()
+        mention_clause = (
+            " AND NOT EXISTS (SELECT 1 FROM entity_mentions m WHERE m.entity_id = entities.entity_id)"
+            if has_mentions
+            else ""
+        )
         conn.execute(
-            "DELETE FROM entities WHERE NOT EXISTS ("
-            "SELECT 1 FROM relations WHERE subject_entity_id = entities.entity_id "
-            "OR object_entity_id = entities.entity_id)"
+            "DELETE FROM entities WHERE "
+            "NOT EXISTS (SELECT 1 FROM relations WHERE subject_entity_id = entities.entity_id) "
+            "AND NOT EXISTS (SELECT 1 FROM relations WHERE object_entity_id = entities.entity_id)"
+            + mention_clause
         )
 
     def _bounded_source_files(self, root: Path) -> tuple[list[Path], list[dict[str, str]]]:
@@ -901,9 +1113,34 @@ class OntologyRuntime:
                     "memory_candidate_suggestions": [],
                     "working_memory": [],
                 }
-            chunks = self._search_chunks(conn, question, document_scopes, limit)
-            entities = self._related_entities(conn, question, chunks, document_scopes)
-            relations = self._relation_edges(conn, entities, chunks, document_scopes)
+            seeds: dict[str, float] = {}
+            entity_scores: dict[str, float] = {}
+            entity_chunks: list[str] = []
+            entity_report: dict[str, Any] = {"active": False}
+            if self._entity_layer_ready:
+                try:
+                    seeds = self._link_question_entities(conn, question, document_scopes)
+                    entity_scores = self._entity_channel(conn, seeds, document_scopes)
+                except sqlite3.Error as exc:  # entity layer is an extra channel; never a gate
+                    seeds, entity_scores = {}, {}
+                    entity_report = {"active": False, "error": type(exc).__name__}
+            chunks = self._search_chunks(
+                conn,
+                question,
+                document_scopes,
+                limit,
+                entity_scores=entity_scores,
+                entity_weight=ENTITY_CHANNEL_WEIGHT * max(seeds.values(), default=0.0),
+                entity_order_out=entity_chunks,
+            )
+            if self._entity_layer_ready and "error" not in entity_report:
+                entity_report = {"active": bool(entity_chunks), "seeds": len(seeds), "chunks": len(entity_chunks)}
+            entities = self._related_entities(
+                conn, question, chunks, document_scopes, seeds if self._entity_layer_ready else None
+            )
+            relations = self._relation_edges(
+                conn, entities, chunks, document_scopes, seeds=seeds, entity_chunks=entity_chunks
+            )
             experience = (
                 self._query_experience(
                     conn,
@@ -949,6 +1186,7 @@ class OntologyRuntime:
             "search": {
                 "fts_tokenizer": self.fts_tokenizer,
                 "fusion": "rrf",
+                "entity_channel": entity_report,
                 "expanded_queries": self._expansion_cache.get(question, []),
                 "rerank_hook_enabled": self.config.rerank_hook is not None,
                 "hooks_run_locally": self.config.hooks_run_locally,
@@ -2072,12 +2310,32 @@ class OntologyRuntime:
             if entity is None:
                 return {"status": "ok", "entity": None, "aliases": [], "relations": [], "evidence_chunks": []}
             relations = self._relations_for_entity(conn, entity["entity_id"], document_scopes)
-            if not relations:
+            mention_ids: list[str] = []
+            if self._entity_layer_ready and document_scopes:
+                scope_marks = ", ".join(["?"] * len(document_scopes))
+                mention_ids = [
+                    row["chunk_id"]
+                    for row in conn.execute(
+                        f"""
+                        SELECT m.chunk_id FROM entity_mentions m
+                        JOIN chunks c ON c.chunk_id = m.chunk_id
+                        JOIN sources s ON s.source_id = c.source_id
+                        WHERE m.entity_id = ? AND c.privacy_scope IN ({scope_marks})
+                          AND s.privacy_scope = c.privacy_scope
+                        ORDER BY m.chunk_id LIMIT 10
+                        """,
+                        (entity["entity_id"], *document_scopes),
+                    )
+                ]
+            if not relations and not mention_ids:
                 # Entity and alias rows are globally deduplicated, so existence
                 # alone is not safe to expose. A caller sees an entity only when
-                # at least one relation has provenance in an allowed scope.
+                # a relation or a mention has provenance in an allowed scope.
                 return {"status": "ok", "entity": None, "aliases": [], "relations": [], "evidence_chunks": []}
-            chunk_ids = sorted({relation["evidence_chunk_id"] for relation in relations})
+            chunk_ids = sorted(
+                {relation["evidence_chunk_id"] for relation in relations if relation["evidence_chunk_id"]}
+                | set(mention_ids)
+            )
             evidence = self._chunks_by_ids(conn, chunk_ids, document_scopes)
             aliases = [
                 row["alias"]
@@ -2472,6 +2730,8 @@ class OntologyRuntime:
                 table: conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
                 for table in ["sources", "chunks", "entities", "relations", "memory_candidates", "memory_links", "working_memory"]
             }
+            if self._entity_layer_ready:
+                counts["entity_mentions"] = conn.execute("SELECT count(*) FROM entity_mentions").fetchone()[0]
             migration = conn.execute("SELECT max(version) FROM schema_migrations").fetchone()[0]
             unsupported = conn.execute(
                 "SELECT count(*) FROM sources WHERE parser_status = 'unsupported_pending_adapter'"
@@ -2548,7 +2808,13 @@ class OntologyRuntime:
                 if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
                     raise ValueError(f"ontology import table {table} must be a list of objects")
                 allowed = set(table_columns[table])
+                # Exports written before the entity layer carry relations
+                # without basis/evidence_ref; they default like the migration.
+                optional = {"basis": entity_layer.BASIS_ASSERTED, "evidence_ref": None} if table == "relations" else {}
                 for row in rows:
+                    for column, default in optional.items():
+                        if column in allowed and column not in row:
+                            row[column] = default
                     if set(row) != allowed:
                         raise ValueError(
                             f"ontology import columns for {table} do not match runtime schema"
@@ -2574,6 +2840,9 @@ class OntologyRuntime:
                     )
                 imported_counts[table] = len(rows)
             self._rebuild_fts_rows(conn)
+            # Entity mentions/keys are derived, not exported: the next ingest
+            # re-extracts every imported chunk.
+            conn.execute("DELETE FROM runtime_adapters WHERE name = ?", (ENTITY_LAYER_ADAPTER,))
             foreign_key_issues = conn.execute("PRAGMA foreign_key_check").fetchall()
             integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
             if foreign_key_issues or integrity != "ok":
@@ -2677,12 +2946,19 @@ class OntologyRuntime:
         entities_written = 0
         relations_written = 0
         if parsed.parser_status == "parsed":
+            document = entity_layer.document_path(raw[:600].decode("utf-8", errors="ignore"), path.name)
+            field_chunks: list[dict[str, Any]] = []
             for index, record in enumerate(self._chunk_records(parsed.records), start=0):
                 chunk = self._write_chunk(conn, source_id, index, record, access_scope, lineage)
                 chunks_written += 1 if chunk["inserted"] else 0
-                entity_result = self._extract_and_write_graph(conn, chunk["chunk"], record)
+                entity_result = self._extract_and_write_graph(conn, chunk["chunk"], record, document=document)
                 entities_written += entity_result["entities_written"]
                 relations_written += entity_result["relations_written"]
+                if (record.span or {}).get("kind") == "json_path":
+                    field_chunks.append(chunk["chunk"])
+            entity_result = self._write_declared_object_relations(conn, field_chunks)
+            entities_written += entity_result["entities_written"]
+            relations_written += entity_result["relations_written"]
 
         row = conn.execute("SELECT * FROM sources WHERE source_id = ?", (source_id,)).fetchone()
         return {
@@ -2793,44 +3069,133 @@ class OntologyRuntime:
         row = conn.execute("SELECT * FROM chunks WHERE chunk_id = ?", (chunk_id,)).fetchone()
         return {"inserted": inserted, "chunk": self._chunk_row(row)}
 
-    def _extract_and_write_graph(self, conn: sqlite3.Connection, chunk: dict[str, Any], record: ParsedRecord) -> dict[str, int]:
+    def _extract_and_write_graph(
+        self,
+        conn: sqlite3.Connection,
+        chunk: dict[str, Any],
+        record: ParsedRecord | None = None,
+        *,
+        document: str | None = None,
+    ) -> dict[str, int]:
+        """Per-chunk entity extraction: typed code mentions + declared fields.
+
+        Corpus-level edges (code map, ledger, co-occurrence) are not written
+        here; :meth:`refresh_entity_graph` derives them once per ingest.
+        """
         entities_written = 0
         relations_written = 0
-        entity_names = extract_entity_names(chunk["text"])
-        for name in entity_names:
-            entities_written += 1 if self._ensure_entity(conn, name)[1] else 0
-        for subject, relation_type, obj, confidence in extract_relations(chunk["text"]):
+        text = chunk["text"]
+        if self._entity_layer_ready:
+            code = self._project_code_index()
+            document = document or str(chunk.get("source_id") or "document")
+            doc_type = "file" if document in code.mapped else "doc"
+            doc_id, doc_new = self._ensure_code_entity(conn, doc_type, document)
+            entities_written += 1 if doc_new else 0
+            rows = [(doc_id, chunk["chunk_id"], chunk["source_id"], "self")]
+            for entity_type, name, in_code in entity_layer.extract_mentions_with_context(text, code):
+                entity_id, created = self._ensure_code_entity(conn, entity_type, name)
+                entities_written += 1 if created else 0
+                if entity_id != doc_id:
+                    # role 'code': named only inside a fenced block — linkable,
+                    # but not counted as prose co-occurrence.
+                    role = "code" if in_code else "mention"
+                    rows.append((entity_id, chunk["chunk_id"], chunk["source_id"], role))
+            conn.executemany(
+                "INSERT OR IGNORE INTO entity_mentions(entity_id, chunk_id, source_id, role) VALUES (?, ?, ?, ?)",
+                rows,
+            )
+        # Declared record fields (JSON/CSV/spreadsheet/frontmatter: name/team +
+        # owner/depends_on) are data, not prose; they stay. English sentence
+        # verb patterns ("A depends on B") are not extracted any more.
+        for subject, relation_type, obj, confidence in extract_declared_relations(text):
             subject_id, subject_new = self._ensure_entity(conn, subject)
             object_id, object_new = self._ensure_entity(conn, obj)
             entities_written += 1 if subject_new else 0
             entities_written += 1 if object_new else 0
-            relation_id = stable_hash(f"relation:{subject_id}:{relation_type}:{object_id}:{chunk['chunk_id']}")
-            now = utc_now()
-            inserted = conn.execute(
-                """
-                INSERT OR IGNORE INTO relations(
-                  relation_id, subject_entity_id, object_entity_id, relation_type, confidence,
-                  evidence_chunk_id, source_id, privacy_scope, source_lineage_json, valid_from, valid_to,
-                  observed_at, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 'active', ?, ?)
-                """,
-                (
-                    relation_id,
-                    subject_id,
-                    object_id,
-                    relation_type,
-                    confidence,
-                    chunk["chunk_id"],
-                    chunk["source_id"],
-                    chunk["privacy_scope"],
-                    json_dumps(chunk["source_lineage"]),
-                    now,
-                    now,
-                    now,
-                ),
-            ).rowcount == 1
-            relations_written += 1 if inserted else 0
+            relations_written += self._insert_relation(
+                conn,
+                subject_id,
+                object_id,
+                relation_type,
+                confidence,
+                basis=entity_layer.BASIS_DECLARED,
+                chunk=chunk,
+            )
         return {"entities_written": entities_written, "relations_written": relations_written}
+
+    def _write_declared_object_relations(
+        self, conn: sqlite3.Connection, field_chunks: list[dict[str, Any]]
+    ) -> dict[str, int]:
+        """JSON objects are parsed one field per record (``$.team: X``), so a
+        declared ``team``/``owner``/``depends_on`` triple never shares a chunk.
+        Group sibling fields by their parent path; the evidence of each
+        relation is the chunk of the field that declares it."""
+        entities_written = relations_written = 0
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for chunk in field_chunks:
+            json_path = str((chunk.get("source_span") or {}).get("path") or "")
+            parent = json_path.rsplit(".", 1)[0] if "." in json_path else json_path
+            groups.setdefault(parent, []).append(chunk)
+        for chunks in groups.values():
+            if len(chunks) < 2:
+                continue
+            by_field: dict[str, dict[str, Any]] = {}
+            for chunk in chunks:
+                field = str((chunk.get("source_span") or {}).get("path") or "").rsplit(".", 1)[-1]
+                by_field.setdefault(field, chunk)
+            text = "\n".join(chunk["text"] for chunk in chunks)
+            for subject, relation_type, obj, confidence in extract_declared_relations(text):
+                evidence = by_field.get("depends_on" if relation_type == "depends_on" else "owner") or chunks[0]
+                subject_id, subject_new = self._ensure_entity(conn, subject)
+                object_id, object_new = self._ensure_entity(conn, obj)
+                entities_written += int(subject_new) + int(object_new)
+                relations_written += self._insert_relation(
+                    conn, subject_id, object_id, relation_type, confidence,
+                    basis=entity_layer.BASIS_DECLARED, chunk=evidence,
+                )
+        return {"entities_written": entities_written, "relations_written": relations_written}
+
+    def _insert_relation(
+        self,
+        conn: sqlite3.Connection,
+        subject_id: str,
+        object_id: str,
+        relation_type: str,
+        confidence: float,
+        *,
+        basis: str,
+        chunk: dict[str, Any] | None = None,
+        evidence_ref: str | None = None,
+    ) -> int:
+        if subject_id == object_id:
+            return 0
+        now = utc_now()
+        if chunk is not None:
+            relation_id = stable_hash(f"relation:{subject_id}:{relation_type}:{object_id}:{chunk['chunk_id']}")
+            values = (
+                relation_id, subject_id, object_id, relation_type, confidence,
+                chunk["chunk_id"], chunk["source_id"], chunk["privacy_scope"],
+                json_dumps(chunk.get("source_lineage") or {}), now, now, now, basis, evidence_ref,
+            )
+        else:
+            if basis not in entity_layer.STRUCTURAL_BASES:
+                raise ValueError("only code_map/ledger relations may omit an evidence chunk")
+            relation_id = stable_hash(f"relation:{subject_id}:{relation_type}:{object_id}:{basis}")
+            values = (
+                relation_id, subject_id, object_id, relation_type, confidence,
+                None, None, STRUCTURAL_SCOPE,
+                json_dumps({"basis": basis}), now, now, now, basis, evidence_ref,
+            )
+        return conn.execute(
+            """
+            INSERT OR IGNORE INTO relations(
+              relation_id, subject_entity_id, object_entity_id, relation_type, confidence,
+              evidence_chunk_id, source_id, privacy_scope, source_lineage_json, valid_from, valid_to,
+              observed_at, status, created_at, updated_at, basis, evidence_ref
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 'active', ?, ?, ?, ?)
+            """,
+            values,
+        ).rowcount
 
     def _ensure_entity(self, conn: sqlite3.Connection, name: str) -> tuple[str, bool]:
         canonical = normalize_name(name)
@@ -2848,13 +3213,292 @@ class OntologyRuntime:
             """,
             (entity_id, canonical, entity_type, now, now),
         ).rowcount == 1
+        if not inserted:
+            existing = conn.execute("SELECT entity_id FROM entities WHERE canonical_name = ?", (canonical,)).fetchone()
+            if existing is not None:
+                entity_id = existing["entity_id"]
         conn.execute(
             "INSERT OR IGNORE INTO entity_aliases(alias, normalized_alias, entity_id, created_at) VALUES (?, ?, ?, ?)",
             (canonical, key, entity_id, now),
         )
+        if self._entity_layer_ready:
+            conn.executemany(
+                "INSERT OR IGNORE INTO entity_keys(key, entity_id, kind) VALUES (?, ?, ?)",
+                [(canonical.lower(), entity_id, "exact"), (key, entity_id, "words")] if key else [],
+            )
         return entity_id, inserted
 
-    def _search_chunks(self, conn: sqlite3.Connection, question: str, scopes: list[str], limit: int) -> list[dict[str, Any]]:
+    def _ensure_code_entity(self, conn: sqlite3.Connection, entity_type: str, name: str) -> tuple[str, bool]:
+        """Entity by exact canonical name (code names are case-sensitive)."""
+
+        row = conn.execute(
+            "SELECT entity_id, entity_type FROM entities WHERE canonical_name = ?", (name,)
+        ).fetchone()
+        if row is not None:
+            # A name first seen as a bare code id becomes a symbol once the
+            # code map defines it.
+            if entity_type in ("symbol", "file") and row["entity_type"] in ("code_id", "path", "doc", "concept"):
+                conn.execute(
+                    "UPDATE entities SET entity_type = ?, updated_at = ? WHERE entity_id = ?",
+                    (entity_type, utc_now(), row["entity_id"]),
+                )
+            return row["entity_id"], False
+        entity_id = stable_hash(f"entity:{entity_type}:{name}")
+        now = utc_now()
+        inserted = conn.execute(
+            """
+            INSERT OR IGNORE INTO entities(entity_id, canonical_name, entity_type, status, confidence, created_at, updated_at)
+            VALUES (?, ?, ?, 'active', 0.9, ?, ?)
+            """,
+            (entity_id, name, entity_type, now, now),
+        ).rowcount == 1
+        key = normalized_key(name)
+        if key:
+            conn.execute(
+                "INSERT OR IGNORE INTO entity_aliases(alias, normalized_alias, entity_id, created_at) VALUES (?, ?, ?, ?)",
+                (name, key, entity_id, now),
+            )
+        conn.executemany(
+            "INSERT OR IGNORE INTO entity_keys(key, entity_id, kind) VALUES (?, ?, ?)",
+            [(value, entity_id, kind) for value, kind in entity_layer.entity_keys(entity_type, name)],
+        )
+        return entity_id, inserted
+
+    # --- corpus-level entity graph -------------------------------------------
+
+    def _project_code_index(self) -> entity_layer.CodeIndex:
+        payload = graph_spread.code_map_edges(self._graph_project_root())
+        snapshot = str(payload.get("snapshotId") or "") if payload else ""
+        cached = self._code_index
+        if cached is None or cached.snapshot_id != snapshot or (not snapshot and cached.available != bool(payload)):
+            cached = entity_layer.CodeIndex(payload)
+            self._code_index = cached
+        return cached
+
+    def refresh_entity_graph(self) -> dict[str, Any]:
+        """Re-derive code-map, ledger and co-occurrence edges when their inputs
+        changed (and re-extract every chunk once per extractor version)."""
+
+        if self.config.read_only:
+            raise RuntimeError("refresh_entity_graph requires a writable runtime")
+        with closing(self.connect()) as conn, conn:
+            report = self._refresh_entity_graph_guarded(conn)
+            self._prune_orphan_entities(conn)
+        return report
+
+    def _refresh_entity_graph_guarded(self, conn: sqlite3.Connection) -> dict[str, Any]:
+        """Fail-open wrapper: a broken code map or ledger never fails an ingest."""
+
+        if not self._entity_layer_ready:
+            return {"status": "skipped", "reason": "entity_layer_unavailable"}
+        conn.execute("SAVEPOINT entity_graph_refresh")
+        try:
+            report = self._refresh_entity_graph(conn)
+        except Exception as exc:  # noqa: BLE001 - document retrieval must not depend on the graph
+            conn.execute("ROLLBACK TO entity_graph_refresh")
+            conn.execute("RELEASE entity_graph_refresh")
+            return {"status": "error", "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+        conn.execute("RELEASE entity_graph_refresh")
+        return report
+
+    def _entity_graph_state(self, conn: sqlite3.Connection) -> dict[str, Any]:
+        row = conn.execute(
+            "SELECT config_json FROM runtime_adapters WHERE name = ?", (ENTITY_LAYER_ADAPTER,)
+        ).fetchone()
+        return json_loads(row["config_json"], {}) if row is not None else {}
+
+    def _refresh_entity_graph(self, conn: sqlite3.Connection) -> dict[str, Any]:
+        import time as _time
+
+        started = _time.perf_counter()
+        state = self._entity_graph_state(conn)
+        root = self._graph_project_root()
+        code = self._project_code_index()
+        ledger_version = graph_spread._file_version(root / graph_spread.CONTACT_LEDGER_RELATIVE) if root else None
+        report: dict[str, Any] = {"status": "ok", "extractor": entity_layer.EXTRACTOR_VERSION}
+        reextract = state.get("extractor") != entity_layer.EXTRACTOR_VERSION
+        if reextract:
+            report["reextracted_chunks"] = self._reextract_all_chunks(conn)
+        structural_key = f"{code.snapshot_id}|{list(ledger_version) if ledger_version else ''}"
+        if reextract or state.get("structural") != structural_key:
+            report["structural"] = self._write_structural_edges(conn, code, root)
+        signature = list(conn.execute("SELECT count(*), coalesce(max(rowid), 0) FROM entity_mentions").fetchone())
+        signature.append(conn.execute("SELECT count(*) FROM chunks").fetchone()[0])
+        if reextract or state.get("mentions") != signature or "structural" in report:
+            report["co_occurs"] = self._write_cooccurrence_edges(conn)
+        report["seconds"] = round(_time.perf_counter() - started, 3)
+        new_state = {
+            "schema": "ontology-entity-layer.v1",
+            "extractor": entity_layer.EXTRACTOR_VERSION,
+            "structural": structural_key,
+            "mentions": signature,
+            "code_map_snapshot": code.snapshot_id,
+        }
+        if new_state != state:
+            self._upsert_runtime_adapter(
+                conn,
+                name=ENTITY_LAYER_ADAPTER,
+                kind="graph",
+                status="available",
+                config_json=json_dumps(new_state),
+            )
+        report["changed"] = sorted(key for key in ("reextracted_chunks", "structural", "co_occurs") if key in report)
+        return report
+
+    def _reextract_all_chunks(self, conn: sqlite3.Connection) -> int:
+        """One-time (per extractor version) backfill of every stored chunk."""
+
+        conn.execute("DELETE FROM entity_mentions")
+        bases = ", ".join(f"'{basis}'" for basis in entity_layer.EXTRACTED_BASES)
+        conn.execute(f"DELETE FROM relations WHERE basis IN ({bases})")
+        documents: dict[str, str] = {}
+        for row in conn.execute(
+            """
+            SELECT c.source_id, c.text, s.display_name
+            FROM chunks c JOIN sources s ON s.source_id = c.source_id
+            WHERE c.chunk_index = 0
+            """
+        ):
+            documents[row["source_id"]] = entity_layer.document_path(row["text"], row["display_name"])
+        count = 0
+        rows = conn.execute(
+            "SELECT chunk_id, source_id, text, privacy_scope, source_lineage_json, source_span_json "
+            "FROM chunks ORDER BY source_id, chunk_index"
+        ).fetchall()
+        field_chunks: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            chunk = {
+                "chunk_id": row["chunk_id"],
+                "source_id": row["source_id"],
+                "text": row["text"],
+                "privacy_scope": row["privacy_scope"],
+                "source_lineage": json_loads(row["source_lineage_json"], {}),
+                "source_span": json_loads(row["source_span_json"], {}),
+            }
+            self._extract_and_write_graph(conn, chunk, document=documents.get(row["source_id"]))
+            if chunk["source_span"].get("kind") == "json_path":
+                field_chunks.setdefault(row["source_id"], []).append(chunk)
+            count += 1
+        for chunks in field_chunks.values():
+            self._write_declared_object_relations(conn, chunks)
+        return count
+
+    def _write_structural_edges(
+        self,
+        conn: sqlite3.Connection,
+        code: entity_layer.CodeIndex,
+        root: Path | None,
+    ) -> dict[str, int]:
+        structural = ", ".join(f"'{basis}'" for basis in entity_layer.STRUCTURAL_BASES)
+        conn.execute(f"DELETE FROM relations WHERE basis IN ({structural}) AND evidence_chunk_id IS NULL")
+        counts = {"defined_in": 0, "imported_by": 0, "read_by": 0, "co_edited": 0}
+        if code.available:
+            snapshot_ref = f"code-map:{code.snapshot_id}" if code.snapshot_id else "code-map"
+            for low in sorted(code.definitions):
+                files = code.definitions[low]
+                name = code.symbol_case.get(low, low)
+                if not entity_layer.code_shaped_name(name) or len(files) > entity_layer.DEFINITION_MAX_FILES:
+                    continue
+                symbol_id, _ = self._ensure_code_entity(conn, "symbol", name)
+                for path in files:
+                    file_id, _ = self._ensure_code_entity(conn, "file", path)
+                    counts["defined_in"] += self._insert_relation(
+                        conn, symbol_id, file_id, "defined_in", 0.95,
+                        basis=entity_layer.BASIS_CODE_MAP, evidence_ref=snapshot_ref,
+                    )
+            for dependency, importer, relation in code.edges:
+                if relation != "imports":
+                    continue
+                # {from: X, to: Y, relation: imports} means Y imports X.
+                dependency_id, _ = self._ensure_code_entity(conn, "file", dependency)
+                importer_id, _ = self._ensure_code_entity(conn, "file", importer)
+                counts["imported_by"] += self._insert_relation(
+                    conn, dependency_id, importer_id, "imported_by", 0.9,
+                    basis=entity_layer.BASIS_CODE_MAP, evidence_ref=snapshot_ref,
+                )
+            if root is not None:
+                # The code map indexes identifiers, not string literals, so
+                # "which code reads AGENTLAS_X" had no edge (measured 1/3).
+                scan_ref = f"code-scan:{code.snapshot_id}" if code.snapshot_id else "code-scan"
+                for name, files in sorted(entity_layer.scan_env_reads(root, code.mapped).items()):
+                    env_id, _ = self._ensure_code_entity(conn, "env_var", name)
+                    for path in sorted(files)[:25]:
+                        file_id, _ = self._ensure_code_entity(conn, "file", path)
+                        counts["read_by"] += self._insert_relation(
+                            conn, env_id, file_id, "read_by", 0.9,
+                            basis=entity_layer.BASIS_CODE_SCAN, evidence_ref=scan_ref,
+                        )
+        pairs = entity_layer.co_edit_pairs(graph_spread.co_edit_units(root), graph_spread.MAX_SESSION_FILES)
+        for (left, right), units in sorted(pairs.items()):
+            if units < entity_layer.CO_EDIT_MIN_UNITS:
+                continue
+            left_id, _ = self._ensure_code_entity(conn, "file" if left in code.mapped else "path", left)
+            right_id, _ = self._ensure_code_entity(conn, "file" if right in code.mapped else "path", right)
+            counts["co_edited"] += self._insert_relation(
+                conn, left_id, right_id, "co_edited", round(min(1.0, units / 5.0), 3),
+                basis=entity_layer.BASIS_LEDGER, evidence_ref=f"contact-ledger:{units}-units",
+            )
+        return counts
+
+    def _write_cooccurrence_edges(self, conn: sqlite3.Connection) -> int:
+        conn.execute("DELETE FROM relations WHERE basis = ?", (entity_layer.BASIS_CORRELATION,))
+        by_scope: dict[str, dict[str, set[str]]] = {}
+        entity_type: dict[str, str] = {}
+        for row in conn.execute(
+            """
+            SELECT m.chunk_id, m.entity_id, e.entity_type, c.privacy_scope
+            FROM entity_mentions m
+            JOIN entities e ON e.entity_id = m.entity_id
+            JOIN chunks c ON c.chunk_id = m.chunk_id
+            WHERE m.role = 'mention'
+            """
+        ):
+            by_scope.setdefault(row["privacy_scope"], {}).setdefault(row["chunk_id"], set()).add(row["entity_id"])
+            entity_type[row["entity_id"]] = row["entity_type"]
+        chunk_totals = {
+            row[0]: row[1] for row in conn.execute("SELECT privacy_scope, count(*) FROM chunks GROUP BY privacy_scope")
+        }
+        written = 0
+        for scope, chunk_entities in sorted(by_scope.items()):
+            edges = entity_layer.cooccurrence_edges(
+                chunk_entities, entity_type, total_chunks=chunk_totals.get(scope)
+            )
+            evidence = {chunk_id for *_rest, chunk_id in edges}
+            chunks: dict[str, dict[str, Any]] = {}
+            evidence_list = sorted(evidence)
+            for index in range(0, len(evidence_list), 500):
+                part = evidence_list[index : index + 500]
+                marks = ", ".join(["?"] * len(part))
+                for row in conn.execute(
+                    f"SELECT chunk_id, source_id, privacy_scope, source_lineage_json FROM chunks WHERE chunk_id IN ({marks})",
+                    tuple(part),
+                ):
+                    chunks[row["chunk_id"]] = {
+                        "chunk_id": row["chunk_id"],
+                        "source_id": row["source_id"],
+                        "privacy_scope": row["privacy_scope"],
+                        "source_lineage": json_loads(row["source_lineage_json"], {}),
+                    }
+            for left, right, npmi, chunk_id in edges:
+                chunk = chunks.get(chunk_id)
+                if chunk is None:
+                    continue
+                written += self._insert_relation(
+                    conn, left, right, "co_occurs", npmi,
+                    basis=entity_layer.BASIS_CORRELATION, chunk=chunk,
+                )
+        return written
+
+    def _search_chunks(
+        self,
+        conn: sqlite3.Connection,
+        question: str,
+        scopes: list[str],
+        limit: int,
+        entity_scores: dict[str, float] | None = None,
+        entity_weight: float = 1.0,
+        entity_order_out: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         scope_marks = ", ".join(["?"] * len(scopes))
         pool: dict[str, dict[str, Any]] = {}
         vectors: dict[str, list[float]] = {}
@@ -2915,10 +3559,55 @@ class OntologyRuntime:
         vector_order = sorted(pool, key=lambda chunk_id: pool[chunk_id]["vector_score"], reverse=True)
         fts_rank = {chunk_id: index for index, chunk_id in enumerate(fts_order)}
         vector_rank = {chunk_id: index for index, chunk_id in enumerate(vector_order)}
+        # Third channel: chunks that mention the question's entities or their
+        # one-hop neighbours (code-map definitions, importers, co-edits). Its
+        # own order breaks entity-score ties by text relevance — a known item
+        # that names a common entity must not lose to an arbitrary chunk id
+        # (measured on holdout known-item samples). Entity-only chunks never
+        # join the lexical/vector ranks, so those two channels are unchanged.
+        entity_rank: dict[str, int] = {}
+        if entity_scores:
+            extra: dict[str, dict[str, Any]] = {}
+            missing = [chunk_id for chunk_id in entity_scores if chunk_id not in pool]
+            for index in range(0, len(missing), 400):
+                part = missing[index : index + 400]
+                marks = ", ".join(["?"] * len(part))
+                for row in conn.execute(
+                    f"""
+                    SELECT c.*, s.uri AS source_uri, s.source_type
+                    FROM chunks c JOIN sources s ON s.source_id = c.source_id
+                    WHERE c.chunk_id IN ({marks}) AND c.privacy_scope IN ({scope_marks})
+                      AND s.privacy_scope = c.privacy_scope
+                    """,
+                    (*part, *scopes),
+                ):
+                    item = self._chunk_row(row)
+                    item["full_text_score"] = 0.0
+                    item["vector_score"] = max(
+                        0.0, cosine_similarity(query_vector, json_loads(row["vector_json"], []))
+                    )
+                    extra[row["chunk_id"]] = item
+            candidates = [chunk_id for chunk_id in entity_scores if chunk_id in pool or chunk_id in extra]
+            ordered = sorted(
+                candidates,
+                key=lambda chunk_id: (
+                    -round(entity_scores[chunk_id], 9),
+                    fts_rank.get(chunk_id, RRF_MISSING_RANK),
+                    -(pool.get(chunk_id) or extra[chunk_id])["vector_score"],
+                    chunk_id,
+                ),
+            )[:MAX_ENTITY_CHANNEL]
+            for index, chunk_id in enumerate(ordered):
+                entity_rank[chunk_id] = index
+                if chunk_id not in pool:
+                    pool[chunk_id] = extra[chunk_id]
+            if entity_order_out is not None:
+                entity_order_out.extend(ordered)
         relevant: list[dict[str, Any]] = []
         for chunk_id, item in pool.items():
             if (
                 chunk_id not in fts_rank
+                and chunk_id not in entity_rank
                 and item.get("full_text_score", 0.0) <= 0.0
                 and (
                     item["vector_score"] < vector_floor
@@ -2928,7 +3617,8 @@ class OntologyRuntime:
                 continue
             item["score"] = round(
                 1.0 / (RRF_K + fts_rank.get(chunk_id, RRF_MISSING_RANK))
-                + 1.0 / (RRF_K + vector_rank.get(chunk_id, RRF_MISSING_RANK)),
+                + 1.0 / (RRF_K + vector_rank.get(chunk_id, RRF_MISSING_RANK))
+                + (entity_weight / (RRF_K + entity_rank[chunk_id]) if chunk_id in entity_rank else 0.0),
                 6,
             )
             relevant.append(item)
@@ -3023,17 +3713,247 @@ class OntologyRuntime:
     def _vector_adapter_matches(self, stored_adapter: str | None) -> bool:
         return stored_adapter in {self.vector_adapter.name, self.vector_adapter.identity}
 
+    def _relation_scope_sql(self, scope_marks: str) -> tuple[str, str]:
+        """(joins, predicate) that admit a relation only with proven scope.
+
+        Chunk-evidenced edges must agree with their chunk and source (as
+        always). Structural code-map/ledger edges have no chunk; they are
+        admitted by their pinned scope alone.
+        """
+        if not self._entity_layer_ready:
+            joins = (
+                "JOIN chunks c ON c.chunk_id = r.evidence_chunk_id "
+                "JOIN sources src ON src.source_id = r.source_id"
+            )
+            predicate = (
+                f"r.privacy_scope IN ({scope_marks}) AND c.source_id = r.source_id "
+                "AND c.privacy_scope = r.privacy_scope AND src.privacy_scope = r.privacy_scope"
+            )
+            return joins, predicate
+        structural = ", ".join(f"'{basis}'" for basis in entity_layer.STRUCTURAL_BASES)
+        joins = (
+            "LEFT JOIN chunks c ON c.chunk_id = r.evidence_chunk_id "
+            "LEFT JOIN sources src ON src.source_id = r.source_id"
+        )
+        predicate = (
+            f"r.privacy_scope IN ({scope_marks}) AND ("
+            f"(r.evidence_chunk_id IS NULL AND r.basis IN ({structural}))"
+            " OR (c.chunk_id IS NOT NULL AND c.source_id = r.source_id"
+            " AND c.privacy_scope = r.privacy_scope AND src.privacy_scope = r.privacy_scope))"
+        )
+        return joins, predicate
+
+    def _link_question_entities(
+        self,
+        conn: sqlite3.Connection,
+        question: str,
+        allowed_scopes: list[str],
+    ) -> dict[str, float]:
+        """Question -> entity seeds ``{entity_id: weight}``.
+
+        Code-shaped tokens (``_ . /``, camelCase, CONSTANT_CASE, /commands) are
+        matched exactly against entity keys, a partial path by unique suffix,
+        and the word-split keys ("graph spread") as whole word n-grams, so an
+        English sentence reaches a code name. Plain words are not linked on
+        their own (over-linking). Korean questions link through the ASCII
+        names they contain. Declared entities ("Project Helios") still link by
+        their exact name.
+        """
+        if not allowed_scopes or not self._entity_layer_ready:
+            return {}
+        ordered: "dict[str, float]" = {}
+
+        def add(entity_id: str, weight: float) -> None:
+            if entity_id not in ordered:
+                ordered[entity_id] = weight
+
+        word_text = question
+        for token in entity_layer.question_tokens(question):
+            low = token.lower()
+            candidates = list(dict.fromkeys([low, low.rstrip("()"), low.rstrip(".")]))
+            marks = ", ".join(["?"] * len(candidates))
+            rows = conn.execute(
+                f"SELECT entity_id FROM entity_keys WHERE key IN ({marks}) AND kind != 'words' ORDER BY entity_id",
+                tuple(candidates),
+            ).fetchall()
+            for row in rows:
+                add(row["entity_id"], 1.0)
+            if rows:
+                # A linked name is not also a phrase: "ensure_access_token"
+                # must not link `_access_token` through "access token".
+                word_text = word_text.replace(token, " | ")
+            if not rows and "/" in low.strip("/"):
+                suffix = low.strip("/").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                hits = conn.execute(
+                    "SELECT entity_id FROM entities WHERE entity_type IN ('file', 'doc', 'path') "
+                    "AND lower(canonical_name) LIKE ? ESCAPE '\\' LIMIT 2",
+                    ("%/" + suffix,),
+                ).fetchall()
+                if len(hits) == 1:
+                    add(hits[0]["entity_id"], 1.0)
+        grams = [
+            gram
+            for segment in word_text.split("|")
+            for gram in entity_layer.question_word_ngrams(segment)
+        ]
+        for index in range(0, len(grams), 200):
+            part = grams[index : index + 200]
+            marks = ", ".join(["?"] * len(part))
+            for row in conn.execute(
+                f"SELECT entity_id FROM entity_keys WHERE key IN ({marks}) AND kind = 'words' ORDER BY entity_id",
+                tuple(part),
+            ):
+                # An English phrase that happens to spell a code name is weaker
+                # evidence than the code name itself.
+                add(row["entity_id"], WORDS_SEED_WEIGHT)
+        for phrase in re_find_title_phrases(question):
+            words = phrase.split()
+            # "Project Helios Memory Curator" names two declared entities.
+            spans = [phrase] + [
+                " ".join(words[start : start + size])
+                for size in range(len(words) - 1, 1, -1)
+                for start in range(0, len(words) - size + 1)
+            ]
+            for name in spans:
+                entity = self._find_entity(conn, name)
+                # Title-Case prose names only declared entities: "Agentlas Hub"
+                # in a sentence is not the /agentlas-hub command (measured: that
+                # loose match displaced a known-item answer).
+                if entity is not None and entity["entity_type"] not in CODE_ENTITY_TYPES:
+                    add(entity["entity_id"], 1.0)
+        if not ordered:
+            return {}
+        ids = list(ordered)[: entity_layer.MAX_LINK_SEEDS * 3]
+        marks = ", ".join(["?"] * len(ids))
+        kinds = {
+            row["entity_id"]: row["entity_type"]
+            for row in conn.execute(f"SELECT entity_id, entity_type FROM entities WHERE entity_id IN ({marks})", tuple(ids))
+        }
+        frequency = {
+            row[0]: row[1]
+            for row in conn.execute(
+                f"SELECT entity_id, count(*) FROM entity_mentions WHERE entity_id IN ({marks}) GROUP BY entity_id",
+                tuple(ids),
+            )
+        }
+        total = conn.execute("SELECT count(*) FROM chunks").fetchone()[0] or 1
+        seeds: dict[str, float] = {}
+        for entity_id in ids:
+            kind = kinds.get(entity_id)
+            if kind is None:
+                continue
+            # A name in >5% of chunks discriminates nothing (a hub), unless it
+            # is a code definition or file the question named.
+            if frequency.get(entity_id, 0) > 0.05 * total and kind not in ("symbol", "file"):
+                continue
+            if not self._entity_accessible(conn, entity_id, allowed_scopes):
+                continue
+            seeds[entity_id] = ordered[entity_id]
+            if len(seeds) >= entity_layer.MAX_LINK_SEEDS:
+                break
+        return seeds
+
+    def _entity_accessible(self, conn: sqlite3.Connection, entity_id: str, allowed_scopes: list[str]) -> bool:
+        scope_marks = ", ".join(["?"] * len(allowed_scopes))
+        if self._entity_layer_ready:
+            row = conn.execute(
+                f"""
+                SELECT 1 FROM entity_mentions m
+                JOIN chunks c ON c.chunk_id = m.chunk_id
+                JOIN sources s ON s.source_id = c.source_id
+                WHERE m.entity_id = ? AND c.privacy_scope IN ({scope_marks}) AND s.privacy_scope = c.privacy_scope
+                LIMIT 1
+                """,
+                (entity_id, *allowed_scopes),
+            ).fetchone()
+            if row is not None:
+                return True
+        return self._entity_has_accessible_relation(conn, entity_id, allowed_scopes)
+
+    def _seed_relation_rows(
+        self,
+        conn: sqlite3.Connection,
+        seeds: Iterable[str],
+        allowed_scopes: list[str],
+        limit: int = 400,
+    ) -> list[sqlite3.Row]:
+        seed_ids = list(seeds)
+        if not seed_ids or not allowed_scopes:
+            return []
+        marks = ", ".join(["?"] * len(seed_ids))
+        scope_marks = ", ".join(["?"] * len(allowed_scopes))
+        joins, predicate = self._relation_scope_sql(scope_marks)
+        return conn.execute(
+            f"""
+            SELECT r.*, s.canonical_name AS subject, o.canonical_name AS object
+            FROM relations r
+            JOIN entities s ON s.entity_id = r.subject_entity_id
+            JOIN entities o ON o.entity_id = r.object_entity_id
+            {joins}
+            WHERE r.status = 'active'
+              AND (r.subject_entity_id IN ({marks}) OR r.object_entity_id IN ({marks}))
+              AND {predicate}
+            ORDER BY r.confidence DESC, r.relation_id
+            LIMIT ?
+            """,
+            (*seed_ids, *seed_ids, *allowed_scopes, limit),
+        ).fetchall()
+
+    def _entity_channel(
+        self,
+        conn: sqlite3.Connection,
+        seeds: dict[str, float],
+        allowed_scopes: list[str],
+    ) -> dict[str, float]:
+        """Chunks scored by the seeds and their one-hop neighbours.
+
+        Seed weight 1; a neighbour gets 0.5 x relation-type weight x edge
+        confidence (floor 0.3). A chunk scores sum(weight / (1 + 0.1 * df)).
+        """
+        if not seeds or not allowed_scopes or not self._entity_layer_ready:
+            return {}
+        weights: dict[str, float] = dict(seeds)
+        for row in self._seed_relation_rows(conn, seeds, allowed_scopes):
+            other = row["object_entity_id"] if row["subject_entity_id"] in seeds else row["subject_entity_id"]
+            hop = 0.5 * entity_layer.HOP_WEIGHT.get(row["relation_type"], 0.3) * max(float(row["confidence"]), 0.3)
+            if hop > weights.get(other, 0.0):
+                weights[other] = hop
+        ids = list(weights)[:600]
+        marks = ", ".join(["?"] * len(ids))
+        scope_marks = ", ".join(["?"] * len(allowed_scopes))
+        rows = conn.execute(
+            f"""
+            SELECT m.entity_id, m.chunk_id FROM entity_mentions m
+            JOIN chunks c ON c.chunk_id = m.chunk_id
+            JOIN sources s ON s.source_id = c.source_id
+            WHERE m.entity_id IN ({marks}) AND c.privacy_scope IN ({scope_marks}) AND s.privacy_scope = c.privacy_scope
+            """,
+            (*ids, *allowed_scopes),
+        ).fetchall()
+        frequency: dict[str, int] = {}
+        for row in rows:
+            frequency[row["entity_id"]] = frequency.get(row["entity_id"], 0) + 1
+        score: dict[str, float] = {}
+        for row in rows:
+            entity_id = row["entity_id"]
+            score[row["chunk_id"]] = score.get(row["chunk_id"], 0.0) + weights[entity_id] / (
+                1.0 + 0.1 * frequency[entity_id]
+            )
+        ranked = sorted(score, key=lambda chunk_id: (-score[chunk_id], chunk_id))[:ENTITY_CHANNEL_CANDIDATES]
+        return {chunk_id: score[chunk_id] for chunk_id in ranked}
+
     def _related_entities(
         self,
         conn: sqlite3.Connection,
         question: str,
         chunks: list[dict[str, Any]],
         allowed_scopes: list[str],
+        seeds: dict[str, float] | None = None,
     ) -> list[dict[str, Any]]:
         if not allowed_scopes:
             return []
         chunk_ids = [chunk["chunk_id"] for chunk in chunks]
-        entity_ids: set[str] = set()
+        entity_ids: set[str] = set(seeds or {})
         if chunk_ids:
             chunk_marks = ", ".join(["?"] * len(chunk_ids))
             scope_marks = ", ".join(["?"] * len(allowed_scopes))
@@ -3048,19 +3968,23 @@ class OntologyRuntime:
                   AND c.source_id = r.source_id
                   AND c.privacy_scope = r.privacy_scope
                   AND src.privacy_scope = r.privacy_scope
+                LIMIT 200
                 """,
                 (*chunk_ids, *allowed_scopes),
             ):
                 entity_ids.add(row["subject_entity_id"])
                 entity_ids.add(row["object_entity_id"])
-        for name in extract_entity_names(question):
-            entity = self._find_entity(conn, name)
-            if entity and self._entity_has_accessible_relation(conn, entity["entity_id"], allowed_scopes):
-                entity_ids.add(entity["entity_id"])
+        if seeds is None:
+            for name in re_find_title_phrases(question):
+                entity = self._find_entity(conn, name)
+                if entity and self._entity_has_accessible_relation(conn, entity["entity_id"], allowed_scopes):
+                    entity_ids.add(entity["entity_id"])
         if not entity_ids:
             return []
         marks = ", ".join(["?"] * len(entity_ids))
-        rows = conn.execute(f"SELECT * FROM entities WHERE entity_id IN ({marks}) ORDER BY canonical_name", tuple(entity_ids)).fetchall()
+        rows = conn.execute(
+            f"SELECT * FROM entities WHERE entity_id IN ({marks}) ORDER BY canonical_name LIMIT 50", tuple(entity_ids)
+        ).fetchall()
         return [self._entity_row(row) for row in rows]
 
     def _relation_edges(
@@ -3069,45 +3993,145 @@ class OntologyRuntime:
         entities: list[dict[str, Any]],
         chunks: list[dict[str, Any]],
         allowed_scopes: list[str],
+        seeds: dict[str, float] | None = None,
+        entity_chunks: list[str] | None = None,
     ) -> list[dict[str, Any]]:
+        """Relation lines for the answer context, most useful and most varied
+        first: edges of the question's own entities, then edges evidenced by
+        the retrieved chunks, interleaved one relation type at a time (the
+        desktop renders the first six)."""
         if not allowed_scopes:
             return []
-        entity_ids = [entity["entity_id"] for entity in entities]
-        chunk_ids = [chunk["chunk_id"] for chunk in chunks]
-        clauses = []
-        args: list[Any] = []
-        if entity_ids:
-            marks = ", ".join(["?"] * len(entity_ids))
-            clauses.append(f"(r.subject_entity_id IN ({marks}) OR r.object_entity_id IN ({marks}))")
-            args.extend(entity_ids)
-            args.extend(entity_ids)
-        if chunk_ids:
-            marks = ", ".join(["?"] * len(chunk_ids))
-            clauses.append(f"r.evidence_chunk_id IN ({marks})")
-            args.extend(chunk_ids)
-        if not clauses:
-            return []
         scope_marks = ", ".join(["?"] * len(allowed_scopes))
-        args.extend(allowed_scopes)
-        rows = conn.execute(
-            f"""
-            SELECT r.*, s.canonical_name AS subject, o.canonical_name AS object
-            FROM relations r
-            JOIN entities s ON s.entity_id = r.subject_entity_id
-            JOIN entities o ON o.entity_id = r.object_entity_id
-            JOIN chunks c ON c.chunk_id = r.evidence_chunk_id
-            JOIN sources src ON src.source_id = r.source_id
-            WHERE r.status = 'active' AND ({" OR ".join(clauses)})
-              AND r.privacy_scope IN ({scope_marks})
-              AND c.source_id = r.source_id
-              AND c.privacy_scope = r.privacy_scope
-              AND src.privacy_scope = r.privacy_scope
-            ORDER BY r.confidence DESC, r.observed_at DESC
-            LIMIT 20
-            """,
-            tuple(args),
-        ).fetchall()
-        return [self._relation_row(row) for row in rows]
+        joins, predicate = self._relation_scope_sql(scope_marks)
+        candidates: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def take(rows: Iterable[sqlite3.Row], rank_base: int) -> None:
+            for offset, row in enumerate(rows):
+                if row["relation_id"] in seen:
+                    continue
+                seen.add(row["relation_id"])
+                item = self._relation_row(row)
+                item["_rank"] = rank_base + offset
+                candidates.append(item)
+
+        if seeds:
+            take(self._seed_relation_rows(conn, seeds, allowed_scopes, limit=200), 0)
+        chunk_ids = [chunk["chunk_id"] for chunk in chunks]
+        fallback_ids = [entity["entity_id"] for entity in entities] if not seeds else []
+        clauses: list[str] = []
+        args: list[Any] = []
+        if chunk_ids:
+            clauses.append(f"r.evidence_chunk_id IN ({', '.join(['?'] * len(chunk_ids))})")
+            args.extend(chunk_ids)
+        if fallback_ids:
+            marks = ", ".join(["?"] * len(fallback_ids))
+            clauses.append(f"(r.subject_entity_id IN ({marks}) OR r.object_entity_id IN ({marks}))")
+            args.extend(fallback_ids)
+            args.extend(fallback_ids)
+        if clauses:
+            take(
+                conn.execute(
+                    f"""
+                    SELECT r.*, s.canonical_name AS subject, o.canonical_name AS object
+                    FROM relations r
+                    JOIN entities s ON s.entity_id = r.subject_entity_id
+                    JOIN entities o ON o.entity_id = r.object_entity_id
+                    {joins}
+                    WHERE r.status = 'active' AND ({" OR ".join(clauses)})
+                      AND {predicate}
+                    ORDER BY r.confidence DESC, r.observed_at DESC, r.relation_id
+                    LIMIT 100
+                    """,
+                    (*args, *allowed_scopes),
+                ).fetchall(),
+                10_000,
+            )
+        if seeds and self._entity_layer_ready:
+            candidates.extend(self._mention_lines(conn, seeds, entity_chunks or [], allowed_scopes))
+        if not self._entity_layer_ready:
+            candidates.sort(key=lambda item: (-float(item["confidence"]), item["_rank"]))
+            chosen = candidates[:MAX_RELATION_EDGES]
+        else:
+            # The question's own entities first (interleaved by type), then
+            # edges that merely sit in the retrieved chunks.
+            own = [item for item in candidates if item["_rank"] < 10_000]
+            chosen = entity_layer.round_robin(own, MAX_RELATION_EDGES)
+            if len(chosen) < MAX_RELATION_EDGES:
+                rest = [item for item in candidates if item["_rank"] >= 10_000]
+                chosen += entity_layer.round_robin(rest, MAX_RELATION_EDGES - len(chosen))
+        for item in chosen:
+            item.pop("_rank", None)
+        return chosen
+
+    def _mention_lines(
+        self,
+        conn: sqlite3.Connection,
+        seeds: dict[str, float],
+        entity_chunks: list[str],
+        allowed_scopes: list[str],
+        limit: int = 2,
+    ) -> list[dict[str, Any]]:
+        """"<document> --mentions--> <entity>" lines, synthesized from
+        entity_mentions (no stored relation row): which document talks about
+        the entity the question named."""
+        out: list[dict[str, Any]] = []
+        pairs: set[tuple[str, str]] = set()
+        if not entity_chunks:
+            return out
+        seed_ids = list(seeds)
+        seed_marks = ", ".join(["?"] * len(seed_ids))
+        scope_marks = ", ".join(["?"] * len(allowed_scopes))
+        for rank, chunk_id in enumerate(entity_chunks):
+            if len(out) >= limit:
+                break
+            rows = conn.execute(
+                f"""
+                SELECT m.entity_id, m.role, e.canonical_name, c.source_id, c.privacy_scope, c.source_lineage_json
+                FROM entity_mentions m
+                JOIN entities e ON e.entity_id = m.entity_id
+                JOIN chunks c ON c.chunk_id = m.chunk_id
+                JOIN sources s ON s.source_id = c.source_id
+                WHERE m.chunk_id = ? AND (m.role = 'self' OR m.entity_id IN ({seed_marks}))
+                  AND c.privacy_scope IN ({scope_marks}) AND s.privacy_scope = c.privacy_scope
+                """,
+                (chunk_id, *seed_ids, *allowed_scopes),
+            ).fetchall()
+            document = next((row for row in rows if row["role"] == "self"), None)
+            if document is None:
+                continue
+            for row in rows:
+                if row["role"] == "self" or row["entity_id"] == document["entity_id"]:
+                    continue
+                if (document["entity_id"], row["entity_id"]) in pairs:
+                    continue
+                pairs.add((document["entity_id"], row["entity_id"]))
+                relation_id = stable_hash(f"mention:{document['entity_id']}:{row['entity_id']}:{chunk_id}")
+                out.append(
+                    {
+                        "relation_id": relation_id,
+                        "subject_entity_id": document["entity_id"],
+                        "object_entity_id": row["entity_id"],
+                        "subject": document["canonical_name"],
+                        "object": row["canonical_name"],
+                        "relation_type": "mentions",
+                        "confidence": 1.0,
+                        "evidence_chunk_id": chunk_id,
+                        "source_id": row["source_id"],
+                        "privacy_scope": row["privacy_scope"],
+                        "source_lineage": json_loads(row["source_lineage_json"], {}),
+                        "valid_from": None,
+                        "valid_to": None,
+                        "observed_at": None,
+                        "status": "active",
+                        "basis": "structure",
+                        "evidence_ref": None,
+                        "_rank": rank,
+                    }
+                )
+                break
+        return out
 
     def _create_memory_candidates(
         self,
@@ -3242,18 +4266,15 @@ class OntologyRuntime:
         if not allowed_scopes:
             return False
         scope_marks = ", ".join(["?"] * len(allowed_scopes))
+        joins, predicate = self._relation_scope_sql(scope_marks)
         row = conn.execute(
             f"""
             SELECT 1
             FROM relations r
-            JOIN chunks c ON c.chunk_id = r.evidence_chunk_id
-            JOIN sources src ON src.source_id = r.source_id
+            {joins}
             WHERE (r.subject_entity_id = ? OR r.object_entity_id = ?)
               AND r.status = 'active'
-              AND r.privacy_scope IN ({scope_marks})
-              AND c.source_id = r.source_id
-              AND c.privacy_scope = r.privacy_scope
-              AND src.privacy_scope = r.privacy_scope
+              AND {predicate}
             LIMIT 1
             """,
             (entity_id, entity_id, *allowed_scopes),
@@ -3269,21 +4290,19 @@ class OntologyRuntime:
         if not allowed_scopes:
             return []
         scope_marks = ", ".join(["?"] * len(allowed_scopes))
+        joins, predicate = self._relation_scope_sql(scope_marks)
         rows = conn.execute(
             f"""
             SELECT r.*, s.canonical_name AS subject, o.canonical_name AS object
             FROM relations r
             JOIN entities s ON s.entity_id = r.subject_entity_id
             JOIN entities o ON o.entity_id = r.object_entity_id
-            JOIN chunks c ON c.chunk_id = r.evidence_chunk_id
-            JOIN sources src ON src.source_id = r.source_id
+            {joins}
             WHERE (r.subject_entity_id = ? OR r.object_entity_id = ?)
               AND r.status = 'active'
-              AND r.privacy_scope IN ({scope_marks})
-              AND c.source_id = r.source_id
-              AND c.privacy_scope = r.privacy_scope
-              AND src.privacy_scope = r.privacy_scope
-            ORDER BY r.confidence DESC, r.observed_at DESC
+              AND {predicate}
+            ORDER BY r.confidence DESC, r.observed_at DESC, r.relation_id
+            LIMIT 500
             """,
             (entity_id, entity_id, *allowed_scopes),
         ).fetchall()
@@ -3376,6 +4395,8 @@ class OntologyRuntime:
             "valid_to": row["valid_to"],
             "observed_at": row["observed_at"],
             "status": row["status"],
+            "basis": row["basis"] if "basis" in row.keys() else entity_layer.BASIS_ASSERTED,
+            "evidence_ref": row["evidence_ref"] if "evidence_ref" in row.keys() else None,
         }
 
     def _memory_candidate_row(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -3427,33 +4448,16 @@ class OntologyRuntime:
         }
 
 
-def extract_entity_names(text: str) -> list[str]:
-    names: set[str] = set()
-    for line in text.splitlines():
-        if line.startswith("#"):
-            value = normalize_name(line.lstrip("#"))
-            if value:
-                names.add(value)
-    for match in re_find_title_phrases(text):
-        names.add(match)
-    for key, value in extract_fields(text).items():
-        if key.split(".")[-1] in {"name", "team", "owner", "depends_on", "role"} or key.endswith("depends_on"):
-            for phrase in re_find_title_phrases(value):
-                names.add(phrase)
-            if is_entity_like(value):
-                names.add(normalize_name(value))
-    return sorted(name for name in names if len(name) >= 3 and normalized_key(name) not in {"not", "the", "and"})
+def extract_declared_relations(text: str) -> list[tuple[str, str, str, float]]:
+    """Relations a record declares in fields (``name``/``team`` + ``owner`` /
+    ``depends_on``): JSON, CSV and spreadsheet rows, YAML-ish frontmatter.
 
-
-def extract_relations(text: str) -> list[tuple[str, str, str, float]]:
+    Prose sentence patterns ("A depends on B", "A owns B") were dropped on
+    2026-09-23: measured 4/15 precise on real project documents, and the
+    survivors were a truncated "Core owns Cloud" and a test fixture's
+    fictional company.
+    """
     relations: list[tuple[str, str, str, float]] = []
-    phrase = r"([A-Z][A-Za-z0-9]+(?:[ \t]+[A-Z][A-Za-z0-9]+){0,4})"
-    for subject, obj in re_pairs(rf"{phrase}[ \t]+depends on[ \t]+{phrase}", text):
-        relations.append((subject, "depends_on", obj, 0.88))
-    for subject, obj in re_pairs(rf"{phrase}[ \t]+owns[ \t]+{phrase}", text):
-        relations.append((subject, "owns", obj, 0.84))
-    for subject, obj in re_pairs(rf"{phrase}[ \t]+creates[ \t]+{phrase}", text):
-        relations.append((subject, "creates", obj, 0.78))
     fields = extract_fields(text)
     subject = first_field(fields, ["name", "team", "$.team"])
     depends_on = first_field(fields, ["depends_on", "$.depends_on"])

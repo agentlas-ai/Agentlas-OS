@@ -263,15 +263,38 @@ def _load_code_map(path: Path, size: int) -> dict[str, Any]:
         if isinstance(src, str) and isinstance(dst, str) and src != dst:
             dependencies.setdefault(src, set()).add(dst)
     definitions: dict[str, set[str]] = {}
+    # Every definition site, keyed by the lower-case name (Context Map defIndex
+    # keys are all lower-case). The project ontology's defined_in edges read
+    # this; ``definitions`` keeps the <= 3-site filter recall has always used.
+    definitions_all: dict[str, list[str]] = {}
     raw_defs = payload.get("defIndex") if isinstance(payload.get("defIndex"), Mapping) else {}
     raw_refs = payload.get("refIndex") if isinstance(payload.get("refIndex"), Mapping) else {}
     for symbol, sites in raw_defs.items():
         files = {
             str(site.get("f")) for site in (sites or []) if isinstance(site, Mapping) and site.get("f")
         }
+        if files:
+            definitions_all[str(symbol).lower()] = sorted(files)
         # A name defined in many places identifies none of them.
         if files and len(files) <= 3:
-            definitions[str(symbol)] = files
+            definitions[str(symbol).lower()] = files
+    symbol_case: dict[str, str] = {}
+    raw_symbols = payload.get("fileSymbols") if isinstance(payload.get("fileSymbols"), Mapping) else {}
+    for symbols in raw_symbols.values():
+        for item in symbols or []:
+            if isinstance(item, Mapping) and isinstance(item.get("n"), str):
+                symbol_case.setdefault(item["n"].lower(), item["n"])
+    # Directed, typed edges exactly as the Context Map wrote them. Direction
+    # trap: {from: X, to: Y, relation: "imports"} means Y imports X (checked on
+    # execution_fabric.py: `from .stormbreaker_harness import`, edge
+    # from=stormbreaker_harness). Consumers must read it as "X imported_by Y".
+    typed_edges: list[tuple[str, str, str]] = []
+    for edge in payload.get("dependencyEdges") or []:
+        if isinstance(edge, Mapping):
+            src, dst = edge.get("from"), edge.get("to")
+            if isinstance(src, str) and isinstance(dst, str) and src != dst:
+                typed_edges.append((src, dst, str(edge.get("relation") or "imports")))
+    mapped = payload.get("mappedFiles") if isinstance(payload.get("mappedFiles"), list) else []
     if not dependencies:
         # Older maps without dependencyEdges: derive file edges from def/ref.
         for symbol, refs in raw_refs.items():
@@ -288,7 +311,16 @@ def _load_code_map(path: Path, size: int) -> dict[str, Any]:
         files |= targets
     for targets in definitions.values():
         files |= targets
-    return {"dependencies": dependencies, "definitions": definitions, "files": files}
+    return {
+        "dependencies": dependencies,
+        "definitions": definitions,
+        "files": files,
+        "snapshotId": str(payload.get("snapshotId") or ""),
+        "mappedFiles": sorted(str(item) for item in mapped if isinstance(item, str)),
+        "definitionsAll": definitions_all,
+        "symbolCase": symbol_case,
+        "dependencyEdges": typed_edges,
+    }
 
 
 def code_map_edges(root: Path | None) -> dict[str, Any]:
@@ -314,7 +346,9 @@ def symbol_files(text: str, definitions: Mapping[str, set[str]]) -> set[str]:
         token = match.group(0)
         if "_" not in token.strip("_") and not re.search(r"[a-z][A-Z]", token):
             continue
-        files = definitions.get(token)
+        # defIndex keys are lower-case: looking up the original case missed
+        # every camelCase/PascalCase symbol (75% of the desktop's symbols).
+        files = definitions.get(token) or definitions.get(token.lower())
         if files:
             found |= files
     return found

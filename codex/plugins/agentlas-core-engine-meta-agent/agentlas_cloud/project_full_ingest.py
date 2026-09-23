@@ -118,6 +118,18 @@ EXCLUDED_DIR_NAMES = {
 }
 VCS_MARKERS = (".git", ".hg", ".svn")
 
+
+def _test_corpus_directory(name: str) -> bool:
+    """Sample corpora a product's own tests ingest (``examples/ontology-corpus``).
+
+    Measured 2026-09-23: 2 of the 5 relations in Agentlas-OS's project graph
+    came from that corpus's fictional company ("Atlas Robotics owns Project
+    Helios"). A corpus is input to a test, not knowledge about the project.
+    """
+
+    lowered = name.lower()
+    return lowered == "corpus" or lowered.endswith(("-corpus", "_corpus", ".corpus"))
+
 HASH_COMMENT_SUFFIXES = {".py", ".sh", ".bash", ".zsh", ".rb"}
 SLASH_COMMENT_SUFFIXES = {
     ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
@@ -424,6 +436,9 @@ def discover(root: Path, *, deadline: float | None = None) -> dict[str, Any]:
                 continue
             if name in EXCLUDED_DIR_NAMES or name.startswith(".tmp-") or name.lower().endswith(".app"):
                 skip("excluded_directory")
+                continue
+            if _test_corpus_directory(name):
+                skip("test_corpus")
                 continue
             if _credential_segment(name):
                 skip("credential_store")
@@ -848,7 +863,8 @@ def _ingest(root: Path, started_monotonic: float) -> dict[str, Any]:
         target = snapshot_root / name
         expected.add(name)
         _write_snapshot(target, body_text.encode("utf-8"), mtime)
-        result = runtime.ingest_path(target)
+        # One corpus-level entity refresh at the end, not one per document.
+        result = runtime.ingest_path(target, refresh_graph=False)
         chunks_written += int(result.get("chunks_written") or 0)
         if int(result.get("idempotent_skips") or 0) >= 1:
             unchanged += 1
@@ -944,6 +960,7 @@ def _ingest(root: Path, started_monotonic: float) -> dict[str, Any]:
                 continue
         removed = _purge_sources(runtime, orphans)
 
+    entity_graph = _refresh_entity_graph(runtime)
     after = _source_counts(runtime, snapshot_root)
     return {
         "counts": after,
@@ -957,8 +974,23 @@ def _ingest(root: Path, started_monotonic: float) -> dict[str, Any]:
         "skipped": dict(sorted(skipped.items())),
         "secretSkippedPaths": secret_paths,
         "errors": errors,
+        "entityGraph": entity_graph,
         "stop": stop,
     }
+
+
+def _refresh_entity_graph(runtime: Any) -> dict[str, Any]:
+    """Code-map / ledger / co-occurrence edges, once per run. Fail-open: the
+    documents are already committed and stay queryable without it."""
+
+    refresh = getattr(runtime, "refresh_entity_graph", None)
+    if refresh is None:
+        return {"status": "skipped", "reason": "runtime_without_entity_layer"}
+    try:
+        report = refresh()
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "error", "error": _bounded_reason(f"{type(exc).__name__}: {exc}")}
+    return {key: value for key, value in report.items() if key in {"status", "changed", "seconds", "error", "reason"}}
 
 
 def status(project: str | Path) -> dict[str, Any]:
