@@ -3470,7 +3470,13 @@ def capsule_v2_config(overrides: dict[str, Any] | None = None) -> dict[str, Any]
 def _capsule_line(block: dict[str, str], channel: str = "") -> str:
     tag = f" {block['slug']}" if block.get("slug") else ""
     mark = "tripwire " if channel == "tripwire" else ""
-    return f"one[{mark}{block['kind']}{tag}]: {block['content']}"
+    # The block's own h: key, so a model correcting what it just recalled can
+    # cite `supersedes` — the envelope asks for a hash "you saw in recall", and
+    # before this no recall line showed one (2 supersedes in 8 months;
+    # contradiction study 2026-09-23). Inside the brackets: the body, and so
+    # the receipt hash computed from it, are unchanged.
+    key = f" h:{_content_hash(block['content'])}" if _rule("recallBudgets.one.showBlockKey", True) else ""
+    return f"one[{mark}{block['kind']}{tag}{key}]: {block['content']}"
 
 
 def _line_cost(block: dict[str, str], channel: str = "") -> int:
