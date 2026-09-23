@@ -461,9 +461,57 @@ required_files=(
   "examples/ontology-corpus/unsupported.hwp"
 )
 
+# Two checkouts run this gate. The maintainer workspace carries internal-only
+# inputs — design docs under docs/, workspace state under .agentlas/, fixtures
+# under .internal/ — that .gitignore keeps out of the public repo by design. A
+# public clone has none of them, so the gate used to die on the first one
+# (docs/source-of-truth.md) before any public-surface check ran, and a
+# contributor could not verify a catalog PR at all.
+# Scope is "public" only when every internal-only input is absent AND ignored;
+# losing some of them is a broken workspace and still fails. Release work pins
+# AGENTLAS_VERIFY_SCOPE=maintainer so the full gate can never downgrade itself.
+internal_absent=()
+internal_present=0
 for path in "${required_files[@]}"; do
+  if git check-ignore -q -- "$path" 2>/dev/null; then
+    if [[ -e "$path" ]]; then
+      internal_present=$((internal_present + 1))
+    else
+      internal_absent+=("$path")
+    fi
+  fi
+done
+verify_scope="${AGENTLAS_VERIFY_SCOPE:-auto}"
+if [[ "$verify_scope" == "auto" ]]; then
+  if [[ "$internal_present" -eq 0 && "${#internal_absent[@]}" -gt 0 ]]; then
+    verify_scope="public"
+  else
+    verify_scope="maintainer"
+  fi
+fi
+[[ "$verify_scope" == "public" || "$verify_scope" == "maintainer" ]] \
+  || fail "AGENTLAS_VERIFY_SCOPE must be public or maintainer, got: $verify_scope"
+export AGENTLAS_VERIFY_SCOPE="$verify_scope"
+if [[ "$verify_scope" == "public" ]]; then
+  echo "verify-package: public clone — ${#internal_absent[@]} internal-only file(s) and the checks that read them are skipped; this is not the release gate."
+fi
+
+for path in "${required_files[@]}"; do
+  if [[ "$verify_scope" == "public" && ! -e "$path" ]] \
+    && git check-ignore -q -- "$path" 2>/dev/null; then
+    continue
+  fi
   [[ -e "$path" ]] || fail "missing required file: $path"
 done
+
+# Runs a check that reads internal-only inputs; a public clone names the skip.
+maintainer_only() {
+  if [[ "$verify_scope" == "public" ]]; then
+    echo "verify-package: SKIP (internal-only inputs) $*"
+    return 0
+  fi
+  "$@"
+}
 
 grep -q 'assets/model2vec/potion-multilingual-128M-int8' scripts/install-all-runtimes.sh \
   || fail "one-touch installer does not copy the bundled Model2Vec asset"
@@ -480,7 +528,20 @@ agent_count="$(find agents -mindepth 2 -maxdepth 2 -name agent.md | wc -l | tr -
 python3 - <<'PY'
 import json
 import hashlib
+import os
+import subprocess
 from pathlib import Path
+
+PUBLIC_SCOPE = os.environ.get("AGENTLAS_VERIFY_SCOPE") == "public"
+
+
+def internal_only_absent(rel: str) -> bool:
+    """True when a public clone lacks an input .gitignore keeps internal."""
+    if not PUBLIC_SCOPE or Path(rel).exists():
+        return False
+    return subprocess.run(
+        ["git", "check-ignore", "-q", "--", rel], check=False
+    ).returncode == 0
 
 expected_core_agents = [
     "agents/10-single-agent-builder/agent.md",
@@ -502,19 +563,20 @@ if manifest.get("coreAgents") != expected_core_agents:
         f"manifest coreAgents is {manifest.get('coreAgents')}, expected {expected_core_agents}"
     )
 
-blueprint = json.loads(
-    Path(".agentlas/company-blueprint.json").read_text(encoding="utf-8")
-)
-core_ids = {Path(path).parent.name for path in expected_core_agents}
-core_nodes = {
-    node.get("id"): node
-    for node in blueprint.get("nodes", [])
-    if node.get("id") in core_ids
-}
-if set(core_nodes) != core_ids or [
-    core_nodes[Path(path).parent.name].get("path") for path in expected_core_agents
-] != expected_core_agents:
-    raise SystemExit("company-blueprint.json does not name the exact four core agents")
+if not internal_only_absent(".agentlas/company-blueprint.json"):
+    blueprint = json.loads(
+        Path(".agentlas/company-blueprint.json").read_text(encoding="utf-8")
+    )
+    core_ids = {Path(path).parent.name for path in expected_core_agents}
+    core_nodes = {
+        node.get("id"): node
+        for node in blueprint.get("nodes", [])
+        if node.get("id") in core_ids
+    }
+    if set(core_nodes) != core_ids or [
+        core_nodes[Path(path).parent.name].get("path") for path in expected_core_agents
+    ] != expected_core_agents:
+        raise SystemExit("company-blueprint.json does not name the exact four core agents")
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -682,6 +744,8 @@ empty_on_export = [
     ".agentlas/super-ontology-replays.jsonl",
 ]
 for rel in empty_on_export:
+    if internal_only_absent(rel):
+        continue
     records = [ln for ln in Path(rel).read_text(encoding="utf-8").splitlines() if ln.strip()]
     if records:
         raise SystemExit(
@@ -697,6 +761,8 @@ seeded_jsonl = [
     ".agentlas/super-ontology-memory-bridge.jsonl",
 ]
 for rel in seeded_jsonl:
+    if internal_only_absent(rel):
+        continue
     for n, ln in enumerate(Path(rel).read_text(encoding="utf-8").splitlines(), start=1):
         if not ln.strip():
             continue
@@ -713,10 +779,10 @@ if grep -R -nE '00-meta|05-mode|10-agent-repo|20-runtime|30-memory|40-pm|50-poli
 fi
 
 scripts/verify-install-docs.sh
-scripts/verify-global-command-contract.sh
-scripts/verify-builder-quality-contract.sh
-scripts/verify-experience-assets-contract.sh
-scripts/verify-gateway-channel-contract.sh
+maintainer_only scripts/verify-global-command-contract.sh
+maintainer_only scripts/verify-builder-quality-contract.sh
+maintainer_only scripts/verify-experience-assets-contract.sh
+maintainer_only scripts/verify-gateway-channel-contract.sh
 scripts/verify-ontology-runtime.sh
 # Windows/Linux wiring. Every surface this checks was absent on native Windows
 # while the install reported success: no local Core MCP on any host, an
@@ -800,8 +866,8 @@ python3 scripts/verify-name-to-thing.py
 # judges recall reach, capsule budget, chip promotion and ruleset consumption.
 # Both were written and then wired nowhere, which is the same failure as not
 # having them — a gate that never runs cannot hold a contract.
-python3 scripts/verify-curator-fixtures.py
-python3 scripts/verify-memory-r2.py
+maintainer_only python3 scripts/verify-curator-fixtures.py
+maintainer_only python3 scripts/verify-memory-r2.py
 examples/ontology-proposal-agent/verify.sh
 
 # Hephaestus Network 2.0 routing-card gate (block stage — the Hub now
