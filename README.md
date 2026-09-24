@@ -2,6 +2,9 @@
      only this repo's URL and asked to install it.
 
        curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+       Desktop app instead (or both, add `-s -- --with-engine`), sha512-verified:
+       curl -fsSL https://agentlas.cloud/install.sh | bash        (app -> /Applications)
+       Windows PowerShell: irm https://agentlas.cloud/install.ps1 | iex
 
      One line, no sudo, nothing written outside $HOME. It downloads a release
      tarball from this repo's GitHub Releases, verifies its SHA-256 before
@@ -37,6 +40,7 @@
   <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
 </p>
+<p align="center"><a href="https://www.producthunt.com/products/agentlas-science?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-agentlas-science"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=dark"><img alt="Agentlas Science on Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=light"></picture></a></p>
 
 <p align="center">
   <a href="README.md">English</a> ·
@@ -48,14 +52,42 @@
 
 **Agentlas Hub is a free agent community.** Publishing and calling public agents requires no agent price, lease, or Agentlas credit purchase. The caller supplies their own model and API access; subscription plans cover Agentlas software and hosted features. Creator settlement for new Hub activity is closed. Existing account balances and historical claims remain subject to the applicable account terms.
 
+### Install Agentlas Desktop
+
+**macOS · Linux**
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash
+```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://agentlas.cloud/install.ps1 | iex
+```
+
+<p align="center"><sub>Downloads the latest signed release, checks its sha512, and installs without <code>sudo</code> or an admin prompt · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">download manually</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas Desktop is open source — view the repo</a></sub></p>
+
+<details>
+<summary><strong>Desktop + Agentlas OS</strong>, or <strong>Agentlas OS only</strong> for Claude Code · Codex · Gemini · Cursor</summary>
+
+Desktop and Agentlas OS together:
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
+```
+
+```powershell
+$env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
+```
+
+Agentlas OS only (no app). No <code>sudo</code>, nothing written outside <code>$HOME</code>. Restart your agent host afterwards and run <code>hephaestus doctor</code>.
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-<p align="center">
-  <sub>One line. No <code>sudo</code>. Nothing written outside <code>$HOME</code>.<br>
-  Restart your agent host afterwards and run <code>hephaestus doctor</code>.</sub>
-</p>
+</details>
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">

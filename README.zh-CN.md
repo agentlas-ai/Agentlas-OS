@@ -2,6 +2,9 @@
      only this repo's URL and asked to install it.
 
        curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+       Desktop app instead (or both, add `-s -- --with-engine`), sha512-verified:
+       curl -fsSL https://agentlas.cloud/install.sh | bash        (app -> /Applications)
+       Windows PowerShell: irm https://agentlas.cloud/install.ps1 | iex
 
      One line, no sudo, nothing written outside $HOME. It downloads a release
      tarball from this repo's GitHub Releases, verifies its SHA-256 before
@@ -37,6 +40,7 @@
   <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
 </p>
+<p align="center"><a href="https://www.producthunt.com/products/agentlas-science?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-agentlas-science"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=dark"><img alt="Agentlas Science on Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=light"></picture></a></p>
 
 <p align="center">
   <a href="README.md">English</a> ·
@@ -48,13 +52,42 @@
 
 **Agentlas Hub 是免费的智能体社区。**发布和调用公开智能体无需设定售价、租赁或购买 Agentlas 积分。调用者使用自己的模型和 API；订阅针对 Agentlas 软件和托管功能。新的 Hub 活动不再产生创作者结算，既有账户余额及历史请求依适用账户条款处理。
 
+### 安装 Agentlas Desktop
+
+**macOS · Linux**
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash
+```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://agentlas.cloud/install.ps1 | iex
+```
+
+<p align="center"><sub>下载最新签名版本并校验 sha512,无需 <code>sudo</code> 或管理员权限即可安装 · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">手动下载</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas Desktop 是开源的 — 查看仓库</a></sub></p>
+
+<details>
+<summary><strong>Desktop + Agentlas OS</strong>,或<strong>仅 Agentlas OS</strong>(用于 Claude Code · Codex · Gemini · Cursor)</summary>
+
+同时安装 Desktop 和 Agentlas OS:
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
+```
+
+```powershell
+$env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
+```
+
+仅 Agentlas OS(不含应用)。无需 <code>sudo</code>,不会写入 <code>$HOME</code> 之外的任何位置。安装后重启你的智能体宿主并运行 <code>hephaestus doctor</code>。
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-<p align="center">
-  <sub>一行。无需 <code>sudo</code>。不在 <code>$HOME</code> 之外写任何东西。<br>装完重启你的 AI 工具，运行 <code>hephaestus doctor</code>。</sub>
-</p>
+</details>
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
