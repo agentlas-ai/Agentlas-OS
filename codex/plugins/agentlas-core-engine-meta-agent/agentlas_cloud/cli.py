@@ -78,6 +78,13 @@ class _ExplicitSingleValueAction(argparse.Action):
         setattr(namespace, self.dest, values)
 
 
+class _UploadVisibilityAction(_ExplicitSingleValueAction):
+    """Keep the legacy wire value while presenting the free Hub name in CLI."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        super().__call__(parser, namespace, "marketplace" if values == "hub-public" else values, option_string)
+
+
 RESEARCH_SEARCH_PROVIDER_HINTS = {
     "ddg-html": "ddg_html",
     "news-rss": "news_rss",
@@ -688,9 +695,10 @@ def main(argv: list[str] | None = None) -> int:
     package_cmd.add_argument("--slug")
     package_cmd.add_argument(
         "--visibility",
-        choices=["marketplace", "private-link"],
+        choices=["hub-public", "private-link", "marketplace"],
+        metavar="{hub-public,private-link}",
         required=True,
-        action=_ExplicitSingleValueAction,
+        action=_UploadVisibilityAction,
     )
     package_cmd.add_argument("--no-write", action="store_true", help="Do not refresh agentlas.json before review")
 
@@ -699,9 +707,10 @@ def main(argv: list[str] | None = None) -> int:
     publish_cmd.add_argument("--slug")
     publish_cmd.add_argument(
         "--visibility",
-        choices=["marketplace", "private-link"],
+        choices=["hub-public", "private-link", "marketplace"],
+        metavar="{hub-public,private-link}",
         required=True,
-        action=_ExplicitSingleValueAction,
+        action=_UploadVisibilityAction,
     )
     publish_cmd.add_argument("--base-url", default=None)
     publish_cmd.add_argument("--dry-run", action="store_true", help="Package and review without registering")

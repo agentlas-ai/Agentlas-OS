@@ -78,14 +78,16 @@ done
    `workOrderDigest` and forced the whole three-source federation to run again).
    Keep the default `selectionPolicy.maximumCandidatesPerSlot` at 30 unless a
    measured recall need justifies widening it (the schema allows up to 100),
-   and NEVER shrink it merely to save tokens: the menu is ordered by
-   `canonical_identity_no_rerank`, not by fit — federation performs no scoring
-   by design — so truncating the candidate count discards candidates
-   arbitrarily, not worst-first. Measured 2026-08-19: the only domain-fit
-   candidate for each of three slots sat at ordinals 13-17 behind twelve
-   unrelated agents, so a cap of 8 would have made the order un-staffable.
-   Token savings come from the menu's compact per-row projection, never from
-   fewer rows. In the returned menu, `candidateOrdinal` restarts at 1
+   and never shrink it yourself to save tokens. The Hub and Cloud sources
+   already shrink safely: they order each slot by fit with a decision model
+   and, for a default-sized menu, send only their best 8. Measured 2026-09-24
+   on 40 live work orders: fit order put the right agent first 40/40, while in
+   the unranked order it sat in the first 8 only 11/38 times — the menu bytes
+   per slot fell 73%. Core still presents the merged menu in
+   `canonical_identity_no_rerank` order and Local candidates are not
+   fit-ranked, so a smaller cap you set would cut rows arbitrarily, not
+   worst-first. When a slot needs more rows, set the maximum above 30: the
+   sources then return that many, still in fit order. In the returned menu, `candidateOrdinal` restarts at 1
    inside every slot — it is a per-slot position, not a running number across
    the menu. Keep private
    files, memory, secrets, direct identifiers, and raw local context on-host.

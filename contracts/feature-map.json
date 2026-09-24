@@ -1,6 +1,6 @@
 {
   "schemaVersion": "agentlas.feature-map.v1",
-  "updatedAt": "2026-08-18",
+  "updatedAt": "2026-09-24",
   "note": "Cross-surface FEATURE-INTENT registry. One row = one product feature, keyed by intent, not by spelling — the same feature legitimately carries different code names per surface (wire INGEST vs UI 장기대여; workspaceId that means creator workspace). Rationale and usage rules live in the sibling contracts/feature-map.md. Gate: scripts/verify-feature-map.py resolves each surface's repo as a sibling checkout (../<repo> relative to this repo; 'Agentlas-OS' is this repo itself), requires the file to exist and to contain the identifier verbatim (rename alarm, not semantics proof), and prints an honest SKIP when a sibling checkout is absent. 'kind' is one of code|endpoint|screen|method|table|wireId|gate (gate = a dedicated parity/spelling gate that already guards this feature; the map points at it so renaming the gate also alarms). 'identifier' must be the EXACT symbol/route/table/string as it exists in the file today. Alias status: wire-legacy (still on the wire, name is historical), retired (must not reappear in new copy), display (user-facing label, translated per surface).",
   "features": [
     {
@@ -19,39 +19,11 @@
           "meaning": "Canonical price-kind table. RENT: per work order, recurring, ceiling 100 credits; the unit token stays the legacy literal WORK_ORDER_24H because clients parse it."
         },
         {
-          "repo": "agentlas",
-          "kind": "code",
-          "path": "AgentsAtlas/app/src/lib/mcp/agent-runtime.ts",
-          "identifier": "buildNetworkEconomyPayload",
-          "meaning": "Charge path: every runtime call resolves priceKind RENT and commits the wallet charge + ledger payload in one transaction before the bundle is released."
-        },
-        {
           "repo": "agentlas_desktop",
           "kind": "code",
           "path": "shared/types.ts",
           "identifier": "CloudAgentPriceKind",
           "meaning": "Desktop mirror of the wire price-kind union RENT|INGEST|FORK."
-        },
-        {
-          "repo": "agentlas_desktop",
-          "kind": "screen",
-          "path": "renderer/components/ChatInput.tsx",
-          "identifier": "flashCostNotice",
-          "meaning": "Flash notice: per-work-order estimated cost shown for 8s before a paid auto-hire, suppressed only when every hub hire is rent-allowed or day-leased."
-        },
-        {
-          "repo": "agentlas_terminal",
-          "kind": "code",
-          "path": "engine/commands/call.cjs",
-          "identifier": "크레딧이 소모됩니다",
-          "meaning": "Terminal notice before public Hub calls: credits are consumed per work order, 0 while a day lease is active."
-        },
-        {
-          "repo": "mobile",
-          "kind": "screen",
-          "path": "app/lib/features/screens/agentlas_screen.dart",
-          "identifier": "estCredits",
-          "meaning": "Mobile shows the per-call estimated credits next to the agent's source label."
         }
       ],
       "aliases": [
@@ -117,32 +89,11 @@
           "meaning": "Web lease domain logic (per-day pricing and lease windows)."
         },
         {
-          "repo": "agentlas",
-          "kind": "screen",
-          "path": "AgentsAtlas/app/src/components/marketplace/AgentLeaseButton.tsx",
-          "identifier": "AgentLeaseButton",
-          "meaning": "Web purchase entry point on marketplace/agent pages."
-        },
-        {
           "repo": "agentlas_desktop",
           "kind": "code",
           "path": "electron/cloud-agents/leases.ts",
           "identifier": "purchaseAgentLease",
           "meaning": "Desktop client of the agent-leases endpoints, with the lease cache the rent gate reads."
-        },
-        {
-          "repo": "agentlas_desktop",
-          "kind": "screen",
-          "path": "renderer/components/AgentLeaseDialog.tsx",
-          "identifier": "AgentLeaseDialog",
-          "meaning": "Desktop lease/extend dialog (일 단위 선불 대여)."
-        },
-        {
-          "repo": "mobile",
-          "kind": "screen",
-          "path": "app/lib/features/screens/agentlas_screen.dart",
-          "identifier": "장기대여 — 에이전트 1일당",
-          "meaning": "Mobile price-setting copy for the per-day lease (1–2,000 credits/day)."
         }
       ],
       "aliases": [
@@ -259,13 +210,6 @@
           "path": "electron/mcp/client.ts",
           "identifier": "gateHubSpecsByProjectRentPolicy",
           "meaning": "Main-process gate: a Hub spec passes if rent-allowed in this project, day-leased, or explicitly named."
-        },
-        {
-          "repo": "agentlas_desktop",
-          "kind": "screen",
-          "path": "renderer/components/ChatInput.tsx",
-          "identifier": "listRentAllowed",
-          "meaning": "Composer filter: non-allowed hub agents are dropped from the auto-hire preview; cost notice suppressed only when every kept hub hire is allowed or leased."
         }
       ],
       "aliases": [
@@ -286,13 +230,6 @@
       "surfaces": [
         {
           "repo": "agentlas",
-          "kind": "table",
-          "path": "AgentsAtlas/app/src/lib/store/index.ts",
-          "identifier": "invocation_ledger",
-          "meaning": "Mongo collection (store key invocationLedger), receiptId-keyed with an outbox retry so lost rows don't undercount creators."
-        },
-        {
-          "repo": "agentlas",
           "kind": "code",
           "path": "AgentsAtlas/app/src/types.ts",
           "identifier": "InvocationLedgerEvent",
@@ -304,20 +241,6 @@
           "path": "AgentsAtlas/app/src/lib/mcp/agent-runtime.ts",
           "identifier": "recordLedger",
           "meaning": "The writer: sets BOTH workspaceId and creatorId to profile.workspaceId (creator). This quirk is why the reader-side self-call rule uses one comparison only."
-        },
-        {
-          "repo": "agentlas",
-          "kind": "endpoint",
-          "path": "AgentsAtlas/app/src/app/api/marketplace/build-competition/route.ts",
-          "identifier": "invocation_ledger",
-          "meaning": "Consumer. Self-call exclusion is exactly callerId ≠ creatorId; the old second condition workspaceId ≠ creatorId was removed because the writer stores the same value in both."
-        },
-        {
-          "repo": "agentlas",
-          "kind": "endpoint",
-          "path": "AgentsAtlas/app/src/app/api/marketplace/top-trusted/route.ts",
-          "identifier": "invocation_ledger",
-          "meaning": "Consumer, same self-call rule; non-public sourceScope fails closed out of public trust."
         }
       ],
       "aliases": [

@@ -1719,7 +1719,7 @@ def publish_agent(
     fork_credits: int | None = None,
 ) -> dict[str, Any]:
     if visibility not in {"marketplace", "private-link"}:
-        raise UploadError("Choose exactly one upload visibility: marketplace or private-link.", code="visibility_required")
+        raise UploadError("Choose exactly one upload visibility: public Hub or private Agent Cloud.", code="visibility_required")
     # Creator-set Hub prices were retired when the public Hub became a free
     # community. Reject legacy flags before packaging; never silently accept
     # a requested charge or call the retired price-setting endpoint.
