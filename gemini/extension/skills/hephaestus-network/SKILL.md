@@ -65,6 +65,19 @@ auto-update finish, then reload the host/MCP session. An explicit
 `hephaestus hep-update` remains an operator action, never an implicit skill
 side effect.
 
+"Absent" must be proven against the host's real tool names, not a guessed
+spelling. Hosts rewrite MCP tool names: the server is `hephaestus-network`, and
+Codex, for example, exposes `workforce.preflight_work_order` as
+`mcp__hephaestus_network__workforce_preflight_work_order` (the dot becomes one
+underscore; the prefix is the server name, not `agentlas`). Before returning
+`workforce_protocol_upgrade_required`, search the tool menu for every name
+containing `preflight_work_order` and `goal_context`. If any match exists, the
+tool is present — call it. If other `hephaestus-network` tools (for example
+`context_slice`) are present but these two are not, report both facts; that is
+not proof of an old runtime. Measured 2026-09-24: a Codex session probed the
+invented `mcp__agentlas__workforce__goal_context`, found nothing, and halted
+staffing while runtime 1.2.49 was serving both tools.
+
 Use the Agentlas Core Workforce contracts in this order:
 
 ```text
