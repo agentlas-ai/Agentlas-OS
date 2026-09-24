@@ -1027,7 +1027,7 @@ def route_request(
     #   scope="network" -> /hep-network: search Cloud > Bookmark > public Hub
     #                     in that order. Used with hub_only by the network command.
     #   operator debug route (hub_only=False, scope="network") → local +
-    #                     own-cloud + Hub together, each priced by origin. Public
+    #                     own-cloud + Hub together. Public
     #                     command/MCP surfaces default hub_only=True.
     cloud_only = scope == "cloud"
     if cloud_only:

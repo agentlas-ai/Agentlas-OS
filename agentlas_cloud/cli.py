@@ -712,26 +712,25 @@ def main(argv: list[str] | None = None) -> int:
         help="Refuse unless package hash, visibility, slug, and destination match the dry-run receipt",
     )
     publish_cmd.add_argument("--overwrite-cloud-id", help="Authorize overwrite of this exact server-reported Cloud asset")
-    # Prices for a public Hub listing. Omitting one means that kind is not sold;
-    # omitting all three publishes an agent that is callable for free, which is
-    # a supported state and not an error.
+    # Retired pricing flags remain parseable only to produce a clear refusal in
+    # publish_agent. They cannot set prices for the free public Hub.
     publish_cmd.add_argument(
         "--rent-credits",
         type=int,
         default=None,
-        help="Credits per work order (a 24h lease), 1-100. Omit to not sell rentals.",
+        help=argparse.SUPPRESS,
     )
     publish_cmd.add_argument(
         "--ingest-credits",
         type=int,
         default=None,
-        help="Credits per project per day, 1-2000. Omit to not sell project ingest.",
+        help=argparse.SUPPRESS,
     )
     publish_cmd.add_argument(
         "--fork-credits",
         type=int,
         default=None,
-        help="Credits for one copy, 1 or more. Omit to not sell forks.",
+        help=argparse.SUPPRESS,
     )
 
     read = sub.add_parser("read-agent-file", help="Lazy file read with manifest gates")

@@ -48,6 +48,8 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
+**Agentlas Hub is a free agent community.** Publishing and calling public agents requires no agent price, lease, or Agentlas credit purchase. The caller supplies their own model and API access; subscription plans cover Agentlas software and hosted features. Creator settlement for new Hub activity is closed. Existing account balances and historical claims remain subject to the applicable account terms.
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```

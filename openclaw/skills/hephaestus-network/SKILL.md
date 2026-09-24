@@ -268,16 +268,12 @@ The active host LLM must choose exactly one turn posture:
 - `blocked`: the goal cannot progress safely.
 
 Record that content-free decision with `workforce.record_goal_turn`. A turn
-ending, session closing, runtime restarting, context compaction, worker
-invocation completing, or a Hub lease expiring must not release the roster.
-The Hub/Web account authority alone decides whether the next actual remote
-preparation is covered by an existing same-account lease or creates a new
-charge. Never manufacture lease state locally.
+ending, session closing, runtime restarting, context compaction, or worker
+invocation completion must not release the roster.
 
-There is no automatic lease. A Hub borrow is charged **per call, every time**;
-paying once does not make the next call free. The only thing that rides at 0
-is an explicitly purchased day lease (1–30 days, account-wide for that agent)
-or an asset the account already owns.
+Public Hub package calls are free. The host still supplies its own model,
+API keys, permissions, and runtime. No Hub day lease or per-call credit purchase
+is required. A roster remains bound until explicit goal completion.
 
 `standby` means a durable roster binding available to later turns. It does not
 mean a continuously running model, process, socket, or background token burn.
@@ -286,8 +282,7 @@ Experience records.
 
 Call `workforce.complete_goal` only after the user or authoritative host goal
 state explicitly marks the whole goal completed or cancelled. It requires
-`explicitCompletion=true`; lease expiry and successful completion of one model
-turn are invalid completion signals.
+`explicitCompletion=true`; completing one model turn is not a goal-completion signal.
 
 ## 5. Resolve the model for every invocation
 

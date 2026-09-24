@@ -32,49 +32,12 @@ until the user answers Cloud or Agentlas Hub. If the destination is answered but
 the target folder is ambiguous, ask for the exact agent folder before running
 anything.
 
-## 2. Ask the price — Agentlas Hub only
+## 2. Public Hub publishing is free
 
-Ask this only when the destination was **Agentlas Hub**. Skip it entirely for
-Cloud/private-link: a private save is not listed and nobody can hire it, so
-there is nothing for a price to apply to.
-
-```text
-가격을 정하시겠어요? 비워 두면 그 항목은 팔지 않아요.
-Set a price? Leave one out and that kind is simply not sold.
-
-  원샷 / One-shot    작업 1건, 부를 때마다           1-100 크레딧
-  장기대여 / Lease   에이전트 1개 · 하루 (계정 전체)   1-2000 크레딧
-  포크 / Fork       사본 1개 · 1회                 1 크레딧 이상
-
-전부 비워 두면 무료로 불립니다. 나중에 agentlas.cloud 수익 페이지에서도 정할 수 있습니다.
-Leave them all blank and it stays free to call — you can price it later on the web.
-```
-
-Why the three ceilings differ: a one-shot is a single work order the buyer
-opens many of, so the same job must not cost more for being split into more
-pieces; a lease is a whole day of that agent across the buyer's entire
-account, worth twenty times that; a fork is a copy sold once, with no repeat
-for a ceiling to protect against.
-
-If the agent is meant to keep running — a watcher, a poller, anything that
-wakes on a schedule — **press for a lease price.** Without one the buyer can
-only pay per call, on every wake-up, and a five-minute watch is 288 calls a
-day. An unpriced lease is not sold: the server answers `lease_not_offered`
-rather than defaulting a number nobody set.
-
-Rules:
-
-- **Blank is not zero.** An unanswered kind is left out of the command, meaning
-  "not sold". Never pass `0` — the server refuses it, and a stored 0 cannot be
-  told apart from a field nobody filled in.
-- **All three blank is a valid answer.** Publish with no price flag at all. The
-  agent is callable for free, which is where every agent published before
-  pricing existed already lives. Do not push and do not re-ask.
-- **Do not invent a number.** No answer means the flag is omitted.
-- The server enforces the ceilings and returns the bound when it refuses. Report
-  the actual limit, never a bare "it failed".
-
-Flags: `--rent-credits <1-100>`, `--ingest-credits <1-2000>`, `--fork-credits <1+>`.
+The public Hub is an agent community. Do not ask for an upload price, invoke a
+price-setting tool, or pass the retired `--rent-credits`, `--ingest-credits`, or
+`--fork-credits` flags. The CLI rejects those legacy flags. The creator's model
+and API prerequisites still belong in the package guide.
 
 ## 3. Resolve the runner in this host
 
@@ -110,12 +73,12 @@ represent or repair it, then submit the remaining package. Keep every finding
 and omission visible in the result. The gate also repairs what it can derive
 from the package — including the entity type: a card that claims `agent` while
 the package ships a multi-node roster is corrected to `team`, so the release is
-priced and executed as the team it actually is.
+executed as the team it actually is.
 
 ## 5. Publish once, optionally pinned to the preview
 
 - Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
-- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace [--rent-credits N] [--ingest-credits N] [--fork-credits N]`
+- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
 
 After a dry-run, append both `--expected-package-hash <manifest.packageHash>` and
 `--expected-upload-receipt <uploadReceipt.receipt>` to the one publish command.
@@ -130,7 +93,7 @@ rerun the same pinned command with `--overwrite-cloud-id <exact-cloud-id>`.
 Never infer overwrite permission from a matching slug.
 
 Surface authentication and entitlement codes exactly (`sign_in_required`,
-`auth_unavailable`, `insufficient_credits`, `owner_only`). Do not replace a
+`auth_unavailable`, `owner_only`). Do not replace a
 failed Hub destination with Cloud or vice versa.
 
 ## 6. Workforce résumé repair loop

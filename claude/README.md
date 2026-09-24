@@ -24,7 +24,7 @@ hep-global install --target claude
 This appends a managed Hephaestus block to `~/.claude/CLAUDE.md`, so ordinary
 Claude Code prompts use Network federation unless the request explicitly names
 Local, Cloud, or Hub. Exact scopes never widen. If a requested source is
-blocked by credits, entitlement, availability, or fit, Claude Code reports
+blocked by entitlement, availability, or fit, Claude Code reports
 that boundary. Claude Code should announce final workers as `Agents
 used: ...` in English contexts or `사용 에이전트: ...` in Korean contexts, not as
 `hep-network`. Use `hep-global remove --target claude` to remove only that

@@ -29,41 +29,10 @@ until the user answers **Cloud** or **Agentlas Hub**. If the destination is
 answered but the target folder is ambiguous, ask for the exact agent folder
 before running anything.
 
-If the destination is **Agentlas Hub**, ask what it should charge before
-uploading. Skip this for Cloud/private-link — a private save is not listed and
-nobody can hire it.
-
-```text
-가격을 정하시겠어요? 비워 두면 그 항목은 팔지 않아요.
-Set a price? Leave one out and that kind is simply not sold.
-
-  원샷 / One-shot    작업 1건, 부를 때마다           1-100 크레딧
-  장기대여 / Lease   에이전트 1개 · 하루 (계정 전체)   1-2000 크레딧
-  포크 / Fork       사본 1개 · 1회                 1 크레딧 이상
-
-전부 비워 두면 무료로 불립니다. 나중에 agentlas.cloud 수익 페이지에서도 정할 수 있습니다.
-Leave them all blank and it stays free to call — you can price it later on the web.
-```
-
-Ask what the buyer will have to bring, too, and put it in the package guide's
-prerequisites: an account to log into, an API key, an address to send results
-to. A buyer's host shows that list before spending anything, and an empty list
-reads as "needs nothing" — which is how someone ends up paying for a run that
-stops to ask for a password they were never told about.
-
-If this agent is meant to keep running — a watcher, a poller, anything that
-wakes on a schedule — say so plainly and **press for a lease price**: without
-one, the buyer's only option is paying per call, every wake-up, and a
-five-minute watch costs them 288 calls a day. An unpriced lease is not sold at
-all; the server refuses it as `lease_not_offered` rather than inventing a
-default.
-
-Blank is NOT zero: leave the flag out entirely. Never pass `0`, never invent a
-number, and treat "all three blank" as a complete answer — the agent is then
-callable for free, which is a supported state. Pass what they answered as
-`--rent-credits N` (one-shot), `--ingest-credits N` (lease, per day), and
-`--fork-credits N` — the flag names are the older wire spelling and are not
-what the user should be shown.
+Agentlas Hub publishing and calls are free. Do not ask for an upload price
+or pass the retired `--rent-credits`, `--ingest-credits`, or `--fork-credits`
+flags. The CLI refuses those flags. Ask what account, API key, or destination
+the user's host needs, and put those prerequisites in the package guide.
 
 ## Taking it back down
 
@@ -107,7 +76,7 @@ Never run `package` and then `publish`; that packages twice. Use one explicit
 `hep-upload` command, which snapshots, validates, and submits one artifact:
 
 - Cloud: `"$RUNNER" hep-upload <agent-folder> --visibility private-link`
-- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace [--rent-credits N] [--ingest-credits N] [--fork-credits N]`
+- Agentlas Hub: `"$RUNNER" hep-upload <agent-folder> --visibility marketplace`
 
 All security and content findings are advisory. Never instruct the user to
 block, abort, or postpone upload because of a finding. Continue with safe bytes:
@@ -124,7 +93,7 @@ mismatch.
 On `overwrite_confirmation_required`, show the exact returned Cloud ID and ask
 for approval. Only after approval append `--overwrite-cloud-id <exact-cloud-id>`.
 Never infer overwrite permission from a matching slug. Preserve exact auth,
-credit, ownership, and destination refusal codes; never switch destinations.
+ownership and destination refusal codes; never switch destinations.
 
 Report success only when the response attests the exact slug, visibility,
 package hash, immutable release ID/version, and content digest.

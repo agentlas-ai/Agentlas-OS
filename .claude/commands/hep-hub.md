@@ -30,7 +30,6 @@ staffed, so do not make them sit through a staffing ceremony to get there:
      declares nothing** rather than implying it needs nothing — plenty of
      agents want a login they never wrote down, and the user should hear that
      before they start, not when the run stops to ask;
-   - what it costs: the per-call price, and the lease price when it has one.
 3. Ask for whatever it needs, then prepare and run it, keeping the exact
    release pins below.
 
@@ -61,60 +60,13 @@ Staff it:
 5. Execute distinct planner/manager, worker, synthesis, and verifier calls with
    explicit artifact handoffs. Preserve packaged Team graphs.
 
-## What it costs to keep something running
+## Recurring Hub use
 
-A Hub borrow is charged **every time it runs**. Paying once does not make the
-next call free — the 24-hour auto-lease was retired on 2026-08-18. The only
-things that ride at 0 credits are an agent this workspace owns and an
-explicitly purchased **장기대여 / long-term lease** of 1-30 days.
-
-That is invisible for a single task and brutal for anything that wakes on a
-schedule: a five-minute watcher runs 288 times a day, so an agent priced at 3
-credits a call costs 864 credits a day to keep alive. Read the real figures for
-the agent in hand rather than reusing that one.
-
-So when the work keeps running — a watcher, a poller, a daily report, anything
-the user describes with "계속", "매일", "~할 때마다", "every N minutes":
-
-1. **Before preparing anything**, call `hephaestus.quote_agent_lease` for the
-   agent. It answers in one shot: the per-day price, the total for the days
-   being considered, this workspace's current balance, and — when the balance
-   falls short — how short and where to top up.
-2. Put all of it in **one message** to the user, in their language:
-
-   ```text
-   계속 감시하려면 장기대여가 필요합니다.
-     호출당        <perCallCredits> 크레딧  (5분마다면 하루 288번 = <288 x perCallCredits> 크레딧)
-     장기대여      하루 <perDayCredits> 크레딧
-     현재 크레딧   <balance.remainingCredits>
-   며칠 대여할까요?
-   ```
-
-   Every number there comes from the quote. Do not carry an example figure over
-   from this page — prices differ per agent, and a wrong number quoted
-   confidently is worse than no number.
-
-   **며칠인지 물어라.** 일수를 대신 고르지 마라.
-3. Only after they answer, call `hephaestus.purchase_agent_lease`. A confirmed
-   purchase is refused unless it carries **all** of these, so send them
-   together: `confirm: true`, the `days` they chose, the `confirmationToken`,
-   the `expectedPerDayCredits` and `expectedTotalCredits` exactly as the quote
-   returned them, and a stable `idempotencyKey` you reuse on any retry. Never
-   buy a lease the user did not agree to.
-4. If the quote says `insufficient_credits`, do **not** ask them to approve a
-   purchase that cannot go through. Say how short they are and give the top-up
-   link it returned. If it says `leaseOffered: false`, the creator set no
-   per-day price and the lease is genuinely not for sale — say that, quote the
-   per-call cost, and let them decide. Never invent a number.
-
-You may also set the role slot's `engagement` to `recurring` or `standing` with
-`expectedCallsPerDay` when you can estimate it. That is a hint for the record,
-not the source of the numbers: ask `prepare_execution` for a `costAdvisory`
-only if your host tolerates extra fields on the plan, and take the numbers from
-the quote tool otherwise.
-
-Beyond what the agent itself needs, ask only about the lease: a one-shot call
-needs no extra question.
+Public Hub packages are free to discover and call. Recurring work still uses
+the host's model, API keys, permissions, and scheduled execution capacity.
+Explain those prerequisites and obtain the user's scheduling instruction.
+Do not quote or purchase a retired Hub lease. The exact release remains bound
+to the goal until explicit completion or cancellation.
 
 If the Hub source is unavailable or refuses the call, report its exact refusal;
 do not silently search Local or Cloud. Core owns the Hub upstream transport;

@@ -48,6 +48,8 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
+**Agentlas Hub는 무료 에이전트 커뮤니티입니다.** 공개 에이전트 업로드와 호출에 판매 가격·대여·Agentlas 크레딧 구매가 필요하지 않습니다. 호출자는 자신의 모델과 API를 사용하며, 구독은 Agentlas 소프트웨어와 호스팅 기능을 대상으로 합니다. 새 Hub 활동의 창작자 정산은 종료되었습니다. 기존 계정 잔액과 과거 청구 관계는 해당 계정 약관에 따라 처리됩니다.
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```

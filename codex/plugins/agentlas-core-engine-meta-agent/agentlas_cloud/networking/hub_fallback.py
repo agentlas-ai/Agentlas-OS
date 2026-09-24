@@ -60,7 +60,6 @@ _RESULT_FIELDS = (
     "alternateSlugs",
     "source",
     "entityKind",
-    "perCallCredits",
     "ownerName",
     "bookmarkedAt",
     "manifestId",

@@ -262,9 +262,11 @@ These instructions were installed by `hephaestus global install` for {host}.
   this host runtime while grounded in the current project. The Hub does not run
   a server-side LLM completion for you. A selection or prepared bundle is not
   proof that manager, workers, synthesis, or verifier ran.
-- Hub calls are allowed only when the signed-in Agentlas account has entitlement
-  and credits. If the server returns `insufficient_credits`, `owner_only`,
-  `no_cloud_package`, or `agent_not_found`, report that exact refusal. For a
+- Public Hub calls are free; the host supplies its own model and API access.
+  If a stale server returns `insufficient_credits`, report that the free Hub
+  contract is not active there yet and do not suggest a top-up. If the server
+  returns `owner_only`, `no_cloud_package`, or `agent_not_found`, report that
+  exact refusal. For a
   general task, report the boundary before considering a different explicitly
   labelled surface; for an exact named remote agent, do not claim a local
   fallback ran that agent. Never replace a missing role with an unrelated agent.

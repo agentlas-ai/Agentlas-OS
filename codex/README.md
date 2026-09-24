@@ -40,7 +40,7 @@ hep-global install --target codex
 This appends a managed Hephaestus block to `~/.codex/AGENTS.md`, so ordinary
 Codex prompts use Network federation unless the request explicitly names
 Local, Cloud, or Hub. Exact scopes never widen. If a requested source is
-blocked by credits, entitlement, availability, or fit, Codex reports that
+blocked by entitlement, availability, or fit, Codex reports that
 boundary. Codex should announce final workers as `Agents used: ...` in English
 contexts or `사용 에이전트: ...` in Korean contexts, not as `hep-network`. Use
 `hep-global remove --target codex` to remove only that managed block.

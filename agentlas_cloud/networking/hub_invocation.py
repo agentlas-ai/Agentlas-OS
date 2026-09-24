@@ -73,10 +73,9 @@ def invoke_hub_agent(
     selected_norm = _norm_slug(selected_slug)
     # Locally mirrored cards are NOT short-circuited. Every caller — including one
     # whose agent source is in a local private/restricted folder — goes
-    # through the SAME server policy: Agentlas OAuth sign-in (handled by
-    # call_hub_tool's auto re-auth) plus the server-side credit gate, where
-    # calling your OWN cloud package is priced at OWN_CALL_CREDITS. The server is
-    # the only authority on entitlement, so a local source copy must never fork
+    # through the SAME server access policy: Agentlas OAuth sign-in (handled by
+    # call_hub_tool's auto re-auth). The public Hub no longer sells calls;
+    # a local source copy must never fork
     # behavior into a privileged path.
 
     try:
@@ -180,9 +179,8 @@ def invoke_hub_agent(
             if needs
             else {"skipped": "no plugin needs detected"}
         )
-        # 24h lease ("call once, hired for a day"): the server is the billing
-        # authority and reports lease state on the bundle response. We only pass
-        # it through and cache it locally for display — never decide charges here.
+        # Preserve a legacy server lease receipt for reconciliation if an old
+        # deployment still sends one. New free Hub calls create no lease.
         lease = _lease_from_response(bundle_response)
         if lease is not None:
             _cache_lease(base, selected_slug, lease)
@@ -235,8 +233,6 @@ def invoke_hub_agent(
         "local memory and the project semantic ontology only when the task needs deeper grounding. "
         f"While acting as this agent, begin each reply with the presence badge `\U0001f517 {agent_display_name or selected_slug}` so the user can see the hired agent is active."
     )
-    if lease is not None and lease.get("active"):
-        next_step += f" {_lease_status_line(lease)}"
     output = {
         "mode": "byom_runtime_bundle",
         "status": "bundle_ready",
@@ -381,7 +377,7 @@ def _server_refusal(response: dict[str, Any]) -> dict[str, Any] | None:
                 "have": response.get("have"),
                 "upgrade": response.get("upgrade") or "/pricing",
                 "message": response.get("message")
-                or "Not enough Agentlas credits to call this agent. Top up or upgrade to continue.",
+                or "This Hub server still requires credits for agent calls; the free Hub contract is not active there yet.",
             },
         }
     # The server sentence is preserved verbatim (hep-call's contract: relay the
@@ -475,12 +471,7 @@ def _bundle_failure_detail(response: dict[str, Any]) -> str:
 
 
 def _lease_from_response(response: dict[str, Any]) -> dict[str, Any] | None:
-    """Normalize the server-reported 24h lease block, if any.
-
-    The Hub is the only billing authority: it decides whether this call charged
-    credits and started a lease, or rode an existing one for free. Older servers
-    omit the block entirely — return None and change nothing.
-    """
+    """Preserve a legacy lease block for reconciliation, if a stale server sends it."""
     lease = response.get("lease")
     if not isinstance(lease, dict):
         return None
@@ -495,16 +486,8 @@ def _lease_from_response(response: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _lease_status_line(lease: dict[str, Any]) -> str:
-    until = lease.get("leased_until") or "the lease expiry"
-    charged = lease.get("charged_credits")
-    if charged:
-        return f"Lease: this call hired the agent for 24h ({charged} credits); repeat calls until {until} are free."
-    return f"Lease: active hire — this call was free; the lease runs until {until}."
-
-
 def _cache_lease(base: Path, slug: str, lease: dict[str, Any]) -> None:
-    """Best-effort local lease card cache (display only, server stays authoritative)."""
+    """Best-effort legacy receipt cache; never used to authorize a new call."""
     try:
         path = base / "leases.json"
         data: dict[str, Any] = {}

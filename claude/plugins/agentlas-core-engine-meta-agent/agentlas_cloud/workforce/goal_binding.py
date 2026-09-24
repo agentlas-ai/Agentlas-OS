@@ -1,8 +1,8 @@
 """Durable, account-partitioned Workforce bindings for multi-turn goals.
 
-A Hub lease answers a billing question ("is another borrow charge due?").  It
-does not define how long a host keeps an already selected roster attached to a
-goal.  This store owns that separate local continuity contract:
+Hub calls are free, and a legacy server lease does not define how long a host
+keeps an already selected roster attached to a goal. This store owns that
+separate local continuity contract:
 
 * exact prepared releases are appended to a goal roster;
 * the roster remains active until an explicit completion transition;
@@ -524,9 +524,9 @@ class WorkforceGoalStore:
     def _remote_execution_authorized(cls, preparation: Mapping[str, Any], instant: datetime) -> bool:
         """Accept exactly the authority each signed runtime row proves.
 
-        Paid borrowed Hub/Cloud rows still require a live server lease. Owner
-        and free rows do not mint rental leases, so their digest-bound
-        ``charge.basis`` is the authoritative zero-credit execution proof.
+        New Hub rows use a digest-bound free charge basis. Retain the legacy
+        live-lease check for already prepared paid rows; it prevents stale
+        plans from silently becoming authorized after the policy change.
         """
         execution_plan = preparation.get("executionPlan")
         if not isinstance(execution_plan, Mapping):
