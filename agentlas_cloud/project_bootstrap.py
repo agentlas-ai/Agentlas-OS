@@ -2581,8 +2581,60 @@ def _verification_graph(
     return payload
 
 
+
+def multi_repository_root_children(project: Path) -> list[str]:
+    """Child Git repositories when ``project`` is an umbrella, not a project.
+
+    A folder that is not itself a Git work tree but directly holds two or more
+    Git repositories is a workspace of projects. Mapping it duplicates every
+    child repository and walks their vendored and generated trees file by file.
+    Measured 2026-09-24 on a multi-repository umbrella: workforce preparation
+    ran this walk for over 30 minutes at 100% CPU and wrote a 3.46 GB
+    project-map.json, while each child repository maps in under a second from
+    its Git file list. The umbrella is therefore refused before any listing,
+    by structure rather than by a scan budget. A plain non-Git folder (a
+    Desktop project) and a folder holding a single cloned repository still map.
+    Only direct children are inspected, so the check costs one directory read.
+    """
+
+    if (project / ".git").exists():
+        return []
+    try:
+        children = sorted(
+            entry.name
+            for entry in os.scandir(project)
+            if entry.is_dir(follow_symlinks=False)
+            and not entry.name.startswith(".")
+            and os.path.lexists(os.path.join(entry.path, ".git"))
+        )
+    except OSError:
+        return []
+    if len(children) < 2:
+        return []
+    probe = subprocess.run(
+        ["git", "-C", str(project), "rev-parse", "--is-inside-work-tree"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if probe.returncode == 0 and probe.stdout.strip() == b"true":
+        return []
+    return children
+
+
 def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any]:
     project = _project_root(root)
+    child_repositories = multi_repository_root_children(project)
+    if child_repositories:
+        return {
+            "status": "skipped",
+            "path": ".agentlas/code-map/project-map.json",
+            "created": [],
+            "refresh": "skipped",
+            "reason": "multi_repository_root",
+            "childRepositories": child_repositories[:50],
+            "coverageComplete": False,
+        }
     policy = _context_index_policy(project)
     policy_digest = _policy_digest(policy)
     out_dir = project / ".agentlas" / "code-map"

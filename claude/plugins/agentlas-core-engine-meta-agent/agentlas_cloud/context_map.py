@@ -38,6 +38,7 @@ from .project_bootstrap import (
     _safe_file,
     _policy_allows,
     _regular_file_digest,
+    multi_repository_root_children,
     _walk_file_list,
     _walk_local_test_files,
     generate_code_map,
@@ -132,6 +133,9 @@ _STOP_TERMS = frozenset(
 # has to carry a way out, and it has to carry it on every surface, so the table
 # lives here beside the codes instead of next to one caller.
 CONTEXT_ERROR_REMEDIES: dict[str, str] = {
+    "context_map_multi_repository_root":
+        "This folder holds several Git repositories and is not a project itself, so no context map is built or read for it. "
+        "Pass the specific repository you are working in as the project directory.",
     "context_map_missing":
         "This project has no context map yet. Run `agentlas context refresh` first.",
     "context_map_stale":
@@ -505,6 +509,8 @@ def load_code_map(
     """
 
     root = _project_root(project)
+    if multi_repository_root_children(root):
+        raise ContextMapError("context_map_multi_repository_root")
     refresh_receipt: dict[str, Any] | None = None
     if refresh:
         refresh_receipt = generate_code_map(root, force=force_refresh)

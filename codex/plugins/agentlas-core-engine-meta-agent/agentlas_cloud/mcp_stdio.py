@@ -75,6 +75,22 @@ _COMMON_PROJECT_BOOTSTRAP_TOOLS = frozenset(
 )
 
 
+# Preparation serves the project's existing Context Map read-only; it never
+# builds one. Building belongs to context.slice / `agentlas context refresh`.
+# Measured 2026-09-24: prepare_execution rebuilt the map inline (refresh=True)
+# and, given a multi-repository umbrella folder that is not a Git work tree,
+# walked and realpath-checked every file for over 30 minutes at 100% CPU. The
+# host dropped the call at its 1800s tool limit and every later MCP call queued
+# behind it. The same preparation against a small project took 0.2s. A stale
+# or missing map is reported (localContextSliceCode), never produced here.
+# The freshness bound is the read-only recall contract memory_hook already
+# uses (context_map.RECALL_FRESHNESS_BUDGET_SECONDS), passed at the call site.
+PREPARE_CONTEXT_SLICE_READ: dict[str, Any] = {
+    "refresh": False,
+    "allow_stale": True,
+}
+
+
 def _claim_first_contact(project_dir: str) -> bool:
     """True once per resolved root per process."""
 
@@ -3578,7 +3594,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     # It is never included in Hub/Cloud search, selection, or
                     # bundle-fetch payloads.
                     try:
-                        from .context_map import context_slice
+                        from .context_map import RECALL_FRESHNESS_BUDGET_SECONDS, context_slice
 
                         prepared_result = {
                             **prepared_result,
@@ -3587,7 +3603,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                                 context_slice(
                                     str(prepare_project_dir),
                                     str(work_order.get("taskBrief") or ""),
-                                    refresh=True,
+                                    **PREPARE_CONTEXT_SLICE_READ,
+                                    freshness_budget_seconds=RECALL_FRESHNESS_BUDGET_SECONDS,
                                 ),
                             ),
                             "localContextBoundary": {
@@ -3596,10 +3613,11 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                                 "inheritance": "all-selected-workers",
                             },
                         }
-                    except Exception:
+                    except Exception as exc:
                         prepared_result = {
                             **prepared_result,
                             "localContextSliceStatus": "unavailable",
+                            "localContextSliceCode": str(getattr(exc, "code", "") or type(exc).__name__),
                         }
                     if not _workforce_preparation_ready(prepared_result):
                         return _workforce_preparation_refusal(name, prepared_result)
@@ -3663,7 +3681,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name != "workforce.prepare_execution":
             return remote_result
         try:
-            from .context_map import context_slice
+            from .context_map import RECALL_FRESHNESS_BUDGET_SECONDS, context_slice
 
             remote_result = {
                 **remote_result,
@@ -3672,7 +3690,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     context_slice(
                         str(prepare_project_dir),
                         str(work_order.get("taskBrief") or ""),
-                        refresh=True,
+                        **PREPARE_CONTEXT_SLICE_READ,
+                        freshness_budget_seconds=RECALL_FRESHNESS_BUDGET_SECONDS,
                     ),
                 ),
                 "localContextBoundary": {
@@ -3681,8 +3700,12 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "inheritance": "all-selected-workers",
                 },
             }
-        except Exception:
-            remote_result = {**remote_result, "localContextSliceStatus": "unavailable"}
+        except Exception as exc:
+            remote_result = {
+                **remote_result,
+                "localContextSliceStatus": "unavailable",
+                "localContextSliceCode": str(getattr(exc, "code", "") or type(exc).__name__),
+            }
         if not _workforce_preparation_ready(remote_result):
             return _workforce_preparation_refusal(name, remote_result)
         try:
