@@ -78,7 +78,7 @@ def search_agents(
             "No agent was invoked.",
             "cloud = signed-in owner's own saved/shared packages.",
             "bookmarks = Hub agents the signed-in workspace saved.",
-            "hub = public Agentlas Hub marketplace.",
+            "hub = public Agentlas Hub agent community.",
         ],
     }
 

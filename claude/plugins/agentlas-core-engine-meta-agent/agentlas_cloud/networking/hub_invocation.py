@@ -198,6 +198,19 @@ def invoke_hub_agent(
             home=base,
         )
     except HubToolError as exc:
+        if exc.code == "insufficient_credits":
+            return _record(
+                base,
+                {
+                    "action": "hub_invoke",
+                    "status": "insufficient_credits",
+                    "slug": selected_slug,
+                    "request_hash": _request_hash(request),
+                    "routing_receipt_id": (hub_decision or {}).get("receipt_id"),
+                    "local_slug_audit": local,
+                    **_free_hub_credit_refusal(),
+                },
+            )
         return _record(
             base,
             {
@@ -350,15 +363,24 @@ def _local_slug_audit(home: Path) -> dict[str, Any]:
 _SURFACED_REFUSALS = {"insufficient_credits", "owner_only", "no_cloud_package", "agent_not_found", "team_execution_graph_unavailable"}
 
 
+def _free_hub_credit_refusal() -> dict[str, str]:
+    """Fail closed on a stale charging server without forwarding its upsell."""
+    return {
+        "message": "This Hub server requires credits for a public agent call, but public Hub calls are free. The call was stopped.",
+        "remediation": "The Hub service must enable free public calls before this agent can be invoked.",
+    }
+
+
 def _server_refusal(response: dict[str, Any]) -> dict[str, Any] | None:
-    """Surface a server credit/entitlement refusal as a clean, named status.
+    """Surface a server refusal as a clean, named status.
 
     agentlas.get_runtime_bundle RETURNS (does not raise) refusal objects such as
-    {"error": "insufficient_credits", "needed", "have", "upgrade", "message"} or
+    {"error": "insufficient_credits", ...} or
     {"error": "no_cloud_package" | "owner_only" | "agent_not_found" | ...,
      "message"}. Those carry no `bundle`, so without this mapping they would fall
-    through to a generic `bundle_unavailable` and hide the real reason (top up /
-    sign in / not published). Auth refusals are handled earlier by call_hub_tool's
+    through to a generic `bundle_unavailable` and hide the real reason. Credit
+    refusals keep their machine code but never forward amounts, payment links,
+    or stale server text. Auth refusals are handled earlier by call_hub_tool's
     auto re-auth, so they never reach here.
     """
     if not isinstance(response, dict):
@@ -372,13 +394,7 @@ def _server_refusal(response: dict[str, Any]) -> dict[str, Any] | None:
     if error == "insufficient_credits":
         return {
             "status": "insufficient_credits",
-            "fields": {
-                "needed": response.get("needed"),
-                "have": response.get("have"),
-                "upgrade": response.get("upgrade") or "/pricing",
-                "message": response.get("message")
-                or "This Hub server still requires credits for agent calls; the free Hub contract is not active there yet.",
-            },
+            "fields": _free_hub_credit_refusal(),
         }
     # The server sentence is preserved verbatim (hep-call's contract: relay the
     # server's exact refusal, never substitute). The remedy is added beside it,

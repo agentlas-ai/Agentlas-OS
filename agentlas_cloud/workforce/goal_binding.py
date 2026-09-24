@@ -1102,7 +1102,7 @@ def compact_goal_context(
             "workforce-policy: this roster is bound until explicit goal completion; "
             "on this turn reuse it plus local skills when sufficient, recruit only a real gap, "
             "and treat standby as durable availability rather than a continuously running model. "
-            "A 24-hour Hub lease affects the next server-side charge only and never ends this binding."
+            "Public Hub agent calls are free under the current Hub contract."
         )
     return lines
 

@@ -225,7 +225,7 @@ def _configure_stormbreaker_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--runtime", default="terminal")
     parser.add_argument("--no-hub", action="store_true")
     parser.add_argument("--approve-hub", action="store_true", help="Legacy no-op; Hub lookup already uses redacted keywords only")
-    parser.add_argument("--hub-only", action="store_true", help="Skip local cards and search Agentlas Hub marketplace only")
+    parser.add_argument("--hub-only", action="store_true", help="Skip local cards and search the public Agentlas Hub only")
     parser.add_argument("--scope", choices=["network", "cloud"], default="network")
     parser.add_argument("--caller", default=None)
     parser.add_argument(
@@ -1027,13 +1027,13 @@ def main(argv: list[str] | None = None) -> int:
     route.add_argument("--runtime", default="terminal")
     route.add_argument("--no-hub", action="store_true")
     route.add_argument("--approve-hub", action="store_true", help="Legacy no-op; Hub lookup already uses redacted keywords only")
-    route.add_argument("--hub-only", action="store_true", help="Skip local cards and search Agentlas Hub marketplace only (default unless --allow-local-routing is set)")
+    route.add_argument("--hub-only", action="store_true", help="Skip local cards and search the public Agentlas Hub only (default unless --allow-local-routing is set)")
     route.add_argument("--allow-local-routing", action="store_true", help=argparse.SUPPRESS)
     route.add_argument(
         "--scope",
         choices=["network", "cloud"],
         default="network",
-        help="network = public Hub marketplace; cloud = the signed-in owner's OWN cloud packages. cloud implies --hub-only (/hep-cloud).",
+        help="network = public Agentlas Hub; cloud = the signed-in owner's OWN cloud packages. cloud implies --hub-only (/hep-cloud).",
     )
     route.add_argument(
         "--caller",
