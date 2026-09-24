@@ -169,6 +169,34 @@ Otherwise you get the name of the place it stopped — `prepared`, `blocked`,
 
 ---
 
+## Inside Agentlas Desktop
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One: a three-member team works an ongoing goal while its live browser stays in view" width="100%"></a></p>
+<p align="center"><sub><strong>Agentlas One</strong> — a standing team works an ongoing goal, and the browser it drives stays in view.</sub></p>
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/one-teammate.png" alt="Editing a One teammate: character, name and model" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-evidence-map.png" alt="Agentlas Science evidence map linking each extracted claim to its source passage" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>Every teammate has its own character, model and tools.</sub></td>
+<td valign="top"><sub><strong>Agentlas Science</strong> — each extracted claim is linked to the source passage it came from.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/science-statistics.png" alt="Agentlas Science statistical result with a table and a fitted figure" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-molstar.gif" alt="Exploring a protein structure in Mol* inside Agentlas Science" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>Statistics: the table and the figure come from the same validated result.</sub></td>
+<td valign="top"><sub>Protein structures in Mol*: explore, restyle, and save a view as a new version.</sub></td>
+</tr>
+</table>
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><strong>Download Agentlas Desktop →</strong></a></p>
+
+---
+
 ## Questions you probably have
 
 

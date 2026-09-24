@@ -145,6 +145,34 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 ---
 
+## Agentlas Desktop の中
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One：3人のチームが進行中のゴールに取り組み、横に実際のブラウザが表示されている画面" width="100%"></a></p>
+<p align="center"><sub><strong>Agentlas One</strong> — 常駐チームが進行中のゴールに取り組み、チームが操作するブラウザがそのまま横に見えます。</sub></p>
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/one-teammate.png" alt="One のチームメイト編集：キャラクター、名前、モデル" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-evidence-map.png" alt="抽出した主張を出典の段落に結びつける Agentlas Science のエビデンスマップ" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>チームメイトごとにキャラクター、モデル、ツールを持ちます。</sub></td>
+<td valign="top"><sub><strong>Agentlas Science</strong> — 抽出した主張はそれぞれ、出典となった段落に結びつきます。</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/science-statistics.png" alt="表と当てはめグラフを含む Agentlas Science の統計結果" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-molstar.gif" alt="Agentlas Science 内で Mol* を使ってタンパク質構造を見る画面" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>統計：表とグラフは同じ検証済みの結果から作られます。</sub></td>
+<td valign="top"><sub>Mol* のタンパク質構造：回して、表示を変えて、ビューを新しいバージョンとして保存できます。</sub></td>
+</tr>
+</table>
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><strong>Agentlas Desktop をダウンロード →</strong></a></p>
+
+---
+
 ## たぶん気になること
 
 <details open>

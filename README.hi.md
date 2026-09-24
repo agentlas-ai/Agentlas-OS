@@ -145,6 +145,34 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 ---
 
+## Agentlas Desktop के अंदर
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One: तीन सदस्यों की टीम एक चालू लक्ष्य पर काम करती है, बगल में लाइव ब्राउज़र दिखता है" width="100%"></a></p>
+<p align="center"><sub><strong>Agentlas One</strong> — एक स्थायी टीम चालू लक्ष्य पर काम करती है, और जिस ब्राउज़र को वह चलाती है वह बगल में दिखता रहता है।</sub></p>
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/one-teammate.png" alt="One टीम सदस्य का संपादन: कैरेक्टर, नाम और मॉडल" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-evidence-map.png" alt="Agentlas Science का साक्ष्य मानचित्र, जो हर निकाले गए दावे को उसके स्रोत अंश से जोड़ता है" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>हर टीम सदस्य का अपना कैरेक्टर, मॉडल और टूल होते हैं।</sub></td>
+<td valign="top"><sub><strong>Agentlas Science</strong> — हर निकाला गया दावा उस स्रोत अंश से जुड़ा होता है जहाँ से वह आया।</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/science-statistics.png" alt="तालिका और फ़िट ग्राफ़ वाला Agentlas Science सांख्यिकी परिणाम" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-molstar.gif" alt="Agentlas Science में Mol* से प्रोटीन संरचना देखना" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>सांख्यिकी: तालिका और ग्राफ़ एक ही सत्यापित परिणाम से बनते हैं।</sub></td>
+<td valign="top"><sub>Mol* में प्रोटीन संरचना: घुमाएँ, रूप बदलें, और व्यू को नए संस्करण के रूप में सहेजें।</sub></td>
+</tr>
+</table>
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><strong>Agentlas Desktop डाउनलोड करें →</strong></a></p>
+
+---
+
 ## जो सवाल शायद आपके मन में हैं
 
 <details open>
