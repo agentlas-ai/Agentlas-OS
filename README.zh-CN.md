@@ -13,11 +13,9 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center">
-  <a href="https://agentlas.cloud/studio">
-    <img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One 发布影片" width="960">
-  </a>
-</p>
+<p align="center"><a href="https://agentlas.cloud/studio"><img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One 发布影片" width="720"></a></p>
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
+<p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
 <h1 align="center">Agentlas OS</h1>
 
@@ -142,6 +140,34 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 </td>
 </tr>
 </table>
+
+---
+
+## Agentlas Desktop 里面
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One：三人团队推进一个进行中的目标，旁边显示实时浏览器" width="100%"></a></p>
+<p align="center"><sub><strong>Agentlas One</strong> — 常驻团队推进进行中的目标，团队操作的浏览器就显示在旁边。</sub></p>
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/one-teammate.png" alt="编辑 One 团队成员：角色形象、名称和模型" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-evidence-map.png" alt="Agentlas Science 证据图：每条提取的论断都连接到其来源段落" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>每位团队成员都有自己的形象、模型和工具。</sub></td>
+<td valign="top"><sub><strong>Agentlas Science</strong> — 每条提取的论断都连接到它出自的原文段落。</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/science-statistics.png" alt="Agentlas Science 统计结果，包含表格和拟合图" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-molstar.gif" alt="在 Agentlas Science 中用 Mol* 查看蛋白质结构" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>统计：表格和图来自同一份经过验证的结果。</sub></td>
+<td valign="top"><sub>Mol* 蛋白质结构：旋转、切换表示方式，并把视图保存为新版本。</sub></td>
+</tr>
+</table>
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><strong>下载 Agentlas Desktop →</strong></a></p>
 
 ---
 

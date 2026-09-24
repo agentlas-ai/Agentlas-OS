@@ -13,11 +13,9 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center">
-  <a href="https://agentlas.cloud/studio">
-    <img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One 런치 필름" width="960">
-  </a>
-</p>
+<p align="center"><a href="https://agentlas.cloud/studio"><img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One 런치 필름" width="720"></a></p>
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
+<p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
 <h1 align="center">Agentlas OS</h1>
 
@@ -159,6 +157,34 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 </td>
 </tr>
 </table>
+
+---
+
+## Agentlas 데스크탑 안에서는
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One: 세 명의 팀이 진행 중인 목표를 수행하고, 옆에 실제 브라우저가 떠 있는 화면" width="100%"></a></p>
+<p align="center"><sub><strong>Agentlas One</strong> — 상주 팀이 진행 중인 목표를 수행하고, 팀이 조작하는 브라우저가 옆에 그대로 보입니다.</sub></p>
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/one-teammate.png" alt="One 팀원 편집: 캐릭터, 이름, 모델" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-evidence-map.png" alt="추출한 주장을 출처 문단에 연결한 Agentlas Science 근거 지도" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>팀원마다 캐릭터, 모델, 도구를 따로 가집니다.</sub></td>
+<td valign="top"><sub><strong>Agentlas Science</strong> — 추출한 주장마다 그 주장이 나온 원문 문단에 연결됩니다.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/readme/desktop/science-statistics.png" alt="표와 적합 그래프가 있는 Agentlas Science 통계 결과" width="100%"></td>
+<td width="50%"><img src="assets/readme/desktop/science-molstar.gif" alt="Agentlas Science 안에서 Mol*로 단백질 구조를 살펴보는 화면" width="100%"></td>
+</tr>
+<tr>
+<td valign="top"><sub>통계: 표와 그래프가 같은 검증된 결과에서 나옵니다.</sub></td>
+<td valign="top"><sub>Mol* 단백질 구조: 돌려 보고, 표현을 바꾸고, 보기를 새 버전으로 저장합니다.</sub></td>
+</tr>
+</table>
+
+<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><strong>Agentlas 데스크탑 다운로드 →</strong></a></p>
 
 ---
 
