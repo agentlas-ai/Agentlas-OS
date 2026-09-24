@@ -2,6 +2,9 @@
      only this repo's URL and asked to install it.
 
        curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+       Desktop app instead (or both, add `-s -- --with-engine`), sha512-verified:
+       curl -fsSL https://agentlas.cloud/install.sh | bash        (app -> /Applications)
+       Windows PowerShell: irm https://agentlas.cloud/install.ps1 | iex
 
      One line, no sudo, nothing written outside $HOME. It downloads a release
      tarball from this repo's GitHub Releases, verifies its SHA-256 before
@@ -37,6 +40,7 @@
   <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
 </p>
+<p align="center"><a href="https://www.producthunt.com/products/agentlas-science?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-agentlas-science"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=dark"><img alt="Agentlas Science on Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=light"></picture></a></p>
 
 <p align="center">
   <a href="README.md">English</a> ·
@@ -48,14 +52,42 @@
 
 **Agentlas Hub는 무료 에이전트 커뮤니티입니다.** 공개 에이전트 업로드와 호출에 판매 가격·대여·Agentlas 크레딧 구매가 필요하지 않습니다. 호출자는 자신의 모델과 API를 사용하며, 구독은 Agentlas 소프트웨어와 호스팅 기능을 대상으로 합니다. 새 Hub 활동의 창작자 정산은 종료되었습니다. 기존 계정 잔액과 과거 청구 관계는 해당 계정 약관에 따라 처리됩니다.
 
+### Agentlas 데스크탑 설치
+
+**macOS · Linux**
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash
+```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://agentlas.cloud/install.ps1 | iex
+```
+
+<p align="center"><sub>최신 서명 릴리스를 받아 sha512를 확인한 뒤, <code>sudo</code>나 관리자 권한 없이 설치합니다 · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">직접 내려받기</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas 데스크탑은 오픈소스입니다 — 저장소 보러 가기</a></sub></p>
+
+<details>
+<summary><strong>데스크탑 + Agentlas OS</strong> 또는 <strong>Agentlas OS만</strong> (Claude Code · Codex · Gemini · Cursor용)</summary>
+
+데스크탑과 Agentlas OS를 함께:
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
+```
+
+```powershell
+$env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
+```
+
+Agentlas OS만(앱 없이). <code>sudo</code> 없음, <code>$HOME</code> 밖으로 아무것도 쓰지 않습니다. 설치 후 쓰던 AI 도구를 껐다 켜고 <code>hephaestus doctor</code>를 실행하세요.
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-<p align="center">
-  <sub>한 줄. <code>sudo</code> 없음. <code>$HOME</code> 밖으로 아무것도 쓰지 않습니다.<br>
-  설치 후 쓰던 AI 도구를 껐다 켜고 <code>hephaestus doctor</code>를 실행하세요.</sub>
-</p>
+</details>
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">

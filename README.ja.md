@@ -2,6 +2,9 @@
      only this repo's URL and asked to install it.
 
        curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+       Desktop app instead (or both, add `-s -- --with-engine`), sha512-verified:
+       curl -fsSL https://agentlas.cloud/install.sh | bash        (app -> /Applications)
+       Windows PowerShell: irm https://agentlas.cloud/install.ps1 | iex
 
      One line, no sudo, nothing written outside $HOME. It downloads a release
      tarball from this repo's GitHub Releases, verifies its SHA-256 before
@@ -37,6 +40,7 @@
   <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
 </p>
+<p align="center"><a href="https://www.producthunt.com/products/agentlas-science?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-agentlas-science"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=dark"><img alt="Agentlas Science on Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=light"></picture></a></p>
 
 <p align="center">
   <a href="README.md">English</a> ·
@@ -48,13 +52,42 @@
 
 **Agentlas Hub は無料のエージェントコミュニティです。**公開エージェントの公開・呼び出しに価格設定、リース、Agentlas クレジットの購入は不要です。呼び出し側が自分のモデルと API を使用し、サブスクリプションは Agentlas のソフトウェアとホスト機能を対象とします。新しい Hub 活動のクリエイター精算は終了し、既存残高と過去の請求は適用されるアカウント規約に従います。
 
+### Agentlas Desktop のインストール
+
+**macOS · Linux**
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash
+```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://agentlas.cloud/install.ps1 | iex
+```
+
+<p align="center"><sub>最新の署名済みリリースを取得し sha512 を確認してから、<code>sudo</code> や管理者権限なしでインストールします · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">手動でダウンロード</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas Desktop はオープンソースです — リポジトリを見る</a></sub></p>
+
+<details>
+<summary><strong>Desktop + Agentlas OS</strong>、または <strong>Agentlas OS のみ</strong>(Claude Code · Codex · Gemini · Cursor 向け)</summary>
+
+Desktop と Agentlas OS を一緒に:
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
+```
+
+```powershell
+$env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
+```
+
+Agentlas OS のみ(アプリなし)。<code>sudo</code> 不要、<code>$HOME</code> の外には何も書き込みません。インストール後にエージェントホストを再起動し <code>hephaestus doctor</code> を実行してください。
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-<p align="center">
-  <sub>一行。<code>sudo</code> なし。<code>$HOME</code> の外には何も書きません。<br>インストール後はお使いの AI ツールを再起動し、<code>hephaestus doctor</code> を実行してください。</sub>
-</p>
+</details>
 
 <p align="center">
   <a href="https://agentlas.cloud/desktop">
