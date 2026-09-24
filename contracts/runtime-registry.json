@@ -1,6 +1,6 @@
 {
   "schemaVersion": "agentlas.runtime-registry.v1",
-  "updatedAt": "2026-09-23",
+  "updatedAt": "2026-09-24",
   "note": "Declarative seed of the runtime x model matrix (PRD 2026-08-15 §3.1). Rows are role-in-invocation, not tool names. `accessPath` answers ONE question only — does this runtime need runtime-specific code (subscription-cli) or the generic API/local path; exact capabilities come from live discovery (ACP session/new, models.dev, probes). `pin` values are what we last verified, not what a machine must have. Live rows are merged over this seed (Orca-style seed + live merge); the seed is never the whole universe.",
   "grades": {
     "A": "hand-coded native stream driver kept (token accounting / latency)",
@@ -64,12 +64,12 @@
         "command": "npx",
         "args": [
           "-y",
-          "@agentclientprotocol/claude-agent-acp@0.81.0"
+          "@agentclientprotocol/claude-agent-acp@0.81.2"
         ],
         "registryId": "claude-acp"
       },
       "pin": {
-        "registryVersion": "0.81.0"
+        "registryVersion": "0.81.2"
       },
       "notes": "Native stream-json keeps true input/output tokens; ACP usage_update is context occupancy only. Stays A."
     },
@@ -96,12 +96,12 @@
         "command": "npx",
         "args": [
           "-y",
-          "@agentclientprotocol/codex-acp@1.13.0"
+          "@agentclientprotocol/codex-acp@1.13.1"
         ],
         "registryId": "codex-acp"
       },
       "pin": {
-        "registryVersion": "1.13.0"
+        "registryVersion": "1.13.1"
       },
       "notes": "ACP path measured stable (11-13s). Promotion candidate to B when token accounting loss is acceptable."
     },
@@ -155,13 +155,13 @@
         "command": "npx",
         "args": [
           "-y",
-          "@google/gemini-cli@0.60.0",
+          "@google/gemini-cli@0.61.0",
           "--acp"
         ],
         "registryId": "gemini"
       },
       "pin": {
-        "registryVersion": "0.60.0"
+        "registryVersion": "0.61.0"
       },
       "notes": "Individual-tier service ended 2026-06-18; enterprise only. Successor is Antigravity."
     },
@@ -258,7 +258,7 @@
         "registryId": "kimi"
       },
       "pin": {
-        "registryVersion": "1.51.0"
+        "registryVersion": "1.52.0"
       },
       "notes": "Terminal rejects it as 'no driver'; ACP closes that gap without a third hand driver."
     },
@@ -320,7 +320,7 @@
         "registryId": "goose"
       },
       "pin": {
-        "registryVersion": "1.51.0",
+        "registryVersion": "1.52.0",
         "cliVersion": "1.45.0"
       }
     },
