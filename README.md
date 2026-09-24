@@ -316,7 +316,7 @@ the original model comes back on its own once the limit clears.
 | --- | --- |
 | **Agentlas Desktop** | Visual local OS for agent teams, memory, browser work and Hub specialists |
 | **Hephaestus plugin** | This repo — the open-source engine and command surface for your CLI hosts |
-| **Agentlas Hub** | Public surface for publishing and borrowing specialists |
+| **Agentlas Hub** | Public space for publishing, discovering, and using agents for free |
 | **Agentlas Cloud** | Owner-scoped store for privately saving and retrieving your own agents |
 
 ---
@@ -489,7 +489,7 @@ security-conscious), open this link in your browser first:
 </p>
 
 <p align="center">
-  <sub><a href="https://agentlas.cloud/desktop">Build, own, borrow, and run agents across your local workspace, private Agent Cloud, and the public Agentlas Hub.</a></sub>
+  <sub><a href="https://agentlas.cloud/desktop">Build, own, share, and run agents across your local workspace, private Agent Cloud, and the free public Agentlas Hub.</a></sub>
 </p>
 
 <details>
@@ -550,7 +550,7 @@ at [agentlas.cloud/desktop](https://agentlas.cloud/desktop) or the
 
 
 <details>
-<summary><strong>Build, Borrow, Own — the full model</strong></summary>
+<summary><strong>Build, Use, Own — the full model</strong></summary>
 
 
 An agent you create should remain an asset you can move, rather than a
@@ -564,7 +564,7 @@ claim of regulated financial or legal trust services.
 | Value | What Agentlas does | Entry point in an external LLM host |
 | --- | --- | --- |
 | **Build** | Compiles a plain-language request into a runnable single-agent or team package with roles, tools, memory boundaries, permissions, routing, and verification contracts. | `/agentlas build` |
-| **Borrow** | Finds public Hub specialists and brings the selected runtime bundle into your current Agentlas host. The publisher's private source work is not copied into your workspace. | `/agentlas hub` (Hub only) or `/agentlas network` (Local + Cloud + Hub) |
+| **Use** | Finds free public Hub agents and brings the selected runtime bundle into your current Agentlas host. The publisher's private source work is not copied into your workspace. | `/agentlas hub` (Hub only) or `/agentlas network` (Local + Cloud + Hub) |
 | **Own** | Keeps agents you create in a private, owner-scoped Agent Cloud so you can retrieve and call them again after changing models or computers. | Choose **private Agent Cloud** at `/agentlas upload`, then retrieve with `/agentlas cloud` |
 
 ### Portable package, local execution
@@ -706,7 +706,7 @@ fits the work.
 
 | Surface | What it contains | What it is for |
 | --- | --- | --- |
-| **Agentlas Hub** | Public packages from creators and teams | Find and borrow only public specialists with `/agentlas hub`; `/agentlas network` federates Hub with Local and owner Cloud. Publish only through an explicit public-Hub choice. |
+| **Agentlas Hub** | Public packages from creators and teams | Discover and use public agents for free with `/agentlas hub`; `/agentlas network` federates Hub with Local and owner Cloud. Publish only through an explicit public-Hub choice. |
 | **My Agent Cloud** | Only the signed-in owner's Cloud packages | Privately store, restore, and call packages you own with the `/agentlas upload` Cloud choice and `/agentlas cloud`. |
 | **Current host** | The installed runtime, chosen model, local project, credentials, and granted permissions | Execute the selected local, Cloud, or Hub package. |
 
@@ -730,7 +730,7 @@ forcing your work into one model provider:
 | **Memory Management (MMU)** | Two-boundary governed memory: local project memory remains isolated on the machine, while durable promotions are gated by a local Memory Curator. |
 | **Virtual File System** | Production Ontology Runtime: local-first source ingestion, CJK trigram FTS5 search, hybrid Reciprocal Rank Fusion, and GraphRAG retrieval. |
 | **Inter-Process Call (IPC)** | A2A Agent Card Boundary (cryptographic import/export and caller-gating) + Model Context Protocol (MCP) tool registrations. |
-| **Package Manager** | Agentlas Hub for public publishing and borrowing; owner-scoped Agent Cloud for private package storage and retrieval. Neither is a server-side model executor. |
+| **Package Manager** | Agentlas Hub for free public publishing and use; owner-scoped Agent Cloud for private package storage and retrieval. Neither is a server-side model executor. |
 | **Shell Interface** | A small, unified command set in external client runtimes; plain-language intent routing in native Agentlas shells. |
 | **Process Initialization** | Meta-Agent Factory with an integrated Briefing Interview Gate—specifying agent parameters before compiling code. |
 
@@ -1066,9 +1066,9 @@ than copying it.
 
 ### Governed Memory — Curated Promotion
 
-*   **Local Project Memory:** Project documents remain in the local `.agentlas/ontology-runtime.sqlite`; borrowed-agent experience remains in its exact per-agent projection. The two stores share one query engine without collapsing their scope or ownership boundaries.
+*   **Local Project Memory:** Project documents remain in the local `.agentlas/ontology-runtime.sqlite`; experience from selected agents remains in its exact per-agent projection. The two stores share one query engine without collapsing their scope or ownership boundaries.
 *   **Governance Before Ranking:** Exact agent, allowed privacy scope, active status, expiry, and structural supersession are enforced before lexical/cosine ranking. Secret redaction and capsule bounds are applied again before host delivery.
-*   **Workspace Personalization:** Manages summaries, playbooks, plugin locks, and receipts for borrowed Cloud/Hub agents without storing raw prompts, credential values, or private files.
+*   **Workspace Personalization:** Manages summaries, playbooks, plugin locks, and receipts for selected Cloud/Hub agents without storing raw prompts, credential values, or private files.
 *   **Curator Gating:** Skills and durable memory modifications remain candidates until a local curator confirms evidence, rollback coverage, and security policy approval. Automatic experience relations are limited to `similar_to`.
 
 ---

@@ -267,7 +267,7 @@ Desktop खुद host है, इसलिए run शुरू होने स
 | --- | --- |
 | **Agentlas Desktop** | agent teams, memory, browser काम और Hub specialists के लिए स्थानीय visual OS |
 | **Hephaestus plugin** | यही repo — CLI hosts के लिए open-source engine और command surface |
-| **Agentlas Hub** | specialists प्रकाशित करने और उधार लेने की सार्वजनिक सतह |
+| **Agentlas Hub** | एजेंट प्रकाशित करने, खोजने और मुफ़्त उपयोग करने की सार्वजनिक जगह |
 | **Agentlas Cloud** | अपने बनाए agents को निजी तौर पर रखने और वापस लाने का owner-only store |
 
 ---
@@ -551,7 +551,7 @@ bin/ontology memory candidates
 
 ### Governed Memory — Curated Promotion
 *   **Local Project Memory:** `~/.agentlas/networking/` के अंतर्गत संग्रहीत और local मशीन तक isolated। स्पष्ट authorization के बिना इसे export नहीं किया जा सकता।
-*   **Workspace Personalization:** Borrowed Cloud/Hub agents के लिए personalization logs (summaries, playbooks, plugin locks और receipts) manage करता है — raw prompts, credential values या private files को store किए बिना।
+*   **Workspace Personalization:** चुने गए Cloud/Hub agents के लिए personalization logs (summaries, playbooks, plugin locks और receipts) manage करता है — raw prompts, credential values या private files को store किए बिना।
 *   **Curator Gating:** Skills और memory modifications candidates के रूप में रखे जाते हैं। इन्हें durable status पर तभी promote किया जाता है जब एक local curator holdout/replay proofs, rollback coverage और security policy approvals की पुष्टि कर दे।
 
 ---
