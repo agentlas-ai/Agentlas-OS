@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Public Hub calls are free in the host guidance.** Login instructions and
+  Workforce tool descriptions now reflect free Hub runtime plans. Older
+  leased plans still require their original valid lease to resume.
+
 - **Workforce tool bindings now admit measured host tool brokers.** Native and
   broker inventory rows remain distinct, and direct and nested invocation
   receipts must match the enforcement path selected by their bound tools.

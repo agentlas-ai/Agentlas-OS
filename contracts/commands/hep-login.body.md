@@ -2,7 +2,7 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 # /hep-login
 
-Sign this machine into Agentlas so cloud staffing, uploads, and paid Hub calls
+Sign this machine into Agentlas so cloud staffing, uploads, and free Hub calls
 work. Raw request: `{{ARGS}}`
 
 Resolve the runner (authentication only):

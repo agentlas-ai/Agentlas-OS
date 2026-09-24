@@ -1966,7 +1966,7 @@ TOOLS: list[dict[str, Any]] = [
         "name": "workforce.bind_goal",
         "description": (
             "Bind an already prepared exact Workforce roster to one durable host goal. "
-            "The binding survives turns, sessions, host restarts, and Hub lease expiry; "
+            "The binding survives turns, sessions, and host restarts; "
             "repeated calls append only newly prepared exact releases."
         ),
         "inputSchema": {
@@ -2020,8 +2020,8 @@ TOOLS: list[dict[str, Any]] = [
         "name": "workforce.goal_runtime",
         "description": (
             "Load the exact locally cached prepared plans for an active account/project "
-            "goal. Returns directives only while the recorded remote lease is still active; "
-            "otherwise returns lease-refresh-required and no remote directive content."
+            "goal. Free Hub and owned plans remain available without a lease. "
+            "Legacy leased plans return lease-refresh-required with no directives after expiry."
         ),
         "inputSchema": {
             "type": "object",
@@ -2039,7 +2039,7 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "Record the host LLM's content-free per-turn choice: reuse the bound roster, "
             "use local skills only, recruit a real gap, remain on standby, or block. "
-            "This does not execute a model and does not create a Hub charge."
+            "This records a decision without executing a model or calling a Hub agent."
         ),
         "inputSchema": {
             "type": "object",
@@ -2080,7 +2080,7 @@ TOOLS: list[dict[str, Any]] = [
         "name": "workforce.complete_goal",
         "description": (
             "Release a durable Workforce binding only after an explicit host/user goal "
-            "completion or cancellation. A model turn ending or a 24-hour lease expiring "
+            "completion or cancellation. A model turn ending or a legacy lease expiring "
             "is never sufficient."
         ),
         "inputSchema": {
@@ -3920,8 +3920,8 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
                     "when sufficient; recruit only a real gap. workforce.prepare_execution "
                     "requires projectDir and automatically binds every successful preparation, "
                     "even when the user never said goal. Keep the roster until explicit whole-goal "
-                    "completion/cancellation through workforce.complete_goal. Lease expiry affects "
-                    "only the next server charge and never ends the binding. Once a concrete project "
+                    "completion/cancellation through workforce.complete_goal. Free Hub calls do not "
+                    "need a paid lease; expiry of a legacy lease never ends the binding. Once a concrete project "
                     "task is resolved, call context.slice; before mutating a path call context.impact; "
                     "before declaring completion call context.verify and account for every affected "
                     "file. Context Map source paths and contents stay project-local and must never be "

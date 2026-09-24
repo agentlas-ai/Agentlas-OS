@@ -1377,7 +1377,7 @@ def main(argv: list[str] | None = None) -> int:
     workforce_goal_status.add_argument("--hub-base-url", default=None, help=argparse.SUPPRESS)
     workforce_goal_runtime = workforce_sub.add_parser(
         "goal-runtime",
-        help="Load cached prepared plans while their remote lease remains active",
+        help="Load cached prepared plans, including free Hub plans and unexpired legacy leases",
     )
     workforce_goal_runtime.add_argument("--goal-id", default=None)
     workforce_goal_runtime.add_argument("--project", default=".")
