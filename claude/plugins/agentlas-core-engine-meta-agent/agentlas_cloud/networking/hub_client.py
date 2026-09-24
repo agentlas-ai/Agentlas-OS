@@ -15,6 +15,7 @@ from typing import Any, Collection, Mapping
 
 from ..auth import ensure_access_token, invalidate_access_token
 from .bootstrap import networking_home, read_json
+from .lease_tools import PURCHASE as LEASE_PURCHASE, QUOTE as LEASE_QUOTE
 
 _HUB_TIMEOUT_SECONDS = 15
 _HUB_CAPABILITY_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
@@ -22,6 +23,7 @@ _HUB_TOOL_MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 _HUB_ERROR_MAX_RESPONSE_BYTES = 64 * 1024
 _HUB_ERROR_MAX_TRAVERSAL_NODES = 512
 _HUB_ERROR_MAX_TRAVERSAL_DEPTH = 12
+_RETIRED_COMMERCE_TOOLS = frozenset({LEASE_QUOTE, LEASE_PURCHASE})
 
 
 class HubToolError(RuntimeError):
@@ -253,6 +255,8 @@ def call_hub_tool(
 ) -> dict[str, Any]:
     """Call an Agentlas Hub MCP tool and return its parsed JSON payload."""
 
+    if name in _RETIRED_COMMERCE_TOOLS:
+        raise HubToolError("Hub agent rentals are closed.", code="hub_commerce_closed")
     if endpoint_path not in {"/api/mcp/v1", "/api/mcp/hephaestus-network"}:
         raise ValueError("unsupported Hub MCP endpoint")
     endpoint_options = {"endpoint_path": endpoint_path} if endpoint_path != "/api/mcp/v1" else {}
@@ -357,6 +361,8 @@ def _call_hub_tool_once(
     token: str | None,
     endpoint_path: str = "/api/mcp/v1",
 ) -> dict[str, Any]:
+    if name in _RETIRED_COMMERCE_TOOLS:
+        raise HubToolError("Hub agent rentals are closed.", code="hub_commerce_closed")
     if endpoint_path not in {"/api/mcp/v1", "/api/mcp/hephaestus-network"}:
         raise ValueError("unsupported Hub MCP endpoint")
     url = base_url + endpoint_path
