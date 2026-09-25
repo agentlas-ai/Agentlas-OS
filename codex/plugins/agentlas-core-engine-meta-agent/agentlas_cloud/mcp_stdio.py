@@ -2256,6 +2256,68 @@ TOOLS.extend(LEASE_TOOLS)
 TOOLS.extend(TAKEDOWN_TOOLS)
 
 
+# MCP tool annotations (spec 2025-03-26, "Tool annotations"): every tool states
+# what it does to its environment. Hosts decide approval from these hints —
+# codex exec runs unattended/write turns with approval_policy "never" and
+# refuses, before the server sees it, every MCP call without readOnlyHint
+# ("MCP tool call requires approval, but approval policy is never"; desktop
+# Threads automation 2026-09-24, hephaestus_network_status). None of these
+# tools declared annotations, so pure reads were refused in automations and
+# prompted in One write mode.
+#
+# readOnlyHint follows HTTP "safe" semantics (RFC 9110 §9.2.1): the caller does
+# not request a state change. A derived cache the read itself maintains (the
+# Context Map auto-refresh of an already-initialized project, a one-hour pinned
+# WorkOrder/candidate session) is not a requested change. Anything that
+# creates project state (first-contact bootstrap), writes receipts or bindings,
+# signs in, or fetches runtime bundles is not read-only — say so truthfully.
+_READ = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
+_WRITE = {"readOnlyHint": False, "destructiveHint": False}
+_TOOL_ANNOTATIONS: dict[str, dict[str, bool]] = {
+    "agentlas_resolve_plugins": {**_READ, "openWorldHint": True},
+    "agentlas_tool_search": {**_READ, "openWorldHint": False},
+    "model.resolve_allocation": {**_READ, "openWorldHint": False},
+    "hephaestus_network_status": {**_READ, "openWorldHint": False},
+    "agentlas_auth_status": {**_READ, "openWorldHint": False},
+    "workforce.preflight_work_order": {**_READ, "idempotentHint": False, "openWorldHint": False},
+    "workforce.search_candidates": {**_READ, "idempotentHint": False, "openWorldHint": True},
+    "workforce.expand_candidates": {**_READ, "openWorldHint": False},
+    "workforce.validate_selection": {**_READ, "openWorldHint": False},
+    "workforce.validate_execution_receipt": {**_READ, "openWorldHint": False},
+    "workforce.goal_context": {**_READ, "openWorldHint": False},
+    "workforce.goal_runtime": {**_READ, "openWorldHint": False},
+    "context.locate": {**_READ, "openWorldHint": False},
+    "context.refs": {**_READ, "openWorldHint": False},
+    "context.slice": {**_READ, "openWorldHint": False},
+    "context.impact": {**_READ, "openWorldHint": False},
+    "context.verify": {**_READ, "openWorldHint": False},
+    # First contact bootstraps .agentlas into the caller's project.
+    "hephaestus_route": {**_WRITE, "openWorldHint": True},
+    "hephaestus_cloud_search": {**_WRITE, "openWorldHint": True},
+    "hephaestus_search": {**_WRITE, "openWorldHint": True},
+    # Fetch runtime bundles and write execution receipts.
+    "hephaestus_call": {**_WRITE, "openWorldHint": True},
+    "hephaestus_hub_invoke": {**_WRITE, "openWorldHint": True},
+    "workforce.prepare_execution": {**_WRITE, "openWorldHint": True},
+    "agentlas_authenticate": {**_WRITE, "idempotentHint": True, "openWorldHint": True},
+    "workforce.bind_goal": {**_WRITE, "idempotentHint": True, "openWorldHint": False},
+    "workforce.record_goal_turn": {**_WRITE, "openWorldHint": False},
+    # Releases a durable binding; not undoable by calling again.
+    "workforce.complete_goal": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+    "context.refresh": {**_WRITE, "idempotentHint": True, "openWorldHint": False},
+}
+for _tool in TOOLS:
+    _declared = _tool.get("annotations")
+    _mapped = _TOOL_ANNOTATIONS.get(str(_tool["name"]))
+    if _declared is None and _mapped is None:
+        # A new tool must say what it does before it ships; failing at import
+        # keeps an unannotated tool from silently becoming "needs approval".
+        raise RuntimeError(f"MCP tool {_tool['name']} declares no annotations")
+    if _declared is None:
+        _tool["annotations"] = dict(_mapped)
+del _tool, _declared, _mapped
+
+
 class UnknownToolError(LookupError):
     """Raised only when this server implements no tool with the given name.
 
