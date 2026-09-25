@@ -297,8 +297,9 @@ and 93%** of the time. The default is 30.
 
 Desktop is the host itself, so it decides in code — **before** a run starts —
 whether the work needs one agent or a team. That decision is recorded as a
-reserved run, not a suggestion. It staffs only the agents you already installed,
-and bringing in paid outside help always asks first.
+reserved run, not a suggestion. It can staff installed agents and public Hub
+agents. Public Hub agent calls have no Agentlas fee; your chosen host or model/API
+provider may charge for execution.
 
 Every LLM you use, in one place: the coding CLIs you already subscribe to
 (Claude Code, Codex, Antigravity/Gemini, Cursor, Grok, Kimi), your own API keys

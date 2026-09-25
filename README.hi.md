@@ -252,7 +252,7 @@ Ratings, install counts, पिछले महीने की बिक्र�
 
 <h2 align="center">Desktop पर और असरदार</h2>
 
-Desktop खुद host है, इसलिए run शुरू होने से **पहले** ही code तय कर लेता है कि काम एक agent से बनेगा या टीम चाहिए। वह निर्णय सुझाव नहीं, एक आरक्षित run के रूप में दर्ज होता है। यह सिर्फ़ उन्हीं agents को लगाता है जो आपने पहले से install किए हैं, और पैसे वाली बाहरी मदद बुलाने से पहले हमेशा पूछता है।
+Desktop खुद host है, इसलिए run शुरू होने से **पहले** ही code तय कर लेता है कि काम एक agent से बनेगा या टीम चाहिए। वह निर्णय सुझाव नहीं, एक आरक्षित run के रूप में दर्ज होता है। यह इंस्टॉल किए हुए agents के साथ सार्वजनिक Hub agents को भी काम में लगा सकता है। सार्वजनिक Hub agents को बुलाने पर Agentlas शुल्क नहीं लगता; चुने हुए host या model/API provider के शुल्क अलग से लग सकते हैं।
 
 आप जितने LLM इस्तेमाल करते हैं, सब एक जगह: जिन coding CLIs की आप पहले से subscription लेते हैं (Claude Code, Codex, Antigravity/Gemini, Cursor, Grok, Kimi), 11 providers की आपकी अपनी API keys, और local models भी। एक हस्ताक्षर-सत्यापित llama.cpp engine साथ आता है, Hugging Face से GGUF models लाता है, और LM Studio तथा MLX से भी जुड़ता है।
 

@@ -252,7 +252,7 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 <h2 align="center">用 Desktop 更高效</h2>
 
-Desktop 本身就是宿主，所以它在运行开始**之前**就用代码决定：这份工作一个人够，还是需要一支团队。那个决定会被记成一次预留的运行，而不是一条建议。它只编入你已经装好的智能体；要请需要付费的外部专家时，一定先问你。
+Desktop 本身就是宿主，所以它在运行开始**之前**就用代码决定：这份工作一个人够，还是需要一支团队。那个决定会被记成一次预留的运行，而不是一条建议。它可以编入已安装的智能体，也可以调用公开 Hub 的智能体。调用公开 Hub 智能体不收取 Agentlas 费用，但所选宿主或模型、API 服务商可能另行收费。
 
 你用的所有 LLM 都接在一处：你已经订阅的编码 CLI（Claude Code、Codex、Antigravity/Gemini、Cursor、Grok、Kimi）、你自己 11 家服务商的 API key，还有本地模型。内置经过签名验证的 llama.cpp 引擎，从 Hugging Face 拉取 GGUF 模型，也能接 LM Studio 和 MLX。
 

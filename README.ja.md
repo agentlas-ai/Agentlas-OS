@@ -252,7 +252,7 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 <h2 align="center">Desktop でもっと効率よく</h2>
 
-Desktop はホストそのものなので、実行が始まる**前に**コードが決めます。一人で足りる仕事か、チームが要る仕事か。その判断は提案ではなく、予約された実行として記録されます。すでにインストール済みのエージェントだけを配置し、費用のかかる外部の専門家を呼ぶときは必ず先に尋ねます。
+Desktop はホストそのものなので、実行が始まる**前に**コードが決めます。一人で足りる仕事か、チームが要る仕事か。その判断は提案ではなく、予約された実行として記録されます。インストール済みのエージェントに加え、公開 Hub のエージェントも配置できます。公開 Hub のエージェント呼び出しに Agentlas の料金はかかりませんが、選択したホストやモデル・API プロバイダの料金が別途発生する場合があります。
 
 使っている LLM をすべて一か所に。すでに契約しているコーディング CLI（Claude Code、Codex、Antigravity/Gemini、Cursor、Grok、Kimi）、自分で入れた 11 プロバイダの API キー、そしてローカルモデルまで。署名検証済みの llama.cpp エンジンを同梱し、Hugging Face から GGUF を取得して動かします。LM Studio と MLX にもつながります。
 
