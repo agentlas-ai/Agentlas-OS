@@ -853,9 +853,15 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
         "project-soul-memory.md.tpl": ".agentlas/project-soul-memory.md",
         "skill-registry.json.tpl": ".agentlas/skill-registry.json",
         "local-credentials.map.json.tpl": ".agentlas/local-credentials.map.json",
-        "env.example.tpl": ".env.example",
-        "signing.README.md.tpl": "signing/README.md",
-        "credentials.README.md.tpl": "credentials/README.md",
+        # Never seed secret-shaped scaffolding (`.env.example`, `signing/`,
+        # `credentials/`) into the user's project. Bootstrap runs on first
+        # contact with ANY folder — an empty Work project got all three before
+        # its first turn (desktop dev E2E, 2026-09-25) — and those names invite
+        # the user or a later agent to drop real secrets beside their work.
+        # They belong to agent *packages* that declare local credentials (the
+        # packager's Output Contract), not to every project. PRIVACY_PATTERNS
+        # still ignores `.env*`, `signing/*` and `credentials/*`, so a folder
+        # the user creates stays protected; existing files are never touched.
     }
     for template_name, relative in template_targets.items():
         rendered = _render_template(template_name, replacements)
