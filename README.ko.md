@@ -16,7 +16,7 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center"><a href="https://agentlas.cloud/studio"><img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One 런치 필름" width="720"></a></p>
+<p align="center"><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4"><img src="assets/readme/agentlas-one-promo-20s.jpg" alt="Agentlas One 20초 홍보영상 보기" width="720"></a><br><sub><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4">Agentlas One 홍보영상 보기 (20초) ▶</a></sub></p>
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
@@ -198,6 +198,10 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One: 세 명의 팀이 진행 중인 목표를 수행하고, 옆에 실제 브라우저가 떠 있는 화면" width="100%"></a></p>
 <p align="center"><sub><strong>Agentlas One</strong> — 상주 팀이 진행 중인 목표를 수행하고, 팀이 조작하는 브라우저가 옆에 그대로 보입니다.</sub></p>
+
+**Agent Mail**로 One에 전용 메일 주소를 줄 수 있습니다. One의 메일 탭에서 받은편지함과 보낸편지함을 읽고, 새 메일과 답장을 보내며, 임시보관함을 확인합니다. 새 메일이 오면 알림만 받을지, 답장 초안을 만들지, One이 대신 답장할지 선택할 수 있습니다. 메일은 해당 기능이 포함된 Agentlas 계정과 요금제가 필요하고, 자동 처리는 데스크탑 앱이 실행 중일 때 동작합니다.
+
+One·Work 작성창의 **AGI 버튼**은 현재 목표나 프로젝트의 **Alive Agent 베타**를 켜고 끄는 제어입니다. 토큰 한도를 정하고 모델 예비 순서와 현재 상태를 확인할 수 있습니다. 여기서 “AGI”는 자율 실행 모드의 버튼 이름이며, 기반 모델이 범용 인공지능을 달성했다는 뜻은 아닙니다.
 
 <table>
 <tr>
@@ -658,7 +662,7 @@ Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README�
 
 OS 터미널에서:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.51
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.54
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. Codex 0.117+에서는 custom `/prompts:*` 명령이 제거됐으므로, 설치 후에는 `$hephaestus-network <요청>` 스킬을 호출하세요.*
@@ -846,12 +850,11 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 │   ├── ontology-runtime.md
 │   ├── hephaestus-network-2.0.md
 │   └── builder-interview-research-gate.md
-└── scripts/                               # verification, installer, sync, release, public-safety gate
-    ├── verify-package.sh
-    ├── verify-ontology-runtime.sh
-    ├── verify-routing-cards.sh
-    ├── sync-adapters.sh
-    └── public_safety_check.sh
+└── scripts/                               # Runtime installation
+    ├── install.sh
+    ├── install-all-runtimes.sh
+    ├── verify-windows-wiring.sh
+    └── install-memory-hooks.py
 ```
 
 이 구조 때문에 Agentlas 에이전트는 LLM이 쓴 역할 프롬프트 하나가 아닙니다.
@@ -894,12 +897,10 @@ Claude와 Codex는 로컬 훅으로 작업 조각을 받고 편집 직전에 역
 |---|---|
 | 정본 라우트 이해하기 | [`AGENTS.md`](AGENTS.md) |
 | 전체 팀 계약 보기 | [`agent.md`](agent.md) |
-| 사이트맵 계약 | [`.agentlas/sitemap.json`](.agentlas/sitemap.json) 및 [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
-| 모드 맵 | [`.agentlas/mode-map.json`](.agentlas/mode-map.json) |
-| 라우팅 카드 | [`.agentlas/routing-card.json`](.agentlas/routing-card.json) 및 [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
-| 메모리 맵 | [`.agentlas/memory-map.json`](.agentlas/memory-map.json) 및 [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
-| 패키지 검증하기 | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
-| 공개 안전 점검 | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
+| 사이트맵 계약 | [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
+| 모드 맵 | [`modes/README.md`](modes/README.md) |
+| 라우팅 카드 | [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
+| 메모리 맵 | [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
 
 ---
 
@@ -908,19 +909,6 @@ Claude와 Codex는 로컬 훅으로 작업 조각을 받고 편집 직전에 역
 이 저장소에는 Agentlas 결제/계정 로직, 프로덕션 클라우드 자격 증명, 고객 데이터베이스, 원시 비공개 대화 기록, 네이티브 키체인 관리자, 비공개 배포 스크립트가 포함되어 있지 **않습니다**.
 
 Hephaestus가 컴파일하는 공개 산출 패키지에는 로컬 절대 경로, API 키, 서비스 계정 키, `.env` 시크릿, 원시 대화 기록, 고객 로그, 비공개 개발자 노트가 들어가서는 안 됩니다.
-
----
-
-## 기여와 검증
-
-풀 리퀘스트를 열거나 업데이트를 발행하기 전에 검증 테스트 스위트를 실행하세요:
-
-```bash
-scripts/verify-package.sh
-scripts/verify-ontology-runtime.sh
-scripts/verify-experience-assets-contract.sh
-scripts/public_safety_check.sh
-```
 
 ---
 

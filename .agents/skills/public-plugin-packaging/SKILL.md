@@ -19,8 +19,11 @@ description: "Use when packaging an Agentlas agent repo for public GitHub releas
 - `.agentlas/global-commands.json` exists and final handoff includes
   `global_commands`.
 - `scripts/install.sh` supports one-line installation.
-- `scripts/verify-package.sh` passes.
-- `scripts/public_safety_check.sh` passes.
+- Resolve `ENGINE` using `/hep-build` Step 0 and set `PACKAGE_ROOT` to the
+  generated repository.
+- `bash "$ENGINE/scripts/verify-generated-package.sh" "$PACKAGE_ROOT"` passes.
+- `bash "$ENGINE/scripts/verify-team-package.sh" "$PACKAGE_ROOT"` passes.
+- `(cd "$PACKAGE_ROOT" && bash "$ENGINE/scripts/public_safety_check.sh")` passes.
 
 ## Public Boundary
 

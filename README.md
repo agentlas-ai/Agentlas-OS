@@ -16,7 +16,7 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center"><a href="https://agentlas.cloud/studio"><img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One launch film" width="720"></a></p>
+<p align="center"><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4"><img src="assets/readme/agentlas-one-promo-20s.jpg" alt="Watch the 20-second Agentlas One film" width="720"></a><br><sub><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4">Watch the Agentlas One film (20 seconds) ▶</a></sub></p>
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
@@ -207,6 +207,10 @@ Otherwise you get the name of the place it stopped — `prepared`, `blocked`,
 
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One: a three-member team works an ongoing goal while its live browser stays in view" width="100%"></a></p>
 <p align="center"><sub><strong>Agentlas One</strong> — a standing team works an ongoing goal, and the browser it drives stays in view.</sub></p>
+
+**Agent Mail** gives One an email address of its own. From the Mail tab, you can read its inbox, send and reply, and review drafts. Choose how new mail is handled: notify you, prepare a draft, or reply on your behalf. Mail requires an eligible Agentlas account and plan; autonomous handling works while the Desktop app is running.
+
+The **AGI button** in the One and Work composers controls **Alive Agent (beta)** for the current goal or project. You can turn it on or off, set a token limit, and inspect the model fallback order and current state. “AGI” is the button label for this autonomy mode, not a claim that the underlying model has achieved general intelligence.
 
 <table>
 <tr>
@@ -639,7 +643,7 @@ The only question a package can answer is *what method does it carry, and what
 must the machine be able to do for that method to run.*
 
 `package-contract.json` is the machine-readable list of artifacts every build
-emits, and `scripts/verify-generated-package.sh <folder>` is what enforces it.
+emits, and `bin/hephaestus contract verify <folder>` is what enforces it.
 A build that omits a required artifact **fails**; it does not ship. Four of
 those artifacts carry the routing contract:
 
@@ -756,7 +760,7 @@ forcing your work into one model provider:
 
 Agents generated from vague, single-sentence prompts fail under real-world edge cases. Hephaestus v1.1.0 positions task specification as a first-class OS service through the **Briefing Interview Engine**:
 
-The current v1.2.51 release carries the resolved Work Brief through host-owned Network 2.0 selection, exact release pinning, and server-first tool discovery.
+The current v1.2.54 release carries the resolved Work Brief through host-owned Network 2.0 selection, exact release pinning, and server-first tool discovery.
 
 *   **Quantitative Ambiguity Gates:** The compilation scheduler evaluates prompt clarity across four key vectors (Goal, Constraints, Scope, Context). The build process is strictly gated until the ambiguity score passes a numeric threshold (ambiguity score $\le 0.2$, with per-dimension safety floors). Clear prompts bypass the interview loop entirely via a budget system that caps questions for trivial tasks.
 *   **Lens-Driven System Analysis:** Clarifying questions are dynamically sourced from a structured lens table (Scope, Intent, Challenge, System Architecture) focusing on critical routing indicators: *anti-scope bounds* (what the agent must NOT do), *verifiable acceptance criteria*, and *exit conditions*.
@@ -861,7 +865,7 @@ above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Co
 
 From your OS terminal:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.51
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.54
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
@@ -1136,12 +1140,11 @@ Hephaestus packages agents into a standard directory layout that any workspace r
 │   ├── ontology-runtime.md
 │   ├── hephaestus-network-2.0.md
 │   └── builder-interview-research-gate.md
-└── scripts/                               # Verification, installer, sync, release, and public-safety gates
-    ├── verify-package.sh
-    ├── verify-ontology-runtime.sh
-    ├── verify-routing-cards.sh
-    ├── sync-adapters.sh
-    └── public_safety_check.sh
+└── scripts/                               # Runtime installation
+    ├── install.sh
+    ├── install-all-runtimes.sh
+    ├── verify-windows-wiring.sh
+    └── install-memory-hooks.py
 ```
 
 That package shape is why an Agentlas agent is more than an LLM-written role
@@ -1209,13 +1212,10 @@ or Context Map contents.
 |---|---|
 | Understand the canonical route | [`AGENTS.md`](AGENTS.md) |
 | See the full team contract | [`agent.md`](agent.md) |
-| Sitemap contract | [`.agentlas/sitemap.json`](.agentlas/sitemap.json) and [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
-| Mode map | [`.agentlas/mode-map.json`](.agentlas/mode-map.json) |
-| Routing card | [`.agentlas/routing-card.json`](.agentlas/routing-card.json) and [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
-| Memory map | [`.agentlas/memory-map.json`](.agentlas/memory-map.json) and [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
-| Plugin contributions | [`PLUGIN_CONTRIBUTIONS.md`](PLUGIN_CONTRIBUTIONS.md) |
-| Verify a package | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
-| Public safety check | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
+| Sitemap contract | [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
+| Mode map | [`modes/README.md`](modes/README.md) |
+| Routing card | [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
+| Memory map | [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
 
 ---
 
@@ -1256,25 +1256,6 @@ The `telemetrySetBy` marker is what separates a choice you made from the
 `"telemetry": false` that `default_config()` wrote into every install created
 before the key was ever read — that value never represented anyone's decision,
 so it is not treated as one.
-
----
-
-## Contributing and Verification
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. External
-services and optional providers must be submitted as independently installable
-Agentlas plugins; provider-specific Core wiring is not accepted. The detailed
-boundary and review checklist are in the
-[plugin contribution guide](PLUGIN_CONTRIBUTIONS.md).
-
-Before opening a pull request or publishing updates, run the verification test suite:
-
-```bash
-scripts/verify-package.sh
-scripts/verify-ontology-runtime.sh
-scripts/verify-experience-assets-contract.sh
-scripts/public_safety_check.sh
-```
 
 ---
 

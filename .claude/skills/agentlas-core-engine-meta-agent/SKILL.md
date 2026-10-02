@@ -29,7 +29,11 @@ description: "Use when creating a single Agentlas agent, creating a multi-agent 
    AGENTS.md, and terminal adapters. For teams, expose the orchestrator/HQ
    command and route workers through HQ unless direct worker commands were
    requested.
-10. Verify with `scripts/verify-package.sh`.
+10. Resolve `ENGINE` using `/hep-build` Step 0, then verify the generated
+    `PACKAGE_ROOT` with `bash "$ENGINE/scripts/verify-generated-package.sh"
+    "$PACKAGE_ROOT"` and `bash "$ENGINE/scripts/verify-team-package.sh"
+    "$PACKAGE_ROOT"`. Run the public safety gate from the output repository:
+    `(cd "$PACKAGE_ROOT" && bash "$ENGINE/scripts/public_safety_check.sh")`.
 
 ## Output
 

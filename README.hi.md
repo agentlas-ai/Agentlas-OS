@@ -16,7 +16,7 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center"><a href="https://agentlas.cloud/studio"><img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One launch film" width="720"></a></p>
+<p align="center"><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4"><img src="assets/readme/agentlas-one-promo-20s.jpg" alt="Agentlas One का 20 सेकंड का वीडियो देखें" width="720"></a><br><sub><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4">Agentlas One का वीडियो देखें (20 सेकंड) ▶</a></sub></p>
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
@@ -433,7 +433,7 @@ documented bare `/agentlas build` autocomplete के लिए ऊपर का
 
 अपने OS terminal से:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.51
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.54
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:agentlas` in-app entry है।*
@@ -588,8 +588,8 @@ Hephaestus agents को एक standard directory layout में package क�
 │                                      # global commands, memory contracts, eval plans
 ├── .claude/ codex/ .gemini/ .agents/  # Runtime shims (driver adapters over the core)
 ├── scripts/
-│   ├── verify-package.sh              # Package structure verifier
-│   └── public_safety_check.sh         # Secret and credentials scanner
+│   ├── install.sh                    # Compatible installer entrypoint
+│   └── install-all-runtimes.sh       # Install the shared runtime
 ```
 
 ---
@@ -602,8 +602,6 @@ Hephaestus agents को एक standard directory layout में package क�
 |---|---|
 | Canonical route को समझें | [`AGENTS.md`](AGENTS.md) |
 | पूरा team contract देखें | [`agent.md`](agent.md) |
-| Package verify करें | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
-| Public safety check | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 
 ---
 
@@ -612,19 +610,6 @@ Hephaestus agents को एक standard directory layout में package क�
 इस repository में Agentlas billing/account logic, production cloud credentials, customer databases, raw private transcripts, native keychain managers या private deployment scripts **शामिल नहीं** हैं।
 
 Hephaestus द्वारा compile किए गए public output packages में local absolute paths, API keys, service-account keys, `.env` secrets, raw transcripts, customer logs या private developer notes शामिल नहीं होने चाहिए।
-
----
-
-## योगदान और सत्यापन
-
-Pull request खोलने या updates publish करने से पहले verification test suite चलाएँ:
-
-```bash
-scripts/verify-package.sh
-scripts/verify-ontology-runtime.sh
-scripts/verify-experience-assets-contract.sh
-scripts/public_safety_check.sh
-```
 
 ---
 

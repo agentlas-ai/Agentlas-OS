@@ -53,6 +53,11 @@ Agent, Ollama-served local models (Gemma, DeepSeek — see
 
 ## Source Of Truth
 
+Maintainer documentation and source-verification scripts in this reference
+index belong to the development checkout. Installed engines use the shipped
+contracts, schemas, skills, and runtime entrypoints; missing maintainer notes
+do not require downloading private source material.
+
 - Canonical entry point: `AGENTS.md`.
 - Architecture ownership rule: `docs/source-of-truth.md`.
 - Runtime split and sync boundary: `docs/runtime-sync-boundaries.md`.
@@ -265,11 +270,14 @@ authority model:
     artifact on its PATH alone while the file sat on disk. Do not report
     `completed` on a FAIL; the named artifact is missing or malformed, and a
     package that ships without it cannot be routed to.
-17. Verify with `scripts/verify-package.sh`.
-18. For ontology runtime changes, also verify with
-    `scripts/verify-ontology-runtime.sh`.
-18. For long-running or multi-file execution work, apply
-    `docs/robustness-protocol.md`: scope lock, plan lock, evidence loop,
+17. Before publishing a generated package, run the public safety gate from
+    its repository: `(cd "$PACKAGE_ROOT" && bash "$ENGINE/scripts/public_safety_check.sh")`.
+    `ENGINE` is the engine directory resolved by `/hep-build` Step 0.
+18. For development changes to the engine ontology runtime, run
+    `scripts/verify-ontology-runtime.sh` in the maintainer source checkout.
+    This source gate is not a generated-package installation dependency.
+19. For long-running or multi-file execution work, apply the shipped
+    `skills/hephaestus-storm/SKILL.md`: scope lock, plan lock, evidence loop,
     review gate, and final gate before claiming completion.
 
 ## Hephaestus Network Commands
@@ -493,5 +501,7 @@ local Curator approves promotion.
 - Do not call runtime adapters canonical.
 - Ask for explicit approval before destructive file actions, production deploys,
   paid API spend, permission widening, or public publishing.
-- Public packages must pass `scripts/verify-package.sh` and
-  `scripts/public_safety_check.sh` before release.
+- Before releasing a generated package, run
+  `bash "$ENGINE/scripts/verify-generated-package.sh" "$PACKAGE_ROOT"` and
+  `bash "$ENGINE/scripts/verify-team-package.sh" "$PACKAGE_ROOT"`, then
+  `(cd "$PACKAGE_ROOT" && bash "$ENGINE/scripts/public_safety_check.sh")`.

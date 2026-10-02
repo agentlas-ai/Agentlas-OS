@@ -16,7 +16,7 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center"><a href="https://agentlas.cloud/studio"><img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One 发布影片" width="720"></a></p>
+<p align="center"><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4"><img src="assets/readme/agentlas-one-promo-20s.jpg" alt="观看 20 秒的 Agentlas One 宣传视频" width="720"></a><br><sub><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4">观看 Agentlas One 宣传视频（20 秒）▶</a></sub></p>
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
@@ -431,7 +431,7 @@ claude plugin install hephaestus@agentlas-core-engine
 
 在操作系统终端中运行：
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.51
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.54
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注：Codex 应用内不支持 `/plugin marketplace add`，请在操作系统终端中运行上面两条命令。操作系统终端的 CLI 命令为单数形式（`codex plugin`）；在 Codex 应用内，插件浏览器的斜杠命令为复数形式（`/plugins`）。安装完成后，`/prompts:agentlas` 即为应用内入口。*
@@ -585,8 +585,8 @@ Hephaestus 将智能体打包为标准目录布局，任何工作区运行时都
 │                                      # global commands, memory contracts, eval plans
 ├── .claude/ codex/ .gemini/ .agents/  # Runtime shims (driver adapters over the core)
 ├── scripts/
-│   ├── verify-package.sh              # Package structure verifier
-│   └── public_safety_check.sh         # Secret and credentials scanner
+│   ├── install.sh                    # Compatible installer entrypoint
+│   └── install-all-runtimes.sh       # Install the shared runtime
 ```
 
 ---
@@ -599,8 +599,6 @@ Hephaestus 将智能体打包为标准目录布局，任何工作区运行时都
 |---|---|
 | 理解规范路由 | [`AGENTS.md`](AGENTS.md) |
 | 查看完整团队契约 | [`agent.md`](agent.md) |
-| 验证一个包 | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
-| 公共安全检查 | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 
 ---
 
@@ -609,19 +607,6 @@ Hephaestus 将智能体打包为标准目录布局，任何工作区运行时都
 本仓库**不**包含 Agentlas 计费/账户逻辑、生产云凭据、客户数据库、原始私有会话记录、原生钥匙串管理器或私有部署脚本。
 
 由 Hephaestus 编译的公开输出包必须排除本地绝对路径、API 密钥、服务账号密钥、`.env` 机密、原始会话记录、客户日志与私人开发者笔记。
-
----
-
-## 贡献与验证
-
-在发起 Pull Request 或发布更新之前，请运行验证测试套件：
-
-```bash
-scripts/verify-package.sh
-scripts/verify-ontology-runtime.sh
-scripts/verify-experience-assets-contract.sh
-scripts/public_safety_check.sh
-```
 
 ---
 

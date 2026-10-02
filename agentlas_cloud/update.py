@@ -66,7 +66,10 @@ RUNTIME_DIRS = ("bin", "agentlas_cloud", "career_graph", "contracts", "ontology"
 #     operations skill from <runtime>/skills/agentlas-operations. Without it the
 #     One directive points at a file that was never created (PRD §3.6). Measured
 #     2026-08-23: ~/.agentlas/runtime/current/skills did not exist at all.
-RUNTIME_OPTIONAL_DIRS = ("schemas", "system-agents", "goose", "openclaw", "skills")
+# runtime-support/ contains mode-map skills without exposing host commands.
+# Older immutable release archives predate this directory; current releases
+# require its exact mapped paths in the official asset builder.
+RUNTIME_OPTIONAL_DIRS = ("schemas", "system-agents", "goose", "openclaw", "skills", "runtime-support")
 RUNTIME_FILES = ("package-contract.json", "release-provenance.json")
 RUNTIME_BRIDGE_FILES = (
     "desktop-update-bridge-v1.json",

@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.2.51}"
+version="${HEPHAESTUS_REF:-v1.2.54}"
 repo_was_explicit="${HEPHAESTUS_REPO:-}"
 github_url_was_explicit="${HEPHAESTUS_GITHUB_URL:-}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
@@ -716,9 +716,9 @@ install_runtime_home() {
   # resolves it as here.parent/system-agents/curator-ruleset.json, so without it
   # the stop-hook curator falls back to the embedded ruleset on every install and
   # stamps sha="embedded" into every decision receipt (2026-08-12 set 4). The
-  # release archive ships only that one file under system-agents/.
+  # release archive ships the runtime ruleset and required builder protocols.
   local runtime_dir
-  for runtime_dir in bin agentlas_cloud career_graph contracts ontology schemas templates system-agents; do
+  for runtime_dir in bin agentlas_cloud career_graph contracts ontology schemas templates system-agents runtime-support; do
     copy_tree_without_python_cache "$source_dir/$runtime_dir" "$stage_dir/$runtime_dir" || return 1
   done
   # PRD §3.6 — One 지시문이 "운영 절차는 <one>/skills/agentlas-operations/SKILL.md 에 있다"고

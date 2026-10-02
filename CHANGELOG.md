@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.54 — 2026-10-02
+
+- Restore compatible One memory event envelopes and merge bounded evidence references.
+- Accept recalled replacement hashes and preserve scoped memory replacements.
+- Apply memory privacy checks to original-language content and evidence.
+
 ## Unreleased
 
 - **Public Hub calls are free in the host guidance.** Login instructions and

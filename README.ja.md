@@ -16,7 +16,7 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center"><a href="https://agentlas.cloud/studio"><img src="assets/readme/agentlas-one-launch-film-v2.gif" alt="Agentlas One ローンチフィルム" width="720"></a></p>
+<p align="center"><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4"><img src="assets/readme/agentlas-one-promo-20s.jpg" alt="Agentlas One の20秒動画を見る" width="720"></a><br><sub><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4">Agentlas One の動画を見る（20秒）▶</a></sub></p>
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
@@ -433,7 +433,7 @@ one-touch installer を使用してください。これは
 
 OS のターミナルから:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.51
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.54
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注: Codex アプリ内では `/plugin marketplace add` は利用できません。上記の 2 つのコマンドを OS のターミナルで実行してください。OS ターミナルの CLI コマンドは単数形（`codex plugin`）ですが、Codex アプリ内のプラグインブラウザーのスラッシュコマンドは複数形（`/plugins`）です。インストール後は、`/prompts:agentlas` がアプリ内のエントリーポイントになります。*
@@ -588,8 +588,8 @@ Hephaestus は、任意のワークスペースランタイムがパース・イ
 │                                      # global commands, memory contracts, eval plans
 ├── .claude/ codex/ .gemini/ .agents/  # Runtime shims (driver adapters over the core)
 ├── scripts/
-│   ├── verify-package.sh              # Package structure verifier
-│   └── public_safety_check.sh         # Secret and credentials scanner
+│   ├── install.sh                    # Compatible installer entrypoint
+│   └── install-all-runtimes.sh       # Install the shared runtime
 ```
 
 ---
@@ -602,8 +602,6 @@ Hephaestus は、任意のワークスペースランタイムがパース・イ
 |---|---|
 | 正準ルートを理解する | [`AGENTS.md`](AGENTS.md) |
 | チームコントラクト全体を見る | [`agent.md`](agent.md) |
-| パッケージの検証 | [`scripts/verify-package.sh`](scripts/verify-package.sh) |
-| 公開セーフティチェック | [`scripts/public_safety_check.sh`](scripts/public_safety_check.sh) |
 
 ---
 
@@ -612,19 +610,6 @@ Hephaestus は、任意のワークスペースランタイムがパース・イ
 このリポジトリには、Agentlas の課金/アカウントロジック、本番クラウド認証情報、顧客データベース、生のプライベートトランスクリプト、ネイティブのキーチェーンマネージャー、プライベートなデプロイスクリプトは**含まれていません**。
 
 Hephaestus がコンパイルする公開向けの出力パッケージは、ローカルの絶対パス、API キー、サービスアカウントキー、`.env` シークレット、生のトランスクリプト、顧客ログ、開発者のプライベートノートを除外しなければなりません。
-
----
-
-## コントリビューションと検証
-
-プルリクエストを開く前、または更新を公開する前に、検証テストスイートを実行してください:
-
-```bash
-scripts/verify-package.sh
-scripts/verify-ontology-runtime.sh
-scripts/verify-experience-assets-contract.sh
-scripts/public_safety_check.sh
-```
 
 ---
 

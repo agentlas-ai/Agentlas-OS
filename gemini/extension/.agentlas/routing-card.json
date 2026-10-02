@@ -51,7 +51,6 @@
     "manage_memory_tickets",
     "coordinate_ontology_runtime"
   ],
-  "card_quality_score": 0.91,
   "card_version": "2.0.0",
   "cloud_delegation_policy": "ask",
   "cost_hints": {
@@ -82,10 +81,6 @@
     "terminal": "bin/hephaestus hep-build"
   },
   "id": "local/hephaestus-meta-agent",
-  "known_failure_cases": [
-    "Requests that only need legal, medical, trading, or social-media execution should route to a domain agent instead of this builder.",
-    "Upload findings are advisory: omit affected bytes or record engine-gap receipts, then continue with the remaining package."
-  ],
   "locale_coverage": {
     "partial": [],
     "primary": "en",

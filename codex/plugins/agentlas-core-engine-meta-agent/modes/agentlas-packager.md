@@ -30,7 +30,8 @@ Cursor rules, another public repo, a ZIP, or an ad hoc Markdown structure.
 - `.agentlas/vault-references.json`.
 - `.agentlas/global-commands.json`.
 - `manifest.json`.
-- `scripts/verify-package.sh`.
+- Generated-package validation with the engine's
+  `scripts/verify-generated-package.sh <package-root>`.
 - `scripts/public_safety_check.sh` for public release.
 
 ## Packaging Decisions

@@ -5,14 +5,16 @@ description: "Use when verifying that a generated agent package can be installed
 
 # Install Verification
 
-Run:
+Resolve `ENGINE` using `/hep-build` Step 0 and set `PACKAGE_ROOT` to the
+generated agent repository. Run:
 
 ```bash
-scripts/verify-package.sh
-scripts/public_safety_check.sh
+bash "$ENGINE/scripts/verify-generated-package.sh" "$PACKAGE_ROOT"
+bash "$ENGINE/scripts/verify-team-package.sh" "$PACKAGE_ROOT"
+(cd "$PACKAGE_ROOT" && bash "$ENGINE/scripts/public_safety_check.sh")
 ```
 
-Then inspect:
+Then inspect the generated package's selected adapters and install files:
 
 - root `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`;
 - `.agents/`;

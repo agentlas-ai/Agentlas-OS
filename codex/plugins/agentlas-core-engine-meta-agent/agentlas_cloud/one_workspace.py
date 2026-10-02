@@ -770,7 +770,7 @@ def emit_ticket(
     meta = root / META_DIR
     meta.mkdir(parents=True, exist_ok=True)
     one_id = read_one_id(root)
-    evidence = evidence or []
+    evidence = _memory_evidence(evidence)
 
     # Downgrade unsupported facts, decisions, and procedures to hypotheses.
     downgrade_kinds = set(_rule("kinds.evidenceRequired", ["fact", "decision", "procedure"]))
@@ -789,7 +789,7 @@ def emit_ticket(
     native_body = str(content_native or "").strip()[: int(_rule("limits.ticketContentMaxChars", 600))]
     if native_body == body:
         native_body = ""
-    supersedes_arg = str(supersedes or "")
+    supersedes_arg = _memory_supersedes(supersedes)
     ticket = {
         "schemaVersion": SCHEMA_VERSION,
         "ticketId": f"{_rule('concurrency.ticketIdPrefix', 'one-tkt-')}{key}",
@@ -988,6 +988,44 @@ def harvest_memory_events(transcript: str) -> list[dict[str, Any]]:
     return harvest_memory_events_from_texts(_iter_assistant_text(transcript))
 
 
+def _supported_memory_envelope(envelope: Any) -> bool:
+    """Versionless envelopes are legacy v1; explicit versions must match."""
+    return isinstance(envelope, dict) and (
+        "schema_version" not in envelope
+        or envelope["schema_version"] == "agentlas.memory-ticket.v1"
+    )
+
+
+def _memory_evidence(*sources: Any) -> list[str]:
+    """Merge bounded string citations without turning objects into evidence."""
+    limit = int(_rule("limits.evidenceMaxItems", 8))
+    found: list[str] = []
+    seen: set[str] = set()
+    for values in sources:
+        if not isinstance(values, list):
+            continue
+        for value in values[: max(0, limit) * 8]:
+            if not isinstance(value, str):
+                continue
+            ref = value.strip()[:_MAX_EVIDENCE_ITEM_CHARS]
+            if ref and ref not in seen:
+                if len(found) >= limit:
+                    return found
+                seen.add(ref)
+                found.append(ref)
+    return found
+
+
+def _memory_supersedes(value: Any) -> str:
+    """Accept the recalled h: key and the historical bare hash spelling."""
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    if value.startswith("h:"):
+        value = value[2:]
+    return value if re.fullmatch(r"[0-9a-f]{16}", value) else ""
+
+
 def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
     """Harvest envelopes from assistant text a host supplies directly.
 
@@ -1023,13 +1061,14 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
                 envelope = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            if not isinstance(envelope, dict):
+            if not _supported_memory_envelope(envelope):
                 continue
-            candidates_raw = envelope.get("candidates") or []
+            candidates_raw = envelope.get("candidates")
+            if not isinstance(candidates_raw, list):
+                continue
             # Bound the iteration itself (not just `found`): dedup could keep
             # `found` small while a million-candidate list still spun the loop.
-            if isinstance(candidates_raw, list):
-                candidates_raw = candidates_raw[: _MAX_HARVEST_CANDIDATES * 8]
+            candidates_raw = candidates_raw[: _MAX_HARVEST_CANDIDATES * 8]
             for candidate in candidates_raw:
                 # Bound the harvest — content, evidence, and candidate COUNT were
                 # all unbounded, so one crafted envelope could fill a drawer's
@@ -1041,15 +1080,18 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
                     break
                 if not isinstance(candidate, dict):
                     continue
-                content = str(candidate.get("content") or "").strip()[:_MAX_CONTENT_CHARS]
+                raw_content = candidate.get("content")
+                if not isinstance(raw_content, str):
+                    continue
+                content = raw_content.strip()[:_MAX_CONTENT_CHARS]
                 if not content:
                     continue
                 key = _content_hash(content)
                 if key in seen:
                     continue
                 seen.add(key)
-                evidence = candidate.get("evidence")
-                supersedes = str(candidate.get("supersedes") or "")
+                evidence = _memory_evidence(candidate.get("evidence"), candidate.get("evidence_refs"))
+                supersedes = _memory_supersedes(candidate.get("supersedes"))
                 # R21 W1a — optional borrowed-agent attribution axis. A learning
                 # made while acting as a hired Hub agent names that agent's slug
                 # so the stop hook can route it into the per-slug drawer. Absent
@@ -1061,16 +1103,17 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
                 # surface; `content_native` keeps the author's original wording
                 # as the authority channel (quotes, owner decisions). Optional —
                 # absent when the learning was written in English already.
-                native = str(candidate.get("content_native") or "").strip()[:_MAX_CONTENT_CHARS]
+                raw_native = candidate.get("content_native")
+                native = raw_native.strip()[:_MAX_CONTENT_CHARS] if isinstance(raw_native, str) else ""
                 found.append({
                     "content": content,
                     **({"content_native": native} if native and native != content else {}),
                     "kind": str(candidate.get("memory_kind") or "hypothesis"),
                     "scope": str(candidate.get("suggested_scope") or "agent_repo"),
-                    "evidence": [str(item)[:_MAX_EVIDENCE_ITEM_CHARS] for item in evidence][:8] if isinstance(evidence, list) else [],
+                    "evidence": evidence,
                     # G4/G8 — a worker may explicitly name the durable block this
                     # replaces (its h:16hex). Anything else is ignored, never guessed.
-                    "supersedes": supersedes if re.fullmatch(r"[0-9a-f]{16}", supersedes) else "",
+                    "supersedes": supersedes,
                     "agent_slug": agent_slug,
                 })
     return found
@@ -1102,7 +1145,7 @@ def latest_turn_summary(texts: Any) -> str:
                 envelope = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            if isinstance(envelope, dict):
+            if _supported_memory_envelope(envelope):
                 summary = " ".join(str(envelope.get("turn_summary") or "").split())[:_TURN_SUMMARY_MAX_CHARS]
                 if summary:
                     last = summary
@@ -2108,12 +2151,12 @@ def _classify(
     # One soul "- Evidence:" lines) and recalled into later sessions. Scanning
     # content alone let a benign learning with a secret in its evidence leak into
     # both stores (measured 2026-08-12 adversarial set). Scan the same secret and
-    # host-path rules across content AND every evidence item. (imperative /
+    # host-path rules across content, its original wording, and every evidence item. (imperative /
     # capability-widening stay content-only: those are claims the learning makes,
     # and an evidence citation legitimately quotes commands.)
     secret_re_kv, secret_re_shape = _rule_re("secretKeyValue"), _rule_re("secretValueShapes")
     host_re = _rule_re("hostAbsolutePath")
-    for text in (content, *(str(item) for item in evidence)):
+    for text in (content, str(candidate.get("contentNative") or ""), *(str(item) for item in evidence)):
         if secret_re_kv.search(text) or secret_re_shape.search(text):
             return ("reject", "policy-secret")
         if host_re.search(text):
@@ -2214,6 +2257,83 @@ def _durable_prefixes(soul_path: Path, prefix_chars: int) -> dict[str, str]:
     return heads
 
 
+def _memory_owner(scope: Any, project_slug: str) -> tuple[str, str] | None:
+    """An unknown owner may be recalled, but cannot authorize replacement."""
+    if not isinstance(scope, str) or scope not in _ONE_OWNED_SCOPES:
+        return None
+    if scope == "project":
+        if not project_slug or project_slug == "unknown":
+            return None
+        return (scope, project_slug)
+    return (scope, "")
+
+
+def _durable_owners(
+    soul_path: Path, meta: Path, slug_sidecar: dict[str, Any]
+) -> dict[str, tuple[str, str]]:
+    """Recover ownership from existing ledgers without changing the soul format.
+
+    Rotation preserves source tickets and decisions in monthly archives. Read
+    them once per curation batch; missing or ambiguous provenance only prevents
+    superseding, never removes an existing block from recall.
+    """
+    if not soul_path.exists():
+        return {}
+    blocks = parse_durable_blocks(soul_path.read_text(encoding="utf-8"))
+    wanted = {block["ticket"] for block in blocks}
+    if not wanted:
+        return {}
+    archive = meta / ARCHIVE_DIR
+    narrowed: dict[str, set[bool]] = {}
+    for path in [meta / CURATOR_DECISIONS_FILE, *sorted(archive.glob("decisions-*.jsonl"))]:
+        for row in _read_jsonl(path):
+            tid = str(row.get("ticketId") or "")
+            if tid in wanted and row.get("action") == "admit":
+                narrowed.setdefault(tid, set()).add(bool(row.get("scopeNarrowed")))
+    ticket_sources: dict[str, set[tuple[str, tuple[str, str] | None]]] = {}
+    for path in [meta / MEMORY_TICKETS_FILE, *sorted(archive.glob("tickets-*.jsonl"))]:
+        for row in _read_jsonl(path):
+            tid = str(row.get("ticketId") or "")
+            candidate = row.get("candidate")
+            if tid not in wanted or not isinstance(candidate, dict):
+                continue
+            flags = narrowed.get(tid, set())
+            scope = candidate.get("scope")
+            if flags == {True} or (not flags and scope == "agent_repo" and _mentions_project_specifics(
+                str(candidate.get("content") or ""), str(row.get("workspace") or "")
+            )):
+                scope = "project"
+            sidecar = slug_sidecar.get(tid)
+            slug = str(row.get("projectSlug") or "") or (
+                str(sidecar.get("slug") or "") if isinstance(sidecar, dict) else ""
+            )
+            owner = _memory_owner(scope, slug)
+            if len(flags) > 1:
+                owner = None
+            content = candidate.get("content")
+            source_hash = _content_hash(content) if isinstance(content, str) else ""
+            ticket_sources.setdefault(tid, set()).add((source_hash, owner))
+    translated = _read_json_dict(meta / TRANSLATION_MAP_FILE)
+    by_digest: dict[str, set[tuple[str, str] | None]] = {}
+    for block in blocks:
+        digest = _content_hash(block["content"])
+        # Translation retains the source ticket id. Only its exact recorded
+        # English successor may inherit that ticket's ownership.
+        choices = {
+            owner if source_hash == digest or translated.get(source_hash) == digest else None
+            for source_hash, owner in ticket_sources.get(block["ticket"], set())
+        }
+        owner = next(iter(choices)) if len(choices) == 1 else None
+        if owner is not None and owner[0] == "project" and block["project"] and block["project"] != owner[1]:
+            owner = None
+        by_digest.setdefault(digest, set()).add(owner)
+    return {
+        digest: next(iter(choices))
+        for digest, choices in by_digest.items()
+        if len(choices) == 1 and None not in choices
+    }
+
+
 def _append_durable(
     soul_path: Path,
     candidate: dict[str, Any],
@@ -2250,6 +2370,13 @@ def _durable_block_text(
     # soul, AFTER the ticket line so every existing parser (which stops at the
     # ticket line) is unaffected. The English line above is the search surface.
     native = " ".join(str(candidate.get("contentNative") or "").split())
+    # Other writers, including translation, share this formatter without going
+    # through _classify. The original wording obeys the same persistence policy.
+    native_ok = native_ok and not (
+        _rule_re("secretKeyValue").search(native)
+        or _rule_re("secretValueShapes").search(native)
+        or _rule_re("hostAbsolutePath").search(native)
+    )
     if native and native != content and native_ok:
         block += f"  - Native: {native}\n"
     return block
@@ -2652,11 +2779,6 @@ def curate(
         for row in _read_jsonl(decisions_path)
         if row.get("ticketId")
     }
-    durable = _durable_hashes(soul_path)
-    durable_prefixes = _durable_prefixes(
-        soul_path, int(_rule("limits.serverMergeSimilarityPrefixChars", 40))
-    )
-
     counts = {"admit": 0, "reject": 0, "defer": 0, "deduped": 0}
     chips: list[str] = []
 
@@ -2684,6 +2806,12 @@ def curate(
             for row in _read_jsonl(decisions_path)
             if row.get("ticketId")
         }
+        # A concurrent curator may have admitted a block while this process was
+        # waiting. Ownership and duplicate checks use the same locked snapshot.
+        durable = _durable_hashes(soul_path)
+        durable_prefixes = _durable_prefixes(
+            soul_path, int(_rule("limits.serverMergeSimilarityPrefixChars", 40))
+        )
         pending = [row for row in _read_jsonl(tickets_path) if str(row.get("ticketId")) not in decided]
         return _curate_pending(
             pending=pending,
@@ -2727,6 +2855,10 @@ def _curate_pending(
     """curate() 의 결정 구간. 호출자가 원장 잠금을 잡은 상태로만 부른다(PRD §4.20)."""
     project_items: list[tuple[dict[str, Any], str]] = []
     to_translate: list[str] = []
+    durable_owners = _durable_owners(soul_path, meta, slug_sidecar) if any(
+        _memory_supersedes((ticket.get("candidate") or {}).get("supersedes"))
+        for ticket in pending
+    ) else {}
     with decisions_path.open("a", encoding="utf-8") as handle:
         for ticket in pending:
             candidate = ticket.get("candidate") or {}
@@ -2739,30 +2871,52 @@ def _curate_pending(
             ):
                 candidate = {**candidate, "scope": "project"}
                 scope_narrowed = True
+            tid = str(ticket.get("ticketId") or "")
+            sidecar = slug_sidecar.get(tid)
+            ticket_slug = str(ticket.get("projectSlug") or "") or (
+                str(sidecar.get("slug") or "") if isinstance(sidecar, dict) else ""
+            )
+            if ticket_slug == "unknown":
+                ticket_slug = ""
+            owner = _memory_owner(candidate.get("scope"), ticket_slug)
+            old_hash = _memory_supersedes(candidate.get("supersedes"))
+            new_hash = _content_hash(str(candidate.get("content") or ""))
+            can_supersede = bool(
+                old_hash and old_hash != new_hash and old_hash in durable
+                and owner is not None and durable_owners.get(old_hash) == owner
+                and (new_hash not in durable or durable_owners.get(new_hash) == owner)
+            )
+            # An explicit, owned correction may differ by one field. Do not let
+            # the near-duplicate merge hide it before the replacement is stored.
+            prefixes = {
+                head: text for head, text in durable_prefixes.items()
+                if _content_hash(text) != old_hash
+            } if can_supersede and isinstance(durable_prefixes, dict) else durable_prefixes
             if "emitter" in ticket and str(ticket.get("emitter")) not in allowed_emitters:
                 action, reason = ("reject", str(_rule("emitters.rejectReason", "unauthorized-emitter")))
             elif "emitter" not in ticket and not legacy_ok:
                 action, reason = ("reject", str(_rule("emitters.rejectReason", "unauthorized-emitter")))
             else:
-                action, reason = _classify(candidate, durable, durable_prefixes)
+                action, reason = _classify(candidate, durable, prefixes)
+            if action == "deduped" and can_supersede:
+                # A previous append may have succeeded before the pointer write
+                # failed. Retry the pointer and derivatives without another block.
+                action, reason = ("admit", "supersede-retry")
             counts[action] = counts.get(action, 0) + 1
 
             chip_id = None
             if action == "admit":
-                tid = str(ticket.get("ticketId") or "")
-                ticket_slug = str(ticket.get("projectSlug") or "") \
-                    or str((slug_sidecar.get(tid) or {}).get("slug") or "")
-                if ticket_slug == "unknown":
-                    ticket_slug = ""
                 # G4/G8 — an explicitly declared replacement hides the old block
                 # from recall via the pointer sidecar; the soul stays append-only.
-                old_hash = str(candidate.get("supersedes") or "")
-                if old_hash and old_hash in durable:
-                    _record_supersede(meta, old_hash,
-                                      _content_hash(str(candidate.get("content") or "")))
-                _append_durable(soul_path, candidate, str(ticket.get("ticketId")),
-                                project_slug=ticket_slug)
-                durable.add(_content_hash(str(candidate.get("content") or "")))
+                if new_hash not in durable:
+                    _append_durable(soul_path, candidate, tid, project_slug=ticket_slug)
+                    durable.add(new_hash)
+                    if owner is not None:
+                        durable_owners[new_hash] = owner
+                # Store the successor before hiding its predecessor. A failed
+                # append must leave the original memory available to recall.
+                if can_supersede:
+                    _record_supersede(meta, old_hash, new_hash)
                 # Translate on write (D): a block admitted in another language
                 # with no English surface is queued for the detached worker —
                 # never translated inside this hook.

@@ -15,7 +15,7 @@ an Agentlas-compatible agent or agent-team repository.
    - `20-multi-agent-team-builder`;
    - `30-agentlas-packager`;
    - `40-session-agent-builder`.
-6. Run `docs/builder-interview-research-gate.md` before writing substantial
+6. Run `contracts/builder-interview-research-gate.md` before writing substantial
    package files. Ask an 8-12 question first batch when the request is vague,
    research official sources, similar agent repositories or comparables,
    academic/professional theory, and plugin docs, compare tools/plugins, and
@@ -30,11 +30,16 @@ an Agentlas-compatible agent or agent-team repository.
    docs. Translate Korean or other-language source material into English agent
    behavior. Localized public copy and routing trigger examples may use the
    target user language.
-8. Read `.agentlas/memory-map.json`.
+8. Read the generated package's `.agentlas/memory-map.json` when repairing
+   an existing package; create it from the contract for a new package.
 9. Select relevant skills from `.agents/skills`.
 10. Use `.agents/skills/agentlas-auto-activation/SKILL.md` when local project
    continuity or `.agentlas` activation is part of the output.
-11. Verify with `scripts/verify-package.sh`.
+11. Resolve `ENGINE` using `/hep-build` Step 0, then verify the generated
+    `PACKAGE_ROOT` with `bash "$ENGINE/scripts/verify-generated-package.sh"
+    "$PACKAGE_ROOT"` and `bash "$ENGINE/scripts/verify-team-package.sh"
+    "$PACKAGE_ROOT"`. Run the public safety gate from the output repository:
+    `(cd "$PACKAGE_ROOT" && bash "$ENGINE/scripts/public_safety_check.sh")`.
 
 ## Output
 

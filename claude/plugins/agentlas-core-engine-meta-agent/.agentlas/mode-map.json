@@ -4,7 +4,10 @@
   "overlays": {
     "ontology-backed-agent": {
       "contract": "modes/ontology-backed-agent.md",
-      "composesWith": ["single-agent-creator", "team-builder"],
+      "composesWith": [
+        "single-agent-creator",
+        "team-builder"
+      ],
       "flag": "ontology_backed",
       "useWhen": [
         "knowledge search over user documents",
@@ -32,7 +35,7 @@
     "single-agent-creator": {
       "contract": "modes/single-agent-creator.md",
       "agent": "agents/10-single-agent-builder/agent.md",
-      "primarySkill": "skills/self-evolving-single-agent/SKILL.md",
+      "primarySkill": "runtime-support/skills/self-evolving-single-agent/SKILL.md",
       "useWhen": [
         "one installable worker",
         "multiple skills inside one worker",
@@ -62,7 +65,7 @@
     "team-builder": {
       "contract": "modes/team-builder.md",
       "agent": "agents/20-multi-agent-team-builder/agent.md",
-      "primarySkill": "skills/team-builder-packaging/SKILL.md",
+      "primarySkill": "runtime-support/skills/team-builder-packaging/SKILL.md",
       "useWhen": [
         "multi-role team",
         "orchestrator or HQ",
@@ -96,7 +99,7 @@
     "agentlas-packager": {
       "contract": "modes/agentlas-packager.md",
       "agent": "agents/30-agentlas-packager/agent.md",
-      "primarySkill": "skills/agentlas-packaging/SKILL.md",
+      "primarySkill": "runtime-support/skills/agentlas-packaging/SKILL.md",
       "useWhen": [
         "existing local agent or prompt",
         "existing Claude, Codex, Gemini, Cursor, or AGENTS.md repo",
@@ -122,7 +125,7 @@
     "session-agent-builder": {
       "contract": "modes/session-agent-builder.md",
       "agent": "agents/40-session-agent-builder/agent.md",
-      "primarySkill": "skills/session-agent-builder/SKILL.md",
+      "primarySkill": "runtime-support/skills/session-agent-builder/SKILL.md",
       "useWhen": [
         "current interactive conversation used as the source",
         "/hep-build session",
