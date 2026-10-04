@@ -29,11 +29,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-one-drawer-guard\" ]; then \"$R/bin/agentlas-one-drawer-guard\" --host claude; else printf '%s\\n' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"The One drawer guard is missing; refusing the write until it is restored.\"}}'; fi",
-            "timeout": 10
-          },
-          {
-            "type": "command",
             "command": "R=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | tr '\\\\' '/'); if [ -x \"$R/bin/agentlas-memory-hook\" ]; then \"$R/bin/agentlas-memory-hook\" --host claude --event PreToolUse; else printf '{}\\n'; fi",
             "timeout": 10
           }
