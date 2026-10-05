@@ -3983,11 +3983,14 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
                     "requires projectDir and automatically binds every successful preparation, "
                     "even when the user never said goal. Keep the roster until explicit whole-goal "
                     "completion/cancellation through workforce.complete_goal. Free Hub calls do not "
-                    "need a paid lease; expiry of a legacy lease never ends the binding. Once a concrete project "
-                    "task is resolved, call context.slice; before mutating a path call context.impact; "
-                    "before declaring completion call context.verify and account for every affected "
-                    "file. Context Map source paths and contents stay project-local and must never be "
-                    "sent in Network or Cloud discovery requests. "
+                    "need a paid lease; expiry of a legacy lease never ends the binding. "
+                    "When a task changes source code, call context.slice once the task is "
+                    "resolved, context.impact before editing a source file, and context.verify "
+                    "before declaring completion, accounting for every affected file. Work that "
+                    "changes no source code (reports, posts, notes, data files, browsing, "
+                    "publishing) does not use the Context Map. Context Map source paths and "
+                    "contents stay project-local and must never be sent in Network or Cloud "
+                    "discovery requests. "
                     # 도구 접근 고지 — Desktop shared/tool-access-notice.ts, 터미널
                     # engine/tools/access-notice.cjs와 **같은 규칙**이다. 이 세 표면이 다른
                     # 말을 하면 사용자는 어느 쪽이 맞는지 알 수 없다. 문구를 여기서만
