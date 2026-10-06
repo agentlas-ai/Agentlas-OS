@@ -1088,7 +1088,7 @@ remove_claude_existing() {
 
 # Resolve only the immutable generation successfully promoted by this process.
 # Neither the mutable current pointer nor the downloaded temporary tree is a
-# durable marketplace source. Existing registrations are read, never replaced.
+# durable marketplace source. Replacements require independent managed receipts.
 accepted_marketplace_source() {
   local host="$1" py=""
   [[ -n "$installed_runtime_generation" ]] || { warn "marketplace_generation_unavailable"; return 1; }
@@ -1141,7 +1141,8 @@ PY_SOURCE
 
 # A receipt in a release tree is not authority. Each completed installer run
 # separately records its generation in owner-only state outside that tree.
-# Reuse is bounded to identical adapters and source provenance, never version.
+# Reuse requires identical adapters and source provenance. A managed transition
+# separately verifies both generations and their official source authority.
 generation_adapter_receipt() {
   local action="$1" generation="$2" candidate="${3:-}" host="${4:-}" py="" mode="remote" digest=""
   py="$(resolve_archive_python_cmd)" || return 1
@@ -1338,18 +1339,23 @@ try:
             os.link(temporary, index / (generation.name + '.json'))
         finally:
             temporary.unlink(missing_ok=True)
-    elif action == 'compare':
+    elif action in ('compare', 'resolve'):
         old_root = canonical(actual)
         old = old_root.parent.parent if host == 'claude' else old_root.parent
         expected_root = old / bundle / 'claude' if host == 'claude' else old / bundle
         if old.parent != generations or old_root != expected_root:
             raise ValueError("generation_path_invalid")
+        anchors.append((old, owned_directory(old)[:2]))
         def read_receipt(candidate):
             owned_directory(candidate)
             authority = index / (candidate.name + '.json')
             state = authority.lstat()
             if state.st_uid != os.getuid() or state.st_mode & 0o077:
                 raise ValueError("generation_owner_unavailable")
+            if action == 'resolve':
+                copy = (candidate / '.adapter-receipt.json').lstat()
+                if copy.st_uid != os.getuid() or copy.st_mode & 0o077 or index.stat().st_mode & 0o077:
+                    raise ValueError("generation_owner_unavailable")
             data = open_file(authority, 16384)
             if data != open_file(candidate / '.adapter-receipt.json', 16384):
                 raise ValueError("generation_receipt_changed")
@@ -1360,14 +1366,27 @@ try:
                 raise ValueError("generation_receipt_changed")
             return receipt
         left, right = read_receipt(generation), read_receipt(old)
-        if left['source'] != right['source'] or left['binding'] != right['binding']:
-            raise ValueError("generation_source_conflict")
+        identical = left['source'] == right['source'] and left['binding'] == right['binding']
+        if not identical:
+            if action == 'compare':
+                raise ValueError("generation_source_conflict")
+            def official_source(receipt):
+                source = receipt.get('source')
+                if not isinstance(source, dict) or set(source) != {'mode', 'repo', 'ref', 'archiveSha256'}:
+                    return False
+                return (source['repo'] == 'agentlas-ai/Agentlas-OS' and
+                        source['ref'] == receipt['binding']['release'] and
+                        ((source['mode'] == 'local' and source['archiveSha256'] is None) or
+                         (source['mode'] == 'remote' and isinstance(source['archiveSha256'], str) and
+                          re.fullmatch('[0-9a-f]{64}', source['archiveSha256']) is not None)))
+            if repo != 'agentlas-ai/Agentlas-OS' or left['source']['ref'] != ref or not all(official_source(row) for row in (left, right)):
+                raise ValueError("generation_source_conflict")
         for verify in observed_trees:
             verify()
         verify_metadata()
         if signature(index.stat())[:2] != index_anchor or any(owned_directory(p)[:2] != anchor for p, anchor in anchors):
             raise ValueError("generation_receipt_changed")
-        print(old_root)
+        print(old_root if action == 'compare' else 'reuse' if identical else 'transition')
     else:
         raise ValueError("generation_action_invalid")
 except (Exception, KeyboardInterrupt) as exc:
@@ -1417,6 +1436,168 @@ except Exception:
 PY_REGISTRY
 }
 
+# Codex add rejects source replacement. Preserve every other config byte and
+# plugin setting; compare the captured file immediately before atomic replace.
+# This is an optimistic comparison, not a lock shared by other config writers.
+replace_codex_marketplace_source() {
+  local candidate="$1" desired="$2" py="" config_dir="${CODEX_HOME:-$HOME/.codex}"
+  py="$(resolve_archive_python_cmd)" || return 1
+  run_resolved_python "$py" - "$candidate" "$desired" "$marketplace_name" "$config_dir" <<'PY_CODEX_SOURCE'
+import copy, json, os, re, stat, sys, uuid
+from pathlib import Path
+
+parent_fd = source_fd = None
+temporary = None
+
+def signature(s):
+    return (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_size, s.st_mtime_ns, s.st_ctime_ns, s.st_nlink)
+
+def read_config(fd):
+    state = os.fstat(fd)
+    if not stat.S_ISREG(state.st_mode) or state.st_uid != os.getuid() or state.st_mode & 0o022 or state.st_nlink != 1 or state.st_size > 1024 * 1024:
+        raise ValueError('marketplace_owner_unavailable')
+    os.lseek(fd, 0, os.SEEK_SET)
+    data = b''
+    while len(data) <= 1024 * 1024:
+        part = os.read(fd, min(65536, 1024 * 1024 + 1 - len(data)))
+        if not part:
+            break
+        data += part
+    if len(data) > 1024 * 1024 or signature(state) != signature(os.fstat(fd)):
+        raise ValueError('marketplace_registration_changed')
+    return data, state
+
+try:
+    candidate, desired, name, config_dir = sys.argv[1:]
+    try:
+        import tomllib as toml
+    except ImportError:
+        try:
+            import tomli as toml
+        except ImportError:
+            try:
+                from pip._vendor import tomli as toml
+            except ImportError:
+                raise ValueError('marketplace_parser_unavailable')
+    if not re.fullmatch('[A-Za-z0-9_-]+', name):
+        raise ValueError('marketplace_source_layout_unsupported')
+    for value in (candidate, desired):
+        if not Path(value).is_absolute() or str(Path(value).resolve(strict=True)) != value:
+            raise ValueError('marketplace_source_conflict')
+    parent = Path(config_dir)
+    if not parent.is_absolute() or str(parent.resolve(strict=True)) != str(parent):
+        raise ValueError('marketplace_owner_unavailable')
+    anchor = parent.lstat()
+    if not stat.S_ISDIR(anchor.st_mode) or anchor.st_uid != os.getuid() or anchor.st_mode & 0o022:
+        raise ValueError('marketplace_owner_unavailable')
+    parent_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    if signature(os.fstat(parent_fd)) != signature(anchor):
+        raise ValueError('marketplace_registration_changed')
+    source_fd = os.open('config.toml', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+    before, state = read_config(source_fd)
+    if signature(state) != signature(os.stat('config.toml', dir_fd=parent_fd, follow_symlinks=False)):
+        raise ValueError('marketplace_registration_changed')
+    document_before = toml.loads(before.decode('utf-8'))
+    registered = document_before.get('marketplaces', {}).get(name)
+    if not isinstance(registered, dict) or registered.get('source_type') != 'local' or registered.get('source') != candidate:
+        raise ValueError('marketplace_source_conflict')
+    lines = before.decode('utf-8').splitlines(keepends=True)
+    table = re.compile(r'^\s*\[marketplaces\.(?:' + re.escape(name) + r'|"' + re.escape(name) + r'")\][ \t]*(?:#[^\r\n]*)?\r?\n?$')
+    matches = [i for i, line in enumerate(lines) if table.fullmatch(line)]
+    if len(matches) != 1:
+        raise ValueError('marketplace_source_layout_unsupported')
+    start = matches[0] + 1
+    end = next((i for i in range(start, len(lines)) if lines[i].lstrip().startswith('[')), len(lines))
+    source_line = None
+    fields = set()
+    assignment = re.compile(r'([ \t]*)(source_type|source)([ \t]*=[ \t]*)("(?:[^"\\\r\n]|\\.)*")([ \t]*(?:#[^\r\n]*)?)(\r?\n)?')
+    for i in range(start, end):
+        if not lines[i].strip() or lines[i].lstrip().startswith('#'):
+            continue
+        match = assignment.fullmatch(lines[i])
+        if match is None or match[2] in fields:
+            raise ValueError('marketplace_source_layout_unsupported')
+        fields.add(match[2])
+        value = json.loads(match[4])
+        if value != ('local' if match[2] == 'source_type' else candidate):
+            raise ValueError('marketplace_source_conflict')
+        if match[2] == 'source':
+            source_line = i
+            literal = json.dumps(desired, ensure_ascii=False).replace('\x7f', '\\u007f')
+            lines[i] = match[1] + match[2] + match[3] + literal + match[5] + (match[6] or '')
+    if fields != {'source_type', 'source'} or source_line is None:
+        raise ValueError('marketplace_source_layout_unsupported')
+    after = ''.join(lines).encode('utf-8')
+    document_after = toml.loads(after.decode('utf-8'))
+    if document_after.get('marketplaces', {}).get(name, {}).get('source') != desired:
+        raise ValueError('marketplace_source_layout_unsupported')
+    preserved_before, preserved_after = copy.deepcopy(document_before), copy.deepcopy(document_after)
+    del preserved_before['marketplaces'][name]['source']
+    del preserved_after['marketplaces'][name]['source']
+    if preserved_before != preserved_after:
+        raise ValueError('marketplace_source_layout_unsupported')
+    backup_name = '.agentlas-marketplace-backups'
+    try:
+        os.mkdir(backup_name, 0o700, dir_fd=parent_fd)
+    except FileExistsError:
+        pass
+    backup_fd = os.open(backup_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    try:
+        backup_state = os.fstat(backup_fd)
+        if backup_state.st_uid != os.getuid() or backup_state.st_mode & 0o077:
+            raise ValueError('marketplace_owner_unavailable')
+        fd = os.open('config-' + uuid.uuid4().hex + '.toml', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=backup_fd)
+        with os.fdopen(fd, 'wb') as out:
+            out.write(before)
+            out.flush()
+            os.fsync(out.fileno())
+        os.fsync(backup_fd)
+    finally:
+        os.close(backup_fd)
+    pending = '.config-agentlas-source-' + uuid.uuid4().hex + '.toml'
+    fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent_fd)
+    temporary = pending
+    with os.fdopen(fd, 'wb') as out:
+        out.write(after)
+        os.fchmod(out.fileno(), stat.S_IMODE(state.st_mode))
+        out.flush()
+        os.fsync(out.fileno())
+    current_fd = os.open('config.toml', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+    try:
+        current, current_state = read_config(current_fd)
+        if current != before or signature(current_state) != signature(state) or signature(current_state) != signature(os.stat('config.toml', dir_fd=parent_fd, follow_symlinks=False)):
+            raise ValueError('marketplace_registration_changed')
+    finally:
+        os.close(current_fd)
+    if (parent.lstat().st_dev, parent.lstat().st_ino) != (anchor.st_dev, anchor.st_ino):
+        raise ValueError('marketplace_registration_changed')
+    os.replace(temporary, 'config.toml', src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+    temporary = None
+    os.fsync(parent_fd)
+    confirmed_fd = os.open('config.toml', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+    try:
+        confirmed, confirmed_state = read_config(confirmed_fd)
+        if confirmed != after or signature(confirmed_state) != signature(os.stat('config.toml', dir_fd=parent_fd, follow_symlinks=False)):
+            raise ValueError('marketplace_registration_changed')
+    finally:
+        os.close(confirmed_fd)
+except Exception as exc:
+    code = str(exc) if isinstance(exc, ValueError) and re.fullmatch('marketplace_[a-z_]+', str(exc)) else 'marketplace_registration_failed'
+    print('WARN: ' + code, file=sys.stderr)
+    raise SystemExit(1)
+finally:
+    if temporary is not None and parent_fd is not None:
+        try:
+            os.unlink(temporary, dir_fd=parent_fd)
+        except FileNotFoundError:
+            pass
+    if source_fd is not None:
+        os.close(source_fd)
+    if parent_fd is not None:
+        os.close(parent_fd)
+PY_CODEX_SOURCE
+}
+
 ensure_exact_marketplace_registration() {
   local host="$1" desired="" state=""
   desired="$(accepted_marketplace_source "$host")" || return 1
@@ -1424,13 +1605,29 @@ ensure_exact_marketplace_registration() {
   case "$state" in
     exact) return 0 ;;
     candidate:*)
-      local candidate="${state#candidate:}"
+      local candidate="${state#candidate:}" resolution=""
       [[ "$(marketplace_registration_status "$host" "$candidate")" == exact ]] || { warn "marketplace_source_conflict"; return 1; }
-      generation_adapter_receipt compare "$installed_runtime_generation" "$candidate" "$host" >/dev/null || return 1
+      resolution="$(generation_adapter_receipt resolve "$installed_runtime_generation" "$candidate" "$host")" || return 1
       [[ "$(marketplace_registration_status "$host" "$candidate")" == exact ]] || { warn "marketplace_source_conflict"; return 1; }
+      case "$resolution" in
+        reuse) ;;
+        transition)
+          if [[ "$host" == claude ]]; then
+            run claude plugin marketplace add "$desired" --scope user || { warn "marketplace_registration_failed"; return 1; }
+          else
+            replace_codex_marketplace_source "$candidate" "$desired" || return 1
+          fi
+          [[ "$(marketplace_registration_status "$host" "$desired")" == exact ]] || { warn "marketplace_registration_unverified"; return 1; }
+          ;;
+        *) warn "marketplace_source_conflict"; return 1 ;;
+      esac
       ;;
     absent)
-      run "$host" plugin marketplace add "$desired" || { warn "marketplace_registration_failed"; return 1; }
+      if [[ "$host" == claude ]]; then
+        run claude plugin marketplace add "$desired" --scope user || { warn "marketplace_registration_failed"; return 1; }
+      else
+        run codex plugin marketplace add "$desired" || { warn "marketplace_registration_failed"; return 1; }
+      fi
       state="$(marketplace_registration_status "$host" "$desired")" || return 1
       [[ "$state" == exact ]] || { warn "marketplace_registration_unverified"; return 1; }
       ;;
