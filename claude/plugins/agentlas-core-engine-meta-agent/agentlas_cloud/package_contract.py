@@ -28,10 +28,28 @@ from typing import Any
 
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Za-z0-9_]+\}\}")
 CONTRACT_FILENAME = "package-contract.json"
-HOST_PATH_RE = re.compile(
-    r"(?:file://)?/(?:Users|home)/[^/\s\"'<>]+(?:/[^\s\"'<>]+)*"
-    r"|[A-Za-z]:\\+Users\\+[^\\\s\"'<>]+(?:\\+[^\\\s\"'<>]+)*"
+# Personal roots: the absolute prefixes that name one person's machine. What is
+# private is the root, never a word inside it (owner decision 2026-10-06): a
+# volume or user name stays legal everywhere else in the text, and only a path
+# that starts at one of these roots is rewritten or blocked. `/Volumes/<disk>`
+# was missing, so an external-drive path shipped inside a published team.
+# Deliberately absent: `/mnt/<x>` and `/media/<x>` alone (`/mnt/data` is a
+# sandbox convention and `/media/...` a web route), `/root`, `/tmp`, `/opt`.
+_SEGMENT = r"[^\\/\s\"'`<>()\[\]{}|,;]+"
+PERSONAL_ROOTS: tuple[tuple[str, str], ...] = (
+    ("home", rf"/(?:Users|home)/{_SEGMENT}"),
+    ("mounted-volume", rf"/(?:Volumes|run/media)/{_SEGMENT}"),
+    ("wsl-windows-home", rf"/mnt/[A-Za-z]/Users/{_SEGMENT}"),
+    ("per-user-temp", rf"/(?:private/)?var/folders/{_SEGMENT}"),
+    ("windows-home", rf"[A-Za-z]:(?:\\+|/)Users(?:\\+|/){_SEGMENT}"),
+    ("windows-secondary-drive", rf"[D-Zd-z]:(?:\\+|/){_SEGMENT}"),
 )
+HOST_PATH_RE = re.compile(
+    r"(?<![\w./\\])(?:file://)?(?:"
+    + "|".join(pattern for _, pattern in PERSONAL_ROOTS)
+    + rf")(?:(?:\\+|/){_SEGMENT})*"
+)
+HOST_PATH_PLACEHOLDER = "<host-path-removed>"
 TEXT_SCAN_LIMIT_BYTES = 2 * 1024 * 1024
 PACKAGE_PATH_SCAN_LIMIT = 10_000
 GENERATED_RUNTIME_PATHS = (
@@ -1450,8 +1468,37 @@ def _looks_like_a_pattern_not_a_path(text: str, match: re.Match[str]) -> bool:
     A literal home-directory path still blocks, which is the whole point.
     """
 
+    # `\w` alone is not enough: `D:\work` and `C:\Users\will` contain it.
+    # A regex class escape is followed by a quantifier; a Windows folder is not.
     matched = match.group(0)
-    return bool(re.search(r"\[[^\]]+\]|\\w|\\S|\(\?:|\.\*|\.\+", matched))
+    return bool(re.search(r"\[[^\]]+\]|\\[wS][+*?{]|\(\?:|\.\*|\.\+", matched))
+
+
+def redact_personal_roots(text: str, package_roots: tuple[str, ...] = ()) -> tuple[str, int]:
+    """Rewrite every path under a personal root; return the text and the count.
+
+    A path inside one of `package_roots` (the package folder, as the author's
+    machine spells it) becomes the package-relative path it should always have
+    been. Anything else becomes HOST_PATH_PLACEHOLDER: the location does not
+    exist for anyone else. Regexes that describe such a path are left alone.
+    """
+
+    roots = sorted({root.rstrip("/\\") for root in package_roots if root and root.rstrip("/\\")}, key=len, reverse=True)
+    count = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal count
+        found = match.group(0)
+        if _looks_like_a_pattern_not_a_path(text, match):
+            return found
+        count += 1
+        bare = found[len("file://"):] if found.startswith("file://") else found
+        for root in roots:
+            if bare == root or bare.startswith((root + "/", root + "\\")):
+                return bare[len(root):].lstrip("/\\") or "."
+        return HOST_PATH_PLACEHOLDER
+
+    return HOST_PATH_RE.sub(replace, text), count
 
 
 def _generated_runtime_blockers(workspace: Path) -> list[str]:

@@ -1408,20 +1408,23 @@ def fill_thin_runtime_adapters(root: Path, slug: str) -> list[str]:
 
 
 @_safe_package_mutator
-def redact_host_paths(root: Path) -> list[str]:
+def redact_host_paths(root: Path, source_roots: tuple[str, ...] = ()) -> list[str]:
     """Replace absolute host paths with package-relative ones, in place.
 
-    A path like `/Users/<person>/Documents/...` is someone's home directory
-    leaking into a published package. Blocking the upload leaves the leak in the
-    author's working tree and the package unpublished; redacting removes the
-    private part and ships the rest. A path that points inside this package
-    becomes the relative path it should always have been; anything else becomes a
-    neutral marker, because the absolute location is not portable information.
+    A path like `/Users/<person>/Documents/...` or `/Volumes/<disk>/...` is one
+    person's machine leaking into a published package. Blocking the upload
+    leaves the leak in the author's working tree and the package unpublished;
+    redacting removes the private part and ships the rest. A path that points
+    inside this package becomes the relative path it should always have been;
+    anything else becomes a neutral marker, because the absolute location is not
+    portable information. Upload packages a temporary snapshot, so the author's
+    own folder arrives as `source_roots`: that is how the package's files spell
+    their own location.
     """
 
-    from .package_contract import HOST_PATH_RE, TEXT_SCAN_LIMIT_BYTES, _looks_like_a_pattern_not_a_path
+    from .package_contract import TEXT_SCAN_LIMIT_BYTES, redact_personal_roots
 
-    workspace = str(root.resolve())
+    package_roots = (str(root.resolve()), *source_roots)
     redacted: list[str] = []
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.is_symlink():
@@ -1439,16 +1442,7 @@ def redact_host_paths(root: Path) -> list[str]:
         except UnicodeDecodeError:
             continue
 
-        def replace(match: re.Match[str]) -> str:
-            found = match.group(0)
-            if _looks_like_a_pattern_not_a_path(text, match):
-                return found
-            if found.startswith(workspace):
-                relative = found[len(workspace):].lstrip("/")
-                return relative or "."
-            return "<host-path-removed>"
-
-        rewritten = HOST_PATH_RE.sub(replace, text)
+        rewritten, _ = redact_personal_roots(text, package_roots)
         if rewritten != text:
             try:
                 path.write_text(rewritten, encoding="utf-8")

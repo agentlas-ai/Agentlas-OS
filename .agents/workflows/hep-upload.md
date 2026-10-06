@@ -85,6 +85,16 @@ omit affected source items with omission receipts, or attach an `engine-gap`
 receipt when the engine cannot safely represent or repair an item, then upload
 the remaining package. Keep the findings and receipts visible.
 
+Personal roots never ship. A path that starts at one person's machine (a home
+folder such as `/Users/<name>` or `C:\Users\<name>`, a mounted or external
+volume such as `/Volumes/<disk>`, a per-user temp folder) does not exist for
+anyone else. The engine rewrites it: a path inside the package becomes
+package-relative, and any other path becomes `<host-path-removed>`, with a
+`redacted-host-path` receipt. Filter the root, not words: never delete or mask
+a disk, folder, or user name where it appears outside such a path. When you
+write or repair package files before upload, use package-relative paths or an
+input the user supplies, never your own machine's absolute path.
+
 If the user asks to preview, add `--dry-run`, retain the returned
 `manifest.packageHash` and `uploadReceipt.receipt`, then append
 `--expected-package-hash <manifest.packageHash> --expected-upload-receipt

@@ -20,7 +20,9 @@ from . import content_guard
 from .auth import AgentlasAuthError, ensure_access_token, normalize_base_url, same_origin_urlopen
 from .networking.card_lint import lint_card
 from .package_contract import (
+    HOST_PATH_PLACEHOLDER,
     is_generated_runtime_path,
+    redact_personal_roots,
     refresh_generated_projections,
     verify as verify_package_contract,
 )
@@ -413,6 +415,7 @@ def package_agent(
     slug: str | None = None,
     visibility: str = "marketplace",
     write_manifest: bool = True,
+    source_roots: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     base = Path(folder).expanduser().resolve()
     if not base.is_dir():
@@ -525,7 +528,6 @@ def package_agent(
             fill_declared_artifacts,
             fill_runtime_adapter_bodies,
             fill_thin_runtime_adapters,
-            redact_host_paths,
         )
 
         from .repackage import prune_unrecognised_manifest_keys
@@ -544,12 +546,21 @@ def package_agent(
         thin_adapters = fill_thin_runtime_adapters(base, slug_hint)
         if thin_adapters:
             contract_scaffold["thinRuntimeAdaptersWritten"] = thin_adapters
-
-        redacted = redact_host_paths(base)
-        if redacted:
-            contract_scaffold["hostPathsRedacted"] = redacted
     except Exception as error:  # noqa: BLE001 - never let repair stop the upload path
         contract_scaffold = {"status": "skipped", "reason": str(error)[:200]}
+
+    # Personal roots come out whether or not the repair pass above finished. The
+    # rewrite used to sit inside that pass, so any unrelated repair error skipped
+    # it and the author's home or external-drive paths shipped as written.
+    # `sanitize_upload_text` is the line-level backstop for what this cannot see.
+    try:
+        from .repackage import redact_host_paths
+
+        redacted = redact_host_paths(base, source_roots)
+        if redacted:
+            contract_scaffold["hostPathsRedacted"] = redacted
+    except Exception as error:  # noqa: BLE001 - the line guard still runs
+        contract_scaffold["hostPathRedaction"] = {"status": "skipped", "reason": str(error)[:200]}
 
     # Whatever this pass laid down and could not fill is withdrawn again. A
     # stencil that still reads `{{ROLE}}` is worse than the absence it replaced:
@@ -1739,7 +1750,13 @@ def publish_agent(
         snapshot = Path(temporary) / "package"
         snapshot_omissions = _snapshot_package_source(source, snapshot)
         _pin_snapshot_agent_identity(snapshot, source.name)
-        packaged = package_agent(snapshot, slug=slug, visibility=visibility, write_manifest=True)
+        packaged = package_agent(
+            snapshot,
+            slug=slug,
+            visibility=visibility,
+            write_manifest=True,
+            source_roots=tuple({str(source), *((str(requested_source),) if requested_source.is_absolute() else ())}),
+        )
         if source_link_resolved:
             snapshot_omissions.insert(
                 0,
@@ -2599,6 +2616,8 @@ def sanitize_upload_text(file_path: str, text: str) -> tuple[str, list[dict[str,
     for review but KEPT, preserving agent quality. Obfuscation (homoglyphs,
     leetspeak, zero-width, bidi, separators, non-English) is defeated via a
     normalized detection shadow, and split injections via a multi-line window.
+    Paths under a personal root (package_contract.PERSONAL_ROOTS) are rewritten
+    in kept lines, never removed with them.
     """
     findings: list[dict[str, Any]] = []
     lines = text.splitlines(keepends=True)
@@ -2645,6 +2664,17 @@ def sanitize_upload_text(file_path: str, text: str) -> tuple[str, list[dict[str,
                     findings.append(_line_finding("sanitized-upload-line", "high", "sanitized-content", span.message, file_path, k + 1, span.rule, "Keep package content instructional; never embed attacker directives."))
         else:  # flag: keep the split window, surface for review
             findings.append(_line_finding("flagged-upload-line", span.severity, "flagged-content", span.message, file_path, span.start + 1, span.rule, "Reviewed as descriptive/quoted; kept to preserve agent quality."))
+
+    # 5) personal roots: a path under one person's home folder, external volume
+    # or temp folder does not exist for anyone else. The root is rewritten and
+    # the line kept; a volume or user name elsewhere in the text is not private.
+    for idx in range(len(lines)):
+        if remove[idx]:
+            continue
+        rewritten, count = redact_personal_roots(lines[idx])
+        if count:
+            lines[idx] = rewritten
+            findings.append(_line_finding("redacted-host-path", "medium", "privacy", f"Replaced {count} path(s) under a personal root (home folder, external volume, per-user temp folder) with {HOST_PATH_PLACEHOLDER}.", file_path, idx + 1, "personal-root-path", "Use package-relative paths; a path on the author's machine does not exist for other users."))
 
     kept = [lines[i] for i in range(len(lines)) if not remove[i]]
     return "".join(kept), findings
