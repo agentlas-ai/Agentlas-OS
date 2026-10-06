@@ -91,12 +91,19 @@ _HOMOGLYPH = {
     "ｆ": "f",
 }
 _LEET = {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
+_LEET_TRANSLATION = str.maketrans(_LEET)
+_ASCII_CONTROL_TRANSLATION = {
+    code: None for code in range(32) if chr(code) not in "\t\n\r"
+}
+_ASCII_CONTROL_TRANSLATION[127] = None
 
 # Unicode Tag block (invisible ASCII smuggling, U+E0000..U+E007F).
 _TAG_LO, _TAG_HI = 0xE0000, 0xE007F
 
 
 def _strip_invisible(text: str) -> str:
+    if text.isascii():
+        return text.translate(_ASCII_CONTROL_TRANSLATION)
     out = []
     for ch in text:
         code = ord(ch)
@@ -134,6 +141,11 @@ def canonicalize(text: str) -> str:
     fold, whitespace normalized to single spaces. Word boundaries are PRESERVED
     (spaces kept) so boundary-based concept rules still match Cyrillic/leet
     variants. Used only for matching — never written back into the package."""
+    # ASCII has no Unicode tags, normalization changes, or homoglyphs. Apply
+    # the same control, case, leet, and whitespace rules without character loops.
+    if text.isascii():
+        text = _strip_invisible(text).lower().translate(_LEET_TRANSLATION)
+        return _WS_RUN.sub(" ", text)
     text = _inline_decode_tags(text)
     text = unicodedata.normalize("NFKC", _strip_invisible(text))
     text = "".join(_HOMOGLYPH.get(ch, ch) for ch in text).lower()
@@ -736,16 +748,19 @@ def evaluate_line(line: str) -> Reason | None:
 def _evaluate_scan_window(line: str) -> Reason | None:
     canon = canonicalize(line)
     cjk = _cjk_shadow(line)
+    canon_is_raw = canon == line
+    cjk_is_raw = cjk == line
 
     for rule, pattern, message, action, severity in _ENGLISH_RULES:
-        if pattern.search(canon) or pattern.search(line):
+        if pattern.search(canon) or (not canon_is_raw and pattern.search(line)):
             return _verdict(rule, message, action, severity, line, canon)
 
     for rule, pattern, message, action, severity in _MULTILINGUAL_RULES:
-        if pattern.search(cjk) or pattern.search(line):
+        if pattern.search(cjk) or (not cjk_is_raw and pattern.search(line)):
             return _verdict(rule, message, action, severity, line, canon)
 
-    sq = squish(line)
+    # squish(line) would rebuild this exact canonical shadow for every window.
+    sq = _NON_ALNUM.sub("", canon)
     for rule, pattern, message, action, severity in _SQUISH_RULES:
         if pattern.search(sq):
             return _verdict(rule, message, action, severity, line, canon)
