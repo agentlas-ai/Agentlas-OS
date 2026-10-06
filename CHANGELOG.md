@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.57 — 2026-10-06
+
+- Seal prepared Workforce plans after local project grounding is attached so
+  cached plans retain valid integrity pins when an executor resumes them.
+- Prepare an accepted selection using its session and digest references.
+  Restore only the exact pinned choice and reject changed or expired references.
+- Expose the existing external host execution route and its measured invocation
+  requirements in Network commands and skills.
+
 ## 1.2.54 — 2026-10-02
 
 - Restore compatible One memory event envelopes and merge bounded evidence references.

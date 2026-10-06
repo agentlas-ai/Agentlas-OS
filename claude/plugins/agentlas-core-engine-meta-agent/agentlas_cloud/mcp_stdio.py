@@ -53,7 +53,7 @@ from .networking.lease_tools import LEASE_TOOLS, PURCHASE as LEASE_PURCHASE, QUO
 from .networking.takedown_tools import TAKEDOWN, TAKEDOWN_TOOLS, call_agent_takedown_tool
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.56"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.57"}
 
 # Roots this process has already seeded, so only the first tool call in a
 # session pays the bootstrap cost.
