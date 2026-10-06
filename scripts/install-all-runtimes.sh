@@ -1480,7 +1480,7 @@ install_claude() {
   # Human output may insert a Read from line before Status. The JSON contract
   # identifies the exact user installation without depending on display order.
   if ! claude_plugin_enabled; then
-    warn "plugin_enable_failed: '$plugin_name@$marketplace_name' is not enabled. Run: claude plugin enable $plugin_name@$marketplace_name"
+    warn "plugin_enable_failed: Enabled user-scope state for '$plugin_name@$marketplace_name' at version ${version#v} could not be verified. Run: claude plugin list --json"
     return 1
   fi
   write_claude_commands || {
