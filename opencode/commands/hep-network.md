@@ -27,8 +27,8 @@ preparation is not delivery, and the session-end checkpoint reports the same
 fact to the user.
 
 Before the first Cloud or Hub source call, reuse the installed Agentlas
-sign-in. Resolve the runner in this order and use it only for authentication;
-the host LLM still performs staffing through the Workforce MCP tools:
+sign-in. Resolve the runner in this order for authentication and supported
+host-adapter execution; the host LLM still staffs through Workforce MCP tools:
 
 ```bash
 RUNNER=""
@@ -130,8 +130,18 @@ done
    not a rejection, but read `selectionValidation.unmetRequirements` and either
    accept the gap deliberately or reselect. Never report an accepted validation
    as if nothing were unmet.
+   Use public codes such as `reason:best-content-fit`,
+   `reason:best-contract-fit`, and `reason:host-semantic-judgment`, or exact
+   codes from the chosen candidate's pinned evidence. Do not invent reason
+   vocabulary; omitted compact-decision reasons use `reason:host-semantic-judgment`.
 4. Call `workforce.prepare_execution` with
-   `{selection, federatedSelectionDigest, projectDir, goalId?, fullDossier: false}`.
+   `{selection: {selectionSessionId}, federatedSelectionDigest, projectDir, goalId?, fullDossier: false}`.
+   Use both references from the same accepted validation response. Core
+   restores only the exact digest-matching Selection from its pinned wrapper.
+   The unchanged accepted wrapper under `selection`, the original exact
+   Selection, or the same compact `decision` also works. If a legacy normalized
+   receipt cannot restore the original bytes, resend that decision or exact
+   Selection. References never reauthor or substitute an accepted choice.
    `projectDir` is mandatory. Pass the incumbent `goalId` when continuing;
    otherwise Core joins this project's incumbent active automatic goal, and
    opens a new one only when there is none. Core must automatically
@@ -174,6 +184,23 @@ done
    artifact handoffs. Allocation receipts have `usage: null` before execution,
    so record actual usage on the later invocation/run receipt instead of
    inventing zero.
+   If native child execution lacks the required enforcement, inspect the
+   existing external-host transport before stopping at preparation:
+   `"$RUNNER" workforce execute --project <project> --goal-id <goalBinding.goalId> --adapter-argv-json '["/absolute/path/to/host-adapter"]'`.
+   This uses an explicitly selected available adapter, loads the original full
+   bound preparation locally, orders distinct calls, snapshots artifact
+   handoffs, and validates the resulting receipt. The adapter reads one
+   `agentlas.workforce-host-executor-request.v1` JSON request from stdin and
+   writes one correlated `agentlas.workforce-host-executor-response.v1` JSON
+   response to stdout; its exact contract is in the installed engine's
+   `agentlas_cloud/workforce/host_executor.py`. The adapter owns real model
+   execution and measured policy enforcement; this command grants nothing and
+   installs nothing. Check native execution and existing adapters, then use
+   `agentlas_resolve_plugins` for a missing adapter. An adapter created within
+   already authorized work uses this contract outside Core. An actually empty
+   tool menu is valid for model-only work without required tool bindings;
+   residual CLI authority cannot be reported as zero tools. If no route can
+   enforce the policy, retain `prepared` and name that exact boundary.
 8. Report `executed` only when the execution receipt proves every selected
    invocation, handoff, synthesis, and an independent passing verifier.
    Otherwise report the last truthful state: `selected`, `prepared`,

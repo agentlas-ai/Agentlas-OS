@@ -86,7 +86,7 @@ workforce.preflight_work_order(taskBrief=..., roles=..., edges=...)
 workforce.search_candidates(workOrderRef=..., sourceScope="network")
 workforce.expand_candidates(selectionSessionId=..., candidates=[{slotId, candidateOrdinal}])
 workforce.validate_selection(decision={selectionSessionId, decisionAuthor, assignments})
-workforce.prepare_execution(selection=..., federatedSelectionDigest=..., projectDir=..., goalId=activeGoalId?, fullDossier=false)
+workforce.prepare_execution(selection={selectionSessionId}, federatedSelectionDigest=..., projectDir=..., goalId=activeGoalId?, fullDossier=false)
 workforce.validate_execution_receipt(receipt=..., executionPlan=..., toolInventory=...)
 ```
 
@@ -210,6 +210,21 @@ arrays that are empty in a normal decision, and compiles the exact
 `agentlas.workforce-selection.v1`. Re-plan on rejection. The validator may
 reject constraints, cardinality, cycles, drift, out-of-menu releases, or a
 source-pin mismatch; it must never pick for you.
+
+Use public reason codes such as `reason:best-content-fit`,
+`reason:best-contract-fit`, and `reason:host-semantic-judgment`, or an exact code
+from the selected candidate's pinned evidence. Invented reason vocabulary is
+rejected; omitting compact-decision reason codes uses
+`reason:host-semantic-judgment`.
+
+Prepare the accepted choice with `selection={selectionSessionId}` plus the
+same response's `federatedSelectionDigest`. Core loads its own accepted wrapper
+and restores the Selection only when its exact digest matches. The unchanged
+accepted validation wrapper is also accepted under `selection`; the original
+exact Selection or the same compact `decision` remains supported. Never put a
+compact authoring decision under `selection`. If an older normalized receipt
+cannot restore the original bytes, resend the original decision or exact
+Selection. A changed or expired reference never chooses a replacement.
 
 An accepted receipt can still carry `unmetRequirementCount`. That is not a
 rejection and Core will not choose for you, but it is not noise either: read
@@ -335,9 +350,36 @@ required tool capability maps to an exact snapshot entry and permitted tool.
 A package policy mentioning a tool is not inventory proof, and a required
 binding cannot run under no-authority enforcement.
 
-If the host cannot create distinct child invocations, stop at `prepared` and
-say so. A route id, bundle id, process exit code, or prose that imitates several
-roles is not execution proof.
+Before declaring that the current host cannot execute the roster, inspect the
+existing external-host transport. With an explicitly selected, available host
+adapter, the resolved runner executes the exact cached goal:
+
+```bash
+"$RUNNER" workforce execute \
+  --project <current-project> \
+  --goal-id <goalBinding.goalId> \
+  --adapter-argv-json '["/absolute/path/to/host-adapter"]'
+```
+
+Core loads the full bound preparation from its local store; do not reconstruct
+it from a projected `prepare.v2` answer. Each adapter process receives one
+`agentlas.workforce-host-executor-request.v1` JSON object on stdin and returns
+one correlated `agentlas.workforce-host-executor-response.v1` JSON object on
+stdout. The complete request, response, artifact, and refusal contract lives in
+the installed engine's `agentlas_cloud/workforce/host_executor.py`. Core orders
+distinct orchestrator, planner, workers, synthesis, and verifier calls, verifies
+artifact handoffs, and returns a receipt only after strict validation passes.
+
+The adapter owns actual model invocation and measured policy enforcement; the
+command does not install an adapter or grant permissions. Check native host
+execution and existing adapters, then resolve a missing adapter with
+`agentlas_resolve_plugins`. Creating an adapter within already authorized work
+must use this provider-neutral contract outside Core. A model-only invocation
+can use an actually empty tool menu when no required capability binding needs
+tools; a prompt promise or a CLI flag with residual authority is not isolation.
+If no supported route can make distinct, policy-enforced invocations, report
+that exact boundary at `prepared`. A route id, bundle id, process exit code, or
+prose that imitates several roles is not execution proof.
 
 Preparation is not delivery. A turn that pinned a roster and produced no worker
 output has not answered the user's request, and the session-end checkpoint says

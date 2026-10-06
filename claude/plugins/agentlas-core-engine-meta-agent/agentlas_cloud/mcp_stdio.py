@@ -30,6 +30,7 @@ from .model_allocation import (
 from .workforce.contracts import (
     WORKFORCE_ONTOLOGY_SNAPSHOT_SHA256,
     WORKFORCE_ONTOLOGY_VERSION,
+    WORKFORCE_SELECTION_REASON_CODES,
     canonical_digest,
     load_workforce_contract_schema,
     normalize_work_order,
@@ -220,6 +221,50 @@ def _selection_property_with_ordinal(description: str) -> dict[str, Any]:
     except (KeyError, TypeError):
         pass
     return schema
+
+
+def _prepare_selection_property() -> dict[str, Any]:
+    """Distinguish an exact Selection from a pinned accepted reference."""
+
+    session = {"type": "string", "minLength": 1, "maxLength": 256}
+    digest = {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+    return {
+        "description": (
+            "Prefer {selectionSessionId} plus top-level federatedSelectionDigest from the "
+            "accepted validation result. Core restores only that exact pinned Selection. "
+            "The unchanged accepted validation wrapper or original exact Selection is also accepted."
+        ),
+        "anyOf": [
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["selectionSessionId"],
+                "properties": {
+                    "selectionSessionId": session,
+                    "federatedSelectionDigest": digest,
+                },
+            },
+            {
+                "type": "object",
+                "required": ["schemaVersion", "selectionSessionId", "assignments"],
+                "properties": {
+                    "schemaVersion": {"const": "agentlas.workforce-selection.v1"},
+                    "selectionSessionId": session,
+                    "assignments": {"type": "array", "minItems": 1},
+                },
+            },
+            {
+                "type": "object",
+                "required": ["schemaVersion", "status", "selectionSessionId", "federatedSelectionDigest"],
+                "properties": {
+                    "schemaVersion": {"const": WORKFORCE_FEDERATED_SELECTION_SCHEMA},
+                    "status": {"const": "accepted"},
+                    "selectionSessionId": session,
+                    "federatedSelectionDigest": digest,
+                },
+            },
+        ],
+    }
 
 
 def _work_order_draft_schema() -> dict[str, Any]:
@@ -531,6 +576,11 @@ def _selection_decision_schema() -> dict[str, Any]:
                             "type": "array",
                             "maxItems": 16,
                             "items": {"type": "string", "minLength": 2, "maxLength": 255},
+                            "description": (
+                                "Use public codes: " + ", ".join(sorted(WORKFORCE_SELECTION_REASON_CODES))
+                                + "; or exact reason codes in the selected candidate's pinned evidence. "
+                                "Omission uses reason:host-semantic-judgment."
+                            ),
                         },
                     },
                 },
@@ -1824,7 +1874,9 @@ TOOLS: list[dict[str, Any]] = [
             "Fetch BYOM runtime bundles only for an already accepted exact roster. "
             "Pins agentReleaseId, packageHash, and contentDigest and fails closed on drift; "
             "it never chooses replacements. A successful preparation is atomically bound "
-            "to durable work continuity; callers cannot opt out by omitting an explicit goal mode."
+            "to durable work continuity; callers cannot opt out by omitting an explicit goal mode. "
+            "Preparation does not run workers: execute the bound goal through native host "
+            "invocations or `hephaestus workforce execute` with an explicit host adapter."
         ),
         "inputSchema": {
             "type": "object",
@@ -1842,10 +1894,7 @@ TOOLS: list[dict[str, Any]] = [
                     ),
                 },
                 "decision": _selection_decision_schema(),
-                "selection": _contract_echo_property(
-                    "selection",
-                    "The exact Selection already accepted by workforce.validate_selection. Send it back unchanged — Core revalidates it and fails closed on any drift from the accepted roster. Prefer resending the same compact `decision` you validated: Core compiles the identical Selection from the pinned session.",
-                ),
+                "selection": _prepare_selection_property(),
                 "validationReceipt": {"type": "object"},
                 "federationResult": {
                     "type": "object",
@@ -2416,6 +2465,73 @@ def _workforce_circuit_key(arguments: Mapping[str, Any], work_order: Mapping[str
     )
 
 
+def _restore_prepared_selection_reference(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Restore an accepted choice without inferring or reauthoring its pins."""
+
+    from .workforce.federation_store import FederationSessionError, FederationSessionStore
+
+    reference = arguments.get("selection")
+    if not isinstance(reference, Mapping):
+        return arguments
+    is_wrapper = reference.get("schemaVersion") == WORKFORCE_FEDERATED_SELECTION_SCHEMA
+    is_reference = bool(reference) and set(reference) <= {
+        "selectionSessionId", "federatedSelectionDigest"
+    }
+    if not is_wrapper and not is_reference:
+        return arguments
+    session = reference.get("selectionSessionId")
+    if not isinstance(session, str) or not session.strip():
+        raise FederationSessionError("selection_reference_session_required")
+    nested_digest = reference.get("federatedSelectionDigest")
+    digest = arguments.get("federatedSelectionDigest") or nested_digest
+    if not isinstance(digest, str) or not digest.strip():
+        raise FederationSessionError("selection_reference_digest_required")
+    if nested_digest is not None and nested_digest != digest:
+        raise FederationSessionError("selection_reference_digest_conflict")
+    pinned = FederationSessionStore().get_federated_selection(session.strip(), digest.strip())
+    supplied_wrapper = arguments.get("federatedSelection")
+    for supplied in ([reference] if is_wrapper else []) + (
+        [supplied_wrapper] if supplied_wrapper is not None else []
+    ):
+        try:
+            matches = isinstance(supplied, Mapping) and canonical_digest(supplied) == canonical_digest(pinned)
+        except (TypeError, ValueError, RecursionError):
+            matches = False
+        if not matches:
+            raise FederationSessionError("selection_reference_wrapper_mismatch")
+    validation = pinned.get("selectionValidation")
+    receipt = validation.get("receipt") if isinstance(validation, Mapping) else None
+    try:
+        if not isinstance(receipt, Mapping):
+            raise ValueError("missing_receipt")
+        selection = {
+            "schemaVersion": "agentlas.workforce-selection.v1",
+            **{
+                key: receipt[key]
+                for key in (
+                    "selectionSessionId", "candidateSetDigest", "decisionAuthor", "edges",
+                    "alternativesConsidered", "requestExpansionForSlots",
+                )
+            },
+            "assignments": [
+                {key: row[key] for key in ("slotId", "agentReleaseId", "reasonCodes")}
+                for row in receipt["assignments"]
+            ],
+        }
+        if canonical_digest(selection) != pinned.get("selectionDigest"):
+            raise ValueError("exact_selection_unrecoverable")
+    except (KeyError, TypeError, ValueError, RecursionError) as exc:
+        # Older receipts normalize lists. Never treat that normalized choice as
+        # the exact original unless its digest proves they are identical.
+        raise FederationSessionError("selection_reference_exact_echo_required") from exc
+    return {
+        **arguments,
+        "selection": selection,
+        "federatedSelection": pinned,
+        "federatedSelectionDigest": pinned["federatedSelectionDigest"],
+    }
+
+
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
@@ -2496,9 +2612,11 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "schemaVersion": "agentlas.workforce-execution-receipt.v2",
                     "schemaRef": "schemas/workforce-execution-receipt.schema.json",
                     "producedBy": [
+                        "hephaestus workforce execute --project <project> --goal-id <goal> --adapter-argv-json '[\"<host-adapter>\"]' (external host adapter)",
                         "agentlas workforce \"<request>\" (Agentlas Terminal executor)",
                         "Agentlas Desktop Work (borrowed task force executor)",
                     ],
+                    "adapterContractRef": "agentlas_cloud/workforce/host_executor.py",
                     "hostGuidance": (
                         "Do not hand-author this receipt. Run the prepared roster through a "
                         "runtime executor that emits it, or tell the user plainly that the "
@@ -3097,6 +3215,23 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             resolve_continuity_goal_id,
         )
 
+        if name == "workforce.prepare_execution":
+            try:
+                arguments = _restore_prepared_selection_reference(arguments)
+            except FederationSessionError as exc:
+                return {
+                    "action": name,
+                    "status": "rejected",
+                    "error": exc.code,
+                    "repairable": True,
+                    "hubCalls": 0,
+                    "hint": (
+                        "Pass selection={selectionSessionId} and federatedSelectionDigest from the same "
+                        "accepted validate_selection result. If its exact choice cannot be restored, "
+                        "resend the original decision or exact Selection; expired sessions require a new search."
+                    ),
+                }
+
         # Agentlas OS is the canonical Workforce entrypoint. Core owns source
         # federation plus deterministic governance/provenance validation; the
         # active host LLM alone authors the staffing decision. Privacy checks
@@ -3681,6 +3816,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                             "localContextSliceStatus": "unavailable",
                             "localContextSliceCode": str(getattr(exc, "code", "") or type(exc).__name__),
                         }
+                    # Core's local grounding is part of the artifact cached by
+                    # bind. Seal the verified producer result after enrichment;
+                    # never reseal a cached preparation when reading it.
+                    prepared_result["federatedPreparationDigest"] = canonical_digest({
+                        key: value for key, value in prepared_result.items()
+                        if key != "federatedPreparationDigest"
+                    })
                     if not _workforce_preparation_ready(prepared_result):
                         return _workforce_preparation_refusal(name, prepared_result)
                     try:
@@ -3768,6 +3910,11 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "localContextSliceStatus": "unavailable",
                 "localContextSliceCode": str(getattr(exc, "code", "") or type(exc).__name__),
             }
+        if remote_result.get("schemaVersion") == WORKFORCE_FEDERATED_PREPARATION_SCHEMA:
+            remote_result["federatedPreparationDigest"] = canonical_digest({
+                key: value for key, value in remote_result.items()
+                if key != "federatedPreparationDigest"
+            })
         if not _workforce_preparation_ready(remote_result):
             return _workforce_preparation_refusal(name, remote_result)
         try:
