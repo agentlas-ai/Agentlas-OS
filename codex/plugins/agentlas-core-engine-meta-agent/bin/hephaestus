@@ -87,9 +87,40 @@ resolve_upload_folder() {
   return 1
 }
 
+upload_usage() {
+  cat <<'EOF' | sed "s|bin/hephaestus|$self|g"
+Usage:
+  bin/hephaestus hep-upload <agent-folder> --visibility <private-link|marketplace> [options]
+  bin/hephaestus hep-upload <agent-folder>                         # ask Cloud vs Hub interactively
+
+Destinations:
+  private-link                 Agentlas Cloud, private access
+  marketplace                  Agentlas Hub, public listing
+  --cloud / --hub              Select the corresponding destination
+
+Options:
+  --dry-run                    Package and review without registering
+  --slug <slug>                Override the package slug
+  --base-url <url>             Use an explicit service base URL
+  --expected-package-hash <sha256>
+  --expected-upload-receipt <sha256>
+  --overwrite-cloud-id <id>    Confirm overwrite of this exact Cloud asset
+  --no-open                    Do not open a browser for sign-in
+  -h, --help                   Show this help without selecting a destination
+EOF
+}
+
 run_upload_gate() {
   local target choice visibility="" arg
   local -a folder_args=() publish_args=()
+  for arg in "$@"; do
+    case "$arg" in
+      -h|--help)
+        upload_usage
+        return 0
+        ;;
+    esac
+  done
   set_upload_visibility() {
     local requested="$1" normalized
     case "$requested" in
@@ -205,6 +236,7 @@ Usage:
   bin/hephaestus runtime bundle <agent-folder>
   bin/hephaestus runtime read-agent-file <agent-folder> <path>
   bin/hephaestus contract scaffold <agent-folder> [--mode single|team|package]
+  bin/hephaestus contract complete <agent-folder> [--slug <slug>] [--mode single|team|package]
   bin/hephaestus contract verify <agent-folder> [--mode single|team|package]
   bin/hephaestus contract prompt [--mode single|team|package]
   bin/hephaestus session [inspect|normalize|validate|preview|merge|ir|compile|promote] [--input <session.jsonl>] [--global-agent]
