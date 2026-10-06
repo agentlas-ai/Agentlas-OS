@@ -1452,8 +1452,8 @@ try:
     document = json.loads(reply.stdout)
     if not isinstance(document, list) or any(not isinstance(item, dict) for item in document):
         raise ValueError()
-    matches = [item for item in document if item.get("id") == plugin]
-    if len(matches) != 1 or matches[0].get("scope") != "user" or matches[0].get("version") != version or matches[0].get("enabled") is not True:
+    matches = [item for item in document if item.get("id") == plugin and item.get("scope") == "user"]
+    if len(matches) != 1 or matches[0].get("version") != version or matches[0].get("enabled") is not True:
         raise ValueError()
 except Exception:
     raise SystemExit(1)
