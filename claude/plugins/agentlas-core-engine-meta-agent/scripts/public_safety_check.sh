@@ -9,11 +9,23 @@ fi
 hits_file="$(mktemp)"
 trap 'rm -f "$hits_file"' EXIT
 
+# Only exact copies at the engine's declared checker paths are self-rules.
+# A modified copy or a checker-named file elsewhere still needs a full scan.
+checker_pathspecs=()
+for checker_path in \
+  scripts/public_safety_check.sh \
+  claude/plugins/agentlas-core-engine-meta-agent/scripts/public_safety_check.sh \
+  codex/plugins/agentlas-core-engine-meta-agent/scripts/public_safety_check.sh; do
+  if [[ -f "$checker_path" ]] && cmp -s "${BASH_SOURCE[0]}" "$checker_path"; then
+    checker_pathspecs+=(":(exclude)$checker_path")
+  fi
+done
+
 check_pattern() {
   local label="$1"
   local pattern="$2"
 
-  if git grep -nE --untracked --exclude-standard -- "$pattern" -- ':!scripts/public_safety_check.sh' >"$hits_file"; then
+  if git grep -nE --untracked --exclude-standard -- "$pattern" -- "${checker_pathspecs[@]}" >"$hits_file"; then
     echo "public_safety_check: blocked by ${label}" >&2
     cat "$hits_file" >&2
     exit 1
