@@ -12,6 +12,8 @@
   are identical, preserving detection rules, priorities, and redaction behavior.
 - Show Upload help before requesting a destination and include the contract
   completion step in top-level help.
+- Verify Claude plugin activation from the exact user installation's JSON
+  state so display layout changes cannot report an enabled plugin as failed.
 - Pin Claude Code ACP 0.86.0 and Copilot ACP 1.0.92 in the runtime registry.
 
 ## 1.2.54 — 2026-10-02

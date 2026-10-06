@@ -1438,6 +1438,28 @@ ensure_exact_marketplace_registration() {
   esac
 }
 
+claude_plugin_enabled() {
+  local py=""
+  py="$(resolve_archive_python_cmd)" || return 1
+  run_resolved_python "$py" - "$plugin_name@$marketplace_name" "${version#v}" <<'PY_ENABLED'
+import json, subprocess, sys
+try:
+    plugin, version = sys.argv[1:]
+    reply = subprocess.run(["claude", "plugin", "list", "--json"],
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15)
+    if reply.returncode or len(reply.stdout) > 1024 * 1024:
+        raise ValueError()
+    document = json.loads(reply.stdout)
+    if not isinstance(document, list) or any(not isinstance(item, dict) for item in document):
+        raise ValueError()
+    matches = [item for item in document if item.get("id") == plugin]
+    if len(matches) != 1 or matches[0].get("scope") != "user" or matches[0].get("version") != version or matches[0].get("enabled") is not True:
+        raise ValueError()
+except Exception:
+    raise SystemExit(1)
+PY_ENABLED
+}
+
 install_claude() {
   if ! have claude; then
     warn "Claude CLI not found; skipped Claude plugin install."
@@ -1455,7 +1477,9 @@ install_claude() {
   # installer exit 1 — on the host most people arrive through — while the
   # plugin sat there installed and enabled. Ask the state, not the exit code.
   try claude plugin enable "$plugin_name@$marketplace_name" >/dev/null 2>&1 || true
-  if ! claude plugin list 2>/dev/null | grep -A 3 -F "$plugin_name@$marketplace_name" | grep -qi "enabled"; then
+  # Human output may insert a Read from line before Status. The JSON contract
+  # identifies the exact user installation without depending on display order.
+  if ! claude_plugin_enabled; then
     warn "plugin_enable_failed: '$plugin_name@$marketplace_name' is not enabled. Run: claude plugin enable $plugin_name@$marketplace_name"
     return 1
   fi
