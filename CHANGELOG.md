@@ -8,6 +8,11 @@
   Restore only the exact pinned choice and reject changed or expired references.
 - Expose the existing external host execution route and its measured invocation
   requirements in Network commands and skills.
+- Reuse normalized Upload scan text and avoid duplicate searches when shadows
+  are identical, preserving detection rules, priorities, and redaction behavior.
+- Show Upload help before requesting a destination and include the contract
+  completion step in top-level help.
+- Pin Claude Code ACP 0.86.0 and Copilot ACP 1.0.92 in the runtime registry.
 
 ## 1.2.54 — 2026-10-02
 
