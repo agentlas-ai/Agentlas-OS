@@ -1506,8 +1506,8 @@ def write_candidate_skill(draft: Mapping[str, Any], destination: str | Path, *, 
     root = requested_root.resolve()
     root.mkdir(parents=True, exist_ok=True)
     skill_slug = slugify(slug or str((draft.get("identity") or {}).get("slug") or "session-agent"))
-    skill_dir = root / ".claude" / "skills" / skill_slug
-    for directory in (root / ".claude", root / ".claude" / "skills"):
+    skill_dir = root / ".agentlas" / "skill-candidates" / skill_slug
+    for directory in (root / ".agentlas", root / ".agentlas" / "skill-candidates"):
         if directory.is_symlink():
             raise SessionBuildError("skill_symlink_forbidden", "candidate skill parent may not be a symbolic link")
         if directory.exists() and not directory.is_dir():
@@ -1528,7 +1528,7 @@ def write_candidate_skill(draft: Mapping[str, Any], destination: str | Path, *, 
         "## Behavior\n\n"
         f"{prompt.rstrip()}\n"
         "## Promotion gate\n\n"
-        "Require replayable trials, uncontaminated holdouts, an independent validator, a rollback snapshot, and explicit owner approval.\n"
+        "Require replayable trials, uncontaminated holdouts, an independent validator, a rollback snapshot, and an exact owner-approved file revision before copying this skill into a runtime discovery folder.\n"
     )
     skill_path = skill_dir / "SKILL.md"
     if skill_path.is_symlink():
@@ -1602,58 +1602,11 @@ def write_candidate_skill(draft: Mapping[str, Any], destination: str | Path, *, 
 
 
 def build_experience_candidate(brief: Mapping[str, Any], draft: Mapping[str, Any]) -> dict[str, Any]:
-    source_digests = list((brief.get("session") or {}).get("sourceDigests") or [])
-    evidence_refs = [f"session:{digest}" for digest in source_digests[:24]]
-    if not evidence_refs:
-        raise SessionBuildError("experience_evidence_required", "private Experience candidates require source evidence refs")
-    digest = _hash({"brief": _hash(brief), "draft": str(draft.get("draftDigest") or "")})[7:55]
-    slug = slugify(str((draft.get("identity") or {}).get("slug") or "session-agent"))
-    item: dict[str, Any] = {
-        "schemaVersion": "agentlas.experience-item.v1",
-        "kind": "agentlas-experience-item",
-        "experienceItemId": f"exp_{digest[:32]}",
-        "experiencePackId": f"pack_{digest[0:24]}",
-        "experiencePackReleaseId": f"release_{digest[24:48]}",
-        "type": "procedure",
-        "summary": _compact(f"Candidate procedure for the approved {slug} session-build workflow", 320),
-        "instructions": [
-            "Start from an explicit session export and run the privacy preflight.",
-            "Review the generated Work Brief and resolve conflicts before drafting.",
-            "Keep permissions unchanged until the owner explicitly approves activation.",
-            "Validate the package and retain replayable evidence before any promotion request.",
-        ],
-        "taskSignatures": [f"session-build:{slug}"],
-        "environmentConstraints": ["local-only candidate", "raw transcript excluded", "permission changes excluded"],
-        "evidenceReceiptIds": evidence_refs,
-        "supersedesItemIds": [],
-        "confidence": 0.45,
-        "status": "candidate",
-        "privacyScope": "private",
-    }
-    try:
-        validate_experience_item(item)
-    except ContractValidationError as exc:
-        raise SessionBuildError("experience_invalid", "generated Experience candidate failed validation", details={"issues": list(exc.issues)}) from exc
-    return item
+    raise SessionBuildError("experience_chips_retired", "Use private memory candidates and an owner-reviewed file proposal.")
 
 
 def write_experience_candidate(project: str | Path, item: Mapping[str, Any]) -> dict[str, Any]:
-    try:
-        validate_experience_item(item)
-    except ContractValidationError as exc:
-        raise SessionBuildError("experience_invalid", "Experience candidate failed validation", details={"issues": list(exc.issues)}) from exc
-    requested_root = Path(project).expanduser()
-    if requested_root.is_symlink():
-        raise SessionBuildError("project_symlink_forbidden", "Experience candidate project may not be a symbolic link")
-    root = requested_root.resolve()
-    root.mkdir(parents=True, exist_ok=True)
-    path = root / ".agentlas" / "session-experience-candidates.jsonl"
-    if (root / ".agentlas").is_symlink() or path.is_symlink():
-        raise SessionBuildError("experience_symlink_forbidden", "Experience candidate ledger may not be a symbolic link")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(_canonical(dict(item)) + "\n")
-    return {"path": str(path.relative_to(root)), "status": "candidate", "privacyScope": "private"}
+    raise SessionBuildError("experience_chips_retired", "Legacy Experience archives are read-only.")
 
 
 def request_skill_promotion(
@@ -1729,14 +1682,15 @@ def request_skill_promotion(
             blockers.append("producer and validator must be independent")
         if str(row.get("risk") or "low") not in {"low", "medium"}:
             blockers.append("promotion risk must not be high")
-    if not owner_approved:
-        blockers.append("explicit owner approval is required")
+    # A shell boolean is not owner approval. This evaluates evidence only;
+    # runtime activation still requires the exact staged file review service.
     blockers = sorted(set(blockers))
     safe = not blockers
     decision = {
         "schemaVersion": "agentlas.skill-promotion-decision.v1",
         "skillSlug": slugify(skill_slug),
-        "decision": "approve_next_phase" if safe else "remain_candidate",
+        "decision": "request_exact_file_review" if safe else "remain_candidate",
+        "ownerApprovalRequired": True,
         "status": "promotion_pending" if safe else "candidate",
         "blockers": blockers,
         "trialCount": len(rows),
@@ -1834,7 +1788,7 @@ def _package_identity(root: Path, brief: Mapping[str, Any], draft: Mapping[str, 
             "permissionWidening": "ask",
             "toolSchemaLoading": "selected-tools-only",
             "skillLoading": "triggered-only",
-            "contextBudget": {"coreMemoryMaxTokens": 150, "experienceRetrievalMaxTokens": 800, "experienceRetrievalMaxItems": 8},
+            "contextBudget": {"coreMemoryMaxTokens": 150, "experienceRetrievalMaxTokens": 0, "experienceRetrievalMaxItems": 0},
             "requirements": [],
         },
     )

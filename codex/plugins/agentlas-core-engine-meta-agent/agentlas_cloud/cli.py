@@ -380,6 +380,10 @@ def _session_command(args: argparse.Namespace) -> int:
         write_candidate_skill,
     )
 
+    if args.experience_candidate:
+        emit({"error": "experience_chips_retired", "reviewCommand": "agentlas evolve"})
+        return 1
+
     action = args.session_action or "preview"
     if action == "promote":
         try:
@@ -613,8 +617,16 @@ def main(argv: list[str] | None = None) -> int:
     from .judgment_bootstrap import install_judgment_from_env
 
     install_judgment_from_env()
-    parser = argparse.ArgumentParser(prog="agentlas-cloud", description="Agentlas Cloud v1 local package tools")
+    parser = argparse.ArgumentParser(prog="agentlas-cloud", description="Agentlas local package and revision tools")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    revision = sub.add_parser("revision", help="Inspect or stage owner-reviewed agent file revisions")
+    revision.add_argument("action", choices=("snapshot", "candidates", "prepare"))
+    revision.add_argument("folder")
+    revision.add_argument("--source-db", help="Existing private memory candidate database")
+    revision.add_argument("--agent-id", help="Exact agent memory owner ID")
+    revision.add_argument("--request", help="Host-authored JSON with lineage, base, file changes and source candidates")
+    revision.add_argument("--staging-parent", help="Private staging directory outside the agent")
 
     wizard = sub.add_parser("wizard", help="Generate or repair agentlas.json")
     wizard.add_argument("folder")
@@ -658,10 +670,10 @@ def main(argv: list[str] | None = None) -> int:
     session.add_argument("--package-target", default=None, help="Exact empty folder for an atomic verified package build")
     session.add_argument("--global-agent", action="store_true", help="Materialize below the global Agentlas agent home; interactive hosts choose this without exposing a path")
     session.add_argument("--candidate-skill", action="store_true", help="Write the derived skill as a candidate (never first-class)")
-    session.add_argument("--experience-candidate", action="store_true", help="Write a private candidate Experience item")
+    session.add_argument("--experience-candidate", action="store_true", help=argparse.SUPPRESS)
     session.add_argument("--trials", default=None, help="JSONL trial ledger for promote")
     session.add_argument("--skill", default=None, help="Candidate skill slug for promote")
-    session.add_argument("--owner-approved", action="store_true", help="Record explicit owner approval for the promotion request")
+    session.add_argument("--owner-approved", action="store_true", help=argparse.SUPPRESS)
 
     # Internal only: host adapters continue to expose their existing hep-* and
     # plugin names, while this diagnostic surface makes the commandId mapping
@@ -1483,6 +1495,29 @@ def main(argv: list[str] | None = None) -> int:
         attach_command_context(route="session" if args.command == "session" else None)
     except Exception:
         pass
+    if args.command == "revision":
+        from .agent_revisions import snapshot, stage_proposal
+        try:
+            if args.action == "snapshot":
+                return emit(snapshot(Path(args.folder))[0])
+            if args.action == "candidates":
+                if not args.source_db or not args.agent_id:
+                    raise ValueError("revision_candidates_require_exact_agent_and_existing_memory_db")
+                from .evolution_proposals import refresh_memory_candidates
+                count = refresh_memory_candidates(Path(args.folder), Path(args.source_db), args.agent_id)
+                return emit({"status": "review_available", "eligibleCount": count, "activationAuthorized": False})
+            if not args.request or not args.staging_parent:
+                raise ValueError("revision_prepare_requires_request_and_private_staging")
+            request_path = Path(args.request)
+            if request_path.is_symlink() or not request_path.is_file() or request_path.stat().st_size > 2 * 1024 * 1024:
+                raise ValueError("unsafe_revision_request")
+            request = json.loads(request_path.read_text(encoding="utf-8"))
+            result = stage_proposal(agent_root=Path(args.folder), staging_parent=Path(args.staging_parent),
+                workspace_lineage_id=request["workspaceLineageId"], base_revision_id=request["baseRevisionId"],
+                changes=request["changes"], source_candidates=request["sourceCandidates"], agent_id=request["agentId"])
+            return emit(result)
+        except (OSError, ValueError, KeyError) as exc:
+            return emit({"status": "error", "code": "revision_preparation_failed", "message": str(exc), "activationAuthorized": False}) or 1
     if args.command == "command":
         from .command_registry import CommandRegistryError, check_registry, registry_summary, resolve_command
 

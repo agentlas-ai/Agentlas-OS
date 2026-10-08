@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/agent-tree.schema.json",
+  "title": "agent-tree",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "assetPolicyVersion",
+    "files"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "agentlas.agent-tree.v1"
+    },
+    "assetPolicyVersion": {
+      "const": "agentlas.runtime-assets.v1"
+    },
+    "files": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "role",
+          "blobHash",
+          "byteLength",
+          "executable"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 260
+          },
+          "role": {
+            "enum": [
+              "instruction",
+              "skill",
+              "knowledge",
+              "manifest",
+              "tool",
+              "asset"
+            ]
+          },
+          "blobHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "byteLength": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 524288
+          },
+          "executable": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

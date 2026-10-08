@@ -622,19 +622,26 @@ def _record_context_markers(project_db: Path, markers: list[tuple[str, int]], ho
 
 
 def _evolution_notice(project_root: Path, projection: tuple[str, Path] | None, locale: str) -> str | None:
-    """Refresh hep-derived growth proposals from the member cell, then return one
-    content-free session-start notice line when any proposal is pending. Fail-open."""
-    try:
-        derived: list[dict[str, Any]] = []
-        if projection is not None:
-            agent_id, agent_db = projection
-            derived = evolution_proposals.derive_proposals_from_experience(agent_db, agent_id)
-            pending = evolution_proposals.refresh_hep_proposals(project_root, derived)
-        else:
-            pending = evolution_proposals.read_pending_count(project_root)
-        return evolution_proposals.session_context_line(pending, locale)
-    except Exception:  # fail-open — proposal bridge must not break recall
+    """Offer semantic memory review; never synthesize count-only growth claims."""
+    if projection is None:
         return None
+    try:
+        agent_id, _agent_db = projection
+        # Recall hooks must not run an unbounded sequence of model judgments.
+        # The explicit revision-candidates command refreshes this private index;
+        # exact preparation rechecks eligibility and source content afterwards.
+        index_path = project_root / ".agentlas" / "memory-evolution-candidates.json"
+        if index_path.is_symlink() or not index_path.is_file() or index_path.stat().st_size > 256_000:
+            return None
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        if index.get("schemaVersion") != "agentlas.memory-evolution-candidates.v1" or index.get("agentId") != agent_id:
+            return None
+        count = sum(item.get("state") == "eligible" for item in index.get("candidates", []) if isinstance(item, dict))
+        if count:
+            return f"{count} memory candidates available for exact file-change review with agentlas evolve; no file change is approved."
+    except Exception:
+        return None
+    return None
 
 
 def build_capsule(

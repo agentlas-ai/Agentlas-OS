@@ -21,7 +21,9 @@ listed here does not exist — do not invent one.
 - `uninstall [--purge]` — remove every footprint (a restore archive is written first).
 - `seed` / `memory` / `curate` — the drawer: create it, read it, run the curator.
 - `remember <text>` — hand one learning to the curator (it decides, not you).
-- `chips` / `promote <id> [reason]` / `reject <id> [reason]` — experience chips.
 - `coverage` — how much of the drawer recall actually reaches a session.
 - `orch <sub>` — orchestration helpers.
 - `statusline` / `stop-hook` — host integration entry points; not typed by hand.
+
+Instruction and skill changes use Agent Workspace file proposals with exact
+owner approval. Private memory curation never activates executable changes.

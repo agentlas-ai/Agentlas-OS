@@ -214,9 +214,10 @@ include `global_commands`.
 - Do not report `completed` until the team shape gate passes. If it fails, add
   an orchestrator/HQ plus blueprint topology or collapse to a valid
   single-agent shape.
-- Do not merge a user's experience into the public base team. Experience Packs
-  remain separately owned exact-release overlays; runtime retrieval is bounded
-  to eight items and 800 tokens, with 150 tokens maximum always-on memory.
+- Keep private member/team memories in their owning scope. Reusable learning
+  becomes a staged file proposal after semantic and privacy review, then exact
+  owner approval. Do not generate or inject Experience chips, packs, or variants.
+  Public publication is a separate review of the final allowlisted files.
 
 ## Output
 

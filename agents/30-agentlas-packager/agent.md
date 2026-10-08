@@ -218,9 +218,10 @@ Do not copy secrets, private local research notes, raw logs, credentials,
 service-account JSON, private keys, or local-only path assumptions into public
 output.
 
-Do not fold a local Experience Pack into the base-agent upload. Preserve exact
-base and experience release refs, block base package material and raw prompts,
-and count only independently verified replay-safe RunReceipts as public success.
+Keep legacy Experience records read-only. Do not generate chips, packs, variants,
+or runtime overlays. Preserve private memory and evidence; reusable learning must
+become a staged file diff with exact owner approval before activation. Public
+upload requires a separate clean-copy review of the final allowlisted bytes.
 
 ## Output
 

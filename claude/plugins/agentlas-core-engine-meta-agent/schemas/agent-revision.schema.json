@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/agent-revision.schema.json",
+  "title": "agent-revision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "workspaceLineageId",
+    "revisionId",
+    "parentRevisionIds",
+    "treeDigest",
+    "assetPolicyVersion",
+    "files",
+    "originRef",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "agentlas.agent-revision.v1"
+    },
+    "workspaceLineageId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "revisionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "parentRevisionIds": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    },
+    "treeDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "assetPolicyVersion": {
+      "const": "agentlas.runtime-assets.v1"
+    },
+    "files": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "role",
+          "blobHash",
+          "byteLength",
+          "executable"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 260
+          },
+          "role": {
+            "enum": [
+              "instruction",
+              "skill",
+              "knowledge",
+              "manifest",
+              "tool",
+              "asset"
+            ]
+          },
+          "blobHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "byteLength": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 524288
+          },
+          "executable": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "originRef": {
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "local",
+            "cloud",
+            "hub"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "operationId",
+        "actorRef"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "actorRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "proposalId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

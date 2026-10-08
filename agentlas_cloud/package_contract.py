@@ -1098,7 +1098,7 @@ def _verify_skill_shape(workspace: Path, artifact: dict[str, Any]) -> dict[str, 
 
     manifests = discover_skill_manifests(workspace)
     problems: list[str] = []
-    if not manifests:
+    if not manifests and artifact.get("required", True):
         problems.append(
             "no skills: an agent declares its capabilities as "
             "<host>/skills/<skill-name>/SKILL.md, one folder per skill"
@@ -1152,7 +1152,7 @@ def _verify_skill_shape(workspace: Path, artifact: dict[str, Any]) -> dict[str, 
 
     return {
         "path": artifact["path"],
-        "required": artifact.get("required", True),
+        "required": bool(artifact.get("required", True) or manifests or declared_manifest),
         "skills": on_disk,
         "problems": problems,
     }

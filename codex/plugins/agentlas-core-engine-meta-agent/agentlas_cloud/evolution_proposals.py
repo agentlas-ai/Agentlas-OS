@@ -1,22 +1,7 @@
-"""hep-plugin evolution proposal bridge (Phase 2 / 2+).
+"""Semantic private-memory eligibility and read-only legacy proposal compatibility.
 
-hep sessions run in a folder host with no UI, so — exactly like the Desktop's
-``electron/agents/evolution-hep.ts`` — this module writes a human-readable
-``.agentlas/evolution-proposals.json`` (the ``agentlas.evolution-proposals.v1``
-contract) into the project working folder and produces one session-start context
-line ("N growth proposals pending — review with agentlas evolve"). Apply / revert
-happens only through the ``agentlas evolve`` command; here we only produce the
-file and the notice.
-
-Parity is deliberate: the JSON shape, the ``contract`` string, the
-``reviewCommand``, the per-entry fields and the low/high trust tier all mirror
-the Desktop so a host reading either surface sees the same thing. Trigger
-counting stays deterministic (counters over the per-slug experience store),
-but the failure/gotcha classification of tag text follows the resident
-judgment contract: the connected model decides by meaning with the failure
-vocabulary as a hint. There is no keyword verdict — with no model connected
-the fuzzy tag text is left UNDECIDED (not counted as a failure); only the
-closed-form ``memory_kind == "risk"`` stored id still counts.
+Only exact staged file proposals can enter the owner approval service. Historical
+count-based summaries remain readable and cannot authorize executable changes.
 """
 
 from __future__ import annotations
@@ -135,81 +120,69 @@ def build_proposal_entry(
 
 
 def derive_proposals_from_experience(db_path: Path, agent_id: str) -> list[dict[str, Any]]:
-    """Deterministic, content-free-ish proposal derivation from a per-slug
-    experience store. Reads only counts and safe tag keywords — never raw
-    candidate text — then emits at most two low-risk growth proposals.
+    """Retired count-based summaries are not executable file proposals."""
+    return []
 
-    Returns [] on any error (fail-open).
-    """
 
+def derive_memory_candidates(db_path: Path, agent_id: str) -> list[dict[str, Any]]:
+    """Project existing private memories into semantic review states, never chips."""
+    from .agent_revisions import eligible_memory
     if not db_path.is_file() or db_path.is_symlink():
         return []
-    try:
-        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT tags_json, memory_kind FROM memory_candidates "
-                "WHERE agent_id = ? AND status = 'active'",
-                (agent_id,),
-            ).fetchall()
-    except sqlite3.Error:
-        return []
-
-    # One detectable signal that a dormant judge could not reach a model: the
-    # fuzzy failure/gotcha classification of tag text is skipped (left undecided)
-    # and only closed-form ``risk`` rows count. Never a silent keyword verdict.
-    try:
-        from .judgment import has_judgment_runner
-
-        if rows and not has_judgment_runner():
-            _LOGGER.debug(
-                "evolution failure-tag judgment unavailable: no connected model; "
-                "fuzzy tags left undecided, only closed-form risk rows counted"
-            )
-    except Exception:  # pragma: no cover - judgment module is optional at import time
-        pass
-
-    total = len(rows)
-    failure_count = 0
-    keywords: list[str] = []
+    with closing(sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM memory_candidates WHERE agent_id = ? ORDER BY updated_at DESC LIMIT 200",
+            (agent_id,),
+        ).fetchall()
+        # Retain the same structural supersession boundary as private recall.
+        superseded = set()
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_links'").fetchone():
+            superseded = {row[0] for row in conn.execute(
+                """SELECT ml.to_ticket FROM memory_links ml
+                   JOIN memory_candidates newer ON newer.ticket_id = ml.from_ticket
+                   JOIN memory_candidates older ON older.ticket_id = ml.to_ticket
+                   WHERE ml.link_type='supersedes' AND newer.agent_id=?
+                     AND newer.agent_id=older.agent_id AND newer.privacy_scope=older.privacy_scope
+                     AND newer.status IN ('active','accepted','approved','approved_pending_curator','promoted')
+                     AND (newer.expiry IS NULL OR newer.expiry>?)""", (agent_id, _utc_now()),
+            ).fetchall()}
+    result = []
     for row in rows:
+        candidate = dict(row)
+        if candidate.get("ticket_id") in superseded:
+            candidate["superseded_by"] = True
         try:
-            tags = json.loads(row["tags_json"] or "[]")
-        except (json.JSONDecodeError, TypeError):
-            tags = []
-        joined = " ".join(str(t) for t in tags)
-        if _is_failure_signal(joined, str(row["memory_kind"] or "")):
-            failure_count += 1
-        for tag in tags[:3]:
-            safe = _safe_keyword(tag)
-            if safe and safe not in keywords:
-                keywords.append(safe)
+            candidate["source_refs"] = json.loads(candidate.get("source_refs_json") or "[]")
+        except (TypeError, ValueError):
+            candidate["source_refs"] = []
+        result.append(eligible_memory(candidate, agent_id))
+    return result
 
-    proposals: list[dict[str, Any]] = []
-    topic = ", ".join(keywords[:4]) or "recent work"
-    if total >= ACCUMULATED_EXPERIENCE_MIN:
-        proposals.append(
-            build_proposal_entry(
-                agent_id=agent_id,
-                trigger_kind="accumulated-experience",
-                learned=f"Accumulated {total} experience notes on {topic}.",
-                change="Reflect these accumulated learnings into future runs for this agent.",
-                reversible=f"Yes — review or revert with `{EVOLUTION_REVIEW_COMMAND}`.",
-                risk_tier="low",
-            )
-        )
-    if failure_count >= REPEATED_FAILURE_MIN:
-        proposals.append(
-            build_proposal_entry(
-                agent_id=agent_id,
-                trigger_kind="repeated-failure",
-                learned=f"Repeated failure/gotcha pattern observed {failure_count} times on {topic}.",
-                change="Add a guardrail note so this agent avoids the repeated failure.",
-                reversible=f"Yes — review or revert with `{EVOLUTION_REVIEW_COMMAND}`.",
-                risk_tier="low",
-            )
-        )
-    return [p for p in proposals if validate_proposal_entry(p)]
+
+def refresh_memory_candidates(project_dir: Path, db_path: Path, agent_id: str) -> int:
+    """Write a private derived index. Source memory and legacy evidence stay intact."""
+    entries = derive_memory_candidates(db_path, agent_id)
+    folder = _ensure_agentlas_dir(project_dir)
+    if folder is None:
+        return 0
+    target = folder / "memory-evolution-candidates.json"
+    if target.is_symlink():
+        return 0
+    payload = {"schemaVersion": "agentlas.memory-evolution-candidates.v1", "agentId": agent_id,
+               "generatedAt": _utc_now(), "candidates": entries, "activationAuthorized": False}
+    import tempfile
+    fd, name = tempfile.mkstemp(prefix=".memory-evolution-", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(name, target)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+    return sum(item["state"] == "eligible" for item in entries)
 
 
 def _ensure_agentlas_dir(project_dir: Path) -> Path | None:
@@ -259,27 +232,7 @@ def write_evolution_proposals(
     IO must never break a run (parity with the Desktop writer).
     """
 
-    auto_applied = auto_applied or []
-    result = {"pending": len(pending), "autoApplied": len(auto_applied)}
-    if project_dir is None:
-        return result
-    agentlas_dir = _ensure_agentlas_dir(Path(project_dir))
-    if agentlas_dir is None:
-        return result
-    file_path = agentlas_dir / "evolution-proposals.json"
-    try:
-        if not pending and not auto_applied:
-            if file_path.exists():
-                file_path.unlink()
-            return result
-        payload = build_payload(pending, auto_applied)
-        tmp = agentlas_dir / f".evolution-proposals.{os.getpid()}.tmp"
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, file_path)
-    except OSError:
-        pass
-    return result
+    raise RuntimeError("legacy_evolution_writer_retired: use a staged evolution-proposal.v2")
 
 
 def read_proposals(

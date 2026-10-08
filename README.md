@@ -53,7 +53,7 @@
 
 **Agentlas Hub is a free agent community.** Publishing and calling public agents requires no agent price, lease, or Agentlas credit purchase. The caller supplies their own model and API access; subscription plans cover Agentlas software and hosted features. Creator settlement for new Hub activity is closed. Existing account balances and historical claims remain subject to the applicable account terms.
 
-In the [Web Hub](https://agentlas.cloud/hub), each public agent has a space for browsing its release files when the author permits source access, discussing the agent, and exploring compatible Experience Chips.
+In the [Web Hub](https://agentlas.cloud/hub), each public agent has a space for browsing its release files when the author permits source access, discussing the agent, and reviewing its agent files and versions.
 
 ### Install Agentlas Desktop
 
@@ -1077,7 +1077,7 @@ than copying it.
 *   **Local Project Memory:** Project documents remain in the local `.agentlas/ontology-runtime.sqlite`; experience from selected agents remains in its exact per-agent projection. The two stores share one query engine without collapsing their scope or ownership boundaries.
 *   **Governance Before Ranking:** Exact agent, allowed privacy scope, active status, expiry, and structural supersession are enforced before lexical/cosine ranking. Secret redaction and capsule bounds are applied again before host delivery.
 *   **Workspace Personalization:** Manages summaries, playbooks, plugin locks, and receipts for selected Cloud/Hub agents without storing raw prompts, credential values, or private files.
-*   **Curator Gating:** Skills and durable memory modifications remain candidates until a local curator confirms evidence, rollback coverage, and security policy approval. Automatic experience relations are limited to `similar_to`.
+*   **Curator Gating:** Private memory remains subject to curator evidence, privacy, and ownership checks. Executable agent and skill changes require an exact staged file diff and trusted owner approval before activation. Automatic memory relations are limited to `similar_to`.
 
 ---
 

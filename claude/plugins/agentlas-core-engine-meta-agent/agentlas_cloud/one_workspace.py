@@ -309,69 +309,6 @@ def read_workspace_id(root: Path) -> str:
     return "one_local"
 
 
-def _experience_schema(db_path: Path) -> None:
-    """Create the Experience ontology store used by a single-agent workspace."""
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.executescript(
-            """
-            PRAGMA journal_mode=WAL;
-
-            CREATE TABLE IF NOT EXISTS experience_candidates (
-              id             TEXT PRIMARY KEY,
-              agent_id       TEXT NOT NULL,
-              scope_key      TEXT NOT NULL,
-              summary        TEXT NOT NULL,
-              task_terms     TEXT NOT NULL DEFAULT '[]',
-              sensitivity    TEXT NOT NULL DEFAULT 'internal',
-              confidence     REAL NOT NULL DEFAULT 0.5,
-              status         TEXT NOT NULL DEFAULT 'candidate'
-                               CHECK(status IN ('candidate','promoted','rejected','superseded')),
-              public_safe    INTEGER NOT NULL DEFAULT 0,
-              source_ticket  TEXT,
-              project_scope_key TEXT,
-              environment_key   TEXT,
-              created_at     TEXT NOT NULL,
-              updated_at     TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS experience_packs (
-              id             TEXT PRIMARY KEY,
-              agent_id       TEXT NOT NULL,
-              name           TEXT NOT NULL,
-              description    TEXT NOT NULL DEFAULT '',
-              scope_key      TEXT NOT NULL,
-              status         TEXT NOT NULL DEFAULT 'draft'
-                               CHECK(status IN ('draft','active','retired')),
-              created_at     TEXT NOT NULL,
-              updated_at     TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS experience_promotion_receipts (
-              id             TEXT PRIMARY KEY,
-              candidate_id   TEXT NOT NULL,
-              decision       TEXT NOT NULL CHECK(decision IN ('admit','reject','defer')),
-              reason         TEXT NOT NULL DEFAULT '',
-              evidence       TEXT NOT NULL DEFAULT '[]',
-              created_at     TEXT NOT NULL,
-              FOREIGN KEY(candidate_id) REFERENCES experience_candidates(id) ON DELETE CASCADE
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_exp_cand_agent  ON experience_candidates(agent_id, status);
-            CREATE INDEX IF NOT EXISTS idx_exp_cand_scope  ON experience_candidates(scope_key, status);
-            CREATE INDEX IF NOT EXISTS idx_exp_pack_agent  ON experience_packs(agent_id, status);
-            """
-        )
-        # Add the column idempotently for stores created before pack binding.
-        existing = {row[1] for row in conn.execute("PRAGMA table_info(experience_candidates)")}
-        if "pack_id" not in existing:
-            conn.execute("ALTER TABLE experience_candidates ADD COLUMN pack_id TEXT")
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def seed(root: Path, name: str = "One") -> dict[str, Any]:
     """Seed One as a single-agent workspace; repeated runs are idempotent."""
     root = Path(root).expanduser()
@@ -385,7 +322,6 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
 
     for directory in (
         meta,
-        root / EXPERIENCE_DIR,
         root / HOOKS_DIR,
         root / "skills",
         root / "knowledge",
@@ -477,7 +413,7 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
         "agentId": one_id,
         "canonicalMemoryRoots": {
             "raw": f"{META_DIR}/",
-            "sealedChips": f"{EXPERIENCE_DIR}/",
+            "memoryEvolutionCandidates": f"{META_DIR}/memory-evolution-candidates.json",
         },
         "writeOwners": {
             "durable": "agentlas-memory-curator",
@@ -522,22 +458,12 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
         "note": "Goals and constraints derived from the build interview.",
     }))
 
-    # --- Experience ontology store -----------------------------------------
-    exp_db = meta / EXPERIENCE_DB_FILE
-    existed = exp_db.exists()
-    _experience_schema(exp_db)
-    mark(exp_db, not existed)
-
-    _touch_if_absent(root / EXPERIENCE_DIR / "README.md", (
-        "# Sealed Chips Only\n\n"
-        "Store only experience ontology chips and playbooks that pass Secret-Free DTO validation.\n"
-        "Raw memory, including memory tickets, is forbidden here; keep it under `.agentlas/`.\n"
-    ))
+    # Legacy chip stores are read-only archives; new learning stays in memory.
 
     # --- Hooks --------------------------------------------------------------
     mark(root / HOOKS_DIR / MEMORY_UPGRADE_HOOK, _touch_if_absent(
         root / HOOKS_DIR / MEMORY_UPGRADE_HOOK,
-        "# Memory-ticket and experience-chip evolution enforcement\n"
+        "# Memory-ticket and owner-reviewed file evolution\n"
         f"schemaVersion: {SCHEMA_VERSION}\n"
         "when:\n"
         "  - event: turn_end\n"
@@ -2063,35 +1989,8 @@ def migrate_one_workspace(root: Path) -> dict[str, Any] | None:
             unknown += 1
     _atomic_write(meta / TICKET_SLUGS_FILE, json.dumps(sidecar, ensure_ascii=False, indent=1) + "\n")
 
-    # Step 2 — guarded chip schema extension + backfill from the sidecar.
-    exp_db = meta / EXPERIENCE_DB_FILE
+    # Legacy chips remain read-only; only memory attribution migrates here.
     altered = backfilled = 0
-    if exp_db.exists():
-        conn = sqlite3.connect(exp_db)
-        try:
-            columns = {row[1] for row in conn.execute("PRAGMA table_info(experience_candidates)")}
-            for column in ("project_scope_key", "environment_key"):
-                if column not in columns:
-                    conn.execute(f"ALTER TABLE experience_candidates ADD COLUMN {column} TEXT")
-                    altered += 1
-            environment = f"{sys.platform}-{platform.machine()}"
-            for chip_id, source_ticket, scope_key in conn.execute(
-                "SELECT id, source_ticket, scope_key FROM experience_candidates"
-                " WHERE project_scope_key IS NULL"
-            ).fetchall():
-                if scope_key in ("agent_repo", "user_identity"):
-                    project_key = "global"
-                else:
-                    project_key = (sidecar.get(str(source_ticket)) or {}).get("slug") or "unknown"
-                conn.execute(
-                    "UPDATE experience_candidates SET project_scope_key = ?, environment_key = ?"
-                    " WHERE id = ?",
-                    (project_key, environment, chip_id),
-                )
-                backfilled += 1
-            conn.commit()
-        finally:
-            conn.close()
 
     # Step 3 — bump the contract version, preserving every other field.
     state["contractVersion"] = WORKSPACE_CONTRACT_VERSION
@@ -2573,123 +2472,19 @@ def _spawn_project_soul_refresh(project_root: Path) -> bool:
     return True
 
 
-def _ensure_pack(conn: sqlite3.Connection, scope_key: str) -> str:
-    """Group chips by ``(agent_id, scope_key)`` to match Desktop experience packs.
-
-    Do not invent topic clusters; scope is already deterministic.
-    """
-    pack_id = f"one-pack-{hashlib.sha256(scope_key.encode('utf-8')).hexdigest()[:12]}"
-    row = conn.execute("SELECT 1 FROM experience_packs WHERE id = ?", (pack_id,)).fetchone()
-    if row is None:
-        now = _now()
-        conn.execute(
-            "INSERT INTO experience_packs"
-            " (id, agent_id, name, description, scope_key, status, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?,?)",
-            (pack_id, ONE_AGENT_ID, f"One Experience · {scope_key}",
-             "Approved know-how chips from the same scope", scope_key, "active", now, now),
-        )
-    else:
-        conn.execute(
-            "UPDATE experience_packs SET updated_at = ? WHERE id = ?", (_now(), pack_id)
-        )
-    return pack_id
-
-
 def _make_experience_chip(
     db_path: Path,
     candidate: dict[str, Any],
     ticket_id: str,
     project_scope_key: str = "global",
 ) -> str | None:
-    """Create an experience-chip candidate when procedural knowledge becomes durable.
-
-    Do not auto-promote it; measured behavior shows automatic promotion is unsafe.
-    """
-    content = str(candidate.get("content") or "").strip()
-    chip_id = f"one-chip-{_content_hash(content)}"
-    terms = sorted({
-        word for word in re.findall(r"[A-Za-z가-힣][A-Za-z0-9가-힣_.-]{2,}", content)
-    })[:12]
-    conn = sqlite3.connect(db_path)
-    try:
-        existing = conn.execute(
-            "SELECT 1 FROM experience_candidates WHERE id = ?", (chip_id,)
-        ).fetchone()
-        if existing:
-            return None
-        now = _now()
-        scope_key = str(candidate.get("scope") or "agent_repo")
-        pack_id = _ensure_pack(conn, scope_key)
-        conn.execute(
-            "INSERT INTO experience_candidates"
-            " (id, agent_id, scope_key, summary, task_terms, sensitivity, confidence,"
-            "  status, public_safe, source_ticket, pack_id, project_scope_key, environment_key,"
-            "  created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (chip_id, ONE_AGENT_ID, scope_key,
-             content[:400], json.dumps(terms, ensure_ascii=False), "internal", 0.5,
-             "candidate", 0, ticket_id, pack_id,
-             project_scope_key, f"{sys.platform}-{platform.machine()}", now, now),
-        )
-        conn.execute(
-            "INSERT INTO experience_promotion_receipts"
-            " (id, candidate_id, decision, reason, evidence, created_at) VALUES (?,?,?,?,?,?)",
-            (f"{chip_id}-r{int(time.time() * 1000)}", chip_id, "defer",
-             "Chip candidate created without automatic promotion",
-             json.dumps(candidate.get("evidence") or [], ensure_ascii=False), now),
-        )
-        conn.commit()
-        return chip_id
-    finally:
-        conn.close()
+    """Compatibility entry point: retired writers never recreate chips."""
+    return None
 
 
 def _decide_chip(root: Path, chip_id: str, decision: str, reason: str) -> dict[str, Any]:
-    """Apply a person's decision to one chip candidate.
-
-    Automatic promotion stays banned — measured behaviour showed it is unsafe.
-    But banning it without building this path left the gate unreachable: every
-    chip stayed a candidate forever and nothing could ever be promoted. A ban
-    needs a door, or it is a wall.
-    """
-    root = Path(root).expanduser()
-    db_path = root / META_DIR / EXPERIENCE_DB_FILE
-    if not db_path.exists():
-        return {"ok": False, "error": "no-experience-store"}
-    status_for = {"promote": "promoted", "reject": "rejected"}
-    if decision not in status_for:
-        return {"ok": False, "error": f"unknown-decision:{decision}"}
-    conn = sqlite3.connect(db_path)
-    try:
-        row = conn.execute(
-            "SELECT status FROM experience_candidates WHERE id = ?", (chip_id,)
-        ).fetchone()
-        if row is None:
-            # Never report a decision that was not applied to anything.
-            return {"ok": False, "error": "chip-not-found", "chip": chip_id}
-        now = _now()
-        conn.execute(
-            "UPDATE experience_candidates SET status = ?, updated_at = ? WHERE id = ?",
-            (status_for[decision], now, chip_id),
-        )
-        # Sequence the receipt id off the existing count: a wall-clock suffix
-        # collides when the creation and the decision land in the same millisecond.
-        seq = conn.execute(
-            "SELECT COUNT(*) FROM experience_promotion_receipts WHERE candidate_id = ?",
-            (chip_id,),
-        ).fetchone()[0]
-        conn.execute(
-            "INSERT INTO experience_promotion_receipts"
-            " (id, candidate_id, decision, reason, evidence, created_at) VALUES (?,?,?,?,?,?)",
-            (f"{chip_id}-d{seq + 1}", chip_id,
-             "admit" if decision == "promote" else "reject",
-             reason or f"owner decision: {decision}", "[]", now),
-        )
-        conn.commit()
-        return {"ok": True, "chip": chip_id, "from": row[0], "to": status_for[decision]}
-    finally:
-        conn.close()
+    """Legacy chips are read-only evidence, never approval for file edits."""
+    return {"ok": False, "error": "experience_chips_retired", "reviewCommand": "agentlas evolve"}
 
 
 def promote_chip(root: Path, chip_id: str, reason: str = "") -> dict[str, Any]:
@@ -2758,21 +2553,7 @@ def curate(
     except Exception:
         pass
 
-    # Idempotently backfill chips created before packs existed.
-    if exp_db.exists():
-        conn = sqlite3.connect(exp_db)
-        try:
-            orphans = conn.execute(
-                "SELECT id, scope_key FROM experience_candidates WHERE pack_id IS NULL"
-            ).fetchall()
-            for chip_id, scope_key in orphans:
-                conn.execute(
-                    "UPDATE experience_candidates SET pack_id = ?, updated_at = ? WHERE id = ?",
-                    (_ensure_pack(conn, scope_key or "agent_repo"), _now(), chip_id),
-                )
-            conn.commit()
-        finally:
-            conn.close()
+    # Do not mutate legacy chip/pack archives during private memory curation.
 
     decided = {
         str(row.get("ticketId"))
@@ -2933,30 +2714,7 @@ def _curate_pending(
                     and str(candidate.get("scope") or "") == "project"
                 ):
                     project_items.append((candidate, str(ticket.get("ticketId") or "")))
-                if str(candidate.get("type")) in CRAFT_KINDS and exp_db.exists():
-                    # Cluster key (D4): agent_repo/user_identity chips are
-                    # cross-project ("global"); project-scope chips carry their
-                    # context slug, "unknown" when attribution is impossible.
-                    if str(candidate.get("scope")) in ("agent_repo", "user_identity"):
-                        project_key = "global"
-                    else:
-                        project_key = ticket_slug or "unknown"
-                    chip_id = _make_experience_chip(exp_db, candidate, str(ticket.get("ticketId")),
-                                                    project_scope_key=project_key)
-                    if chip_id:
-                        chips.append(chip_id)
-                        # Chip creation is the observable self-evolution event.
-                        with (meta / EVOLUTION_LOG_FILE).open("a", encoding="utf-8") as evo:
-                            evo.write(json.dumps({
-                                "schemaVersion": SCHEMA_VERSION,
-                                "agentId": ONE_AGENT_ID,
-                                "event": "experience_chip_created",
-                                "chipId": chip_id,
-                                "kind": candidate.get("type"),
-                                "sourceTicket": ticket.get("ticketId"),
-                                "autoPromoted": False,
-                                "createdAt": _now(),
-                            }, ensure_ascii=False) + "\n")
+                # File evolution is a separate semantic proposal and exact owner approval.
 
             handle.write(json.dumps({
                 "schemaVersion": SCHEMA_VERSION,
@@ -3011,7 +2769,6 @@ def _curate_pending(
     result: dict[str, Any] = {
         "pending": len(pending),
         "decisions": counts,
-        "experienceChips": chips,
         "agentId": ONE_AGENT_ID,
     }
     if project_items and project_root is not None:
@@ -4545,30 +4302,6 @@ def status(root: Path) -> dict[str, Any]:
                     count += 1
         return count
 
-    exp_db = meta / EXPERIENCE_DB_FILE
-    chips = packs = orphan_chips = -1
-    # Promotion has to be countable, or a promotion path that silently never runs
-    # looks exactly like one that works.
-    promoted_chips = pending_chips = -1
-    if exp_db.exists():
-        conn = sqlite3.connect(f"file:{exp_db}?mode=ro", uri=True)
-        try:
-            chips = conn.execute("SELECT COUNT(*) FROM experience_candidates").fetchone()[0]
-            packs = conn.execute("SELECT COUNT(*) FROM experience_packs").fetchone()[0]
-            orphan_chips = conn.execute(
-                "SELECT COUNT(*) FROM experience_candidates WHERE pack_id IS NULL"
-            ).fetchone()[0]
-            promoted_chips = conn.execute(
-                "SELECT COUNT(*) FROM experience_candidates WHERE status = 'promoted'"
-            ).fetchone()[0]
-            pending_chips = conn.execute(
-                "SELECT COUNT(*) FROM experience_candidates WHERE status = 'candidate'"
-            ).fetchone()[0]
-        except sqlite3.Error:
-            pass
-        finally:
-            conn.close()
-
     return {
         "root": str(root),
         "agentId": read_one_id(root),
@@ -4577,11 +4310,6 @@ def status(root: Path) -> dict[str, Any]:
         "curatorDecisions": lines(meta / CURATOR_DECISIONS_FILE),
         "invocations": session_receipts(meta / INVOCATION_LEDGER_FILE),
         "evolutionEvents": lines(meta / EVOLUTION_LOG_FILE),
-        "experienceChips": chips,
-        "experiencePacks": packs,
-        "chipsWithoutPack": orphan_chips,
-        "promotedChips": promoted_chips,
-        "chipsAwaitingDecision": pending_chips,
         "soulBytes": (meta / PROJECT_SOUL_FILE).stat().st_size if (meta / PROJECT_SOUL_FILE).exists() else -1,
         # Semantic index — indexedBlocks == durableBlocks is healthy. lastError is
         # never swallowed any more; a missing index now says why.
@@ -4616,7 +4344,7 @@ def _main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="one_workspace")
     parser.add_argument("command", choices=[
         "seed", "status", "emit", "receipt", "stop-hook", "curate",
-        "chips", "promote", "reject", "recall-coverage", "index",
+        "recall-coverage", "index",
     ])
     parser.add_argument("--chip", default="")
     parser.add_argument("--reason", default="")

@@ -165,7 +165,7 @@
         "single",
         "package"
       ],
-      "required": true,
+      "required": false,
       "optionalWhen": ["minimal-private"],
       "format": "markdown",
       "fill": "generate",
@@ -476,21 +476,6 @@
       "schema": null,
       "minLines": 2,
       "description": "Points to the agent-level eval surface. The actual data stays at .agentlas/capability-eval-plan.json and .agentlas/routing-benchmarks.jsonl — moving it to evals/ was tried once (the contract's own routing-benchmarks.jsonl description records it) and broke every package that generation never followed, so this folder documents the split instead of duplicating the data."
-    },
-    {
-      "path": "experience/README.md",
-      "modes": [
-        "single",
-        "team",
-        "package"
-      ],
-      "required": true,
-      "format": "markdown",
-      "fill": "static",
-      "template": "templates/experience-readme.md.tpl",
-      "schema": null,
-      "minLines": 2,
-      "description": "Sealed-chip-only rules for this folder (Secret-Free DTO, no raw memory). Actual chips are written here by the experience pipeline at runtime, not by the builder."
     },
     {
       "path": "knowledge/README.md",

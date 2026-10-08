@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.ai/schemas/evolution-proposal.schema.json",
+  "title": "evolution-proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "proposalId",
+    "workspaceLineageId",
+    "baseRevisionId",
+    "baseTreeDigest",
+    "sourceCandidateRefs",
+    "proposedTreeDigest",
+    "patchDigest",
+    "proposalDigest",
+    "changes",
+    "validationReceiptRefs",
+    "permissionDeltaDigest",
+    "state"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "agentlas.evolution-proposal.v2"
+    },
+    "proposalId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "workspaceLineageId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "baseRevisionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "baseTreeDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceCandidateRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "contentDigest",
+          "revocationEpoch"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "contentDigest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "revocationEpoch": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "proposedTreeDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "patchDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "proposalDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "changes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "operation",
+          "beforeBlobHash",
+          "afterBlobHash"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "operation": {
+            "enum": [
+              "create",
+              "modify",
+              "delete"
+            ]
+          },
+          "beforeBlobHash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "afterBlobHash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "validationReceiptRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    },
+    "permissionDeltaDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "state": {
+      "enum": [
+        "Draft",
+        "Preparing",
+        "NeedsEvidence",
+        "ReviewReady",
+        "Rejected",
+        "Approved",
+        "Stale",
+        "Applying",
+        "AppliedVerified",
+        "RecoveryRequired",
+        "ActiveForNewRuns",
+        "RollbackReview"
+      ]
+    }
+  }
+}

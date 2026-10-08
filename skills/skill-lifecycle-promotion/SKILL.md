@@ -14,8 +14,9 @@ promotion metadata.
 2. Add empty `.agentlas/skill-trials.jsonl` and
    `.agentlas/curator-decisions.jsonl`.
 3. Keep every skill at `tier: candidate` on export.
-4. Keep `runtimeFirstClassRecallEnabled: false` unless a local Curator later
-   approves promotion.
+4. Keep `runtimeFirstClassRecallEnabled: false` until semantic curation and the
+   trusted owner approval service accept the exact staged instruction/skill diff.
+   Curator decisions never authorize executable file changes by themselves.
 5. Add success predicates and situation tags for every skill.
 6. Separate `## Memory Events` from `## Skill Trial Events`.
 7. Treat LLM rubric review as weak evidence only.

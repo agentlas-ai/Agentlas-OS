@@ -485,10 +485,11 @@ local Curator approves promotion.
 
 - Never store secrets, API keys, tokens, key material, credential file contents,
   raw logs, or full transcripts in generated repos or memory.
-- Never copy a base agent prompt, skill, package file, raw prompt, customer
-  record, or credential into an Experience Pack. Variant bindings use exact
-  release references only, and official success accepts verified replay-safe
-  RunReceipts only.
+- Experience chips, packs, and variants are retired. Preserve historical
+  receipts read-only and keep private memory under its existing owner. Reusable
+  memories require semantic, ownership, privacy, and evidence review before
+  producing actual staged file diffs. Every instruction-file change requires
+  owner approval bound to its exact proposal digest. Never auto-activate it.
 - Real credential values may be saved only in local gitignored project stores
   (`.env`, `.env.local`, `signing/`, `credentials/`) or a local keychain/vault.
   Generated public packages may include only placeholders, guide files, and a

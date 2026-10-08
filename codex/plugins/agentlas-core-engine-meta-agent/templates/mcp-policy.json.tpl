@@ -11,8 +11,8 @@
   "skillLoading": "triggered-only",
   "contextBudget": {
     "coreMemoryMaxTokens": 150,
-    "experienceRetrievalMaxTokens": 800,
-    "experienceRetrievalMaxItems": 8
+    "experienceRetrievalMaxTokens": 0,
+    "experienceRetrievalMaxItems": 0
   },
   "requirements": []
 }

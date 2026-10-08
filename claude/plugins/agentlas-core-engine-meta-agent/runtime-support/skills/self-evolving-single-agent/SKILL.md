@@ -36,3 +36,12 @@ description: "Use when generating a single installable agent that should keep le
 
 Return `agent_package`, `skills`, `memory_contract`, `refresh_loop`,
 `approval_gate`, `global_commands`, and `verification`.
+
+## File revision approval
+
+Private memory curation is autonomous. Every instruction, skill, tool, or manifest
+change requires a real staged multi-file diff, current source evidence, and an
+exact one-use owner approval receipt. Never treat a summary, low-risk label,
+Curator verdict, shell flag, or legacy chip as approval. Project memory requires
+a separately curated agent_repo candidate before proposal preparation. Use
+revision-v1/evolution-v2 host capabilities; block activation on older hosts.

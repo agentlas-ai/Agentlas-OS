@@ -187,10 +187,11 @@ watchlist, generate repair kits, and propose patches. Human approval is required
 before widening tools, adding connectors, changing secrets, or editing the
 agent's own core instructions.
 
-Experience is a separate user-owned asset. Do not copy base prompts, skills, or
-package files into experience. Retrieve no more than eight task-relevant items
-within 800 tokens; keep always-on memory instructions within 150 tokens and load
-only selected MCP tool schemas and triggered skills.
+Keep curated private memory separate from executable agent files. Reusable
+learning may produce a real staged file proposal only after semantic,
+ownership, privacy, and evidence review. Every instruction-file change needs
+owner approval bound to the exact diff before activation. Do not generate,
+promote, sell, or inject Experience chips, packs, or variants.
 
 ## Output
 
