@@ -145,8 +145,8 @@ def default_mcp_policy() -> dict[str, Any]:
         "skillLoading": "triggered-only",
         "contextBudget": {
             "coreMemoryMaxTokens": CORE_MEMORY_MAX_TOKENS,
-            "experienceRetrievalMaxTokens": EXPERIENCE_RETRIEVAL_MAX_TOKENS,
-            "experienceRetrievalMaxItems": EXPERIENCE_RETRIEVAL_MAX_ITEMS,
+            "experienceRetrievalMaxTokens": 0,
+            "experienceRetrievalMaxItems": 0,
         },
         "requirements": [],
     }

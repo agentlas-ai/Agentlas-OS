@@ -409,7 +409,7 @@ case "$command" in
 	  session)
 	    run_python_module agentlas_cloud session "$@"
 	    ;;
-	  command|network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract|feature-map)
+	  command|network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract|feature-map|revision)
 	    # `contract` was the one subcommand the Python CLI exposed that this
 	    # dispatcher never listed. It fell through to the natural-language
 	    # router, which read the package path as a private path and refused

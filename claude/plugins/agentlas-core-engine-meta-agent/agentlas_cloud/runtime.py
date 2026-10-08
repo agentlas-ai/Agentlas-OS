@@ -183,7 +183,6 @@ DEFAULT_ALLOW_READ = [
     "permissions/**",
     "hooks/**",
     "evals/**",
-    "experience/**",
     "knowledge/**",
     "schemas/**",
     "sandbox/**",
