@@ -5,6 +5,9 @@
 - Reject combined WorkOrder and Selection dependency cycles during validation
   and preparation, and check cached plans before any host invocation.
 - Pin the latest verified ACP runtimes while retaining live initialization gates.
+- Update existing user-scope Claude installations and normalize only verified
+  installer-owned runtime aliases to immutable marketplace sources, preserving
+  unrelated plugin settings.
 
 ## 1.2.57 — 2026-10-06
 

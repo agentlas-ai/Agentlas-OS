@@ -1440,14 +1440,20 @@ PY_REGISTRY
 # plugin setting; compare the captured file immediately before atomic replace.
 # This is an optimistic comparison, not a lock shared by other config writers.
 replace_codex_marketplace_source() {
-  local candidate="$1" desired="$2" py="" config_dir="${CODEX_HOME:-$HOME/.codex}"
+  local candidate="$1" desired="$2" alias_generation="${3:-}" py="" config_dir="${CODEX_HOME:-$HOME/.codex}"
   py="$(resolve_archive_python_cmd)" || return 1
-  run_resolved_python "$py" - "$candidate" "$desired" "$marketplace_name" "$config_dir" <<'PY_CODEX_SOURCE'
+  if [[ -n "$alias_generation" ]]; then
+    [[ "$alias_generation" == "$installed_runtime_generation" && "$(current_marketplace_alias codex "$desired")" == "$candidate" ]] || { warn "marketplace_source_conflict"; return 1; }
+    [[ "$(generation_adapter_receipt resolve "$alias_generation" "$desired" codex)" == reuse ]] || return 1
+    [[ "$(current_marketplace_alias codex "$desired")" == "$candidate" ]] || { warn "marketplace_source_conflict"; return 1; }
+  fi
+  run_resolved_python "$py" - "$candidate" "$desired" "$marketplace_name" "$config_dir" "$alias_generation" "$HOST_ADAPTER_BUNDLE_DIR" <<'PY_CODEX_SOURCE'
 import copy, json, os, re, stat, sys, uuid
 from pathlib import Path
 
 parent_fd = source_fd = None
 temporary = None
+alias_observation = None
 
 def signature(s):
     return (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_size, s.st_mtime_ns, s.st_ctime_ns, s.st_nlink)
@@ -1467,8 +1473,25 @@ def read_config(fd):
         raise ValueError('marketplace_registration_changed')
     return data, state
 
+def verify_alias():
+    global alias_observation
+    if not alias_generation:
+        return
+    generation = Path(alias_generation)
+    runtime = Path(os.environ['HOME']).resolve(strict=True) / '.agentlas' / 'runtime'
+    current = runtime / 'current'
+    if str(generation.resolve(strict=True)) != alias_generation or generation.parent != runtime / '.generations' or candidate != str(current / bundle) or desired != str(generation / bundle):
+        raise ValueError('marketplace_source_conflict')
+    state = current.lstat()
+    if not stat.S_ISLNK(state.st_mode) or state.st_uid != os.getuid() or os.readlink(current) != alias_generation or str(Path(candidate).resolve(strict=True)) != desired:
+        raise ValueError('marketplace_source_conflict')
+    observed = signature(state)
+    if alias_observation is not None and alias_observation != observed:
+        raise ValueError('marketplace_registration_changed')
+    alias_observation = observed
+
 try:
-    candidate, desired, name, config_dir = sys.argv[1:]
+    candidate, desired, name, config_dir, alias_generation, bundle = sys.argv[1:]
     try:
         import tomllib as toml
     except ImportError:
@@ -1481,9 +1504,10 @@ try:
                 raise ValueError('marketplace_parser_unavailable')
     if not re.fullmatch('[A-Za-z0-9_-]+', name):
         raise ValueError('marketplace_source_layout_unsupported')
-    for value in (candidate, desired):
+    for value in ((desired,) if alias_generation else (candidate, desired)):
         if not Path(value).is_absolute() or str(Path(value).resolve(strict=True)) != value:
             raise ValueError('marketplace_source_conflict')
+    verify_alias()
     parent = Path(config_dir)
     if not parent.is_absolute() or str(parent.resolve(strict=True)) != str(parent):
         raise ValueError('marketplace_owner_unavailable')
@@ -1571,6 +1595,7 @@ try:
         os.close(current_fd)
     if (parent.lstat().st_dev, parent.lstat().st_ino) != (anchor.st_dev, anchor.st_ino):
         raise ValueError('marketplace_registration_changed')
+    verify_alias()
     os.replace(temporary, 'config.toml', src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
     temporary = None
     os.fsync(parent_fd)
@@ -1581,6 +1606,7 @@ try:
             raise ValueError('marketplace_registration_changed')
     finally:
         os.close(confirmed_fd)
+    verify_alias()
 except Exception as exc:
     code = str(exc) if isinstance(exc, ValueError) and re.fullmatch('marketplace_[a-z_]+', str(exc)) else 'marketplace_registration_failed'
     print('WARN: ' + code, file=sys.stderr)
@@ -1596,6 +1622,83 @@ finally:
     if parent_fd is not None:
         os.close(parent_fd)
 PY_CODEX_SOURCE
+}
+
+# Normalize only the installer's own current alias after promotion. Its target
+# must be this fresh generation; authority comes from the independent receipt,
+# not from the alias or the previous runtime that it may once have selected.
+current_marketplace_alias() {
+  local host="$1" desired="$2" mode="${3:-registry}" py=""
+  py="$(resolve_archive_python_cmd)" || return 1
+  run_resolved_python "$py" - "$installed_runtime_generation" "$desired" "$host" "$marketplace_name" "$HOST_ADAPTER_BUNDLE_DIR" "$mode" "$repo" "$version" <<'PY_CURRENT_ALIAS'
+import json, os, re, stat, subprocess, sys
+from pathlib import Path
+try:
+    raw, desired, host, name, bundle, mode, repo, ref = sys.argv[1:]
+    generation = Path(raw)
+    runtime = Path(os.environ["HOME"]).resolve(strict=True) / ".agentlas" / "runtime"
+    if str(runtime.resolve(strict=True)) != str(runtime) or generation.parent != runtime / ".generations" or str(generation.resolve(strict=True)) != raw:
+        raise ValueError()
+    expected = generation / bundle / "claude" if host == "claude" else generation / bundle
+    if host not in ("claude", "codex") or str(expected) != desired or mode not in ("registry", "target"):
+        raise ValueError()
+    for path in (runtime, generation.parent, generation):
+        state = path.lstat()
+        if not stat.S_ISDIR(state.st_mode) or state.st_uid != os.getuid() or state.st_mode & 0o022:
+            raise ValueError()
+    receipt_path = generation / ".adapter-receipt.json"
+    def file_identity(state):
+        return (state.st_dev, state.st_ino, state.st_uid, state.st_mode, state.st_size, state.st_mtime_ns, state.st_ctime_ns, state.st_nlink)
+    fd = os.open(receipt_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        state = os.fstat(fd)
+        if not stat.S_ISREG(state.st_mode) or state.st_uid != os.getuid() or state.st_mode & 0o077 or state.st_nlink != 1 or state.st_size > 16384:
+            raise ValueError()
+        data = os.read(fd, 16385)
+        if len(data) != state.st_size or file_identity(os.fstat(fd)) != file_identity(state) or file_identity(receipt_path.lstat()) != file_identity(state):
+            raise ValueError()
+    finally:
+        os.close(fd)
+    receipt = json.loads(data)
+    source = receipt.get("source")
+    if repo != "agentlas-ai/Agentlas-OS" or receipt.get("schema") != "agentlas.installer-generation.v1" or receipt.get("generation") != raw or not isinstance(source, dict) or set(source) != {"mode", "repo", "ref", "archiveSha256"} or source.get("repo") != repo or source.get("ref") != ref:
+        raise ValueError()
+    if not ((source["mode"] == "local" and source["archiveSha256"] is None) or (source["mode"] == "remote" and isinstance(source["archiveSha256"], str) and re.fullmatch("[0-9a-f]{64}", source["archiveSha256"]))):
+        raise ValueError()
+    current = runtime / "current"
+    before = current.lstat()
+    def identity(state):
+        return (state.st_dev, state.st_ino, state.st_uid, state.st_mode, state.st_mtime_ns, state.st_ctime_ns)
+    if not stat.S_ISLNK(before.st_mode) or before.st_uid != os.getuid() or os.readlink(current) != raw:
+        raise ValueError()
+    alias = current / bundle / "claude" if host == "claude" else current / bundle
+    if str(alias.resolve(strict=True)) != desired:
+        raise ValueError()
+    if mode == "registry":
+        reply = subprocess.run([host, "plugin", "marketplace", "list", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20, check=False)
+        if reply.returncode or len(reply.stdout) > 1024 * 1024:
+            raise ValueError()
+        document = json.loads(reply.stdout)
+        entries = document if host == "claude" else document.get("marketplaces")
+        if not isinstance(entries, list) or any(not isinstance(item, dict) for item in entries):
+            raise ValueError()
+        matches = [item for item in entries if item.get("name") == name]
+        if len(matches) != 1:
+            raise ValueError()
+        item = matches[0]
+        if host == "claude":
+            if item.get("source") != "directory" or item.get("path") != str(alias):
+                raise ValueError()
+        else:
+            origin = item.get("marketplaceSource")
+            if item.get("root") != str(alias) or not isinstance(origin, dict) or origin.get("sourceType") != "local" or origin.get("source") != str(alias):
+                raise ValueError()
+    if identity(current.lstat()) != identity(before) or os.readlink(current) != raw or str(alias.resolve(strict=True)) != desired:
+        raise ValueError()
+    print(alias)
+except Exception:
+    raise SystemExit(1)
+PY_CURRENT_ALIAS
 }
 
 ensure_exact_marketplace_registration() {
@@ -1631,8 +1734,46 @@ ensure_exact_marketplace_registration() {
       state="$(marketplace_registration_status "$host" "$desired")" || return 1
       [[ "$state" == exact ]] || { warn "marketplace_registration_unverified"; return 1; }
       ;;
+    conflict)
+      local alias="" resolution=""
+      alias="$(current_marketplace_alias "$host" "$desired")" || { warn "marketplace_source_conflict"; return 1; }
+      resolution="$(generation_adapter_receipt resolve "$installed_runtime_generation" "$desired" "$host")" || return 1
+      [[ "$resolution" == reuse ]] || { warn "marketplace_source_conflict"; return 1; }
+      [[ "$(current_marketplace_alias "$host" "$desired")" == "$alias" ]] || { warn "marketplace_source_conflict"; return 1; }
+      if [[ "$host" == claude ]]; then
+        run claude plugin marketplace add "$desired" --scope user || { warn "marketplace_registration_failed"; return 1; }
+      else
+        replace_codex_marketplace_source "$alias" "$desired" "$installed_runtime_generation" || return 1
+      fi
+      [[ "$(current_marketplace_alias "$host" "$desired" target)" == "$alias" ]] || { warn "marketplace_alias_changed"; return 1; }
+      [[ "$(marketplace_registration_status "$host" "$desired")" == exact ]] || { warn "marketplace_registration_unverified"; return 1; }
+      ;;
     *) warn "marketplace_source_conflict"; return 1 ;;
   esac
+}
+
+claude_plugin_install_action() {
+  local py=""
+  py="$(resolve_archive_python_cmd)" || return 1
+  run_resolved_python "$py" - "$plugin_name@$marketplace_name" <<'PY_INSTALL_ACTION'
+import json, subprocess, sys
+try:
+    reply = subprocess.run(["claude", "plugin", "list", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20, check=False)
+    if reply.returncode or len(reply.stdout) > 1024 * 1024:
+        raise ValueError()
+    document = json.loads(reply.stdout)
+    if not isinstance(document, list) or any(not isinstance(item, dict) for item in document):
+        raise ValueError()
+    matches = [item for item in document if item.get("id") == sys.argv[1] and item.get("scope") == "user"]
+    if not matches:
+        print("install")
+    elif len(matches) == 1 and isinstance(matches[0].get("version"), str) and matches[0]["version"].strip() and type(matches[0].get("enabled")) is bool:
+        print("update")
+    else:
+        raise ValueError()
+except Exception:
+    raise SystemExit(1)
+PY_INSTALL_ACTION
 }
 
 claude_plugin_enabled() {
@@ -1667,13 +1808,19 @@ install_claude() {
   log "== Claude Code plugin =="
   ensure_exact_marketplace_registration claude || return 1
 
-  run claude plugin install "$plugin_name@$marketplace_name" || return 1
+  local action=""
+  action="$(claude_plugin_install_action)" || { warn "plugin_install_state_unverified"; return 1; }
+  case "$action" in
+    update) run claude plugin update "$plugin_name@$marketplace_name" --scope user --json || return 1 ;;
+    install) run claude plugin install "$plugin_name@$marketplace_name" --scope user || return 1 ;;
+    *) warn "plugin_install_state_unverified"; return 1 ;;
+  esac
   # `plugin install` already enables it, and `plugin enable` then exits
   # non-zero with "is already enabled". Treating that exit code as failure
   # made EVERY fresh install report "Claude install failed" and the whole
   # installer exit 1 — on the host most people arrive through — while the
   # plugin sat there installed and enabled. Ask the state, not the exit code.
-  try claude plugin enable "$plugin_name@$marketplace_name" >/dev/null 2>&1 || true
+  try claude plugin enable "$plugin_name@$marketplace_name" --scope user >/dev/null 2>&1 || true
   # Human output may insert a Read from line before Status. The JSON contract
   # identifies the exact user installation without depending on display order.
   if ! claude_plugin_enabled; then
