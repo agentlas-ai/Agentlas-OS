@@ -64,12 +64,12 @@
         "command": "npx",
         "args": [
           "-y",
-          "@agentclientprotocol/claude-agent-acp@0.87.0"
+          "@agentclientprotocol/claude-agent-acp@0.88.0"
         ],
         "registryId": "claude-acp"
       },
       "pin": {
-        "registryVersion": "0.87.0"
+        "registryVersion": "0.88.0"
       },
       "notes": "Native stream-json keeps true input/output tokens; ACP usage_update is context occupancy only. Stays A."
     },
