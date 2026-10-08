@@ -8,10 +8,10 @@ from typing import Any, Mapping
 
 from .contracts import (
     canonical_digest,
-    find_cycle,
     normalized_strings,
     validate_candidate_set_coverage_gaps,
 )
+from .execution import WorkforceExecutionDependencyError, execution_slot_dependencies
 
 
 def _candidate_maps(candidate_set: Mapping[str, Any]) -> tuple[dict[str, dict[str, dict[str, Any]]], set[str]]:
@@ -155,11 +155,18 @@ def validate_host_selection(
     for edge in edges:
         if str(edge.get("fromSlot") or "") not in specs or str(edge.get("toSlot") or "") not in specs:
             issues.append("edge_references_unknown_slot")
-    cycle_path = find_cycle(edges, set(specs))
-    if cycle_path:
-        # 같은 파일의 다른 issue 들과 같은 형식(콜론 구분)으로 경로를 싣는다.
-        # 예: task_force_cycle:researcher>research>quality-engineer>researcher
-        issues.append("task_force_cycle:" + ">".join(cycle_path))
+    dependency_cycle: dict[str, Any] | None = None
+    try:
+        execution_slot_dependencies(
+            [row["slotId"] for row in ideal_team],
+            work_order_edges=work_order.get("edges") or [],
+            selection_edges=edges,
+        )
+    except WorkforceExecutionDependencyError as exc:
+        issues.append(exc.code)
+        dependency_cycle = exc.cycle
+        if dependency_cycle:
+            issues.append("task_force_cycle:" + ">".join(dependency_cycle["slotPath"]))
 
     alternatives = normalized_strings(selection.get("alternativesConsidered"))
     for release_id in alternatives:
@@ -191,6 +198,7 @@ def validate_host_selection(
         "alternativesConsidered": alternatives,
         "requestExpansionForSlots": expansion,
         "selectionDigest": selection_digest,
+        **({"dependencyCycle": dependency_cycle} if dependency_cycle else {}),
     }
     rejected = bool(issues)
     if rejected:

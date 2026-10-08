@@ -12,6 +12,7 @@ from typing import Any, Iterable, Mapping
 from ..model_allocation import EFFORT_TOKEN_RE
 from .contracts import (
     canonical_digest,
+    find_cycle,
     load_workforce_contract_schema,
     validate_candidate_set_coverage_gaps,
 )
@@ -43,6 +44,80 @@ _MCP_TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.$:/@+~-]{0,127}$")
 _UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _MAX_DIGEST_VALUE_DEPTH = 32
 _MAX_DIGEST_VALUE_NODES = 10_000
+
+
+class WorkforceExecutionDependencyError(ValueError):
+    """Refuse a non-executable slot graph without invoking a model."""
+
+    def __init__(self, code: str, *, cycle: dict[str, Any] | None = None):
+        super().__init__(code)
+        self.code = code
+        self.cycle = cycle
+
+
+def execution_slot_dependencies(
+    slot_ids: Iterable[str],
+    *,
+    work_order_edges: Iterable[Mapping[str, Any]],
+    selection_edges: Iterable[Mapping[str, Any]],
+) -> tuple[list[str], dict[str, set[str]]]:
+    """Use the same combined edge semantics at every execution boundary."""
+
+    slots = list(dict.fromkeys(slot_ids))
+    predecessors: dict[str, set[str]] = {slot: set() for slot in slots}
+    dependencies: list[dict[str, Any]] = []
+    for edge_source, edges in (
+        ("workOrderEdges", work_order_edges),
+        ("selectionEdges", selection_edges),
+    ):
+        for edge_index, edge in enumerate(edges):
+            if not isinstance(edge, Mapping):
+                raise WorkforceExecutionDependencyError("workforce_execution_context_edge_invalid")
+            source = str(edge.get("from") or edge.get("fromSlot") or "")
+            target = str(edge.get("to") or edge.get("toSlot") or "")
+            relation = edge.get("relation")
+            if source not in predecessors or target not in predecessors or relation == "coordinatesWith":
+                continue
+            if relation in {"handsOffTo", "reportsTo"}:
+                predecessor, dependent = source, target
+            elif relation == "reviews":
+                predecessor, dependent = target, source
+            else:
+                raise WorkforceExecutionDependencyError("workforce_execution_context_edge_invalid")
+            predecessors[dependent].add(predecessor)
+            dependencies.append({
+                "edgeSource": edge_source,
+                "edgeIndex": edge_index,
+                "fromSlot": source,
+                "toSlot": target,
+                "relation": relation,
+                "predecessorSlot": predecessor,
+                "dependentSlot": dependent,
+            })
+
+    pending = list(slots)
+    ordered: list[str] = []
+    while pending:
+        ready = [slot for slot in pending if predecessors[slot].issubset(ordered)]
+        if not ready:
+            cycle = find_cycle(
+                [{"fromSlot": row["predecessorSlot"], "toSlot": row["dependentSlot"]}
+                 for row in dependencies],
+                set(slots),
+            )
+            cycle_pairs = set(zip(cycle or [], (cycle or [])[1:]))
+            raise WorkforceExecutionDependencyError(
+                "workforce_execution_context_cycle",
+                cycle={
+                    "slotPath": cycle,
+                    "edges": [row for row in dependencies
+                              if (row["predecessorSlot"], row["dependentSlot"]) in cycle_pairs],
+                },
+            )
+        for slot in ready:
+            ordered.append(slot)
+            pending.remove(slot)
+    return ordered, predecessors
 
 
 @lru_cache(maxsize=1)
@@ -735,6 +810,11 @@ def project_execution_context(
         "assignments": assignments,
         "selectionEdges": selection_edges,
     }
+    execution_slot_dependencies(
+        [assignment["slotId"] for assignment in assignments],
+        work_order_edges=work_order_edges,
+        selection_edges=selection_edges,
+    )
     validate_workforce_digest_value(context)
     return context
 
@@ -1035,6 +1115,7 @@ def prepare_execution_plan(
 
     context: dict[str, Any] | None = None
     context_digest: str | None = None
+    dependency_cycle: dict[str, Any] | None = None
     try:
         context = project_execution_context(
             work_order=work_order,
@@ -1045,6 +1126,9 @@ def prepare_execution_plan(
         context_digest = workforce_execution_context_digest(context)
     except WorkOrderHubBoundaryError:
         issues.append("work_order_hub_boundary_rejected")
+    except WorkforceExecutionDependencyError as exc:
+        issues.append(exc.code)
+        dependency_cycle = exc.cycle
     except ValueError as exc:
         issues.append(str(exc))
 
@@ -1142,6 +1226,7 @@ def prepare_execution_plan(
         "schemaVersion": WORKFORCE_EXECUTION_PLAN_SCHEMA,
         "status": "rejected" if issues else "prepared",
         "issues": issues,
+        **({"dependencyCycle": dependency_cycle} if dependency_cycle else {}),
         "preparationReceiptId": "workforce-preparation:" + canonical_digest(receipt_payload).split(":", 1)[1][:32],
         "selectionReceiptId": validation_receipt.get("selectionReceiptId"),
         "candidateSetDigest": candidate_set.get("candidateSetDigest"),

@@ -49,6 +49,8 @@ from .execution import (
     WORKFORCE_EXECUTION_PLAN_SCHEMA,
     WORKFORCE_EXECUTION_RECEIPT_SCHEMA,
     WORKFORCE_RUNTIME_BUNDLE_DIGEST_SCHEMA,
+    WorkforceExecutionDependencyError,
+    execution_slot_dependencies,
     validate_capability_binding_plan,
     validate_execution_receipt,
     validate_tool_inventory,
@@ -652,36 +654,20 @@ def _ordered_roster(
     roster = [row for row in raw_roster if isinstance(row, Mapping)]
     if len(roster) != len(raw_roster):
         raise WorkforceHostExecutorError("workforce_execution_roster_invalid")
-    slots = list(dict.fromkeys(str(row.get("slotId")) for row in roster))
-    slot_set = set(slots)
-    predecessors: dict[str, set[str]] = {slot: set() for slot in slots}
     context = plan.get("executionContext")
     if not isinstance(context, Mapping):
         raise WorkforceHostExecutorError("workforce_execution_context_invalid")
-    edges = list(context.get("workOrderEdges") or []) + list(context.get("selectionEdges") or [])
-    for edge in edges:
-        if not isinstance(edge, Mapping):
-            raise WorkforceHostExecutorError("workforce_execution_context_edge_invalid")
-        source = str(edge.get("from") or edge.get("fromSlot") or "")
-        target = str(edge.get("to") or edge.get("toSlot") or "")
-        relation = edge.get("relation")
-        if source not in slot_set or target not in slot_set or relation == "coordinatesWith":
-            continue
-        if relation in {"handsOffTo", "reportsTo"}:
-            predecessors[target].add(source)
-        elif relation == "reviews":
-            predecessors[source].add(target)
-        else:
-            raise WorkforceHostExecutorError("workforce_execution_context_edge_invalid")
-    pending = list(slots)
-    ordered_slots: list[str] = []
-    while pending:
-        ready = [slot for slot in pending if predecessors[slot].issubset(ordered_slots)]
-        if not ready:
-            raise WorkforceHostExecutorError("workforce_execution_context_cycle")
-        for slot in ready:
-            ordered_slots.append(slot)
-            pending.remove(slot)
+    try:
+        ordered_slots, predecessors = execution_slot_dependencies(
+            [str(row.get("slotId")) for row in roster],
+            work_order_edges=context.get("workOrderEdges") or [],
+            selection_edges=context.get("selectionEdges") or [],
+        )
+    except WorkforceExecutionDependencyError as exc:
+        raise WorkforceHostExecutorError(
+            exc.code,
+            detail=json.dumps(exc.cycle, sort_keys=True) if exc.cycle else None,
+        ) from exc
     ordinal = {slot: index for index, slot in enumerate(ordered_slots)}
     return sorted(roster, key=lambda row: ordinal[str(row.get("slotId"))]), predecessors
 
@@ -748,6 +734,7 @@ def execute_preparation(
     if not project.is_dir():
         raise WorkforceHostExecutorError("workforce_execution_project_unavailable")
     plan = _execution_plan(preparation)
+    ordered_roster, predecessors = _ordered_roster(plan)
     execution_id = "execution:" + uuid.uuid4().hex
     private_root = (
         Path(output_root).expanduser().resolve()
@@ -840,7 +827,6 @@ def execute_preparation(
     results.append(handoff(planner))
     worker_bindings = _worker_capability_bindings(binding_plan, plan)
     base_inputs = list(results)
-    ordered_roster, predecessors = _ordered_roster(plan)
 
     workers: list[dict[str, Any]] = []
     nested_executions: list[dict[str, Any]] = []
