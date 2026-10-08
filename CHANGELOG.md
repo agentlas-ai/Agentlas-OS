@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.59 — 2026-10-08
+
+- Reject combined WorkOrder and Selection dependency cycles during validation
+  and preparation, and check cached plans before any host invocation.
+- Pin the latest verified ACP runtimes while retaining live initialization gates.
+
 ## 1.2.57 — 2026-10-06
 
 - Seal prepared Workforce plans after local project grounding is attached so
