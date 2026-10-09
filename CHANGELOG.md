@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.60 — 2026-10-09
+
+- Keep single-agent packages intact through `contract complete`: a worker under
+  `.agents/<id>/` now counts as a roster, so the company blueprint is no longer
+  deleted and the single-agent shape check keeps passing.
+- Register a package whose blueprint declares a single agent as an agent even
+  when it has an `agents/` folder. Real teams and legacy `agents/` folders
+  without a blueprint still register as teams.
+- Never promote a thin adapter over the canonical `AGENTS.md`, so repeated
+  `contract complete` runs no longer leave the core pointing at itself.
+
 ## 1.2.59 — 2026-10-08
 
 - Reject combined WorkOrder and Selection dependency cycles during validation
