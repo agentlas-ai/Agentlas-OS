@@ -30,6 +30,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Mapping, TypeVar
 
+from .team_shape import worker_agent_files
 from .routing_vocabulary import (
     RISK_CAPABILITY_ALIASES,
     normalise_memory_reads,
@@ -800,17 +801,21 @@ def reconcile_team_shape(root: Path, *, requested_mode: str = "") -> list[str]:
     """
 
     changed: list[str] = []
-    nested = list(root.glob("agents/*/agent.md"))
+    visible = list(root.glob("agents/*/agent.md"))
     flat = [p for p in root.glob("agents/*.md") if p.name != "agent.md"]
 
-    if not nested and flat:
+    if not visible and flat:
         for source in sorted(flat):
             target = root / "agents" / source.stem / "agent.md"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(source.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
             source.unlink()
             changed.append(f"agents/{source.stem}/agent.md (from {source.name})")
-        nested = list(root.glob("agents/*/agent.md"))
+
+    # The roster is whatever the shape gate counts as workers: visible `agents/` first,
+    # else `.agents/` (where the single-agent mode contract puts its one worker). Looking
+    # only under `agents/` made a valid single-agent package look empty.
+    nested = worker_agent_files(root)
 
     if not nested and requested_mode != "team":
         # No roster: this is a single agent whatever anything else claims. The
@@ -1231,6 +1236,12 @@ def fill_capability_eval_plan(root: Path) -> bool:
 
 RUNTIME_ADAPTER_FILES = ("CLAUDE.md", "GEMINI.md", "AGENTS.md")
 
+# The opening line every thin adapter carries. It is also the test for "this body only
+# points at AGENTS.md": promoting such a body INTO AGENTS.md makes the canonical core
+# point at itself (measured 2026-10-09: the second `contract complete` copied the thin
+# `agent.md` written by the first one over the scaffolded AGENTS.md).
+_THIN_ADAPTER_LEAD = "> Thin adapter. **Source of truth is [`AGENTS.md`](AGENTS.md)**"
+
 
 @_safe_package_mutator
 def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
@@ -1285,6 +1296,9 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
                 continue
             if is_unfilled(body) or _PLACEHOLDER.search(body):
                 continue
+            if _THIN_ADAPTER_LEAD in body:
+                # A thin adapter is a pointer at AGENTS.md, never a body to promote into it.
+                continue
             core.write_text(body, encoding="utf-8")
             written.append(f"AGENTS.md (promoted from {candidate})")
             break
@@ -1325,7 +1339,7 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
             break
     target.write_text(
         f"# {title or slug}\n\n"
-        f"> Thin adapter. **Source of truth is [`AGENTS.md`](AGENTS.md)** - read it first.\n"
+        f"{_THIN_ADAPTER_LEAD} - read it first.\n"
         f"> This file exists so a runtime that looks for `agent.md` finds the same\n"
         f"> core, never a second copy that can drift away from it.\n\n"
         f"## How to run {slug}\n\n"
@@ -1388,7 +1402,7 @@ def fill_thin_runtime_adapters(root: Path, slug: str) -> list[str]:
                 continue
         target.write_text(
             f"# {title or slug} — {runtime_label} adapter\n\n"
-            f"> Thin adapter. **Source of truth is [`AGENTS.md`](AGENTS.md)** - read it first.\n"
+            f"{_THIN_ADAPTER_LEAD} - read it first.\n"
             f"> This file exists so {runtime_label} finds an entry point in its own\n"
             f"> expected name, never a second copy of the rules that can drift away\n"
             f"> from the canonical core.\n\n"

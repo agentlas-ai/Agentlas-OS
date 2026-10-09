@@ -235,6 +235,21 @@ def _merge_preserving_existing(new_card: dict[str, Any], existing: dict[str, Any
     return merged
 
 
+def _declares_single_agent(pkg_dir: Path) -> bool:
+    """True when the company blueprint declares topology `single-agent` over at most one worker.
+
+    A blueprint that says `single-agent` while two or more workers sit on disk is the shape
+    gate's "contradiction"; that case is NOT treated as a single agent here, so the
+    legacy team detection still applies and the gate keeps reporting it.
+    """
+    from ..team_shape import worker_agent_files
+
+    blueprint = read_json(pkg_dir / ".agentlas" / "company-blueprint.json", default={}) or {}
+    if not isinstance(blueprint, dict) or blueprint.get("topology") != "single-agent":
+        return False
+    return len(worker_agent_files(pkg_dir)) <= 1
+
+
 def migrate_package(
     pkg_dir: Path,
     tier: str,
@@ -259,7 +274,14 @@ def migrate_package(
     if card_type is None:
         if plugin_manifest or tier == "plugin":
             card_type = "plugin"
-        elif agent_card.get("workers") or agent_card.get("orchestrator") or (pkg_dir / "agents").is_dir():
+        elif agent_card.get("workers") or agent_card.get("orchestrator"):
+            card_type = "team"
+        elif _declares_single_agent(pkg_dir):
+            # The package's own blueprint says it is one agent. A visible `agents/` folder
+            # holding that one worker is a layout choice, not a team (measured 2026-10-09:
+            # the same package registered as `team` only because `agents/` existed).
+            card_type = "agent"
+        elif (pkg_dir / "agents").is_dir():
             card_type = "team"
         else:
             card_type = "agent"

@@ -29,6 +29,23 @@ from typing import Any
 ROSTER_ARTIFACT_PATH = "agents/*/agent.md"
 
 
+def worker_agent_files(folder: str | Path) -> list[Path]:
+    """The worker ``agent.md`` files of a package: visible ``agents/`` first, else ``.agents/``.
+
+    One rule, shared by the shape gate and by every repair that has to decide
+    whether a package "has a roster". The single-agent mode contract places its one
+    worker at ``.agents/<id>/agent.md``; a repair that only looked under ``agents/``
+    called that package empty and deleted the blueprint the shape gate then required
+    (measured 2026-10-09: ``contract complete`` removed ``company-blueprint.json`` and
+    ``verify-team-package.sh`` failed with "topology missing").
+    """
+    root = Path(folder).expanduser().resolve()
+    visible = sorted((root / "agents").glob("*/agent.md"))
+    if visible:
+        return visible
+    return sorted((root / ".agents").glob("*/agent.md"))
+
+
 def check_team_shape(folder: str | Path) -> dict[str, Any]:
     """Return the team-shape verdict for a generated package root.
 
@@ -72,10 +89,7 @@ def check_team_shape(folder: str | Path) -> dict[str, Any]:
         return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
     def agent_files() -> list[Path]:
-        visible = sorted((root / "agents").glob("*/agent.md"))
-        if visible:
-            return visible
-        return sorted((root / ".agents").glob("*/agent.md"))
+        return worker_agent_files(root)
 
     def collect_refs(value: Any) -> set[str]:
         refs: set[str] = set()
