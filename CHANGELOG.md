@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.61 — 2026-10-10
+
+- Publish portable capability and routing cards without local runtime state or
+  retired One drawer guard artifacts.
+
 ## 1.2.60 — 2026-10-09
 
 - Keep single-agent packages intact through `contract complete`: a worker under
