@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.62 — 2026-10-10
+
+- Raise the UserPromptSubmit memory-hook timeout from 20 to 60 seconds for the
+  Claude, Codex and Grok adapters, so recall on a large project is no longer
+  discarded by the host before it finishes.
+
 ## 1.2.61 — 2026-10-10
 
 - Publish portable capability and routing cards without local runtime state or
