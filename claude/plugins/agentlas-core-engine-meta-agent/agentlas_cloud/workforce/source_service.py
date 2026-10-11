@@ -784,6 +784,16 @@ class WorkforceSourceService:
                         refresh = getattr(self.local_registry, "refresh_registered_sources", None)
                         if callable(refresh):
                             refresh()
+                            # A card the owner's networking store already lists
+                            # but the roster never saw (an agent built after the
+                            # last registration) must not stay invisible. Best
+                            # effort: a failure here never costs the search.
+                            adopt = getattr(self.local_registry, "adopt_new_networking_cards", None)
+                            if callable(adopt):
+                                try:
+                                    adopt()
+                                except (OSError, RuntimeError, TypeError, ValueError):
+                                    pass
                         else:
                             self.local_registry.reconcile()
                     index = WorkforceIndex(

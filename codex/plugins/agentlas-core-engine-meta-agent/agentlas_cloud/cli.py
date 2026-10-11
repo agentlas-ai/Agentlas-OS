@@ -2282,7 +2282,23 @@ def main(argv: list[str] | None = None) -> int:
                 from .networking import init_networking
 
                 init_networking(home)
-            return emit(migrate_tree(args.root, tier=args.tier, home=home, overwrite=args.overwrite))
+            migrated = migrate_tree(args.root, tier=args.tier, home=home, overwrite=args.overwrite)
+            if home is not None and args.tier == "local" and (migrated.get("migrated") or migrated.get("kept_existing")):
+                # A card alone is not "registered for local discovery": Workforce
+                # searches the roster, and the roster only learns of a new
+                # package here or at its next search. Say what actually happened
+                # so a builder UI never reports a registration that did not occur.
+                try:
+                    from .workforce.local_registry import LocalWorkforceRegistry
+
+                    adoption = LocalWorkforceRegistry().adopt_new_networking_cards(home)
+                    migrated["workforceRegistration"] = {
+                        "status": "registered" if not adoption["refused"] else "partial",
+                        **{key: adoption[key] for key in ("adopted", "refused", "refusedSources")},
+                    }
+                except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                    migrated["workforceRegistration"] = {"status": "failed", "reasonCode": type(exc).__name__}
+            return emit(migrated)
     if args.command == "mcp" and args.mcp_command == "serve":
         from .mcp_stdio import serve
 

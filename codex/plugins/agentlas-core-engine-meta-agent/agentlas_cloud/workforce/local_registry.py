@@ -965,6 +965,96 @@ class LocalWorkforceRegistry:
             "failedSources": failed[:200],
         }
 
+    def adopt_new_networking_cards(self, networking_root: Path | str | None = None) -> dict[str, Any]:
+        """Register the package root of a networking card the roster has never seen.
+
+        Discovery refreshes only roots that are already registered, so an agent
+        built after the last registration kept a healthy card and stayed
+        invisible to every search (measured 2026-10-11: 20 card roots unseen,
+        including a freshly built video producer, while the registry's last
+        write was a week old). The card store is the owner's own explicit list
+        — it is not a scan of the home folder — so adopting from it keeps the
+        "never widen to whatever is on disk" rule that refresh protects.
+
+        Two limits keep this safe to run on every search:
+
+        - A root that already has a definition record is left alone, whatever
+          its status. A user who removed an agent is not silently given it back.
+        - A root that was refused is not retried until its card's package hash
+          changes; otherwise every search would write another quarantine file.
+        """
+
+        from ..networking.card_store import load_global_cards
+
+        base = (Path(networking_root) if networking_root else networking_home()).expanduser().resolve()
+        cards, _ = load_global_cards(base)
+        state_path = self.home / "adoption-state.json"
+        state = read_json(state_path, default={}) or {}
+        if not isinstance(state, dict):
+            state = {}
+        known = {str(record.get("sourceRoot")) for record in self._records()}
+        adopted = skipped = attempted_before = 0
+        tried_this_run: set[str] = set()
+        refused: list[dict[str, Any]] = []
+        changed = False
+        for card in cards:
+            if card.get("type") not in {"agent", "team"} or card.get("stale"):
+                continue
+            source = card.get("source") if isinstance(card.get("source"), Mapping) else {}
+            raw_ref = source.get("ref")
+            if not raw_ref:
+                continue
+            try:
+                root = Path(str(raw_ref)).expanduser()
+                if not root.is_absolute() or not root.is_dir():
+                    continue
+                root = root.resolve()
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if root in {self.user_home, Path(root.anchor).resolve()}:
+                continue
+            key = str(root)
+            if key in known:
+                skipped += 1
+                continue
+            package_hash = str(source.get("package_hash") or "")
+            # One folder can carry several cards (an agent card and a team card),
+            # each with its own package hash; remember every attempt, not the last.
+            attempts = state.get(key) if isinstance(state.get(key), dict) else {}
+            if package_hash in attempts or key in tried_this_run:
+                attempted_before += 1
+                continue
+            tried_this_run.add(key)
+            try:
+                outcome = self.register(root, managed_by="networking")
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                attempts[package_hash] = {"status": "failed", "reasonCode": type(exc).__name__}
+                state[key] = attempts
+                changed = True
+                refused.append({"sourceRoot": key, "reasonCode": type(exc).__name__})
+                continue
+            attempts[package_hash] = {
+                "status": str(outcome.get("status")),
+                **({"reasonCode": outcome["reasonCode"]} if outcome.get("reasonCode") else {}),
+            }
+            state[key] = attempts
+            changed = True
+            known.add(key)
+            if outcome.get("status") == "active":
+                adopted += 1
+            else:
+                refused.append({"sourceRoot": key, "reasonCode": str(outcome.get("reasonCode") or outcome.get("status"))})
+        if changed:
+            atomic_write_json(state_path, state)
+        return {
+            "status": "adopted",
+            "adopted": adopted,
+            "refused": len(refused),
+            "refusedSources": refused[:200],
+            "alreadyRegistered": skipped,
+            "alreadyAttempted": attempted_before,
+        }
+
     def reconcile(self, networking_root: Path | str | None = None) -> dict[str, Any]:
         """Reconcile only paths explicitly registered in networking state.
 
