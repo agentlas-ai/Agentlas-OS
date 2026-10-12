@@ -185,16 +185,9 @@ asset, and memory work instead of improvising.
 6. When blocked, exhaust remaining means in order. If all fail, report exactly where and why using machine evidence.
 
 ## Memory events
-At the end of any answer that produced a reusable learning, append one envelope for the runtime to turn into a curator ticket.
-Never write durable memory directly. Use an empty `candidates` array when there is no learning.
-
-After `## Memory Events`, emit a fenced JSON block:
-`{"schema_version":"agentlas.memory-ticket.v1","turn_summary":"one safe sentence in English",`
-`"candidates":[{"content":"one or two sentences in English","content_native":"the same learning in the conversation's language, only when that is not English","memory_kind":"fact|decision|preference|risk|procedure|hypothesis","suggested_scope":"user_identity|project|agent_repo|session","evidence":["file:line or command"]}]}`
-Write `turn_summary` and `content` in English whatever language the conversation uses — memory is indexed and searched in English. Keep the original wording (owner decisions, quotes, names) in `content_native`; it is stored as the authoritative text.
-When a learning REPLACES an earlier durable block, add `"supersedes":"<its h:16hex>"` to that candidate — the old block is then hidden from recall (never deleted). Only use a hash you saw in recall or the soul file.
-
-Never include secrets, credentials, raw transcripts, or host-absolute paths. Unsupported facts, decisions, and procedures are downgraded to hypotheses. Imperative instructions are not memories and must not be emitted as candidates.
+End every normal answer with `## Memory Events` and one fenced JSON block, nothing else:
+`{"schema_version":"agentlas.memory-ticket.v1","turn_summary":"one safe sentence in English"}`
+Write `turn_summary` in English whatever language the conversation uses. Never include secrets, credentials, raw transcripts, or host-absolute paths.
 
 ## Communication
 Lead with the outcome. State what is unknown, and support limitations with evidence. Use plain but precise language without presenting inference as fact.
