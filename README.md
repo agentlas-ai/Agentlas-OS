@@ -16,7 +16,6 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center"><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4"><img src="assets/readme/agentlas-one-promo-20s.jpg" alt="Watch the 20-second Agentlas One film" width="720"></a><br><sub><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4">Watch the Agentlas One film (20 seconds) ▶</a></sub></p>
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
@@ -41,8 +40,6 @@
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
   <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
 </p>
-<p align="center"><a href="https://www.producthunt.com/products/agentlas-science?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-agentlas-science"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=dark"><img alt="Agentlas Science on Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=light"></picture></a></p>
-
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -55,26 +52,30 @@
 
 In the [Web Hub](https://agentlas.cloud/hub), each public agent has a space for browsing its release files when the author permits source access, discussing the agent, and reviewing its agent files and versions.
 
-### Install Agentlas Desktop
+### Install
 
-**macOS · Linux**
+**Agentlas OS** — for Claude Code, Codex, Gemini CLI, Antigravity, Cursor and the
+other hosts on your machine. No `sudo`, nothing written outside `$HOME`. Restart
+your agent host afterwards and run `hephaestus doctor`.
 
 ```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-**Windows (PowerShell)**
+**Agentlas Desktop** — the app, if you prefer a window to a terminal.
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash        # macOS · Linux
+```
 
 ```powershell
-irm https://agentlas.cloud/install.ps1 | iex
+irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
 ```
 
 <p align="center"><sub>Downloads the latest signed release, checks its sha512, and installs without <code>sudo</code> or an admin prompt · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">download manually</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas Desktop is open source — view the repo</a></sub></p>
 
 <details>
-<summary><strong>Desktop + Agentlas OS</strong>, or <strong>Agentlas OS only</strong> for Claude Code · Codex · Gemini · Cursor</summary>
-
-Desktop and Agentlas OS together:
+<summary><strong>Desktop and Agentlas OS together</strong></summary>
 
 ```bash
 curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
@@ -84,23 +85,7 @@ curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
 $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 ```
 
-Agentlas OS only (no app). No <code>sudo</code>, nothing written outside <code>$HOME</code>. Restart your agent host afterwards and run <code>hephaestus doctor</code>.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
 </details>
-
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Get Agentlas Desktop">
-  </a>
-</p>
-
-<p align="center">
-  <sub>Prefer a window to a terminal · macOS · Windows · Linux · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub>
-</p>
 
 ---
 
@@ -121,12 +106,6 @@ standardised.
   compressed row. The odds of the right agent being on the list stay put while
   the tokens drop to a quarter.
 - Measured across **849 local profiles** and **188 published listings.**
-
-And the specialist does not arrive empty-handed. The code map, the sitemap and the
-project's memory ride along with the task. Which files are in scope, what to read
-first, and whether the work is actually finished are all computed before staffing
-and handed over with it. There are tools that sell memory on its own; here memory
-is one part bolted to staffing, execution and verification.
 
 ## This is where most tools stop
 
@@ -204,35 +183,22 @@ Otherwise you get the name of the place it stopped — `prepared`, `blocked`,
 
 ---
 
-## Inside Agentlas Desktop
+## Build your own specialist
 
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One: a three-member team works an ongoing goal while its live browser stays in view" width="100%"></a></p>
-<p align="center"><sub><strong>Agentlas One</strong> — a standing team works an ongoing goal, and the browser it drives stays in view.</sub></p>
+When nobody on the list fits, build one. `/hep-build` turns a sentence into a
+portable single agent or team: it asks only the questions that would change the
+result, writes the package, and runs the contract checks before calling it done.
+`/hep-build session` does the same from the conversation you are already in.
 
-**Agent Mail** gives One an email address of its own. From the Mail tab, you can read its inbox, send and reply, and review drafts. Choose how new mail is handled: notify you, prepare a draft, or reply on your behalf. Mail requires an eligible Agentlas account and plan; autonomous handling works while the Desktop app is running.
+```text
+/hep-build an agent that reviews App Store replies before they go out
+/hep-build session
+```
 
-The **AGI button** in the One and Work composers controls **Alive Agent (beta)** for the current goal or project. You can turn it on or off, set a token limit, and inspect the model fallback order and current state. “AGI” is the button label for this autonomy mode, not a claim that the underlying model has achieved general intelligence.
-
-<table>
-<tr>
-<td width="50%"><img src="assets/readme/desktop/one-teammate.png" alt="Editing a One teammate: character, name and model" width="100%"></td>
-<td width="50%"><img src="assets/readme/desktop/science-evidence-map.png" alt="Agentlas Science evidence map linking each extracted claim to its source passage" width="100%"></td>
-</tr>
-<tr>
-<td valign="top"><sub>Every teammate has its own character, model and tools.</sub></td>
-<td valign="top"><sub><strong>Agentlas Science</strong> — each extracted claim is linked to the source passage it came from.</sub></td>
-</tr>
-<tr>
-<td width="50%"><img src="assets/readme/desktop/science-statistics.png" alt="Agentlas Science statistical result with a table and a fitted figure" width="100%"></td>
-<td width="50%"><img src="assets/readme/desktop/science-molstar.gif" alt="Exploring a protein structure in Mol* inside Agentlas Science" width="100%"></td>
-</tr>
-<tr>
-<td valign="top"><sub>Statistics: the table and the figure come from the same validated result.</sub></td>
-<td valign="top"><sub>Protein structures in Mol*: explore, restyle, and save a view as a new version.</sub></td>
-</tr>
-</table>
-
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><strong>Download Agentlas Desktop →</strong></a></p>
+Every build ships input and output schemas, a routing card, and the rest of the
+package contract below; a build that misses a required file fails instead of
+shipping. Keep it in your private Agent Cloud or publish it to the free Hub with
+`/hep-upload`, and `/hep-network` can staff it like any other candidate.
 
 ---
 
@@ -292,13 +258,7 @@ and 93%** of the time. The default is 30.
 
 ---
 
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/readme/agentlas-desktop-hero-v2.png" alt="The Agentlas Desktop workspace" width="880">
-  </a>
-</p>
-
-<h2 align="center">Get more out of it on Desktop</h2>
+## On Agentlas Desktop
 
 Desktop is the host itself, so it decides in code — **before** a run starts —
 whether the work needs one agent or a team. That decision is recorded as a
@@ -306,40 +266,12 @@ reserved run, not a suggestion. It can staff installed agents and public Hub
 agents. Public Hub agent calls have no Agentlas fee; your chosen host or model/API
 provider may charge for execution.
 
-Every LLM you use, in one place: the coding CLIs you already subscribe to
-(Claude Code, Codex, Antigravity, Cursor, Grok, Kimi, GitHub Copilot CLI), your
-own API keys across 11 providers, and local models. It installs a verified
-llama.cpp engine, pulls GGUF models from Hugging Face, and also talks to Ollama,
-LM Studio and MLX.
-
-**And when the model you are on runs out of quota, the turn is re-run on the next
-model in your own priority order.** Your saved model choice is not touched, and
-the original model comes back on its own once the limit clears.
-
-<p align="center">
-  <strong><a href="https://agentlas.cloud/desktop">Get Agentlas Desktop →</a></strong><br>
-  <sub>macOS (Apple silicon · Intel) · Windows · Linux</sub>
-</p>
-
 | Surface | Role |
 | --- | --- |
-| **Agentlas Desktop** | Visual local OS for agent teams, memory, browser work and Hub specialists |
-| **Hephaestus plugin** | This repo — the open-source engine and command surface for your CLI hosts |
+| **Agentlas OS (Hephaestus)** | This repo — the open-source build and routing engine and command surface for your CLI hosts |
+| **Agentlas Desktop** | The app that runs the same engine with a window, on macOS, Windows and Linux |
 | **Agentlas Hub** | Public space for publishing, discovering, and using agents for free |
 | **Agentlas Cloud** | Owner-scoped store for privately saving and retrieving your own agents |
-
----
-
-<h2 align="center">Start with one line</h2>
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
-<p align="center">
-  <sub>It configures <strong>every supported host it finds on this machine</strong>, not only the one
-  you are typing in. Everything it writes is listed below.</sub>
-</p>
 
 ---
 
@@ -502,16 +434,6 @@ enough. New to terminals? Follow your OS below.
 If you'd rather read the script before running it (recommended if you're
 security-conscious), open this link in your browser first:
 [install-all-runtimes.sh](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
-
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/readme/agentlas-desktop-hero-v2.png" alt="Agentlas Desktop workspace showing Worker model priorities, multimodal routing, connected hosts, and local agents" width="960">
-  </a>
-</p>
-
-<p align="center">
-  <sub><a href="https://agentlas.cloud/desktop">Build, own, share, and run agents across your local workspace, private Agent Cloud, and the free public Agentlas Hub.</a></sub>
-</p>
 
 <details>
 <summary><strong>Installing Agentlas Desktop (the GUI app) from an AI</strong> — per-OS one-liners</summary>
@@ -737,57 +659,6 @@ fits the work.
 
 
 <details>
-<summary><strong>What's inside — routing, permissions, memory, retrieval, packaging</strong></summary>
-
-
-Agentlas maps agent work to operating-system-like responsibilities without
-forcing your work into one model provider:
-
-| What it handles | Implementation in Hephaestus |
-| :--- | :--- |
-| **Kernel / Policy Gate** | Deterministic router + security gates. Every routing action yields an auditable receipt; tool execution permissions are enforced by the active host and runtime. |
-| **Processes / Threads** | Independent agents and multi-agent teams compiled as packages with explicit, typed contracts (Routing Cards, anti-scopes, memory boundaries, and verification shims). |
-| **Scheduling** | The Workforce pipeline: a typed work order, federated candidate retrieval across Local, Cloud and Hub, a host-authored selection, and pinned execution — combined with Stormbreaker's parallel execution fabric and append-only run journals. Ratings, install counts and usage history are forbidden as routing authority. |
-| **Memory Management (MMU)** | Two-boundary governed memory: local project memory remains isolated on the machine, while durable promotions are gated by a local Memory Curator. |
-| **Virtual File System** | Production Ontology Runtime: local-first source ingestion, CJK trigram FTS5 search, hybrid Reciprocal Rank Fusion, and GraphRAG retrieval. |
-| **Inter-Process Call (IPC)** | A2A Agent Card Boundary (cryptographic import/export and caller-gating) + Model Context Protocol (MCP) tool registrations. |
-| **Package Manager** | Agentlas Hub for free public publishing and use; owner-scoped Agent Cloud for private package storage and retrieval. Neither is a server-side model executor. |
-| **Shell Interface** | A small, unified command set in external client runtimes; plain-language intent routing in native Agentlas shells. |
-| **Process Initialization** | Meta-Agent Factory with an integrated Briefing Interview Gate—specifying agent parameters before compiling code. |
-
-<p align="center">
-  <img src="assets/agentlas-meta-agent-architecture.svg" alt="Figure 1. Agentlas Meta-Agent architecture decomposition">
-</p>
-
-<p align="center">
-  <sub>Figure 1. Request shaping, four builders, generated package contracts, memory curation, skill lifecycle, runtime adapters, and sync boundaries.</sub>
-</p>
-
----
-
-</details>
-
-
-<details>
-<summary><strong>Briefing Interview Engine</strong></summary>
-
-
-Agents generated from vague, single-sentence prompts fail under real-world edge cases. Hephaestus v1.1.0 positions task specification as a first-class OS service through the **Briefing Interview Engine**:
-
-The current v1.2.62 release carries the resolved Work Brief through host-owned Network 2.0 selection, exact release pinning, and server-first tool discovery.
-
-*   **Quantitative Ambiguity Gates:** The compilation scheduler evaluates prompt clarity across four key vectors (Goal, Constraints, Scope, Context). The build process is strictly gated until the ambiguity score passes a numeric threshold (ambiguity score $\le 0.2$, with per-dimension safety floors). Clear prompts bypass the interview loop entirely via a budget system that caps questions for trivial tasks.
-*   **Lens-Driven System Analysis:** Clarifying questions are dynamically sourced from a structured lens table (Scope, Intent, Challenge, System Architecture) focusing on critical routing indicators: *anti-scope bounds* (what the agent must NOT do), *verifiable acceptance criteria*, and *exit conditions*.
-*   **The Work Brief:** Resolved details are frozen into `.agentlas/work-brief.json`—recording the validated goal, concrete constraints, an assumption ledger with source tags, and the metadata ambiguity score.
-*   **Contextual In-Flight Briefs:** The CLI tool `cards migrate` automatically maps brief details directly to triggers and anti-triggers on the agent's routing card. Running `route --brief` propagates this brief to all Stormbreaker execution packets, ensuring constraints and exit conditions govern parallel subprocesses across the entire lifecycle.
-*   **Enhanced Routing Discrimination:** Prevents same-topic/different-intent collision (e.g., a security agent intercepting a deployment prompt) via double-sided gating: interview-validated anti-triggers on the routing card, and, on the legacy `route` path, a host-model escalation when the deterministic router lands on `clarify` or `propose_new`. The engine itself never calls a model, and Workforce selection never re-ranks.
-
----
-
-</details>
-
-
-<details>
 <summary><strong>All Install Methods — source, offline, per-host</strong></summary>
 
 
@@ -893,7 +764,7 @@ Clone the repo and copy `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`,
 
 </details>
 
-**Just talk:** After installation, speak in plain language within native Agentlas interfaces to auto-route tasks. In external LLM tools, use the explicit commands listed below. When you don't know what agents exist, start with `/agentlas search`. To connect Telegram, use `/agentlas connect`.
+**Just talk:** After installation, speak in plain language within native Agentlas interfaces to auto-route tasks. In external LLM tools, use the explicit commands listed below. When you don't know what agents exist, start with `/agentlas search`.
 
 **One word to remember:** everything starts with `agentlas` in an LLM host —
 `/agentlas`. In a shell the commands are `hephaestus` and `hep-*`; the `agentlas`
@@ -908,24 +779,19 @@ shell command belongs to the separate Agentlas Terminal.
 <summary><strong>The Command Surface — every command</strong></summary>
 
 
-Inside native Agentlas environments, Hephaestus operates commandless. External LLM tools use a deliberately small visible command set. System-level utilities like Stormbreaker, research loadouts, and configuration tables attach automatically from context:
+Inside native Agentlas environments, Hephaestus operates commandless. External LLM tools use a deliberately small visible command set for building agents and staffing work with them:
 
 | System Subsystem | Command | Example |
 | :--- | :--- | :--- |
 | **Agent / Team Builder** | `/agentlas-build` (or `/agentlas build`, `/hep-build`) | `/agentlas-build create a customer support agent for Shopify refunds` |
 | **Session-to-Agent Builder** | `/hep-build session` (canonical route: `hep-build session`) | `/hep-build session` |
 | **Workforce Federation (Local + Cloud + Hub)** | `/agentlas-network` (or `/agentlas network`, `/hep-network`) | `/agentlas-network split this launch plan into research, copy, QA, and release agents` |
-| **Stormbreaker Loop** | `/agentlas-storm` (or `/agentlas storm`, `/hep-storm`) | `/agentlas-storm build full-stack saas landing page` |
-| **Graph Automations** | `/agentlas-graph` (or `/agentlas graph`, `/hep-graph`) | `/agentlas-graph create daily market summary automation` |
-| **Personal Agent Mode** | `/agentlas-one on|off` (or `/agentlas one on|off`) | `/agentlas-one on` |
 | **Registered Local Agents Only** | `/agentlas-local` (or `/agentlas local`, `/hep-local`) | `/agentlas-local use only agents registered on this machine` |
 | **Owned Cloud Agents Only** | `/agentlas-cloud` (or `/agentlas cloud`, `/hep-cloud`) | `/agentlas-cloud use my saved finance analyst agent to review this report` |
 | **Public Hub Agents Only** | `/agentlas-hub` (or `/agentlas hub`, `/hep-hub`) | `/agentlas-hub find public specialists for accessibility QA` |
 | **Directory Search** | `/agentlas-search` (or `/agentlas search`, `/hep-search`) | `/agentlas-search find agents for a market report workflow` |
-| **Browser Hardpoint** | `/agentlas-browser` (or `/agentlas browser`, `/hep-browser`) | `/agentlas-browser https://example.com` |
 | **Inter-Process Call (IPC)** | `/agentlas-call` (or `/agentlas call`, `/hep-call`) | `/agentlas-call market-researcher, report-writer {draft a market report}` |
 | **Cloud / Hub Destination Gate** | `/agentlas-upload` (or `/agentlas upload`, `/hep-upload`) | `/agentlas-upload ./agents/customer-support-hq` |
-| **Messenger / Channel Setup** | `/agentlas-connect` (or `/agentlas connect`, `/hep-connect`) | `/agentlas-connect Telegram for Marketing Agent Team` |
 | **Sign-in** | `/agentlas-login` (or `/agentlas login`, `/hep-login`) | `/agentlas-login` |
 | **Orchestrator / Worker Models** | `/agentlas-orch` (or `/agentlas orch`, `/hep-orch`) | `/agentlas-orch orchestrator=frontier worker=economy` |
 | **Runtime + Adapter Update** | `/agentlas-update` (or `/agentlas update`, `/hep-update`) | `/agentlas-update` |
@@ -938,13 +804,12 @@ and OpenCode have no subagent of their own: one model plays every role in
 sequence there, the allocation receipt is still written, and the ceiling still
 bounds what that model may request — but no second, cheaper model appears.
 
-Every row except Personal Agent Mode also answers to its original `/hep-*`
-name — `/agentlas network` and `/hep-network` are the same command. Personal
-Agent Mode never had a `/hep-*` name. Nothing was renamed away, so existing
+Every row also answers to its original `/hep-*` name — `/agentlas network` and
+`/hep-network` are the same command. Nothing was renamed away, so existing
 scripts, notes, and muscle memory keep working. Current Codex uses explicit
 plugin skills `$hephaestus-build`, `$hephaestus-network`,
-`$hephaestus-cloud`, `$hephaestus-upload`, `$hephaestus-storm`, and
-`$hephaestus-graph`; other MCP surfaces can be requested in plain language.
+`$hephaestus-cloud`, and `$hephaestus-upload`; other MCP surfaces can be
+requested in plain language.
 Custom `/prompts:*` commands were removed from Codex 0.117+.
 
 ---
@@ -953,7 +818,7 @@ Custom `/prompts:*` commands were removed from Codex 0.117+.
 
 
 <details>
-<summary><strong>Deeper — the routing scheduler, the execution gate, memory, the retrieval engine</strong></summary>
+<summary><strong>Deeper — the build factory and the routing scheduler</strong></summary>
 
 
 ### Meta-Agent Factory — Process Creation
@@ -1015,100 +880,6 @@ package that did not select the host permission policy.
 
 ---
 
-### Stormbreaker — Disciplined Execution
-Stormbreaker is the execution gating subsystem of the Agent OS. It ensures that agents do not report success or terminate until all outcomes have been verified by deterministic checks:
-
-```text
-Kernel Gating Envelope:
-[Scope Lock] -> [Decomposition] -> [Parallel Work Packets] -> [Verify Contracts] -> [Bounded Repair] -> [Final Gate]
-```
-
-A local run journal makes long executions resumable after interruption. Execution packets carry the Work Brief so that anti-scope rules and exit criteria govern all parallel subprocesses. Stormbreaker reports explicit completion states (**verified / unverified / blocked**) to prevent autonomous completion theater.
-
-
----
-
-### Ontology Runtime — The Knowledge Filesystem
-For knowledge-intensive operations, `bin/ontology` acts as the semantic filesystem, converting unstructured local files into an agent-readable database stack:
-
-```text
-Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization] 
-  -> [FTS5 + SQLite Storage] -> [Reciprocal Rank Fusion Ranking] -> [GraphRAG Search]
-```
-
-Features first-party Korean document parsing (HWPX and legacy HWP5) with zero GPL dependencies. Fully local and SQLite-backed; confidential and private chunks are isolated, preventing them from reaching external cloud hooks.
-
-The current release contract ships and verifies the dependency-free
-`potion-multilingual-128M-int8` Model2Vec asset as the primary semantic
-adapter. Its pure-Python Unigram runtime returns a normalized 256-dimensional
-semantic vector. Runtime queries never download a model or call a hosted
-embedding API. Hash-96 mode is an explicitly reported degraded fallback when
-the verified local asset is missing or rejected, not an alternative silent
-default.
-
-The current self-updater installs the complete one-touch runtime payload,
-including Career Graph, templates, and the verified model under the versioned
-`models/model2vec/potion-multilingual-128M-int8` directory. It checks that payload before
-and after switching `~/.agentlas/runtime/current`, then repairs merge-safe
-memory hooks for detected hosts without replacing unrelated user configuration.
-
-Agent experience recall is a governed path, not an unrestricted nearest-vector
-search:
-
-```text
-exact agent + allowed scope + active status + unexpired + not superseded
-  -> lexical rank + local cosine rank
-  -> reciprocal-rank fusion + bounded salience prior
-  -> all relevant memories when they fit, otherwise budgeted top-k
-```
-
-Experience recall scores a deterministic newest-first window of at most 5,000
-governance-eligible rows before token-budget selection. When more rows are
-eligible, the response is explicitly `partial` with a truncated scan receipt;
-older evidence outside the bounded window may require a narrower query or
-projection rebuild. Each Hub agent has a rebuildable private projection at
-`~/.agentlas/networking/hub-agents/<normalized-slug>/memory/experience.sqlite`.
-The runtime may infer only same-agent, same-scope `similar_to` edges from local
-cosine similarity; `supersedes` and `contradicts` require an explicit curator
-decision.
-
-```bash
-bin/ontology ingest ./corpus --scope internal
-bin/ontology --db .agentlas/ontology-runtime.sqlite query "Project Helios Memory Curator" --agent verifier
-bin/ontology --db ~/.agentlas/networking/hub-agents/<slug>/memory/experience.sqlite experience query "What did we learn?" --agent hub:<slug>
-bin/ontology memory candidates
-```
-
-Plain Claude Code and Codex sessions receive bounded recall through
-`SessionStart` and `UserPromptSubmit` additional context. Antigravity uses a
-`PreInvocation` ephemeral message, OpenCode uses an experimental local plugin,
-and Grok refreshes a workspace-scoped cache because its passive hooks do not
-inject stdout. These hooks supplement live `AGENTS.md`/`CLAUDE.md` policy rather
-than copying it.
-
----
-
-### Governed Memory — Curated Promotion
-
-*   **Local Project Memory:** Project documents remain in the local `.agentlas/ontology-runtime.sqlite`; experience from selected agents remains in its exact per-agent projection. The two stores share one query engine without collapsing their scope or ownership boundaries.
-*   **Governance Before Ranking:** Exact agent, allowed privacy scope, active status, expiry, and structural supersession are enforced before lexical/cosine ranking. Secret redaction and capsule bounds are applied again before host delivery.
-*   **Workspace Personalization:** Manages summaries, playbooks, plugin locks, and receipts for selected Cloud/Hub agents without storing raw prompts, credential values, or private files.
-*   **Curator Gating:** Private memory remains subject to curator evidence, privacy, and ownership checks. Executable agent and skill changes require an exact staged file diff and trusted owner approval before activation. Automatic memory relations are limited to `similar_to`.
-
----
-
-### A2A Boundary — Inter-Agent Isolation
-Standardized CLI commands allow safe inter-agent coordination:
-
-```bash
-hephaestus ao a2a import ./agent-card.json .
-hephaestus ao a2a export . --agent local/10-builder
-hephaestus route "run the release check" --caller local/orchestrator --project .
-```
-Import acts as a proposal (restricting automatic invocation), export redacts private paths and logic, and invocations are caller-gated before routing is resolved.
-
----
-
 </details>
 
 
@@ -1157,57 +928,6 @@ That package shape is why an Agentlas agent is more than an LLM-written role
 prompt. It carries routing, memory, input/output contracts, permissions,
 runtime adapters and evaluation evidence together.
 
-### Dependency-aware project context
-
-Hephaestus keeps the project map local. The explicit `context refresh` writer
-creates a content-addressed snapshot; passive reads then hand each concrete
-task only the goals, constraints, definitions, backlinks, interfaces, and
-related files it structurally depends on.
-
-Passive MCP context reads remain write-free, but they recompute the same
-bounded file-list fingerprint before returning indexed data. If code,
-verification, CI, or version-contract inputs changed—or the freshness scan
-cannot complete—the read returns `context_map_stale` or
-`context_freshness_incomplete` with a `refresh=true` retry instead of returning
-old symbols as `status=ok`.
-
-The v3 manifest retains the Code Map v2 compatibility projection and carries an
-`agentlas.verification-map.v2` graph. Search-only lexical backlinks are kept
-separate from completion-gating dependency edges. Blocking edges come from
-resolved imports, explicit package commands, CI workflows, and version scopes;
-generated releases, embedded runtimes, and declared mirrors are not rescanned
-as canonical source. Every safe project file is inventoried by role, so docs,
-config, and prior-snapshot deletion tombstones are valid change inputs.
-
-`context impact` returns source review obligations separately from test/CI and
-release obligations. `context verify` passively reuses the same fresh snapshot,
-and `--verified` records an actually executed test path or exact command/CI ID.
-Putting a test in `--reviewed` or `--waived` never masquerades as execution.
-Local and CI are alternatives, not duplicate requirements. Version contracts
-remain a separate release responsibility, and
-a missing test reference blocks the CI channel that owns it until the workflow
-is fixed or explicitly waived. Local test files and fixtures may remain
-Git-ignored and excluded from public runtime archives; the project-local map
-still fingerprints and links them so local execution is a real selectable
-channel rather than invisible state.
-
-```sh
-hephaestus context refresh --project .
-hephaestus context refs resolveHubEntityKind --project .
-hephaestus context slice --project . --task "fix entity kind routing" \
-  --target src/package-kind.ts --render
-hephaestus context impact --project . --changed src/package-kind.ts
-hephaestus context verify --project . --changed src/package-kind.ts \
-  --reviewed src/register/route.ts \
-  --verified tests/test-package-kind.ts
-```
-
-Claude and Codex receive the task slice from their local hook and get a
-reverse-reference warning immediately before edit tools. Desktop, Terminal,
-Stormbreaker, and Workforce call the same Core implementation. Network/Cloud
-search and bundle fetches remain redacted and never receive local source paths
-or Context Map contents.
-
 ---
 
 </details>
@@ -1218,10 +938,12 @@ or Context Map contents.
 |---|---|
 | Understand the canonical route | [`AGENTS.md`](AGENTS.md) |
 | See the full team contract | [`agent.md`](agent.md) |
-| Sitemap contract | [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
-| Mode map | [`modes/README.md`](modes/README.md) |
+| Package contract | [`package-contract.json`](package-contract.json) |
+| Session build | [`contracts/session-build.md`](contracts/session-build.md) |
 | Routing card | [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
-| Memory map | [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
+| Workforce work order | [`schemas/workforce-work-order.schema.json`](schemas/workforce-work-order.schema.json) |
+| Compiled brief | [`schemas/agentlas-brief.schema.json`](schemas/agentlas-brief.schema.json) |
+| Mode map | [`modes/README.md`](modes/README.md) |
 
 ---
 

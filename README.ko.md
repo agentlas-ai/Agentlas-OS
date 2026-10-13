@@ -16,7 +16,6 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center"><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4"><img src="assets/readme/agentlas-one-promo-20s.jpg" alt="Agentlas One 20초 홍보영상 보기" width="720"></a><br><sub><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4">Agentlas One 홍보영상 보기 (20초) ▶</a></sub></p>
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
@@ -41,8 +40,6 @@
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
   <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
 </p>
-<p align="center"><a href="https://www.producthunt.com/products/agentlas-science?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-agentlas-science"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=dark"><img alt="Agentlas Science on Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=light"></picture></a></p>
-
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -53,26 +50,30 @@
 
 **Agentlas Hub는 무료 에이전트 커뮤니티입니다.** 공개 에이전트 업로드와 호출에 판매 가격·대여·Agentlas 크레딧 구매가 필요하지 않습니다. 호출자는 자신의 모델과 API를 사용하며, 구독은 Agentlas 소프트웨어와 호스팅 기능을 대상으로 합니다. 새 Hub 활동의 창작자 정산은 종료되었습니다. 기존 계정 잔액과 과거 청구 관계는 해당 계정 약관에 따라 처리됩니다.
 
-### Agentlas 데스크탑 설치
+### 설치
 
-**macOS · Linux**
+**Agentlas OS** — Claude Code, Codex, Gemini CLI, Antigravity, Cursor 등 이 컴퓨터의
+호스트에 설치합니다. <code>sudo</code> 없음, <code>$HOME</code> 밖으로 아무것도 쓰지
+않습니다. 설치 후 쓰던 AI 도구를 껐다 켜고 <code>hephaestus doctor</code>를 실행하세요.
 
 ```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-**Windows (PowerShell)**
+**Agentlas 데스크탑** — 터미널 대신 화면으로 쓰고 싶다면 앱을 설치하세요.
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash        # macOS · Linux
+```
 
 ```powershell
-irm https://agentlas.cloud/install.ps1 | iex
+irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
 ```
 
 <p align="center"><sub>최신 서명 릴리스를 받아 sha512를 확인한 뒤, <code>sudo</code>나 관리자 권한 없이 설치합니다 · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">직접 내려받기</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas 데스크탑은 오픈소스입니다 — 저장소 보러 가기</a></sub></p>
 
 <details>
-<summary><strong>데스크탑 + Agentlas OS</strong> 또는 <strong>Agentlas OS만</strong> (Claude Code · Codex · Gemini · Cursor용)</summary>
-
-데스크탑과 Agentlas OS를 함께:
+<summary><strong>데스크탑과 Agentlas OS를 함께</strong></summary>
 
 ```bash
 curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
@@ -82,23 +83,7 @@ curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
 $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 ```
 
-Agentlas OS만(앱 없이). <code>sudo</code> 없음, <code>$HOME</code> 밖으로 아무것도 쓰지 않습니다. 설치 후 쓰던 AI 도구를 껐다 켜고 <code>hephaestus doctor</code>를 실행하세요.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
 </details>
-
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop 받기">
-  </a>
-</p>
-
-<p align="center">
-  <sub>터미널 대신 화면으로 · macOS · Windows · Linux · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub>
-</p>
 
 ---
 
@@ -116,11 +101,6 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 - **후보 20개 한 태스크: 40,873B → 10,087B.** 후보 수를 줄인 게 아니라 행을
   압축했습니다. 정답이 목록에 들 확률은 그대로 두고 토큰만 4분의 1로 줄입니다.
 - 로컬 프로필 **849개**, 발행 목록 **188개** 규모에서 잰 값입니다.
-
-그리고 데려온 전문가는 빈손으로 오지 않습니다. 코드 지도, 사이트맵, 프로젝트 기억이
-태스크에 함께 실립니다. 어느 파일이 걸리는지, 무엇부터 읽어야 하는지, 정말 끝났는지를
-배치 전에 계산해서 넘깁니다. 기억만 따로 파는 도구들이 있지만, 여기서 기억은 배치와
-실행과 검증에 붙어 있는 한 부품입니다.
 
 ## 여기서 대부분의 도구가 멈춥니다
 
@@ -195,35 +175,22 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 
 ---
 
-## Agentlas 데스크탑 안에서는
+## 전문가를 직접 만들기
 
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One: 세 명의 팀이 진행 중인 목표를 수행하고, 옆에 실제 브라우저가 떠 있는 화면" width="100%"></a></p>
-<p align="center"><sub><strong>Agentlas One</strong> — 상주 팀이 진행 중인 목표를 수행하고, 팀이 조작하는 브라우저가 옆에 그대로 보입니다.</sub></p>
+명단에 맞는 사람이 없으면 만들면 됩니다. `/hep-build`는 한 문장을 이동 가능한
+싱글 에이전트나 팀으로 바꿉니다. 결과를 바꾸는 질문만 묻고, 패키지를 쓰고, 끝났다고
+말하기 전에 계약 검사를 돌립니다. `/hep-build session`은 지금 하고 있는 대화로
+같은 일을 합니다.
 
-**Agent Mail**로 One에 전용 메일 주소를 줄 수 있습니다. One의 메일 탭에서 받은편지함과 보낸편지함을 읽고, 새 메일과 답장을 보내며, 임시보관함을 확인합니다. 새 메일이 오면 알림만 받을지, 답장 초안을 만들지, One이 대신 답장할지 선택할 수 있습니다. 메일은 해당 기능이 포함된 Agentlas 계정과 요금제가 필요하고, 자동 처리는 데스크탑 앱이 실행 중일 때 동작합니다.
+```text
+/hep-build 앱스토어 리뷰 답글을 내보내기 전에 검토하는 에이전트
+/hep-build session
+```
 
-One·Work 작성창의 **AGI 버튼**은 현재 목표나 프로젝트의 **Alive Agent 베타**를 켜고 끄는 제어입니다. 토큰 한도를 정하고 모델 예비 순서와 현재 상태를 확인할 수 있습니다. 여기서 “AGI”는 자율 실행 모드의 버튼 이름이며, 기반 모델이 범용 인공지능을 달성했다는 뜻은 아닙니다.
-
-<table>
-<tr>
-<td width="50%"><img src="assets/readme/desktop/one-teammate.png" alt="One 팀원 편집: 캐릭터, 이름, 모델" width="100%"></td>
-<td width="50%"><img src="assets/readme/desktop/science-evidence-map.png" alt="추출한 주장을 출처 문단에 연결한 Agentlas Science 근거 지도" width="100%"></td>
-</tr>
-<tr>
-<td valign="top"><sub>팀원마다 캐릭터, 모델, 도구를 따로 가집니다.</sub></td>
-<td valign="top"><sub><strong>Agentlas Science</strong> — 추출한 주장마다 그 주장이 나온 원문 문단에 연결됩니다.</sub></td>
-</tr>
-<tr>
-<td width="50%"><img src="assets/readme/desktop/science-statistics.png" alt="표와 적합 그래프가 있는 Agentlas Science 통계 결과" width="100%"></td>
-<td width="50%"><img src="assets/readme/desktop/science-molstar.gif" alt="Agentlas Science 안에서 Mol*로 단백질 구조를 살펴보는 화면" width="100%"></td>
-</tr>
-<tr>
-<td valign="top"><sub>통계: 표와 그래프가 같은 검증된 결과에서 나옵니다.</sub></td>
-<td valign="top"><sub>Mol* 단백질 구조: 돌려 보고, 표현을 바꾸고, 보기를 새 버전으로 저장합니다.</sub></td>
-</tr>
-</table>
-
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><strong>Agentlas 데스크탑 다운로드 →</strong></a></p>
+모든 빌드는 입력·출력 스키마, 라우팅 카드, 그리고 아래 패키지 계약의 나머지를
+함께 냅니다. 필수 파일이 하나라도 빠지면 출시되지 않고 실패합니다. 만든 것은
+`/hep-upload`로 비공개 Agent Cloud에 두거나 무료 Hub에 공개하면, `/hep-network`가
+다른 후보와 똑같이 배치할 수 있습니다.
 
 ---
 
@@ -280,13 +247,7 @@ One·Work 작성창의 **AGI 버튼**은 현재 목표나 프로젝트의 **Aliv
 
 ---
 
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/readme/agentlas-desktop-hero-v2.png" alt="Agentlas Desktop 작업 화면" width="880">
-  </a>
-</p>
-
-<h2 align="center">데스크탑으로 더 효율적으로</h2>
+## Agentlas 데스크탑에서는
 
 데스크탑은 호스트 그 자체라, 실행이 시작되기 **전에** 한 명으로 될 일인지 팀이
 필요한 일인지 코드가 먼저 정합니다. 그 판단은 제안이 아니라 예약된 실행으로
@@ -294,38 +255,12 @@ One·Work 작성창의 **AGI 버튼**은 현재 목표나 프로젝트의 **Aliv
 에이전트 호출에 Agentlas 이용료는 없지만, 선택한 호스트나 모델·API 제공자의
 요금은 별도로 발생할 수 있습니다.
 
-쓰는 LLM을 전부 한곳에 겁니다. 이미 구독 중인 코딩 CLI(Claude Code, Codex,
-Antigravity, Cursor, Grok, Kimi, GitHub Copilot CLI), 직접 넣은 API 키 11종,
-그리고 로컬 모델까지. 검증된 llama.cpp 엔진을 설치해 Hugging Face에서 GGUF를
-받아 바로 돌리고, Ollama·LM Studio·MLX에도 붙습니다.
-
-**그리고 쓰던 모델의 사용량이 소진되면, 그 턴을 다음 순위 모델로 다시 돌립니다.**
-저장된 모델 선택은 바뀌지 않습니다. 한도가 풀리면 원래 모델로 알아서 돌아옵니다.
-
-<p align="center">
-  <strong><a href="https://agentlas.cloud/desktop">Agentlas Desktop 받기 →</a></strong><br>
-  <sub>macOS (애플 실리콘 · 인텔) · Windows · Linux</sub>
-</p>
-
 | 표면 | 역할 |
 | --- | --- |
-| **Agentlas Desktop** | 에이전트 팀, 기억, 브라우저 작업, 허브 전문가를 다루는 로컬 비주얼 OS |
-| **Hephaestus 플러그인** | 이 저장소 — CLI 호스트용 오픈소스 엔진과 명령 표면 |
+| **Agentlas OS (Hephaestus)** | 이 저장소 — CLI 호스트용 오픈소스 빌드·라우팅 엔진과 명령 표면 |
+| **Agentlas 데스크탑** | 같은 엔진을 화면으로 쓰는 앱(macOS · Windows · Linux) |
 | **Agentlas Hub** | 에이전트를 무료로 공개·탐색·사용하는 공간 |
 | **Agentlas Cloud** | 내가 만든 에이전트를 비공개로 보관하고 다시 꺼내는 소유자 전용 저장소 |
-
----
-
-<h2 align="center">한 줄로 시작하세요</h2>
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
-<p align="center">
-  <sub>이 설치기는 <strong>이 컴퓨터에서 찾은 지원 호스트 전부</strong>를 설정합니다. 지금 쓰고 있는
-  하나만이 아닙니다. 무엇을 어디에 쓰는지는 아래에 전부 적혀 있습니다.</sub>
-</p>
 
 ---
 
@@ -524,54 +459,6 @@ hep-build session
 
 
 <details>
-<summary><strong>안에 무엇이 들어 있나 — 라우팅·권한·기억·검색·패키지</strong></summary>
-
-
-Agentlas는 하나의 모델 제공자에 묶이지 않으면서 에이전트 작업을 운영체제적 책임으로 나눕니다:
-
-| 맡는 일 | Hephaestus에서의 구현 |
-| :--- | :--- |
-| **커널 / 정책 게이트** | 결정적 라우터 + 보안 게이트. 모든 라우팅 동작은 감사 가능한 영수증을 남기며, 도구 실행 권한은 활성 호스트와 런타임이 강제합니다. |
-| **프로세스 / 스레드** | 명시적 타입 계약(Routing Card, 안티스코프, 메모리 경계, 검증 심)을 갖춘 패키지로 컴파일되는 독립 에이전트와 멀티 에이전트 팀. |
-| **프로세스 스케줄러** | Network 2.0 라우팅(로컬 우선·품질 게이트·벤치마크 게이트 디스패치)과 Stormbreaker의 병렬 실행 패브릭, 추가 전용(append-only) 실행 저널의 결합. |
-| **메모리 관리(MMU)** | 두 경계로 관리되는 메모리: 로컬 프로젝트 메모리는 머신 안에 격리되고, 영구 승격은 로컬 Memory Curator가 게이트합니다. |
-| **가상 파일 시스템** | Production Ontology Runtime: 로컬 우선 소스 수집, CJK 트라이그램 FTS5 검색, 하이브리드 Reciprocal Rank Fusion, GraphRAG 검색. |
-| **프로세스 간 호출(IPC)** | A2A Agent Card Boundary(암호학적 가져오기/내보내기와 호출자 게이팅) + Model Context Protocol(MCP) 도구 등록. |
-| **패키지 매니저** | 무료 공개·탐색·사용을 위한 Agentlas Hub와 비공개 패키지 보관·복원을 위한 소유자 전용 Agent Cloud. 어느 쪽도 서버 측 모델 실행기가 아닙니다. |
-| **셸 인터페이스** | 외부 클라이언트 런타임에서는 작고 통일된 명령 집합, 네이티브 Agentlas 셸에서는 평문 의도 라우팅. |
-| **프로세스 초기화** | Briefing Interview Gate가 통합된 Meta-Agent Factory — 코드를 컴파일하기 전에 에이전트 파라미터를 확정합니다. |
-
-<p align="center">
-  <img src="assets/agentlas-meta-agent-architecture.svg" alt="Figure 1. Agentlas Meta-Agent architecture decomposition">
-</p>
-
-<p align="center">
-  <sub>그림 1. 요청 셰이핑, 네 개의 빌더, 생성된 패키지 계약, 메모리 큐레이션, 스킬 수명주기, 런타임 어댑터, 동기화 경계.</sub>
-</p>
-
----
-
-</details>
-
-
-<details>
-<summary><strong>Briefing Interview Engine</strong></summary>
-
-
-모호한 한 문장짜리 프롬프트로 생성된 에이전트는 실제 엣지 케이스 앞에서 무너집니다. Hephaestus v1.1.0은 **Briefing Interview Engine**을 통해 태스크 명세를 일급 OS 서비스로 격상합니다:
-
-*   **정량적 모호성 게이트:** 컴파일 스케줄러가 프롬프트의 명확성을 네 가지 핵심 벡터(목표, 제약, 범위, 컨텍스트)에서 평가합니다. 모호성 점수가 수치 임계값(모호성 점수 $\le 0.2$, 차원별 안전 하한 포함)을 통과할 때까지 빌드 프로세스는 엄격히 게이트됩니다. 명확한 프롬프트는 사소한 작업의 질문 수를 제한하는 예산 시스템 덕분에 인터뷰 루프를 완전히 건너뜁니다.
-*   **렌즈 기반 시스템 분석:** 명확화 질문은 구조화된 렌즈 테이블(범위, 의도, 도전 과제, 시스템 아키텍처)에서 동적으로 뽑아내며, 핵심 라우팅 지표에 집중합니다: *안티스코프 경계*(에이전트가 절대 하면 안 되는 것), *검증 가능한 수용 기준*, *종료 조건*.
-*   **Work Brief:** 확정된 세부 사항은 `.agentlas/work-brief.json`에 동결됩니다 — 검증된 목표, 구체적 제약, 출처 태그가 달린 가정 원장(assumption ledger), 메타데이터 모호성 점수를 기록합니다.
-*   **컨텍스트 반영 인플라이트 브리프:** CLI 도구 `cards migrate`가 브리프의 세부 내용을 에이전트 라우팅 카드의 트리거와 안티트리거에 자동으로 매핑합니다. `route --brief`를 실행하면 이 브리프가 모든 Stormbreaker 실행 패킷으로 전파되어, 제약과 종료 조건이 전체 수명주기에 걸쳐 병렬 서브프로세스를 관장하도록 보장합니다.
-*   **강화된 라우팅 판별력:** 같은 주제·다른 의도 충돌(예: 보안 에이전트가 배포 프롬프트를 가로채는 문제)을 양면 게이팅으로 방지합니다: 라우팅 카드에 기록된 인터뷰 검증 안티트리거, 그리고 레거시 `route` 경로에서 결정적 라우터가 `clarify`나 `propose_new`에 닿았을 때 호스트 모델에 넘기는 에스컬레이션. 엔진은 직접 모델을 부르지 않고, Workforce 선택은 순위를 다시 매기지 않습니다.
-
----
-
-</details>
-
-
-<details>
 <summary><strong>전체 설치 방법 — 소스·오프라인·호스트별</strong></summary>
 
 
@@ -677,7 +564,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 </details>
 
-**그냥 말하세요:** 설치 후 네이티브 Agentlas 인터페이스에서는 평문으로 말하면 태스크가 자동 라우팅됩니다. 외부 LLM 도구에서는 아래에 나열된 명시적 명령을 사용하세요. Codex 0.117+에서는 `$hephaestus-build`, `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload`, `$hephaestus-storm`, `$hephaestus-graph` 스킬을 사용하고 다른 MCP 표면은 평문으로 요청합니다.
+**그냥 말하세요:** 설치 후 네이티브 Agentlas 인터페이스에서는 평문으로 말하면 태스크가 자동 라우팅됩니다. 외부 LLM 도구에서는 아래에 나열된 명시적 명령을 사용하세요. Codex 0.117+에서는 `$hephaestus-build`, `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload` 스킬을 사용하고 다른 MCP 표면은 평문으로 요청합니다.
 
 ---
 
@@ -688,28 +575,31 @@ codex plugin add hephaestus@agentlas-core-engine
 <summary><strong>명령 표면 — 전체 명령</strong></summary>
 
 
-네이티브 Agentlas 환경 안에서 Hephaestus는 명령어 없이 동작합니다. 외부 LLM 도구는 의도적으로 작게 유지한 가시 명령 집합을 사용합니다. Stormbreaker, 리서치 로드아웃, 설정 테이블 같은 시스템 수준 유틸리티는 컨텍스트에서 자동으로 붙습니다:
+네이티브 Agentlas 환경 안에서 Hephaestus는 명령어 없이 동작합니다. 외부 LLM 도구는 에이전트를 만들고 그 에이전트로 일을 배치하는, 의도적으로 작게 유지한 명령 집합을 사용합니다:
 
 | 시스템 서브시스템 | 셸 명령 | 예시 |
 | :--- | :--- | :--- |
 | **에이전트 / 팀 빌더** | `/agentlas-build` (또는 `/agentlas build`, `/hep-build`) | `/agentlas-build create a customer support agent for Shopify refunds` |
 | **세션 → 에이전트 빌더** | `/hep-build session` (정본 경로: `hep-build session`) | `/hep-build session` |
 | **Workforce 연합 라우팅(Local + Cloud + Hub)** | `/agentlas-network` (또는 `/agentlas network`, `/hep-network`) | `/agentlas-network split this launch plan into research, copy, QA, and release agents` |
-| **스톰브레이커 루프** | `/agentlas-storm` (또는 `/agentlas storm`, `/hep-storm`) | `/agentlas-storm build full-stack saas landing page` |
-| **자동화 그래프** | `/agentlas-graph` (또는 `/agentlas graph`, `/hep-graph`) | `/agentlas-graph create daily market summary automation` |
-| **퍼스널 에이전트 모드** | `/agentlas-one on|off` (또는 `/agentlas one on|off`) | `/agentlas-one on` |
 | **등록된 로컬 에이전트 전용** | `/agentlas-local` (또는 `/agentlas local`, `/hep-local`) | `/agentlas-local use only agents registered on this machine` |
 | **내 Cloud 에이전트 전용** | `/agentlas-cloud` (또는 `/agentlas cloud`, `/hep-cloud`) | `/agentlas-cloud use my saved finance analyst agent to review this report` |
 | **공개 Hub 에이전트 전용** | `/agentlas-hub` (또는 `/agentlas hub`, `/hep-hub`) | `/agentlas-hub find public specialists for accessibility QA` |
 | **디렉터리 검색** | `/agentlas-search` (또는 `/agentlas search`, `/hep-search`) | `/agentlas-search find agents for a market report workflow` |
-| **브라우저 하드포인트** | `/agentlas-browser` (또는 `/agentlas browser`, `/hep-browser`) | `/agentlas-browser https://example.com` |
 | **프로세스 간 호출(IPC)** | `/agentlas-call` (또는 `/agentlas call`, `/hep-call`) | `/agentlas-call market-researcher, report-writer {draft a market report}` |
 | **Cloud / Hub 목적지 선택 게이트** | `/agentlas-upload` (또는 `/agentlas upload`, `/hep-upload`) | `/agentlas-upload ./agents/customer-support-hq` |
-| **메신저/채널 설정** | `/agentlas-connect` (또는 `/agentlas connect`, `/hep-connect`) | `/agentlas-connect Telegram for Marketing Agent Team` |
+| **로그인** | `/agentlas-login` (또는 `/agentlas login`, `/hep-login`) | `/agentlas-login` |
+| **오케스트레이터 / 워커 모델** | `/agentlas-orch` (또는 `/agentlas orch`, `/hep-orch`) | `/agentlas-orch orchestrator=frontier worker=economy` |
+| **런타임 + 어댑터 업데이트** | `/agentlas-update` (또는 `/agentlas update`, `/hep-update`) | `/agentlas-update` |
 
-퍼스널 에이전트 모드를 뺀 각 명령은 원래 이름인 `/hep-*`로도 그대로 동작합니다.
-`/agentlas network`와 `/hep-network`는 같은 명령입니다. 퍼스널 에이전트 모드에는
-처음부터 `/hep-*` 이름이 없었습니다. 이름을 없앤 것이 아니므로 기존 스크립트와
+`/hep-orch`는 오케스트레이터와 워커를 각각 어떤 모델이 맡을지 정합니다. **두 모델이
+실제로 나뉘어 도는 곳은 Claude Code뿐입니다.** 서브에이전트마다 모델을 따로 받는
+호스트가 Claude Code 하나이기 때문입니다. Codex, Gemini/Antigravity, Cursor,
+OpenCode에서는 한 모델이 모든 역할을 차례로 맡고, 배정 영수증과 상한은 그대로
+적용됩니다.
+
+각 명령은 원래 이름인 `/hep-*`로도 그대로 동작합니다. `/agentlas network`와
+`/hep-network`는 같은 명령입니다. 이름을 없앤 것이 아니므로 기존 스크립트와
 메모, 손에 익은 습관이 그대로 유지됩니다.
 
 
@@ -719,7 +609,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 
 <details>
-<summary><strong>더 깊이 — 라우팅 스케줄러, 실행 게이트, 기억, 검색 엔진</strong></summary>
+<summary><strong>더 깊이 — 빌드 팩토리와 라우팅 스케줄러</strong></summary>
 
 
 ### Meta-Agent Factory — 프로세스 생성
@@ -750,57 +640,6 @@ codex plugin add hephaestus@agentlas-core-engine
 *   **핀으로 고정된 실행:** 검증 후 Core는 원래 소스 세션에서 선택된 불변 릴리스만 가져와 릴리스·패키지·콘텐츠 다이제스트를 확인한 뒤 플래너, 워커, 종합, 검증자를 서로 다른 호출로 실행합니다.
 *   **증거 기반 평가:** 검색 커버리지, 호스트 선택, 불변 준비, 실제 자식 호출, 최종 검증을 각각 별도 주장으로 평가합니다. 벤치마크 결과나 사용 이력은 호스트의 인력 배치 결정을 대신하지 않습니다.
 
-
----
-
-### Stormbreaker — 규율 있는 실행
-Stormbreaker는 이 에이전트 OS의 실행 게이팅 서브시스템입니다. 모든 결과가 결정적 검사로 검증되기 전에는 에이전트가 성공을 보고하거나 종료하지 못하도록 보장합니다:
-
-```text
-Kernel Gating Envelope:
-[Scope Lock] -> [Decomposition] -> [Parallel Work Packets] -> [Verify Contracts] -> [Bounded Repair] -> [Final Gate]
-```
-
-로컬 실행 저널 덕분에 긴 실행도 중단 후 재개할 수 있습니다. 실행 패킷은 Work Brief를 함께 실어 나르므로, 안티스코프 규칙과 종료 기준이 모든 병렬 서브프로세스를 관장합니다. Stormbreaker는 명시적 완료 상태(**verified / unverified / blocked**)를 보고하여 자율 에이전트의 "완료 연기(completion theater)"를 방지합니다.
-
-
----
-
-### Ontology Runtime — 지식 파일시스템
-지식 집약적 작업에서는 `bin/ontology`가 시맨틱 파일시스템 역할을 하며, 비정형 로컬 파일을 에이전트가 읽을 수 있는 데이터베이스 스택으로 변환합니다:
-
-```text
-Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization] 
-  -> [FTS5 + SQLite Storage] -> [Reciprocal Rank Fusion Ranking] -> [GraphRAG Search]
-```
-
-GPL 의존성 없이 한국어 문서 파싱(HWPX 및 레거시 HWP5)을 퍼스트파티로 제공합니다. 완전 로컬 SQLite 기반이며, 기밀·비공개 청크는 격리되어 외부 클라우드 훅에 도달하지 못합니다.
-
-```bash
-bin/ontology ingest ./corpus --scope internal
-bin/ontology query "Project Helios Memory Curator" --agent verifier
-bin/ontology memory candidates
-```
-
-
----
-
-### 관리형 메모리 — 큐레이션 승격
-*   **로컬 프로젝트 메모리:** `~/.agentlas/networking/` 아래에 저장되며 로컬 머신에 격리됩니다. 명시적 승인 없이는 내보낼 수 없습니다.
-*   **워크스페이스 개인화:** 선택한 Cloud/Hub 에이전트의 개인화 로그(요약, 플레이북, 플러그인 잠금, 영수증)를 원시 프롬프트, 자격 증명 값, 비공개 파일을 저장하지 않은 채 관리합니다.
-*   **큐레이터 게이팅:** 스킬과 메모리 수정은 후보 상태로 유지됩니다. 로컬 큐레이터가 홀드아웃/리플레이 증명, 롤백 커버리지, 보안 정책 승인을 확인한 뒤에야 영구 상태로 승격됩니다.
-
----
-
-### A2A Boundary — 에이전트 간 격리
-표준화된 CLI 명령으로 에이전트 간 협업을 안전하게 수행할 수 있습니다:
-
-```bash
-hephaestus ao a2a import ./agent-card.json .
-hephaestus ao a2a export . --agent local/10-builder
-hephaestus route "run the release check" --caller local/orchestrator --project .
-```
-가져오기(import)는 제안으로 처리되어 자동 호출이 제한되고, 내보내기(export)는 비공개 경로와 로직을 가리며, 호출은 라우팅이 해석되기 전에 호출자 게이트를 거칩니다.
 
 ---
 
@@ -852,32 +691,6 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 라우팅, 메모리, 입출력 계약, 권한, 런타임 어댑터, 평가 증거가 함께 들어 있는
 운영 단위입니다.
 
-### 의존관계 기반 프로젝트 맥락
-
-Hephaestus는 프로젝트 지도를 로컬에만 보관합니다. `context refresh`만 현재
-파일 내용으로 주소가 정해지는 스냅샷과 v3 manifest를 쓰며, 이후 `impact`,
-`verify`, `slice` 같은 명령은 기본적으로 그 스냅샷을 변경하지 않고 읽습니다.
-내용이 오래됐거나 인벤토리가 불완전하면 조용히 다시 만들지 않고
-명시적으로 실패합니다. 작업이 구체화되면 전체 문서를 밀어 넣는 대신 그 작업이
-구조적으로 의존하는 목표, 제약, 정의, 역참조, 인터페이스와 관련 파일만
-Context Slice로 전달합니다.
-
-```sh
-hephaestus context refresh --project .
-hephaestus context refs resolveHubEntityKind --project .
-hephaestus context slice --project . --task "entity kind 라우팅 수정" \
-  --target src/package-kind.ts --render
-hephaestus context impact --project . --changed src/package-kind.ts
-hephaestus context verify --project . --changed src/package-kind.ts \
-  --reviewed src/register/route.ts \
-  --verified command:package.json#typecheck
-```
-
-Claude와 Codex는 로컬 훅으로 작업 조각을 받고 편집 직전에 역참조 경고를
-받습니다. Desktop, Terminal, Stormbreaker, Workforce도 같은 Core 구현을
-사용합니다. Network/Cloud 검색과 번들 가져오기는 계속 redacted 상태이며,
-로컬 소스 경로나 Context Map 내용은 외부로 보내지 않습니다.
-
 ---
 
 </details>
@@ -888,10 +701,12 @@ Claude와 Codex는 로컬 훅으로 작업 조각을 받고 편집 직전에 역
 |---|---|
 | 정본 라우트 이해하기 | [`AGENTS.md`](AGENTS.md) |
 | 전체 팀 계약 보기 | [`agent.md`](agent.md) |
-| 사이트맵 계약 | [`schemas/sitemap.schema.json`](schemas/sitemap.schema.json) |
-| 모드 맵 | [`modes/README.md`](modes/README.md) |
+| 패키지 계약 | [`package-contract.json`](package-contract.json) |
+| 세션 빌드 | [`contracts/session-build.md`](contracts/session-build.md) |
 | 라우팅 카드 | [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
-| 메모리 맵 | [`schemas/memory-map.schema.json`](schemas/memory-map.schema.json) |
+| Workforce 작업 지시서 | [`schemas/workforce-work-order.schema.json`](schemas/workforce-work-order.schema.json) |
+| 컴파일된 브리프 | [`schemas/agentlas-brief.schema.json`](schemas/agentlas-brief.schema.json) |
+| 모드 맵 | [`modes/README.md`](modes/README.md) |
 
 ---
 

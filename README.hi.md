@@ -16,7 +16,6 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center"><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4"><img src="assets/readme/agentlas-one-promo-20s.jpg" alt="Agentlas One का 20 सेकंड का वीडियो देखें" width="720"></a><br><sub><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4">Agentlas One का वीडियो देखें (20 सेकंड) ▶</a></sub></p>
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
@@ -41,8 +40,6 @@
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
   <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
 </p>
-<p align="center"><a href="https://www.producthunt.com/products/agentlas-science?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-agentlas-science"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=dark"><img alt="Agentlas Science on Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=light"></picture></a></p>
-
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -53,26 +50,28 @@
 
 **Agentlas Hub एक निःशुल्क एजेंट समुदाय है।** सार्वजनिक एजेंट प्रकाशित या कॉल करने के लिए कीमत, लीज़ या Agentlas क्रेडिट खरीदना आवश्यक नहीं है। कॉल करने वाला अपना मॉडल और API उपयोग करता है; सदस्यता Agentlas सॉफ़्टवेयर और होस्टेड सुविधाओं के लिए है। नई Hub गतिविधि पर क्रिएटर सेटलमेंट बंद है; मौजूदा बैलेंस और पुराने दावे लागू खाता शर्तों के अनुसार संभाले जाते हैं।
 
-### Agentlas Desktop इंस्टॉल करें
+### Install
 
-**macOS · Linux**
+**Agentlas OS** — इस मशीन के Claude Code, Codex, Gemini CLI, Antigravity, Cursor और बाकी hosts के लिए। <code>sudo</code> नहीं, <code>$HOME</code> के बाहर कुछ नहीं लिखा जाता। Install के बाद अपना agent host restart करें और <code>hephaestus doctor</code> चलाएँ।
 
 ```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-**Windows (PowerShell)**
+**Agentlas Desktop** — terminal की जगह window पसंद हो तो यह app।
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash        # macOS · Linux
+```
 
 ```powershell
-irm https://agentlas.cloud/install.ps1 | iex
+irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
 ```
 
 <p align="center"><sub>नवीनतम हस्ताक्षरित रिलीज़ डाउनलोड करता है, उसका sha512 जाँचता है, और बिना <code>sudo</code> या एडमिन अनुमति के इंस्टॉल करता है · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">मैन्युअल रूप से डाउनलोड करें</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas Desktop ओपन सोर्स है — रिपॉज़िटरी देखें</a></sub></p>
 
 <details>
-<summary><strong>Desktop + Agentlas OS</strong>, या <strong>सिर्फ़ Agentlas OS</strong> (Claude Code · Codex · Gemini · Cursor के लिए)</summary>
-
-Desktop और Agentlas OS एक साथ:
+<summary><strong>Desktop और Agentlas OS एक साथ</strong></summary>
 
 ```bash
 curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
@@ -82,23 +81,7 @@ curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
 $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 ```
 
-सिर्फ़ Agentlas OS (ऐप के बिना)। <code>sudo</code> नहीं, <code>$HOME</code> के बाहर कुछ नहीं लिखा जाता। इंस्टॉल के बाद अपना एजेंट होस्ट दोबारा शुरू करें और <code>hephaestus doctor</code> चलाएँ।
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
 </details>
-
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="Agentlas Desktop लें">
-  </a>
-</p>
-
-<p align="center">
-  <sub>terminal के बजाय एक window · macOS · Windows · Linux · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub>
-</p>
 
 ---
 
@@ -111,8 +94,6 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 - **A2A v1.0, जैसा लिखा है वैसा।** Agent cards मानक पथ `/.well-known/agent-card.json` पर पढ़े और लिखे जाते हैं। Import, export और caller gating सब मानक पर टिके हैं। कोई बाहरी agent तभी बुलाया जा सकता है जब उसकी capability aligned हो **और हस्ताक्षरित card से उसकी पहचान सत्यापित हो।**
 - **एक task, 20 candidates: 40,873B → 10,087B.** candidates घटाए नहीं गए — पंक्ति compress की गई। सही agent के सूची में होने की संभावना वही रहती है, tokens एक-चौथाई रह जाते हैं।
 - ये आँकड़े **849 local profiles** और **188 प्रकाशित listings** पर मापे गए हैं।
-
-और जो specialist आता है, खाली हाथ नहीं आता। code map, sitemap और project की memory task के साथ ही चलती है। कौन-सी फ़ाइलें दायरे में हैं, पहले क्या पढ़ना है, काम सचमुच पूरा हुआ या नहीं — यह सब staffing से पहले गणना करके साथ सौंपा जाता है। कुछ tools अकेले memory बेचते हैं; यहाँ memory staffing, execution और verification से जुड़ा एक पुर्ज़ा भर है।
 
 ## यहीं अधिकांश tools रुक जाते हैं
 
@@ -179,31 +160,16 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 ---
 
-## Agentlas Desktop के अंदर
+## अपना specialist ख़ुद बनाइए
 
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One: तीन सदस्यों की टीम एक चालू लक्ष्य पर काम करती है, बगल में लाइव ब्राउज़र दिखता है" width="100%"></a></p>
-<p align="center"><sub><strong>Agentlas One</strong> — एक स्थायी टीम चालू लक्ष्य पर काम करती है, और जिस ब्राउज़र को वह चलाती है वह बगल में दिखता रहता है।</sub></p>
+सूची में कोई फ़िट न हो, तो एक बना लीजिए। `/hep-build` एक वाक्य को portable single agent या team में बदल देता है: सिर्फ़ वही सवाल पूछता है जो नतीजा बदलें, package लिखता है, और काम पूरा कहने से पहले contract checks चलाता है। `/hep-build session` यही काम उस बातचीत से करता है जिसमें आप अभी हैं।
 
-<table>
-<tr>
-<td width="50%"><img src="assets/readme/desktop/one-teammate.png" alt="One टीम सदस्य का संपादन: कैरेक्टर, नाम और मॉडल" width="100%"></td>
-<td width="50%"><img src="assets/readme/desktop/science-evidence-map.png" alt="Agentlas Science का साक्ष्य मानचित्र, जो हर निकाले गए दावे को उसके स्रोत अंश से जोड़ता है" width="100%"></td>
-</tr>
-<tr>
-<td valign="top"><sub>हर टीम सदस्य का अपना कैरेक्टर, मॉडल और टूल होते हैं।</sub></td>
-<td valign="top"><sub><strong>Agentlas Science</strong> — हर निकाला गया दावा उस स्रोत अंश से जुड़ा होता है जहाँ से वह आया।</sub></td>
-</tr>
-<tr>
-<td width="50%"><img src="assets/readme/desktop/science-statistics.png" alt="तालिका और फ़िट ग्राफ़ वाला Agentlas Science सांख्यिकी परिणाम" width="100%"></td>
-<td width="50%"><img src="assets/readme/desktop/science-molstar.gif" alt="Agentlas Science में Mol* से प्रोटीन संरचना देखना" width="100%"></td>
-</tr>
-<tr>
-<td valign="top"><sub>सांख्यिकी: तालिका और ग्राफ़ एक ही सत्यापित परिणाम से बनते हैं।</sub></td>
-<td valign="top"><sub>Mol* में प्रोटीन संरचना: घुमाएँ, रूप बदलें, और व्यू को नए संस्करण के रूप में सहेजें।</sub></td>
-</tr>
-</table>
+```text
+/hep-build an agent that reviews App Store replies before they go out
+/hep-build session
+```
 
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><strong>Agentlas Desktop डाउनलोड करें →</strong></a></p>
+हर build input और output schemas, routing card और नीचे दिए package contract की बाकी फ़ाइलें साथ देता है; कोई ज़रूरी फ़ाइल छूटे तो build ship होने की जगह fail होता है। `/hep-upload` से इसे अपने private Agent Cloud में रखें या free Hub पर publish करें, फिर `/hep-network` इसे किसी भी दूसरे candidate की तरह staff कर सकता है।
 
 ---
 
@@ -245,43 +211,16 @@ Ratings, install counts, पिछले महीने की बिक्र�
 
 ---
 
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/readme/agentlas-desktop-hero-v2.png" alt="Agentlas Desktop workspace" width="880">
-  </a>
-</p>
-
-<h2 align="center">Desktop पर और असरदार</h2>
+## Agentlas Desktop पर
 
 Desktop खुद host है, इसलिए run शुरू होने से **पहले** ही code तय कर लेता है कि काम एक agent से बनेगा या टीम चाहिए। वह निर्णय सुझाव नहीं, एक आरक्षित run के रूप में दर्ज होता है। यह इंस्टॉल किए हुए agents के साथ सार्वजनिक Hub agents को भी काम में लगा सकता है। सार्वजनिक Hub agents को बुलाने पर Agentlas शुल्क नहीं लगता; चुने हुए host या model/API provider के शुल्क अलग से लग सकते हैं।
 
-आप जितने LLM इस्तेमाल करते हैं, सब एक जगह: जिन coding CLIs की आप पहले से subscription लेते हैं (Claude Code, Codex, Antigravity, Cursor, Grok, Kimi, GitHub Copilot CLI), 11 providers की आपकी अपनी API keys, और local models भी। यह एक सत्यापित llama.cpp engine install करता है, Hugging Face से GGUF models लाता है, और Ollama, LM Studio तथा MLX से भी जुड़ता है।
-
-**और जिस model पर आप हैं उसका quota ख़त्म हो जाए, तो वह turn आपकी अपनी priority के अगले model पर दोबारा चलाया जाता है।** आपका सहेजा हुआ model चुनाव नहीं बदलता, और limit हटते ही मूल model अपने आप लौट आता है।
-
-<p align="center">
-  <strong><a href="https://agentlas.cloud/desktop">Agentlas Desktop लें →</a></strong><br>
-  <sub>macOS (Apple silicon · Intel) · Windows · Linux</sub>
-</p>
-
-| सतह | भूमिका |
+| Surface | भूमिका |
 | --- | --- |
-| **Agentlas Desktop** | agent teams, memory, browser काम और Hub specialists के लिए स्थानीय visual OS |
-| **Hephaestus plugin** | यही repo — CLI hosts के लिए open-source engine और command surface |
-| **Agentlas Hub** | एजेंट प्रकाशित करने, खोजने और मुफ़्त उपयोग करने की सार्वजनिक जगह |
-| **Agentlas Cloud** | अपने बनाए agents को निजी तौर पर रखने और वापस लाने का owner-only store |
-
----
-
-<h2 align="center">एक लाइन से शुरू करें</h2>
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
-<p align="center">
-  <sub>यह installer <strong>इस मशीन पर मिले हर supported host</strong> को configure करता है, सिर्फ़ उसे नहीं जिसमें आप अभी टाइप कर रहे हैं। यह क्या और कहाँ लिखता है, नीचे पूरा दिया है।</sub>
-</p>
+| **Agentlas OS (Hephaestus)** | यह repo — CLI hosts के लिए open-source build और routing engine तथा command surface |
+| **Agentlas Desktop** | वही engine window के साथ चलाने वाला app (macOS · Windows · Linux) |
+| **Agentlas Hub** | agents को मुफ़्त में publish, discover और use करने की public जगह |
+| **Agentlas Cloud** | अपने agents को private रूप से रखने और फिर निकालने के लिए owner-scoped store |
 
 ---
 
@@ -339,62 +278,6 @@ plugin reload करने को कहें।
 
 
 <details>
-<summary><strong>अंदर क्या है — routing, permissions, memory, retrieval, packaging</strong></summary>
-
-
-इंडस्ट्री अब stateless, ad-hoc "tools वाले chatbots" से आगे निकल चुकी है। Google और प्रमुख AI labs द्वारा developer रणनीतियों को **Agent Operating Systems** (जैसे Antigravity orchestration platform और Gemini Spark daemon processes) के इर्द-गिर्द पुनर्परिभाषित करने के साथ, AI agents आधिकारिक रूप से first-class operating-system primitives बन चुके हैं — विशिष्ट पहचान, relational memory systems, security permissions और native tool-calling environments वाली long-lived, stateful processes।
-
-इससे टीमों के लिए महत्वपूर्ण इंजीनियरिंग प्रश्न बदल जाता है: **आपका workforce किसके operating system पर चलता है?**
-
-यदि आपके agents किसी एक model provider के proprietary API से कसकर जुड़े (tightly coupled) हैं, तो आपकी organizational memory, custom tools और task-specific logic प्रभावी रूप से उस vendor के ecosystem में lock हो जाते हैं।
-
-**Hephaestus एक स्वतंत्र kernel है, जो किसी एक model से बंधा नहीं है।** यह कोई agent framework या API wrapper नहीं है। यह एक local-first Agent Operating System है — एक unified execution substrate, जो portable agent processes को किसी भी LLM runtime पर compile, schedule और govern करता है। नीचे का reasoning engine बदल दीजिए; पूरा workforce जस-का-तस सुरक्षित रहता है।
-
-Hephaestus classical operating system अवधारणाओं से सीधे map होता है:
-
-| OS Abstraction | Hephaestus में कार्यान्वयन |
-| :--- | :--- |
-| **Kernel / Policy Gate** | Deterministic router + security gates। हर routing action एक auditable receipt उत्पन्न करता है; tool execution permissions सख्ती से sandboxed हैं और active runtime द्वारा लागू की जाती हैं। |
-| **Processes / Threads** | स्पष्ट, typed contracts (Routing Cards, anti-scopes, memory boundaries और verification shims) के साथ packages के रूप में compile किए गए स्वतंत्र agents और multi-agent teams। |
-| **Process Scheduler** | Network 2.0 routing (local-first, quality-gated और benchmark-gated dispatch), जो Stormbreaker के parallel execution fabric और append-only run journals के साथ जुड़ा है। |
-| **Memory Management (MMU)** | Two-boundary governed memory: local project memory मशीन पर isolated रहती है, जबकि durable promotions एक local Memory Curator द्वारा gate किए जाते हैं। |
-| **Virtual File System** | Production Ontology Runtime: local-first source ingestion, CJK trigram FTS5 search, hybrid Reciprocal Rank Fusion और GraphRAG retrieval। |
-| **Inter-Process Call (IPC)** | A2A Agent Card Boundary (cryptographic import/export और caller-gating) + Model Context Protocol (MCP) tool registrations। |
-| **Package Manager** | Agentlas Hub & Cloud: built-in quality gates के साथ agents को compile, publish, version और share करें। |
-| **Shell Interface** | External client runtimes में छोटा, unified command set; native Agentlas shells में plain-language intent routing। |
-| **Process Initialization** | Integrated Briefing Interview Gate के साथ Meta-Agent Factory — code compile करने से पहले agent parameters को specify करना। |
-
-<p align="center">
-  <img src="assets/agentlas-meta-agent-architecture.svg" alt="Figure 1. Agentlas Meta-Agent architecture decomposition">
-</p>
-
-<p align="center">
-  <sub>चित्र 1. Request shaping, चार builders, generated package contracts, memory curation, skill lifecycle, runtime adapters और sync boundaries।</sub>
-</p>
-
----
-
-</details>
-
-
-<details>
-<summary><strong>Briefing Interview Engine</strong></summary>
-
-
-अस्पष्ट, एक-वाक्य वाले prompts से generate किए गए agents वास्तविक दुनिया के edge cases में विफल हो जाते हैं। Hephaestus v1.1.0, **Briefing Interview Engine** के माध्यम से task specification को एक first-class OS service के रूप में स्थापित करता है:
-
-*   **Quantitative Ambiguity Gates:** Compilation scheduler चार प्रमुख vectors (Goal, Constraints, Scope, Context) पर prompt की स्पष्टता का मूल्यांकन करता है। build process तब तक सख्ती से gated रहती है जब तक ambiguity score एक numeric threshold पार न कर ले (ambiguity score $\le 0.2$, per-dimension safety floors के साथ)। स्पष्ट prompts एक budget system के जरिए interview loop को पूरी तरह bypass कर जाते हैं, जो trivial tasks के लिए प्रश्नों की संख्या सीमित रखता है।
-*   **Lens-Driven System Analysis:** स्पष्टीकरण के प्रश्न एक structured lens table (Scope, Intent, Challenge, System Architecture) से गतिशील रूप से लिए जाते हैं, जो critical routing indicators पर केंद्रित है: *anti-scope bounds* (agent को क्या **नहीं** करना है), *verifiable acceptance criteria* और *exit conditions*।
-*   **Work Brief:** तय हो चुके विवरण `.agentlas/work-brief.json` में freeze कर दिए जाते हैं — जिसमें validated goal, ठोस constraints, source tags के साथ एक assumption ledger और metadata ambiguity score दर्ज होते हैं।
-*   **Contextual In-Flight Briefs:** CLI tool `cards migrate` brief के विवरणों को स्वचालित रूप से agent के routing card के triggers और anti-triggers पर map करता है। `route --brief` चलाने से यह brief सभी Stormbreaker execution packets तक propagate होता है, जिससे पूरे lifecycle में parallel subprocesses पर constraints और exit conditions लागू रहते हैं।
-*   **Enhanced Routing Discrimination:** Double-sided gating के जरिए same-topic/different-intent टकराव (जैसे किसी security agent का deployment prompt को intercept कर लेना) रोका जाता है: routing card पर interview-validated anti-triggers, और legacy `route` path पर, जब deterministic router `clarify` या `propose_new` पर पहुँचता है, तब host model को escalation। Engine खुद कभी model call नहीं करता, और Workforce selection कभी re-rank नहीं करता।
-
----
-
-</details>
-
-
-<details>
 <summary><strong>सभी Install Methods — source, offline, host-wise</strong></summary>
 
 
@@ -437,7 +320,7 @@ documented bare `/agentlas build` autocomplete के लिए ऊपर का
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.62
 codex plugin add hephaestus@agentlas-core-engine
 ```
-*नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। install के बाद `/prompts:agentlas` in-app entry है।*
+*नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। Codex 0.117+ में custom `/prompts:*` commands हटा दिए गए; install के बाद plugin skill को `$hephaestus-network <request>` से बुलाएँ।*
 
 </details>
 
@@ -448,7 +331,7 @@ Repo को clone करें और `AGENTS.md`, `agent.md`, `agents/`, `skill
 
 </details>
 
-**बस बात कीजिए:** Installation के बाद native Agentlas interfaces में plain language में बोलें — tasks अपने-आप route हो जाते हैं। External LLM tools में नीचे दिए गए explicit commands का उपयोग करें। जब पता न हो कि कौन-से agents मौजूद हैं, तो `/agentlas search` से शुरू करें। Telegram connect करने के लिए Claude Code में `/agentlas connect` या Codex में `/prompts:agentlas` use करें।
+**बस बात कीजिए:** Installation के बाद native Agentlas interfaces में plain language में बोलें — tasks अपने-आप route हो जाते हैं। External LLM tools में नीचे दिए गए explicit commands का उपयोग करें। जब पता न हो कि कौन-से agents मौजूद हैं, तो `/agentlas search` से शुरू करें।
 
 ---
 
@@ -459,7 +342,7 @@ Repo को clone करें और `AGENTS.md`, `agent.md`, `agents/`, `skill
 <summary><strong>कमांड सरफेस — सभी commands</strong></summary>
 
 
-Native Agentlas environments के अंदर Hephaestus commandless चलता है। External LLM tools जान-बूझकर छोटा रखा गया visible command set उपयोग करते हैं। Stormbreaker, research loadouts और configuration tables जैसी system-level utilities context से अपने-आप जुड़ जाती हैं:
+Native Agentlas environments के अंदर Hephaestus commandless चलता है। External LLM tools जान-बूझकर छोटा रखा गया visible command set उपयोग करते हैं। ये commands agents बनाने और उन्हीं से काम staff करने के लिए हैं:
 
 | सिस्टम सबसिस्टम | Shell Command | उदाहरण |
 | :--- | :--- | :--- |
@@ -471,7 +354,6 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 | **Directory Search** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
 | **Inter-Process Call (IPC)** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
 | **Package Exporter** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
-| **Telegram Setup** | `/agentlas connect` या `/prompts:agentlas` | `/agentlas connect Telegram for Marketing Agent Team` |
 
 हर कमांड अपने मूल नाम `/hep-*` से भी काम करती है। `/agentlas network` और
 `/hep-network` एक ही कमांड हैं। कोई नाम हटाया नहीं गया है, इसलिए मौजूदा
@@ -484,7 +366,7 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 
 
 <details>
-<summary><strong>और गहराई में — routing scheduler, execution gate, memory, retrieval engine</strong></summary>
+<summary><strong>और गहराई में — build factory और routing scheduler</strong></summary>
 
 
 ### Meta-Agent Factory — Process निर्माण
@@ -515,57 +397,6 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 *   **Pinned Execution:** Validation के बाद Core original source session से केवल selected immutable releases लाता है, release/package/content digests जाँचता है, फिर planner, worker, synthesis और verifier को अलग invocations में चलाता है।
 *   **Evidence-Scored Evaluation:** Retrieval coverage, host selection, immutable preparation, real child invocations और final verification अलग claims के रूप में score होते हैं। Benchmark या usage history host staffing decision की जगह नहीं लेते।
 
-
----
-
-### Stormbreaker — अनुशासित Execution
-Stormbreaker इस Agent OS का execution gating subsystem है। यह सुनिश्चित करता है कि agents तब तक success रिपोर्ट न करें या terminate न हों, जब तक सभी outcomes deterministic checks से verify न हो जाएँ:
-
-```text
-Kernel Gating Envelope:
-[Scope Lock] -> [Decomposition] -> [Parallel Work Packets] -> [Verify Contracts] -> [Bounded Repair] -> [Final Gate]
-```
-
-एक local run journal लंबे executions को रुकावट के बाद resumable बनाता है। Execution packets अपने साथ Work Brief लेकर चलते हैं, ताकि anti-scope नियम और exit criteria सभी parallel subprocesses पर लागू रहें। Stormbreaker स्पष्ट completion states (**verified / unverified / blocked**) रिपोर्ट करता है, ताकि autonomous completion theater न होने पाए।
-
-
----
-
-### Ontology Runtime — Knowledge Filesystem
-Knowledge-intensive operations के लिए `bin/ontology` semantic filesystem की तरह काम करता है, जो unstructured local files को agent-readable database stack में बदल देता है:
-
-```text
-Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization] 
-  -> [FTS5 + SQLite Storage] -> [Reciprocal Rank Fusion Ranking] -> [GraphRAG Search]
-```
-
-इसमें first-party Korean document parsing (HWPX और legacy HWP5) शामिल है, बिना किसी GPL dependency के। पूरी तरह local और SQLite-backed; confidential और private chunks isolated रहते हैं, जिससे वे external cloud hooks तक नहीं पहुँच पाते।
-
-```bash
-bin/ontology ingest ./corpus --scope internal
-bin/ontology query "Project Helios Memory Curator" --agent verifier
-bin/ontology memory candidates
-```
-
-
----
-
-### Governed Memory — Curated Promotion
-*   **Local Project Memory:** `~/.agentlas/networking/` के अंतर्गत संग्रहीत और local मशीन तक isolated। स्पष्ट authorization के बिना इसे export नहीं किया जा सकता।
-*   **Workspace Personalization:** चुने गए Cloud/Hub agents के लिए personalization logs (summaries, playbooks, plugin locks और receipts) manage करता है — raw prompts, credential values या private files को store किए बिना।
-*   **Curator Gating:** Skills और memory modifications candidates के रूप में रखे जाते हैं। इन्हें durable status पर तभी promote किया जाता है जब एक local curator holdout/replay proofs, rollback coverage और security policy approvals की पुष्टि कर दे।
-
----
-
-### A2A Boundary — Inter-Agent Isolation
-Standardized CLI commands सुरक्षित inter-agent coordination संभव बनाते हैं:
-
-```bash
-hephaestus ao a2a import ./agent-card.json .
-hephaestus ao a2a export . --agent local/10-builder
-hephaestus route "run the release check" --caller local/orchestrator --project .
-```
-Import एक proposal की तरह काम करता है (automatic invocation को सीमित करते हुए), export private paths और logic को redact करता है, और routing resolve होने से पहले invocations caller-gated होते हैं।
 
 ---
 
@@ -621,6 +452,11 @@ Hephaestus agents को एक standard directory layout में package क�
 |---|---|
 | Canonical route को समझें | [`AGENTS.md`](AGENTS.md) |
 | पूरा team contract देखें | [`agent.md`](agent.md) |
+| Package contract | [`package-contract.json`](package-contract.json) |
+| Session build | [`contracts/session-build.md`](contracts/session-build.md) |
+| Routing card | [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
+| Workforce work order | [`schemas/workforce-work-order.schema.json`](schemas/workforce-work-order.schema.json) |
+| Compiled brief | [`schemas/agentlas-brief.schema.json`](schemas/agentlas-brief.schema.json) |
 
 ---
 

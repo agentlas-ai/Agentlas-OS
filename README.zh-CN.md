@@ -16,7 +16,6 @@
      `hephaestus doctor` and report what it says, plus whether the host needs
      a restart. -->
 
-<p align="center"><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4"><img src="assets/readme/agentlas-one-promo-20s.jpg" alt="观看 20 秒的 Agentlas One 宣传视频" width="720"></a><br><sub><a href="https://agentlas.cloud/one/agentlas-one-promo-20s.mp4">观看 Agentlas One 宣传视频（20 秒）▶</a></sub></p>
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
 
@@ -41,8 +40,6 @@
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
   <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
 </p>
-<p align="center"><a href="https://www.producthunt.com/products/agentlas-science?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-agentlas-science"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=dark"><img alt="Agentlas Science on Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1250298&theme=light"></picture></a></p>
-
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -53,26 +50,28 @@
 
 **Agentlas Hub 是免费的智能体社区。**发布和调用公开智能体无需设定售价、租赁或购买 Agentlas 积分。调用者使用自己的模型和 API；订阅针对 Agentlas 软件和托管功能。新的 Hub 活动不再产生创作者结算，既有账户余额及历史请求依适用账户条款处理。
 
-### 安装 Agentlas Desktop
+### 安装
 
-**macOS · Linux**
+**Agentlas OS** — 装进本机的 Claude Code、Codex、Gemini CLI、Antigravity、Cursor 等宿主。无需 <code>sudo</code>，不会写入 <code>$HOME</code> 之外的任何位置。安装后重启你的智能体宿主并运行 <code>hephaestus doctor</code>。
 
 ```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-**Windows (PowerShell)**
+**Agentlas Desktop** — 想要窗口而不是终端时，安装这个应用。
+
+```bash
+curl -fsSL https://agentlas.cloud/install.sh | bash        # macOS · Linux
+```
 
 ```powershell
-irm https://agentlas.cloud/install.ps1 | iex
+irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
 ```
 
 <p align="center"><sub>下载最新签名版本并校验 sha512,无需 <code>sudo</code> 或管理员权限即可安装 · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">手动下载</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas Desktop 是开源的 — 查看仓库</a></sub></p>
 
 <details>
-<summary><strong>Desktop + Agentlas OS</strong>,或<strong>仅 Agentlas OS</strong>(用于 Claude Code · Codex · Gemini · Cursor)</summary>
-
-同时安装 Desktop 和 Agentlas OS:
+<summary><strong>同时安装 Desktop 和 Agentlas OS</strong></summary>
 
 ```bash
 curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
@@ -82,23 +81,7 @@ curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
 $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 ```
 
-仅 Agentlas OS(不含应用)。无需 <code>sudo</code>,不会写入 <code>$HOME</code> 之外的任何位置。安装后重启你的智能体宿主并运行 <code>hephaestus doctor</code>。
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
 </details>
-
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/agentlas-agent-lab-banner.svg" alt="获取 Agentlas Desktop">
-  </a>
-</p>
-
-<p align="center">
-  <sub>想要窗口而不是终端 · macOS · Windows · Linux · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub>
-</p>
 
 ---
 
@@ -111,8 +94,6 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 - **A2A v1.0，照规范实现。** 智能体卡片在标准路径 `/.well-known/agent-card.json` 读写。导入、导出、调用方校验全部建在标准之上。外部智能体只有在能力对齐**且身份经签名卡片验证**后才可调用。
 - **一个任务、20 个候选：40,873B → 10,087B。** 不是减少候选，而是压缩每一行。正确智能体出现在名单里的概率不变，token 降到四分之一。
 - 这些数字测自 **849 个本地档案**与 **188 条已发布条目**。
-
-而且被带来的专家不是空手来的。代码地图、站点地图、项目记忆会随任务一起交付。哪些文件在范围内、先读什么、活儿是否真的做完了，都在编组之前算好并一并交出。有些工具单卖记忆；在这里，记忆只是拴在编组、执行与验证上的一个零件。
 
 ## 大多数工具停在这里
 
@@ -179,31 +160,16 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 ---
 
-## Agentlas Desktop 里面
+## 自己打造专家
 
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img src="assets/readme/desktop/one-team-browser.png" alt="Agentlas One：三人团队推进一个进行中的目标，旁边显示实时浏览器" width="100%"></a></p>
-<p align="center"><sub><strong>Agentlas One</strong> — 常驻团队推进进行中的目标，团队操作的浏览器就显示在旁边。</sub></p>
+名单里没有合适的人，就自己打造一个。`/hep-build` 把一句话变成可移植的单智能体或团队：只问会改变结果的问题，写出包，并在宣布完成之前跑完契约检查。`/hep-build session` 则用你正在进行的对话做同样的事。
 
-<table>
-<tr>
-<td width="50%"><img src="assets/readme/desktop/one-teammate.png" alt="编辑 One 团队成员：角色形象、名称和模型" width="100%"></td>
-<td width="50%"><img src="assets/readme/desktop/science-evidence-map.png" alt="Agentlas Science 证据图：每条提取的论断都连接到其来源段落" width="100%"></td>
-</tr>
-<tr>
-<td valign="top"><sub>每位团队成员都有自己的形象、模型和工具。</sub></td>
-<td valign="top"><sub><strong>Agentlas Science</strong> — 每条提取的论断都连接到它出自的原文段落。</sub></td>
-</tr>
-<tr>
-<td width="50%"><img src="assets/readme/desktop/science-statistics.png" alt="Agentlas Science 统计结果，包含表格和拟合图" width="100%"></td>
-<td width="50%"><img src="assets/readme/desktop/science-molstar.gif" alt="在 Agentlas Science 中用 Mol* 查看蛋白质结构" width="100%"></td>
-</tr>
-<tr>
-<td valign="top"><sub>统计：表格和图来自同一份经过验证的结果。</sub></td>
-<td valign="top"><sub>Mol* 蛋白质结构：旋转、切换表示方式，并把视图保存为新版本。</sub></td>
-</tr>
-</table>
+```text
+/hep-build an agent that reviews App Store replies before they go out
+/hep-build session
+```
 
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><strong>下载 Agentlas Desktop →</strong></a></p>
+每次构建都会交出输入/输出 schema、路由卡，以及下文包契约里的其余文件；缺少任何必需文件的构建会直接失败，而不是发布出去。用 `/hep-upload` 把它存进私有 Agent Cloud 或发布到免费 Hub，之后 `/hep-network` 就能像对待其他候选一样编组它。
 
 ---
 
@@ -245,43 +211,16 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 ---
 
-<p align="center">
-  <a href="https://agentlas.cloud/desktop">
-    <img src="assets/readme/agentlas-desktop-hero-v2.png" alt="Agentlas Desktop 工作界面" width="880">
-  </a>
-</p>
-
-<h2 align="center">用 Desktop 更高效</h2>
+## 在 Agentlas Desktop 上
 
 Desktop 本身就是宿主，所以它在运行开始**之前**就用代码决定：这份工作一个人够，还是需要一支团队。那个决定会被记成一次预留的运行，而不是一条建议。它可以编入已安装的智能体，也可以调用公开 Hub 的智能体。调用公开 Hub 智能体不收取 Agentlas 费用，但所选宿主或模型、API 服务商可能另行收费。
 
-你用的所有 LLM 都接在一处：你已经订阅的编码 CLI（Claude Code、Codex、Antigravity、Cursor、Grok、Kimi、GitHub Copilot CLI）、你自己 11 家服务商的 API key，还有本地模型。它会安装经过验证的 llama.cpp 引擎，从 Hugging Face 拉取 GGUF 模型，也能接 Ollama、LM Studio 和 MLX。
-
-**而当你正在用的模型额度耗尽时，这一轮会在你自己排定的下一个模型上重跑。** 你保存的模型选择不会被改动，额度恢复后会自动回到原来的模型。
-
-<p align="center">
-  <strong><a href="https://agentlas.cloud/desktop">获取 Agentlas Desktop →</a></strong><br>
-  <sub>macOS（Apple 芯片 · Intel）· Windows · Linux</sub>
-</p>
-
 | 界面 | 作用 |
 | --- | --- |
-| **Agentlas Desktop** | 处理智能体团队、记忆、浏览器操作与 Hub 专家的本地可视化 OS |
-| **Hephaestus 插件** | 本仓库——面向 CLI 宿主的开源引擎与命令界面 |
+| **Agentlas OS (Hephaestus)** | 本仓库——面向 CLI 宿主的开源构建与路由引擎及命令界面 |
+| **Agentlas Desktop** | 用窗口运行同一引擎的应用（macOS · Windows · Linux） |
 | **Agentlas Hub** | 免费发布、发现和使用智能体的公开空间 |
 | **Agentlas Cloud** | 私密保存并再次取回自己智能体的所有者专属仓库 |
-
----
-
-<h2 align="center">一行命令开始</h2>
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
-<p align="center">
-  <sub>它会配置<strong>本机上找到的每一个受支持宿主</strong>，不只是你此刻用的那一个。它写了什么、写到哪里，下面全都列出。</sub>
-</p>
 
 ---
 
@@ -337,62 +276,6 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 
 <details>
-<summary><strong>里面装了什么 — 路由、权限、记忆、检索、打包</strong></summary>
-
-
-行业已经越过了无状态、临时拼凑的"带工具的聊天机器人"阶段。随着 Google 与各大 AI 实验室围绕**智能体操作系统（Agent Operating Systems）**（例如 Antigravity 编排平台和 Gemini Spark 守护进程）重塑开发者战略，AI 智能体已正式成为一等操作系统原语——具有独立身份、关系型记忆系统、安全权限和原生工具调用环境的长生命周期有状态进程。
-
-这让团队面临的关键工程问题随之改变：**你的智能体劳动力运行在谁的操作系统上？**
-
-如果你的智能体与单一模型供应商的专有 API 紧耦合，你的组织记忆、自定义工具和面向任务的逻辑实际上就被锁死在该供应商的生态里。
-
-**Hephaestus 是独立的、模型无关的内核。**它不是智能体框架，也不是 API 封装层。它是一个本地优先的 Agent OS——一个统一的执行基底，在任意 LLM 运行时之上编译、调度并治理可移植的智能体进程。更换底层推理引擎，完整保留整个智能体劳动力。
-
-Hephaestus 与经典操作系统概念一一对应：
-
-| OS 抽象 | 在 Hephaestus 中的实现 |
-| :--- | :--- |
-| **内核 / 策略门（Policy Gate）** | 确定性路由器 + 安全门。每一次路由动作都会生成可审计的回执；工具执行权限被严格沙箱化，由活动运行时强制执行。 |
-| **进程 / 线程** | 独立智能体与多智能体团队被编译为包，附带显式的类型化契约（Routing Card、反作用域、记忆边界与验证垫片）。 |
-| **进程调度器** | Network 2.0 路由（本地优先、质量门控、基准门控的分发），结合 Stormbreaker 的并行执行织体与只追加的运行日志。 |
-| **内存管理（MMU）** | 双边界的受治理记忆：本地项目记忆隔离在本机，持久化晋升由本地 Memory Curator 门控。 |
-| **虚拟文件系统** | 生产级 Ontology Runtime：本地优先的源摄取、CJK 三元组 FTS5 搜索、混合倒数排名融合（Reciprocal Rank Fusion）与 GraphRAG 检索。 |
-| **进程间调用（IPC）** | A2A Agent Card 边界（加密导入/导出与调用方门控）+ Model Context Protocol（MCP）工具注册。 |
-| **包管理器** | Agentlas Hub 与 Cloud：编译、发布、版本化并共享智能体，内置质量门。 |
-| **Shell 接口** | 在外部客户端运行时中提供小而统一的命令集；在原生 Agentlas Shell 中按自然语言意图路由。 |
-| **进程初始化** | Meta-Agent Factory 集成简报访谈门（Briefing Interview Gate）——先明确智能体参数，再编译代码。 |
-
-<p align="center">
-  <img src="assets/agentlas-meta-agent-architecture.svg" alt="Figure 1. Agentlas Meta-Agent architecture decomposition">
-</p>
-
-<p align="center">
-  <sub>图 1. 请求塑形、四种构建器、生成的包契约、记忆策展、技能生命周期、运行时适配器与同步边界。</sub>
-</p>
-
----
-
-</details>
-
-
-<details>
-<summary><strong>简报访谈引擎</strong></summary>
-
-
-由模糊的单句提示生成的智能体，会在真实世界的边界情况下失效。Hephaestus v1.1.0 通过**简报访谈引擎（Briefing Interview Engine）**将任务规格化定位为一等 OS 服务：
-
-*   **量化的歧义门控：** 编译调度器沿四个关键向量（目标、约束、范围、上下文）评估提示的清晰度。在歧义分数越过数值阈值之前（歧义分数 $\le 0.2$，并设有各维度的安全下限），构建流程被严格门控。清晰的提示会经由一套为琐碎任务设定提问上限的预算系统，完全绕过访谈循环。
-*   **透镜驱动的系统分析：** 澄清问题从结构化的透镜表（范围、意图、挑战、系统架构）中动态取材，聚焦关键路由指标：*反作用域边界*（智能体绝不能做什么）、*可验证的验收标准*与*退出条件*。
-*   **Work Brief：** 已敲定的细节被冻结进 `.agentlas/work-brief.json`——记录经确认的目标、具体约束、带来源标签的假设台账，以及元数据中的歧义分数。
-*   **上下文内的在途简报：** CLI 工具 `cards migrate` 会自动把简报细节直接映射到智能体路由卡上的触发器与反触发器。运行 `route --brief` 会把该简报传播到所有 Stormbreaker 执行数据包，确保约束与退出条件在整个生命周期内约束所有并行子进程。
-*   **增强的路由判别力：** 通过双侧门控防止同主题/不同意图的碰撞（例如安全智能体截胡部署提示）：路由卡上经访谈验证的反触发器，以及在旧版 `route` 路径上、确定性路由器落到 `clarify` 或 `propose_new` 时交给宿主模型的升级。引擎本身从不调用模型，Workforce 选择也从不重新排序。
-
----
-
-</details>
-
-
-<details>
 <summary><strong>全部安装方式 — 源码·离线·分宿主</strong></summary>
 
 
@@ -435,7 +318,7 @@ claude plugin install hephaestus@agentlas-core-engine
 codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.62
 codex plugin add hephaestus@agentlas-core-engine
 ```
-*注：Codex 应用内不支持 `/plugin marketplace add`，请在操作系统终端中运行上面两条命令。操作系统终端的 CLI 命令为单数形式（`codex plugin`）；在 Codex 应用内，插件浏览器的斜杠命令为复数形式（`/plugins`）。安装完成后，`/prompts:agentlas` 即为应用内入口。*
+*注：Codex 应用内不支持 `/plugin marketplace add`，请在操作系统终端中运行上面两条命令。操作系统终端的 CLI 命令为单数形式（`codex plugin`）；在 Codex 应用内，插件浏览器的斜杠命令为复数形式（`/plugins`）。Codex 0.117+ 已移除自定义 `/prompts:*` 命令；安装后请用 `$hephaestus-network <request>` 调用插件技能。*
 
 </details>
 
@@ -446,7 +329,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 </details>
 
-**直接开口即可：** 安装完成后，在原生 Agentlas 界面中用自然语言说话即可自动路由任务。在外部 LLM tools 中，使用下面列出的显式命令。不清楚有哪些智能体时，先从 `/agentlas search` 开始。要连接 Telegram，请在 Claude Code 中使用 `/agentlas connect`，或在 Codex 中使用 `/prompts:agentlas`。
+**直接开口即可：** 安装完成后，在原生 Agentlas 界面中用自然语言说话即可自动路由任务。在外部 LLM tools 中，使用下面列出的显式命令。不清楚有哪些智能体时，先从 `/agentlas search` 开始。
 
 ---
 
@@ -457,7 +340,7 @@ codex plugin add hephaestus@agentlas-core-engine
 <summary><strong>命令界面 — 全部命令</strong></summary>
 
 
-在原生 Agentlas 环境中，Hephaestus 无需任何命令即可运行。外部 LLM tools 使用一组刻意精简的可见命令。Stormbreaker、研究装备（research loadouts）和配置表等系统级设施会根据上下文自动挂载：
+在原生 Agentlas 环境中，Hephaestus 无需任何命令即可运行。外部 LLM tools 使用一组刻意精简的可见命令。这些命令用来构建智能体，并用它们编组工作：
 
 | 系统子系统 | Shell 命令 | 示例 |
 | :--- | :--- | :--- |
@@ -469,7 +352,6 @@ codex plugin add hephaestus@agentlas-core-engine
 | **目录搜索** | `/agentlas search` | `/agentlas search find agents for a market report workflow` |
 | **进程间调用（IPC）** | `/agentlas call` | `/agentlas call market-researcher, report-writer {draft a market report}` |
 | **包导出器** | `/agentlas upload` | `/agentlas upload ./agents/customer-support-hq` |
-| **Telegram 设置** | `/agentlas connect` 或 `/prompts:agentlas` | `/agentlas connect Telegram for Marketing Agent Team` |
 
 每条命令仍可使用原名 `/hep-*`。`/agentlas network` 与 `/hep-network` 是同一条
 命令。旧名称并未移除，因此现有脚本、笔记和使用习惯都不受影响。
@@ -481,7 +363,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 
 <details>
-<summary><strong>更深一层 — 路由调度、执行闸门、记忆、检索引擎</strong></summary>
+<summary><strong>更深一层 — 构建工厂与路由调度</strong></summary>
 
 
 ### Meta-Agent Factory — 进程创建
@@ -512,57 +394,6 @@ codex plugin add hephaestus@agentlas-core-engine
 *   **固定身份执行：** 验证后，Core 仅从原始来源会话获取已选的不可变发布，核对发布、包与内容摘要，再分别调用规划、执行、综合和验证角色。
 *   **基于证据的评估：** 检索覆盖、宿主选择、不可变准备、真实子调用与最终验证分别计分。基准结果或使用历史不会取代宿主的人力配置判断。
 
-
----
-
-### Stormbreaker — 有纪律的执行
-Stormbreaker 是这套 Agent OS 的执行门控子系统。它确保在所有结果都通过确定性检查验证之前，智能体既不会上报成功，也不会终止：
-
-```text
-Kernel Gating Envelope:
-[Scope Lock] -> [Decomposition] -> [Parallel Work Packets] -> [Verify Contracts] -> [Bounded Repair] -> [Final Gate]
-```
-
-本地运行日志让长时间执行在中断后可以续跑。执行数据包携带 Work Brief，使反作用域规则与退出标准约束所有并行子进程。Stormbreaker 上报显式的完成状态（**verified / unverified / blocked**），杜绝自主的"完成表演"。
-
-
----
-
-### Ontology Runtime — 知识文件系统
-对于知识密集型作业，`bin/ontology` 充当语义文件系统，把非结构化的本地文件转换为智能体可读的数据库栈：
-
-```text
-Ingested Files -> [Parser Adapter] -> [CJK trigram/bigram tokenization] 
-  -> [FTS5 + SQLite Storage] -> [Reciprocal Rank Fusion Ranking] -> [GraphRAG Search]
-```
-
-内置第一方韩文文档解析（HWPX 与传统 HWP5），零 GPL 依赖。完全本地化并以 SQLite 为后端；机密与隐私分块被隔离，防止其触及外部云端钩子。
-
-```bash
-bin/ontology ingest ./corpus --scope internal
-bin/ontology query "Project Helios Memory Curator" --agent verifier
-bin/ontology memory candidates
-```
-
-
----
-
-### 受治理的记忆 — 策展式晋升
-*   **本地项目记忆：** 存储在 `~/.agentlas/networking/` 下并隔离在本机。未经显式授权无法导出。
-*   **工作区个性化：** 为选用的 Cloud/Hub 智能体管理个性化日志（摘要、行动手册、插件锁与回执），且不存储原始提示、凭据值或私有文件。
-*   **策展人门控：** 技能与记忆修改先以候选状态保留。只有在本地策展人确认留出/重放证明、回滚覆盖与安全策略批准之后，才会晋升为持久状态。
-
----
-
-### A2A 边界 — 智能体间隔离
-标准化的 CLI 命令支持安全的智能体间协同：
-
-```bash
-hephaestus ao a2a import ./agent-card.json .
-hephaestus ao a2a export . --agent local/10-builder
-hephaestus route "run the release check" --caller local/orchestrator --project .
-```
-导入以提案的形式生效（限制自动调用），导出会脱敏私有路径与逻辑，且调用在路由解析之前先经调用方门控。
 
 ---
 
@@ -618,6 +449,11 @@ Hephaestus 将智能体打包为标准目录布局，任何工作区运行时都
 |---|---|
 | 理解规范路由 | [`AGENTS.md`](AGENTS.md) |
 | 查看完整团队契约 | [`agent.md`](agent.md) |
+| 包契约 | [`package-contract.json`](package-contract.json) |
+| 会话构建 | [`contracts/session-build.md`](contracts/session-build.md) |
+| 路由卡 | [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
+| Workforce 工作单 | [`schemas/workforce-work-order.schema.json`](schemas/workforce-work-order.schema.json) |
+| 编译后的简报 | [`schemas/agentlas-brief.schema.json`](schemas/agentlas-brief.schema.json) |
 
 ---
 
