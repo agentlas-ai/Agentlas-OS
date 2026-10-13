@@ -141,14 +141,11 @@ def build_scoring_prompt(surface: str, locale: str = "en") -> str:
         for name, weight, floor in dims
     )
     return (
-        "You are scoring how settled a work request is after the interview so far.\n"
-        f"Score each dimension from 0.0 (unclear) to 1.0 (perfectly clear):\n{dim_lines}\n"
-        "Rules:\n"
-        "- Scores above 0.8 require very specific, concrete answers in the transcript.\n"
-        "- Topics the user explicitly deferred ('나중에 정할게') are deliberate decisions —\n"
-        "  do NOT penalise them; list them under deferred_topics instead.\n"
-        "- Judge only what is in the transcript. Do not give credit for plausible guesses.\n"
-        'Respond ONLY with JSON: {"clarity": {"<dimension>": <0..1>, ...}, '
+        f"task: score request clarity from the transcript, 0.0 (unclear) to 1.0 (clear)\n{dim_lines}\n"
+        "rules: >0.8 needs concrete transcript answers; "
+        "user-deferred topics (e.g. 'decide later') are not penalised, list in deferred_topics; "
+        "no credit for plausible guesses\n"
+        'output: JSON only {"clarity": {"<dimension>": <0..1>, ...}, '
         '"justification": {"<dimension>": "<one sentence>", ...}, '
         '"deferred_topics": ["..."]}'
     )

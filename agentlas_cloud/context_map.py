@@ -2345,16 +2345,16 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
     """Compact prompt representation; source paths only, never source contents."""
 
     lines = [
-        "## Agentlas Context Slice (dependency-selected, project-local)",
+        "## Agentlas Context Slice (project-local)",
         f"Receipt: {value.get('receipt', {}).get('receiptDigest', 'missing')}",
     ]
     # A stale map is still served (see load_code_map allow_stale), but the
     # reader must know the index predates recent edits.
     refresh_status = str((value.get("receipt") or {}).get("refreshStatus") or "")
     if refresh_status == "stale_served":
-        lines.append("Note: map predates recent edits (served stale rather than empty); re-verify paths before acting.")
+        lines.append("map: served stale, predates recent edits; re-verify paths")
     elif refresh_status == "unverified_served":
-        lines.append("Note: map freshness was not verified within the recall budget; it may predate recent edits — re-verify paths before acting.")
+        lines.append("map: freshness was not verified in budget; re-verify paths")
     # Order is a budget decision, not a style one. The capsule layer gives this
     # slice ~1,200 chars; measured on a real "fix context_slice" turn the
     # sections cost: edges 852, goals 1,036, definitions 737, related files 649.
@@ -2387,9 +2387,9 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
     if isinstance(files, list) and files:
         file_match = str(value.get("fileMatch") or "matched")
         heading = {
-            "entry_points": "Nothing in the task matched the symbol table; conventional entry points:",
-            "most_referenced": "Nothing matched; the most-referenced definition sites:",
-        }.get(file_match, "Structurally related files:")
+            "entry_points": "No symbol match; entry points:",
+            "most_referenced": "No match; most-referenced definitions:",
+        }.get(file_match, "Related files:")
         lines.append(heading)
         lines.extend(f"- {path}" for path in files[:40])
     co_edited = value.get("coEditedFiles")
@@ -2397,13 +2397,13 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         # Observed history, not inference: files repeatedly changed together
         # with the ones the task named. This is the relation the dependency
         # graph structurally cannot see (mirrors, code↔install script).
-        lines.append("Historically edited together with the named files (observed, authority A0):")
+        lines.append("Co-edited with named files (observed, A0):")
         for item in co_edited[:8]:
             if isinstance(item, Mapping) and item.get("file"):
                 lines.append(f"- {item['file']} ({item.get('sessions', '?')} work units)")
     layout = value.get("projectLayout")
     if isinstance(layout, list) and layout:
-        lines.append("Where things live (directories by how much depends on them):")
+        lines.append("Layout (by dependents):")
         lines.extend(f"- {item}" for item in layout)
     # An edge line names both of its endpoints, so a node that appears in one is
     # already stated — listing it again as a bare bullet spends the capsule
@@ -2450,11 +2450,11 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
             # character so the relation stays legible in the prompt.
             rendered_edges.append(f"{_label(source)} —{relation or 'relates_to'}→ {_label(target)}")
         if rendered_edges:
-            lines.append("How that context connects (observed edges, 2-hop):")
+            lines.append("Context edges (observed, 2-hop):")
             lines.extend(f"- {item}" for item in rendered_edges)
     goals = value.get("goalsAndConstraints")
     if isinstance(goals, list) and goals:
-        lines.append("Inherited goals, constraints, decisions:")
+        lines.append("Goals, constraints, decisions:")
         for node in goals[:20]:
             if not isinstance(node, Mapping):
                 continue
@@ -2472,14 +2472,14 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         )
     verification = value.get("verification")
     if isinstance(verification, Mapping) and verification.get("nodes"):
-        lines.append("Verification responsibilities:")
+        lines.append("Verification:")
         for node in list(verification.get("nodes") or [])[:30]:
             if isinstance(node, Mapping):
                 lines.append(
                     f"- {node.get('kind', 'verification')}: {node.get('path', '-')}"
                 )
     if isinstance(verification, Mapping) and verification.get("issues"):
-        lines.append("Verification graph issues:")
+        lines.append("Verification issues:")
         for issue in list(verification.get("issues") or [])[:20]:
             if isinstance(issue, Mapping):
                 lines.append(
@@ -2487,8 +2487,8 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
                 )
     lines.extend(
         [
-            "Before mutation: run context impact for each changed file/symbol and inspect every backlink.",
-            "Before completion: account for impacted source dependents and satisfy one linked execution channel (local tests/test commands or CI workflows). Version contracts remain a separate release responsibility.",
+            "before_mutation: context impact per changed file/symbol; inspect every backlink",
+            "before_done: account for impacted dependents; satisfy one linked check channel (local tests or CI)",
         ]
     )
     return "\n".join(lines)[:max_chars].rstrip()

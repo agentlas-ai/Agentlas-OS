@@ -11,7 +11,7 @@ from typing import Any, Iterator
 
 BEGIN = "<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->"
 END = "<!-- HEPHAESTUS:GLOBAL-ROUTER:END -->"
-VERSION = "global-router.v6"
+VERSION = "global-router.v7"
 
 
 @dataclass(frozen=True)
@@ -66,12 +66,7 @@ ROUTER_TARGETS: dict[str, _TargetSpec] = {
             "Request the exact named Cloud or Hub agents in plain language through typed MCP"
         ),
         host_surface_note="""
-- Codex 0.117 and later use installed `$hephaestus-build`,
-  `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload`,
-  `$hephaestus-storm`, and `$hephaestus-graph` skills. Request Browser, Local,
-  Hub, Search, and Call actions in plain language through typed MCP. Custom
-  `/prompts:hep-*` commands are legacy surfaces limited to Codex versions before
-  0.117; do not direct current Codex users to them.""",
+- host: Codex 0.117+ uses installed `$hephaestus-build|network|cloud|upload|storm|graph` skills; Browser, Local, Hub, Search, Call = plain language via typed MCP; `/prompts:hep-*` is legacy (<0.117), do not offer it""",
     ),
     "claude": _TargetSpec(
         file=".claude/CLAUDE.md",
@@ -85,9 +80,7 @@ ROUTER_TARGETS: dict[str, _TargetSpec] = {
         label="Antigravity GEMINI.md",
         host="Antigravity",
         host_surface_note="""
-- Antigravity is an independent runtime target, not a Gemini CLI mode. The two
-  may read the same configuration path, but installation and runtime selection
-  remain separate.""",
+- host: Antigravity is an independent runtime target, not a Gemini CLI mode; same config path possible, install and selection separate""",
         **_HEP_SLASH_COMMANDS,
     ),
 }
@@ -214,78 +207,26 @@ def _router_block(target_id: str) -> str:
     host_surface_note = spec.host_surface_note
     return f"""{BEGIN}
 # Hephaestus Global Router ({VERSION})
-
-These instructions were installed by `hephaestus global install` for {host}.
-
-- For simple questions, answer directly. Do not route trivial work through
-  Hephaestus.
-- Prefer the installed runner at `~/.agentlas/runtime/current/bin/hephaestus`.
+installed_for: {host}
+- simple question: answer directly, no routing
+- runner: `~/.agentlas/runtime/current/bin/hephaestus`
 {host_surface_note}
-- For substantial work, choose routing in this priority order:
-  1. Agentlas Browser first for browser-required work. {browser_instruction}
-     when the task needs rendered pages, JS-heavy sites,
-     click/form flows, login-visible state, or browser evidence.
-  2. Hephaestus Network next. {network_instruction} to let the active host
-     LLM staff a temporary task force from the federated Local + owner Cloud +
-     public Hub Workforce menu.
-  3. {scope_instruction} only when the
-     user explicitly restricts staffing to registered Local, owner Cloud, or
-     public Hub inventory. These are source scopes, not fallback tiers.
-  4. Local host skills are an adapter fallback only when Workforce is
-     unavailable; do not misreport them as registered Local workers.
-- {call_instruction} when the user names exact Hub or
-  Cloud agents.
-- Source scopes are exact: `network = local + cloud + hub`, `local = registered
-  local`, `cloud = owner cloud`, and `hub = public Hub`. Public demos and
-  distribution proof must explicitly use Hub scope so private inventory is not
-  presented as public availability.
-- For Network staffing, the active host LLM creates one redacted structured
-  WorkOrder and calls local Core `workforce.search_candidates` with
-  `sourceScope=network` to federate the three source CandidateSets. The response
-  carries `selectionSessionId`. The host authors a Selection with that session
-  ID and calls `workforce.validate_selection(workOrder, selection)`. Core
-  restores the pinned federation result from the session. Do not echo the
-  projected menu as `federationResult`. Call `workforce.prepare_execution` with
-  the accepted `federatedSelection` and mandatory `projectDir`.
-  Federation performs no scoring, reranking, or staffing decision. It may
-  shadow the same `agentDefinitionId` by Local > Cloud > Hub only when every
-  source proves the same lineage and exact immutable release; ambiguous or
-  different-release collisions quarantine only that identity while unrelated
-  candidates remain available. The host LLM makes the final exact-release
-  selection from the merged content menu.
-- A federated CandidateSet is a Core-owned session, not a Hub session. Validate
-  it locally with its federation receipt. Preparation must use each selected
-  row's pinned original source session/digest and exact release/package/content
-  hashes; never send the merged CandidateSet to remote Hub validate/prepare.
-  Do not run the legacy lexical router first.
-- Agentlas Hub agents are BYOM bundles. Execute each prepared exact release in
-  this host runtime while grounded in the current project. The Hub does not run
-  a server-side LLM completion for you. A selection or prepared bundle is not
-  proof that manager, workers, synthesis, or verifier ran.
-- Public Hub calls are free; the host supplies its own model and API access.
-  If a stale server returns `insufficient_credits`, report that the free Hub
-  contract is not active there yet and do not suggest a top-up. If the server
-  returns `owner_only`, `no_cloud_package`, or `agent_not_found`, report that
-  exact refusal. For a
-  general task, report the boundary before considering a different explicitly
-  labelled surface; for an exact named remote agent, do not claim a local
-  fallback ran that agent. Never replace a missing role with an unrelated agent.
-- Never send raw local memory, private files, or secrets to Hub search. Hub
-  discovery uses redacted work-order requirements; local project grounding
-  stays local. Installs, ratings, invocation history, revenue, and local
-  callability must not determine semantic fit.
-- Report results by the workers that actually did the task, not by narrating
-  the routing step that staffed them — say what agents/skills ran, the same
-  way you would not narrate "invoking the Bash tool" for every shell command.
-  This is a conciseness rule, not a secrecy one: if asked what `hep-network`
-  or this routing block is, explain it plainly.
-- When Network, Cloud, or a local agent selects concrete agents, list those
-  agent names:
-  - Korean contexts: `사용 에이전트: <agent names>. 이유: <short reason>.`
-  - English contexts: `Agents used: <agent names>. Reason: <short reason>.`
-- If the final fallback is local host skills, announce skills instead of agents:
-  - Korean contexts: `사용 스킬: <skill names>. 이유: <short reason>.`
-  - English contexts: `Skills used: <skill names>. Reason: <short reason>.`
+- substantial work, route in order:
+  1. Agentlas Browser first (rendered/JS pages, click/form flows, login state, browser evidence): {browser_instruction}
+  2. Hephaestus Network: {network_instruction}; host LLM staffs a task force from the Local + owner Cloud + public Hub Workforce menu
+  3. scope-only, when user restricts staffing to registered Local / owner Cloud / public Hub: {scope_instruction}; source scopes, not fallback tiers
+  4. local host skills: only if Workforce unavailable; never report them as registered Local workers
+- named agents: {call_instruction}
+- scopes: network = local + cloud + hub; local = registered local; cloud = owner cloud; hub = public Hub; public demos/distribution proof use hub scope explicitly
+- network flow: host LLM writes one redacted WorkOrder -> `workforce.search_candidates` (`sourceScope=network`, returns `selectionSessionId`) -> host writes Selection -> `workforce.validate_selection(workOrder, selection)` (Core restores the pinned result from the session; do not echo the projected menu as `federationResult`) -> `workforce.prepare_execution` with accepted `federatedSelection` + mandatory `projectDir`
+- federation: no scoring, reranking or staffing decision; same `agentDefinitionId` shadows Local > Cloud > Hub only with proven same lineage and exact immutable release; ambiguous/different-release collisions quarantine only that identity; host picks exact releases
+- session: federated CandidateSet is Core-owned, validate locally with its federation receipt; prepare with each row's pinned original source session/digest + exact release/package/content hashes; never send the merged set to remote Hub validate/prepare; no legacy lexical router first
+- Hub agents: BYOM bundles; execute each prepared exact release in this host, grounded in the project; no server-side completion; selection or prepared bundle != proof that manager, workers, synthesis or verifier ran
+- Hub calls free, host supplies model/API; `insufficient_credits` = free contract not active on that stale server, no top-up advice; `owner_only`, `no_cloud_package`, `agent_not_found`: report the exact refusal; general task: report the boundary before trying another labelled surface; exact named remote agent: never claim a local fallback ran it; never replace a missing role with an unrelated agent
+- privacy: never send raw local memory, private files or secrets to Hub search (redacted work-order requirements only); installs, ratings, invocation history, revenue, local callability never decide semantic fit
+- report: by workers that did the task, not by routing narration (conciseness, not secrecy; explain `hep-network` or this block if asked)
+- agents selected: Korean `사용 에이전트: <agent names>. 이유: <short reason>.` / English `Agents used: <agent names>. Reason: <short reason>.`
+- host skills fallback: Korean `사용 스킬: <skill names>. 이유: <short reason>.` / English `Skills used: <skill names>. Reason: <short reason>.`
 {END}
 """
 

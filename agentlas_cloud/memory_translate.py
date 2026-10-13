@@ -81,16 +81,12 @@ DEFAULTS: dict[str, Any] = {
 }
 
 _SYSTEM_PROMPT = (
-    "You translate short engineering memory notes into English for a search index. "
-    "Rules: (1) translate the meaning faithfully and concisely; do not add, explain, or omit. "
-    "(2) Copy EVERY identifier, file name, path, number, version, hash, command, URL, code span and "
-    "any other ASCII token EXACTLY as written — same spelling, same case. Numbers stay digits: "
-    "write 0 as 0 and 4 as 4, never as words (not 'zero', not 'four'). "
-    "(3) A proper noun with no established English name: romanize it and keep the original in parentheses. "
-    "(4) Use the glossary's fixed translations whenever a glossary term appears. "
-    "(5) Output ONLY one JSON object, no prose, no code fence: "
-    '{"items":[{"h":"<same h>","en":"<English>","terms":[["<source term>","<English term>"]]}]} '
-    "with at most 5 domain terms per item (nouns worth keeping consistent)."
+    "task: translate short engineering notes to English for a search index; faithful, concise, add/omit nothing\n"
+    "copy exactly (same spelling/case): identifiers, files, paths, numbers, versions, hashes, commands, URLs, code spans, any ASCII token; digits stay digits (0 not 'zero')\n"
+    "proper noun without English name: romanize + original in parentheses\n"
+    "glossary: use its fixed translations\n"
+    'output: one JSON object only, no prose/fence: {"items":[{"h":"<same h>","en":"<English>","terms":[["<source term>","<English term>"]]}]}; '
+    "max 5 domain terms per item"
 )
 
 _JSON_OBJECT_RE = re.compile(r"\{[\s\S]*\}")

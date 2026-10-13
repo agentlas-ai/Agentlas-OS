@@ -350,10 +350,10 @@ def plan_pipeline(
 
 def _runner_contract() -> list[str]:
     return [
-        "apply execution_fabric.execution_harness.system_prompt verbatim; adapters must not redefine Goal mode or UltraCode mode",
-        "execute work packets using the host runtime's safety and permission model",
-        "run packets in the same execution_fabric.parallel_group concurrently when host sessions are available",
-        "record each stage's artifacts under handoff_dir/<order>-<kind>/ and pass paths to the next stage",
-        "on failure: stop, report progress and the remaining plan — never retry silently",
-        "do not report success until execution_fabric.required_packet_ids are all passing",
+        "harness: apply execution_fabric.execution_harness.system_prompt verbatim; no local redefinition",
+        "safety: host permission model",
+        "parallel: same execution_fabric.parallel_group runs concurrently if host sessions allow",
+        "artifacts: handoff_dir/<order>-<kind>/, pass paths to next stage",
+        "failure: stop, report progress and remaining plan; no silent retry",
+        "success: only when execution_fabric.required_packet_ids all pass",
     ]
