@@ -255,7 +255,7 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 Desktop はホストそのものなので、実行が始まる**前に**コードが決めます。一人で足りる仕事か、チームが要る仕事か。その判断は提案ではなく、予約された実行として記録されます。インストール済みのエージェントに加え、公開 Hub のエージェントも配置できます。公開 Hub のエージェント呼び出しに Agentlas の料金はかかりませんが、選択したホストやモデル・API プロバイダの料金が別途発生する場合があります。
 
-使っている LLM をすべて一か所に。すでに契約しているコーディング CLI（Claude Code、Codex、Antigravity/Gemini、Cursor、Grok、Kimi）、自分で入れた 11 プロバイダの API キー、そしてローカルモデルまで。署名検証済みの llama.cpp エンジンを同梱し、Hugging Face から GGUF を取得して動かします。LM Studio と MLX にもつながります。
+使っている LLM をすべて一か所に。すでに契約しているコーディング CLI（Claude Code、Codex、Antigravity、Cursor、Grok、Kimi、GitHub Copilot CLI）、自分で入れた 11 プロバイダの API キー、そしてローカルモデルまで。検証済みの llama.cpp エンジンをインストールし、Hugging Face から GGUF を取得して動かします。Ollama、LM Studio、MLX にもつながります。
 
 **そして使っているモデルの利用量が尽きたら、そのターンをあなた自身が決めた優先順位の次のモデルで走り直します。** 保存したモデル選択は変わりません。上限が解けたら元のモデルへ自動で戻ります。
 
@@ -386,7 +386,7 @@ Hephaestus は、古典的なオペレーティングシステムの概念に直
 *   **レンズ駆動のシステム分析:** 明確化のための質問は、構造化されたレンズテーブル（Scope、Intent、Challenge、System Architecture）から動的に選定され、重要なルーティング指標 — *アンチスコープ境界*（エージェントがやってはいけないこと）、*検証可能な受け入れ基準*、*終了条件* — に焦点を当てます。
 *   **Work Brief:** 解決された詳細は `.agentlas/work-brief.json` に凍結され、検証済みのゴール、具体的な制約、ソースタグ付きの仮定台帳、そしてメタデータとしての曖昧さスコアが記録されます。
 *   **実行中のコンテキストブリーフ:** CLI ツール `cards migrate` は、ブリーフの詳細をエージェントのルーティングカード上のトリガーとアンチトリガーへ自動的に直接マッピングします。`route --brief` を実行すると、このブリーフがすべての Stormbreaker 実行パケットに伝播し、ライフサイクル全体を通じて制約と終了条件が並列サブプロセスを統制します。
-*   **強化されたルーティング判別:** ルーティングカード上のインタビュー検証済みアンチトリガーと、ルーター内部での低信頼度 LLM 再ランキングエスカレーションという両面ゲーティングにより、同一トピック・異なるインテントの衝突（例: セキュリティエージェントがデプロイ用プロンプトを横取りする）を防ぎます。
+*   **強化されたルーティング判別:** ルーティングカード上のインタビュー検証済みアンチトリガーと、レガシーの `route` 経路で決定的ルーターが `clarify` または `propose_new` に達したときのホストモデルへのエスカレーションという両面ゲーティングにより、同一トピック・異なるインテントの衝突（例: セキュリティエージェントがデプロイ用プロンプトを横取りする）を防ぎます。エンジン自身はモデルを呼ばず、Workforce の選定は順位を付け直しません。
 
 ---
 
@@ -407,7 +407,7 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-これにより、ニュートラルランナーが `~/.agentlas/runtime/current/bin/hephaestus` にインストールされ、Claude Code、Codex、Gemini CLI、Antigravity、Cursor 用のコマンドアダプターが登録されます。インストーラーは、登録後に各ランタイムサーフェスを検証します。
+これにより、ニュートラルランナーが `~/.agentlas/runtime/current/bin/hephaestus` にインストールされ、Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode、OpenClaw、Hermes、Kimi Code CLI、goose、GitHub Copilot CLI 用のコマンド・スキル・MCP アダプターと、Grok 用のメモリフックが登録されます。ローカルモデルは MCP エントリポイント `hephaestus mcp serve` を使います。インストーラーは、登録後に各ランタイムサーフェスを検証します。
 
 ### ランタイム別プラグインドライバー
 
@@ -495,7 +495,7 @@ codex plugin add hephaestus@agentlas-core-engine
 | **シングルエージェント** | `10-single-agent-builder` | ローカライズされたスキル、メモリコントラクト、ランタイムアダプターを備えたスタンドアロンワーカー。 |
 | **マルチエージェントチーム** | `20-multi-agent-team-builder` | PM Orchestrator、Memory Curator、Policy Gate、QA、検証スクリプトを含む階層型チーム。 |
 | **ワークスペースパッケージャー** | `30-agentlas-packager` | ランタイムへのインポート、CLI 実行、GitHub 配布に対応したコンパイル済みバンドル。 |
-| **セッションエージェントビルダー** | `40-session-agent-builder` | 明示的にエクスポートされたセッションを、レビュー済みのシングルエージェントまたはマルチエージェントチームパッケージに変換します。 |
+| **セッションエージェントビルダー** | `40-session-agent-builder` | 現在の会話（ヘッドレス実行では明示的な JSON/JSONL エクスポート）を、オーナーがレビューしたエージェントに変換します。既定はシングルエージェントで、チームは選んだ場合のみです。 |
 
 *Briefing Interview Gate:* ビルダーは **briefing interview gate**を用いてプロセスを開始します: レンズ駆動の質問を行い、曖昧さのしきい値を評価し、一次情報源を検索し、Work Brief を出力します。
 
@@ -561,9 +561,9 @@ bin/ontology memory candidates
 標準化された CLI コマンドにより、安全なエージェント間連携が可能です:
 
 ```bash
-agentlas-cloud ao a2a import ./agent-card.json .
-agentlas-cloud ao a2a export . --agent local/10-builder
-agentlas-cloud route "run the release check" --caller local/orchestrator .
+hephaestus ao a2a import ./agent-card.json .
+hephaestus ao a2a export . --agent local/10-builder
+hephaestus route "run the release check" --caller local/orchestrator --project .
 ```
 インポートは提案として扱われ（自動呼び出しを制限）、エクスポートはプライベートなパスとロジックをレダクションし、呼び出しはルーティング解決の前に呼び出し元ゲーティングを通過します。
 
@@ -576,22 +576,40 @@ agentlas-cloud route "run the release check" --caller local/orchestrator .
 <summary><strong>生成される成果物 — プロセスパッケージング</strong></summary>
 
 
-Hephaestus は、任意のワークスペースランタイムがパース・インストール・検証・実行できる標準ディレクトリレイアウトへエージェントをパッケージします:
+Hephaestus は、任意のワークスペースランタイムがパース・インストール・検証・実行できる標準ディレクトリレイアウトへエージェントをパッケージします。以下のレイアウトは `package-contract.json` が要求し、`hephaestus contract verify` が検査するものです:
 
 ```text
-├── AGENTS.md                          # Canonical route configurations
-├── agent.md / agents/                 # Single worker or team roles
-├── skills/                            # Local agent skills and capabilities
-├── modes/                             # Custom agent execution modes
-├── schemas/                           # Validation contracts and schemas
-├── templates/                         # Configuration templates
-├── .agentlas/                         # System Directory: routing cards, work briefs,
-│                                      # global commands, memory contracts, eval plans
-├── .claude/ codex/ .gemini/ .agents/  # Runtime shims (driver adapters over the core)
-├── scripts/
-│   ├── install.sh                    # Compatible installer entrypoint
-│   └── install-all-runtimes.sh       # Install the shared runtime
+├── AGENTS.md                         # Package entry: name, purpose, canonical command, roles
+├── agent.md                          # Primary instructions: role, steps, output contract
+├── agentlas.json                     # Manifest: permissions, memory policy, read allow/deny lists
+├── agents/<role>/agent.md            # Team only: one folder per worker
+├── A2A/agent-card.a2a.json           # A2A Agent Card projected from the two cards below
+├── .agentlas/
+│   ├── agent-card.json               # Identity: name, slug, summary, capabilities, entrypoints
+│   ├── routing-card.json             # Triggers and anti-triggers (ko + en), risk, memory behavior
+│   ├── build-profile.json            # Fail-closed build readiness profile
+│   ├── memory-map.json               # Memory ownership map
+│   ├── global-commands.json          # Per-runtime slash command adapters
+│   ├── mcp-policy.json               # What the machine must provide, and what happens without it
+│   ├── skill-registry.json           # Skill inventory (may be empty)
+│   ├── memory-tickets.jsonl          # Candidate memory events before curator promotion
+│   ├── capability-eval-plan.json     # Positive/negative eval prompts with pass criteria
+│   ├── routing-benchmarks.jsonl      # At least 10 route/reject cases, ko + en
+│   ├── work-brief.json               # Interview-derived goal, constraints, decisions
+│   ├── company-blueprint.json        # Team only: orchestrator, nodes, edges
+│   ├── sitemap.json                  # Team only: what each task produces and consumes
+│   └── brief.json                    # agentlas.brief/1 resume, compiled at upload
+├── contracts/                        # intake.schema.json, output.schema.json, output.example.json
+├── docs/                             # Builder interview, research sources, tool selection,
+│                                     #   domain synthesis, prompt performance contract
+├── tools/requirements.yaml           # Projected from mcp-policy.json + agentlas.json
+├── permissions/policy.yaml           # Projected shell/network/file/payment whitelist
+├── hooks/                            # memory-upgrade.yaml, on_stop.yaml — declared, host-enforced
+├── evals/README.md                   # Points at the eval plan and routing benchmarks
+└── .claude/skills/<name>/SKILL.md    # Skills, when the package carries any
 ```
+
+`docs/`、評価計画、作業ブリーフを省略できるのは、ユーザーが確認した最小限のプライベートビルドだけです。`provenance.json`、`knowledge/`、`schemas/`、`sandbox/`、`examples/` は任意です。
 
 ---
 

@@ -255,7 +255,7 @@ Ratings, install counts, पिछले महीने की बिक्र�
 
 Desktop खुद host है, इसलिए run शुरू होने से **पहले** ही code तय कर लेता है कि काम एक agent से बनेगा या टीम चाहिए। वह निर्णय सुझाव नहीं, एक आरक्षित run के रूप में दर्ज होता है। यह इंस्टॉल किए हुए agents के साथ सार्वजनिक Hub agents को भी काम में लगा सकता है। सार्वजनिक Hub agents को बुलाने पर Agentlas शुल्क नहीं लगता; चुने हुए host या model/API provider के शुल्क अलग से लग सकते हैं।
 
-आप जितने LLM इस्तेमाल करते हैं, सब एक जगह: जिन coding CLIs की आप पहले से subscription लेते हैं (Claude Code, Codex, Antigravity/Gemini, Cursor, Grok, Kimi), 11 providers की आपकी अपनी API keys, और local models भी। एक हस्ताक्षर-सत्यापित llama.cpp engine साथ आता है, Hugging Face से GGUF models लाता है, और LM Studio तथा MLX से भी जुड़ता है।
+आप जितने LLM इस्तेमाल करते हैं, सब एक जगह: जिन coding CLIs की आप पहले से subscription लेते हैं (Claude Code, Codex, Antigravity, Cursor, Grok, Kimi, GitHub Copilot CLI), 11 providers की आपकी अपनी API keys, और local models भी। यह एक सत्यापित llama.cpp engine install करता है, Hugging Face से GGUF models लाता है, और Ollama, LM Studio तथा MLX से भी जुड़ता है।
 
 **और जिस model पर आप हैं उसका quota ख़त्म हो जाए, तो वह turn आपकी अपनी priority के अगले model पर दोबारा चलाया जाता है।** आपका सहेजा हुआ model चुनाव नहीं बदलता, और limit हटते ही मूल model अपने आप लौट आता है।
 
@@ -387,7 +387,7 @@ Hephaestus classical operating system अवधारणाओं से सी�
 *   **Lens-Driven System Analysis:** स्पष्टीकरण के प्रश्न एक structured lens table (Scope, Intent, Challenge, System Architecture) से गतिशील रूप से लिए जाते हैं, जो critical routing indicators पर केंद्रित है: *anti-scope bounds* (agent को क्या **नहीं** करना है), *verifiable acceptance criteria* और *exit conditions*।
 *   **Work Brief:** तय हो चुके विवरण `.agentlas/work-brief.json` में freeze कर दिए जाते हैं — जिसमें validated goal, ठोस constraints, source tags के साथ एक assumption ledger और metadata ambiguity score दर्ज होते हैं।
 *   **Contextual In-Flight Briefs:** CLI tool `cards migrate` brief के विवरणों को स्वचालित रूप से agent के routing card के triggers और anti-triggers पर map करता है। `route --brief` चलाने से यह brief सभी Stormbreaker execution packets तक propagate होता है, जिससे पूरे lifecycle में parallel subprocesses पर constraints और exit conditions लागू रहते हैं।
-*   **Enhanced Routing Discrimination:** Double-sided gating के जरिए same-topic/different-intent टकराव (जैसे किसी security agent का deployment prompt को intercept कर लेना) रोका जाता है: routing card पर interview-validated anti-triggers, और router के अंदर low-confidence LLM re-ranking escalation।
+*   **Enhanced Routing Discrimination:** Double-sided gating के जरिए same-topic/different-intent टकराव (जैसे किसी security agent का deployment prompt को intercept कर लेना) रोका जाता है: routing card पर interview-validated anti-triggers, और legacy `route` path पर, जब deterministic router `clarify` या `propose_new` पर पहुँचता है, तब host model को escalation। Engine खुद कभी model call नहीं करता, और Workforce selection कभी re-rank नहीं करता।
 
 ---
 
@@ -408,7 +408,7 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-यह neutral runner को `~/.agentlas/runtime/current/bin/hephaestus` पर install करता है और Claude Code, Codex, Gemini CLI, Antigravity तथा Cursor के लिए command adapters register करता है। installer registration के बाद हर runtime surface को verify करता है।
+यह neutral runner को `~/.agentlas/runtime/current/bin/hephaestus` पर install करता है और Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose तथा GitHub Copilot CLI के लिए command, skill या MCP adapters, और Grok के लिए memory hooks register करता है। Local models MCP entrypoint `hephaestus mcp serve` इस्तेमाल करते हैं। installer registration के बाद हर runtime surface को verify करता है।
 
 ### प्रति-Runtime Plugin Drivers
 
@@ -495,7 +495,7 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 | **Single-Agent** | `10-single-agent-builder` | Localized skills, memory contracts और runtime adapters के साथ standalone worker। |
 | **Multi-Agent Team** | `20-multi-agent-team-builder` | PM Orchestrator, Memory Curator, Policy Gate, QA और validation scripts वाली hierarchical team। |
 | **Workspace Packager** | `30-agentlas-packager` | runtime import, CLI execution या GitHub distribution के लिए तैयार compiled bundle। |
-| **Session Agent Builder** | `40-session-agent-builder` | Explicitly exported sessions को reviewed single-agent या multi-agent team package में बदलता है। |
+| **Session Agent Builder** | `40-session-agent-builder` | मौजूदा बातचीत (headless runs में explicit JSON/JSONL export) को owner-reviewed agent में बदलता है; default single agent है, team तभी जब आप चुनें। |
 
 *Briefing Interview Gate:* Builders प्रक्रिया की शुरुआत **briefing interview gate** से करते हैं: lens-driven प्रश्न पूछना, ambiguity threshold का मूल्यांकन करना, primary sources खोजना, और work brief output करना।
 
@@ -561,9 +561,9 @@ bin/ontology memory candidates
 Standardized CLI commands सुरक्षित inter-agent coordination संभव बनाते हैं:
 
 ```bash
-agentlas-cloud ao a2a import ./agent-card.json .
-agentlas-cloud ao a2a export . --agent local/10-builder
-agentlas-cloud route "run the release check" --caller local/orchestrator .
+hephaestus ao a2a import ./agent-card.json .
+hephaestus ao a2a export . --agent local/10-builder
+hephaestus route "run the release check" --caller local/orchestrator --project .
 ```
 Import एक proposal की तरह काम करता है (automatic invocation को सीमित करते हुए), export private paths और logic को redact करता है, और routing resolve होने से पहले invocations caller-gated होते हैं।
 
@@ -576,22 +576,40 @@ Import एक proposal की तरह काम करता है (automatic
 <summary><strong>यह क्या बनाता है — process packaging</strong></summary>
 
 
-Hephaestus agents को एक standard directory layout में package करता है, जिसे कोई भी workspace runtime parse, install, verify और run कर सकता है:
+Hephaestus agents को एक standard directory layout में package करता है, जिसे कोई भी workspace runtime parse, install, verify और run कर सकता है। नीचे का layout वही है जो `package-contract.json` माँगता है और `hephaestus contract verify` जाँचता है:
 
 ```text
-├── AGENTS.md                          # Canonical route configurations
-├── agent.md / agents/                 # Single worker or team roles
-├── skills/                            # Local agent skills and capabilities
-├── modes/                             # Custom agent execution modes
-├── schemas/                           # Validation contracts and schemas
-├── templates/                         # Configuration templates
-├── .agentlas/                         # System Directory: routing cards, work briefs,
-│                                      # global commands, memory contracts, eval plans
-├── .claude/ codex/ .gemini/ .agents/  # Runtime shims (driver adapters over the core)
-├── scripts/
-│   ├── install.sh                    # Compatible installer entrypoint
-│   └── install-all-runtimes.sh       # Install the shared runtime
+├── AGENTS.md                         # Package entry: name, purpose, canonical command, roles
+├── agent.md                          # Primary instructions: role, steps, output contract
+├── agentlas.json                     # Manifest: permissions, memory policy, read allow/deny lists
+├── agents/<role>/agent.md            # Team only: one folder per worker
+├── A2A/agent-card.a2a.json           # A2A Agent Card projected from the two cards below
+├── .agentlas/
+│   ├── agent-card.json               # Identity: name, slug, summary, capabilities, entrypoints
+│   ├── routing-card.json             # Triggers and anti-triggers (ko + en), risk, memory behavior
+│   ├── build-profile.json            # Fail-closed build readiness profile
+│   ├── memory-map.json               # Memory ownership map
+│   ├── global-commands.json          # Per-runtime slash command adapters
+│   ├── mcp-policy.json               # What the machine must provide, and what happens without it
+│   ├── skill-registry.json           # Skill inventory (may be empty)
+│   ├── memory-tickets.jsonl          # Candidate memory events before curator promotion
+│   ├── capability-eval-plan.json     # Positive/negative eval prompts with pass criteria
+│   ├── routing-benchmarks.jsonl      # At least 10 route/reject cases, ko + en
+│   ├── work-brief.json               # Interview-derived goal, constraints, decisions
+│   ├── company-blueprint.json        # Team only: orchestrator, nodes, edges
+│   ├── sitemap.json                  # Team only: what each task produces and consumes
+│   └── brief.json                    # agentlas.brief/1 resume, compiled at upload
+├── contracts/                        # intake.schema.json, output.schema.json, output.example.json
+├── docs/                             # Builder interview, research sources, tool selection,
+│                                     #   domain synthesis, prompt performance contract
+├── tools/requirements.yaml           # Projected from mcp-policy.json + agentlas.json
+├── permissions/policy.yaml           # Projected shell/network/file/payment whitelist
+├── hooks/                            # memory-upgrade.yaml, on_stop.yaml — declared, host-enforced
+├── evals/README.md                   # Points at the eval plan and routing benchmarks
+└── .claude/skills/<name>/SKILL.md    # Skills, when the package carries any
 ```
+
+`docs/`, eval plan और work brief सिर्फ user-confirmed minimal private build में छोड़े जा सकते हैं। `provenance.json`, `knowledge/`, `schemas/`, `sandbox/` और `examples/` optional हैं।
 
 ---
 

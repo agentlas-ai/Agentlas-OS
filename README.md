@@ -307,9 +307,10 @@ agents. Public Hub agent calls have no Agentlas fee; your chosen host or model/A
 provider may charge for execution.
 
 Every LLM you use, in one place: the coding CLIs you already subscribe to
-(Claude Code, Codex, Antigravity/Gemini, Cursor, Grok, Kimi), your own API keys
-across 11 providers, and local models. A verified llama.cpp engine ships with it,
-pulls GGUF models from Hugging Face, and it also talks to LM Studio and MLX.
+(Claude Code, Codex, Antigravity, Cursor, Grok, Kimi, GitHub Copilot CLI), your
+own API keys across 11 providers, and local models. It installs a verified
+llama.cpp engine, pulls GGUF models from Hugging Face, and also talks to Ollama,
+LM Studio and MLX.
 
 **And when the model you are on runs out of quota, the turn is re-run on the next
 model in your own priority order.** Your saved model choice is not touched, and
@@ -362,15 +363,18 @@ one you are typing in — detection is by what is on your `PATH`.
 | Path | What lands there |
 |---|---|
 | `~/.agentlas/` | the runtime itself, and its generations |
-| `~/.local/bin/` | the `hephaestus` and `hep-*` shell wrappers |
-| `~/.claude/`, `~/.codex/` | plugin registration, commands/prompts, memory hooks |
-| `~/.cursor/mcp.json` | MCP server registration |
-| `~/.gemini/` | extension + MCP config |
-| `~/.openclaw/`, `~/.grok/` | skills and hooks |
-| `~/.gemini/antigravity/`, `~/.gemini/config/` | Antigravity workflows and plugin/MCP config — Antigravity lives under `.gemini`, not `.antigravity` |
-| `~/.config/opencode/`, `~/.config/goose/` | commands, plugin, MCP config |
+| `~/.local/bin/` | the `hephaestus`, `ontology`, `agentlas-one` and `hep-*` shell wrappers |
+| `~/.claude/`, `~/.codex/` | plugin registration, commands/prompts, memory hooks, MCP registration |
+| `~/.cursor/` | commands, skills, and the MCP entry in `mcp.json` |
+| `~/.gemini/` | Gemini CLI extension and fallback commands |
+| `~/.gemini/antigravity/`, `~/.gemini/config/` | Antigravity workflows, plugin, MCP config and memory hook — Antigravity lives under `.gemini`, not `.antigravity` |
+| `~/.config/opencode/` | commands, the MCP entry in `opencode.json`, and the memory plugin |
+| `~/.config/goose/config.yaml` | MCP registration, only when the file does not exist yet |
 | `~/.copilot/mcp-config.json` | MCP server registration |
-| `~/.agents/` | the vendor-neutral skills + plugin directory |
+| `~/.openclaw/` | skills and the `agentlas-one` hook |
+| `~/.hermes/skills/`, `~/.kimi/skills/` | skills |
+| `~/.grok/` | memory hook and a managed block in `~/.grok/AGENTS.md` |
+| `~/.agents/` | the vendor-neutral skills directory, plus goose's `agentlas-one` hook plugin |
 
 Two things that are easy to assume wrongly:
 
@@ -379,8 +383,15 @@ Two things that are easy to assume wrongly:
   home still gets Cursor, OpenCode and the rest wired up if those CLIs are
   installed. Hosts it cannot find are reported as skipped, not faked.
 - **It edits files that already exist** (`~/.codex/config.toml`,
-  `~/.cursor/mcp.json`, `~/.config/goose/config.yaml`). Edits are additive and
-  backed up beside the original.
+  `~/.cursor/mcp.json`, `~/.config/opencode/opencode.json`,
+  `~/.copilot/mcp-config.json`, `~/.gemini/config/mcp_config.json`). It
+  replaces only the entries it owns — the `hephaestus-network` MCP server, plus
+  the legacy `agentlas` entry it removes — and leaves every other key in place.
+  A JSON config that does not parse is refused, not overwritten. No backup copy
+  is written, except that a Codex marketplace-source change is snapshotted to
+  `~/.codex/.agentlas-marketplace-backups/`. An existing
+  `~/.config/goose/config.yaml` is never rewritten; the installer tells you how
+  to add the entry yourself.
 
 It never uses `sudo`, never writes outside `$HOME`, and downloads only from
 `github.com`. The release archive's SHA-256 is checked before anything is
@@ -393,11 +404,13 @@ Two more things worth knowing before you run it:
   your behalf", defaulting to No, and the installer answers yes — for the
   extension you just asked it to install, and nothing else. You will see it
   scroll past.
-- **An existing install is refreshed, not merged.** The default removes the
-  registered plugin and marketplace entry and installs them again; the output
-  labels this `mode: force refresh=1`. Set `HEPHAESTUS_FORCE=0` to skip it.
-- `~/.claude.json` may appear at the root of your home. That one is the `claude`
-  CLI initialising itself, not this installer.
+- **An existing install is updated in place, not removed and reinstalled.** An
+  installed Claude Code plugin is updated with `claude plugin update`, and a
+  marketplace entry is re-pointed only when it is the installer's own verified
+  source, so unrelated plugin settings survive.
+- `~/.claude.json` may appear at the root of your home. That is the `claude`
+  CLI initialising itself; on native Windows it also records the MCP server
+  the installer registers with `claude mcp add --scope user`.
 
 </details>
 
@@ -767,7 +780,7 @@ The current v1.2.62 release carries the resolved Work Brief through host-owned N
 *   **Lens-Driven System Analysis:** Clarifying questions are dynamically sourced from a structured lens table (Scope, Intent, Challenge, System Architecture) focusing on critical routing indicators: *anti-scope bounds* (what the agent must NOT do), *verifiable acceptance criteria*, and *exit conditions*.
 *   **The Work Brief:** Resolved details are frozen into `.agentlas/work-brief.json`—recording the validated goal, concrete constraints, an assumption ledger with source tags, and the metadata ambiguity score.
 *   **Contextual In-Flight Briefs:** The CLI tool `cards migrate` automatically maps brief details directly to triggers and anti-triggers on the agent's routing card. Running `route --brief` propagates this brief to all Stormbreaker execution packets, ensuring constraints and exit conditions govern parallel subprocesses across the entire lifecycle.
-*   **Enhanced Routing Discrimination:** Prevents same-topic/different-intent collision (e.g., a security agent intercepting a deployment prompt) via double-sided gating: interview-validated anti-triggers on the routing card, and low-confidence LLM re-ranking escalation inside the router.
+*   **Enhanced Routing Discrimination:** Prevents same-topic/different-intent collision (e.g., a security agent intercepting a deployment prompt) via double-sided gating: interview-validated anti-triggers on the routing card, and, on the legacy `route` path, a host-model escalation when the deterministic router lands on `clarify` or `propose_new`. The engine itself never calls a model, and Workforce selection never re-ranks.
 
 ---
 
@@ -788,7 +801,7 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-This installs the neutral runner at `~/.agentlas/runtime/current/bin/hephaestus` and registers the command adapters for Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, and compatible local/API hosts. The installer verifies each runtime surface after registration.
+This installs the neutral runner at `~/.agentlas/runtime/current/bin/hephaestus` and registers the command, skill, or MCP adapters for Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose, and GitHub Copilot CLI, plus memory hooks for Grok. Local models use the MCP entrypoint `hephaestus mcp serve`. The installer verifies each runtime surface after registration.
 
 Desktop startup and every `/hep-*` command start the same digest-verified,
 rate-limited update check in the background. The current command never waits
@@ -882,8 +895,9 @@ Clone the repo and copy `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`,
 
 **Just talk:** After installation, speak in plain language within native Agentlas interfaces to auto-route tasks. In external LLM tools, use the explicit commands listed below. When you don't know what agents exist, start with `/agentlas search`. To connect Telegram, use `/agentlas connect`.
 
-**One word to remember:** everything starts with `agentlas` — `/agentlas` in an
-LLM host, `agentlas` in a shell.
+**One word to remember:** everything starts with `agentlas` in an LLM host —
+`/agentlas`. In a shell the commands are `hephaestus` and `hep-*`; the `agentlas`
+shell command belongs to the separate Agentlas Terminal.
 
 ---
 
@@ -903,7 +917,7 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 | **Workforce Federation (Local + Cloud + Hub)** | `/agentlas-network` (or `/agentlas network`, `/hep-network`) | `/agentlas-network split this launch plan into research, copy, QA, and release agents` |
 | **Stormbreaker Loop** | `/agentlas-storm` (or `/agentlas storm`, `/hep-storm`) | `/agentlas-storm build full-stack saas landing page` |
 | **Graph Automations** | `/agentlas-graph` (or `/agentlas graph`, `/hep-graph`) | `/agentlas-graph create daily market summary automation` |
-| **Personal Agent Mode** | `/agentlas-one on|off` (or `/agentlas one on|off`, `/hep-one on|off`) | `/agentlas-one on` |
+| **Personal Agent Mode** | `/agentlas-one on|off` (or `/agentlas one on|off`) | `/agentlas-one on` |
 | **Registered Local Agents Only** | `/agentlas-local` (or `/agentlas local`, `/hep-local`) | `/agentlas-local use only agents registered on this machine` |
 | **Owned Cloud Agents Only** | `/agentlas-cloud` (or `/agentlas cloud`, `/hep-cloud`) | `/agentlas-cloud use my saved finance analyst agent to review this report` |
 | **Public Hub Agents Only** | `/agentlas-hub` (or `/agentlas hub`, `/hep-hub`) | `/agentlas-hub find public specialists for accessibility QA` |
@@ -912,6 +926,7 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 | **Inter-Process Call (IPC)** | `/agentlas-call` (or `/agentlas call`, `/hep-call`) | `/agentlas-call market-researcher, report-writer {draft a market report}` |
 | **Cloud / Hub Destination Gate** | `/agentlas-upload` (or `/agentlas upload`, `/hep-upload`) | `/agentlas-upload ./agents/customer-support-hq` |
 | **Messenger / Channel Setup** | `/agentlas-connect` (or `/agentlas connect`, `/hep-connect`) | `/agentlas-connect Telegram for Marketing Agent Team` |
+| **Sign-in** | `/agentlas-login` (or `/agentlas login`, `/hep-login`) | `/agentlas-login` |
 | **Orchestrator / Worker Models** | `/agentlas-orch` (or `/agentlas orch`, `/hep-orch`) | `/agentlas-orch orchestrator=frontier worker=economy` |
 | **Runtime + Adapter Update** | `/agentlas-update` (or `/agentlas update`, `/hep-update`) | `/agentlas-update` |
 
@@ -923,8 +938,9 @@ and OpenCode have no subagent of their own: one model plays every role in
 sequence there, the allocation receipt is still written, and the ceiling still
 bounds what that model may request — but no second, cheaper model appears.
 
-Every row also answers to its original `/hep-*` name — `/agentlas network` and
-`/hep-network` are the same command. Nothing was renamed away, so existing
+Every row except Personal Agent Mode also answers to its original `/hep-*`
+name — `/agentlas network` and `/hep-network` are the same command. Personal
+Agent Mode never had a `/hep-*` name. Nothing was renamed away, so existing
 scripts, notes, and muscle memory keep working. Current Codex uses explicit
 plugin skills `$hephaestus-build`, `$hephaestus-network`,
 `$hephaestus-cloud`, `$hephaestus-upload`, `$hephaestus-storm`, and
@@ -948,7 +964,7 @@ A unified compilation factory using four builders. Every generated package regis
 | **Single-Agent** | `10-single-agent-builder` | Standalone worker with localized skills, memory contracts, and runtime adapters. |
 | **Multi-Agent Team** | `20-multi-agent-team-builder` | Hierarchical team containing a PM Orchestrator, Memory Curator, Policy Gate, QA, and validation scripts. |
 | **Workspace Packager** | `30-agentlas-packager` | Compiled bundle ready for runtime import, CLI execution, or GitHub distribution. |
-| **Session Agent Builder** | `40-session-agent-builder` | Converts explicitly exported sessions into a reviewed single-agent or multi-agent team package. |
+| **Session Agent Builder** | `40-session-agent-builder` | Turns the current conversation (or, for headless runs, an explicit JSON/JSONL export) into an owner-reviewed single agent by default, or a team when you choose one. |
 
 *Briefing Interview Gate:* Builders initiate the process using the **briefing interview gate** : conducting lens-driven questions, evaluating the ambiguity threshold, searching primary sources, and outputting the work brief.
 
@@ -1085,9 +1101,9 @@ than copying it.
 Standardized CLI commands allow safe inter-agent coordination:
 
 ```bash
-agentlas-cloud ao a2a import ./agent-card.json .
-agentlas-cloud ao a2a export . --agent local/10-builder
-agentlas-cloud route "run the release check" --caller local/orchestrator .
+hephaestus ao a2a import ./agent-card.json .
+hephaestus ao a2a export . --agent local/10-builder
+hephaestus route "run the release check" --caller local/orchestrator --project .
 ```
 Import acts as a proposal (restricting automatic invocation), export redacts private paths and logic, and invocations are caller-gated before routing is resolved.
 
@@ -1100,57 +1116,46 @@ Import acts as a proposal (restricting automatic invocation), export redacts pri
 <summary><strong>What It Builds — process packaging</strong></summary>
 
 
-Hephaestus packages agents into a standard directory layout that any workspace runtime can parse, install, verify, and run. The important part is not just `agent.md`; it is the operating contract around it:
+Hephaestus packages agents into a standard directory layout that any workspace runtime can parse, install, verify, and run. The important part is not just `agent.md`; it is the operating contract around it. The layout below is what `package-contract.json` requires and `hephaestus contract verify` checks:
 
 ```text
-├── AGENTS.md                              # Canonical operating loop and source-of-truth map
-├── agent.md / agents/                     # Single worker, HQ/orchestrator, or team roles
-│   ├── 10-single-agent-builder/
-│   ├── 20-multi-agent-team-builder/
-│   ├── 30-agentlas-packager/
-│   └── 40-session-agent-builder/
-├── .agentlas/                             # Agentlas OS system directory
-│   ├── sitemap.json                       # Product graph: modes, runtime adapters, memory, release checks
-│   ├── mode-map.json                      # Single-agent / team / packager classification contract
-│   ├── routing-card.json                  # Triggers, anti-triggers, capabilities, risk, routing readiness
-│   ├── agent-card.json                    # A2A-facing identity and capability card
-│   ├── company-blueprint.json             # Team/company topology for multi-agent packages
-│   ├── global-commands.json               # Runtime command aliases and install surfaces
-│   ├── memory-map.json                    # Memory roots, write owners, trust labels, exclusions
-│   ├── memory-tickets.jsonl               # Candidate memory events before durable promotion
-│   ├── project-soul-memory.md             # Project-level operating memory
-│   ├── curator-decisions.jsonl            # Memory Curator promotion/rejection decisions
-│   ├── vault-references.json              # Secret/credential references without raw values
-│   ├── validation-ledger.jsonl            # Verification and release evidence
-│   ├── field-test-report.json             # Field test results for package readiness
-│   ├── skill-registry.json                # Reusable skill inventory and lifecycle metadata
-│   ├── skill-trials.jsonl                 # Skill trial evidence before promotion
-│   └── agent-ontology/                    # Local code/agent map for capabilities, artifacts, scopes, edges
-├── skills/                                # Canonical reusable skills
-├── modes/                                 # Mode contracts for build/package behavior
-├── schemas/                               # JSON schemas for cards, memory maps, sitemap, evals, manifests
-├── templates/                             # Package, memory, interview, eval, ontology, and contract templates
-├── ontology/ + bin/ontology               # Local-first parser/search/GraphRAG runtime
-├── agentlas_cloud/                        # Hub/Cloud bundle, routing, update, and runtime APIs
-├── .claude/ codex/ .gemini/ .agents/      # Thin runtime adapters over the same core
-├── claude/ codex/ gemini/ antigravity/    # Plugin/extension/workflow distributions
-├── cursor/ hermes/ openclaw/              # Additional runtime shims and skill mirrors
-│   ├── source-of-truth.md
-│   ├── chain-map.md
-│   ├── memory-architecture.md
-│   ├── ontology-runtime.md
-│   ├── hephaestus-network-2.0.md
-│   └── builder-interview-research-gate.md
-└── scripts/                               # Runtime installation
-    ├── install.sh
-    ├── install-all-runtimes.sh
-    ├── verify-windows-wiring.sh
-    └── install-memory-hooks.py
+├── AGENTS.md                         # Package entry: name, purpose, canonical command, roles
+├── agent.md                          # Primary instructions: role, steps, output contract
+├── agentlas.json                     # Manifest: permissions, memory policy, read allow/deny lists
+├── agents/<role>/agent.md            # Team only: one folder per worker
+├── A2A/agent-card.a2a.json           # A2A Agent Card projected from the two cards below
+├── .agentlas/
+│   ├── agent-card.json               # Identity: name, slug, summary, capabilities, entrypoints
+│   ├── routing-card.json             # Triggers and anti-triggers (ko + en), risk, memory behavior
+│   ├── build-profile.json            # Fail-closed build readiness profile
+│   ├── memory-map.json               # Memory ownership map
+│   ├── global-commands.json          # Per-runtime slash command adapters
+│   ├── mcp-policy.json               # What the machine must provide, and what happens without it
+│   ├── skill-registry.json           # Skill inventory (may be empty)
+│   ├── memory-tickets.jsonl          # Candidate memory events before curator promotion
+│   ├── capability-eval-plan.json     # Positive/negative eval prompts with pass criteria
+│   ├── routing-benchmarks.jsonl      # At least 10 route/reject cases, ko + en
+│   ├── work-brief.json               # Interview-derived goal, constraints, decisions
+│   ├── company-blueprint.json        # Team only: orchestrator, nodes, edges
+│   ├── sitemap.json                  # Team only: what each task produces and consumes
+│   └── brief.json                    # agentlas.brief/1 resume, compiled at upload
+├── contracts/                        # intake.schema.json, output.schema.json, output.example.json
+├── docs/                             # Builder interview, research sources, tool selection,
+│                                     #   domain synthesis, prompt performance contract
+├── tools/requirements.yaml           # Projected from mcp-policy.json + agentlas.json
+├── permissions/policy.yaml           # Projected shell/network/file/payment whitelist
+├── hooks/                            # memory-upgrade.yaml, on_stop.yaml — declared, host-enforced
+├── evals/README.md                   # Points at the eval plan and routing benchmarks
+└── .claude/skills/<name>/SKILL.md    # Skills, when the package carries any
 ```
 
+`docs/`, the eval plan and the work brief may be skipped only by a
+user-confirmed minimal private build. `provenance.json`, `knowledge/`,
+`schemas/`, `sandbox/` and `examples/` are optional.
+
 That package shape is why an Agentlas agent is more than an LLM-written role
-prompt. It carries routing, memory, sitemap, code/agent ontology, permissions,
-runtime adapters, verification ledgers, and release gates together.
+prompt. It carries routing, memory, input/output contracts, permissions,
+runtime adapters and evaluation evidence together.
 
 ### Dependency-aware project context
 

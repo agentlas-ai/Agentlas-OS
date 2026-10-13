@@ -255,7 +255,7 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 Desktop 本身就是宿主，所以它在运行开始**之前**就用代码决定：这份工作一个人够，还是需要一支团队。那个决定会被记成一次预留的运行，而不是一条建议。它可以编入已安装的智能体，也可以调用公开 Hub 的智能体。调用公开 Hub 智能体不收取 Agentlas 费用，但所选宿主或模型、API 服务商可能另行收费。
 
-你用的所有 LLM 都接在一处：你已经订阅的编码 CLI（Claude Code、Codex、Antigravity/Gemini、Cursor、Grok、Kimi）、你自己 11 家服务商的 API key，还有本地模型。内置经过签名验证的 llama.cpp 引擎，从 Hugging Face 拉取 GGUF 模型，也能接 LM Studio 和 MLX。
+你用的所有 LLM 都接在一处：你已经订阅的编码 CLI（Claude Code、Codex、Antigravity、Cursor、Grok、Kimi、GitHub Copilot CLI）、你自己 11 家服务商的 API key，还有本地模型。它会安装经过验证的 llama.cpp 引擎，从 Hugging Face 拉取 GGUF 模型，也能接 Ollama、LM Studio 和 MLX。
 
 **而当你正在用的模型额度耗尽时，这一轮会在你自己排定的下一个模型上重跑。** 你保存的模型选择不会被改动，额度恢复后会自动回到原来的模型。
 
@@ -385,7 +385,7 @@ Hephaestus 与经典操作系统概念一一对应：
 *   **透镜驱动的系统分析：** 澄清问题从结构化的透镜表（范围、意图、挑战、系统架构）中动态取材，聚焦关键路由指标：*反作用域边界*（智能体绝不能做什么）、*可验证的验收标准*与*退出条件*。
 *   **Work Brief：** 已敲定的细节被冻结进 `.agentlas/work-brief.json`——记录经确认的目标、具体约束、带来源标签的假设台账，以及元数据中的歧义分数。
 *   **上下文内的在途简报：** CLI 工具 `cards migrate` 会自动把简报细节直接映射到智能体路由卡上的触发器与反触发器。运行 `route --brief` 会把该简报传播到所有 Stormbreaker 执行数据包，确保约束与退出条件在整个生命周期内约束所有并行子进程。
-*   **增强的路由判别力：** 通过双侧门控防止同主题/不同意图的碰撞（例如安全智能体截胡部署提示）：路由卡上经访谈验证的反触发器，以及路由器内部低置信度时的 LLM 重排序升级。
+*   **增强的路由判别力：** 通过双侧门控防止同主题/不同意图的碰撞（例如安全智能体截胡部署提示）：路由卡上经访谈验证的反触发器，以及在旧版 `route` 路径上、确定性路由器落到 `clarify` 或 `propose_new` 时交给宿主模型的升级。引擎本身从不调用模型，Workforce 选择也从不重新排序。
 
 ---
 
@@ -406,7 +406,7 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-该命令会把中立运行器安装到 `~/.agentlas/runtime/current/bin/hephaestus`，并为 Claude Code、Codex、Gemini CLI、Antigravity 和 Cursor 注册命令适配器。安装器会在注册后逐一验证每个运行时表面。
+该命令会把中立运行器安装到 `~/.agentlas/runtime/current/bin/hephaestus`，并为 Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode、OpenClaw、Hermes、Kimi Code CLI、goose 和 GitHub Copilot CLI 注册命令、技能或 MCP 适配器，并为 Grok 安装记忆钩子。本地模型使用 MCP 入口 `hephaestus mcp serve`。安装器会在注册后逐一验证每个运行时表面。
 
 ### 各运行时的插件驱动
 
@@ -492,7 +492,7 @@ codex plugin add hephaestus@agentlas-core-engine
 | **单智能体** | `10-single-agent-builder` | 独立工作者，带本地化技能、记忆契约与运行时适配器。 |
 | **多智能体团队** | `20-multi-agent-team-builder` | 层级化团队，包含 PM Orchestrator、Memory Curator、Policy Gate、QA 与校验脚本。 |
 | **工作区打包器** | `30-agentlas-packager` | 编译好的捆绑包，可直接用于 runtime 导入、CLI 执行或 GitHub 分发。 |
-| **会话智能体构建器** | `40-session-agent-builder` | 将明确导出的会话转换为经过审查的单智能体或多智能体团队包。 |
+| **会话智能体构建器** | `40-session-agent-builder` | 把当前对话（无头运行时则为明确的 JSON/JSONL 导出）变成经所有者审查的智能体；默认是单智能体，只有你选择团队时才生成团队。 |
 
 *简报访谈门：* 构建器通过**简报访谈门**启动流程：进行透镜驱动的提问、评估歧义阈值、检索一手来源，并输出 Work Brief。
 
@@ -558,9 +558,9 @@ bin/ontology memory candidates
 标准化的 CLI 命令支持安全的智能体间协同：
 
 ```bash
-agentlas-cloud ao a2a import ./agent-card.json .
-agentlas-cloud ao a2a export . --agent local/10-builder
-agentlas-cloud route "run the release check" --caller local/orchestrator .
+hephaestus ao a2a import ./agent-card.json .
+hephaestus ao a2a export . --agent local/10-builder
+hephaestus route "run the release check" --caller local/orchestrator --project .
 ```
 导入以提案的形式生效（限制自动调用），导出会脱敏私有路径与逻辑，且调用在路由解析之前先经调用方门控。
 
@@ -573,22 +573,40 @@ agentlas-cloud route "run the release check" --caller local/orchestrator .
 <summary><strong>构建产物 — 进程打包</strong></summary>
 
 
-Hephaestus 将智能体打包为标准目录布局，任何工作区运行时都能解析、安装、验证并运行：
+Hephaestus 将智能体打包为标准目录布局，任何工作区运行时都能解析、安装、验证并运行。下面的布局就是 `package-contract.json` 所要求、`hephaestus contract verify` 所检查的内容：
 
 ```text
-├── AGENTS.md                          # Canonical route configurations
-├── agent.md / agents/                 # Single worker or team roles
-├── skills/                            # Local agent skills and capabilities
-├── modes/                             # Custom agent execution modes
-├── schemas/                           # Validation contracts and schemas
-├── templates/                         # Configuration templates
-├── .agentlas/                         # System Directory: routing cards, work briefs,
-│                                      # global commands, memory contracts, eval plans
-├── .claude/ codex/ .gemini/ .agents/  # Runtime shims (driver adapters over the core)
-├── scripts/
-│   ├── install.sh                    # Compatible installer entrypoint
-│   └── install-all-runtimes.sh       # Install the shared runtime
+├── AGENTS.md                         # Package entry: name, purpose, canonical command, roles
+├── agent.md                          # Primary instructions: role, steps, output contract
+├── agentlas.json                     # Manifest: permissions, memory policy, read allow/deny lists
+├── agents/<role>/agent.md            # Team only: one folder per worker
+├── A2A/agent-card.a2a.json           # A2A Agent Card projected from the two cards below
+├── .agentlas/
+│   ├── agent-card.json               # Identity: name, slug, summary, capabilities, entrypoints
+│   ├── routing-card.json             # Triggers and anti-triggers (ko + en), risk, memory behavior
+│   ├── build-profile.json            # Fail-closed build readiness profile
+│   ├── memory-map.json               # Memory ownership map
+│   ├── global-commands.json          # Per-runtime slash command adapters
+│   ├── mcp-policy.json               # What the machine must provide, and what happens without it
+│   ├── skill-registry.json           # Skill inventory (may be empty)
+│   ├── memory-tickets.jsonl          # Candidate memory events before curator promotion
+│   ├── capability-eval-plan.json     # Positive/negative eval prompts with pass criteria
+│   ├── routing-benchmarks.jsonl      # At least 10 route/reject cases, ko + en
+│   ├── work-brief.json               # Interview-derived goal, constraints, decisions
+│   ├── company-blueprint.json        # Team only: orchestrator, nodes, edges
+│   ├── sitemap.json                  # Team only: what each task produces and consumes
+│   └── brief.json                    # agentlas.brief/1 resume, compiled at upload
+├── contracts/                        # intake.schema.json, output.schema.json, output.example.json
+├── docs/                             # Builder interview, research sources, tool selection,
+│                                     #   domain synthesis, prompt performance contract
+├── tools/requirements.yaml           # Projected from mcp-policy.json + agentlas.json
+├── permissions/policy.yaml           # Projected shell/network/file/payment whitelist
+├── hooks/                            # memory-upgrade.yaml, on_stop.yaml — declared, host-enforced
+├── evals/README.md                   # Points at the eval plan and routing benchmarks
+└── .claude/skills/<name>/SKILL.md    # Skills, when the package carries any
 ```
+
+`docs/`、评估计划和工作简报只有在用户确认的最小私有构建中才可以省略。`provenance.json`、`knowledge/`、`schemas/`、`sandbox/` 和 `examples/` 是可选的。
 
 ---
 

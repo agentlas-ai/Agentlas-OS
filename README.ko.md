@@ -295,9 +295,9 @@ One·Work 작성창의 **AGI 버튼**은 현재 목표나 프로젝트의 **Aliv
 요금은 별도로 발생할 수 있습니다.
 
 쓰는 LLM을 전부 한곳에 겁니다. 이미 구독 중인 코딩 CLI(Claude Code, Codex,
-Antigravity/Gemini, Cursor, Grok, Kimi), 직접 넣은 API 키 11종, 그리고 로컬
-모델까지. 검증된 llama.cpp 엔진이 동봉돼 있어 Hugging Face에서 GGUF를 받아
-바로 돌리고, LM Studio와 MLX에도 붙습니다.
+Antigravity, Cursor, Grok, Kimi, GitHub Copilot CLI), 직접 넣은 API 키 11종,
+그리고 로컬 모델까지. 검증된 llama.cpp 엔진을 설치해 Hugging Face에서 GGUF를
+받아 바로 돌리고, Ollama·LM Studio·MLX에도 붙습니다.
 
 **그리고 쓰던 모델의 사용량이 소진되면, 그 턴을 다음 순위 모델로 다시 돌립니다.**
 저장된 모델 선택은 바뀌지 않습니다. 한도가 풀리면 원래 모델로 알아서 돌아옵니다.
@@ -564,7 +564,7 @@ Agentlas는 하나의 모델 제공자에 묶이지 않으면서 에이전트 �
 *   **렌즈 기반 시스템 분석:** 명확화 질문은 구조화된 렌즈 테이블(범위, 의도, 도전 과제, 시스템 아키텍처)에서 동적으로 뽑아내며, 핵심 라우팅 지표에 집중합니다: *안티스코프 경계*(에이전트가 절대 하면 안 되는 것), *검증 가능한 수용 기준*, *종료 조건*.
 *   **Work Brief:** 확정된 세부 사항은 `.agentlas/work-brief.json`에 동결됩니다 — 검증된 목표, 구체적 제약, 출처 태그가 달린 가정 원장(assumption ledger), 메타데이터 모호성 점수를 기록합니다.
 *   **컨텍스트 반영 인플라이트 브리프:** CLI 도구 `cards migrate`가 브리프의 세부 내용을 에이전트 라우팅 카드의 트리거와 안티트리거에 자동으로 매핑합니다. `route --brief`를 실행하면 이 브리프가 모든 Stormbreaker 실행 패킷으로 전파되어, 제약과 종료 조건이 전체 수명주기에 걸쳐 병렬 서브프로세스를 관장하도록 보장합니다.
-*   **강화된 라우팅 판별력:** 같은 주제·다른 의도 충돌(예: 보안 에이전트가 배포 프롬프트를 가로채는 문제)을 양면 게이팅으로 방지합니다: 라우팅 카드에 기록된 인터뷰 검증 안티트리거, 그리고 라우터 내부의 저신뢰도 LLM 리랭킹 에스컬레이션.
+*   **강화된 라우팅 판별력:** 같은 주제·다른 의도 충돌(예: 보안 에이전트가 배포 프롬프트를 가로채는 문제)을 양면 게이팅으로 방지합니다: 라우팅 카드에 기록된 인터뷰 검증 안티트리거, 그리고 레거시 `route` 경로에서 결정적 라우터가 `clarify`나 `propose_new`에 닿았을 때 호스트 모델에 넘기는 에스컬레이션. 엔진은 직접 모델을 부르지 않고, Workforce 선택은 순위를 다시 매기지 않습니다.
 
 ---
 
@@ -585,7 +585,7 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-이 명령은 중립 러너를 `~/.agentlas/runtime/current/bin/hephaestus`에 설치하고, Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes와 호환 로컬/API 호스트용 명령 어댑터를 등록합니다. 설치기는 등록이 끝난 뒤 각 런타임 표면을 검증합니다.
+이 명령은 중립 러너를 `~/.agentlas/runtime/current/bin/hephaestus`에 설치하고, Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose, GitHub Copilot CLI용 명령·스킬·MCP 어댑터와 Grok용 메모리 훅을 등록합니다. 로컬 모델은 MCP 진입점 `hephaestus mcp serve`를 씁니다. 설치기는 등록이 끝난 뒤 각 런타임 표면을 검증합니다.
 
 Desktop 시작과 모든 `/hep-*` 명령은 동일한 무결성 검증·횟수 제한
 업데이트를 백그라운드에서 시작합니다. 현재 명령은 네트워크나 설치 작업을
@@ -697,7 +697,7 @@ codex plugin add hephaestus@agentlas-core-engine
 | **Workforce 연합 라우팅(Local + Cloud + Hub)** | `/agentlas-network` (또는 `/agentlas network`, `/hep-network`) | `/agentlas-network split this launch plan into research, copy, QA, and release agents` |
 | **스톰브레이커 루프** | `/agentlas-storm` (또는 `/agentlas storm`, `/hep-storm`) | `/agentlas-storm build full-stack saas landing page` |
 | **자동화 그래프** | `/agentlas-graph` (또는 `/agentlas graph`, `/hep-graph`) | `/agentlas-graph create daily market summary automation` |
-| **퍼스널 에이전트 모드** | `/agentlas-one on|off` (또는 `/agentlas one on|off`, `/hep-one on|off`) | `/agentlas-one on` |
+| **퍼스널 에이전트 모드** | `/agentlas-one on|off` (또는 `/agentlas one on|off`) | `/agentlas-one on` |
 | **등록된 로컬 에이전트 전용** | `/agentlas-local` (또는 `/agentlas local`, `/hep-local`) | `/agentlas-local use only agents registered on this machine` |
 | **내 Cloud 에이전트 전용** | `/agentlas-cloud` (또는 `/agentlas cloud`, `/hep-cloud`) | `/agentlas-cloud use my saved finance analyst agent to review this report` |
 | **공개 Hub 에이전트 전용** | `/agentlas-hub` (또는 `/agentlas hub`, `/hep-hub`) | `/agentlas-hub find public specialists for accessibility QA` |
@@ -707,8 +707,9 @@ codex plugin add hephaestus@agentlas-core-engine
 | **Cloud / Hub 목적지 선택 게이트** | `/agentlas-upload` (또는 `/agentlas upload`, `/hep-upload`) | `/agentlas-upload ./agents/customer-support-hq` |
 | **메신저/채널 설정** | `/agentlas-connect` (또는 `/agentlas connect`, `/hep-connect`) | `/agentlas-connect Telegram for Marketing Agent Team` |
 
-각 명령은 원래 이름인 `/hep-*`로도 그대로 동작합니다. `/agentlas network`와
-`/hep-network`는 같은 명령입니다. 이름을 없앤 것이 아니므로 기존 스크립트와
+퍼스널 에이전트 모드를 뺀 각 명령은 원래 이름인 `/hep-*`로도 그대로 동작합니다.
+`/agentlas network`와 `/hep-network`는 같은 명령입니다. 퍼스널 에이전트 모드에는
+처음부터 `/hep-*` 이름이 없었습니다. 이름을 없앤 것이 아니므로 기존 스크립트와
 메모, 손에 익은 습관이 그대로 유지됩니다.
 
 
@@ -729,7 +730,7 @@ codex plugin add hephaestus@agentlas-core-engine
 | **싱글 에이전트** | `10-single-agent-builder` | 로컬화된 스킬, 메모리 계약, 런타임 어댑터를 갖춘 독립 워커. |
 | **멀티 에이전트 팀** | `20-multi-agent-team-builder` | PM Orchestrator, Memory Curator, Policy Gate, QA, 검증 스크립트를 포함하는 계층형 팀. |
 | **워크스페이스 패키저** | `30-agentlas-packager` | 런타임 임포트, CLI 실행, GitHub 배포가 가능한 컴파일 번들. |
-| **세션 에이전트 빌더** | `40-session-agent-builder` | 명시적으로 내보낸 세션을 검토 가능한 싱글 에이전트 또는 멀티 에이전트 팀 패키지로 변환하는 빌더. |
+| **세션 에이전트 빌더** | `40-session-agent-builder` | 지금 대화(헤드리스 실행이면 명시적 JSON/JSONL 내보내기)를 오너가 검토한 에이전트로 만드는 빌더. 기본은 싱글 에이전트이고, 팀은 직접 고를 때만. |
 
 *Briefing Interview Gate:* 빌더는 **briefing interview gate**로 프로세스를 시작합니다: 렌즈 기반 질문을 수행하고, 모호성 임계값을 평가하고, 1차 출처를 검색하고, work brief를 출력합니다.
 
@@ -795,9 +796,9 @@ bin/ontology memory candidates
 표준화된 CLI 명령으로 에이전트 간 협업을 안전하게 수행할 수 있습니다:
 
 ```bash
-agentlas-cloud ao a2a import ./agent-card.json .
-agentlas-cloud ao a2a export . --agent local/10-builder
-agentlas-cloud route "run the release check" --caller local/orchestrator .
+hephaestus ao a2a import ./agent-card.json .
+hephaestus ao a2a export . --agent local/10-builder
+hephaestus route "run the release check" --caller local/orchestrator --project .
 ```
 가져오기(import)는 제안으로 처리되어 자동 호출이 제한되고, 내보내기(export)는 비공개 경로와 로직을 가리며, 호출은 라우팅이 해석되기 전에 호출자 게이트를 거칩니다.
 
@@ -810,57 +811,46 @@ agentlas-cloud route "run the release check" --caller local/orchestrator .
 <summary><strong>무엇을 만들어내는가 — 프로세스 패키징</strong></summary>
 
 
-Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·실행할 수 있는 표준 디렉터리 레이아웃으로 에이전트를 패키징합니다. 중요한 것은 `agent.md` 하나가 아니라 그 주변의 운영 계약입니다:
+Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·실행할 수 있는 표준 디렉터리 레이아웃으로 에이전트를 패키징합니다. 중요한 것은 `agent.md` 하나가 아니라 그 주변의 운영 계약입니다. 아래 구조는 `package-contract.json`이 요구하고 `hephaestus contract verify`가 검사하는 것입니다:
 
 ```text
-├── AGENTS.md                              # 정본 운영 루프와 source-of-truth map
-├── agent.md / agents/                     # 단일 워커, HQ/orchestrator, 또는 팀 역할
-│   ├── 10-single-agent-builder/
-│   ├── 20-multi-agent-team-builder/
-│   ├── 30-agentlas-packager/
-│   └── 40-session-agent-builder/
-├── .agentlas/                             # Agentlas OS 시스템 디렉터리
-│   ├── sitemap.json                       # 제품 그래프: 모드, 런타임 어댑터, 메모리, 릴리즈 체크
-│   ├── mode-map.json                      # single-agent / team / packager 분류 계약
-│   ├── routing-card.json                  # trigger, anti-trigger, capability, risk, routing readiness
-│   ├── agent-card.json                    # A2A-facing identity와 capability card
-│   ├── company-blueprint.json             # 멀티 에이전트 패키지의 팀/회사 topology
-│   ├── global-commands.json               # 런타임 명령 alias와 설치 표면
-│   ├── memory-map.json                    # 메모리 root, write owner, trust label, exclude 규칙
-│   ├── memory-tickets.jsonl               # durable promotion 전 후보 메모리 이벤트
-│   ├── project-soul-memory.md             # 프로젝트 레벨 운영 메모리
-│   ├── curator-decisions.jsonl            # Memory Curator의 승격/거절 결정
-│   ├── vault-references.json              # raw value 없는 secret/credential reference
-│   ├── validation-ledger.jsonl            # 검증과 릴리즈 evidence
-│   ├── field-test-report.json             # package readiness field test 결과
-│   ├── skill-registry.json                # reusable skill inventory와 lifecycle metadata
-│   ├── skill-trials.jsonl                 # promotion 전 skill trial evidence
-│   └── agent-ontology/                    # capability, artifact, scope, edge를 담은 local code/agent map
-├── skills/                                # 정본 reusable skills
-├── modes/                                 # build/package 동작 모드 계약
-├── schemas/                               # card, memory map, sitemap, eval, manifest JSON schema
-├── templates/                             # package, memory, interview, eval, ontology, contract template
-├── ontology/ + bin/ontology               # 로컬 우선 parser/search/GraphRAG runtime
-├── agentlas_cloud/                        # Hub/Cloud bundle, routing, update, runtime API
-├── .claude/ codex/ .gemini/ .agents/      # 같은 core 위의 얇은 runtime adapter
-├── claude/ codex/ gemini/ antigravity/    # plugin/extension/workflow distribution
-├── cursor/ hermes/ openclaw/              # 추가 runtime shim과 skill mirror
-│   ├── source-of-truth.md
-│   ├── chain-map.md
-│   ├── memory-architecture.md
-│   ├── ontology-runtime.md
-│   ├── hephaestus-network-2.0.md
-│   └── builder-interview-research-gate.md
-└── scripts/                               # Runtime installation
-    ├── install.sh
-    ├── install-all-runtimes.sh
-    ├── verify-windows-wiring.sh
-    └── install-memory-hooks.py
+├── AGENTS.md                         # 패키지 입구: 이름, 목적, 정본 명령, 역할
+├── agent.md                          # 주 지시문: 역할, 단계, 출력 계약
+├── agentlas.json                     # 매니페스트: 권한, 메모리 정책, 읽기 허용/거부 목록
+├── agents/<role>/agent.md            # 팀일 때만: 워커마다 폴더 하나
+├── A2A/agent-card.a2a.json           # 아래 두 카드에서 투영한 A2A Agent Card
+├── .agentlas/
+│   ├── agent-card.json               # 신원: 이름, slug, 요약, capability, entrypoint
+│   ├── routing-card.json             # 트리거·안티트리거(한/영), 위험, 메모리 동작
+│   ├── build-profile.json            # 실패 시 닫히는 빌드 준비 프로필
+│   ├── memory-map.json               # 메모리 소유 지도
+│   ├── global-commands.json          # 런타임별 슬래시 명령 어댑터
+│   ├── mcp-policy.json               # 기계가 갖춰야 할 것, 없을 때 어떻게 되는지
+│   ├── skill-registry.json           # 스킬 목록(비어 있어도 됨)
+│   ├── memory-tickets.jsonl          # 큐레이터 승격 전 후보 메모리 이벤트
+│   ├── capability-eval-plan.json     # 통과 기준이 있는 긍정/부정 평가 프롬프트
+│   ├── routing-benchmarks.jsonl      # 라우팅/거절 사례 10개 이상(한/영)
+│   ├── work-brief.json               # 인터뷰로 정한 목표, 제약, 결정
+│   ├── company-blueprint.json        # 팀일 때만: orchestrator, 노드, 엣지
+│   ├── sitemap.json                  # 팀일 때만: 태스크별 산출/소비 그래프
+│   └── brief.json                    # agentlas.brief/1 이력서, 업로드 때 컴파일
+├── contracts/                        # intake.schema.json, output.schema.json, output.example.json
+├── docs/                             # 빌더 인터뷰, 리서치 출처, 도구 선택,
+│                                     #   도메인 종합, 프롬프트 성능 계약
+├── tools/requirements.yaml           # mcp-policy.json + agentlas.json에서 투영
+├── permissions/policy.yaml           # 셸/네트워크/파일/결제 허용 목록 투영
+├── hooks/                            # memory-upgrade.yaml, on_stop.yaml — 선언만, 집행은 호스트
+├── evals/README.md                   # 평가 계획과 라우팅 벤치마크를 가리킴
+└── .claude/skills/<name>/SKILL.md    # 스킬이 있을 때
 ```
 
+`docs/`, 평가 계획, 작업 브리프는 사용자가 확인한 최소 비공개 빌드에서만
+생략할 수 있습니다. `provenance.json`, `knowledge/`, `schemas/`, `sandbox/`,
+`examples/`는 선택입니다.
+
 이 구조 때문에 Agentlas 에이전트는 LLM이 쓴 역할 프롬프트 하나가 아닙니다.
-라우팅, 메모리, 사이트맵, code/agent ontology, 권한, 런타임 어댑터, 검증 원장,
-릴리즈 게이트가 함께 들어 있는 운영 단위입니다.
+라우팅, 메모리, 입출력 계약, 권한, 런타임 어댑터, 평가 증거가 함께 들어 있는
+운영 단위입니다.
 
 ### 의존관계 기반 프로젝트 맥락
 
