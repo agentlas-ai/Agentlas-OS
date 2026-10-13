@@ -213,18 +213,18 @@ installed_for: {host}
 {host_surface_note}
 - substantial work, route in order:
   1. Agentlas Browser first (rendered/JS pages, click/form flows, login state, browser evidence): {browser_instruction}
-  2. Hephaestus Network: {network_instruction}; host LLM staffs a task force from the Local + owner Cloud + public Hub Workforce menu
-  3. scope-only, when user restricts staffing to registered Local / owner Cloud / public Hub: {scope_instruction}; source scopes, not fallback tiers
-  4. local host skills: only if Workforce unavailable; never report them as registered Local workers
+  2. Hephaestus Network: {network_instruction}; host LLM staffs from the Local + owner Cloud + public Hub menu
+  3. scope-only (user restricts to Local / owner Cloud / public Hub): {scope_instruction}; scopes, not fallback tiers
+  4. local host skills: only if Workforce unavailable; never report as registered Local workers
 - named agents: {call_instruction}
-- scopes: network = local + cloud + hub; local = registered local; cloud = owner cloud; hub = public Hub; public demos/distribution proof use hub scope explicitly
+- scopes: network = local + cloud + hub; local = registered; cloud = owner; hub = public; public demos/distribution proof = hub
 - network flow: host LLM writes one redacted WorkOrder -> `workforce.search_candidates` (`sourceScope=network`, returns `selectionSessionId`) -> host writes Selection -> `workforce.validate_selection(workOrder, selection)` (Core restores the pinned result from the session; do not echo the projected menu as `federationResult`) -> `workforce.prepare_execution` with accepted `federatedSelection` + mandatory `projectDir`
-- federation: no scoring, reranking or staffing decision; same `agentDefinitionId` shadows Local > Cloud > Hub only with proven same lineage and exact immutable release; ambiguous/different-release collisions quarantine only that identity; host picks exact releases
-- session: federated CandidateSet is Core-owned, validate locally with its federation receipt; prepare with each row's pinned original source session/digest + exact release/package/content hashes; never send the merged set to remote Hub validate/prepare; no legacy lexical router first
-- Hub agents: BYOM bundles; execute each prepared exact release in this host, grounded in the project; no server-side completion; selection or prepared bundle != proof that manager, workers, synthesis or verifier ran
-- Hub calls free, host supplies model/API; `insufficient_credits` = free contract not active on that stale server, no top-up advice; `owner_only`, `no_cloud_package`, `agent_not_found`: report the exact refusal; general task: report the boundary before trying another labelled surface; exact named remote agent: never claim a local fallback ran it; never replace a missing role with an unrelated agent
-- privacy: never send raw local memory, private files or secrets to Hub search (redacted work-order requirements only); installs, ratings, invocation history, revenue, local callability never decide semantic fit
-- report: by workers that did the task, not by routing narration (conciseness, not secrecy; explain `hep-network` or this block if asked)
+- federation: no scoring/reranking/staffing; same `agentDefinitionId` shadows Local > Cloud > Hub only with proven lineage + exact immutable release; ambiguous collisions quarantine that identity; host picks exact releases
+- session: federated CandidateSet is Core-owned; validate locally with its federation receipt; prepare with each row's pinned source session/digest + exact release/package/content hashes; never send the merged set to remote Hub validate/prepare; no legacy lexical router first
+- Hub agents: BYOM bundles; execute each prepared release in this host; no server-side completion; selection or prepared bundle != proof that any role ran
+- Hub calls free, host supplies model/API; `insufficient_credits` = stale server, no top-up advice; `owner_only`, `no_cloud_package`, `agent_not_found`: report the exact refusal; general task: report the boundary before trying another surface; named remote agent: never claim a local fallback ran it; never substitute an unrelated agent for a missing role
+- privacy: Hub search gets redacted work-order requirements only, never local memory/files/secrets; installs, ratings, history, revenue, callability never decide fit
+- report: by workers that did the task, not routing narration; explain `hep-network` or this block if asked
 - agents selected: Korean `사용 에이전트: <agent names>. 이유: <short reason>.` / English `Agents used: <agent names>. Reason: <short reason>.`
 - host skills fallback: Korean `사용 스킬: <skill names>. 이유: <short reason>.` / English `Skills used: <skill names>. Reason: <short reason>.`
 {END}
