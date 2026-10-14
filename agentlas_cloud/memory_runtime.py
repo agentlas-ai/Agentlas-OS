@@ -178,21 +178,24 @@ class MemoryRuntime:
             self.db = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=timeout)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
+        existing_meta = self.db.execute("SELECT 1 FROM sqlite_master WHERE name='memory_store_meta'").fetchone()
+        if existing_meta:
+            version = self.db.execute("SELECT value FROM memory_store_meta WHERE key='schema_version'").fetchone()
+            if version and version[0] != "1":
+                self.close()
+                raise ValueError("memory_store_schema_incompatible")
+            existing_owner = self.db.execute("SELECT value FROM memory_store_meta WHERE key='owner_namespace'").fetchone()
+            if existing_owner and existing_owner[0] != self.owner:
+                self.close()
+                raise ValueError("memory_owner_mismatch")
+            core_version = self.db.execute("SELECT value FROM memory_store_meta WHERE key='core_schema_version'").fetchone()
+            if core_version and core_version[0] != SCHEMA:
+                self.close()
+                raise ValueError("memory_core_schema_incompatible")
+        elif not initialize:
+            self.close()
+            raise ValueError("memory_store_uninitialized")
         if initialize:
-            existing_meta = self.db.execute("SELECT 1 FROM sqlite_master WHERE name='memory_store_meta'").fetchone()
-            if existing_meta:
-                version = self.db.execute("SELECT value FROM memory_store_meta WHERE key='schema_version'").fetchone()
-                if version and version[0] != "1":
-                    self.close()
-                    raise ValueError("memory_store_schema_incompatible")
-                existing_owner = self.db.execute("SELECT value FROM memory_store_meta WHERE key='owner_namespace'").fetchone()
-                if existing_owner and existing_owner[0] != self.owner:
-                    self.close()
-                    raise ValueError("memory_owner_mismatch")
-                core_version = self.db.execute("SELECT value FROM memory_store_meta WHERE key='core_schema_version'").fetchone()
-                if core_version and core_version[0] != SCHEMA:
-                    self.close()
-                    raise ValueError("memory_core_schema_incompatible")
             # This is the shared contract from the canonical Desktop owner,
             # not a independently inferred copy of its migration history.
             self.db.executescript((Path(__file__).resolve().parent.parent / "schemas" / "memory-store.sql").read_text(encoding="utf-8"))
