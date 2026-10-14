@@ -326,6 +326,14 @@ class MemoryRuntime:
                        (memory_id, self.owner, actor, _json([source["source_ref"], source["ticket_ref"]]), _json({"scope": scope}), SCHEMA))
         if project:
             db.execute("INSERT OR IGNORE INTO memory_project_links(memory_id,project_id,relation,source_ref) VALUES(?,?,'origin',?)", (memory_id, project, source["source_ref"]))
+        db.execute("INSERT OR IGNORE INTO memory_origin_links(memory_id,source_kind,source_id,source_revision) VALUES(?,'memory-ticket',?,?)",
+                   (memory_id, source["ticket_ref"], str(source["source_revision"])))
+        db.execute("INSERT OR IGNORE INTO memory_origin_links(memory_id,source_kind,source_id,source_revision) VALUES(?,'host-summary',?,?)",
+                   (memory_id, source["source_ref"], str(source["source_revision"])))
+        revision = int(db.execute("SELECT value FROM memory_store_meta WHERE key='revision'").fetchone()[0])
+        db.execute("INSERT OR IGNORE INTO memory_projection_outbox(outbox_id,memory_id,authority_revision,state,payload_json,created_at,updated_at) VALUES(?,?,?,'queued',?,?,?)",
+                   ("core-projection:" + _hash(source["ticket_ref"]), memory_id, revision,
+                    _json({"owner_namespace": self.owner, "memory_ref": memory_id, "ticket_ref": source["ticket_ref"], "source_ref": source["source_ref"]}), now, now))
         return {"memory_ref": memory_id, "action": "deduped" if duplicate else "written", "written": 0 if duplicate else 1}
 
     def process(self, operation_id: str, runner: Callable[[dict[str, Any]], dict[str, Any]] | None = None,

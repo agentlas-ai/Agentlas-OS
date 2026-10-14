@@ -173,3 +173,20 @@ CREATE TABLE IF NOT EXISTS memory_project_links(
   memory_id TEXT NOT NULL REFERENCES memory_entries(id) ON DELETE CASCADE,
   project_id TEXT NOT NULL,relation TEXT NOT NULL CHECK(relation IN ('origin','applies_to')),
   source_ref TEXT NOT NULL DEFAULT '',PRIMARY KEY(memory_id,project_id,relation,source_ref));
+CREATE TABLE IF NOT EXISTS memory_origin_links(
+  memory_id TEXT NOT NULL REFERENCES memory_entries(id) ON DELETE CASCADE,
+  source_kind TEXT NOT NULL,source_id TEXT NOT NULL,source_revision TEXT NOT NULL DEFAULT '',
+  relation TEXT NOT NULL DEFAULT 'origin',
+  PRIMARY KEY(memory_id,source_kind,source_id,source_revision));
+CREATE TABLE IF NOT EXISTS memory_projection_outbox(
+  outbox_id TEXT PRIMARY KEY,memory_id TEXT,authority_revision INTEGER NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('queued','processing','complete','retry')),
+  payload_json TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+INSERT OR IGNORE INTO memory_store_meta(key,value) VALUES('revision','0');
+CREATE TRIGGER IF NOT EXISTS memory_revision_insert AFTER INSERT ON memory_entries
+  BEGIN UPDATE memory_store_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'; END;
+CREATE TRIGGER IF NOT EXISTS memory_revision_update
+  AFTER UPDATE OF content,scope,kind,project_id,project_path,agent_id,chat_id,superseded_at ON memory_entries
+  BEGIN UPDATE memory_store_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'; END;
+CREATE TRIGGER IF NOT EXISTS memory_revision_delete AFTER DELETE ON memory_entries
+  BEGIN UPDATE memory_store_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'; END;
