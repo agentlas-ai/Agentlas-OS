@@ -313,7 +313,7 @@ class MemoryRuntime:
             return {"action": "defer", "written": 0, "reason": "memory_content_revoked"}
         project_scope = project if scope == "project" else None
         actor_scope = actor if scope == "agent_repo" else None
-        prior = db.execute("SELECT m.id,m.content FROM memory_entries m JOIN memory_identity_bindings b ON b.memory_id=m.id WHERE b.owner_namespace=? AND m.scope=? AND m.kind=? AND m.agent_id IS ? AND m.project_id IS ? AND m.superseded_at IS NULL",
+        prior = db.execute("SELECT m.id,m.content FROM memory_entries m JOIN memory_identity_bindings b ON b.memory_id=m.id WHERE b.owner_namespace=? AND m.scope=? AND m.kind=? AND m.agent_id IS ? AND m.project_id IS ? AND m.superseded_at IS NULL AND COALESCE(json_extract(b.applicability_json,'$.recallChannel'),'default')!='legacy_one_overlay' AND COALESCE(json_extract(b.applicability_json,'$.enabled'),1)!=0",
                            (self.owner, scope, proposal["kind"], actor_scope, project_scope)).fetchall()
         duplicate = next((row[0] for row in prior if _content_hash(row[1]) == content_hash), None)
         memory_id = duplicate or "core-memory:" + _hash(_json([self.owner, scope, actor_scope, project_scope, proposal["kind"], content_hash]))
