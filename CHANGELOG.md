@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.63
+
+Connected-model judgments now receive up to five minutes across host command and local HTTP adapters.
+
 ## 1.2.62 — 2026-10-10
 
 - Raise the UserPromptSubmit memory-hook timeout from 20 to 60 seconds for the
