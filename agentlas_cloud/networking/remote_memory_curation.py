@@ -230,7 +230,7 @@ def make_observer(name: str, *, base_url: str, token: str | None,
                             with local.db:
                                 producer_id = producer(local.db, local.owner, "portable-core", "canonical-owner:" + local.owner)
                                 register_source(local.db, local.owner, producer_id, actor_id=None,
-                                    visibility_domain="web:" + p["owner"]["workspaceId"] + ":" + (p["visibilityDomain"] or "private"),
+                                    visibility_domain=json.dumps(["web", p["owner"]["workspaceId"], p["visibilityDomain"]], ensure_ascii=False, separators=(",", ":")),
                                     logical_key=p["bindingId"] + ":" + p["sourceRef"], source_kind="web-reference",
                                     reader_contract="agentlas.authenticated-web-source.v1", writer_contract="web-server",
                                     schema_version="agentlas.automatic-memory-request.v1", source_revision=p["inputDigest"],
