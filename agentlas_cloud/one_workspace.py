@@ -1772,6 +1772,16 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         if not summary and transcripts:
             summary = host_turn_seed(transcripts[0], workspace)
         record_turn_summary(root, workspace, summary)
+        # Stop performs bounded local intake only. Model consolidation is a
+        # separate host-injected worker; it never blocks this hook or infers
+        # another installed agent's owner from transcript prose.
+        try:
+            from .memory_runtime import owner_binding, queue_hook_summary, schedule_worker
+            queued = queue_hook_summary(payload, host or "raw", summary, len(summary_texts))
+            if queued.get("state") in {"queued", "deferred"}:
+                schedule_worker(queued["operation_id"], owner_binding() or "")
+        except Exception:  # intake failure must not suppress existing use receipts
+            pass
         if transcripts:
             record_block_use(root, hook_session_key(payload), transcripts[0])
     except Exception:  # noqa: BLE001 — a query seed must never cost a session end
