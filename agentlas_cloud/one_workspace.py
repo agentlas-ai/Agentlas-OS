@@ -1761,6 +1761,8 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         supplied = [supplied]
     if isinstance(supplied, list):
         events.extend(harvest_memory_events_from_texts(supplied))
+    canonical_receipt: dict[str, Any] = {}
+    current_observations: list[dict[str, Any]] = []
     # 1.6 — keep the last English turn_summary as the next turn's query seed.
     try:
         summary_texts: list[str] = []
@@ -1768,10 +1770,15 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
             summary_texts.extend(_iter_assistant_text(path))
         if isinstance(supplied, list):
             summary_texts.extend(text for text in supplied if isinstance(text, str))
+        current_observations = harvest_memory_events_from_texts(summary_texts[-1:]) if summary_texts else events[-16:]
         summary = latest_turn_summary(summary_texts)
         if not summary and transcripts:
             summary = host_turn_seed(transcripts[0], workspace)
-        record_turn_summary(root, workspace, summary)
+        # The historical drawer belongs to device custody, not an arbitrary
+        # trusted account namespace supplied to the canonical store.
+        historical_custody = not os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE") or os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE", "").startswith("device-local:")
+        if historical_custody:
+            record_turn_summary(root, workspace, summary)
         # Stop performs bounded local intake only. Model consolidation is a
         # separate host-injected worker; it never blocks this hook or infers
         # another installed agent's owner from transcript prose.
@@ -1779,12 +1786,15 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
             from .memory_runtime import owner_binding, queue_hook_summary, schedule_worker
             # The installed Claude Stop entry omits --host; its prompt entry
             # explicitly uses claude, so both must name the same partition.
-            queued = queue_hook_summary(payload, host or "claude", summary, len(summary_texts))
+            if not summary and current_observations:
+                summary = "The host observed unapproved memory candidates from a completed turn."
+            queued = queue_hook_summary(payload, host or "claude", summary, max(1, len(summary_texts)), current_observations)
+            canonical_receipt = {"canonicalMemory": queued}
             if queued.get("state") in {"queued", "deferred"}:
                 schedule_worker(queued["operation_id"], owner_binding() or "")
         except Exception:  # intake failure must not suppress existing use receipts
             pass
-        if transcripts:
+        if transcripts and historical_custody:
             record_block_use(root, hook_session_key(payload), transcripts[0])
     except Exception:  # noqa: BLE001 — a query seed must never cost a session end
         pass
@@ -1817,127 +1827,16 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
     # receipt, and turn an idle Stop event into curation work.
     if not events and not substantial:
         if not enabled:
-            return _out({"skipped": "one_off"})
-        return _out({"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits})
+            return _out({"skipped": "one_off", **canonical_receipt})
+        return _out({"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits, **canonical_receipt})
 
-    # R21 W1c/W1d — learnings attributed to a borrowed/built agent land in that
-    # agent's own drawer (ticket + ingestable note + gap fallback); everything
-    # else continues down the One path unchanged. Fail-open by construction.
-    # Runs BEFORE the One gate so drawers accumulate even when One is off.
-    try:
-        events, borrowed_receipt = _route_borrowed_agent_events(
-            events,
-            started_epoch=started,
-            substantial=substantial,
-            tool_uses=tool_uses,
-            edits=edits,
-        )
-    except Exception:
-        borrowed_receipt = {}
+    # Automatic learning has one owner/model queue. Candidate agent_slug or
+    # borrowed-agent prose cannot select another package's private authority.
+    # Historical/manual files remain readable; this Stop never admits new
+    # Soul/project/experience rows or translates them into another intake.
+    return _out({"harvested": len(current_observations), "toolUses": tool_uses, "edits": edits,
+                 "curated": {"admit": 0, "deferredToCanonicalModel": True}, **canonical_receipt})
 
-    if not enabled:
-        # One is off: the personal-agent soul path is skipped, but the drawer
-        # accumulation above already ran. Report what the drawers received so a
-        # One-off user still gets — and can observe — per-agent experience.
-        result: dict[str, Any] = {"skipped": "one_off"}
-        if borrowed_receipt:
-            result["borrowedAgents"] = borrowed_receipt
-        return _out(result)
-
-    # M-1 — first-touch self-migration of legacy workspaces (idempotent).
-    try:
-        migrate_one_workspace(root)
-    except Exception:
-        pass  # migration must never block a session; curate() retries it
-    # english-memory-backfill.v1 — the one-time English migration of the drawer
-    # (and the translate-on-write queue). Decides in a few stats; the work runs
-    # in a detached, budgeted worker. Never blocks.
-    _schedule_english_migration(root)
-
-    harvested = 0
-    declined: dict[str, int] = {}
-    project_slug = resolve_project_slug(workspace)
-    for event in events:
-        # ★거절은 **누구 것인지 못 정한 에이전트 학습** 하나뿐이다.
-        #
-        #   귀속에 성공한 agent_repo 는 위 라우팅에서 이미 그 에이전트 서랍으로 갔고,
-        #   여기 남은 것은 빌린 에이전트가 여럿이라 관측만으로 주인을 못 정한 경우다.
-        #   추측해서 One 의 기억으로 만들면, 그 사람의 비서가 남의 도메인 지식을
-        #   자기 것으로 기억하게 된다.
-        #
-        #   조용히 버리지는 않는다 — 무엇을 왜 안 받았는지 영수증에 남겨, 잘못
-        #   라우팅된 학습이 "없었던 일"이 되지 않게 한다.
-        scope = str(event.get("scope") or "")
-        ambiguous = str(event.get("attribution") or "") == "ambiguous"
-        if scope not in _ONE_OWNED_SCOPES or ambiguous:
-            reason = "ambiguous_agent" if ambiguous else (scope or "unknown")
-            declined[reason] = declined.get(reason, 0) + 1
-            continue
-        if emit_ticket(
-            root,
-            content=event["content"],
-            kind=event["kind"],
-            scope=event["scope"],
-            evidence=event["evidence"],
-            source="memory-events",
-            emitter="one-stop-hook",
-            workspace=workspace,
-            project_slug=project_slug,
-            supersedes=str(event.get("supersedes") or ""),
-            content_native=str(event.get("content_native") or ""),
-        ):
-            harvested += 1
-
-    capsule = _capsule_written_since(workspace, started)
-
-    if not substantial and harvested == 0 and not borrowed_receipt and not declined:
-        return _out({"skipped": "not_substantial", "toolUses": tool_uses, "edits": edits})
-
-    receipt = record_session_receipt(
-        root,
-        substantial=bool(substantial),
-        capsule_written=capsule,
-        workspace=workspace,
-        detail=f"host={host or 'claude'} tool_uses={tool_uses} edits={edits} harvested={harvested}",
-    )
-    receipt["harvested"] = harvested
-    # 거절한 것은 반드시 보인다 — "안 받았다"가 조용하면 잘못 라우팅된 학습이
-    # 없었던 일이 된다(P0: 알릴 수 없으면 완화하지 마라).
-    if declined:
-        receipt["declinedByScope"] = declined
-    if borrowed_receipt:
-        receipt["borrowedAgents"] = borrowed_receipt
-    # A missing learning capsule is a fact about the session, so it belongs on the
-    # receipt (receipt["gap"], already written above) and nowhere else. It used to
-    # be emitted as a `conflict` ticket, but `conflict` is not a promotable kind:
-    # every one of those tickets was deferred on arrival, and deferred tickets
-    # count as decided, so there was no queue to revisit them from. Measured on
-    # 2026-08-11 that was 124 of 353 tickets and 130 of 134 defer decisions —
-    # a third of the drawer and a third of the curator's work, with no reader.
-    if receipt["gap"]:
-        receipt["gapDetail"] = (
-            f"substantial work ({edits} edits, {tool_uses} tool uses) with no learning capsule"
-        )
-    # Curate once at session end so tickets do not accumulate indefinitely.
-    # Curator failure must never block session completion.
-    try:
-        curated = curate(
-            root,
-            project_root=resolve_project_memory_root(workspace) if workspace else None,
-            project_slug=project_slug,
-        )
-        receipt["curated"] = curated["decisions"]
-        if curated.get("projectMemory"):
-            # Counts only — the project root never enters a receipt.
-            receipt["projectMemory"] = curated["projectMemory"]
-    except Exception as exc:
-        receipt["curated"] = {"error": str(exc)[:120]}
-    return _out(receipt)
-
-
-WORKSPACE_CONTRACT_VERSION = "1.1.0"
-TICKET_SLUGS_FILE = "ticket-slugs.json"
-MIGRATIONS_FILE = "migrations.jsonl"
 
 
 def _migration_receipt(meta: Path, event: dict[str, Any]) -> None:
@@ -2532,98 +2431,50 @@ def list_chips(root: Path, status: str = "", limit: int = 20) -> list[dict[str, 
         conn.close()
 
 
-def curate(
-    root: Path,
-    *,
-    project_root: Path | None = None,
-    project_slug: str = "",
-) -> dict[str, Any]:
-    """Record ticket decisions and promote only admitted content.
-
-    Keep the ticket ledger append-only. A decision marks a ticket as consumed,
-    avoiding races caused by rewriting the ledger.
-
-    ``project_root``/``project_slug`` come only from the stop hook that is
-    curating its own session: an admitted ``project``-scope block whose ticket
-    carries that slug is also appended to that project's soul. The root is
-    never written into any One ledger.
-    """
-    root = Path(root).expanduser()
-    meta = root / META_DIR
-    tickets_path = meta / MEMORY_TICKETS_FILE
-    decisions_path = meta / CURATOR_DECISIONS_FILE
-    soul_path = meta / PROJECT_SOUL_FILE
-    exp_db = meta / EXPERIENCE_DB_FILE
-
-    if not tickets_path.exists():
-        return {"error": "not_seeded", "hint": "agentlas-one seed"}
-
-    # M-1 — retry the first-touch migration here so a stop-hook failure cannot
-    # leave a legacy workspace behind (idempotent; version-gated).
+def curate(root: Path, *, project_root: Path | None = None, project_slug: str = "") -> dict[str, Any]:
+    """Queue legacy source observations; never admit directly into learned files."""
+    from .memory_runtime import MemoryRuntime, owner_binding, schedule_worker, _hash, _safe_id
+    owner = owner_binding(create=True)
+    if not owner:
+        return {"decisions": {"admit": 0, "defer": 0}, "reason": "owner_unbound"}
+    actor = _safe_id(os.environ.get("AGENTLAS_MEMORY_ACTOR_ID") or "agentlas-one")
+    tickets = Path(root).expanduser() / META_DIR / MEMORY_TICKETS_FILE
+    decided = {str(row.get("ticketId")) for row in _read_jsonl(Path(root).expanduser() / META_DIR / CURATOR_DECISIONS_FILE) if row.get("ticketId")}
+    runtime = MemoryRuntime(owner)
+    queued, deferred = 0, 0
+    operations: list[str] = []
     try:
-        migrate_one_workspace(root)
-    except Exception:
-        pass
-
-    # Do not mutate legacy chip/pack archives during private memory curation.
-
-    decided = {
-        str(row.get("ticketId"))
-        for row in _read_jsonl(decisions_path)
-        if row.get("ticketId")
-    }
-    counts = {"admit": 0, "reject": 0, "defer": 0, "deduped": 0}
-    chips: list[str] = []
-
-    # G7 — the One drawer only accepts tickets from One's own pipeline. Legacy
-    # rows without the field are tolerated (they predate the contract).
-    allowed_emitters = set(_rule("emitters.oneDrawerAllowed", []))
-    legacy_ok = bool(_rule("emitters.legacyMissingFieldTolerated", True))
-    ruleset_sha = load_ruleset()[1]
-    # Legacy tickets carry no projectSlug; the M-1 sidecar holds their
-    # receipt-matched attribution ("unknown" when ambiguous — never guessed).
-    try:
-        slug_sidecar = json.loads((meta / TICKET_SLUGS_FILE).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        slug_sidecar = {}
-
-    # PRD §4.20 — 이 구간이 원장 잠금 없이 append 했다. 다른 두 경로는 잠금을 잡는다.
-    # Claude 와 Codex 를 함께 쓰는 표준 구성에서 두 종료가 겹치면 같은 티켓의 결정 행과 같은
-    # 기억 블록이 **두 번** 적혔다. 같은 잠금 안에서 하고, 목록은 잠금 안에서 다시 읽는다
-    # (잠금 밖에서 읽은 pending 은 이미 낡았을 수 있다).
-    with _LedgerLock(decisions_path) as acquired:
-        if not acquired:
-            return {"skipped": "curator_busy", "hint": "another session is curating; this stop wrote nothing"}
-        decided = {
-            str(row.get("ticketId"))
-            for row in _read_jsonl(decisions_path)
-            if row.get("ticketId")
-        }
-        # A concurrent curator may have admitted a block while this process was
-        # waiting. Ownership and duplicate checks use the same locked snapshot.
-        durable = _durable_hashes(soul_path)
-        durable_prefixes = _durable_prefixes(
-            soul_path, int(_rule("limits.serverMergeSimilarityPrefixChars", 40))
-        )
-        pending = [row for row in _read_jsonl(tickets_path) if str(row.get("ticketId")) not in decided]
-        return _curate_pending(
-            pending=pending,
-            decisions_path=decisions_path,
-            soul_path=soul_path,
-            meta=meta,
-            root=root,
-            counts=counts,
-            chips=chips,
-            durable=durable,
-            durable_prefixes=durable_prefixes,
-            allowed_emitters=allowed_emitters,
-            legacy_ok=legacy_ok,
-            ruleset_sha=ruleset_sha,
-            slug_sidecar=slug_sidecar,
-            exp_db=exp_db,
-            project_root=project_root,
-            project_slug=project_slug,
-        )
+        # Legacy source stays intact; operation identity makes repeat scans safe.
+        for ticket in _read_jsonl(tickets):
+            if queued >= 16:
+                break
+            tid = str(ticket.get("ticketId") or "")
+            if not tid or tid in decided:
+                continue
+            candidate = ticket.get("candidate") or {}
+            source = "legacy-ticket:" + _hash(tid)
+            existing = runtime.db.execute("SELECT state FROM memory_operations WHERE owner_namespace=? AND actor_id=? AND source_ref=?", (owner, actor, source)).fetchone()
+            if existing and existing[0] in {"completed", "revoked", "processing"}:
+                continue
+            created = ticket.get("ts") or ticket.get("createdAt")
+            if isinstance(created, str) and runtime.db.execute("SELECT 1 FROM memory_revocations WHERE revoked_at>=? LIMIT 1", (created,)).fetchone():
+                continue
+            try:
+                receipt = runtime.enqueue(actor_id=actor, context_key="legacy-observation:" + _hash(tid),
+                    source_ref=source, source_revision=0,
+                    summary="The host observed an unapproved historical memory candidate.",
+                    project_ref=os.environ.get("AGENTLAS_MEMORY_PROJECT_REF") or None,
+                    observations=[candidate], update_checkpoint=False)
+                queued += 0 if receipt.get("replayed") else 1
+                if receipt.get("state") in {"queued", "deferred"}:
+                    operations.append(receipt["operation_id"])
+            except ValueError:
+                deferred += 1
+    finally:
+        runtime.close()
+    for operation in operations:
+        schedule_worker(operation, owner)
+    return {"decisions": {"admit": 0, "defer": deferred}, "queued": queued, "authority": "canonical-model"}
 
 
 def _curate_pending(
@@ -2645,150 +2496,8 @@ def _curate_pending(
     project_root: Path | None = None,
     project_slug: str = "",
 ) -> dict[str, Any]:
-    """curate() 의 결정 구간. 호출자가 원장 잠금을 잡은 상태로만 부른다(PRD §4.20)."""
-    project_items: list[tuple[dict[str, Any], str]] = []
-    to_translate: list[str] = []
-    durable_owners = _durable_owners(soul_path, meta, slug_sidecar) if any(
-        _memory_supersedes((ticket.get("candidate") or {}).get("supersedes"))
-        for ticket in pending
-    ) else {}
-    with decisions_path.open("a", encoding="utf-8") as handle:
-        for ticket in pending:
-            candidate = ticket.get("candidate") or {}
-            # Project-specifics guard (curator.ts port) — an agent_repo label
-            # that names its own project folder narrows to project scope; it is
-            # still stored, just never resurfaced in an unrelated project.
-            scope_narrowed = False
-            if str(candidate.get("scope")) == "agent_repo" and _mentions_project_specifics(
-                str(candidate.get("content") or ""), str(ticket.get("workspace") or "")
-            ):
-                candidate = {**candidate, "scope": "project"}
-                scope_narrowed = True
-            tid = str(ticket.get("ticketId") or "")
-            sidecar = slug_sidecar.get(tid)
-            ticket_slug = str(ticket.get("projectSlug") or "") or (
-                str(sidecar.get("slug") or "") if isinstance(sidecar, dict) else ""
-            )
-            if ticket_slug == "unknown":
-                ticket_slug = ""
-            owner = _memory_owner(candidate.get("scope"), ticket_slug)
-            old_hash = _memory_supersedes(candidate.get("supersedes"))
-            new_hash = _content_hash(str(candidate.get("content") or ""))
-            can_supersede = bool(
-                old_hash and old_hash != new_hash and old_hash in durable
-                and owner is not None and durable_owners.get(old_hash) == owner
-                and (new_hash not in durable or durable_owners.get(new_hash) == owner)
-            )
-            # An explicit, owned correction may differ by one field. Do not let
-            # the near-duplicate merge hide it before the replacement is stored.
-            prefixes = {
-                head: text for head, text in durable_prefixes.items()
-                if _content_hash(text) != old_hash
-            } if can_supersede and isinstance(durable_prefixes, dict) else durable_prefixes
-            if "emitter" in ticket and str(ticket.get("emitter")) not in allowed_emitters:
-                action, reason = ("reject", str(_rule("emitters.rejectReason", "unauthorized-emitter")))
-            elif "emitter" not in ticket and not legacy_ok:
-                action, reason = ("reject", str(_rule("emitters.rejectReason", "unauthorized-emitter")))
-            else:
-                action, reason = _classify(candidate, durable, prefixes)
-            if action == "deduped" and can_supersede:
-                # A previous append may have succeeded before the pointer write
-                # failed. Retry the pointer and derivatives without another block.
-                action, reason = ("admit", "supersede-retry")
-            counts[action] = counts.get(action, 0) + 1
-
-            chip_id = None
-            if action == "admit":
-                # G4/G8 — an explicitly declared replacement hides the old block
-                # from recall via the pointer sidecar; the soul stays append-only.
-                if new_hash not in durable:
-                    _append_durable(soul_path, candidate, tid, project_slug=ticket_slug)
-                    durable.add(new_hash)
-                    if owner is not None:
-                        durable_owners[new_hash] = owner
-                # Store the successor before hiding its predecessor. A failed
-                # append must leave the original memory available to recall.
-                if can_supersede:
-                    _record_supersede(meta, old_hash, new_hash)
-                # Translate on write (D): a block admitted in another language
-                # with no English surface is queued for the detached worker —
-                # never translated inside this hook.
-                admitted_text = str(candidate.get("content") or "")
-                if not candidate.get("contentNative") and _latin_ratio(admitted_text) < 0.6:
-                    to_translate.append(_content_hash(admitted_text))
-                # Project write: only `project` scope (declared or narrowed —
-                # never user_identity/agent_repo), and only for the project this
-                # stop hook is running in, matched by the ticket's own slug.
-                if (
-                    project_root is not None
-                    and project_slug
-                    and ticket_slug == project_slug
-                    and str(candidate.get("scope") or "") == "project"
-                ):
-                    project_items.append((candidate, str(ticket.get("ticketId") or "")))
-                # File evolution is a separate semantic proposal and exact owner approval.
-
-            handle.write(json.dumps({
-                "schemaVersion": SCHEMA_VERSION,
-                "ticketId": ticket.get("ticketId"),
-                "agentId": ONE_AGENT_ID,
-                "action": action,
-                "reason": reason,
-                "kind": candidate.get("type"),
-                "experienceChip": chip_id,
-                "curatorMode": "deterministic",
-                "rulesetSha256": ruleset_sha,
-                **({"scopeNarrowed": True} if scope_narrowed else {}),
-                # The drawer declares which scopes belong to a cross-project
-                # identity. Recording the boundary keeps it observable without
-                # discarding anything: half the live drawer is project-scope
-                # today, so enforcing silently would drop real learnings.
-                **({"outsideOneBoundary": True}
-                   if str(candidate.get("scope") or "") not in set(
-                       _rule("scopes.oneForwardable", ["agent_repo", "user_identity"]))
-                   else {}),
-                "createdAt": _now(),
-            }, ensure_ascii=False) + "\n")
-
-    # G8 — monthly rotation of decided tickets (idempotent; lock-guarded).
-    # Failure must never block curation results.
-    try:
-        rotate_one_ledgers(root)
-    except Exception:
-        pass
-
-    # Keep the semantic projection current. Incremental and idempotent; a failure
-    # only costs semantic rank for the new blocks, never the curation result.
-    #
-    # ★ 2026-09-23 — this used to be `index_durable_blocks(root)` under
-    #   `except: pass`, inline in a Stop hook with a 10s contract. A first full
-    #   backfill of a 2,078-block drawer takes ~93s, so every session end killed
-    #   it mid-way, its progress was only saved at the very end, and the next
-    #   session started again from zero. The index file never existed on the
-    #   owner's machine for eight months and nobody could see why. Now a small
-    #   gap is indexed inline under a hard budget, a large one goes to a detached
-    #   process, progress is checkpointed, and every failure is recorded.
-    schedule_durable_index(root)
-    if to_translate:
-        try:
-            from .memory_translate import queue_for_translation  # noqa: PLC0415
-
-            queue_for_translation(root, to_translate)
-        except Exception:  # noqa: BLE001 — the backfill still finds them later
-            pass
-    _schedule_english_migration(root)
-
-    result: dict[str, Any] = {
-        "pending": len(pending),
-        "decisions": counts,
-        "agentId": ONE_AGENT_ID,
-    }
-    if project_items and project_root is not None:
-        project_receipt = append_project_durable(project_root, project_items)
-        if project_receipt.get("written"):
-            project_receipt["ingestScheduled"] = _spawn_project_soul_refresh(project_root)
-        result["projectMemory"] = project_receipt
-    return result
+    """Retired compatibility seam: automatic admission belongs to the model queue."""
+    return {"decisions": {"admit": 0, "defer": len(pending)}, "reason": "canonical_model_required"}
 
 
 def _schedule_english_migration(root: Path) -> dict[str, Any]:

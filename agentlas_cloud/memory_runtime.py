@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 SCHEMA = "agentlas.core-memory-runtime.v1"
+ONE_ACTOR_ID = "agentlas-one"
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._/-]{0,511}$")
 _KINDS = {"fact", "decision", "preference", "risk", "procedure", "hypothesis"}
 _SCOPES = {"agent_repo", "project", "user_identity", "session"}
@@ -243,15 +244,43 @@ class MemoryRuntime:
         return int(row[0]) if row else 0
 
     def enqueue(self, *, actor_id: str, context_key: str, source_ref: str,
-                source_revision: int, summary: str, project_ref: str | None = None) -> dict[str, Any]:
+                source_revision: int, summary: str, project_ref: str | None = None, project_path: str | None = None, observations: list[dict[str, Any]] | None = None,
+                update_checkpoint: bool = True) -> dict[str, Any]:
         actor, context, source = map(_safe_id, (actor_id, context_key, source_ref))
         if isinstance(source_revision, bool) or not isinstance(source_revision, int) or source_revision < 0:
             raise ValueError("memory_source_revision_invalid")
         summary = _safe_summary(summary)
         project = _safe_id(project_ref) if project_ref else None
+        bound_path = str(Path(project_path).resolve()) if project_path else None
+        if bound_path and not Path(bound_path).is_absolute():
+            raise ValueError("memory_project_path_invalid")
         payload = {"schema_version": SCHEMA, "owner_namespace": self.owner, "actor_id": actor,
                    "context_key": context, "source_ref": source, "source_revision": source_revision,
                    "summary": summary, "project_ref": project, "coverage": "host_summary_only"}
+        if bound_path:
+            payload["project_path"] = bound_path
+        if observations:
+            bounded = []
+            for item in observations[:16]:
+                if not isinstance(item, dict):
+                    raise ValueError("memory_observation_invalid")
+                text = _safe_summary(str(item.get("content") or "")[:500])
+                if not text:
+                    continue
+                observation = {"content": text, "suggested_kind": str(item.get("kind") or "")[:40],
+                               "suggested_scope": str(item.get("scope") or "")[:40], "representation": "unapproved_host_observation"}
+                native = item.get("content_native") or item.get("contentNative")
+                if native:
+                    observation["content_native"] = _safe_summary(str(native)[:500])
+                trial = {**payload, "observations": [*bounded, observation]}
+                if len(_json(trial).encode("utf-8")) > 11000:
+                    break
+                bounded.append(observation)
+            payload["observations"] = bounded
+            payload["observation_count"] = len(observations)
+            payload["observations_omitted"] = len(observations) - len(bounded)
+        if len(_json(payload).encode("utf-8")) > 12000:
+            raise ValueError("memory_input_size")
         operation = "core-turn:" + _hash(_json([self.owner, actor, context, source, source_revision]))
         payload["ticket_ref"] = operation
         digest = _hash(_json(payload))
@@ -266,8 +295,8 @@ class MemoryRuntime:
                 return {"operation_id": operation, "state": prior[1], "replayed": True}
             epoch = self.epoch()
             namespace = _hash(_json(["core-capsule.v1", self.owner, actor, context]))
-            prior_frontier = self.db.execute("SELECT c.source_revision FROM memory_session_checkpoint_heads h JOIN memory_session_checkpoints c ON c.checkpoint_id=h.checkpoint_id WHERE h.namespace=?", (namespace,)).fetchone()
-            if prior_frontier and source_revision <= int(prior_frontier[0]):
+            prior_frontier = self.db.execute("SELECT c.source_revision FROM memory_session_checkpoint_heads h JOIN memory_session_checkpoints c ON c.checkpoint_id=h.checkpoint_id WHERE h.namespace=? AND json_extract(c.payload_json,'$.revocation_epoch')=?", (namespace, epoch)).fetchone()
+            if update_checkpoint and prior_frontier and source_revision <= int(prior_frontier[0]):
                 raise ValueError("memory_source_frontier_stale")
             self.db.execute("INSERT INTO memory_operations(operation_id,owner_namespace,actor_id,context_key,source_ref,source_revision,input_digest,payload_json,revocation_epoch,state,receipt_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'queued',NULL,?,?)",
                             (operation, self.owner, actor, context, source, source_revision, digest, _json(payload), epoch, now, now))
@@ -275,16 +304,18 @@ class MemoryRuntime:
                             (operation, operation, source, context, actor, project, now, now))
             self.db.execute("INSERT INTO memory_episodes(episode_id,ticket_id,agent_id,chat_id,project_id,summary,summary_hash,created_at) VALUES(?,?,?,?,?,?,?,?)",
                             ("core-episode:" + digest, operation, actor, context, project, summary, _content_hash(summary), now))
-            head = self.db.execute("SELECT revision FROM memory_session_checkpoint_heads WHERE namespace=?", (namespace,)).fetchone()
-            revision = int(head[0]) + 1 if head else 1
-            cp_id = "core-capsule:" + digest
-            cp = {"schema_version": "agentlas.host-capsule.v1", "owner_namespace": self.owner,
-                  "actor_id": actor, "context_key": context, "head_revision": revision,
-                  "source_revision": source_revision, "source_ref": source, "ticket_ref": operation,
-                  "summary": summary, "coverage": "host_summary_only", "revocation_epoch": epoch}
-            self.db.execute("INSERT INTO memory_session_checkpoints VALUES(?,?,?,?,?,?)",
-                            (cp_id, namespace, _json(cp), source_revision, source_revision, now))
-            self.db.execute("INSERT OR REPLACE INTO memory_session_checkpoint_heads VALUES(?,?,?)", (namespace, cp_id, revision))
+            cp_id = None
+            if update_checkpoint:
+                head = self.db.execute("SELECT revision FROM memory_session_checkpoint_heads WHERE namespace=?", (namespace,)).fetchone()
+                revision = int(head[0]) + 1 if head else 1
+                cp_id = "core-capsule:" + digest
+                cp = {"schema_version": "agentlas.host-capsule.v1", "owner_namespace": self.owner,
+                      "actor_id": actor, "context_key": context, "head_revision": revision,
+                      "source_revision": source_revision, "source_ref": source, "ticket_ref": operation,
+                      "summary": summary, "coverage": "host_summary_only", "source_revision_kind": "local_observation_order", "revocation_epoch": epoch}
+                self.db.execute("INSERT INTO memory_session_checkpoints VALUES(?,?,?,?,?,?)",
+                                (cp_id, namespace, _json(cp), source_revision, source_revision, now))
+                self.db.execute("INSERT OR REPLACE INTO memory_session_checkpoint_heads VALUES(?,?,?)", (namespace, cp_id, revision))
             self.db.commit()
             return {"operation_id": operation, "state": "queued", "checkpoint_ref": cp_id, "replayed": False}
         except BaseException:
@@ -304,28 +335,31 @@ class MemoryRuntime:
         if source["owner_namespace"] != self.owner:
             raise ValueError("memory_owner_mismatch")
         scope, actor, project = proposal["scope"], source["actor_id"], source["project_ref"]
+        project_path = source.get("project_path")
         content_hash = _content_hash(proposal["content"])
         if scope == "session":
             return {"action": "session", "written": 0}
-        authority = "project-id:" + project if scope == "project" else "agent:" + actor if scope == "agent_repo" else "shared"
+        authority = ("project-path:" + _hash(project_path) if project_path else "project-id:" + project) if scope == "project" else "agent:" + actor if scope == "agent_repo" else "shared"
         owner_key = _hash("agentlas-memory-owner-v1\0" + scope + "\0" + authority)
         if db.execute("SELECT 1 FROM memory_revocations WHERE owner_key=? AND memory_kind=? AND content_hash=?", (owner_key, proposal["kind"], content_hash)).fetchone():
             return {"action": "defer", "written": 0, "reason": "memory_content_revoked"}
         project_scope = project if scope == "project" else None
+        path_scope = project_path if scope == "project" else None
         actor_scope = actor if scope == "agent_repo" else None
-        prior = db.execute("SELECT m.id,m.content FROM memory_entries m JOIN memory_identity_bindings b ON b.memory_id=m.id WHERE b.owner_namespace=? AND m.scope=? AND m.kind=? AND m.agent_id IS ? AND m.project_id IS ? AND m.superseded_at IS NULL AND COALESCE(json_extract(b.applicability_json,'$.recallChannel'),'default')!='legacy_one_overlay' AND COALESCE(json_extract(b.applicability_json,'$.enabled'),1)!=0",
-                           (self.owner, scope, proposal["kind"], actor_scope, project_scope)).fetchall()
+        prior = db.execute("SELECT m.id,m.content FROM memory_entries m JOIN memory_identity_bindings b ON b.memory_id=m.id WHERE b.owner_namespace=? AND m.scope=? AND m.kind=? AND m.agent_id IS ? AND m.project_id IS ? AND m.project_path IS ? AND m.superseded_at IS NULL AND COALESCE(json_extract(b.applicability_json,'$.recallChannel'),'default')!='legacy_one_overlay' AND COALESCE(json_extract(b.applicability_json,'$.enabled'),1)!=0",
+                           (self.owner, scope, proposal["kind"], actor_scope, project_scope, path_scope)).fetchall()
         duplicate = next((row[0] for row in prior if _content_hash(row[1]) == content_hash), None)
-        memory_id = duplicate or "core-memory:" + _hash(_json([self.owner, scope, actor_scope, project_scope, proposal["kind"], content_hash]))
+        memory_id = duplicate or "core-memory:" + _hash(_json([self.owner, scope, actor_scope, project_scope, path_scope, proposal["kind"], content_hash]))
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         if not duplicate:
-            db.execute("INSERT INTO memory_entries(id,scope,kind,content,project_id,agent_id,confidence,sensitivity,evidence_json,context_json,created_at) VALUES(?,?,?,?,?,?,'medium','internal',?,?,?)",
-                       (memory_id, scope, proposal["kind"], proposal["content"], project_scope, actor_scope,
+            db.execute("INSERT INTO memory_entries(id,scope,kind,content,project_id,project_path,agent_id,confidence,sensitivity,evidence_json,context_json,created_at) VALUES(?,?,?,?,?,?,?,'medium','internal',?,?,?)",
+                       (memory_id, scope, proposal["kind"], proposal["content"], project_scope, path_scope, actor_scope,
                         _json([source["source_ref"], source["ticket_ref"]]), _json({"coverage": source["coverage"], "source_revision": source["source_revision"]}), now))
             db.execute("INSERT INTO memory_identity_bindings(memory_id,owner_namespace,actor_id,origin_refs_json,applicability_json,curation_actor,policy_version) VALUES(?,?,?,?,?,'model_curated',?)",
                        (memory_id, self.owner, actor, _json([source["source_ref"], source["ticket_ref"]]), _json({"scope": scope}), SCHEMA))
-        if project:
-            db.execute("INSERT OR IGNORE INTO memory_project_links(memory_id,project_id,relation,source_ref) VALUES(?,?,'origin',?)", (memory_id, project, source["source_ref"]))
+        origin_project = project or ("project-path:" + _hash(project_path) if project_path else None)
+        if origin_project:
+            db.execute("INSERT OR IGNORE INTO memory_project_links(memory_id,project_id,relation,source_ref) VALUES(?,?,'origin',?)", (memory_id, origin_project, source["source_ref"]))
         db.execute("INSERT OR IGNORE INTO memory_origin_links(memory_id,source_kind,source_id,source_revision) VALUES(?,'memory-ticket',?,?)",
                    (memory_id, source["ticket_ref"], str(source["source_revision"])))
         db.execute("INSERT OR IGNORE INTO memory_origin_links(memory_id,source_kind,source_id,source_revision) VALUES(?,'host-summary',?,?)",
@@ -353,6 +387,13 @@ class MemoryRuntime:
             if fresh[0] in {"completed", "revoked"}:
                 self.db.commit()
                 return json.loads(fresh[1])
+            if self.epoch() != row["revocation_epoch"]:
+                receipt = {"schema_version": SCHEMA, "operation_id": operation_id, "action": "defer", "reason": "source_revoked", "written": 0}
+                self.db.execute("UPDATE memory_operations SET state='revoked',receipt_json=?,payload_json='{}',updated_at=? WHERE operation_id=?", (_json(receipt), now.isoformat(), operation_id))
+                self.db.execute("UPDATE memory_tickets SET state='failed',failure_code='source_revoked',curation_outcome='curator_failed' WHERE ticket_id=?", (operation_id,))
+                self.db.execute("UPDATE memory_episodes SET summary=NULL,summary_hash=NULL WHERE ticket_id=?", (operation_id,))
+                self.db.commit()
+                return receipt
             if fresh[0] == "processing":
                 started = datetime.fromisoformat(fresh[2].replace("Z", "+00:00"))
                 if (now - started).total_seconds() < 120:
@@ -368,13 +409,16 @@ class MemoryRuntime:
         # A model call is outside the authority transaction and never happens in
         # the prompt/Stop hook. The injected host must honor no-tools authority.
         try:
-            output = runner({"schema_version": "agentlas.memory-curation-input.v1", "data": payload,
+            model_data = {key: value for key, value in payload.items() if key != "project_path"}
+            if payload.get("project_path"):
+                model_data["project_path_hash"] = _hash(payload["project_path"])
+            output = runner({"schema_version": "agentlas.memory-curation-input.v1", "data": model_data,
                              "require_no_tools": True, "timeout_ms": 20000,
                              "operations": ["add", "noop", "defer"]}) if runner else {"action": "defer", "reason": "model_unavailable"}
             if isinstance(output, dict) and output.get("action") == "add":
                 content = _safe_summary(output.get("content"))
                 scope, kind = output.get("scope"), output.get("kind")
-                if not content or scope not in _SCOPES or kind not in _KINDS or (scope == "project" and not payload["project_ref"]):
+                if not content or scope not in _SCOPES or kind not in _KINDS or (scope == "project" and not payload["project_ref"] and not payload.get("project_path")):
                     raise ValueError("memory_proposal_invalid")
                 output = {"action": "add", "content": content, "scope": scope, "kind": kind,
                           "source_ref": payload["source_ref"]}
@@ -412,8 +456,8 @@ class MemoryRuntime:
                             ("completed" if state == "completed" else "failed" if state == "revoked" else "received",
                              "decided" if action == "add" and state == "completed" else "curator_failed" if state != "completed" else "no_candidates",
                              receipt["written"], int(receipt["action"] == "deduped"), int(receipt["action"] == "session"), receipt.get("reason") if state != "completed" else None, now.isoformat(), int(action == "add"), payload["ticket_ref"]))
-            self.db.execute("UPDATE memory_operations SET state=?,receipt_json=?,updated_at=? WHERE operation_id=?",
-                            (state, _json(receipt), time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), operation_id))
+            self.db.execute("UPDATE memory_operations SET state=?,receipt_json=?,payload_json=CASE WHEN ?='revoked' THEN '{}' ELSE payload_json END,updated_at=? WHERE operation_id=?",
+                            (state, _json(receipt), state, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), operation_id))
             self.db.commit()
             return receipt
         except BaseException:
@@ -425,11 +469,12 @@ def hook_identity(payload: dict[str, Any], host: str) -> tuple[str, str] | None:
     session = payload.get("session_id") or payload.get("sessionId") or payload.get("conversation_id")
     if not isinstance(session, str) or not session.strip():
         return None
-    actor = os.environ.get("AGENTLAS_MEMORY_ACTOR_ID") or "core-host:" + host
+    actor = os.environ.get("AGENTLAS_MEMORY_ACTOR_ID") or ONE_ACTOR_ID
     return _safe_id(actor), "core-session:" + _hash(_json([host, session]))
 
 
-def queue_hook_summary(payload: dict[str, Any], host: str, summary: str | None, source_revision: int) -> dict[str, Any]:
+def queue_hook_summary(payload: dict[str, Any], host: str, summary: str | None, source_revision: int,
+                       observations: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     identity = hook_identity(payload, host)
     if not identity or not summary:
         return {"state": "skipped", "reason": "observed_summary_or_session_missing"}
@@ -439,9 +484,61 @@ def queue_hook_summary(payload: dict[str, Any], host: str, summary: str | None, 
     actor, context = identity
     runtime = MemoryRuntime(owner)
     try:
-        return runtime.enqueue(actor_id=actor, context_key=context,
-                               source_ref="host-summary:" + _hash(summary), source_revision=source_revision, summary=summary,
-                               project_ref=os.environ.get("AGENTLAS_MEMORY_PROJECT_REF") or None)
+        project_path = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
+        bound_path = str(Path(project_path).resolve()) if project_path else None
+        source = "host-observation-v2:" + _hash(_json([summary, observations or [], source_revision,
+                    os.environ.get("AGENTLAS_MEMORY_PROJECT_REF"), _hash(bound_path) if bound_path else None]))
+        prior = runtime.db.execute("SELECT operation_id,state FROM memory_operations WHERE owner_namespace=? AND actor_id=? AND context_key=? AND source_ref=?",
+                                   (owner, actor, context, source)).fetchone()
+        if prior:
+            return {"operation_id": prior[0], "state": prior[1], "replayed": True}
+        for attempt in range(3):
+            previous = runtime.capsule(actor, context)
+            # This is a persisted local observation order, not a provider
+            # sequence/journal frontier. Transcript counts can reset on compaction.
+            ordinal = int(previous["source_revision"]) + 1 if previous else 1
+            try:
+                return runtime.enqueue(actor_id=actor, context_key=context, source_ref=source, source_revision=ordinal,
+                    summary=summary, observations=observations, project_ref=os.environ.get("AGENTLAS_MEMORY_PROJECT_REF") or None,
+                    project_path=bound_path)
+            except ValueError as error:
+                if str(error) != "memory_source_frontier_stale" or attempt == 2:
+                    raise
+        raise ValueError("memory_source_frontier_stale")
+    finally:
+        runtime.close()
+
+
+def read_hook_longterm(payload: dict[str, Any], host: str, project_path: str | None = None) -> list[str]:
+    identity, owner = hook_identity(payload, host), owner_binding(create=False)
+    if not identity or not owner or not memory_path(owner).is_file():
+        return []
+    actor, context = identity
+    project = os.environ.get("AGENTLAS_MEMORY_PROJECT_REF") or None
+    if project:
+        project = _safe_id(project)
+    current_path = str(Path(project_path).resolve()) if project_path else None
+    runtime = MemoryRuntime(owner, initialize=False)
+    try:
+        rows = runtime.db.execute("""SELECT m.id,m.kind,m.content FROM memory_entries m
+          LEFT JOIN memory_identity_bindings b ON b.memory_id=m.id
+          WHERE m.superseded_at IS NULL AND (b.memory_id IS NULL OR b.owner_namespace=?)
+          AND COALESCE(json_extract(b.applicability_json,'$.enabled'),1)!=0
+          AND COALESCE(json_extract(b.applicability_json,'$.recallChannel'),'default')!='legacy_one_overlay'
+          AND (m.scope='user_identity' AND m.project_id IS NULL AND m.project_path IS NULL
+            OR m.scope='agent_repo' AND m.agent_id=? AND (m.project_id IS NULL OR m.project_id=?) AND (m.project_path IS NULL OR m.project_path=?)
+            OR m.scope='project' AND (m.project_id IS NOT NULL OR m.project_path IS NOT NULL)
+              AND (m.project_id IS NULL OR m.project_id=?) AND (m.project_path IS NULL OR m.project_path=?))
+          ORDER BY m.created_at DESC,m.id DESC LIMIT 16""", (owner,actor,project,current_path,project,current_path)).fetchall()
+        result = []
+        for row in rows:
+            try:
+                text = _safe_summary(row[2])
+                if text:
+                    result.append("canonical[" + str(row[1]) + "; source=" + str(row[0]) + "]: " + text[:600])
+            except ValueError:
+                continue
+        return result
     finally:
         runtime.close()
 

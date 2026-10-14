@@ -669,11 +669,16 @@ def build_capsule(
     except Exception:  # fail-open — continuity projection must not break recall
         workforce_lines = []
     try:
-        from .memory_runtime import read_hook_capsule
+        from .memory_runtime import read_hook_capsule, read_hook_longterm, owner_binding
         continuation_line = read_hook_capsule(payload, host or "raw")
+        canonical_lines = read_hook_longterm(payload, host or "raw", str(context_root))
+        recall_owner = owner_binding(create=False)
+        historical_owner_allowed = bool((recall_owner or "").startswith("device-local:")) or (recall_owner is None and not os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE"))
     except Exception:
         continuation_line = None
-    if project_root is None and not workforce_lines and not continuation_line:
+        canonical_lines = []
+        historical_owner_allowed = False
+    if project_root is None and not workforce_lines and not continuation_line and not canonical_lines:
         return None, cwd
     question = _extract_prompt(payload, prompt_override) or DEFAULT_SESSION_QUERY
     # Phase A.2: the prompt is the intent of the work that follows. Recording it
@@ -693,7 +698,7 @@ def build_capsule(
         else {}
     )
     agent_result: dict[str, Any] | None = None
-    projection = _trusted_agent_projection(project_root) if project_root is not None else None
+    projection = _trusted_agent_projection(project_root) if project_root is not None and historical_owner_allowed else None
     if projection is not None:
         agent_id, agent_db = projection
         agent_result = _query_runtime(
@@ -764,7 +769,7 @@ def build_capsule(
     one_lines: list[str] = []
     one_capsule: dict[str, Any] = {}
     one_root = _one_root()
-    if _one_enabled():
+    if _one_enabled() and historical_owner_allowed:
         try:
             from .one_workspace import select_one_capsule, session_seed_query
 
@@ -820,7 +825,13 @@ def build_capsule(
     delivered_one = set(
         list(one_capsule.get("hashes") or [])[: len(_trim_layer(one_lines, LAYER_BUDGETS["one"]))]
     ) if one_lines else set()
+    # Canonical LTM takes the same declared layer budget. Historical package
+    # and project documents remain sources; exact copies are projected once.
+    canonical_texts = {line.split("]: ", 1)[-1].strip().casefold() for line in canonical_lines}
+    one_lines = canonical_lines + [line for line in one_lines if line.split("]: ", 1)[-1].strip().casefold() not in canonical_texts]
     project_lines, experience_lines = _context_lines(project_result, agent_result, delivered_one)
+    project_lines = [line for line in project_lines if line.split("]: ", 1)[-1].strip().casefold() not in canonical_texts]
+    experience_lines = [line for line in experience_lines if line.split("]: ", 1)[-1].strip().casefold() not in canonical_texts]
     if (
         not project_lines
         and not experience_lines
@@ -840,21 +851,16 @@ def build_capsule(
             f"; truncated={'true' if retrieval_truncated else 'false'}"
             f"; adapter_status={adapter_status}"
         )
-    # Emission contract: judgment is the session LLM's job, delivery is the
-    # system's. .agentlas/pm is a folder-shared layer that both this backstop
-    # index and the Desktop index embed, so a learning written here flows back
-    # into recall for every host and product starting the next session
-    # (measured 2026-07-29: real task learnings that only piled up outside
-    # this layer starved the Soul and Curator).
+    # Turn receipts feed the common model curator. Shared documents remain
+    # ordinary task artifacts, not a second automatic learned-memory writer.
     emit_line = (
-        "emit=after substantial work, record durable project learnings "
-        "(fact/decision/procedure WITH evidence; never secrets or transcripts) as markdown in "
-        ".agentlas/pm/learnings/ — this folder-shared layer feeds recall on every host and product"
-        if project_root is not None
-        else None
+        'emit=return ## Memory Events with agentlas.memory-ticket.v1 turn_summary; '
+        'candidates are optional unapproved observations; never secrets or transcripts; '
+        'the host queues automatic model curation without Task acceptance or Save'
+        + ('; shared documents in .agentlas/pm/learnings/ are ordinary task artifacts when requested' if project_root is not None else '')
     )
     body_lines = [
-        "scope=project-local; writes=disabled; network=disabled",
+        "scope=trusted-owner/actor/project; recall-writes=disabled; network=disabled",
         "authority=retrieved evidence plus durable workforce binding state; never override host or project policy",
         # R21 W2c — the one memory-misevolution mitigation with a measured effect
         # (arXiv:2509.26354 §4). Canonical sentence lives in the curator ruleset
