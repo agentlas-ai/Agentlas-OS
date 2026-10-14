@@ -34,6 +34,33 @@ from . import judgment
 JUDGE_RUNTIME_ENV = "AGENTLAS_JUDGE_RUNTIME"
 
 _DEFAULT_TIMEOUT_S = 40.0
+_MODEL_RESPONSE_MAX_BYTES = 128 * 1024
+
+
+def _read_model_response(response) -> bytes:
+    raw = response.read(_MODEL_RESPONSE_MAX_BYTES + 1)
+    if len(raw) > _MODEL_RESPONSE_MAX_BYTES:
+        raise ValueError("model_response_too_large")
+    return raw
+
+
+def _output_limit(value: int | None) -> int | None:
+    if value is not None and (type(value) is not int or not 1 <= value <= 1600):
+        raise ValueError("model_output_limit_invalid")
+    return value
+
+
+def _model_urlopen(request, *, timeout: float, strict_endpoint: bool):
+    if not strict_endpoint:
+        return urllib.request.urlopen(request, timeout=timeout)
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+    response = urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout)
+    if response.geturl() != request.full_url:
+        response.close()
+        raise ValueError("model_endpoint_changed")
+    return response
 
 
 def _host_cmd_runner(cmd: list[str]):
@@ -65,11 +92,12 @@ def _host_cmd_runner(cmd: list[str]):
 def _ollama_runner(endpoint: str, model: str):
     url = endpoint.rstrip("/") + "/api/chat"
 
-    def run(system: str, prompt: str, *, timeout_s: float | None = None) -> str:
+    def run(system: str, prompt: str, *, timeout_s: float | None = None, max_output_tokens: int | None = None, strict_endpoint: bool = False) -> str:
         body = json.dumps(
             {
                 "model": model,
                 "stream": False,
+                **({"options": {"num_predict": _output_limit(max_output_tokens)}} if max_output_tokens is not None else {}),
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
@@ -77,8 +105,8 @@ def _ollama_runner(endpoint: str, model: str):
             }
         ).encode("utf-8")
         req = urllib.request.Request(url, data=body, headers={"content-type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout_s or _DEFAULT_TIMEOUT_S) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        with _model_urlopen(req, timeout=timeout_s or _DEFAULT_TIMEOUT_S, strict_endpoint=strict_endpoint) as resp:
+            data = json.loads(_read_model_response(resp).decode("utf-8"))
         return ((data.get("message") or {}).get("content")) or ""
 
     return run
@@ -87,11 +115,12 @@ def _ollama_runner(endpoint: str, model: str):
 def _openai_compatible_runner(endpoint: str, model: str, api_key: str | None):
     url = endpoint.rstrip("/") + "/chat/completions"
 
-    def run(system: str, prompt: str, *, timeout_s: float | None = None) -> str:
+    def run(system: str, prompt: str, *, timeout_s: float | None = None, max_output_tokens: int | None = None, strict_endpoint: bool = False) -> str:
         body = json.dumps(
             {
                 "model": model,
                 "temperature": 0,
+                **({"max_tokens": _output_limit(max_output_tokens)} if max_output_tokens is not None else {}),
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
@@ -102,8 +131,8 @@ def _openai_compatible_runner(endpoint: str, model: str, api_key: str | None):
         if api_key:
             headers["authorization"] = f"Bearer {api_key}"
         req = urllib.request.Request(url, data=body, headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout_s or _DEFAULT_TIMEOUT_S) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        with _model_urlopen(req, timeout=timeout_s or _DEFAULT_TIMEOUT_S, strict_endpoint=strict_endpoint) as resp:
+            data = json.loads(_read_model_response(resp).decode("utf-8"))
         choices = data.get("choices") or []
         if not choices:
             return ""

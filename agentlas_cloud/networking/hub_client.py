@@ -262,8 +262,19 @@ def call_hub_tool(
     endpoint_options = {"endpoint_path": endpoint_path} if endpoint_path != "/api/mcp/v1" else {}
     base_url = hub_url(home)
     token = ensure_access_token(base_url, interactive=False)
+    def invoke(captured_token):
+        # Only the authenticated success response of the documented memory
+        # tools may schedule remote curation. Foreground parsing stays intact.
+        observer = None
+        if name in {"agentlas.record_agent_memory", "agentlas.decide_agent_learning", "agentlas.memory_curation_request"}:
+            from .remote_memory_curation import make_observer
+            observer = make_observer(name, base_url=base_url, token=captured_token,
+                                     endpoint_path=endpoint_path, current_base=lambda: hub_url(home))
+        options = {"on_result": observer} if observer else {}
+        return _call_hub_tool_once(name, arguments or {}, base_url=base_url,
+                                  timeout=timeout, token=captured_token, **endpoint_options, **options)
     try:
-        return _call_hub_tool_once(name, arguments or {}, base_url=base_url, timeout=timeout, token=token, **endpoint_options)
+        return invoke(token)
     except HubAuthRequiredError:
         # The server just told us this credential is not accepted. The stored
         # record cannot know that on its own — its `expires_at` can sit months
@@ -289,7 +300,7 @@ def call_hub_tool(
                 )
         if not token:
             raise
-        return _call_hub_tool_once(name, arguments or {}, base_url=base_url, timeout=timeout, token=token, **endpoint_options)
+        return invoke(token)
 
 
 def list_hub_tools(
@@ -360,6 +371,8 @@ def _call_hub_tool_once(
     timeout: int,
     token: str | None,
     endpoint_path: str = "/api/mcp/v1",
+    on_result=None,
+    strict_endpoint: bool = False,
 ) -> dict[str, Any]:
     if name in _RETIRED_COMMERCE_TOOLS:
         raise HubToolError("Hub agent rentals are closed.", code="hub_commerce_closed")
@@ -387,11 +400,18 @@ def _call_hub_tool_once(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        opener = urllib.request.urlopen
+        if strict_endpoint:
+            from .remote_memory_curation import strict_urlopen
+            opener = strict_urlopen
+        with opener(request, timeout=timeout) as response:
+            resolved_url = response.geturl() if callable(getattr(response, "geturl", None)) else None
+            if strict_endpoint and resolved_url != url:
+                raise ValueError("hub_endpoint_changed")
             payload = json.loads(
                 _read_bounded_response(
                     response,
-                    maximum=_HUB_TOOL_MAX_RESPONSE_BYTES,
+                    maximum=_HUB_ERROR_MAX_RESPONSE_BYTES if strict_endpoint else _HUB_TOOL_MAX_RESPONSE_BYTES,
                     label=f"hub tool {name}",
                 ).decode("utf-8")
             )
@@ -429,6 +449,16 @@ def _call_hub_tool_once(
             code=finite_hub_tool_error_code(text or result, **error_options),
         )
 
+    def observed(parsed):
+        if on_result is not None:
+            try:
+                projection = on_result(parsed, resolved_url)
+                if isinstance(projection, dict):
+                    return projection
+            except Exception:
+                pass
+        return parsed
+
     text = _first_text(result)
     if text is not None:
         try:
@@ -436,9 +466,9 @@ def _call_hub_tool_once(
         except ValueError as exc:
             raise HubToolError(f"hub tool {name} returned non-JSON text") from exc
         if isinstance(parsed, dict):
-            return parsed
+            return observed(parsed)
         return {"value": parsed}
-    return result
+    return observed(result)
 
 
 def _read_bounded_response(response: Any, *, maximum: int, label: str) -> bytes:

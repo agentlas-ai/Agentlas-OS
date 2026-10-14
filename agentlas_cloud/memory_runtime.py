@@ -29,6 +29,69 @@ _KINDS = {"fact", "decision", "preference", "risk", "procedure", "hypothesis"}
 _SCOPES = {"agent_repo", "project", "user_identity", "session"}
 
 
+def configured_no_tools_runtime() -> dict[str, Any] | None:
+    """Capture the host's actual HTTP selection; generic command hooks are unknown.
+
+    These HTTP factories send messages only and have no tool dispatcher. A
+    server's requestedRuntime never participates in host model selection.
+    """
+    from .auth import AgentlasAuthError, normalize_base_url
+    raw = os.environ.get("AGENTLAS_MEMORY_CURATOR_RUNTIME") or os.environ.get("AGENTLAS_JUDGE_RUNTIME")
+    if not raw or len(raw.encode("utf-8")) > 16384:
+        return None
+    try:
+        config = json.loads(raw)
+        if not isinstance(config, dict):
+            return None
+        kind = str(config.get("kind") or "").strip().lower()
+        if kind not in {"ollama", "openai-compatible", "openai", "byok", "custom"}:
+            return None
+        raw_endpoint = config.get("endpoint")
+        if not isinstance(raw_endpoint, str) or not raw_endpoint.strip():
+            return None
+        endpoint = normalize_base_url(raw_endpoint)
+        model = config.get("model")
+        if not isinstance(model, str) or not model.strip() or len(model) > 512:
+            return None
+        return {"fingerprint": _hash(raw), "config": config, "endpoint": endpoint,
+                "model": model.strip()}
+    except (ValueError, TypeError, AgentlasAuthError):
+        return None
+
+
+def run_configured_no_tools(runtime: dict[str, Any], system: str, prompt: str,
+                            *, max_output_tokens: int = 1600, timeout_s: float = 20) -> str:
+    """One ephemeral, wall-bounded HTTP call using the same configured factory.
+
+    Credentials and private source are passed over stdin, never persisted.
+    A child process bounds slow-drip HTTP as well as connection/read timeouts.
+    """
+    current = configured_no_tools_runtime()
+    if not current or current["fingerprint"] != runtime["fingerprint"]:
+        raise ValueError("memory_runtime_changed")
+    if type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 1600:
+        raise ValueError("memory_output_limit_invalid")
+    if not 0 < timeout_s <= 20:
+        raise ValueError("memory_timeout_invalid")
+    child = ("import json,sys; from agentlas_cloud.judgment_bootstrap import _build_runner; "
+             "p=json.load(sys.stdin); r=_build_runner(p['config']); "
+             "o=r(p['system'],p['input'],timeout_s=p['timeout'],max_output_tokens=p['tokens'],strict_endpoint=True); "
+             "assert isinstance(o,str) and len(o.encode('utf-8'))<=65536; "
+             "sys.stdout.write(json.dumps({'output':o},ensure_ascii=False))")
+    payload = json.dumps({"config": runtime["config"], "system": system, "input": prompt,
+                          "timeout": timeout_s, "tokens": max_output_tokens}, ensure_ascii=False)
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    result = subprocess.run([sys.executable, "-c", child], input=payload, text=True, encoding="utf-8", env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            timeout=timeout_s, cwd=str(Path(__file__).resolve().parent.parent))
+    if result.returncode or len(result.stdout.encode("utf-8")) > 128 * 1024:
+        raise ValueError("memory_model_unavailable")
+    output = json.loads(result.stdout)["output"]
+    if not isinstance(output, str) or not output.strip() or len(output.encode("utf-8")) > 65536:
+        raise ValueError("memory_model_output_invalid")
+    return output
+
+
 def configured_runner() -> Callable[[dict[str, Any]], dict[str, Any]] | None:
     """Use the connected host's bounded adapter only in a background worker."""
     raw = os.environ.get("AGENTLAS_MEMORY_CURATOR_RUNTIME") or os.environ.get("AGENTLAS_JUDGE_RUNTIME")

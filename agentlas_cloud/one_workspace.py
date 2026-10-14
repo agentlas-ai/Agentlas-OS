@@ -1046,6 +1046,11 @@ def harvest_memory_events_from_texts(texts: Any) -> list[dict[str, Any]]:
 
 
 TURN_SUMMARY_FILE = "turn-summaries.json"
+# Historical/manual recall still reads this sidecar; automatic intake no longer
+# writes it or promotes its source into new learned memory.
+TICKET_SLUGS_FILE = "ticket-slugs.json"
+WORKSPACE_CONTRACT_VERSION = "1.1.0"
+MIGRATIONS_FILE = "migrations.jsonl"
 QUERY_LANGUAGE_FILE = "query-language.json"
 _TURN_SUMMARY_MAX_CHARS = 300
 _TURN_SUMMARY_MAX_WORKSPACES = 64

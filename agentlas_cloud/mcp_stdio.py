@@ -2304,6 +2304,62 @@ TOOLS: list[dict[str, Any]] = [
 TOOLS.extend(LEASE_TOOLS)
 TOOLS.extend(TAKEDOWN_TOOLS)
 
+# These tools retain Web's authenticated package/session authority. Core only
+# forwards declared requests and consumes automatic curation in its trusted
+# background adapter; complete_memory_curation is deliberately not a model tool.
+_REMOTE_MEMORY_TOOLS = [
+    {
+        "name": "agentlas.record_agent_memory",
+        "description": "Record a compact package turn summary for automatic memory consolidation. Never send raw transcripts or credentials. The host processes curation in the background; no manual memory approval or foreground judgment is required.",
+        "inputSchema": {"type": "object", "additionalProperties": False, "required": ["slug", "summary"],
+                        "properties": {
+                            "slug": {"type": "string"}, "summary": {"type": "string"},
+                            "sourceRef": {"type": "string", "description": "Stable turn or Ticket reference; omit memoryType for summary-only extraction."},
+                            "sessionId": {"type": "string", "description": "Server-minted package memory session ID."},
+                            "sessionToken": {"type": "string", "description": "Owner-bound capability from memory_session_open."},
+                            "outcome": {"type": "string", "enum": ["completed", "failed", "cancelled", "unknown"]},
+                            "memoryType": {"type": "string", "enum": ["preference", "fact", "failure_recovery", "project_context", "decision", "warning"]},
+                            "tags": {"type": "array", "items": {"type": "string"}},
+                            "evidence": {"type": "string"}, "salience": {"type": "number"},
+                            "visibility": {"type": "string", "enum": ["workspace", "user_private", "project", "global", "team"]},
+                            "supersedesId": {"type": "string"}}},
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
+    },
+    {
+        "name": "agentlas.decide_agent_learning",
+        "description": "Process an existing package memory or playbook candidate. Memory promotion queues automatic model consolidation; it is not a human approval requirement for ordinary turn memory.",
+        "inputSchema": {"type": "object", "additionalProperties": False, "required": ["slug", "kind", "id", "decision"],
+                        "properties": {"slug": {"type": "string"}, "kind": {"type": "string", "enum": ["memory", "playbook"]},
+                                       "id": {"type": "string"}, "decision": {"type": "string", "enum": ["promote", "reject"]}}},
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
+    },
+    {
+        "name": "agentlas.memory_curation_request",
+        "description": "Resume a server-owned automatic memory job using the host's configured no-tools background adapter. Does not select a new model or expose private curation input to the foreground model.",
+        "inputSchema": {"type": "object", "additionalProperties": False, "required": ["jobId"],
+                        "properties": {"jobId": {"type": "string"}}},
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
+    },
+    {
+        "name": "agentlas.memory_session_open",
+        "description": "Bind package turn summaries and continuation to an authenticated logical host session. The server mints the session capability; it grants no model or tool execution permission.",
+        "inputSchema": {"type": "object", "additionalProperties": False, "required": ["slug", "hostSessionKey"],
+                        "properties": {"slug": {"type": "string"}, "hostSessionKey": {"type": "string"},
+                                       "goal": {"type": "string"}, "constraints": {"type": "array", "items": {"type": "string"}},
+                                       "originTaskId": {"type": "string"}}},
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+    },
+    {
+        "name": "agentlas.memory_session_recap",
+        "description": "Read the source-bound package checkpoint and memory context using the owner session capability. Recap is the existing continuation projection, without a second model summary.",
+        "inputSchema": {"type": "object", "additionalProperties": False, "required": ["slug", "sessionId", "sessionToken"],
+                        "properties": {"slug": {"type": "string"}, "sessionId": {"type": "string"}, "sessionToken": {"type": "string"}}},
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+    },
+]
+TOOLS.extend(_REMOTE_MEMORY_TOOLS)
+_REMOTE_MEMORY_TOOL_NAMES = frozenset(tool["name"] for tool in _REMOTE_MEMORY_TOOLS)
+
 
 # MCP tool annotations (spec 2025-03-26, "Tool annotations"): every tool states
 # what it does to its environment. Hosts decide approval from these hints —
@@ -2574,6 +2630,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "only for explicit compatibility/debug routing."
             ),
         }
+
+    if name in _REMOTE_MEMORY_TOOL_NAMES:
+        from .networking.hub_client import call_hub_tool
+        return call_hub_tool(name, arguments)
 
     if name == "workforce.validate_execution_receipt":
         from .workforce.execution import validate_execution_receipt
