@@ -30,10 +30,10 @@ def interview_directive(
         if soft is not None
         else ""
     )
+    # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.interview.directive).
+    # Fixed protocol first; per-surface budget, soft-stop and close rules follow it.
     directive = (
         "task: briefing interview BEFORE executing; output = frozen Work Brief\n"
-        f"BUDGET (hard): {budget['batch_max']} questions/batch, "
-        f"{budget['batches_max']} batch(es), {budget['total_max']} total\n"
         f"clear_request: ambiguity <= {AMBIGUITY_THRESHOLD} -> ask nothing\n"
         "waves: 1 goal/constraints/done-signal, 2 edges/conflicts, 3 contradictions/assumptions; "
         "follow any contradiction/avoidance/unverified assumption first\n"
@@ -42,23 +42,25 @@ def interview_directive(
         "after 3 in a row the next question goes to the user\n"
         "rich_context: state understanding as numbered falsifiable claims, ask which are wrong\n"
         "defer: 'decide later' is valid -> record as deferred, never re-ask\n"
-        + soft_rule
-        + "risks: every interim-summary risk -> next-wave question or deferred with reason\n"
-        "scoring: score after each round (instructions below), keep history; "
+        "risks: every interim-summary risk -> next-wave question or deferred with reason\n"
+        "scoring: score after each round (instructions in scoring_prompt), keep history; "
         f"stop when ambiguity <= {AMBIGUITY_THRESHOLD}, every dimension above floor, "
         f"stable {profile['streak_required']} consecutive round(s)\n"
-        "close: ask 'anything missed?', restate goal in ONE sentence and confirm, "
+        f"BUDGET (hard): {budget['batch_max']} questions/batch, "
+        f"{budget['batches_max']} batch(es), {budget['total_max']} total\n"
+        + soft_rule
+        + "close: ask 'anything missed?', restate goal in ONE sentence and confirm, "
         f"then emit Work Brief (schemaVersion {WORK_BRIEF_SCHEMA_VERSION}; builds: write to "
         f"{WORK_BRIEF_RELPATH}); anti_scope = user's own words on what NOT to do (feeds routing-card anti_triggers verbatim)"
     )
     return {
+        "directive": directive,
+        "scoring_prompt": build_scoring_prompt(surface, locale),
         "mode": "briefing_interview",
         "surface": surface,
         "locale": locale,
-        "query": query,
-        "context_hint": context_hint,
         "budget": budget,
         "lens_table": render_lens_table(surface, locale),
-        "scoring_prompt": build_scoring_prompt(surface, locale),
-        "directive": directive,
+        "query": query,
+        "context_hint": context_hint,
     }

@@ -246,7 +246,11 @@ def invoke_hub_agent(
         "local memory and the project semantic ontology only when the task needs deeper grounding. "
         f"While acting as this agent, begin each reply with the presence badge `\U0001f517 {agent_display_name or selected_slug}` so the user can see the hired agent is active."
     )
+    # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.hub.invocation.next-step-and-grounding).
+    # The fixed instructions (next_step, grounding) precede the agent's versioned runtime_bundle.
     output = {
+        "next_step": next_step,
+        "grounding": grounding,
         "mode": "byom_runtime_bundle",
         "status": "bundle_ready",
         "agent": selected_slug,
@@ -277,9 +281,7 @@ def invoke_hub_agent(
             **({"execution_graph": execution_graph} if execution_graph is not None else {}),
         },
         "prompt_summary": _compact(request, 260),
-        "grounding": grounding,
         "lease": lease,
-        "next_step": next_step,
     }
     record = {
         "action": "hub_invoke",
@@ -766,12 +768,8 @@ def _grounding_directive(
     # versioned runtime installed by Agentlas OS, never an ambient PYTHONPATH or
     # a source checkout that happens to make `python3 -m ontology` importable.
     ontology_cli = '"${HOME}/.agentlas/runtime/current/bin/ontology"'
+    # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.hub.invocation.next-step-and-grounding).
     return {
-        "agent_id": agent_id,
-        "project_dir": str(project),
-        "memory_root": str(memory_root),
-        "ontology_db": str(ontology_db),
-        "experience_db": str(experience_db),
         "policy": "attach_codebase_then_selective_memory",
         "directive": (
             "You are running INSIDE the user's working project at `project_dir`. "
@@ -799,6 +797,11 @@ def _grounding_directive(
             "environment values, raw logs, or transcripts. Without this step the "
             "drawer stays empty and the next borrower starts from nothing."
         ),
+        "agent_id": agent_id,
+        "project_dir": str(project),
+        "memory_root": str(memory_root),
+        "ontology_db": str(ontology_db),
+        "experience_db": str(experience_db),
         "commands": {
             "project_overview": f"ls -la {_shell_quote(str(project))}",
             "ontology_query": (

@@ -2,8 +2,6 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 # /hep-hub
 
-Raw request: `the request typed after the command`
-
 Use the local Agentlas OS MCP server `hephaestus-network` and call the
 Workforce tools with exact `sourceScope: "hub"`. This is public Hub only; it
 must not add registered Local or owner Cloud candidates.
@@ -71,3 +69,5 @@ is not proof of execution.
 For a `partial` or `failed` result, report each source receipt's exact
 `failureCode`. Never collapse several receipts into one, substitute a different
 code, or relabel the outcome.
+
+Raw request: `the request typed after the command`

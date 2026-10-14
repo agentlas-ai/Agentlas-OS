@@ -6,8 +6,6 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 # /hep-network
 
-Raw request: `$ARGUMENTS`
-
 You are the active top-level workforce orchestrator. Use the local Agentlas
 OS MCP server named `hephaestus-network`, the only host-visible Workforce MCP.
 Core reaches Cloud and Hub through its internal upstream client. Network means all registered
@@ -222,3 +220,5 @@ for Core federation, or use popularity/history/local availability as
 semantic fit. Exact duplicate releases may collapse Local > Cloud > Hub only
 when Core returns verified identical lineage; a name or slug match is not
 enough. Name the actual workers in the result.
+
+Raw request: `$ARGUMENTS`

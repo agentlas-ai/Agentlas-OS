@@ -5,8 +5,6 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 # /hep-cloud
 
-Raw request: `$ARGUMENTS`
-
 Act as the temporary top-level workforce orchestrator. Use the local Agentlas
 OS MCP server `hephaestus-network` and call the Workforce tools with exact
 `sourceScope: "cloud"`. This command may search only packages owned by the
@@ -63,3 +61,5 @@ A prepared roster is not proof of execution.
 For a `partial` or `failed` result, report each source receipt's exact
 `failureCode`. Never collapse several receipts into one, substitute a different
 code, or relabel the outcome.
+
+Raw request: `$ARGUMENTS`

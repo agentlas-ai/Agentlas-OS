@@ -140,11 +140,13 @@ def build_scoring_prompt(surface: str, locale: str = "en") -> str:
         }[name]
         for name, weight, floor in dims
     )
+    # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.interview.scoring-prompt).
     return (
-        f"task: score request clarity from the transcript, 0.0 (unclear) to 1.0 (clear)\n{dim_lines}\n"
+        "task: score request clarity from the transcript, 0.0 (unclear) to 1.0 (clear)\n"
         "rules: >0.8 needs concrete transcript answers; "
         "user-deferred topics (e.g. 'decide later') are not penalised, list in deferred_topics; "
         "no credit for plausible guesses\n"
+        f"{dim_lines}\n"
         'output: JSON only {"clarity": {"<dimension>": <0..1>, ...}, '
         '"justification": {"<dimension>": "<one sentence>", ...}, '
         '"deferred_topics": ["..."]}'

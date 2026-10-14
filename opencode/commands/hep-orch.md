@@ -5,8 +5,6 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 Set or show which model runs the orchestrator and which runs the workers.
 
-Raw request: `$ARGUMENTS`
-
 A role split only saves anything when the roles actually run on different
 models. Before this policy existed the allocator had nothing to read, so every
 worker inherited the orchestrator's frontier model and a five-worker fan-out
@@ -77,3 +75,5 @@ Recommend a split only from what the tasks actually need: mechanical fan-out
 judgement, and final synthesis stay high. Do not promise a cost saving you have
 not measured — the saving is real only when the workers were genuinely doing
 mechanical work.
+
+Raw request: `$ARGUMENTS`

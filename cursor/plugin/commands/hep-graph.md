@@ -5,8 +5,6 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 Saved automation graphs live in the local Agentlas database, shared with the
 desktop app. This command reads that database and can ask for a graph to run.
 
-Raw arguments: `the request typed after the command`
-
 **What this command can and cannot do.** It lists graphs, shows what a graph
 does, and *requests* a run. It does not execute the graph — the desktop app is
 what runs it. Say that plainly when you report back; do not tell the user their
@@ -122,3 +120,5 @@ and its reason rather than retrying.
 
 If the CLI exits non-zero, show its message verbatim and stop. Do not
 substitute a guess about why, and do not retry a run request.
+
+Raw arguments: `the request typed after the command`

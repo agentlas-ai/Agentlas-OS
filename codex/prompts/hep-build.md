@@ -6,9 +6,6 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 # /hep-build
 
-Raw arguments:
-`$ARGUMENTS`
-
 Use Hephaestus as the Agentlas builder surface:
 
 - create a new single agent
@@ -304,3 +301,6 @@ Route to the Agentlas Core Engine Meta-Agent team, using the `$ENGINE` and
 /hep-build create a customer support operations team
 /hep-build package this existing Claude agent into Agentlas architecture
 ```
+
+Raw arguments:
+`$ARGUMENTS`
