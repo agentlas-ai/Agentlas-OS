@@ -340,6 +340,8 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
     # wrote it" is not a user edit. We record the digest we shipped; if the file
     # on disk still matches that digest, the user never touched it and we may
     # bring it forward. If it differs, the user owns it and we keep their copy.
+    from .memory_package_sources import capture_owner, observe_shipped_operations
+    declaration_owner = capture_owner()
     ops_src = Path(__file__).resolve().parent.parent / "skills" / "agentlas-operations"
     ops_dst = root / "skills" / "agentlas-operations"
     if ops_src.is_dir():
@@ -358,6 +360,10 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
                 body = source.read_text(encoding="utf-8")
             except OSError:
                 continue
+            # A shipped declaration source is distinct from the mutable user
+            # copy and learned memory; retain only its original metadata.
+            if source.name in {"SKILL.md", "INDEX.md"}:
+                observe_shipped_operations(source, body, declaration_owner)
             digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
             if target.exists():
                 try:
