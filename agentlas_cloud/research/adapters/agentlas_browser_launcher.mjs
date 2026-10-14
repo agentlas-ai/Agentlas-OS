@@ -205,9 +205,14 @@ async function ensureChrome() {
 //      'publish'|'delete'|'sensitive-action'|'none') — a model's judgment; 'none' means judged safe, no gate;
 //   2. the effect the model declares on browser_click (a typed argument advertised in tools/list and stripped before
 //      the Playwright child sees the call);
-//   3. the tool's own semantics: Enter or type-with-submit submits the focused form, accepting a dialog confirms it, a
-//      file upload sends local data, and a click with no valid declared effect is not known to be harmless — all
-//      raise the generic 'sensitive-action' gate (fail closed; this process has no bridge to a judgment service).
+//   3. the tool's own semantics, the same classes as the Desktop launcher (browser-cdp-launcher.ts classifyAction /
+//      approvalFor): Enter or type-with-submit is a send, accepting a dialog is a send, a click with no valid declared
+//      effect is not known to be harmless and asks as a send;
+//   4. typed page structure read from the action's target just before it runs (form method, W3C cc-* autofill tokens),
+//      which can only raise: a submit of a POST form is at least send, of a form with card fields payment; typing into a
+//      card field is payment. An unreadable target is neutral.
+// One deliberate difference: a file upload asks (send). The Desktop launcher stages uploads only from the run's own
+// folders and refuses others before dispatch; this launcher has no such root list, so local data leaving needs approval.
 // Labels, element descriptions and URLs are never read. Navigation, typing and reading stay ungated.
 const APPROVAL_KINDS = new Set(['payment', 'send', 'publish', 'delete', 'sensitive-action']);
 const CLICK_EFFECT_KIND = { none: null, like: null, follow: null, repost: null, reply: 'send', message: 'send', post: 'publish', send: 'send', publish: 'publish', delete: 'delete', payment: 'payment' };
@@ -222,19 +227,68 @@ function declaredClickEffect(args) {
   const raw = args && typeof args === 'object' && typeof args.effect === 'string' ? args.effect.trim().toLowerCase() : '';
   return Object.prototype.hasOwnProperty.call(CLICK_EFFECT_KIND, raw) ? raw : null;
 }
-function classifyAction(name, args, preJudgedKind) {
+const SUBMIT_KEY_RE = /^(enter|return|numpadenter)$/i;
+const CLASS_RANK = { send: 1, publish: 2, delete: 3, payment: 4 };
+function higherApprovalClass(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  return (CLASS_RANK[b] || 0) > (CLASS_RANK[a] || 0) ? b : a;
+}
+// Same page-side probe as the Desktop launcher (ACTION_STRUCTURE_PROBE): typed DOM facts only, never the element's text.
+const ACTION_STRUCTURE_PROBE = "(el) => { el = el || document.activeElement; if (!el || !el.getAttribute) return { found: false };"
+  + " const card = (n) => !!(n && n.getAttribute && String(n.getAttribute('autocomplete') || '').toLowerCase().split(' ').some((t) => t.indexOf('cc-') === 0));"
+  + " const form = el.form || (el.closest ? el.closest('form') : null); const tag = String(el.tagName || '').toLowerCase(); const type = String(el.getAttribute('type') || '').toLowerCase();"
+  + " const submitControl = (tag === 'button' && !!form && (type === '' || type === 'submit')) || (tag === 'input' && (type === 'submit' || type === 'image'));"
+  + " return { found: true, submitControl, formMethod: form ? String(form.getAttribute('method') || 'get').toLowerCase() : null,"
+  + " paymentField: card(el), paymentForm: !!form && Array.prototype.some.call(form.elements || [], card) }; }";
+function actionStructureTargets(name, args) {
+  const input = args && typeof args === 'object' ? args : {};
+  if (name === 'browser_click') return CLICK_EFFECT_KIND[declaredClickEffect(input)] === 'payment' ? [] : [typeof input.target === 'string' ? input.target : null];
+  if (name === 'browser_type' || name === 'browser_fill') return [typeof input.target === 'string' ? input.target : null];
+  if (name === 'browser_press_key') return SUBMIT_KEY_RE.test(String(input.key || '')) ? [''] : [];
+  if (name === 'browser_fill_form' && Array.isArray(input.fields)) {
+    return input.fields.slice(0, 12).map((field) => field && typeof (field.target || field.ref) === 'string' ? (field.target || field.ref) : null);
+  }
+  return [];
+}
+function mergeActionStructure(results) {
+  const found = (results || []).filter((row) => row && row.found === true);
+  if (!found.length) return null;
+  return {
+    found: true,
+    submitControl: found.some((row) => row.submitControl === true),
+    formMethod: found.map((row) => row.formMethod).find((method) => typeof method === 'string') || null,
+    paymentField: found.some((row) => row.paymentField === true),
+    paymentForm: found.some((row) => row.paymentForm === true),
+  };
+}
+function structuralClass(name, structure, submitting) {
+  if (!structure || structure.found !== true) return null;
+  if (name === 'browser_type' || name === 'browser_fill' || name === 'browser_fill_form') {
+    if (structure.paymentField) return 'payment';
+    if (!submitting) return null;
+  }
+  if (structure.submitControl || submitting) {
+    if (structure.paymentForm || structure.paymentField) return 'payment';
+    if (structure.formMethod === 'post') return 'send';
+  }
+  return null;
+}
+function classifyAction(name, args, preJudgedKind, structure = null) {
   if (preJudgedKind !== undefined && preJudgedKind !== null && preJudgedKind !== '') {
     return normalizeActionKindOverride(preJudgedKind);
   }
   const input = args && typeof args === 'object' ? args : {};
   if (name === 'browser_click') {
     const effect = declaredClickEffect(input);
-    return effect ? CLICK_EFFECT_KIND[effect] : 'sensitive-action';
+    return higherApprovalClass(effect ? CLICK_EFFECT_KIND[effect] : 'send', structuralClass(name, structure, false));
   }
-  if (name === 'browser_file_upload') return 'sensitive-action'; // local file data leaves the machine
-  if (name === 'browser_press_key' && /^(enter|return|numpadenter)$/i.test(String(input.key || ''))) return 'sensitive-action';
-  if (name === 'browser_type' && input.submit === true) return 'sensitive-action';
-  if (name === 'browser_handle_dialog' && input.accept === true) return 'sensitive-action';
+  if (name === 'browser_file_upload') return 'send';
+  const submitByKey = name === 'browser_press_key' && SUBMIT_KEY_RE.test(String(input.key || ''));
+  const submitByType = name === 'browser_type' && input.submit === true;
+  if (submitByKey || submitByType) return higherApprovalClass('send', structuralClass(name, structure, true));
+  if (name === 'browser_handle_dialog' && input.accept === true) return 'send';
+  if (name === 'browser_type' || name === 'browser_fill' || name === 'browser_fill_form') return structuralClass(name, structure, false);
   return null;
 }
 // The declared effect is for this gate only; the Playwright child keeps its own schema.
@@ -348,8 +402,8 @@ async function main() {
   });
 
   // Shared approval-gate verdict. Pass = null, refuse = reason string.
-  const gate = async (name, args, preJudgedKind) => {
-    const actionType = classifyAction(name, args, preJudgedKind);
+  const gate = async (name, args, preJudgedKind, structure) => {
+    const actionType = classifyAction(name, args, preJudgedKind, structure === undefined ? await readActionStructure(name, args, preJudgedKind) : structure);
     if (!actionType) return null;
     let site = ''; try { site = new URL(currentUrl).host; } catch (e) { site = currentUrl; }
     const summaryPrefix = actionType === 'sensitive-action'
@@ -357,6 +411,21 @@ async function main() {
       : actionType + ': ';
     const decision = await requestApproval(site, actionType, summaryPrefix + (args.element || args.url || name));
     return decision === 'approved' ? null : actionType;
+  };
+
+  // Typed DOM facts of the action's target for the classifier (form method, card autofill); never its text.
+  const readActionStructure = async (name, args, preJudgedKind) => {
+    if (preJudgedKind !== undefined && preJudgedKind !== null && preJudgedKind !== '') return null;
+    const results = [];
+    for (const target of actionStructureTargets(name, args)) {
+      if (target === null) continue;
+      const reply = await Promise.race([
+        callChild('browser_evaluate', target ? { element: String((args && args.element) || 'action target'), target, function: ACTION_STRUCTURE_PROBE } : { function: ACTION_STRUCTURE_PROBE }),
+        new Promise((resolve) => setTimeout(() => resolve(null), 2000)),
+      ]).catch(() => null);
+      results.push(structureFromReply(reply));
+    }
+    return mergeActionStructure(results);
   };
 
   // Internally sends a tools/call to the child and gets the response (for replay).
@@ -402,19 +471,21 @@ async function main() {
         // Ordinary action: approval gate + record. If the parent sent a pre-judged verdict via _meta, that verdict wins.
         if (name === 'browser_navigate' && args.url) currentUrl = String(args.url);
         const preJudgedKind = (msg.params._meta || {})['agentlas/actionKind'];
-        const actionType = classifyAction(name, args, preJudgedKind);
         const childArgs = stripClickEffect(name, args);
         const childLine = childArgs === args ? line : JSON.stringify({ ...msg, params: { ...msg.params, arguments: childArgs } });
-        if (actionType) {
-          gate(name, args, preJudgedKind).then((denied) => {
-            if (denied) { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'BLOCKED: The user did not approve this ' + denied + ' browser action.' }], isError: true } }); return; }
-            if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
-            forwardRaw(childLine);
-          });
-          return;
-        }
-        if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
-        forwardRaw(childLine);
+        void readActionStructure(name, args, preJudgedKind).then((structure) => {
+          if (closing) return;
+          if (classifyAction(name, args, preJudgedKind, structure)) {
+            gate(name, args, preJudgedKind, structure).then((denied) => {
+              if (denied) { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'BLOCKED: The user did not approve this ' + denied + ' browser action.' }], isError: true } }); return; }
+              if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
+              forwardRaw(childLine);
+            });
+            return;
+          }
+          if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
+          forwardRaw(childLine);
+        });
       }).catch((error) => writeBrowserStartFailure(msg.id, error));
       return;
     }
@@ -495,4 +566,14 @@ if (invokedDirectly) {
   main().catch((e) => { console.error('[agentlas-browser] fatal', e && e.stack || e); process.exit(1); });
 }
 
-export { classifyAction, normalizeActionKindOverride, stripClickEffect, withClickEffectSchema };
+/** Parse browser_evaluate's "### Result" block into the probe's facts (null when unreadable). */
+function structureFromReply(reply) {
+  const content = reply && reply.result && !reply.result.isError && Array.isArray(reply.result.content) ? reply.result.content : null;
+  if (!content) return null;
+  const text = content.filter((item) => item && item.type === 'text').map((item) => String(item.text || '')).join('\n');
+  const at = text.indexOf('### Result');
+  const body = (at >= 0 ? text.slice(at + 10) : text).split('\n### ')[0].trim();
+  try { const value = JSON.parse(body); return value && typeof value === 'object' && value.found === true ? value : null; } catch (e) { return null; }
+}
+
+export { classifyAction, normalizeActionKindOverride, stripClickEffect, withClickEffectSchema, actionStructureTargets, mergeActionStructure, structureFromReply, ACTION_STRUCTURE_PROBE };
