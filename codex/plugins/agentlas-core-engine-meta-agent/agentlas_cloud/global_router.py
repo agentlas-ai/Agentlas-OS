@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
+from .prompt_order import compose_prompt
 
 BEGIN = "<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->"
 END = "<!-- HEPHAESTUS:GLOBAL-ROUTER:END -->"
-VERSION = "global-router.v7"
+VERSION = "global-router.v8"
 
 
 @dataclass(frozen=True)
@@ -107,8 +109,19 @@ def install_global_router(
     results = []
     for target in selected:
         text = _read_text(target.path)
-        new_text, changed = _upsert_block(text, _router_block(target.id))
+        new_text, changed = _upsert_block(text, _router_block(target.id, _router_workflow_path(target.path)))
         backup_path = None
+        workflow = _router_workflow(target.id)
+        workflow_path = _router_workflow_path(target.path)
+        workflow_changed = _read_text(workflow_path) != workflow
+        if workflow_changed and not dry_run:
+            workflow_path.parent.mkdir(parents=True, exist_ok=True)
+            with _target_mutation_lock(workflow_path):
+                prior_workflow = _read_text(workflow_path)
+                if prior_workflow != workflow:
+                    if backup and workflow_path.exists():
+                        _backup(workflow_path, prior_workflow)
+                    workflow_path.write_text(workflow, encoding="utf-8")
         if changed and not dry_run:
             target.path.parent.mkdir(parents=True, exist_ok=True)
             with _target_mutation_lock(target.path):
@@ -117,7 +130,7 @@ def install_global_router(
                 # in that case the truthful result is unchanged and no backup
                 # or byte rewrite should occur.
                 text = _read_text(target.path)
-                new_text, changed = _upsert_block(text, _router_block(target.id))
+                new_text, changed = _upsert_block(text, _router_block(target.id, _router_workflow_path(target.path)))
                 if changed:
                     if backup and target.path.exists():
                         backup_path = _backup(target.path, text)
@@ -129,6 +142,9 @@ def install_global_router(
                 "status": "would_update" if dry_run and changed else "updated" if changed else "unchanged",
                 "installed": BEGIN in new_text and END in new_text,
                 "backup": str(backup_path) if backup_path else None,
+                "workflow_path": str(workflow_path),
+                "workflow_sha256": hashlib.sha256(workflow.encode("utf-8")).hexdigest(),
+                "workflow_status": "would_update" if dry_run and workflow_changed else "updated" if workflow_changed else "unchanged",
             }
         )
     return {"action": "global_router_install", "version": VERSION, "results": results}
@@ -179,6 +195,8 @@ def global_router_status(*, home: Path | None = None, targets: list[str] | None 
                 "exists": target.path.exists(),
                 "installed": BEGIN in text and END in text,
                 "version": VERSION if BEGIN in text and END in text else None,
+                "workflow_path": str(_router_workflow_path(target.path)),
+                "workflow_ready": _read_text(_router_workflow_path(target.path)) == _router_workflow(target.id),
             }
         )
     return {"action": "global_router_status", "version": VERSION, "results": results}
@@ -193,42 +211,39 @@ def _select_targets(*, home: Path | None, targets: list[str] | None) -> list[Tar
     return [available[item] for item in ids]
 
 
-def _router_block(target_id: str) -> str:
+def _router_workflow_path(instruction_path: Path) -> Path:
+    return instruction_path.with_name("agentlas-global-router-workflow.md")
+
+
+def _router_workflow(target_id: str | None = None) -> str:
+    host_note = ROUTER_TARGETS[target_id].host_surface_note if target_id else ""
+    return compose_prompt([
+        {"id": "purpose.router.workflow.policy", "revision": 2, "stability": "fixed-policy", "changeTriggers": ["release"], "text": """# Agentlas Global Router workflow
+staff: redacted WorkOrder -> workforce.search_candidates(sourceScope, selectionSessionId) -> host-authored Selection -> workforce.validate_selection(workOrder, selection) -> workforce.prepare_execution(accepted federatedSelection, projectDir).
+Core restores pinned federation; never echo menu as federationResult or send the merged set to remote Hub validation/preparation. Preserve exact source sessions/digests, agentDefinitionId, release/package/content hashes. Proven immutable lineage shadows Local > Cloud > Hub; ambiguous identity collisions quarantine. No lexical router, scoring, reranking or silent substitution.
+execute: BYOM prepared bundles run on this host, distinct worker/synthesis/verifier calls, artifact handoffs and independent verifier. Preparation/selection/scheduling is never proof of execution; validate the actual host receipt locally.
+privacy: Hub receives redacted requirements, never raw prompts/local files/memory/secrets. Installs/ratings/revenue/history/callability never decide fit.
+refusal: Hub is free with host model/API; insufficient_credits means stale server, no top-up advice. owner_only/no_cloud_package/agent_not_found remain exact. Report the boundary before any different surface. Named remote agent missing means it did not run; never claim a local fallback ran it.
+report: actual workers only, Korean 사용 에이전트 / English Agents used plus short reason; real local skill fallback uses 사용 스킬 / Skills used, never registered-worker claims.
+"""},
+        {"id": "purpose.router.workflow.host", "revision": 1, "stability": "configuration", "changeTriggers": ["runtime", "profile"], "text": host_note},
+    ]) + "\n"
+
+
+
+def _router_block(target_id: str, workflow_path: Path | None = None) -> str:
     spec = ROUTER_TARGETS.get(target_id)
     if spec is None:
-        # Unknown ids used to fall through a bare else into the Antigravity
-        # copy; a typo must fail loudly, not install the wrong host's block.
         raise ValueError(f"unknown global router target: {target_id}")
-    host = spec.host
-    browser_instruction = spec.browser_instruction
-    network_instruction = spec.network_instruction
-    scope_instruction = spec.scope_instruction
-    call_instruction = spec.call_instruction
-    host_surface_note = spec.host_surface_note
-    return f"""{BEGIN}
-# Hephaestus Global Router ({VERSION})
-installed_for: {host}
-- simple question: answer directly, no routing
-- runner: `~/.agentlas/runtime/current/bin/hephaestus`
-{host_surface_note}
-- substantial work, route in order:
-  1. Agentlas Browser first (rendered/JS pages, click/form flows, login state, browser evidence): {browser_instruction}
-  2. Hephaestus Network: {network_instruction}; host LLM staffs a task force from the Local + owner Cloud + public Hub Workforce menu
-  3. scope-only, when user restricts staffing to registered Local / owner Cloud / public Hub: {scope_instruction}; source scopes, not fallback tiers
-  4. local host skills: only if Workforce unavailable; never report them as registered Local workers
-- named agents: {call_instruction}
-- scopes: network = local + cloud + hub; local = registered local; cloud = owner cloud; hub = public Hub; public demos/distribution proof use hub scope explicitly
-- network flow: host LLM writes one redacted WorkOrder -> `workforce.search_candidates` (`sourceScope=network`, returns `selectionSessionId`) -> host writes Selection -> `workforce.validate_selection(workOrder, selection)` (Core restores the pinned result from the session; do not echo the projected menu as `federationResult`) -> `workforce.prepare_execution` with accepted `federatedSelection` + mandatory `projectDir`
-- federation: no scoring, reranking or staffing decision; same `agentDefinitionId` shadows Local > Cloud > Hub only with proven same lineage and exact immutable release; ambiguous/different-release collisions quarantine only that identity; host picks exact releases
-- session: federated CandidateSet is Core-owned, validate locally with its federation receipt; prepare with each row's pinned original source session/digest + exact release/package/content hashes; never send the merged set to remote Hub validate/prepare; no legacy lexical router first
-- Hub agents: BYOM bundles; execute each prepared exact release in this host, grounded in the project; no server-side completion; selection or prepared bundle != proof that manager, workers, synthesis or verifier ran
-- Hub calls free, host supplies model/API; `insufficient_credits` = free contract not active on that stale server, no top-up advice; `owner_only`, `no_cloud_package`, `agent_not_found`: report the exact refusal; general task: report the boundary before trying another labelled surface; exact named remote agent: never claim a local fallback ran it; never replace a missing role with an unrelated agent
-- privacy: never send raw local memory, private files or secrets to Hub search (redacted work-order requirements only); installs, ratings, invocation history, revenue, local callability never decide semantic fit
-- report: by workers that did the task, not by routing narration (conciseness, not secrecy; explain `hep-network` or this block if asked)
-- agents selected: Korean `사용 에이전트: <agent names>. 이유: <short reason>.` / English `Agents used: <agent names>. Reason: <short reason>.`
-- host skills fallback: Korean `사용 스킬: <skill names>. 이유: <short reason>.` / English `Skills used: <skill names>. Reason: <short reason>.`
-{END}
-"""
+    path = workflow_path or _router_workflow_path(default_targets()[target_id].path)
+    digest = hashlib.sha256(_router_workflow(target_id).encode("utf-8")).hexdigest()
+    return compose_prompt([
+        {"id": "purpose.router.frame", "revision": 1, "stability": "fixed-policy", "changeTriggers": ["release"], "order": -10, "text": BEGIN},
+        {"id": "purpose.router.menu", "revision": 2, "stability": "fixed-policy", "changeTriggers": ["release"], "text": "simple question: direct answer\nrunner: ~/.agentlas/runtime/current/bin/hephaestus; preparation ≠ execution"},
+        {"id": "purpose.router.host", "revision": 1, "stability": "configuration", "changeTriggers": ["runtime", "profile", "skill-package"], "text": f"router: {VERSION}; host={spec.host}\nread before staffing: {path} (installed workflow sha256={digest}); native file read. Unreadable => report exact boundary; use local host skills only if Workforce unavailable, never claim registered workers.\nbrowser/render/login: {spec.browser_instruction}\nsubstantial: {spec.network_instruction}; Network=Local+owner Cloud+public Hub"},
+        {"id": "purpose.router.scope.final", "revision": 1, "stability": "final-boundary", "changeTriggers": ["runtime", "profile"], "text": f"exact scope: {spec.scope_instruction}; never widen; named agents: {spec.call_instruction}\n{END}"},
+    ]) + "\n"
+
 
 
 def _upsert_block(text: str, block: str) -> tuple[str, bool]:

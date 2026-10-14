@@ -18,24 +18,22 @@ HARNESS_ID = "agentlas-core/stormbreaker-goal-ultracode"
 HARNESS_MODE = "stormbreaker-goal-ultracode"
 
 HARNESS_PROTOCOL_LINES = (
-    "harness: STORMBREAKER GOAL + ULTRACODE (Agentlas-owned)",
-    "GOAL MODE: keep goal, constraints, acceptance checks, owners, unfinished packets until verified",
-    "ULTRACODE MODE: inspect real state, plan before mutation, smallest complete change, run tests, repair failures, keep unrelated work",
-    "context: inherit the packet's Context Slice; before mutation query impact map, no blind tree scan",
-    "scope: non-trivial work only; trivial questions answer directly",
-    "ambiguous goal: ask 3-5 questions once, then lock goal sentence, constraints, assumptions, checkable acceptance; specific goal: ask nothing",
-    "ledger: packets, owners, deps, gates, status, resume points; continue next safe packet, never stop at a plan",
-    "inventory: host-advertised runtimes/models only; leader picks smallest sufficient runtime, model, effort per child; host validates",
-    "parallel: independent packets only if host supports; no overlapping write scope",
-    "pass: packet passes only on its verifier; routed/scheduled/executed is not proof",
-    "done: passing Context Map impact receipt, or list every unresolved affected file",
-    "failure: repair and retry inside bounded loop; resume from durable journal, never redo verified packets",
-    "success: only when all required packets pass and final gate says can_report_success; else report blocked/unverified with evidence and resume step",
-    "permissions: host model governs external writes, publishing, payments, deletion, credentials",
-    "output: concise progress, evidence, decisions, ledger, final status; no hidden reasoning",
+    "harness: Stormbreaker Goal+UltraCode; substantial work only, trivial direct",
+    "GOAL MODE: lock goal/constraints/checks/owners; unclear ask 3-5 once, specific none",
+    "ULTRACODE MODE: inspect real state, inherit Context Slice, query impact before edits; minimal complete fix, tests/repair, keep unrelated work",
+    "ledger: packets/owners/deps/gates/status/resume; continue safe unfinished work beyond planning",
+    "children: host inventory only; smallest sufficient model/effort; host validates; parallel only supported independent nonoverlapping writes",
+    "proof: verifier per packet; routed/prepared/executed \u2260 passed; Context Map impact receipt or every unresolved affected file",
+    "recovery: bounded evidence loop, durable journal, never redo verified packets; grants/current personal always-allow govern effects/payment; reconcile uncertain effects first",
+    "final: all packets pass + final_gate.can_report_success; else blocked/unverified + evidence/resume; brief progress/decisions/ledger, no hidden reasoning",
 )
 
-HARNESS_SYSTEM_PROMPT = "\n".join(HARNESS_PROTOCOL_LINES)
+from ..prompt_order import compose_prompt
+
+HARNESS_SYSTEM_PROMPT = compose_prompt([{
+    "id": "purpose.stormbreaker.harness.policy", "revision": 2, "stability": "fixed-policy",
+    "changeTriggers": ["release"], "text": "\n".join(HARNESS_PROTOCOL_LINES),
+}])
 HARNESS_PROMPT_SHA256 = hashlib.sha256(HARNESS_SYSTEM_PROMPT.encode("utf-8")).hexdigest()
 
 
