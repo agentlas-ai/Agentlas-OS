@@ -21,9 +21,10 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+from .memory_actor_family import CORE_ONE_ACTOR_ID, memory_actor_ids
 
 SCHEMA = "agentlas.core-memory-runtime.v1"
-ONE_ACTOR_ID = "agentlas-one"
+ONE_ACTOR_ID = CORE_ONE_ACTOR_ID
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._/-]{0,511}$")
 _KINDS = {"fact", "decision", "preference", "risk", "procedure", "hypothesis"}
 _SCOPES = {"agent_repo", "project", "user_identity", "session"}
@@ -151,6 +152,31 @@ def _hash(value: str) -> str:
 
 def _content_hash(value: str) -> str:
     return _hash(" ".join(unicodedata.normalize("NFKC", value).split()).lower())
+
+
+def _default_applicability_matches(raw: str, scope: str, actor: str, project: str | None, project_path: str | None) -> bool:
+    """A scope-only proposal cannot coalesce into an unknown explicit policy.
+    Recognize only the current Core/Native default schema; content and an actor
+    alias never supply audience or compatibility-scope permission.
+    """
+    try:
+        policy = json.loads(raw)
+    except (ValueError, TypeError):
+        return False
+    allowed = {"scope", "projectIds", "projectPathHash", "actorId", "chatId", "recallChannel", "enabled"}
+    if not isinstance(policy, dict) or set(policy) - allowed or policy.get("scope") != scope:
+        return False
+    if policy.get("recallChannel", "default") != "default" or policy.get("enabled", True) is not True:
+        return False
+    if "actorId" in policy and policy["actorId"] not in memory_actor_ids(actor):
+        return False
+    if policy.get("chatId") is not None:
+        return False
+    if "projectIds" in policy and policy["projectIds"] != ([project] if project else []):
+        return False
+    if "projectPathHash" in policy and policy["projectPathHash"] != (_hash(project_path) if project_path else None):
+        return False
+    return True
 
 
 def memory_root() -> Path:
@@ -366,6 +392,21 @@ class MemoryRuntime:
                     raise ValueError("memory_operation_collision")
                 self.db.commit()
                 return {"operation_id": operation, "state": prior[1], "replayed": True}
+            aliases = memory_actor_ids(actor)
+            if len(aliases) > 1:
+                compatible = self.db.execute("SELECT operation_id,state,payload_json FROM memory_operations WHERE owner_namespace=? AND actor_id IN (SELECT value FROM json_each(?)) AND context_key=? AND source_ref=? AND source_revision=? ORDER BY created_at,operation_id",
+                                             (self.owner, _json(aliases), context, source, source_revision)).fetchall()
+                expected = {key: value for key, value in payload.items() if key not in {"actor_id", "ticket_ref"}}
+                for old in compatible:
+                    original = json.loads(old[2])
+                    observed = {key: value for key, value in original.items() if key not in {"actor_id", "ticket_ref"}}
+                    if old[1] == "revoked" or observed == expected:
+                        # Reuse the existing raw-source receipt/hash. The family
+                        # adapter never rewrites an operation, actor or capsule.
+                        self.db.commit()
+                        return {"operation_id": old[0], "state": old[1], "replayed": True}
+                if compatible:
+                    raise ValueError("memory_operation_collision")
             epoch = self.epoch()
             namespace = _hash(_json(["core-capsule.v1", self.owner, actor, context]))
             prior_frontier = self.db.execute("SELECT c.source_revision FROM memory_session_checkpoint_heads h JOIN memory_session_checkpoints c ON c.checkpoint_id=h.checkpoint_id WHERE h.namespace=? AND json_extract(c.payload_json,'$.revocation_epoch')=?", (namespace, epoch)).fetchone()
@@ -396,8 +437,9 @@ class MemoryRuntime:
             raise
 
     def capsule(self, actor_id: str, context_key: str) -> dict[str, Any] | None:
-        namespace = _hash(_json(["core-capsule.v1", self.owner, _safe_id(actor_id), _safe_id(context_key)]))
-        row = self.db.execute("SELECT c.payload_json FROM memory_session_checkpoint_heads h JOIN memory_session_checkpoints c ON c.checkpoint_id=h.checkpoint_id WHERE h.namespace=?", (namespace,)).fetchone()
+        actor, context = _safe_id(actor_id), _safe_id(context_key)
+        namespaces = [_hash(_json(["core-capsule.v1", self.owner, alias, context])) for alias in memory_actor_ids(actor)]
+        row = self.db.execute("SELECT c.payload_json FROM memory_session_checkpoint_heads h JOIN memory_session_checkpoints c ON c.checkpoint_id=h.checkpoint_id WHERE h.namespace IN (SELECT value FROM json_each(?)) AND json_extract(c.payload_json,'$.revocation_epoch')=? ORDER BY c.source_revision DESC,c.created_at DESC LIMIT 1", (_json(namespaces),self.epoch())).fetchone()
         if not row:
             return None
         cp = json.loads(row[0])
@@ -413,16 +455,20 @@ class MemoryRuntime:
         if scope == "session":
             return {"action": "session", "written": 0}
         authority = ("project-path:" + _hash(project_path) if project_path else "project-id:" + project) if scope == "project" else "agent:" + actor if scope == "agent_repo" else "shared"
-        owner_key = _hash("agentlas-memory-owner-v1\0" + scope + "\0" + authority)
-        if db.execute("SELECT 1 FROM memory_revocations WHERE owner_key=? AND memory_kind=? AND content_hash=?", (owner_key, proposal["kind"], content_hash)).fetchone():
+        authorities = ["agent:" + alias for alias in memory_actor_ids(actor)] if scope == "agent_repo" else [authority]
+        owner_keys = [_hash("agentlas-memory-owner-v1\0" + scope + "\0" + item) for item in authorities]
+        if db.execute("SELECT 1 FROM memory_revocations WHERE owner_key IN (SELECT value FROM json_each(?)) AND memory_kind=? AND content_hash=?", (_json(owner_keys), proposal["kind"], content_hash)).fetchone():
             return {"action": "defer", "written": 0, "reason": "memory_content_revoked"}
         project_scope = project if scope == "project" else None
         path_scope = project_path if scope == "project" else None
         actor_scope = actor if scope == "agent_repo" else None
-        prior = db.execute("SELECT m.id,m.content FROM memory_entries m JOIN memory_identity_bindings b ON b.memory_id=m.id WHERE b.owner_namespace=? AND m.scope=? AND m.kind=? AND m.agent_id IS ? AND m.project_id IS ? AND m.project_path IS ? AND m.superseded_at IS NULL AND COALESCE(json_extract(b.applicability_json,'$.recallChannel'),'default')!='legacy_one_overlay' AND COALESCE(json_extract(b.applicability_json,'$.enabled'),1)!=0",
-                           (self.owner, scope, proposal["kind"], actor_scope, project_scope, path_scope)).fetchall()
-        duplicate = next((row[0] for row in prior if _content_hash(row[1]) == content_hash), None)
+        prior = db.execute("SELECT m.id,m.content,b.applicability_json FROM memory_entries m JOIN memory_identity_bindings b ON b.memory_id=m.id WHERE b.owner_namespace=? AND m.scope=? AND m.kind=? AND (m.agent_id IS ? OR (?='agent_repo' AND m.agent_id IN (SELECT value FROM json_each(?)))) AND m.project_id IS ? AND m.project_path IS ? AND m.superseded_at IS NULL AND COALESCE(json_extract(b.applicability_json,'$.recallChannel'),'default')!='legacy_one_overlay' AND COALESCE(json_extract(b.applicability_json,'$.enabled'),1)!=0",
+                           (self.owner, scope, proposal["kind"], actor_scope, scope, _json(memory_actor_ids(actor)), project_scope, path_scope)).fetchall()
+        duplicate = next((row[0] for row in prior if _content_hash(row[1]) == content_hash
+                          and _default_applicability_matches(row[2], scope, actor, project_scope, path_scope)), None)
         memory_id = duplicate or "core-memory:" + _hash(_json([self.owner, scope, actor_scope, project_scope, path_scope, proposal["kind"], content_hash]))
+        if not duplicate and db.execute("SELECT 1 FROM memory_entries WHERE id=?", (memory_id,)).fetchone():
+            return {"action": "defer", "written": 0, "reason": "memory_applicability_conflict"}
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         if not duplicate:
             db.execute("INSERT INTO memory_entries(id,scope,kind,content,project_id,project_path,agent_id,confidence,sensitivity,evidence_json,context_json,created_at) VALUES(?,?,?,?,?,?,?,'medium','internal',?,?,?)",
@@ -522,7 +568,7 @@ class MemoryRuntime:
                 if isinstance(result, str):
                     result = {"memory_ref": _safe_id(result), "action": "written", "written": 1}
                 receipt.update(result)
-                state = "revoked" if result.get("reason") == "memory_content_revoked" else "completed"
+                state = "revoked" if result.get("reason") == "memory_content_revoked" else "deferred" if result.get("action") == "defer" else "completed"
                 self.db.execute("INSERT INTO memory_decisions(decision_id,ticket_id,candidate_index,content_hash,memory_kind,proposed_scope,resolved_scope,action,reason_code,target_memory_id,confidence,sensitivity,curator_mode,created_at) VALUES(?,?,0,?,?,?,?,?,?,?,'medium','internal','semantic',?)",
                                 ("core-decision:" + _hash(operation_id), payload["ticket_ref"], _content_hash(output["content"]), output["kind"], output["scope"], output["scope"], result["action"] if result["action"] != "defer" else "deferred", result.get("reason") or "automatic_model_curation", result.get("memory_ref"), now.isoformat()))
             else:
@@ -578,8 +624,8 @@ def queue_hook_summary(payload: dict[str, Any], host: str, summary: str | None, 
         bound_path = str(Path(project_path).resolve()) if project_path else None
         source = "host-observation-v2:" + _hash(_json([summary, observations or [], source_revision,
                     os.environ.get("AGENTLAS_MEMORY_PROJECT_REF"), _hash(bound_path) if bound_path else None]))
-        prior = runtime.db.execute("SELECT operation_id,state FROM memory_operations WHERE owner_namespace=? AND actor_id=? AND context_key=? AND source_ref=?",
-                                   (owner, actor, context, source)).fetchone()
+        prior = runtime.db.execute("SELECT operation_id,state FROM memory_operations WHERE owner_namespace=? AND actor_id IN (SELECT value FROM json_each(?)) AND context_key=? AND source_ref=? ORDER BY created_at,operation_id",
+                                   (owner, _json(memory_actor_ids(actor)), context, source)).fetchone()
         if prior:
             return {"operation_id": prior[0], "state": prior[1], "replayed": True}
         for attempt in range(3):
@@ -616,10 +662,10 @@ def read_hook_longterm(payload: dict[str, Any], host: str, project_path: str | N
           AND COALESCE(json_extract(b.applicability_json,'$.enabled'),1)!=0
           AND COALESCE(json_extract(b.applicability_json,'$.recallChannel'),'default')!='legacy_one_overlay'
           AND (m.scope='user_identity' AND m.project_id IS NULL AND m.project_path IS NULL
-            OR m.scope='agent_repo' AND m.agent_id=? AND (m.project_id IS NULL OR m.project_id=?) AND (m.project_path IS NULL OR m.project_path=?)
+            OR m.scope='agent_repo' AND m.agent_id IN (SELECT value FROM json_each(?)) AND (m.project_id IS NULL OR m.project_id=?) AND (m.project_path IS NULL OR m.project_path=?)
             OR m.scope='project' AND (m.project_id IS NOT NULL OR m.project_path IS NOT NULL)
               AND (m.project_id IS NULL OR m.project_id=?) AND (m.project_path IS NULL OR m.project_path=?))
-          ORDER BY m.created_at DESC,m.id DESC LIMIT 16""", (owner,actor,project,current_path,project,current_path)).fetchall()
+          ORDER BY m.created_at DESC,m.id DESC LIMIT 16""", (owner,_json(memory_actor_ids(actor)),project,current_path,project,current_path)).fetchall()
         result = []
         for row in rows:
             try:

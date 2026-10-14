@@ -15,6 +15,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from .memory_actor_family import MEMORY_ACTOR_FAMILY_SCHEMA, DESKTOP_ONE_ACTOR_ID, is_one_memory_actor
 
 SCHEMA = "agentlas.memory-view.v1"
 MAX_ROWS = 20_000
@@ -162,7 +163,7 @@ def process_memory_views(db: sqlite3.Connection, database_path: Path, owner: str
         existing = _managed(base / "manifest.json", ref) if base.exists() else None
         if existing and (not isinstance(existing.get("files"), list) or len(existing["files"]) > MAX_ROWS):
             raise ValueError("memory_view_manifest_invalid")
-        fresh = existing and existing.get("authorityRevision") == revision and existing.get("revocationEpoch") == epoch
+        fresh = existing and existing.get("authorityRevision") == revision and existing.get("revocationEpoch") == epoch and existing.get("actorFamilyContract") == MEMORY_ACTOR_FAMILY_SCHEMA
         if not fresh:
             rows = db.execute("""SELECT m.id,m.scope,m.kind,m.content,m.agent_id,b.actor_id,m.project_id,
                 m.confidence,m.sensitivity,m.created_at,b.origin_refs_json,b.applicability_json,b.curation_actor,b.policy_version
@@ -195,15 +196,16 @@ def process_memory_views(db: sqlite3.Connection, database_path: Path, owner: str
                 if row["id"] in native:
                     entry["contentNative"] = native[row["id"]]
                 if actor:
-                    key = "one/memory.json" if actor == "agentlas-one" else "agents/" + _hash(actor) + "/memory.json"
-                    add(key, {"kind": "one" if actor == "agentlas-one" else "agent", "actorId": actor}, entry)
+                    one = is_one_memory_actor(actor)
+                    key = "one/memory.json" if one else "agents/" + _hash(actor) + "/memory.json"
+                    add(key, {"kind": "one" if one else "agent", "actorId": DESKTOP_ONE_ACTOR_ID if one else actor}, entry)
                 projects = {link["projectId"] for link in links.get(row["id"], [])}
                 if row["project_id"]:
                     projects.add(row["project_id"])
                 for project in sorted(projects):
                     add("projects/" + _hash(project) + "/memory.json", {"kind": "project", "projectId": project}, entry)
-            groups.setdefault("one/memory.json", {"kind": "one", "actorId": "agentlas-one", "entries": []})
-            common = {"schemaVersion": SCHEMA, "generated": True, "ownerRef": ref, "authorityRevision": revision, "revocationEpoch": epoch}
+            groups.setdefault("one/memory.json", {"kind": "one", "actorId": DESKTOP_ONE_ACTOR_ID, "entries": []})
+            common = {"schemaVersion": SCHEMA, "generated": True, "ownerRef": ref, "authorityRevision": revision, "revocationEpoch": epoch, "actorFamilyContract": MEMORY_ACTOR_FAMILY_SCHEMA}
             manifest = {**common, "files": [{"path": key, **{name: value for name, value in group.items() if name != "entries"}, "count": len(group["entries"])} for key, group in sorted(groups.items())]}
             rendered = [(key, {**common, **group}) for key, group in sorted(groups.items())]
             if sum(len(_json(value)) for _, value in rendered) > MAX_BYTES:
