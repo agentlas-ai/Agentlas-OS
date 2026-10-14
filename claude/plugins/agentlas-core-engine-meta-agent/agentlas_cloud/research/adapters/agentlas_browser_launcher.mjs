@@ -199,46 +199,56 @@ async function ensureChrome() {
 }
 
 // ── approval gate ──────────────────────────────────────────────────
-// CONTRACT (fail-closed): the regexes below only LABEL the approval kind —
-// they never make the final "no gate needed" decision for a commit-like
-// action. A click/keypress/upload that submits, pays, sends, or deletes but
-// misses every kind regex still raises an approval request with the generic
-// 'sensitive-action' kind (deterministic conservative fallback — this process
-// has no bridge to the resident judgment service). The parent client may
-// supply a pre-judged classification via tools/call params._meta
-// ['agentlas/actionKind'] ('payment'|'send'|'publish'|'delete'|
-// 'sensitive-action'|'none'); that model-side judgment overrides the local
-// lexical labeling, with 'none' meaning "judged safe, no gate". Trivial
-// navigation/typing/reading stays ungated.
-const PAY_RE = /(checkout|\bpay(ment)?\b|purchase|\bbuy\b|\border\b|donate|subscrib|billing|결제|구매|주문|결재)/;
-const SEND_RE = /(publish|\bpost\b|\bsend\b|submit|tweet|retweet|\bshare\b|reply|\bcomment\b|delete|remove|confirm|전송|게시|삭제|제출|답글|댓글|공유|보내)/;
-// Commit-shaped click text the kind regexes above do not label (fail-closed floor).
-const COMMIT_RE = /(submit|confirm|proceed|continue|complete|finish|apply|save|agree|accept|register|sign\s?up|log\s?in|sign\s?in|place|transfer|wire|withdraw|확인|진행|계속|완료|저장|동의|수락|등록|가입|신청|접수|확정|송금|이체|출금|입금|이관|탈퇴|해지)/;
+// CONTRACT (owner rule 2026-10-13: the host never decides meaning from words; native-harness notyet NH25). The approval
+// kind comes, in order, from
+//   1. the parent's pre-judged classification via tools/call params._meta['agentlas/actionKind'] ('payment'|'send'|
+//      'publish'|'delete'|'sensitive-action'|'none') — a model's judgment; 'none' means judged safe, no gate;
+//   2. the effect the model declares on browser_click (a typed argument advertised in tools/list and stripped before
+//      the Playwright child sees the call);
+//   3. the tool's own semantics: Enter or type-with-submit submits the focused form, accepting a dialog confirms it, a
+//      file upload sends local data, and a click with no valid declared effect is not known to be harmless — all
+//      raise the generic 'sensitive-action' gate (fail closed; this process has no bridge to a judgment service).
+// Labels, element descriptions and URLs are never read. Navigation, typing and reading stay ungated.
 const APPROVAL_KINDS = new Set(['payment', 'send', 'publish', 'delete', 'sensitive-action']);
+const CLICK_EFFECT_KIND = { none: null, like: null, follow: null, repost: null, reply: 'send', message: 'send', post: 'publish', send: 'send', publish: 'publish', delete: 'delete', payment: 'payment' };
+const CLICK_EFFECT_DESCRIPTION = 'What this click does, declared by you: none (tab, filter, menu, expand, open a composer, pick a file; nothing is sent), like, follow, repost, or the effect this click finalizes: reply, message, post, send, publish, delete, payment. A click without a valid effect always asks the owner for approval.';
 function normalizeActionKindOverride(kind) {
   const value = String(kind).toLowerCase().trim();
   if (value === 'none' || value === 'safe') return null;
   // an unknown override never widens autonomy — it degrades to the generic gate
   return APPROVAL_KINDS.has(value) ? value : 'sensitive-action';
 }
+function declaredClickEffect(args) {
+  const raw = args && typeof args === 'object' && typeof args.effect === 'string' ? args.effect.trim().toLowerCase() : '';
+  return Object.prototype.hasOwnProperty.call(CLICK_EFFECT_KIND, raw) ? raw : null;
+}
 function classifyAction(name, args, preJudgedKind) {
   if (preJudgedKind !== undefined && preJudgedKind !== null && preJudgedKind !== '') {
     return normalizeActionKindOverride(preJudgedKind);
   }
-  let text = '';
-  try { text = JSON.stringify(args || {}).toLowerCase(); } catch (e) { text = ''; }
-  if (name === 'browser_navigate' || name === 'browser_navigate_back') return PAY_RE.test(text) ? 'payment' : null;
-  if (name === 'browser_click' || name === 'browser_file_upload' || name === 'browser_press_key') {
-    if (PAY_RE.test(text)) return 'payment';
-    if (SEND_RE.test(text)) { if (/publish|\bpost\b|게시/.test(text)) return 'publish'; if (/delete|remove|삭제/.test(text)) return 'delete'; return 'send'; }
-    // Fail-closed floor: commit-like action the kind regexes failed to label.
-    if (name === 'browser_file_upload') return 'sensitive-action'; // local file data leaves the machine
-    if (name === 'browser_press_key' && /^(enter|return|numpadenter)$/i.test(String((args || {}).key || ''))) {
-      return 'sensitive-action'; // Enter submits the focused form
-    }
-    if (name === 'browser_click' && COMMIT_RE.test(text)) return 'sensitive-action';
+  const input = args && typeof args === 'object' ? args : {};
+  if (name === 'browser_click') {
+    const effect = declaredClickEffect(input);
+    return effect ? CLICK_EFFECT_KIND[effect] : 'sensitive-action';
   }
+  if (name === 'browser_file_upload') return 'sensitive-action'; // local file data leaves the machine
+  if (name === 'browser_press_key' && /^(enter|return|numpadenter)$/i.test(String(input.key || ''))) return 'sensitive-action';
+  if (name === 'browser_type' && input.submit === true) return 'sensitive-action';
+  if (name === 'browser_handle_dialog' && input.accept === true) return 'sensitive-action';
   return null;
+}
+// The declared effect is for this gate only; the Playwright child keeps its own schema.
+function stripClickEffect(name, args) {
+  if (name !== 'browser_click' || !args || typeof args !== 'object' || !Object.prototype.hasOwnProperty.call(args, 'effect')) return args;
+  const { effect: _declared, ...rest } = args;
+  return rest;
+}
+function withClickEffectSchema(tool) {
+  const schema = tool && tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : null;
+  if (!schema) return;
+  schema.properties = { ...(schema.properties || {}), effect: { type: 'string', enum: Object.keys(CLICK_EFFECT_KIND), description: CLICK_EFFECT_DESCRIPTION } };
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  if (!required.includes('effect')) schema.required = [...required, 'effect'];
 }
 function readApprovalInfo() {
   try { const p = path.join(os.homedir(), '.agentlas', 'browser-approval.json'); if (!fs.existsSync(p)) return null; return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; }
@@ -353,7 +363,7 @@ async function main() {
   const callChild = (name, args) => new Promise((resolve) => {
     const id = 'agx-' + (++internalSeq);
     waiters.set(id, resolve);
-    forwardRaw(JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }));
+    forwardRaw(JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: stripClickEffect(name, args) } }));
   });
 
   const doReplay = async (name, replyId) => {
@@ -393,16 +403,18 @@ async function main() {
         if (name === 'browser_navigate' && args.url) currentUrl = String(args.url);
         const preJudgedKind = (msg.params._meta || {})['agentlas/actionKind'];
         const actionType = classifyAction(name, args, preJudgedKind);
+        const childArgs = stripClickEffect(name, args);
+        const childLine = childArgs === args ? line : JSON.stringify({ ...msg, params: { ...msg.params, arguments: childArgs } });
         if (actionType) {
           gate(name, args, preJudgedKind).then((denied) => {
             if (denied) { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'BLOCKED: The user did not approve this ' + denied + ' browser action.' }], isError: true } }); return; }
             if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
-            forwardRaw(line);
+            forwardRaw(childLine);
           });
           return;
         }
         if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
-        forwardRaw(line);
+        forwardRaw(childLine);
       }).catch((error) => writeBrowserStartFailure(msg.id, error));
       return;
     }
@@ -423,6 +435,7 @@ async function main() {
     }
     // tools/list response -> inject skill tools.
     if (msg && msg.result && Array.isArray(msg.result.tools)) {
+      for (const tool of msg.result.tools) if (tool && tool.name === 'browser_click') withClickEffectSchema(tool);
       const have = new Set(msg.result.tools.map((t) => t.name));
       for (const st of SKILL_TOOLS) if (!have.has(st.name)) msg.result.tools.push(st);
       process.stdout.write(JSON.stringify(msg) + '\n'); return;
@@ -482,4 +495,4 @@ if (invokedDirectly) {
   main().catch((e) => { console.error('[agentlas-browser] fatal', e && e.stack || e); process.exit(1); });
 }
 
-export { classifyAction, normalizeActionKindOverride };
+export { classifyAction, normalizeActionKindOverride, stripClickEffect, withClickEffectSchema };
