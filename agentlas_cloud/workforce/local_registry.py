@@ -1296,6 +1296,67 @@ class LocalWorkforceRegistry:
                 "The imported copy under the local Workforce registry was changed or removed after registration. Re-import the source folder with `workforce local-register <path>`.",
             ) from exc
 
+    def admitted_lazy_asset(self, root: Path, relative: str) -> dict[str, Any] | None:
+        """Existing active release custody, not a manifest/path identity claim.
+
+        This admits catalogue observation only. The actual lazy reader still
+        decides allowRead/denyRead and is the only consumer of the source body.
+        """
+        from ..agent_revisions import asset_path, asset_role
+        relative = asset_path(relative)
+        role = asset_role(relative)
+        if role not in {"knowledge", "tool"}:
+            return None
+        root = root.absolute()
+        if root.is_symlink() or any(p.is_symlink() for p in root.parents):
+            return None
+        matches = []
+        for row in self._records():
+            if row.get("status") != "active" or not row.get("currentReleaseId"):
+                continue
+            staged = self._release_dir(str(row["agentDefinitionId"]), str(row["currentReleaseId"])) / "package"
+            # Only this already-admitted immutable staged location is eligible.
+            # An identical unregistered copy or a sourceRoot move is not custody.
+            if staged.absolute() == root:
+                matches.append(row)
+        if len(matches) != 1:
+            return None
+        record = _detached(matches[0])
+        actor, release = str(record["agentDefinitionId"]), str(record["currentReleaseId"])
+        release_dir = self._release_dir(actor, release)
+        registration = read_json(release_dir / "registration.json", default=None)
+        profile = read_json(release_dir / "profile.json", default=None)
+        if not isinstance(registration, Mapping) or not isinstance(profile, Mapping):
+            return None
+        verify_profile_integrity(profile)
+        if (registration.get("agentDefinitionId") != actor or registration.get("agentReleaseId") != release
+            or profile.get("agentDefinitionId") != actor or profile.get("agentReleaseId") != release
+            or profile.get("packageHash") != registration.get("packageHash")
+            or profile.get("provenance", {}).get("contentDigest") != registration.get("contentDigest")):
+            return None
+        root_identity = root.stat()
+        root_key = (root_identity.st_dev, root_identity.st_ino, root_identity.st_mode)
+        if root_identity.st_dev <= 0 or root_identity.st_ino <= 0 or not stat.S_ISDIR(root_identity.st_mode):
+            # Unknown native file identity cannot prove relocation custody.
+            return None
+        expected_hash = registration.get("snapshotHash")
+        # Base package hashes intentionally exclude the self-referential
+        # manifest. Its current lazy-read policy still needs an exact fence.
+        manifest_digest = hashlib.sha256(_bounded_nofollow_text(root / "agentlas.json", maximum=1_000_000).encode("utf-8")).hexdigest()
+
+        def current() -> None:
+            latest = read_json(self._definition_path(actor), default=None)
+            current_root = root.stat()
+            if (latest != record or root.is_symlink() or any(p.is_symlink() for p in root.parents)
+                or (current_root.st_dev, current_root.st_ino, current_root.st_mode) != root_key
+                or read_json(release_dir / "registration.json", default=None) != registration
+                or read_json(release_dir / "profile.json", default=None) != profile
+                or hashlib.sha256(_bounded_nofollow_text(root / "agentlas.json", maximum=1_000_000).encode("utf-8")).hexdigest() != manifest_digest
+                or self._staged_snapshot_hash(root) != expected_hash):
+                raise KeyError("local_lazy_asset_custody_changed")
+        current()
+        return {"actor": actor, "version": release, "root": root, "path": relative, "role": role, "assert_current": current}
+
     def runtime_bundle(self, release_id: str) -> dict[str, Any]:
         from ..memory_package_sources import capture_owner, observe_declarations, generated_declaration
         source_owner = capture_owner()

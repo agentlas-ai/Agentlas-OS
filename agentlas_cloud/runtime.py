@@ -1176,12 +1176,29 @@ def read_agent_file(root: str | Path, requested_path: str) -> dict[str, Any]:
         return {"status": "denied", "path": requested_path, "reason": "Denied by agentlas.json denyRead.", "redacted": True}
     if not any(matches(requested_path, pattern) for pattern in manifest.allowRead):
         return {"status": "denied", "path": requested_path, "reason": "Path is not in agentlas.json allowRead.", "redacted": False}
+    # Only the already-permitted reader captures source observation. Unknown
+    # roots retain their existing contract without catalogue authority.
+    try:
+        from .memory_package_sources import capture_lazy_read
+        observed = capture_lazy_read(Path(root).expanduser().absolute(), requested_path)
+    except Exception:
+        # An older package without the optional catalogue keeps its reader.
+        observed = None
     path = base / requested_path
     if not path.exists():
         return {"status": "missing", "path": requested_path, "reason": "File not found."}
-    raw = path.read_text(encoding="utf-8")
+    raw_bytes = path.read_bytes()
+    raw = raw_bytes.decode("utf-8")
     text = redact(raw)
-    return {"status": "allowed", "path": requested_path, "content": text, "redacted": text != raw}
+    result = {"status": "allowed", "path": requested_path, "content": text, "redacted": text != raw}
+    # Preserve native CRLF/Unicode bytes. Only an actual permitted stable read
+    # supplies the optional original UUID/digest reference; no learned row.
+    try:
+        source = observed.observe(raw_bytes) if observed else None
+    except Exception:
+        source = None
+    if source: result["sourceRef"] = source
+    return result
 
 
 class AgentlasMockStore:

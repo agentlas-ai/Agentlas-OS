@@ -73,3 +73,45 @@ def observe_shipped_operations(source: Path, body: str, captured: tuple[str, str
         if hashlib.sha256(original.read_bytes()).hexdigest() != digest: raise ValueError('package_source_changed')
     return observe_declarations(captured,actor='agentlas-one',root=root,version='agentlas.operations-declaration.v1',
         assets=[{'path':original.name,'role':'skill','digest':digest,'byteLength':len(raw),'generated':generated_declaration(body)}],assert_current=current)
+
+
+class LazyPackageRead:
+    """Per-read host closure. Not serializable, and never a read permission."""
+    def __init__(self, admitted: dict[str, Any], owner: tuple[str, str, int]):
+        self.admitted, self.owner = admitted, owner
+
+    def observe(self, raw: bytes) -> dict[str, Any] | None:
+        try:
+            text = raw.decode('utf-8')
+            if generated_declaration(text): return None
+            digest = hashlib.sha256(raw).hexdigest()
+            root, relative = self.admitted['root'], self.admitted['path']
+            target = root / relative
+            def current() -> None:
+                self.admitted['assert_current']()
+                if target.is_symlink() or any(p.is_symlink() for p in target.parents):
+                    raise ValueError('memory_package_asset_changed')
+                from .workforce.local_registry import _bounded_nofollow_text
+                if _bounded_nofollow_text(target, maximum=512*1024).encode('utf-8') != raw:
+                    raise ValueError('memory_package_asset_changed')
+            refs = observe_declarations(self.owner, actor=self.admitted['actor'], root=root,
+                version=self.admitted['version'], assets=[{'path':relative,'role':self.admitted['role'],
+                    'digest':digest,'byteLength':len(raw),'generated':False}], assert_current=current)
+            return refs[0] if refs else None
+        except Exception:
+            # Optional metadata never widens or revokes the original read.
+            return None
+
+
+def capture_lazy_read(root: Path, relative: str) -> LazyPackageRead | None:
+    """Capture existing registry authority before an original lazy file read."""
+    try:
+        from .workforce.local_registry import LocalWorkforceRegistry, default_local_workforce_home
+        home = default_local_workforce_home()
+        if not home.is_dir(): return None
+        admitted = LocalWorkforceRegistry(home).admitted_lazy_asset(root, relative)
+        if not admitted: return None
+        owner = capture_owner()
+        return LazyPackageRead(admitted, owner) if owner else None
+    except Exception:
+        return None
