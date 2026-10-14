@@ -1296,7 +1296,70 @@ class LocalWorkforceRegistry:
                 "The imported copy under the local Workforce registry was changed or removed after registration. Re-import the source folder with `workforce local-register <path>`.",
             ) from exc
 
+    def admitted_lazy_asset(self, root: Path, relative: str) -> dict[str, Any] | None:
+        """Existing active release custody, not a manifest/path identity claim.
+
+        This admits catalogue observation only. The actual lazy reader still
+        decides allowRead/denyRead and is the only consumer of the source body.
+        """
+        from ..agent_revisions import asset_path, asset_role
+        relative = asset_path(relative)
+        role = asset_role(relative)
+        if role not in {"knowledge", "tool"}:
+            return None
+        root = root.absolute()
+        if root.is_symlink() or any(p.is_symlink() for p in root.parents):
+            return None
+        matches = []
+        for row in self._records():
+            if row.get("status") != "active" or not row.get("currentReleaseId"):
+                continue
+            staged = self._release_dir(str(row["agentDefinitionId"]), str(row["currentReleaseId"])) / "package"
+            # Only this already-admitted immutable staged location is eligible.
+            # An identical unregistered copy or a sourceRoot move is not custody.
+            if staged.absolute() == root:
+                matches.append(row)
+        if len(matches) != 1:
+            return None
+        record = _detached(matches[0])
+        actor, release = str(record["agentDefinitionId"]), str(record["currentReleaseId"])
+        release_dir = self._release_dir(actor, release)
+        registration = read_json(release_dir / "registration.json", default=None)
+        profile = read_json(release_dir / "profile.json", default=None)
+        if not isinstance(registration, Mapping) or not isinstance(profile, Mapping):
+            return None
+        verify_profile_integrity(profile)
+        if (registration.get("agentDefinitionId") != actor or registration.get("agentReleaseId") != release
+            or profile.get("agentDefinitionId") != actor or profile.get("agentReleaseId") != release
+            or profile.get("packageHash") != registration.get("packageHash")
+            or profile.get("provenance", {}).get("contentDigest") != registration.get("contentDigest")):
+            return None
+        root_identity = root.stat()
+        root_key = (root_identity.st_dev, root_identity.st_ino, root_identity.st_mode)
+        if root_identity.st_dev <= 0 or root_identity.st_ino <= 0 or not stat.S_ISDIR(root_identity.st_mode):
+            # Unknown native file identity cannot prove relocation custody.
+            return None
+        expected_hash = registration.get("snapshotHash")
+        # Base package hashes intentionally exclude the self-referential
+        # manifest. Its current lazy-read policy still needs an exact fence.
+        manifest_digest = hashlib.sha256(_bounded_nofollow_text(root / "agentlas.json", maximum=1_000_000).encode("utf-8")).hexdigest()
+
+        def current() -> None:
+            latest = read_json(self._definition_path(actor), default=None)
+            current_root = root.stat()
+            if (latest != record or root.is_symlink() or any(p.is_symlink() for p in root.parents)
+                or (current_root.st_dev, current_root.st_ino, current_root.st_mode) != root_key
+                or read_json(release_dir / "registration.json", default=None) != registration
+                or read_json(release_dir / "profile.json", default=None) != profile
+                or hashlib.sha256(_bounded_nofollow_text(root / "agentlas.json", maximum=1_000_000).encode("utf-8")).hexdigest() != manifest_digest
+                or self._staged_snapshot_hash(root) != expected_hash):
+                raise KeyError("local_lazy_asset_custody_changed")
+        current()
+        return {"actor": actor, "version": release, "root": root, "path": relative, "role": role, "assert_current": current}
+
     def runtime_bundle(self, release_id: str) -> dict[str, Any]:
+        from ..memory_package_sources import capture_owner, observe_declarations, generated_declaration
+        source_owner = capture_owner()
         record = next(
             (row for row in self._records() if row.get("currentReleaseId") == release_id and row.get("status") == "active"),
             None,
@@ -1333,10 +1396,13 @@ class LocalWorkforceRegistry:
         if entrypoint.is_symlink():
             raise KeyError("local_runtime_bundle_entrypoint_invalid")
         instructions = _bounded_nofollow_text(entrypoint, maximum=2_000_000)
+        if generated_declaration(instructions):
+            raise KeyError("generated_memory_not_package_declaration")
         manifest_path = package_root / "agentlas.json"
         if manifest_path.exists():
             try:
-                manifest_value = json.loads(_bounded_nofollow_text(manifest_path, maximum=1_000_000))
+                manifest_text = _bounded_nofollow_text(manifest_path, maximum=1_000_000)
+                manifest_value = json.loads(manifest_text)
             except ValueError as exc:
                 raise KeyError("local_runtime_bundle_manifest_invalid") from exc
             if not isinstance(manifest_value, Mapping):
@@ -1366,6 +1432,38 @@ class LocalWorkforceRegistry:
                 entry_relative=entry_relative.as_posix(),
                 manager_content=instructions,
             )
+        # The registry, active release and exact staged snapshot admit this
+        # original declaration. Metadata cannot turn an arbitrary path/hash
+        # into a package or recover a revoked/unregistered release.
+        declarations = [{"path": entry_relative.as_posix(), "role": "instruction",
+            "digest": hashlib.sha256(instructions.encode("utf-8")).hexdigest(), "byteLength": len(instructions.encode("utf-8"))}]
+        if manifest_path.exists():
+            declarations.append({"path":"agentlas.json","role":"manifest","digest":hashlib.sha256(manifest_text.encode("utf-8")).hexdigest(),"byteLength":len(manifest_text.encode("utf-8"))})
+        for worker in bundle.get("executionGraph", {}).get("workers", []):
+            body = worker["content"]
+            if generated_declaration(body): raise KeyError("generated_memory_not_package_declaration")
+            declarations.append({"path":worker["path"],"role":"instruction","digest":hashlib.sha256(body.encode("utf-8")).hexdigest(),"byteLength":len(body.encode("utf-8"))})
+        skills = manifest.get("skills") or []
+        if not isinstance(skills, list): skills = []
+        for value in skills[:128]:
+            relative = value if isinstance(value,str) else value.get("path") if isinstance(value,Mapping) else None
+            if not isinstance(relative,str) or not relative or "\\" in relative or Path(relative).is_absolute() or ".." in Path(relative).parts:
+                continue
+            candidates = [relative] if relative.endswith("SKILL.md") else [relative.rstrip("/")+"/SKILL.md", "skills/"+relative.rstrip("/")+"/SKILL.md"]
+            target = next((package_root / item for item in candidates if (package_root/item).is_file()), None)
+            if target is None: continue
+            if target.is_symlink() or any(part.is_symlink() for part in target.parents if part.is_relative_to(package_root)):
+                continue
+            body = _bounded_nofollow_text(target, maximum=512*1024)
+            if generated_declaration(body): raise KeyError("generated_memory_not_package_declaration")
+            declarations.append({"path":target.relative_to(package_root).as_posix(),"role":"skill","digest":hashlib.sha256(body.encode("utf-8")).hexdigest(),"byteLength":len(body.encode("utf-8"))})
+        def source_current() -> None:
+            latest = next((row for row in self._records() if row.get("agentDefinitionId") == record["agentDefinitionId"] and row.get("status") == "active"), None)
+            if (not latest or latest.get("currentReleaseId") != release_id or latest.get("sourceRoot") != record.get("sourceRoot")
+                or self._staged_snapshot_hash(package_root) != registration.get("snapshotHash")):
+                raise KeyError("local_runtime_bundle_snapshot_drift")
+        bundle["declarationSourceRefs"] = observe_declarations(source_owner,actor=str(record["agentDefinitionId"]),root=package_root,
+            version=release_id,assets=declarations,assert_current=source_current)
         # Plan §46 — a locally built agent must grow its own experience too.
         # Borrowed Hub agents get an invocation-ledger at borrow time
         # (hub_invocation.py:508), so stop_hook can detect them as active and

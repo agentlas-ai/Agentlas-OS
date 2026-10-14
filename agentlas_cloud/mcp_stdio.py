@@ -1344,6 +1344,19 @@ def _host_model_allocation_policy() -> dict[str, Any]:
 
 TOOLS: list[dict[str, Any]] = [
     {
+        "name": "agentlas.read_agent_file",
+        "description": "Read an original UTF-8 file below a local agent package using its existing agentlas.json allowRead/denyRead policy. Rejects traversal and links; optional source metadata never grants authority or calls a model.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "root": {"type": "string", "minLength": 1, "description": "Local package root containing agentlas.json."},
+                "path": {"type": "string", "minLength": 1, "description": "Portable package-relative path declared in allowRead."},
+            },
+            "required": ["root", "path"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "agentlas_resolve_plugins",
         "description": (
             "Resolve a short, redacted missing capability against installed Agentlas plugins and the "
@@ -2379,6 +2392,7 @@ _REMOTE_MEMORY_TOOL_NAMES = frozenset(tool["name"] for tool in _REMOTE_MEMORY_TO
 _READ = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
 _WRITE = {"readOnlyHint": False, "destructiveHint": False}
 _TOOL_ANNOTATIONS: dict[str, dict[str, bool]] = {
+    "agentlas.read_agent_file": {**_READ, "openWorldHint": False},
     "agentlas_resolve_plugins": {**_READ, "openWorldHint": True},
     "agentlas_tool_search": {**_READ, "openWorldHint": False},
     "model.resolve_allocation": {**_READ, "openWorldHint": False},
@@ -2609,6 +2623,13 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             ),
             "repairable": True,
         }
+
+    if name == "agentlas.read_agent_file":
+        from .runtime import read_agent_file
+
+        if any(not isinstance(arguments.get(key), str) or not arguments[key].strip() for key in ("root", "path")):
+            return {"action": name, "status": "rejected", "error": "package_read_argument_invalid"}
+        return read_agent_file(arguments["root"], arguments["path"])
 
     if name in {LEASE_QUOTE, LEASE_PURCHASE}:
         return call_agent_lease_tool(name, arguments)

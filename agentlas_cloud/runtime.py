@@ -4,7 +4,9 @@ import dataclasses
 import fnmatch
 import hashlib
 import json
+import os
 import re
+import stat
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1044,10 +1046,10 @@ def _entry_payload(entry: Any) -> tuple[dict[str, Any], dict[str, Any] | None]:
     )
 
 
-def load_manifest(root: str | Path) -> AgentlasManifest:
+def load_manifest(root: str | Path, *, _original_bytes: bytes | None = None) -> AgentlasManifest:
     manifest_path = Path(root) / "agentlas.json"
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload = json.loads(_original_bytes.decode("utf-8") if _original_bytes is not None else manifest_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise RuntimeBundleValidationError(
             [f"agentlas.json is not valid JSON (line {exc.lineno}, column {exc.colno})"]
@@ -1169,9 +1171,68 @@ def _compact_mcp_policy(policy: Mapping[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps({key: policy[key] for key in keys}, ensure_ascii=False))
 
 
+def _package_read_bytes(base: Path, relative: str) -> bytes:
+    """Read a regular original below a package without following links.
+
+    POSIX holds each directory open while descending. Other hosts compare
+    native identities and reject reparse points before and after open.
+    """
+    parts = relative.split("/")
+    if (not relative or "\\" in relative or ":" in relative or "\0" in relative
+        or any(part in {"", ".", ".."} for part in parts)):
+        raise ValueError("package_read_path_invalid")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descriptors: list[int] = []
+    def identity(info: os.stat_result) -> tuple[int, int, int]:
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+            raise ValueError("package_read_link_denied")
+        return info.st_dev, info.st_ino, info.st_mode
+    try:
+        if os.open in os.supports_dir_fd and getattr(os, "O_NOFOLLOW", 0):
+            descriptors.append(os.open(base, flags | getattr(os, "O_DIRECTORY", 0)))
+            for part in parts[:-1]:
+                descriptors.append(os.open(part, flags | getattr(os, "O_DIRECTORY", 0), dir_fd=descriptors[-1]))
+            descriptor = os.open(parts[-1], flags, dir_fd=descriptors[-1])
+            descriptors.append(descriptor)
+            before = identity(os.fstat(descriptor))
+            check = lambda: identity(os.stat(parts[-1], dir_fd=descriptors[-2], follow_symlinks=False))
+        else:
+            paths = [base]
+            for part in parts:
+                paths.append(paths[-1] / part)
+            identities = [identity(path.lstat()) for path in paths]
+            if any(not stat.S_ISDIR(key[2]) for key in identities[:-1]):
+                raise ValueError("package_read_parent_invalid")
+            descriptor = os.open(paths[-1], flags)
+            descriptors.append(descriptor)
+            before = identity(os.fstat(descriptor))
+            def check() -> tuple[int, int, int]:
+                if [identity(path.lstat()) for path in paths] != identities:
+                    raise ValueError("package_read_source_changed")
+                return identities[-1]
+        if not stat.S_ISREG(before[2]) or check() != before:
+            raise ValueError("package_read_file_invalid")
+        with os.fdopen(os.dup(descriptor), "rb") as stream:
+            raw = stream.read()
+        if check() != before:
+            raise ValueError("package_read_source_changed")
+        return raw
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
 def read_agent_file(root: str | Path, requested_path: str) -> dict[str, Any]:
     base = Path(root).expanduser().resolve()
-    manifest = load_manifest(base)
+    if (not isinstance(requested_path, str) or not requested_path
+        or "\\" in requested_path or ":" in requested_path or "\0" in requested_path
+        or any(part in {"", ".", ".."} for part in requested_path.split("/"))):
+        return {"status": "denied", "path": requested_path, "reason": "package_read_path_invalid", "redacted": True}
+    try:
+        manifest_bytes = _package_read_bytes(base, "agentlas.json")
+    except (OSError, ValueError):
+        return {"status": "denied", "path": requested_path, "reason": "package_read_manifest_invalid", "redacted": True}
+    manifest = load_manifest(base, _original_bytes=manifest_bytes)
     if any(matches(requested_path, pattern) for pattern in manifest.denyRead):
         return {"status": "denied", "path": requested_path, "reason": "Denied by agentlas.json denyRead.", "redacted": True}
     if not any(matches(requested_path, pattern) for pattern in manifest.allowRead):
@@ -1184,10 +1245,14 @@ def read_agent_file(root: str | Path, requested_path: str) -> dict[str, Any]:
     except Exception:
         # An older package without the optional catalogue keeps its reader.
         observed = None
-    path = base / requested_path
-    if not path.exists():
+    try:
+        raw_bytes = _package_read_bytes(base, requested_path)
+        if _package_read_bytes(base, "agentlas.json") != manifest_bytes:
+            raise ValueError("package_read_policy_changed")
+    except FileNotFoundError:
         return {"status": "missing", "path": requested_path, "reason": "File not found."}
-    raw_bytes = path.read_bytes()
+    except (OSError, ValueError):
+        return {"status": "denied", "path": requested_path, "reason": "package_read_source_invalid", "redacted": True}
     raw = raw_bytes.decode("utf-8")
     text = redact(raw)
     result = {"status": "allowed", "path": requested_path, "content": text, "redacted": text != raw}

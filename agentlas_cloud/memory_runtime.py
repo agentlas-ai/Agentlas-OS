@@ -346,10 +346,26 @@ class MemoryRuntime:
         if not row:
             raise ValueError("memory_source_operation_missing")
         p = producer(self.db, self.owner, "portable-core", "canonical-owner:" + self.owner)
+        old = self.db.execute("""SELECT source_kind,writer_contract,schema_version,source_revision,address_json,metadata_revision,
+            range_unit,range_start,range_end,content_digest
+            FROM memory_source_catalogue WHERE producer_id=? AND owner_namespace=? AND actor_id=?
+            AND visibility_domain=? AND reader_contract='core.memory-operation.v1' AND logical_key=?""",
+            (p, self.owner, row[0], row[1], operation_id)).fetchone()
+        if old:
+            # This native database owns the persisted producer and exact
+            # original operation. A relocated host may adopt its address only
+            # when all original source metadata still matches that operation.
+            address = json.loads(old[4])
+            if (tuple(old[:4]) != ("host-summary", SCHEMA, SCHEMA, str(row[3]))
+                or tuple(old[6:]) != ("host-observation", 0, row[3], None)
+                or not isinstance(address, dict) or set(address) != {"path", "operationId", "ref"}
+                or address["operationId"] != operation_id or address["ref"] != row[2]):
+                raise ValueError("memory_source_operation_metadata_changed")
         register_source(self.db, self.owner, p, actor_id=row[0], visibility_domain=row[1], logical_key=operation_id,
             source_kind="host-summary", reader_contract="core.memory-operation.v1", writer_contract=SCHEMA,
             schema_version=SCHEMA, source_revision=str(row[3]), address={"path": str(self.path), "operationId": operation_id, "ref": row[2]},
-            range_unit="host-observation", range_end=row[3])
+            range_unit="host-observation", range_end=row[3],
+            adopt_address=bool(old), expected_metadata_revision=old[5] if old else None)
 
     def enqueue(self, *, actor_id: str, context_key: str, source_ref: str,
                 source_revision: int, summary: str, project_ref: str | None = None, project_path: str | None = None, observations: list[dict[str, Any]] | None = None,
