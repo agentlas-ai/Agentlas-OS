@@ -25,7 +25,7 @@ def _private_json(path: Path, maximum: int = 16384) -> dict[str, Any]:
         if os.name == "posix" and (info.st_uid != os.getuid() or info.st_mode & 0o077):
             raise ValueError("memory_host_binding_file_permissions")
         raw = os.read(fd, maximum + 1)
-        current = path.stat(follow_symlinks=False)
+        current = os.stat(path, follow_symlinks=False)
         if current.st_ino != info.st_ino or current.st_dev != info.st_dev or len(raw) > maximum:
             raise ValueError("memory_host_binding_changed")
     finally:
@@ -138,11 +138,17 @@ class BindingConnection(sqlite3.Connection):
             assert_host_binding(owner, self.binding_root)
             binding = host_binding()
             if binding:
-                exists = sqlite3.Connection.execute(self, "SELECT 1 FROM sqlite_master WHERE name='memory_forget_clock'").fetchone()
-                if exists:
-                    row = sqlite3.Connection.execute(self, "SELECT epoch FROM memory_forget_clock WHERE id=1").fetchone()
-                    if row and row[0] != binding["revocation_epoch"]:
-                        raise ValueError("memory_host_binding_epoch_changed")
+                # Python 3.9 Connection.execute dispatches through our cursor
+                # override. Use an explicitly raw cursor for the guard itself.
+                raw = sqlite3.Connection.cursor(self, factory=sqlite3.Cursor)
+                try:
+                    exists = raw.execute("SELECT 1 FROM sqlite_master WHERE name='memory_forget_clock'").fetchone()
+                    if exists:
+                        row = raw.execute("SELECT epoch FROM memory_forget_clock WHERE id=1").fetchone()
+                        if row and row[0] != binding["revocation_epoch"]:
+                            raise ValueError("memory_host_binding_epoch_changed")
+                finally:
+                    raw.close()
 
     def cursor(self, *args, **kwargs):
         self._binding_guard()
@@ -161,4 +167,19 @@ class BindingConnection(sqlite3.Connection):
     def commit(self):
         self._binding_guard()
         return super().commit()
+
+    def __enter__(self):
+        self._binding_guard()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is not None:
+            self.rollback()
+        else:
+            try:
+                self.commit()
+            except BaseException:
+                self.rollback()
+                raise
+        return False
     # Rollback, close and cancellation deliberately remain unconditional.
