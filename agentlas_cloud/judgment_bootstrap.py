@@ -23,6 +23,7 @@ aborts instead of stalling an OS operation.
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import urllib.error
@@ -33,8 +34,19 @@ from . import judgment
 
 JUDGE_RUNTIME_ENV = "AGENTLAS_JUDGE_RUNTIME"
 
-_DEFAULT_TIMEOUT_S = 40.0
+_DEFAULT_TIMEOUT_S = 300.0
 _MODEL_RESPONSE_MAX_BYTES = 128 * 1024
+
+
+def _connected_model_timeout_s(value: float | None) -> float:
+    if os.environ.get("AGENTLAS_TEST_JUDGMENT_TIMEOUTS") == "1":
+        try:
+            parsed = float(value) if value is not None else _DEFAULT_TIMEOUT_S
+            if math.isfinite(parsed) and parsed > 0:
+                return min(_DEFAULT_TIMEOUT_S, parsed)
+        except (TypeError, ValueError):
+            pass
+    return _DEFAULT_TIMEOUT_S
 
 
 def _read_model_response(response) -> bytes:
@@ -82,7 +94,7 @@ def _host_cmd_runner(cmd: list[str]):
             input=payload,
             capture_output=True,
             text=True,
-            timeout=timeout_s or _DEFAULT_TIMEOUT_S,
+            timeout=_connected_model_timeout_s(timeout_s),
         )
         return proc.stdout or ""
 
@@ -105,7 +117,7 @@ def _ollama_runner(endpoint: str, model: str):
             }
         ).encode("utf-8")
         req = urllib.request.Request(url, data=body, headers={"content-type": "application/json"})
-        with _model_urlopen(req, timeout=timeout_s or _DEFAULT_TIMEOUT_S, strict_endpoint=strict_endpoint) as resp:
+        with _model_urlopen(req, timeout=_connected_model_timeout_s(timeout_s), strict_endpoint=strict_endpoint) as resp:
             data = json.loads(_read_model_response(resp).decode("utf-8"))
         return ((data.get("message") or {}).get("content")) or ""
 
@@ -131,7 +143,7 @@ def _openai_compatible_runner(endpoint: str, model: str, api_key: str | None):
         if api_key:
             headers["authorization"] = f"Bearer {api_key}"
         req = urllib.request.Request(url, data=body, headers=headers)
-        with _model_urlopen(req, timeout=timeout_s or _DEFAULT_TIMEOUT_S, strict_endpoint=strict_endpoint) as resp:
+        with _model_urlopen(req, timeout=_connected_model_timeout_s(timeout_s), strict_endpoint=strict_endpoint) as resp:
             data = json.loads(_read_model_response(resp).decode("utf-8"))
         choices = data.get("choices") or []
         if not choices:
