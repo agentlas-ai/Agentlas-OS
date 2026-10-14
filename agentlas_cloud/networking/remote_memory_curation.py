@@ -218,6 +218,29 @@ def make_observer(name: str, *, base_url: str, token: str | None,
             try:
                 if not owner_matches(p):
                     return
+                # A local catalogue may retain a server-owned reference only
+                # when this native host also has a current local owner binding.
+                # It never stores the remote packet, lease, source body or token.
+                if binding is not None:
+                    try:
+                        from ..memory_sources import producer, register_source
+                        from ..memory_runtime import MemoryRuntime
+                        local = MemoryRuntime(binding["owner_namespace"])
+                        try:
+                            with local.db:
+                                producer_id = producer(local.db, local.owner, "portable-core", "canonical-owner:" + local.owner)
+                                register_source(local.db, local.owner, producer_id, actor_id=None,
+                                    visibility_domain="web:" + p["owner"]["workspaceId"] + ":" + (p["visibilityDomain"] or "private"),
+                                    logical_key=p["bindingId"] + ":" + p["sourceRef"], source_kind="web-reference",
+                                    reader_contract="agentlas.authenticated-web-source.v1", writer_contract="web-server",
+                                    schema_version="agentlas.automatic-memory-request.v1", source_revision=p["inputDigest"],
+                                    address={"endpoint": base + endpoint_path, "ref": p["sourceRef"]})
+                        finally:
+                            local.close()
+                    except Exception:
+                        pass  # Remote authority and completion do not depend on this view.
+                    if not owner_matches(p):
+                        return
                 output = run_configured_no_tools(runtime, p["system"], p["input"],
                           max_output_tokens=p["maxOutputTokens"], timeout_s=min(20, p["timeoutMs"] / 1000))
                 if not owner_matches(p):

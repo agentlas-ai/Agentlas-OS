@@ -3795,7 +3795,15 @@ def _one_eligible_blocks(root: Path) -> tuple[list[tuple[int, dict[str, str]]], 
     their project slug, and the L1 kind set. Empty when the drawer is absent."""
     meta = root / META_DIR
     try:
-        blocks = parse_durable_blocks((meta / PROJECT_SOUL_FILE).read_text(encoding="utf-8"))
+        text = (meta / PROJECT_SOUL_FILE).read_text(encoding="utf-8")
+        blocks = parse_durable_blocks(text)
+        # Register an observed historical/manual source without copying its body
+        # or changing the existing eligibility and package activation rules.
+        from .memory_sources import observe_file
+        from .memory_actor_family import CORE_ONE_ACTOR_ID
+        observe_file(meta / PROJECT_SOUL_FILE, text, logical_key="one-soul:" + read_one_id(root),
+                     actor_id=CORE_ONE_ACTOR_ID, visibility_domain="historical-one-drawer",
+                     schema_version="agentlas.manual-soul.v1")
     except OSError:
         return [], set()
     try:

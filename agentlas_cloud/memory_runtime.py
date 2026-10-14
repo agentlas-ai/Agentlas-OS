@@ -342,6 +342,17 @@ class MemoryRuntime:
         row = self.db.execute("SELECT value FROM memory_store_meta WHERE key='revocation_epoch'").fetchone()
         return int(row[0]) if row else 0
 
+    def _register_operation_source(self, operation_id: str) -> None:
+        from .memory_sources import producer, register_source
+        row = self.db.execute("SELECT actor_id,context_key,source_ref,source_revision FROM memory_operations WHERE operation_id=? AND owner_namespace=?", (operation_id, self.owner)).fetchone()
+        if not row:
+            raise ValueError("memory_source_operation_missing")
+        p = producer(self.db, self.owner, "portable-core", "canonical-owner:" + self.owner)
+        register_source(self.db, self.owner, p, actor_id=row[0], visibility_domain=row[1], logical_key=operation_id,
+            source_kind="host-summary", reader_contract="core.memory-operation.v1", writer_contract=SCHEMA,
+            schema_version=SCHEMA, source_revision=str(row[3]), address={"path": str(self.path), "operationId": operation_id, "ref": row[2]},
+            range_unit="host-observation", range_end=row[3])
+
     def enqueue(self, *, actor_id: str, context_key: str, source_ref: str,
                 source_revision: int, summary: str, project_ref: str | None = None, project_path: str | None = None, observations: list[dict[str, Any]] | None = None,
                 update_checkpoint: bool = True) -> dict[str, Any]:
@@ -390,6 +401,7 @@ class MemoryRuntime:
             if prior:
                 if prior[0] != digest:
                     raise ValueError("memory_operation_collision")
+                self._register_operation_source(operation)
                 self.db.commit()
                 return {"operation_id": operation, "state": prior[1], "replayed": True}
             aliases = memory_actor_ids(actor)
@@ -403,6 +415,7 @@ class MemoryRuntime:
                     if old[1] == "revoked" or observed == expected:
                         # Reuse the existing raw-source receipt/hash. The family
                         # adapter never rewrites an operation, actor or capsule.
+                        self._register_operation_source(old[0])
                         self.db.commit()
                         return {"operation_id": old[0], "state": old[1], "replayed": True}
                 if compatible:
@@ -430,6 +443,7 @@ class MemoryRuntime:
                 self.db.execute("INSERT INTO memory_session_checkpoints VALUES(?,?,?,?,?,?)",
                                 (cp_id, namespace, _json(cp), source_revision, source_revision, now))
                 self.db.execute("INSERT OR REPLACE INTO memory_session_checkpoint_heads VALUES(?,?,?)", (namespace, cp_id, revision))
+            self._register_operation_source(operation)
             self.db.commit()
             return {"operation_id": operation, "state": "queued", "checkpoint_ref": cp_id, "replayed": False}
         except BaseException:
@@ -489,6 +503,34 @@ class MemoryRuntime:
                     _json({"owner_namespace": self.owner, "memory_ref": memory_id, "ticket_ref": source["ticket_ref"], "source_ref": source["source_ref"]}), now, now))
         return {"memory_ref": memory_id, "action": "deduped" if duplicate else "written", "written": 0 if duplicate else 1}
 
+    def _read_operation_source(self, operation_id: str, lease: str, intake_epoch: int) -> dict[str, Any]:
+        from .memory_sources import read_source
+        original = self.db.execute("SELECT actor_id,context_key,source_ref,source_revision FROM memory_operations WHERE operation_id=? AND owner_namespace=?", (operation_id, self.owner)).fetchone()
+        if not original:
+            raise ValueError("memory_source_operation_missing")
+        source = self.db.execute("SELECT * FROM memory_source_catalogue WHERE owner_namespace=? AND actor_id=? AND visibility_domain=? AND reader_contract='core.memory-operation.v1' AND logical_key=?", (self.owner, original[0], original[1], operation_id)).fetchone()
+        if (not source or source["source_revision"] != str(original[3]) or source["range_unit"] != "host-observation"
+            or source["range_start"] != 0 or source["range_end"] != original[3]):
+            raise ValueError("memory_source_operation_missing")
+        def current() -> None:
+            self.db._binding_guard()
+            row = self.db.execute("SELECT state,receipt_json,revocation_epoch FROM memory_operations WHERE operation_id=? AND owner_namespace=?", (operation_id, self.owner)).fetchone()
+            if (not row or row[0] != "processing" or json.loads(row[1] or "{}").get("lease_id") != lease
+                or row[2] != intake_epoch or self.epoch() != intake_epoch):
+                raise ValueError("memory_source_changed")
+        def reader(metadata: dict[str, Any], _start: int, _end: int) -> bytes:
+            address = json.loads(metadata["address_json"])
+            if (address.get("path") != str(self.path) or address.get("operationId") != operation_id
+                or address.get("ref") != original[2]):
+                raise ValueError("memory_source_changed")
+            row = self.db.execute("SELECT payload_json,input_digest FROM memory_operations WHERE operation_id=? AND owner_namespace=?", (operation_id, self.owner)).fetchone()
+            if not row or _hash(row[0]) != row[1]:
+                raise ValueError("memory_source_changed")
+            return row[0].encode("utf-8")
+        raw = read_source(self.db, self.owner, source["source_id"], actor_id=source["actor_id"], visibility_domain=source["visibility_domain"],
+            reader_contract="core.memory-operation.v1", expected_revision=source["metadata_revision"], start=source["range_start"], end=source["range_end"], reader=reader, assert_current=current)
+        return json.loads(raw)
+
     def process(self, operation_id: str, runner: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                 writer: Callable[[sqlite3.Connection, dict[str, Any], dict[str, Any]], str | dict[str, Any]] | None = None) -> dict[str, Any]:
         row = self.db.execute("SELECT * FROM memory_operations WHERE operation_id=? AND owner_namespace=?", (_safe_id(operation_id), self.owner)).fetchone()
@@ -522,6 +564,7 @@ class MemoryRuntime:
                     return {"operation_id": operation_id, "action": "defer", "reason": "operation_busy", "written": 0}
             self.db.execute("UPDATE memory_operations SET state='processing',receipt_json=?,updated_at=? WHERE operation_id=?",
                             (_json({"lease_id": lease}), now.isoformat(), operation_id))
+            self._register_operation_source(operation_id)
             self.db.commit()
         except BaseException:
             self.db.rollback()
@@ -530,7 +573,7 @@ class MemoryRuntime:
         # A model call is outside the authority transaction and never happens in
         # the prompt/Stop hook. The injected host must honor no-tools authority.
         try:
-            self.db._binding_guard()
+            payload = self._read_operation_source(operation_id, lease, row["revocation_epoch"])
             model_data = {key: value for key, value in payload.items() if key != "project_path"}
             if payload.get("project_path"):
                 model_data["project_path_hash"] = _hash(payload["project_path"])
@@ -627,6 +670,8 @@ def queue_hook_summary(payload: dict[str, Any], host: str, summary: str | None, 
         prior = runtime.db.execute("SELECT operation_id,state FROM memory_operations WHERE owner_namespace=? AND actor_id IN (SELECT value FROM json_each(?)) AND context_key=? AND source_ref=? ORDER BY created_at,operation_id",
                                    (owner, _json(memory_actor_ids(actor)), context, source)).fetchone()
         if prior:
+            with runtime.db:
+                runtime._register_operation_source(prior[0])
             return {"operation_id": prior[0], "state": prior[1], "replayed": True}
         for attempt in range(3):
             previous = runtime.capsule(actor, context)

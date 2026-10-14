@@ -190,3 +190,24 @@ CREATE TRIGGER IF NOT EXISTS memory_revision_update
   BEGIN UPDATE memory_store_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'; END;
 CREATE TRIGGER IF NOT EXISTS memory_revision_delete AFTER DELETE ON memory_entries
   BEGIN UPDATE memory_store_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'; END;
+-- Metadata-only source custody. These addresses never authorize a reader.
+CREATE TABLE IF NOT EXISTS memory_source_producers(
+  producer_id TEXT PRIMARY KEY,owner_namespace TEXT NOT NULL,host_kind TEXT NOT NULL,
+  custody_ref TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS memory_source_catalogue(
+  source_id TEXT PRIMARY KEY,producer_id TEXT NOT NULL REFERENCES memory_source_producers(producer_id),
+  owner_namespace TEXT NOT NULL,actor_id TEXT,visibility_domain TEXT NOT NULL,
+  logical_key TEXT NOT NULL,source_kind TEXT NOT NULL,reader_contract TEXT NOT NULL,writer_contract TEXT NOT NULL,
+  schema_version TEXT NOT NULL,source_revision TEXT NOT NULL,address_json TEXT NOT NULL,
+  range_unit TEXT NOT NULL CHECK(range_unit IN ('none','seq','utf8','host-observation')),
+  range_start INTEGER NOT NULL CHECK(range_start>=0),range_end INTEGER NOT NULL CHECK(range_end>=range_start),
+  content_digest TEXT,metadata_revision INTEGER NOT NULL CHECK(metadata_revision>0),
+  created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+  UNIQUE(producer_id,owner_namespace,actor_id,visibility_domain,reader_contract,logical_key));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_source_identity ON memory_source_catalogue(
+  producer_id,owner_namespace,COALESCE(actor_id,''),visibility_domain,reader_contract,logical_key);
+CREATE TABLE IF NOT EXISTS memory_source_versions(
+  source_id TEXT NOT NULL REFERENCES memory_source_catalogue(source_id),metadata_revision INTEGER NOT NULL,
+  source_revision TEXT NOT NULL,address_json TEXT NOT NULL,range_unit TEXT NOT NULL,
+  range_start INTEGER NOT NULL,range_end INTEGER NOT NULL,content_digest TEXT,recorded_at TEXT NOT NULL,
+  PRIMARY KEY(source_id,metadata_revision));
