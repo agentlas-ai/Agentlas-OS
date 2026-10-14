@@ -164,9 +164,15 @@ def memory_root() -> Path:
 def owner_binding(*, create: bool = False) -> str | None:
     # This env is injected by a trusted host, never read from model output or
     # hook JSON. Standalone installations have a persisted device-only identity.
+    from .memory_owner_binding import host_binding, has_account_credential
+    binding = host_binding()
+    if binding:
+        return _safe_id(binding["owner_namespace"])
     explicit = os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE", "").strip()
     if explicit:
         return _safe_id(explicit)
+    if has_account_credential():
+        raise ValueError("memory_account_binding_unavailable")
     root = memory_root()
     registry = root / "registry.json"
     if registry.is_symlink():
@@ -227,7 +233,9 @@ def memory_path(owner_namespace: str) -> Path:
 
 class MemoryRuntime:
     def __init__(self, owner_namespace: str, *, initialize: bool = True, timeout: float = 0.5):
+        from .memory_owner_binding import BindingConnection, assert_host_binding
         self.owner = _safe_id(owner_namespace)
+        assert_host_binding(self.owner, memory_root())
         self.path = memory_path(self.owner)
         if self.path.is_symlink():
             raise ValueError("memory_database_symlink")
@@ -237,9 +245,11 @@ class MemoryRuntime:
             if component.is_symlink():
                 raise ValueError("memory_root_symlink")
         if initialize:
-            self.db = sqlite3.connect(self.path, timeout=timeout)
+            self.db = sqlite3.connect(self.path, timeout=timeout, factory=BindingConnection)
         else:
-            self.db = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=timeout)
+            self.db = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=timeout, factory=BindingConnection)
+        self.db.binding_owner = self.owner
+        self.db.binding_root = memory_root()
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         existing_meta = self.db.execute("SELECT 1 FROM sqlite_master WHERE name='memory_store_meta'").fetchone()
@@ -439,6 +449,7 @@ class MemoryRuntime:
         if not row:
             raise ValueError("memory_operation_missing")
         if row["state"] in {"completed", "revoked"}:
+            self._process_views()
             return json.loads(row["receipt_json"])
         # Reserve only the background job, never the session. Leases expire
         # after a worker crash; a late old worker cannot commit over a new one.
@@ -449,6 +460,7 @@ class MemoryRuntime:
             fresh = self.db.execute("SELECT state,receipt_json,updated_at FROM memory_operations WHERE operation_id=?", (operation_id,)).fetchone()
             if fresh[0] in {"completed", "revoked"}:
                 self.db.commit()
+                self._process_views()
                 return json.loads(fresh[1])
             if self.epoch() != row["revocation_epoch"]:
                 receipt = {"schema_version": SCHEMA, "operation_id": operation_id, "action": "defer", "reason": "source_revoked", "written": 0}
@@ -472,6 +484,7 @@ class MemoryRuntime:
         # A model call is outside the authority transaction and never happens in
         # the prompt/Stop hook. The injected host must honor no-tools authority.
         try:
+            self.db._binding_guard()
             model_data = {key: value for key, value in payload.items() if key != "project_path"}
             if payload.get("project_path"):
                 model_data["project_path_hash"] = _hash(payload["project_path"])
@@ -494,6 +507,7 @@ class MemoryRuntime:
             fresh = self.db.execute("SELECT state,receipt_json FROM memory_operations WHERE operation_id=?", (operation_id,)).fetchone()
             if fresh[0] in {"completed", "revoked"}:
                 self.db.commit()
+                self._process_views()
                 return json.loads(fresh[1])
             if fresh[0] != "processing" or json.loads(fresh[1] or "{}").get("lease_id") != lease:
                 self.db.commit()
@@ -522,10 +536,23 @@ class MemoryRuntime:
             self.db.execute("UPDATE memory_operations SET state=?,receipt_json=?,payload_json=CASE WHEN ?='revoked' THEN '{}' ELSE payload_json END,updated_at=? WHERE operation_id=?",
                             (state, _json(receipt), state, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), operation_id))
             self.db.commit()
+            self._process_views()
             return receipt
         except BaseException:
             self.db.rollback()
             raise
+
+    def _process_views(self) -> None:
+        # Projection failure cannot undo an admitted canonical operation. Each
+        # pass is bounded; backlog remains durable and never reruns the model.
+        try:
+            from .memory_views import process_memory_views
+            for _ in range(4):
+                result = process_memory_views(self.db, self.path, self.owner)
+                if not result.get("moreWork"):
+                    break
+        except Exception:
+            pass
 
 
 def hook_identity(payload: dict[str, Any], host: str) -> tuple[str, str] | None:

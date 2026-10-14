@@ -20,6 +20,7 @@ from typing import Any, Callable
 
 from ..auth import normalize_base_url, read_token_record
 from ..memory_runtime import configured_no_tools_runtime, run_configured_no_tools
+from ..memory_owner_binding import host_binding
 
 _SLOTS = {"agentlas.record_agent_memory": "curation",
           "agentlas.decide_agent_learning": "curation",
@@ -28,6 +29,33 @@ _COMPLETE = "agentlas.complete_memory_curation"
 _LOCK = threading.Lock()
 _CAPACITY = threading.BoundedSemaphore(4)
 _SEEN: dict[tuple[str, ...], float] = {}
+MEMORY_TOOLS = frozenset((*_SLOTS, "agentlas.memory_session_open", "agentlas.memory_session_recap", _COMPLETE))
+
+
+def binding_identity(binding):
+    # Renewal may extend expiry; it never changes an already captured identity.
+    return {k: v for k, v in binding.items() if k != "expires_at"} if binding else None
+
+
+def assert_web_memory_binding(base: str, token: str | None):
+    """Only descriptor-bound native memory RPCs require this host/account fence.
+    Standalone OAuth transport retains its own verified Web server authority.
+    """
+    binding = host_binding()
+    if binding is None:
+        return None
+    pin = _record_pin(base, token) if token else None
+    if not pin or not _text(binding.get("user_id")):
+        raise ValueError("memory_web_owner_unavailable")
+    session = _bounded_route({"kind": "session", "base": base, "token": token}, 3)
+    if (session.get("authenticated") is not True or not isinstance(session.get("user"), dict)
+            or session["user"].get("id") != binding["user_id"]
+            or (binding.get("workspace_id") is not None and
+                (not isinstance(session.get("workspace"), dict) or session["workspace"].get("id") != binding["workspace_id"]))):
+        raise ValueError("memory_web_owner_changed")
+    if binding_identity(host_binding()) != binding_identity(binding) or _record_pin(base, token) != pin:
+        raise ValueError("memory_host_binding_changed")
+    return binding
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -129,18 +157,20 @@ def make_observer(name: str, *, base_url: str, token: str | None,
     """Capture trusted host pins before the foreground authenticated request."""
     if name not in _SLOTS:
         return None
-    base, pin, runtime = base_url, None, None
+    base, pin, runtime, binding = base_url, None, None, None
     try:
         base = normalize_base_url(base_url)
         if token and base == base_url and normalize_base_url(current_base()) == base:
             pin = _record_pin(base, token)
             runtime = configured_no_tools_runtime()
+            binding = host_binding()
     except Exception:
         pass
 
     def current() -> bool:
         selection = configured_no_tools_runtime()
         return (normalize_base_url(current_base()) == base and _record_pin(base, token) == pin
+                and binding_identity(host_binding()) == binding_identity(binding)
                 and selection is not None and selection["fingerprint"] == runtime["fingerprint"])
 
     def owner_matches(p: dict[str, Any]) -> bool:
@@ -150,7 +180,10 @@ def make_observer(name: str, *, base_url: str, token: str | None,
         return (session.get("authenticated") is True
                 and isinstance(session.get("user"), dict) and isinstance(session.get("workspace"), dict)
                 and session["user"].get("id") == p["owner"]["userId"]
-                and session["workspace"].get("id") == p["owner"]["workspaceId"] and current())
+                and session["workspace"].get("id") == p["owner"]["workspaceId"]
+                and (binding is None or (binding.get("user_id") == p["owner"]["userId"]
+                     and (binding.get("workspace_id") is None or binding["workspace_id"] == p["owner"]["workspaceId"])))
+                and current())
 
     def observe(result: dict[str, Any], resolved_url: str | None) -> dict[str, Any]:
         p = _packet(name, result)

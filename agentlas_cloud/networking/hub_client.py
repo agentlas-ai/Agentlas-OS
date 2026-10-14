@@ -378,6 +378,11 @@ def _call_hub_tool_once(
         raise HubToolError("Hub agent rentals are closed.", code="hub_commerce_closed")
     if endpoint_path not in {"/api/mcp/v1", "/api/mcp/hephaestus-network"}:
         raise ValueError("unsupported Hub MCP endpoint")
+    from .remote_memory_curation import MEMORY_TOOLS
+    binding = None
+    if name in MEMORY_TOOLS:
+        from .remote_memory_curation import assert_web_memory_binding
+        binding = assert_web_memory_binding(base_url, token)
     url = base_url + endpoint_path
     error_options = {"allowed_codes": _FINITE_LEASE_ERROR_CODES, "structured_only": True} if endpoint_path == "/api/mcp/hephaestus-network" else {}
     body = json.dumps(
@@ -450,6 +455,10 @@ def _call_hub_tool_once(
         )
 
     def observed(parsed):
+        if binding is not None:
+            from .remote_memory_curation import assert_web_memory_binding, binding_identity
+            if binding_identity(assert_web_memory_binding(base_url, token)) != binding_identity(binding):
+                raise ValueError("memory_host_binding_changed")
         if on_result is not None:
             try:
                 projection = on_result(parsed, resolved_url)
