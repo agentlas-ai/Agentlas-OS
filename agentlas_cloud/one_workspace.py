@@ -1777,7 +1777,9 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         # another installed agent's owner from transcript prose.
         try:
             from .memory_runtime import owner_binding, queue_hook_summary, schedule_worker
-            queued = queue_hook_summary(payload, host or "raw", summary, len(summary_texts))
+            # The installed Claude Stop entry omits --host; its prompt entry
+            # explicitly uses claude, so both must name the same partition.
+            queued = queue_hook_summary(payload, host or "claude", summary, len(summary_texts))
             if queued.get("state") in {"queued", "deferred"}:
                 schedule_worker(queued["operation_id"], owner_binding() or "")
         except Exception:  # intake failure must not suppress existing use receipts
