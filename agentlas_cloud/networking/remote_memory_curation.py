@@ -140,7 +140,7 @@ def _packet(name: str, result: dict[str, Any]) -> dict[str, Any] | None:
     if not _text(p.get("system"), 16 * 1024) or not _text(p.get("input"), 128 * 1024):
         return None
     tokens, timeout = p.get("maxOutputTokens"), p.get("timeoutMs")
-    if type(tokens) is not int or not 1 <= tokens <= 1600 or type(timeout) is not int or not 250 <= timeout <= 30000:
+    if type(tokens) is not int or not 1 <= tokens <= 1600 or type(timeout) is not int or not 250 <= timeout <= 300000:
         return None
     # Web hashes JSON.stringify(input), where input itself is a JSON string.
     serialized = json.dumps(p["input"], ensure_ascii=False, separators=(",", ":"))
@@ -242,7 +242,7 @@ def make_observer(name: str, *, base_url: str, token: str | None,
                     if not owner_matches(p):
                         return
                 output = run_configured_no_tools(runtime, p["system"], p["input"],
-                          max_output_tokens=p["maxOutputTokens"], timeout_s=min(20, p["timeoutMs"] / 1000))
+                          max_output_tokens=p["maxOutputTokens"], timeout_s=300)
                 if not owner_matches(p):
                     return
                 _bounded_route({"kind": "complete", "base": base, "token": token, "path": endpoint_path,

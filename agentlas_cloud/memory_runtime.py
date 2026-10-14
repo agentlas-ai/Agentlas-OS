@@ -61,7 +61,7 @@ def configured_no_tools_runtime() -> dict[str, Any] | None:
 
 
 def run_configured_no_tools(runtime: dict[str, Any], system: str, prompt: str,
-                            *, max_output_tokens: int = 1600, timeout_s: float = 20) -> str:
+                            *, max_output_tokens: int = 1600, timeout_s: float = 300) -> str:
     """One ephemeral, wall-bounded HTTP call using the same configured factory.
 
     Credentials and private source are passed over stdin, never persisted.
@@ -72,8 +72,10 @@ def run_configured_no_tools(runtime: dict[str, Any], system: str, prompt: str,
         raise ValueError("memory_runtime_changed")
     if type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 1600:
         raise ValueError("memory_output_limit_invalid")
-    if not 0 < timeout_s <= 20:
+    if not 0 < timeout_s <= 300:
         raise ValueError("memory_timeout_invalid")
+    from .judgment_bootstrap import _connected_model_timeout_s
+    timeout_s = _connected_model_timeout_s(timeout_s)
     child = ("import json,sys; from agentlas_cloud.judgment_bootstrap import _build_runner; "
              "p=json.load(sys.stdin); r=_build_runner(p['config']); "
              "o=r(p['system'],p['input'],timeout_s=p['timeout'],max_output_tokens=p['tokens'],strict_endpoint=True); "
