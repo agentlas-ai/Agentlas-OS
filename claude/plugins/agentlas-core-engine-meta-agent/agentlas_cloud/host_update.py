@@ -1613,7 +1613,8 @@ def _retire_gemini(home: Path, execute: bool) -> dict[str, Any]:
     The Gemini CLI individual-tier service ended 2026-06-18 and Antigravity is
     its successor, with its own `~/.gemini/antigravity*` data that this never
     touches. Only the engine-owned extension and its stable source copy are
-    removed, and fallback command files whose content names Hephaestus.
+    removed, and fallback command files whose content names Hephaestus or
+    points at a `/hep-*` command (the `agentlas-*` alias files do the latter).
     """
 
     extension = home / ".gemini" / "extensions" / "hephaestus"
@@ -1623,7 +1624,8 @@ def _retire_gemini(home: Path, execute: bool) -> dict[str, Any]:
     if commands.is_dir():
         for candidate in sorted(commands.glob("hep-*.toml")) + sorted(commands.glob("agentlas*.toml")):
             try:
-                if candidate.is_file() and "hephaestus" in candidate.read_text(encoding="utf-8", errors="ignore").lower():
+                text = candidate.read_text(encoding="utf-8", errors="ignore").lower() if candidate.is_file() else ""
+                if "hephaestus" in text or re.search(r"/hep-[a-z]", text):
                     owned.append(candidate)
             except OSError:
                 continue

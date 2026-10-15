@@ -2114,7 +2114,8 @@ register_codex_mcp() {
 # 2026-06-18; Antigravity is the successor and keeps its own ~/.gemini paths).
 # Remove only what this installer itself put there: the `hephaestus` extension,
 # its stable source copy, and fallback command files whose content names
-# Hephaestus. Anything else in ~/.gemini, including Antigravity data and a
+# Hephaestus or points at a /hep-* command (the agentlas-* aliases do the
+# latter). Anything else in ~/.gemini, including Antigravity data and a
 # user's own commands, is left alone.
 remove_legacy_gemini_cli() {
   local removed=0 file
@@ -2129,7 +2130,7 @@ remove_legacy_gemini_cli() {
   if [[ -d "$HOME/.gemini/commands" ]]; then
     for file in "$HOME/.gemini/commands"/hep-*.toml "$HOME/.gemini/commands"/agentlas.toml "$HOME/.gemini/commands"/agentlas-*.toml; do
       [[ -f "$file" ]] || continue
-      if grep -qi "hephaestus" "$file" 2>/dev/null; then
+      if grep -qiE 'hephaestus|/hep-[a-z]' "$file" 2>/dev/null; then
         rm -f "$file" && removed=$((removed + 1))
       fi
     done
