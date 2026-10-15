@@ -1,4 +1,9 @@
 {
+  "agent_card_ref": {
+    "content_hash": "7e2a64fdaafe0a815d28074f5dcb343d466c0da7b5029cd8004d6480f9750d85",
+    "path": ".agentlas/agent-card.json",
+    "slug": "agentlas-meta-agent"
+  },
   "aliases": [
     "hephaestus",
     "agentlas-core-engine",
@@ -46,7 +51,7 @@
     "manage_memory_tickets",
     "coordinate_ontology_runtime"
   ],
-  "card_version": "2.0.2",
+  "card_version": "2.0.3",
   "cloud_delegation_policy": "ask",
   "cost_hints": {
     "model_calls": "medium",

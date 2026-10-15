@@ -1,4 +1,9 @@
 {
+  "agent_card_ref": {
+    "content_hash": "4df864287ecf4094430ebf4a87be29fc3ebf94a6e289e78372c12c9db236c418",
+    "path": ".agentlas/agent-card.json",
+    "slug": "agentlas-meta-agent"
+  },
   "aliases": [
     "hephaestus",
     "agentlas-core-engine",
@@ -46,7 +51,7 @@
     "manage_memory_tickets",
     "coordinate_ontology_runtime"
   ],
-  "card_version": "2.0.2",
+  "card_version": "2.0.3",
   "cloud_delegation_policy": "ask",
   "cost_hints": {
     "model_calls": "medium",
@@ -71,7 +76,7 @@
     "research"
   ],
   "entrypoints": {
-    "agent": "AGENTS.md",
+    "agent": "GEMINI.md",
     "canonical_command": "/hep-build",
     "terminal": "bin/hephaestus hep-build"
   },
