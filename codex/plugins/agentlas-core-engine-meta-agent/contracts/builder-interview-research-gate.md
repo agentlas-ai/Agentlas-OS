@@ -237,6 +237,31 @@ evaluation cases and rubric, escalation/refusal, and trigger/anti-trigger
 language. Teams apply this to the orchestrator and every worker. Packager mode
 must preserve source behavior while adding missing evidence and contracts.
 
+### Length discipline for the generated worker's instructions
+
+Measured 2026-10-15 on one generated agent, 3 runs per variant on each of two
+production models, two machine-checked tasks: a 54-word instruction that points
+at rule sheets in the package scored 7.00 of 7 on both models, while 652 words
+scored 6.33 and 5.00 and 4,115 words with the sheets inlined scored 5.67 and
+6.00. Without the sheets the model cited 0 of 6 rule ids. The sample is small
+and the rules and checks were written by the same author, so treat it as a
+default, not a law.
+
+- Start with the smallest instruction that fully defines the behavior: identity
+  and non-goals, judgment the data cannot carry, workflow, limits, output.
+  Minimal is not short; do not cut context the agent needs.
+- Move everything checkable (numbers, tables, allow-lists, schemas, decision
+  tables) into package files the agent reads (`knowledge/*.json`,
+  `contracts/*.json`) and cite them by id. Do not paste them into the
+  instruction.
+- Add a line to the instruction only for a failure you observed, and record that
+  failure as a case in `.agentlas/capability-eval-plan.json`.
+- Keep approval gates, refusals and destructive-action limits in the
+  instruction. The measurement did not test them, so they are not candidates for
+  removal.
+- Remove or shorten an existing line only after a real-model comparison of the
+  same tasks before and after.
+
 ## Gate 6 — Capability evaluation plan
 
 Write `.agentlas/capability-eval-plan.json`. Public or marketplace-ready builds
