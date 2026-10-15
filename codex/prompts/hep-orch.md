@@ -14,8 +14,19 @@ billed five frontier runs to do work a cheap model finishes.
 ## Read the request
 
 - No arguments, or `show`/`status` → report the current policy and stop.
+- A request refused with `tier_clamped_by_cost_policy` or
+  `requested_exact_model_exceeds_cost_policy` is this policy working: show the
+  current policy, name the role whose ceiling refused it, and offer the exact
+  `hep-orch` line that would allow the request. Change the policy only when the
+  user says so, never to get a refused request through.
 - `clear`/`reset` → remove the policy and stop.
 - Otherwise the request is one or more `role=value` pairs.
+
+`role.effort=<level>` sets the reasoning-effort ceiling for that role
+(`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); an empty value
+removes it. Model and effort are independent, so
+`worker=<exact-model-id> worker.effort=xhigh` pins a model and lets it think
+as hard as that model supports.
 
 `role` is `orchestrator` or `worker`. `value` is either a tier
 (`economy`, `balanced`, `frontier`) — read as a ceiling — or an exact model id

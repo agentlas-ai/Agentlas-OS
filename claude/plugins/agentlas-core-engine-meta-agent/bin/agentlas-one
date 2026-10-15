@@ -472,7 +472,7 @@ def load():
 def show(policy):
     if not policy:
         print("no model policy set — every role runs on the host's active model")
-        print('set one with:  agentlas-one orch orchestrator=frontier worker=economy')
+        print('set one with:  agentlas-one orch orchestrator=frontier worker=economy worker.effort=high')
         return
     for role in ROLES:
         scope = policy.get(role) or {}
@@ -502,11 +502,31 @@ if args[0] in ("clear", "reset"):
 
 # role=value pairs. A bare tier name is a ceiling; anything else is an exact
 # model pin, because a model id is the only value a host can act on directly.
+# role.effort=value sets the reasoning-effort ceiling the allocator already
+# reads (maxEffort) — until this existed the field could only be written by
+# hand, so a worker pinned to a model still could not be asked for xhigh.
+EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 for arg in args:
     if "=" not in arg:
         raise SystemExit(f"expected role=value, got: {arg}")
     role, _, value = arg.partition("=")
     role, value = role.strip().lower(), value.strip()
+    if role.endswith(".effort"):
+        role = role[: -len(".effort")]
+        if role not in ROLES:
+            raise SystemExit(f"unknown role: {role} (use {' or '.join(ROLES)})")
+        scope = dict(policy.get(role) or {})
+        if not value:
+            scope.pop("maxEffort", None)
+        elif value.lower() in EFFORTS:
+            scope["maxEffort"] = value.lower()
+        else:
+            raise SystemExit(f"unknown effort: {value} (use {', '.join(EFFORTS)})")
+        if scope:
+            policy[role] = scope
+        else:
+            policy.pop(role, None)
+        continue
     if role not in ROLES:
         raise SystemExit(f"unknown role: {role} (use {' or '.join(ROLES)})")
     if not value:
