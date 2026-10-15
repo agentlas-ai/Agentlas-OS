@@ -113,6 +113,8 @@ _CACHE_MAX = 4096
 
 _host_review: dict[str, list[dict[str, Any]]] | None = None
 _host_review_meta: dict[str, Any] = {}
+_host_excerpts: dict[str, str] = {}
+_authored_paths: set[str] | None = None
 _run: dict[str, int] = {}
 
 
@@ -170,12 +172,29 @@ def load_host_review(path: str | Path) -> dict[str, Any]:
 def set_host_review(review: dict[str, Any] | None) -> None:
     """Install (or clear) a validated host review for the current packaging run."""
 
-    global _host_review, _host_review_meta
+    global _host_review, _host_review_meta, _host_excerpts
     if review is None:
-        _host_review, _host_review_meta = None, {}
+        _host_review, _host_review_meta, _host_excerpts = None, {}, {}
         return
     _host_review = review["entries"]
     _host_review_meta = {"reviewedPaths": review.get("reviewedPaths"), "reviewer": review.get("reviewer")}
+    # A secret the host found in one file is removed wherever the same line was
+    # copied: the engine derives files from the package (summaries, briefs), and
+    # the host can only read what it was given.
+    _host_excerpts = {
+        entry["excerpt"]: entry["kind"] for entries in _host_review.values() for entry in entries
+    }
+
+
+def set_authored_paths(paths: set[str] | None) -> None:
+    """Paths that existed before the engine wrote anything into the package.
+
+    Files the engine generates (adapters, contract artifacts) cannot be reviewed
+    by a host that never saw them, so they do not count against coverage.
+    """
+
+    global _authored_paths
+    _authored_paths = None if paths is None else {path.replace("\\", "/") for path in paths}
 
 
 def clear_cache() -> None:
@@ -250,11 +269,10 @@ def review_upload_text(rel: str, text: str) -> tuple[str, list[dict[str, Any]]]:
     remove: dict[int, tuple[str, str]] = {}
     _run["files"] = _run.get("files", 0) + 1
 
-    for entry in (_host_review or {}).get(rel, []):
-        excerpt = entry["excerpt"]
+    for excerpt, kind in _host_excerpts.items():
         for index, line in enumerate(lines):
             if line.strip() == excerpt:
-                remove.setdefault(index, ("host", entry["kind"]))
+                remove.setdefault(index, ("host", kind))
 
     model_found, model_ran = _model_lines(rel, lines)
     if model_ran:
@@ -287,15 +305,25 @@ def review_upload_text(rel: str, text: str) -> tuple[str, list[dict[str, Any]]]:
     return kept, findings
 
 
-def coverage_findings(text_file_count: int) -> list[dict[str, Any]]:
-    """One receipt saying how much of the package a model actually read."""
+def coverage_findings(shipped_paths: list[str]) -> list[dict[str, Any]]:
+    """One receipt saying how much of the package a model actually read.
+
+    Counted over the files the author wrote; files the engine generated are not
+    something a reviewer could have been asked to read.
+    """
+
+    if _authored_paths is not None:
+        counted = [path for path in shipped_paths if path in _authored_paths]
+    else:
+        counted = list(shipped_paths)
+    text_file_count = len(counted)
 
     model_files = _run.get("model", 0)
     host_paths = _host_review_meta.get("reviewedPaths")
     host_active = _host_review is not None
     if model_files >= text_file_count > 0:
         return []
-    if host_active and host_paths is not None and len(host_paths) >= text_file_count > 0:
+    if host_active and host_paths is not None and text_file_count > 0 and set(counted) <= host_paths:
         return []
     if host_active and host_paths is None and model_files == 0:
         # A review file that does not say which files it read cannot prove coverage.
@@ -322,7 +350,7 @@ def coverage_findings(text_file_count: int) -> list[dict[str, Any]]:
         _finding(
             "secret-review-partial",
             "medium",
-            f"A model reviewed {max(model_files, len(host_paths or ()))} of {text_file_count} text files for secrets.",
+            f"A model reviewed {max(model_files, len(set(counted) & (host_paths or set())))} of {text_file_count} text files for secrets.",
             None,
             "Receipt: the remaining files were checked by pattern only.",
         )

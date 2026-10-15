@@ -417,10 +417,17 @@ def package_agent(
     visibility: str = "marketplace",
     write_manifest: bool = True,
     source_roots: tuple[str, ...] = (),
+    authored_paths: set[str] | None = None,
 ) -> dict[str, Any]:
     base = Path(folder).expanduser().resolve()
     if not base.is_dir():
         raise UploadError(f"agent folder not found: {folder}")
+    # What the author wrote, measured before the engine adds anything. A caller
+    # that packages a snapshot passes the original folder's paths: the snapshot
+    # already carries an engine-pinned identity file the author never saw.
+    upload_secret_review.set_authored_paths(
+        authored_paths if authored_paths is not None else _authored_paths_before_scaffold(base)
+    )
 
     # An installed copy is never published to the Hub.
     #
@@ -710,6 +717,9 @@ def package_agent(
     # Existing cards are accepted as authored metadata; Career freshness is not
     # an upload policy gate.
     findings.extend(prepare_public_career_card_for_upload(base))
+    # Coverage is judged on what finally ships; receipts from earlier passes
+    # counted a package the engine had not finished writing.
+    findings = [item for item in findings if not str(item.get("id", "")).startswith("secret-review-")]
     files, file_count, final_collection_findings = collect_upload_files(base)
     existing_findings = {
         (item.get("id"), item.get("file"), item.get("line"), item.get("message"))
@@ -1715,6 +1725,21 @@ def _attest_registration(
     return registration
 
 
+def _authored_paths_before_scaffold(base: Path) -> set[str]:
+    """Relative paths in the folder before the engine writes anything into it."""
+
+    found: set[str] = set()
+    for walked, path in enumerate(base.rglob("*")):
+        if walked > MAX_WALKED_ENTRIES:
+            break
+        parts = path.relative_to(base).parts
+        if any(part in SKIP_DIRS for part in parts):
+            continue
+        if path.is_file() and not path.is_symlink():
+            found.add(unicodedata.normalize("NFC", "/".join(parts)))
+    return found
+
+
 def publish_agent(
     folder: str | Path,
     *,
@@ -1757,6 +1782,7 @@ def publish_agent(
             visibility=visibility,
             write_manifest=True,
             source_roots=tuple({str(source), *((str(requested_source),) if requested_source.is_absolute() else ())}),
+            authored_paths=_authored_paths_before_scaffold(source),
         )
         if source_link_resolved:
             snapshot_omissions.insert(
@@ -3008,7 +3034,7 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             )
         )
     files.sort(key=lambda item: item.path.encode("utf-16-be"))
-    findings.extend(upload_secret_review.coverage_findings(len(files)))
+    findings.extend(upload_secret_review.coverage_findings([item.path for item in files]))
     return files, file_count, findings
 
 
