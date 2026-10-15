@@ -33,12 +33,6 @@
     "globalCommands": ".agentlas/global-commands.json"
   },
   "contracts": {
-    "modes": ".agentlas/mode-map.json",
-    "sitemap": ".agentlas/sitemap.json",
-    "pmSoul": ".agentlas/project-soul-memory.md",
-    "memory": ".agentlas/memory-map.json",
-    "runtimeArchitecture": "docs/llm-runtime-architecture.md",
-    "globalCommands": "docs/global-command-contract.md",
-    "chainMap": "docs/chain-map.md"
+    "modes": ".agentlas/mode-map.json"
   }
 }

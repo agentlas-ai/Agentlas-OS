@@ -1,6 +1,6 @@
 {
   "agent_card_ref": {
-    "content_hash": "04919af421b4fc241de19586bd4da0a1efd191e4f47298ee78d03623e30698d4",
+    "content_hash": "dea8eb22a447a44acf92220c9c4efaf9bda6ab1a2fe0aa3be04dceed14ec97e8",
     "path": ".agentlas/agent-card.json",
     "slug": "agentlas-meta-agent"
   },
@@ -51,7 +51,7 @@
     "manage_memory_tickets",
     "coordinate_ontology_runtime"
   ],
-  "card_version": "2.0.1",
+  "card_version": "2.0.2",
   "cloud_delegation_policy": "ask",
   "cost_hints": {
     "model_calls": "medium",
