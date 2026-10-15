@@ -72,10 +72,6 @@
     "legacyAliases": {
       "agent_team": "team_memory"
     },
-    "oneForwardable": [
-      "agent_repo",
-      "user_identity"
-    ],
     "sourceRef": "CURATOR_PROMPT scope list; terminal ONE_SCOPES boundary decision 2026-08-10"
   },
   "teamLayerByKind": {
