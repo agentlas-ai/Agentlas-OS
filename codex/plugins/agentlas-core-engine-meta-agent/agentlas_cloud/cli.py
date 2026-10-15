@@ -609,6 +609,29 @@ def _session_command(args: argparse.Namespace) -> int:
         return 2
 
 
+def _normalize_upload_alias(argv: list[str]) -> list[str]:
+    """Spell `hep-upload`/`upload` as `publish`, the way bin/hephaestus does in bash.
+
+    The Windows launcher hands every argument straight to this module, so
+    `hephaestus.cmd hep-upload` was an invalid choice there while the same
+    command worked on macOS and Linux. `--cloud` and `--hub` pick the
+    destination; with neither, `publish` still requires `--visibility`, so no
+    destination is ever assumed.
+    """
+
+    if not argv or argv[0] not in {"hep-upload", "upload", "hephaestus-upload"}:
+        return argv
+    rewritten = ["publish"]
+    for token in argv[1:]:
+        if token == "--cloud":
+            rewritten += ["--visibility", "private-link"]
+        elif token == "--hub":
+            rewritten += ["--visibility", "marketplace"]
+        else:
+            rewritten.append(token)
+    return rewritten
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_utf8_stdio()
     # Wire the resident judge to the host's connected model (if the host opted in
@@ -1505,7 +1528,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     workforce_goal_ledger.add_argument("--reason", default=None)
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_normalize_upload_alias(sys.argv[1:] if argv is None else list(argv)))
     # Resolve the launcher-provided spelling into process-local command context.
     # A missing/older registry must not make an existing command unusable; the
     # explicit `command check` path reports that failure instead.
