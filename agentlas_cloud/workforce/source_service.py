@@ -21,6 +21,7 @@ from ..networking.hub_client import (
     hub_url,
     list_hub_tools,
 )
+from .remote_repair import plan_for
 from .contracts import (
     WORKFORCE_COVERAGE_GAP_CODES,
     canonical_digest,
@@ -144,8 +145,6 @@ class WorkforceSourceError(ValueError):
         if isinstance(repair, Mapping):
             self.repair = dict(repair)
         else:
-            from .remote_repair import plan_for
-
             self.repair = plan_for(code)
         # Which specific check refused, in words, when the code alone cannot say.
         # `source_bundle_verification_failed` covers both "the source rejected our
@@ -781,6 +780,7 @@ class WorkforceSourceService:
         expand = list(expand_slot_ids or [])
         circuit_key = self._circuit_context_key(accepted_work_order)
         remote_sources: list[str] = []
+        source_repairs: dict[str, dict[str, Any]] = {}
         for source in sources:
             if source == "local":
                 try:
@@ -835,6 +835,9 @@ class WorkforceSourceService:
             if source == "cloud" and self.cloud_source_supported is False and self._uses_default_remote_search:
                 failures["cloud"] = "source_not_supported"
                 attempts["cloud"] = 0
+                plan = plan_for("source_not_supported")
+                if plan:
+                    source_repairs["cloud"] = plan
                 continue
             remote_sources.append(source)
 
@@ -858,6 +861,8 @@ class WorkforceSourceService:
                     except WorkforceSourceError as exc:
                         failures[source] = _finite_failure(exc.code)
                         attempts[source] = exc.attempt_count
+                        if isinstance(exc.repair, Mapping):
+                            source_repairs[source] = dict(exc.repair)
 
         policy = (
             accepted_work_order.get("selectionPolicy")
@@ -901,6 +906,11 @@ class WorkforceSourceService:
             source_candidate_sets={source: candidate_sets[source] for source in successful_sources},
             now=now,
         )
+        # The receipts above are digest-bound and cannot grow a field, so the way
+        # out for a source that failed travels beside them. Added after the
+        # session is saved: it is advice for the host, not part of what is pinned.
+        if source_repairs:
+            result = {**result, "sourceRepairs": source_repairs}
         return result
 
     def fetch_selected_runtime_bundles(
