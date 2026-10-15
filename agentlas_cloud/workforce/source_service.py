@@ -141,7 +141,12 @@ class WorkforceSourceError(ValueError):
         self.code = code
         # Machine-readable way out for a source that cannot be loaded (see
         # workforce/release_health.py). Words for the user come from the host.
-        self.repair = dict(repair) if isinstance(repair, Mapping) else None
+        if isinstance(repair, Mapping):
+            self.repair = dict(repair)
+        else:
+            from .remote_repair import plan_for
+
+            self.repair = plan_for(code)
         # Which specific check refused, in words, when the code alone cannot say.
         # `source_bundle_verification_failed` covers both "the source rejected our
         # request digest before building anything" and "we rejected the receipt it
