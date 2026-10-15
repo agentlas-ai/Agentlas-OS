@@ -14,25 +14,13 @@ passes `schemas/routing-card.schema.json`.
 
 ## Why the fields behave the way they do
 
-Every rule below was measured against the live corpus on 2026-07-30
-(492 workforce profiles, 253 stored manifests). The two facts that decide
-everything else:
-
-1. **Only two columns can be compared between a work order and a card.**
-   `communities` (422 of 492 populated, 105 distinct) and `skills` (492 of 492,
-   1,969 distinct). Everything else is either declared by almost nobody
-   (`roles` 6, `tools` 10, `knowledge` 0, `forbiddenAuthorities` 0), or declared
-   by everyone with the same value (`runtimes` 14 distinct over 492 profiles,
-   `languages` exactly 2, `modalities` exactly 1) — neither can separate
-   candidates.
-2. **The real matching is sentence-to-sentence.** The slot's `task` text is
+**The real matching is sentence-to-sentence.** The slot's `task` text is
    compared semantically against the card's `summary`. A card whose summary
    names its actual deliverable outranks a card with a perfect id list.
 
 So the card has two jobs, and mixing them is the classic defect: **short ids
 for retrieval, whole sentences for judgement.** A sentence that leaks into an
-id field becomes a slug nothing else can ever match — measured: 8,973 distinct
-`outputs` values across the corpus, 0% shared by two agents.
+id field becomes a slug nothing else can ever match.
 
 ## Field table
 
@@ -72,7 +60,7 @@ Columns: what the field is for · what the hub does with it · what to write.
 | `input_notes` | not read by matching | Free-text lines explaining each input, for humans and for the executing model. |
 | `consumes` / `produces` | compatibility display | Canonical interfaces live in `contracts/intake.schema.json` and `contracts/output.schema.json`. When present, use short stable `kind` IDs only. |
 | `supported_runtimes` | packaging metadata | Do not emit it as agent identity. Runtime adapters and prepare-time execution policy own compatibility. |
-| `required_plugins` | → `tools` column | `{id, min_permissions}` for a facility the worker itself must invoke. Almost no card declares tools; state the requirement vendor-free and keep the package usable without it. |
+| `required_plugins` | → `tools` column | `{id, min_permissions}` for a facility the worker itself must invoke. State the requirement vendor-free and keep the package usable without it. |
 
 ### The workforce block — open-world semantic résumé fields
 
@@ -86,7 +74,7 @@ English namespaced ID; the Hub embeds it and connects it to the ontology graph.
 |---|---|---|
 | `workforce.communities` | semantic scope + strong ranking signal | 1–5 open `community:*` professional-domain ids. Reuse a seed alias when it fits; otherwise author the real community. |
 | `workforce.skills` | semantic ranking | 3–12 open `skill:*` verb-object capability ids that actually distinguish this agent. They are not a fixed dictionary. |
-| `workforce.knowledge` | ranking | `knowledge:*` ids. You may omit it: the compiler now derives one id per `knowledge/*.md` file the package ships (file stem → `knowledge:<stem>`), which is why the column existed with 0 producers until 2026-07-30. |
+| `workforce.knowledge` | ranking | `knowledge:*` ids. You may omit it: the compiler now derives one id per `knowledge/*.md` file the package ships (file stem → `knowledge:<stem>`). |
 | `workforce.roles` | semantic ranking | 0–4 open `role:*` professional-responsibility ids. `[]` is honest when the card already expresses the work better through its summary and skills. |
 | `workforce.languages` | delivery metadata, never an identity/callability gate | Languages the work product can genuinely be delivered in. Listing translation does not count. `[]` is allowed when unknown. |
 | `workforce.modalities` | runtime/input metadata, never an identity/callability gate | Declare only non-text media the agent genuinely consumes or emits. Ordinary text reasoning may use `[]`. |
@@ -125,29 +113,4 @@ English namespaced ID; the Hub embeds it and connects it to the ontology graph.
 7. `routing_status` is honest.
 8. Validate: the card parses against `schemas/routing-card.schema.json`.
 
-## Verified end to end
-
-`templates/routing-card.example.json` was compiled through the live hub
-compiler (`compileExactOwnerPrivateWorkforceProfile`) on 2026-07-30. Result:
-
-```
-communities  [4] backend-engineering, database-engineering, legal*, software-engineering
-skills       [9] api-design, software-architecture, data-modeling + 6 from capabilities
-knowledge    [2] api-contract-checklist, database-schema-patterns   (from knowledge/*.md)
-inputs       [5] requirement-brief, load-profile, service-context, stack-constraints, text*
-outputs      [3] api-contract, data-model, decision-record
-runtimes     [4] claude-code, codex, gemini-cli, terminal
-languages    [2] en, ko          modalities [1] text
-roles        [2] backend-engineer, software-architect
-authorities  [1] file-write      forbiddenAuthorities []
-```
-
-The same card written with sentences inside `produces`/`required_inputs`
-produced `outputs [6]` and `inputs [10]` full of unmatchable slugs like
-`artifact:architecture-decision-record-naming-the-chosen-component-boundaries-and-…`.
-That is the difference this spec exists to hold.
-
-Two known compiler leaks are visible above and are not the author's fault:
-`legal*` (community alias "contract review") and `artifact:text*` (the `type`
-value of an input becoming a concept). Fix them in the compiler, not by
-contorting the card.
+Fix compiler leaks in the compiler, not by contorting the card.
