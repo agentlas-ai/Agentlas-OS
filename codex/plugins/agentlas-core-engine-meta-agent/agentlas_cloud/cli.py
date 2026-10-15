@@ -1326,6 +1326,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Report which stored releases are stale without rewriting them",
     )
+    workforce_repair_release = workforce_sub.add_parser(
+        "local-repair-release",
+        help="Re-import the source of one registered local agent as a new release",
+    )
+    workforce_repair_release.add_argument("target", help="Definition id or source folder")
+    workforce_autoregister = workforce_sub.add_parser(
+        "local-autoregister",
+        help="Register contract-passing packages from the builder's agent folder",
+    )
+    workforce_autoregister.add_argument("--home", default=None, help="Agent folder (default: the global Agentlas agent folder)")
     workforce_validate = workforce_sub.add_parser("validate", help="Validate a host-LLM staffing decision")
     workforce_validate.add_argument("work_order")
     workforce_validate.add_argument(
@@ -2393,6 +2403,16 @@ def main(argv: list[str] | None = None) -> int:
                     return emit({"status": "ok", "registrations": registry.list_registrations()})
                 if args.workforce_command == "local-repair":
                     return emit(registry.repair_stale_profiles(dry_run=bool(args.dry_run)))
+                if args.workforce_command == "local-repair-release":
+                    from .workforce.release_health import repair_release
+
+                    result = repair_release(registry, args.target)
+                    emit(result)
+                    return 0 if result.get("status") in {"repaired", "unchanged"} else 1
+                if args.workforce_command == "local-autoregister":
+                    from .workforce.local_autoregister import autoregister_builder_home
+
+                    return emit(autoregister_builder_home(registry, home=args.home))
                 # Reconcile only reaches packages whose import folder still
                 # exists. Heal the registry's own stored releases first so a
                 # release whose source folder moved stops serving a profile the

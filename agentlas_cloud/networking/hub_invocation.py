@@ -91,6 +91,7 @@ def invoke_hub_agent(
                     "request_hash": _request_hash(request),
                     "routing_receipt_id": (hub_decision or {}).get("receipt_id"),
                     "local_slug_audit": local,
+                    "alternates": _alternates(results, selected_slug),
                     **refusal["fields"],
                 },
             )
@@ -117,6 +118,7 @@ def invoke_hub_agent(
                     ),
                     "hub_response": _bundle_response_summary(bundle_response),
                     "local_slug_audit": local,
+                    "alternates": _alternates(results, selected_slug),
                 },
             )
         entry = bundle.get("entry") if isinstance(bundle.get("entry"), dict) else {}
@@ -171,6 +173,7 @@ def invoke_hub_agent(
                     "missing_fields": missing,
                     "hub_response": _bundle_response_summary(bundle_response),
                     "local_slug_audit": local,
+                    "alternates": _alternates(results, selected_slug),
                 },
             )
         needs = _derive_plugin_needs(bundle)
@@ -328,6 +331,18 @@ def _select_candidate(results: list[dict[str, Any]], slug: str | None) -> dict[s
         if isinstance(item, dict) and _norm_slug(str(item.get("slug") or "")) == norm:
             return item
     return None
+
+
+def _alternates(results: list[dict[str, Any]], failed_slug: str, limit: int = 3) -> list[dict[str, Any]]:
+    """Other callable agents from the same search, so a refusal is not a dead end.
+
+    The host chooses; nothing here substitutes an agent. Empty when the search
+    that led here offered nothing else.
+    """
+
+    failed = _norm_slug(failed_slug)
+    picked = [item for item in _callable_candidates(results) if _norm_slug(str(item.get("slug") or "")) != failed]
+    return picked[:limit]
 
 
 def _callable_candidates(results: list[dict[str, Any]]) -> list[dict[str, Any]]:

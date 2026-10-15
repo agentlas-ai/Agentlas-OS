@@ -540,8 +540,14 @@ class LocalWorkforceRegistry:
         verified_identity: Mapping[str, Any] | None = None,
         identity_verifier: Callable[[str, str, Mapping[str, Any], Mapping[str, Any]], bool] | None = None,
         managed_by: str = "explicit",
+        force_restage: bool = False,
     ) -> dict[str, Any]:
-        """Import one root; verified cross-source identity is API-only."""
+        """Import one root; verified cross-source identity is API-only.
+
+        ``force_restage`` rebuilds the stored copy of a release even when the
+        source is unchanged. A release id is derived from the package hash, so
+        without it re-registering a damaged snapshot replays the damage.
+        """
 
         try:
             root = self._explicit_root(source_root)
@@ -590,7 +596,7 @@ class LocalWorkforceRegistry:
                     )
 
                 final_dir = self._release_dir(definition_id, release_id)
-                if final_dir.is_dir():
+                if final_dir.is_dir() and not force_restage:
                     registration = read_json(final_dir / "registration.json", default=None)
                     profile = read_json(final_dir / "profile.json", default=None)
                     if isinstance(registration, Mapping) and isinstance(profile, Mapping):
@@ -1184,6 +1190,11 @@ class LocalWorkforceRegistry:
         rows: list[dict[str, Any]] = []
         for record in self._records():
             row = dict(record)
+            # A registration serves its own snapshot, so a vanished source
+            # folder does not break a call, but the author deserves to know the
+            # copy can no longer be refreshed.
+            source_root = str(record.get("sourceRoot") or "")
+            row["sourceState"] = "present" if source_root and Path(source_root).expanduser().is_dir() else "missing"
             row.update(
                 self._routing_verdict(
                     self._release_dir(

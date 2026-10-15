@@ -136,8 +136,12 @@ class WorkforceSourceError(ValueError):
         retry_after_ms: int | None = None,
         receipt_expires_at: str | None = None,
         attempt_count: int = 1,
+        repair: Mapping[str, Any] | None = None,
     ):
         self.code = code
+        # Machine-readable way out for a source that cannot be loaded (see
+        # workforce/release_health.py). Words for the user come from the host.
+        self.repair = dict(repair) if isinstance(repair, Mapping) else None
         # Which specific check refused, in words, when the code alone cannot say.
         # `source_bundle_verification_failed` covers both "the source rejected our
         # request digest before building anything" and "we rejected the receipt it
@@ -794,6 +798,18 @@ class WorkforceSourceService:
                                     adopt()
                                 except (OSError, RuntimeError, TypeError, ValueError):
                                     pass
+                            # The builder's own output folder: a package that
+                            # passes the contract is registered without anyone
+                            # having to run `cards migrate` for it.
+                            # Only the machine's own roster: an injected registry
+                            # (tests, another home) must never pull real packages in.
+                            try:
+                                from .local_autoregister import autoregister_builder_home, serves_default_home
+
+                                if serves_default_home(self.local_registry):
+                                    autoregister_builder_home(self.local_registry)
+                            except Exception:  # best effort: never costs the search
+                                pass
                         else:
                             self.local_registry.reconcile()
                     index = WorkforceIndex(
@@ -1027,8 +1043,15 @@ class WorkforceSourceService:
                     bundle = self.local_registry.runtime_bundle(str(pin["agentReleaseId"]))
                 except KeyError as exc:
                     detail = str(exc.args[0]) if exc.args else ""
+                    from . import release_health
+
+                    try:
+                        plan = release_health.diagnose(self.local_registry, str(pin["agentReleaseId"]), detail)
+                    except Exception:  # a diagnosis must never hide the refusal it explains
+                        plan = None
                     raise WorkforceSourceError(
-                        detail if detail.startswith("local_") else "source_bundle_fetch_failed"
+                        detail if detail.startswith("local_") else "source_bundle_fetch_failed",
+                        repair=plan,
                     ) from exc
                 except OSError as exc:
                     raise WorkforceSourceError("source_bundle_fetch_failed") from exc

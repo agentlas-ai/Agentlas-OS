@@ -40,6 +40,22 @@ If the local Core MCP or registered inventory is unavailable, report
 `source_unavailable`; do not silently search Cloud or Hub. A prepared roster is
 not proof of execution.
 
+If `workforce.prepare_execution` refuses with a `repair` object, the agent is
+broken, not absent. Say in plain words what `repair.meaning` says, offer the
+first `available` action in `repair.repair`, and run its `command` only after
+the user agrees. When a repair reports `reselectionRequired: true`, select
+again (`workforce.validate_selection`, then `workforce.prepare_execution`);
+never swap in a different agent without a new selection. A refusal that carries
+`alternates` lists other callable agents from the same search: present them as
+candidates and let the user or the selection step choose.
+
+A package the builder wrote to the global agent folder is registered
+automatically at the next local search once it passes `contract verify`; one
+that does not pass is not registered and is named with its first blockers.
+`hephaestus workforce local-autoregister` does it now and prints
+`contractFailing` and `refused` rows, which is where to look when an agent you
+built is missing from the menu.
+
 For a `partial` or `failed` result, report each source receipt's exact
 `failureCode`. Never collapse several receipts into one, substitute a different
 code, or relabel the outcome.

@@ -93,7 +93,7 @@ class PackageAdaptationError(ValueError):
         super().__init__(message)
 
 
-def refusal_fields(error: BaseException) -> dict[str, str]:
+def refusal_fields(error: BaseException) -> dict[str, Any]:
     """Forward the words a coded refusal already wrote, beside its code.
 
     `_quarantine` was not the only emitter that reduced one of these errors to
@@ -113,13 +113,16 @@ def refusal_fields(error: BaseException) -> dict[str, str]:
     code = getattr(error, "code", "")
     if not isinstance(code, str) or not code:
         return {}
-    fields: dict[str, str] = {}
+    fields: dict[str, Any] = {}
     message = str(error)
     if message and message != code:
         fields["message"] = message
     remediation = getattr(error, "remediation", None)
     if isinstance(remediation, str) and remediation:
         fields["remediation"] = remediation
+    repair = getattr(error, "repair", None)
+    if isinstance(repair, dict) and repair:
+        fields["repair"] = repair
     return fields
 
 

@@ -202,6 +202,17 @@ done
    `source_unavailable`, `blocked`, or `failed`. For `partial` or `failed`,
    report each source receipt's exact `failureCode`: never collapse several
    receipts into one, substitute a different code, or relabel the outcome.
+   If `workforce.prepare_execution` refuses with a `repair` object, the agent is
+   broken, not absent. Say in plain words what `repair.meaning` says, offer the
+   first `available` action in `repair.repair`, and run its `command` only after
+   the user agrees. When a repair reports `reselectionRequired: true`, select
+   again; never swap in a different agent without a new selection. A refusal
+   that carries `alternates` lists other callable agents from the same search:
+   present them as candidates.
+   An agent built into the global agent folder is registered automatically at
+   the next local search once it passes `contract verify`;
+   `hephaestus workforce local-autoregister` does it now and prints
+   `contractFailing` and `refused` rows for any that are missing.
 
 ## Recurring Hub use
 
