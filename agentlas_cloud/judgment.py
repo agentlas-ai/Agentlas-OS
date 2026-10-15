@@ -140,6 +140,52 @@ def judge_labels(
     return picked, "model"
 
 
+def judge_json(
+    *,
+    kind: str,
+    system: str,
+    text: str,
+    max_chars: int = _MAX_INPUT_CHARS,
+) -> tuple[Optional[dict], str]:
+    """Run the connected model once and return its parsed JSON object.
+
+    For judgments whose answer is a structure rather than a label, such as
+    line numbers. Returns ``(object, "model")``, or ``(None, "fallback")`` when
+    no runner is installed or the reply is unparseable; the caller decides what
+    a missing verdict means and never receives a guessed one. The text is
+    untrusted data: the caller's ``system`` must say so, and the caller must
+    validate every field it takes from the reply.
+    """
+
+    body = (text or "")[:max_chars]
+    if not body.strip() or not has_judgment_runner():
+        return None, "fallback"
+    cache_key = f"{kind}\0json\0{system}\0{body}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        try:
+            value = json.loads(cached[0])
+        except (ValueError, IndexError):
+            value = None
+        if isinstance(value, dict):
+            return value, "model"
+    try:
+        raw = _runner(system, body)  # type: ignore[misc]
+    except Exception:
+        return None, "fallback"
+    match = _JSON_RE.search(str(raw or ""))
+    if not match:
+        return None, "fallback"
+    try:
+        parsed = json.loads(match.group(0))
+    except Exception:
+        return None, "fallback"
+    if not isinstance(parsed, dict):
+        return None, "fallback"
+    _cache_set(cache_key, (json.dumps(parsed, sort_keys=True),))
+    return parsed, "model"
+
+
 def judge_bool(
     *,
     kind: str,

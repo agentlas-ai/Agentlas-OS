@@ -105,6 +105,7 @@ Options:
   --expected-package-hash <sha256>
   --expected-upload-receipt <sha256>
   --overwrite-cloud-id <id>    Confirm overwrite of this exact Cloud asset
+  --secret-review <file>       Host-model secret review (give the same file to dry-run and publish)
   --no-open                    Do not open a browser for sign-in
   -h, --help                   Show this help without selecting a destination
 EOF
@@ -164,7 +165,7 @@ run_upload_gate() {
         publish_args+=("$arg")
         shift
         ;;
-      --slug|--base-url|--expected-package-hash|--expected-upload-receipt|--overwrite-cloud-id|--rent-credits|--ingest-credits|--fork-credits)
+      --slug|--base-url|--expected-package-hash|--expected-upload-receipt|--overwrite-cloud-id|--secret-review|--rent-credits|--ingest-credits|--fork-credits)
         if [[ "$#" -lt 2 || "${2:-}" == --* ]]; then
           echo "Missing value for $arg." >&2
           return 2
@@ -172,7 +173,7 @@ run_upload_gate() {
         publish_args+=("$arg" "${2:-}")
         shift 2
         ;;
-      --slug=*|--base-url=*|--expected-package-hash=*|--expected-upload-receipt=*|--overwrite-cloud-id=*|--rent-credits=*|--ingest-credits=*|--fork-credits=*)
+      --slug=*|--base-url=*|--expected-package-hash=*|--expected-upload-receipt=*|--overwrite-cloud-id=*|--secret-review=*|--rent-credits=*|--ingest-credits=*|--fork-credits=*)
         publish_args+=("$arg")
         shift
         ;;
@@ -241,7 +242,7 @@ Usage:
   bin/hephaestus contract prompt [--mode single|team|package]
   bin/hephaestus session [inspect|normalize|validate|preview|merge|ir|compile|promote] [--input <session.jsonl>] [--global-agent]
   bin/hephaestus package <agent-folder> [--visibility marketplace|private-link]
-  bin/hephaestus publish <agent-folder> --visibility marketplace|private-link [--dry-run] [--expected-package-hash <sha256>] [--expected-upload-receipt <sha256>] [--overwrite-cloud-id <id>]
+  bin/hephaestus publish <agent-folder> --visibility marketplace|private-link [--dry-run] [--expected-package-hash <sha256>] [--expected-upload-receipt <sha256>] [--overwrite-cloud-id <id>] [--secret-review <file>]
   bin/hephaestus field-test
 	  bin/hephaestus auth status|login|ensure|logout [--base-url <url>]
   bin/hephaestus doctor

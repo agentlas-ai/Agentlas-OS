@@ -263,28 +263,37 @@ Route to the Agentlas Core Engine Meta-Agent team, using the `$ENGINE` and
    requires `public_marketplace_ready: true`; a `minimal-private` receipt is
    never public-ready and must not be promoted by this command.
 11. After the verified package has been written and registered locally, ask one
-    final storage question. Prefer the host's structured two-choice UI when it
-    exists, and use these choices without adding a public-Hub option:
+    final storage question. Prefer the host's structured choice UI when it
+    exists, and offer exactly these three choices:
     - **Cloud에 올리기** — save the package owner-private in Agent Cloud so it
       can be restored on the same account's other Desktops. Mobile can use it
       only after a paired Desktop restores/installs it; Agent Cloud is not a
       hosted LLM executor.
+    - **Agentlas Hub에 공개** — list the package on the public Agentlas Hub so
+      other people can borrow it. Free to publish and free to call. Anyone can
+      read what ships, so name that plainly in the question.
     - **로컬에만 저장** — keep the already completed package on this computer
       and perform no network mutation.
 
     Never upload by default. If the host is non-interactive or the user does
-    not answer, choose local-only. Only after explicit Cloud consent, run the
-    resolved Hephaestus runner against the exact verified package root:
+    not answer, choose local-only. Hub publication needs its own explicit yes:
+    after the user picks it, show the folder, the slug and the files that will
+    ship, and ask once more before running anything. Cloud and Hub both follow
+    `/hep-upload` Steps 3 and 4: you read the package for secrets yourself and
+    pass the review file with `--secret-review`. Then, only after the explicit
+    consent for that destination, run the resolved Hephaestus runner against
+    the exact verified package root:
 
     ```bash
-    "$RUNNER" upload "$PACKAGE_ROOT" --visibility private-link
+    "$RUNNER" hep-upload "$PACKAGE_ROOT" --visibility private-link --secret-review "$REVIEW_FILE"   # Cloud
+    "$RUNNER" hep-upload "$PACKAGE_ROOT" --visibility marketplace  --secret-review "$REVIEW_FILE"   # Hub
     ```
 
     `PACKAGE_ROOT` is the exact gate-verified package, never the workspace or a
     guessed parent folder. Authentication, offline, CAS-conflict, quota, or
     security-scan failure must leave the local package intact; report the
-    failure and the exact retry command. Public Hub publication remains a
-    separate explicit `/hep-upload ... --visibility marketplace` action.
+    failure and the exact retry command. A `minimal-private` build is never
+    offered the Hub choice.
 12. Return `status`, `evidence`, `output`, `global_commands`,
    `interview_research`, and `blockers`. `evidence` must carry the resolved
    `ENGINE`, the `contract scaffold` receipt, and the final `contract verify`

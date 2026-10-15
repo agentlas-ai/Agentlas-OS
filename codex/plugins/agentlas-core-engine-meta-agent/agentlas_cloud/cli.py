@@ -713,6 +713,11 @@ def main(argv: list[str] | None = None) -> int:
         action=_UploadVisibilityAction,
     )
     package_cmd.add_argument("--no-write", action="store_true", help="Do not refresh agentlas.json before review")
+    package_cmd.add_argument(
+        "--secret-review",
+        metavar="FILE",
+        help="Host-model secret review (agentlas.upload-secret-review/1)",
+    )
 
     publish_cmd = sub.add_parser("publish", help="Register a reviewed package with Agentlas Cloud or Hub")
     publish_cmd.add_argument("folder")
@@ -733,6 +738,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Refuse unless package hash, visibility, slug, and destination match the dry-run receipt",
     )
     publish_cmd.add_argument("--overwrite-cloud-id", help="Authorize overwrite of this exact server-reported Cloud asset")
+    publish_cmd.add_argument(
+        "--secret-review",
+        metavar="FILE",
+        help="Host-model secret review (agentlas.upload-secret-review/1). Pass the same file to the dry-run and the publish.",
+    )
     # Retired pricing flags remain parseable only to produce a clear refusal in
     # publish_agent. They cannot set prices for the free public Hub.
     publish_cmd.add_argument(
@@ -1609,6 +1619,9 @@ def main(argv: list[str] | None = None) -> int:
         from .upload import UploadError, package_agent
 
         telemetry = _build_telemetry_tracker("package", mode="package")
+        refused = _install_secret_review(getattr(args, "secret_review", None))
+        if refused is not None:
+            return refused
         try:
             result = package_agent(args.folder, slug=args.slug, visibility=args.visibility, write_manifest=not args.no_write)
         except UploadError as exc:
@@ -1622,6 +1635,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "publish":
         from .upload import UploadError, publish_agent
 
+        refused = _install_secret_review(getattr(args, "secret_review", None))
+        if refused is not None:
+            return refused
         try:
             result = publish_agent(
                 args.folder,
@@ -3648,6 +3664,21 @@ def _human_browser_url(value: str) -> str:
 def _is_http_url(value: str) -> bool:
     parsed = urlsplit(value)
     return parsed.scheme.lower() in {"http", "https"} and bool(parsed.netloc)
+
+
+def _install_secret_review(path: str | None) -> int | None:
+    """Install a host-model secret review for this run; return an exit code to stop on a bad file."""
+
+    from . import upload_secret_review
+
+    if not path:
+        upload_secret_review.set_host_review(None)
+        return None
+    try:
+        upload_secret_review.set_host_review(upload_secret_review.load_host_review(path))
+    except ValueError as exc:
+        return emit({"status": "error", "code": "secret_review_invalid", "error": str(exc)}) or 1
+    return None
 
 
 def emit(payload: Any) -> int:

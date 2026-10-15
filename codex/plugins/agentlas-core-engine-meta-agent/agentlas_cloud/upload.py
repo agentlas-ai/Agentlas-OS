@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from . import content_guard
+from . import upload_secret_review
 from .auth import AgentlasAuthError, ensure_access_token, normalize_base_url, same_origin_urlopen
 from .networking.card_lint import lint_card
 from .package_contract import (
@@ -2806,6 +2807,7 @@ def portable_relative_path_problem(value: str) -> str | None:
 def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[str, Any]]]:
     files: list[UploadFile] = []
     findings: list[dict[str, Any]] = []
+    upload_secret_review.begin_run()
     # `total_bytes` is what the folder weighs; `transport_bytes` is what the
     # package costs to send and store, and that is what the ceiling is about.
     total_bytes = 0
@@ -2955,6 +2957,10 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             text, masked = pattern.subn(_mask, text)
             if masked:
                 findings.append(_finding("redacted-secret", "high", "secret", f"Masked {masked} {label} occurrence(s) in place before upload.", rel, "Receipt: the value was replaced with a [REDACTED:kind:hash8] marker; each user configures their own key."))
+        # Model review runs last and can only remove more: the pattern checks
+        # above are the floor, a model reads what no pattern was written for.
+        text, review_findings = upload_secret_review.review_upload_text(rel, text)
+        findings.extend(review_findings)
         raw = text.encode("utf-8")
         if re.search(r"(?:curl|wget)[^\n|&;]+[|]\s*(?:sh|bash)", text, re.I):
             findings.append(_finding("curl-pipe-shell", "high", "network", "Remote shell install pattern detected.", rel, "Use explicit, reviewable install steps."))
@@ -3002,6 +3008,7 @@ def collect_upload_files(base: Path) -> tuple[list[UploadFile], int, list[dict[s
             )
         )
     files.sort(key=lambda item: item.path.encode("utf-16-be"))
+    findings.extend(upload_secret_review.coverage_findings(len(files)))
     return files, file_count, findings
 
 

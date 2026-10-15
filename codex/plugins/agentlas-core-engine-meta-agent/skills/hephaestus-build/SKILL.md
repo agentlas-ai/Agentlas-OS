@@ -138,17 +138,25 @@ description: "Use when the user types /prompts:hep-build or /agentlas-build, men
     as generated-package evidence; that script verifies the engine repository
     itself.
 13. Once verification and local registration have succeeded, ask one final
-    two-choice storage question using structured controls when available:
-    **Cloud에 올리기** or **로컬에만 저장**. Cloud means owner-private Agent
-    Cloud storage, restorable on another signed-in Desktop. Mobile can use the
-    package only after a paired Desktop restores/installs it; Cloud is not a
-    hosted LLM runtime. Local-only performs no network mutation.
+    three-choice storage question using structured controls when available:
+    **Cloud에 올리기**, **Agentlas Hub에 공개** or **로컬에만 저장**. Cloud means
+    owner-private Agent Cloud storage, restorable on another signed-in Desktop.
+    Mobile can use the package only after a paired Desktop restores/installs it;
+    Cloud is not a hosted LLM runtime. Hub means a public listing other people
+    can borrow, free to publish and free to call, and it needs its own explicit
+    yes after you show the folder, the slug and the files that will ship.
+    Local-only performs no network mutation. A `minimal-private` build is never
+    offered Hub.
 14. Never upload by default. Missing input and non-interactive execution are
-    local-only. Only after explicit Cloud consent, run the trusted Hephaestus
-    runner with `upload <exact-verified-package-root> --visibility
-    private-link`. Keep the local package on every auth/offline/CAS/quota/scan
-    failure and report an exact retry command. Public Hub publication remains
-    a separate explicit action.
+    local-only. Before any upload you read the package for secrets yourself,
+    by meaning and in any language, write the verdicts to a review file outside
+    the package (`agentlas.upload-secret-review/1`, see `/hep-upload` Step 3)
+    and pass it with `--secret-review`. Only after explicit consent for that
+    destination, run the trusted Hephaestus runner with `hep-upload
+    <exact-verified-package-root> --visibility private-link --secret-review
+    <file>` for Cloud or `--visibility marketplace` for Hub. Keep the local
+    package on every auth/offline/CAS/quota/scan failure and report an exact
+    retry command.
 
 ## Output
 
