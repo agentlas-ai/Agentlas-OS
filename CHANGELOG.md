@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.2.64 — 2026-10-16
+
+- Core automatic memory curation moved to the canonical model: `curate()` queues
+  legacy tickets and `stop_hook` no longer admits learnings itself.
+- Drop the unread `scopes.oneForwardable` value from the curator ruleset.
 
 - Model-led secret review on upload: the connected model (or the host model, via
   a review file) can only remove more lines from an upload, never clear a
@@ -17,6 +21,8 @@
   `~/.gemini/hephaestus-extension-source`; Antigravity's `~/.gemini/GEMINI.md`,
   `~/.gemini/antigravity*` and `~/.gemini/config/*` are untouched. `gemini-cli`
   is still accepted in routing cards that were published earlier.
+- A failed Cloud or Hub search now returns its repair plan as `sourceRepairs`
+  beside the digest-bound source receipts.
 
 ## 1.2.62 — 2026-10-10
 
