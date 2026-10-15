@@ -51,8 +51,7 @@
     "manage_memory_tickets",
     "coordinate_ontology_runtime"
   ],
-  "card_quality_score": 0.91,
-  "card_version": "2.0.0",
+  "card_version": "2.0.1",
   "cloud_delegation_policy": "ask",
   "cost_hints": {
     "model_calls": "medium",
@@ -118,12 +117,6 @@
       "type": "array"
     }
   ],
-  "quality": {
-    "benchmark_suites": [],
-    "evaluated_at": "2026-06-25T00:00:00Z",
-    "lint_version": "routing-card/2.0",
-    "score": 0.91
-  },
   "required_inputs": [],
   "required_plugins": [],
   "revision": 2,
@@ -136,7 +129,7 @@
     "tier": "medium"
   },
   "routing_status": "searchable",
-  "routing_status_reason": "Searchable metadata is complete; routing-ready remains blocked until 10 private benchmark cases are verified.",
+  "routing_status_reason": "Searchable metadata is complete; routing-ready has not been established.",
   "schemaVersion": "routing-card/2.0",
   "source": {
     "kind": "local_path",
