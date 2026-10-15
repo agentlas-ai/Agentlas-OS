@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// @agentlas-browser-cdp-contract 9
+// @agentlas-browser-cdp-contract 10
+// @agentlas-browser-cdp-writer agentlas-core
 // Agentlas Browser (CDP) — general-purpose engine. Launches an Agentlas-owned
 // Chrome for Testing profile with a remote debugging port, then attaches
 // @playwright/mcp over CDP to provide MCP browser tools. This process proxies
@@ -20,6 +21,69 @@ const EXCLUSIVE_LEASE_FILE = path.join(CDP_PROFILE, '.agentlas-cdp-standalone-le
 const HEADLESS = String(process.env.AGENTLAS_CDP_HEADLESS || '1').toLowerCase() !== '0';
 const SKILLS_DIR = process.env.AGENTLAS_BROWSER_SKILLS_DIR || path.join(os.homedir(), '.agentlas', 'browser-skills');
 const log = (...a) => console.error('[agentlas-browser]', ...a);
+
+function createOwnedChildDrain(child) {
+    let ended = false, stopping = false, termRequested = false, forceRequested = false;
+    let graceTimer, forceTimer;
+    const timers = new Set();
+    let resolveClosed;
+    const closed = new Promise(resolve => { resolveClosed = resolve; });
+    child.on("error", () => { });
+    child.once("close", () => {
+        if (ended)
+            return;
+        ended = true;
+        for (const timer of timers)
+            clearTimeout(timer);
+        timers.clear();
+        resolveClosed();
+    });
+    const schedule = (delay, action) => {
+        const timer = setTimeout(() => { timers.delete(timer); if (!ended)
+            action(); }, delay);
+        timers.add(timer);
+        return timer;
+    };
+    const kill = (signal) => { if (!ended) {
+        try {
+            child.kill(signal);
+        }
+        catch { /* Request failure never proves death. */ }
+    } };
+    return {
+        closed,
+        stop(options = {}) {
+            if (ended)
+                return closed;
+            const term = () => {
+                if (!termRequested) {
+                    termRequested = true;
+                    kill("SIGTERM");
+                }
+                if (options.forceAfterMs !== undefined && !ended && forceTimer === undefined && !forceRequested) {
+                    forceTimer = schedule(Math.max(0, options.forceAfterMs), () => { forceRequested = true; kill("SIGKILL"); });
+                }
+            };
+            if ((options.graceMs ?? 0) > 0) {
+                if (!stopping)
+                    graceTimer = schedule(options.graceMs, term);
+            }
+            else {
+                // An explicit Stop must not wait behind an earlier stdin-close grace.
+                if (graceTimer !== undefined) {
+                    clearTimeout(graceTimer);
+                    timers.delete(graceTimer);
+                    graceTimer = undefined;
+                }
+                term();
+            }
+            stopping = true;
+            return closed;
+        },
+    };
+}
+
+const ownedChildDrains = new WeakMap();
 
 function processIsLive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -149,19 +213,25 @@ function waitForProcessExit(pid, timeoutMs) {
 }
 
 async function terminateOwnedBrowser(child) {
-  if (!child?.pid || !processIsLive(child.pid)) return;
+  if (!child) return;
+  const drain = ownedChildDrains.get(child);
+  if (!drain) throw new Error('Agentlas browser cleanup requires its original owned child.');
+  if (child.exitCode !== null || child.signalCode !== null || !child.pid || !processIsLive(child.pid)) { await drain.closed; return; }
   try {
     if (process.platform === 'win32') {
       await new Promise((resolve) => execFile('taskkill.exe', ['/PID', String(child.pid), '/T'], { windowsHide: true, timeout: 3000 }, () => resolve()));
     } else process.kill(child.pid, 'SIGTERM');
   } catch (error) {}
-  if (await waitForProcessExit(child.pid, 2500)) return;
+  if (await waitForProcessExit(child.pid, 2500)) { await drain.closed; return; }
+  if (child.exitCode !== null || child.signalCode !== null) { await drain.closed; return; }
   try {
     if (process.platform === 'win32') {
       await new Promise((resolve) => execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 3000 }, () => resolve()));
     } else process.kill(child.pid, 'SIGKILL');
   } catch (error) {}
   await waitForProcessExit(child.pid, 2500);
+  // Failed final polling never proves death or permits lease/owner removal.
+  await drain.closed;
 }
 
 async function ensureChrome() {
@@ -185,6 +255,7 @@ async function ensureChrome() {
   args.push('--no-startup-window');
   log('launching Agentlas Chrome for Testing on port', PORT, HEADLESS ? '(headless)' : '');
   const child = spawn(exe, args, { detached: false, stdio: 'ignore' });
+  ownedChildDrains.set(child, createOwnedChildDrain(child));
   let launchError = null;
   child.once('error', (error) => { launchError = error; });
   writeOwner(child.pid);
@@ -343,6 +414,7 @@ function loadSkill(name) { const p = skillPath(name); if (!fs.existsSync(p)) ret
 async function main() {
   let browserChild = null;
   let browserReadyPromise = null;
+  let browserLaunchPromise = null;
   let leaseHeld = false;
   let closing = false;
   let cleanupFlight = null;
@@ -350,7 +422,12 @@ async function main() {
     if (cleanupFlight) return cleanupFlight;
     closing = true;
     cleanupFlight = (async () => {
+      try { child.stdin.end(); } catch (error) { /* The exact child may already be closing. */ }
+      const stopped = childDrain.stop({ forceAfterMs: 2000 });
+      // Await the original launch, not its catch wrapper (which awaits cleanup).
+      if (browserLaunchPromise) browserChild = await browserLaunchPromise.catch(() => null);
       await terminateOwnedBrowser(browserChild);
+      await stopped;
       if (browserChild?.pid) clearOwner(browserChild.pid);
       if (leaseHeld) {
         releaseExclusiveLease();
@@ -365,7 +442,8 @@ async function main() {
       acquireExclusiveLease();
       leaseHeld = true;
       if (closing) throw new Error('Agentlas Browser client closed before launch.');
-      browserChild = await ensureChrome();
+      browserLaunchPromise = ensureChrome();
+      browserChild = await browserLaunchPromise;
       if (closing) throw new Error('Agentlas Browser client closed during launch.');
     })().catch(async (error) => {
       await cleanup();
@@ -376,6 +454,7 @@ async function main() {
   };
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const child = spawn(npx, ['-y', '@playwright/mcp@latest', '--cdp-endpoint', 'http://127.0.0.1:' + PORT], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const childDrain = createOwnedChildDrain(child);
   let finishing = false;
   const finish = (code) => {
     if (finishing) return;
@@ -383,7 +462,10 @@ async function main() {
     void cleanup().then(() => process.exit(code));
   };
   child.on('error', (error) => { log('failed to start @playwright/mcp', String(error)); finish(1); });
-  child.on('exit', (code) => finish(code == null ? 0 : code));
+  child.on('close', (code) => finish(code == null ? 0 : code));
+  child.stdin.on('error', () => finish(1));
+  process.stdin.on('error', () => finish(1));
+  process.stdout.on('error', () => finish(1));
 
   const recording = [];            // sequence of actions that succeeded in this session
   const pending = new Map();       // client's original tools/call: id -> {name, args}
@@ -391,7 +473,7 @@ async function main() {
   let currentUrl = '';
   let internalSeq = 0;
   const writeClient = (obj) => { try { process.stdout.write(JSON.stringify(obj) + '\n'); } catch (e) {} };
-  const forwardRaw = (line) => { try { child.stdin.write(line + '\n'); } catch (e) {} };
+  const forwardRaw = (line) => { if (closing) return; try { child.stdin.write(line + '\n'); } catch (e) {} };
   const writeBrowserStartFailure = (id, error) => writeClient({
     jsonrpc: '2.0',
     id,
@@ -453,6 +535,7 @@ async function main() {
 
   // client -> child direction
   const handleClientLine = (line) => {
+    if (closing) return;
     if (!line.trim()) { forwardRaw(line); return; }
     let msg; try { msg = JSON.parse(line); } catch (e) { forwardRaw(line); return; }
     if (msg && msg.method === 'tools/call' && msg.params) {
@@ -515,6 +598,7 @@ async function main() {
   };
 
   let cbuf = '';
+  child.stdout.on('error', () => finish(1));
   child.stdout.on('data', (chunk) => {
     cbuf += chunk.toString('utf8'); let i;
     while ((i = cbuf.indexOf('\n')) >= 0) { const line = cbuf.slice(0, i); cbuf = cbuf.slice(i + 1); handleChildLine(line); }
@@ -525,12 +609,12 @@ async function main() {
     while ((idx = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, idx); buf = buf.slice(idx + 1); handleClientLine(line); }
   });
   process.stdin.on('end', () => {
+    closing = true;
     try { child.stdin.end(); } catch (error) {}
-    const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch (error) {} }, 1500);
-    timer.unref();
+    void childDrain.stop({ graceMs: 1500, forceAfterMs: 2000 });
   });
   const stopForSignal = (code) => {
-    try { child.kill('SIGTERM'); } catch (error) {}
+    void childDrain.stop({ forceAfterMs: 2000 });
     finish(code);
   };
   process.once('SIGINT', () => stopForSignal(130));

@@ -36,10 +36,9 @@ def launcher_path() -> Path:
 
 
 LAUNCHER_CONTRACT_RE = re.compile(rb"@agentlas-browser-cdp-contract\s+(\d+)")
-# Standalone Core contract 9 is safe and non-windowed. Desktop contract 10 is
-# newer because it also carries the shared lease/guardian implementation and
-# must retain precedence when both products are installed.
-BUNDLED_LAUNCHER_CONTRACT = 9
+# Standalone Core contract 10 retains actual child custody. Newer Desktop
+# contracts retain precedence for their shared lease/guardian implementation.
+BUNDLED_LAUNCHER_CONTRACT = 10
 
 
 def _launcher_contract(source: bytes) -> int | None:
@@ -162,12 +161,12 @@ class _McpSession:
             pass
         try:
             self.proc.terminate()
-            self.proc.wait(timeout=5)
-        except Exception:
-            try:
-                self.proc.kill()
-            except Exception:
-                pass
+        except ProcessLookupError:
+            pass
+        finally:
+            # Signal failure never proves the original child stopped. Preserve
+            # that error only after its actual wait has retained physical custody.
+            self.proc.wait()
 
 
 def _text_of(result: dict) -> str:
