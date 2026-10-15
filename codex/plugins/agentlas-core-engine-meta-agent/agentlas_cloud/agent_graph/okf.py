@@ -8,7 +8,7 @@ relations. Path = identity, directory = node kind, Markdown links = edges,
 
 OKF is intentionally not a formal typed ontology, so this is a *lossy
 interchange* projection: AO stays the canonical typed source; OKF is the
-portable wire format that any OKF-aware agent (Gemini/ADK, Knowledge Catalog)
+portable wire format that any OKF-aware agent (ADK, Knowledge Catalog)
 can consume. Export is redaction-safe — private fields are never serialized,
 mirroring the A2A export whitelist.
 

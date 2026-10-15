@@ -508,7 +508,7 @@ def _context_lines(
         if not isinstance(chunk, dict):
             continue
         # Host-native policy files are already loaded by Claude/Codex/Grok/
-        # Gemini-compatible runtimes. Recalling them as evidence would both
+        # Antigravity runtimes. Recalling them as evidence would both
         # duplicate instructions and let stale indexed policy shadow the live
         # file, so the capsule excludes them by source identity.
         if _is_host_policy_chunk(chunk):

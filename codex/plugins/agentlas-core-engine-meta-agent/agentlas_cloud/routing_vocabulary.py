@@ -34,6 +34,9 @@ from typing import Any, Iterable, Mapping
 CANONICAL_RUNTIMES: tuple[str, ...] = (
     "claude-code",
     "codex",
+    # Legacy: no longer generated or supported (Gemini CLI individual tier ended
+    # 2026-06-18, successor is antigravity). Still accepted so published routing
+    # cards that declare it keep validating.
     "gemini-cli",
     "antigravity",
     "cursor",

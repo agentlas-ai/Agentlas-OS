@@ -23,7 +23,7 @@
 
 <p align="center">
   <strong>आपका headhunter. काम को specialist टीम चाहिए, तो वह ले आता है।</strong><br>
-  <sub>Claude Code, Codex, Cursor और Gemini के भीतर वैसे ही चलता है।</sub>
+  <sub>Claude Code, Codex, Cursor और Antigravity के भीतर वैसे ही चलता है।</sub>
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
   <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
-  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
+  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
   <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
 </p>
@@ -52,7 +52,7 @@
 
 ### Install
 
-**Agentlas OS** — इस मशीन के Claude Code, Codex, Gemini CLI, Antigravity, Cursor और बाकी hosts के लिए। <code>sudo</code> नहीं, <code>$HOME</code> के बाहर कुछ नहीं लिखा जाता। Install के बाद अपना agent host restart करें और <code>hephaestus doctor</code> चलाएँ।
+**Agentlas OS** — इस मशीन के Claude Code, Codex, Antigravity, Cursor और बाकी hosts के लिए। <code>sudo</code> नहीं, <code>$HOME</code> के बाहर कुछ नहीं लिखा जाता। Install के बाद अपना agent host restart करें और <code>hephaestus doctor</code> चलाएँ।
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
@@ -227,7 +227,7 @@ Desktop खुद host है, इसलिए run शुरू होने स
 ## Install: सभी तरीक़े, और यह क्या लिखता है
 
 इसे उस LLM में paste करें जिसे आप अभी इस्तेमाल कर रहे हैं, जैसे Claude Code,
-Codex, Gemini CLI, Antigravity या Cursor:
+Codex, Antigravity या Cursor:
 
 ```text
 इस GitHub repo से Hephaestus install करें:
@@ -291,7 +291,7 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-यह neutral runner को `~/.agentlas/runtime/current/bin/hephaestus` पर install करता है और Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose तथा GitHub Copilot CLI के लिए command, skill या MCP adapters, और Grok के लिए memory hooks register करता है। Local models MCP entrypoint `hephaestus mcp serve` इस्तेमाल करते हैं। installer registration के बाद हर runtime surface को verify करता है।
+यह neutral runner को `~/.agentlas/runtime/current/bin/hephaestus` पर install करता है और Claude Code, Codex, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose तथा GitHub Copilot CLI के लिए command, skill या MCP adapters, और Grok के लिए memory hooks register करता है। Local models MCP entrypoint `hephaestus mcp serve` इस्तेमाल करते हैं। installer registration के बाद हर runtime surface को verify करता है।
 
 ### प्रति-Runtime Plugin Drivers
 
@@ -327,7 +327,7 @@ codex plugin add hephaestus@agentlas-core-engine
 <details>
 <summary>फ़ाइलें Project में कॉपी करें (Manual Driver)</summary>
 
-Repo को clone करें और `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`, `schemas/`, `templates/` तथा `.agentlas/` को अपने workspace में copy करें। Runtime folders (`.claude/`, `codex/`, `.gemini/`, `.agents/`) उसी canonical core पर adapters के रूप में काम करते हैं।
+Repo को clone करें और `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`, `schemas/`, `templates/` तथा `.agentlas/` को अपने workspace में copy करें। Runtime folders (`.claude/`, `codex/`, `antigravity/`, `.agents/`) उसी canonical core पर adapters के रूप में काम करते हैं।
 
 </details>
 

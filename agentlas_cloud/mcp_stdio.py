@@ -1638,7 +1638,7 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "Open the user's browser for a one-time Agentlas Google/sign-in flow, "
             "store the local signed-in state under ~/.agentlas/auth, and reuse it "
-            "for Claude Code, Codex, Gemini, and other Hephaestus Hub calls."
+            "for Claude Code, Codex, Antigravity, and other Hephaestus Hub calls."
         ),
         "inputSchema": {
             "type": "object",

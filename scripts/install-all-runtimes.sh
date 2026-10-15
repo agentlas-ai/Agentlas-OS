@@ -456,7 +456,7 @@ preflight_git() {
     warn "git is missing. Starting Apple Command Line Tools installer."
     xcode-select --install >/dev/null 2>&1 || true
   fi
-  warn "git is required for Claude/Codex/Gemini marketplace installs. Run git --version after Command Line Tools finishes, then rerun this installer."
+  warn "git is required for Claude/Codex marketplace installs. Run git --version after Command Line Tools finishes, then rerun this installer."
   return 1
 }
 
@@ -2110,48 +2110,34 @@ register_codex_mcp() {
   log "Registered canonical local hephaestus-network MCP in $cfg"
 }
 
-write_gemini_fallback_command() {
-  local command_dir="$HOME/.gemini/commands"
-  mkdir -p "$command_dir"
-  local name
-  for name in hep-build.toml hep-network.toml hep-local.toml hep-cloud.toml hep-hub.toml hep-search.toml hep-browser.toml hep-call.toml hep-upload.toml hep-storm.toml hep-graph.toml agentlas.toml; do
-    rm -f "$command_dir/$name"
-    cp "$source_dir/gemini/extension/commands/$name" "$command_dir/$name" || return 1
+# Gemini CLI is no longer a supported host (individual-tier service ended
+# 2026-06-18; Antigravity is the successor and keeps its own ~/.gemini paths).
+# Remove only what this installer itself put there: the `hephaestus` extension,
+# its stable source copy, and fallback command files whose content names
+# Hephaestus. Anything else in ~/.gemini, including Antigravity data and a
+# user's own commands, is left alone.
+remove_legacy_gemini_cli() {
+  local removed=0 file
+  if have gemini; then
+    try gemini extensions uninstall hephaestus >/dev/null 2>&1 || true
+  fi
+  for target in "$HOME/.gemini/extensions/hephaestus" "$HOME/.gemini/hephaestus-extension-source"; do
+    if [[ -e "$target" ]]; then
+      rm -rf "$target" && removed=$((removed + 1))
+    fi
   done
-  rm -f "$command_dir/hephaestus.toml" "$command_dir/hephaests-network.toml" \
-        "$command_dir/hephaestus-build.toml" "$command_dir/hephaestus-network.toml" \
-        "$command_dir/hephaestus-cloud.toml" "$command_dir/hephaestus-search.toml" \
-        "$command_dir/hephaestus-call.toml"
-  log "Installed Gemini fallback commands: /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-storm, /hep-graph"
-}
-
-install_gemini() {
-  if ! have gemini; then
-    warn "Gemini CLI not found; skipped Gemini extension install."
-    return 0
+  if [[ -d "$HOME/.gemini/commands" ]]; then
+    for file in "$HOME/.gemini/commands"/hep-*.toml "$HOME/.gemini/commands"/agentlas.toml "$HOME/.gemini/commands"/agentlas-*.toml; do
+      [[ -f "$file" ]] || continue
+      if grep -qi "hephaestus" "$file" 2>/dev/null; then
+        rm -f "$file" && removed=$((removed + 1))
+      fi
+    done
   fi
-
-  log "== Gemini CLI extension and command =="
-  try gemini extensions uninstall hephaestus >/dev/null 2>&1 || true
-  ensure_downloaded_source || return 1
-  local gemini_extension_dir="$source_dir/gemini/extension"
-  if [[ ! -f "$gemini_extension_dir/gemini-extension.json" ]]; then
-    warn "Gemini extension manifest not found: $gemini_extension_dir/gemini-extension.json"
-    return 1
+  if [[ "$removed" -gt 0 ]]; then
+    log "Removed $removed legacy Gemini CLI file(s) installed by earlier Agentlas versions (Gemini CLI is no longer supported; use Antigravity)."
   fi
-  chmod +x "$gemini_extension_dir/bin/hephaestus" 2>/dev/null || true
-  if [[ -z "${HEPHAESTUS_SOURCE_DIR:-}" ]]; then
-    local stable_gemini_source="$HOME/.gemini/hephaestus-extension-source"
-    rm -rf "$stable_gemini_source"
-    mkdir -p "$stable_gemini_source"
-    copy_tree_without_python_cache "$gemini_extension_dir" "$stable_gemini_source" || return 1
-    gemini_extension_dir="$stable_gemini_source"
-  fi
-
-  run_yes gemini extensions install "$gemini_extension_dir" --consent --skip-settings || return 1
-
-  write_gemini_fallback_command || return 1
-  ok=$((ok + 1))
+  return 0
 }
 
 antigravity_present() {
@@ -2663,7 +2649,7 @@ main() {
   install_agents_skills || { warn "Universal ~/.agents/skills install failed."; failed=$((failed + 1)); }
   install_claude || { warn "Claude install failed."; failed=$((failed + 1)); }
   install_codex || { warn "Codex install failed."; failed=$((failed + 1)); }
-  install_gemini || { warn "Gemini install failed."; failed=$((failed + 1)); }
+  remove_legacy_gemini_cli
   install_antigravity || { warn "Antigravity install failed."; failed=$((failed + 1)); }
   install_cursor || { warn "Cursor install failed."; failed=$((failed + 1)); }
   install_opencode || { warn "OpenCode install failed."; failed=$((failed + 1)); }
@@ -2688,12 +2674,11 @@ main() {
   log "Public chat surface: core external commands are installed or refreshed; Claude/Codex also get the Telegram connect helper; Agentlas native surfaces use plain language."
   log "Local memory recall: Claude/Codex hooks, Antigravity PreInvocation, and OpenCode system injection are dynamic; Grok uses passive cache refresh plus its static AGENTS.md pointer."
   log "Automatic updates: Desktop startup and /hep-* commands launch a verified, rate-limited background update without delaying the current task."
-  log "Restart open Claude Code, Codex, Gemini, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, goose, Kimi, and Copilot CLI apps."
+  log "Restart open Claude Code, Codex, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, goose, Kimi, and Copilot CLI apps."
   log "Then use:"
   log "  Agentlas:    describe the task in plain language; native tools choose the path"
 	  log "  Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph, /hep-connect"
 	  log '  Codex:       $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm, $hephaestus-graph; use plain language for local/hub/search/browser/call/connect'
-	  log "  Gemini CLI:  /extensions list or /commands list, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
 	  log "  Antigravity: reopen the workspace, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
 	  log "  Cursor:      /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
 	  log "  OpenCode:    /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"

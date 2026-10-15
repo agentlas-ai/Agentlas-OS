@@ -23,7 +23,7 @@
 
 <p align="center">
   <strong>あなたのヘッドハンター。専門チームが要る仕事には、連れてきます。</strong><br>
-  <sub>Claude Code・Codex・Cursor・Gemini の中でそのまま動きます。</sub>
+  <sub>Claude Code・Codex・Cursor・Antigravity の中でそのまま動きます。</sub>
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
   <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
-  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
+  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
   <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
 </p>
@@ -52,7 +52,7 @@
 
 ### インストール
 
-**Agentlas OS** — このマシンの Claude Code、Codex、Gemini CLI、Antigravity、Cursor などのホストに入れます。<code>sudo</code> 不要、<code>$HOME</code> の外には何も書きません。インストール後はエージェントホストを再起動し、<code>hephaestus doctor</code> を実行してください。
+**Agentlas OS** — このマシンの Claude Code、Codex、Antigravity、Cursor などのホストに入れます。<code>sudo</code> 不要、<code>$HOME</code> の外には何も書きません。インストール後はエージェントホストを再起動し、<code>hephaestus doctor</code> を実行してください。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
@@ -226,7 +226,7 @@ Desktop はホストそのものなので、実行が始まる**前に**コー�
 
 ## インストール：すべての方法と、何をどこに書くか
 
-今使っている LLM、たとえば Claude Code、Codex、Gemini CLI、Antigravity、Cursor に貼り付けてください:
+今使っている LLM、たとえば Claude Code、Codex、Antigravity、Cursor に貼り付けてください:
 
 ```text
 この GitHub リポジトリから Hephaestus をインストールしてください:
@@ -290,7 +290,7 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-これにより、ニュートラルランナーが `~/.agentlas/runtime/current/bin/hephaestus` にインストールされ、Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode、OpenClaw、Hermes、Kimi Code CLI、goose、GitHub Copilot CLI 用のコマンド・スキル・MCP アダプターと、Grok 用のメモリフックが登録されます。ローカルモデルは MCP エントリポイント `hephaestus mcp serve` を使います。インストーラーは、登録後に各ランタイムサーフェスを検証します。
+これにより、ニュートラルランナーが `~/.agentlas/runtime/current/bin/hephaestus` にインストールされ、Claude Code、Codex、Antigravity、Cursor、OpenCode、OpenClaw、Hermes、Kimi Code CLI、goose、GitHub Copilot CLI 用のコマンド・スキル・MCP アダプターと、Grok 用のメモリフックが登録されます。ローカルモデルは MCP エントリポイント `hephaestus mcp serve` を使います。インストーラーは、登録後に各ランタイムサーフェスを検証します。
 
 ### ランタイム別プラグインドライバー
 
@@ -327,7 +327,7 @@ codex plugin add hephaestus@agentlas-core-engine
 <details>
 <summary>プロジェクトにファイルをコピー（手動ドライバー）</summary>
 
-リポジトリをクローンし、`AGENTS.md`、`agent.md`、`agents/`、`skills/`、`modes/`、`schemas/`、`templates/`、`.agentlas/` をワークスペースにコピーします。ランタイムフォルダー（`.claude/`、`codex/`、`.gemini/`、`.agents/`）は、同一の正準コアに対するアダプターとして機能します。
+リポジトリをクローンし、`AGENTS.md`、`agent.md`、`agents/`、`skills/`、`modes/`、`schemas/`、`templates/`、`.agentlas/` をワークスペースにコピーします。ランタイムフォルダー（`.claude/`、`codex/`、`antigravity/`、`.agents/`）は、同一の正準コアに対するアダプターとして機能します。
 
 </details>
 

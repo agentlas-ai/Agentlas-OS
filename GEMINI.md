@@ -1,6 +1,6 @@
-# Gemini CLI Adapter
+# Antigravity Adapter
 
-This is a thin Gemini CLI adapter for the Agentlas Core Engine Meta-Agent Team.
+This is a thin Antigravity adapter (Antigravity reads `GEMINI.md`) for the Agentlas Core Engine Meta-Agent Team.
 `AGENTS.md` is the canonical source of truth.
 
 ## Public Release Boundary
@@ -12,8 +12,8 @@ benchmarks, tests or fixtures, logs/results, signing or credential material,
 environment files, private paths/memory, or unrelated local work. Verify the
 staged archive, not the dirty working tree.
 
-Google Antigravity shares the `~/.gemini/` home with the Gemini CLI and also
-auto-loads this file and `AGENTS.md`. Its `/hep-build`,
+Google Antigravity keeps its data under `~/.gemini/` and auto-loads this file
+and `AGENTS.md`. Its `/hep-build`,
 `/hep-network`, `/hep-local`, `/hep-cloud`, and `/hep-hub` slash commands ship as
 Antigravity workflows under `antigravity/` (see `antigravity/README.md`).
 
@@ -39,22 +39,21 @@ Antigravity workflows under `antigravity/` (see `antigravity/README.md`).
 ## Default Behavior
 
 Create or package portable Markdown-first Agentlas agents and teams with
-Codex, Claude Code, Gemini, Antigravity, Cursor, and AGENTS.md adapters.
+Codex, Claude Code, Antigravity, Cursor, and AGENTS.md adapters.
 
 ## Global Command
 
 This package exposes `/hep-build`, `/hep-network`, `/hep-local`,
-`/hep-cloud`, and `/hep-hub` for Gemini CLI through
-`gemini/extension/commands/hep-*.toml`, with fallback user commands at
-`.gemini/commands/hep-*.toml`. For Antigravity the same commands ship as
-workflows at `antigravity/workflows/hep-*.md` (global install target
+`/hep-cloud`, and `/hep-hub` for Antigravity as workflows at
+`antigravity/workflows/hep-*.md` (global install target
 `~/.gemini/antigravity/global_workflows/hep-*.md`; project fallback
 `.agents/workflows/hep-*.md`). Generated agents must receive their own
-Gemini extension command, Antigravity workflow, and a matching
-`.agentlas/global-commands.json` entry.
+Antigravity workflow and a matching `.agentlas/global-commands.json` entry.
+The Gemini CLI is no longer a supported host (its individual tier ended
+2026-06-18; Antigravity is the successor).
 
-The extension exposes one Workforce MCP, local `hephaestus-network`. Network
+The host exposes one Workforce MCP, local `hephaestus-network`. Network
 federates registered Local, owner Cloud, and public Hub; the other three
 commands are exact single-source scopes and never widen. Core performs remote
-upstream calls internally, so the extension must not also expose a direct
+upstream calls internally, so the host must not also expose a direct
 `agentlas` MCP with duplicate `workforce.*` tools.

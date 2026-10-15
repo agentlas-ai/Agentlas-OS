@@ -3,7 +3,7 @@
 The OKF bundle is the vendor-neutral, cross-runtime artifact. This module emits
 a Knowledge-Catalog-ingestible descriptor over an OKF export and declares the
 runtimes that can consume the pack, so the Agent OS participates as a pack
-*producer* in a multi-agent mesh (Claude Code / Codex / Gemini CLI / any
+*producer* in a multi-agent mesh (Claude Code / Codex / Antigravity / any
 OKF-aware agent) without proprietary coupling. Every export stays value-free
 (redaction-safe) under the public-export invariant.
 """
@@ -25,7 +25,7 @@ from .okf import to_okf_bundle
 # all — it is the open marker for any other OKF-aware consumer — so it is
 # appended verbatim after the check.
 SUPPORTED_RUNTIMES = require_canonical_runtimes(
-    ("claude-code", "codex", "gemini-cli", "antigravity", "agents-md")
+    ("claude-code", "codex", "antigravity", "agents-md")
 ) + ["okf-aware"]
 
 

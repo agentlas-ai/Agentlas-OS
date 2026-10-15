@@ -25,7 +25,7 @@ done
 [ -n "$CLI" ] || { echo "Agentlas CLI not found. Install it with: npm i -g agentlas" >&2; exit 1; }
 ```
 
-Do not substitute Gemini CLI, Hephaestus routing, or Hub search when the Agentlas
+Do not substitute another CLI, Hephaestus routing, or Hub search when the Agentlas
 CLI is missing.
 
 ## Commands

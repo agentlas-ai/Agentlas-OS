@@ -21,8 +21,8 @@ Codex plugin packaging, Claude adapter use, or public open-source release.
 
 ## Use When
 
-- The user already has an agent, prompt, `.claude` folder, Codex skill, Gemini
-  skill, local repo, ZIP, or public repo.
+- The user already has an agent, prompt, `.claude` folder, Codex skill, Antigravity
+  workflow, local repo, ZIP, or public repo.
 - The user wants to "Agentlas-ify", package, publish, verify, or install it.
 - The generated output needs public/private boundary cleanup.
 
@@ -79,7 +79,7 @@ plan before public or marketplace-ready output.
   English behavior while preserving the original intent. Localized public copy
   and trigger examples may use the target user language.
 - `AGENTS.md` canonical core.
-- Thin runtime adapters: `CLAUDE.md`, `GEMINI.md`, `.claude/`, `.gemini/`,
+- Thin runtime adapters: `CLAUDE.md`, `GEMINI.md` (read by Antigravity), `.claude/`,
   `antigravity/workflows/`, Codex plugin or local skill mirrors when requested.
 - `docs/builder-interview.md`.
 - `docs/research-sources.md`.
@@ -101,7 +101,7 @@ plan before public or marketplace-ready output.
 - Sitemap/task-bias coverage when packaging complex teams.
 - `manifest.json`, schemas, install scripts, and verification scripts for
   public release.
-- Missing global command files for Claude Code, Codex, Gemini CLI, Antigravity,
+- Missing global command files for Claude Code, Codex, Antigravity,
   generic AGENTS.md, and terminal use.
 
 ## System Agents - OS-Resident, Strip on Repackage (owner decision 2026-08-08)

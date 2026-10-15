@@ -43,15 +43,6 @@
       "notes": "Legacy compatibility only for Codex 0.116 and earlier."
     },
     {
-      "runtime": "gemini-cli",
-      "command": "/hep-build",
-      "adapterPath": "gemini/extension/commands/hep-build.toml",
-      "globalInstallPath": "curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-build.toml."
-    },
-    {
       "runtime": "antigravity",
       "command": "/hep-build",
       "adapterPath": "antigravity/workflows/hep-build.md",
@@ -132,15 +123,6 @@
         }
       },
       "notes": "Legacy compatibility only for Codex 0.116 and earlier."
-    },
-    {
-      "runtime": "gemini-cli",
-      "command": "/hep-network",
-      "adapterPath": "gemini/extension/commands/hep-network.toml",
-      "globalInstallPath": "curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-network.toml."
     },
     {
       "runtime": "antigravity",
@@ -230,15 +212,6 @@
       "notes": "Legacy compatibility only for Codex 0.116 and earlier; Local-only Workforce scope."
     },
     {
-      "runtime": "gemini-cli",
-      "command": "/hep-local",
-      "adapterPath": "gemini/extension/commands/hep-local.toml",
-      "globalInstallPath": "curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command is also installed at ~/.gemini/commands/hep-local.toml."
-    },
-    {
       "runtime": "antigravity",
       "command": "/hep-local",
       "adapterPath": "antigravity/workflows/hep-local.md",
@@ -312,15 +285,6 @@
         }
       },
       "notes": "Legacy compatibility only for Codex 0.116 and earlier."
-    },
-    {
-      "runtime": "gemini-cli",
-      "command": "/hep-storm",
-      "adapterPath": "gemini/extension/commands/hep-storm.toml",
-      "globalInstallPath": "curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-storm.toml."
     },
     {
       "runtime": "antigravity",
@@ -416,15 +380,6 @@
       "notes": "Legacy compatibility only for Codex 0.116 and earlier."
     },
     {
-      "runtime": "gemini-cli",
-      "command": "/hep-cloud",
-      "adapterPath": "gemini/extension/commands/hep-cloud.toml",
-      "globalInstallPath": "curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command is also installable at ~/.gemini/commands/hep-cloud.toml."
-    },
-    {
       "runtime": "antigravity",
       "command": "/hep-cloud",
       "adapterPath": "antigravity/workflows/hep-cloud.md",
@@ -510,15 +465,6 @@
         }
       },
       "notes": "Legacy compatibility only for Codex 0.116 and earlier; public-Hub-only Workforce scope."
-    },
-    {
-      "runtime": "gemini-cli",
-      "command": "/hep-hub",
-      "adapterPath": "gemini/extension/commands/hep-hub.toml",
-      "globalInstallPath": "curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command is also installed at ~/.gemini/commands/hep-hub.toml."
     },
     {
       "runtime": "antigravity",
@@ -653,33 +599,6 @@
         }
       },
       "notes": "Legacy compatibility only for Codex 0.116 and earlier; explicit named-agent BYOM bundle preparation."
-    },
-    {
-      "runtime": "gemini-cli",
-      "command": "/hep-search",
-      "adapterPath": "gemini/extension/commands/hep-search.toml",
-      "globalInstallPath": "~/.gemini/commands/hep-search.toml",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command installed by scripts/install-all-runtimes.sh."
-    },
-    {
-      "runtime": "gemini-cli",
-      "command": "/hep-browser",
-      "adapterPath": "gemini/extension/commands/hep-browser.toml",
-      "globalInstallPath": "~/.gemini/commands/hep-browser.toml",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command installed by scripts/install-all-runtimes.sh."
-    },
-    {
-      "runtime": "gemini-cli",
-      "command": "/hep-call",
-      "adapterPath": "gemini/extension/commands/hep-call.toml",
-      "globalInstallPath": "~/.gemini/commands/hep-call.toml",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command installed by scripts/install-all-runtimes.sh."
     },
     {
       "runtime": "antigravity",
@@ -838,15 +757,6 @@
       "notes": "Legacy compatibility only for Codex 0.116 and earlier; asks Cloud vs Agentlas Hub first."
     },
     {
-      "runtime": "gemini-cli",
-      "command": "/hep-upload",
-      "adapterPath": "gemini/extension/commands/hep-upload.toml",
-      "globalInstallPath": "~/.gemini/commands/hep-upload.toml",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command installed by scripts/install-all-runtimes.sh."
-    },
-    {
       "runtime": "antigravity",
       "command": "/hep-upload",
       "adapterPath": "antigravity/workflows/hep-upload.md",
@@ -919,14 +829,6 @@
       "notes": "Legacy compatibility only for Codex 0.116 and earlier."
     },
     {
-      "runtime": "gemini-cli",
-      "command": "/hep-graph",
-      "adapterPath": "gemini/extension/commands/hep-graph.toml",
-      "globalInstallPath": "~/.gemini/commands/hep-graph.toml",
-      "scope": "global",
-      "status": "extension-custom-command"
-    },
-    {
       "runtime": "antigravity",
       "command": "/hep-graph",
       "adapterPath": "antigravity/workflows/hep-graph.md",
@@ -986,6 +888,6 @@
   ],
   "postCreationUserMessage": {
     "required": true,
-    "template": "global_commands: Agentlas terminal/app plain language through native Agentlas/Hephaestus tools; Claude Code /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph, /hep-connect; current Codex $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-storm, $hephaestus-graph and plain language for other MCP surfaces; Gemini CLI, Antigravity, Cursor, and OpenCode expose /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph. Antigravity is installed independently; Gemini CLI is only an optional additional host. Workforce scopes: network = registered Local + owner Cloud + public Hub; local = registered Local only; cloud = signed-in owner Cloud only; hub = public Hub only. All four use local MCP server hephaestus-network and the exact workforce.search_candidates -> workforce.validate_selection -> workforce.prepare_execution contract. On local-OS hosts it is the only Workforce MCP; Core performs Cloud/Hub upstream calls internally and direct agentlas MCP registration is removed to prevent duplicate tools from bypassing federation and privacy governance. Other meanings: build/create = /hep-build; automation = /hep-graph; search-only = /hep-search; browser-required = /hep-browser; explicit named call = /hep-call; upload gate = /hep-upload; Telegram setup = /hep-connect or plain-language Codex MCP request; force-robust completion = /hep-storm (Codex $hephaestus-storm)."
+    "template": "global_commands: Agentlas terminal/app plain language through native Agentlas/Hephaestus tools; Claude Code /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph, /hep-connect; current Codex $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-storm, $hephaestus-graph and plain language for other MCP surfaces; Antigravity, Cursor, and OpenCode expose /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph. Antigravity is installed independently. Workforce scopes: network = registered Local + owner Cloud + public Hub; local = registered Local only; cloud = signed-in owner Cloud only; hub = public Hub only. All four use local MCP server hephaestus-network and the exact workforce.search_candidates -> workforce.validate_selection -> workforce.prepare_execution contract. On local-OS hosts it is the only Workforce MCP; Core performs Cloud/Hub upstream calls internally and direct agentlas MCP registration is removed to prevent duplicate tools from bypassing federation and privacy governance. Other meanings: build/create = /hep-build; automation = /hep-graph; search-only = /hep-search; browser-required = /hep-browser; explicit named call = /hep-call; upload gate = /hep-upload; Telegram setup = /hep-connect or plain-language Codex MCP request; force-robust completion = /hep-storm (Codex $hephaestus-storm)."
   }
 }

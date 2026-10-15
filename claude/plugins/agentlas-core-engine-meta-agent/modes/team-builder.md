@@ -31,7 +31,7 @@ separate unrelated single-agent packages.
   and public/private release decisions.
 - Worker roles for domain work.
 - Eval judge and QA/evidence gate before final handoff.
-- Runtime Adapter Engineer for Codex, Claude Code, Gemini CLI, Antigravity,
+- Runtime Adapter Engineer for Codex, Claude Code, Antigravity,
   Cursor, and generic `AGENTS.md` surfaces.
 - Global Command Registry for one orchestrator/HQ command across runtimes.
 - Builder Interview and Research Gate artifacts:

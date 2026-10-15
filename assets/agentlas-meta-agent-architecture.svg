@@ -123,8 +123,8 @@
     <rect class="boxBlue" x="740" y="662" width="280" height="144" rx="9"/>
     <text class="label" x="762" y="690">Runtime adapters</text>
     <text class="code" x="762" y="715">.claude/ claude/</text>
-    <text class="code" x="762" y="737">codex/ .gemini/</text>
-    <text class="code" x="762" y="759">Claude Code, Codex, Gemini</text>
+    <text class="code" x="762" y="737">codex/ antigravity/</text>
+    <text class="code" x="762" y="759">Claude Code, Codex, Antigravity</text>
     <text class="tiny" x="762" y="785">thin mirrors over canonical core</text>
 
     <rect class="boxRed" x="1050" y="662" width="270" height="144" rx="9"/>

@@ -29,7 +29,7 @@ description: "Use when generating a single installable agent that should keep le
    for human approval before changing tools, connectors, secrets, or core
    instructions.
 7. Add `.agentlas/global-commands.json` and one public global command for the
-   worker across Claude Code, Codex, Gemini CLI, generic AGENTS.md, and
+   worker across Claude Code, Codex, Antigravity, generic AGENTS.md, and
    terminal adapters.
 
 ## Output

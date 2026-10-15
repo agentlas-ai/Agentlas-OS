@@ -22,7 +22,7 @@ SCHEMA = "routing-card/2.0"
 # Fallback runtime set for packages that declare none. Normalised through
 # routing_vocabulary so a typo fails at import instead of silently diverging
 # from CANONICAL_RUNTIMES.
-DEFAULT_RUNTIMES = require_canonical_runtimes(("claude-code", "codex", "gemini-cli", "agents-md"))
+DEFAULT_RUNTIMES = require_canonical_runtimes(("claude-code", "codex", "antigravity", "agents-md"))
 
 # The only directories a package's globalInstallPath may write into. Packages
 # declare their own install destination, so without this allowlist a hostile
@@ -30,7 +30,6 @@ DEFAULT_RUNTIMES = require_canonical_runtimes(("claude-code", "codex", "gemini-c
 _COMMAND_INSTALL_ROOTS = (
     "~/.claude/commands",
     "~/.codex/prompts",
-    "~/.gemini/commands",
     "~/.gemini/antigravity/global_workflows",
     "~/.gemini/antigravity-ide/global_workflows",
 )

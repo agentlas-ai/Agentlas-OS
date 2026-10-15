@@ -102,7 +102,7 @@
       "primarySkill": "runtime-support/skills/agentlas-packaging/SKILL.md",
       "useWhen": [
         "existing local agent or prompt",
-        "existing Claude, Codex, Gemini, Cursor, or AGENTS.md repo",
+        "existing Claude, Codex, Antigravity, Cursor, or AGENTS.md repo",
         "existing external public repo or zip",
         "package for Agentlas, Codex plugin, Claude adapter, local install, or open source"
       ],

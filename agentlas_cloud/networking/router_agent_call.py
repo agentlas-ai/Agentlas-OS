@@ -1,7 +1,7 @@
 """Router Agent escalation — no LLM in the engine (BYOC).
 
 When the deterministic router lands on `clarify` or `propose_new`, it can attach
-an escalation directive telling the HOST runtime (Claude Code / Codex / Gemini)
+an escalation directive telling the HOST runtime (Claude Code / Codex / Antigravity)
 to resolve the ambiguous request with the Router Agent: an LLM reasoning pass
 that rewrites the intent, re-ranks the candidates by intent fit, and decides
 route-vs-clarify-vs-build. The engine itself never calls a model — it only names

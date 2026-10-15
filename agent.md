@@ -30,7 +30,7 @@ portable Agentlas-compatible package.
 - Visible `agents/` and `skills/` folders where relevant.
 - `.agentlas/` mode, memory, vault, sitemap, ticket, capability, and blueprint
   files.
-- Thin runtime adapters for Codex, Claude Code, Gemini CLI, and Cursor.
+- Thin runtime adapters for Codex, Claude Code, Antigravity, and Cursor.
 - A canonical global command registry in `.agentlas/global-commands.json` and
   matching command files or aliases for each supported runtime.
 - Install and verification scripts when packaging for reuse.
@@ -73,7 +73,7 @@ The generated or packaged output is done only when a user can:
    output;
 2. inspect the visible structure;
 3. install it into a project;
-4. call it from Codex, Claude Code, Gemini CLI, generic AGENTS.md tools, or
+4. call it from Codex, Claude Code, Antigravity, generic AGENTS.md tools, or
    terminal using the generated global command;
 5. see the Agentlas architecture contracts as files;
 6. inspect the interview, research, tool-selection, domain-expert synthesis,

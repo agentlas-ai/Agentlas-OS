@@ -87,14 +87,12 @@ HOST_ADAPTER_DIRS = (
     ".agents",
     ".claude",
     ".claude-plugin",
-    ".gemini",
     ".zcode",
     "antigravity",
     "claude",
     "codex",
     "copilot-cli",
     "cursor",
-    "gemini",
     "goose",
     "grok",
     "hermes",
@@ -411,8 +409,6 @@ def _adapter_paths(home: Path) -> list[Path]:
                 home / ".config" / "opencode" / "commands" / f"{command}.md",
                 home / ".gemini" / "antigravity" / "global_workflows" / f"{command}.md",
                 home / ".gemini" / "antigravity-ide" / "global_workflows" / f"{command}.md",
-                home / ".gemini" / "commands" / f"{command}.toml",
-                home / ".gemini" / "hephaestus-extension-source" / "commands" / f"{command}.toml",
             ]
         )
     managed_skills = _managed_skill_names()
@@ -424,7 +420,6 @@ def _adapter_paths(home: Path) -> list[Path]:
                 home / ".openclaw" / "skills" / skill / "SKILL.md",
                 home / ".hermes" / "skills" / skill / "SKILL.md",
                 home / ".gemini" / "config" / "plugins" / "agentlas-os" / "skills" / skill / "SKILL.md",
-                home / ".gemini" / "hephaestus-extension-source" / "skills" / skill / "SKILL.md",
             ]
         )
     return paths
@@ -2178,14 +2173,6 @@ def _installed_adapter_file_targets(source: Path, home: Path) -> list[tuple[Path
                     Path("antigravity") / "workflows" / f"{command}.md",
                     home / ".gemini" / "antigravity-ide" / "global_workflows" / f"{command}.md",
                 ),
-                (
-                    Path("gemini") / "extension" / "commands" / f"{command}.toml",
-                    home / ".gemini" / "commands" / f"{command}.toml",
-                ),
-                (
-                    Path("gemini") / "extension" / "commands" / f"{command}.toml",
-                    home / ".gemini" / "hephaestus-extension-source" / "commands" / f"{command}.toml",
-                ),
             ]
         )
     return [(src_rel, dest) for src_rel, dest in targets if (source / src_rel).exists()]
@@ -2193,8 +2180,6 @@ def _installed_adapter_file_targets(source: Path, home: Path) -> list[tuple[Path
 
 def _installed_adapter_dir_targets(source: Path, home: Path) -> list[tuple[Path, Path]]:
     targets: list[tuple[Path, Path]] = []
-    if (source / "gemini" / "extension").is_dir():
-        targets.append((Path("gemini") / "extension", home / ".gemini" / "hephaestus-extension-source"))
     for skill in _managed_skill_names(source):
         targets.extend(
             [
@@ -2769,7 +2754,6 @@ def _validate_host_adapter_bundle(bundle_root: Path, release_tag: str) -> None:
         / "agentlas-core-engine-meta-agent"
         / ".claude-plugin"
         / "plugin.json",
-        bundle_root / "gemini" / "extension" / "gemini-extension.json",
     )
     missing: list[str] = []
     mismatched: list[str] = []

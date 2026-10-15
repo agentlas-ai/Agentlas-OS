@@ -3214,10 +3214,12 @@ def _runtime_labels(base: Path) -> list[str]:
         labels.append("claude-code")
     if (base / "AGENTS.md").exists():
         labels.append("codex")
-    if (base / "GEMINI.md").exists():
-        labels.append("gemini")
+    # GEMINI.md is the instruction file Antigravity reads; the Gemini CLI label
+    # is retired along with that host.
     antigravity_workflows = base / "antigravity" / "workflows"
-    if antigravity_workflows.is_dir() and any(path.is_file() for path in antigravity_workflows.rglob("*")):
+    if (base / "GEMINI.md").exists() or (
+        antigravity_workflows.is_dir() and any(path.is_file() for path in antigravity_workflows.rglob("*"))
+    ):
         labels.append("antigravity")
     return labels or ["agents-md"]
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- Model-led secret review on upload: the connected model (or the host model, via
+  a review file) can only remove more lines from an upload, never clear a
+  deterministic pattern hit; receipts carry file, line and kind only.
+- Ask where to store a built agent (Cloud, public Hub or local only) once the
+  build verifies, and register built agents in the local roster automatically.
+- Give every Cloud and Hub refusal code and every broken local agent a machine
+  readable repair plan instead of a bare error token.
+- `/hep-orch` can set the reasoning-effort ceiling (`role.effort=`).
+- Remove Gemini CLI as a supported host. Its individual-tier service ended
+  2026-06-18 and Antigravity is the successor. The installer and `hephaestus
+  update` delete only the engine-owned files an older install left in
+  `~/.gemini/extensions`, `~/.gemini/commands` and
+  `~/.gemini/hephaestus-extension-source`; Antigravity's `~/.gemini/GEMINI.md`,
+  `~/.gemini/antigravity*` and `~/.gemini/config/*` are untouched. `gemini-cli`
+  is still accepted in routing cards that were published earlier.
+
 ## 1.2.62 — 2026-10-10
 
 - Raise the UserPromptSubmit memory-hook timeout from 20 to 60 seconds for the

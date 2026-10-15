@@ -1,9 +1,0 @@
-#!/usr/bin/env sh
-set -eu
-
-runner="${HEPHAESTUS_RUNTIME:-${HOME}/.agentlas/runtime/current/bin/hephaestus}"
-if [ ! -x "$runner" ]; then
-  echo "hephaestus-network: local Agentlas OS runtime unavailable; remote agentlas remains registered, but Local federation cannot be claimed" >&2
-  exit 127
-fi
-exec "$runner" "$@"

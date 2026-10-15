@@ -54,7 +54,7 @@ separate invocation can put two different models to work at once.
 - **Claude Code** spawns real subagents and takes a model per subagent, so an
   orchestrator/worker split runs as written — this is the only host where the
   split is verified end to end today.
-- **Codex, Gemini/Antigravity, Cursor, OpenCode** have no subagent of their own.
+- **Codex, Antigravity, Cursor, OpenCode** have no subagent of their own.
   One model plays every role in sequence. The allocation receipt is still
   produced and the ceiling still applies to what that model may request, but a
   worker tier does not put a second, cheaper model on the machine.

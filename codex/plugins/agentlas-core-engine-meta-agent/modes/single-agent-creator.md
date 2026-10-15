@@ -38,10 +38,9 @@ separate single-agent packages rather than one degenerate team.
 - `.agentlas/global-commands.json` with one public command for the worker.
 - `memory/<slug>-memory.md` or `.agentlas/project-soul-memory.md` for project
   memory owned by PM Soul/project owner.
-- Thin adapters for Codex, Claude Code, Gemini CLI, Antigravity, Cursor, and
+- Thin adapters for Codex, Claude Code, Antigravity, Cursor, and
   generic `AGENTS.md` tools.
-- Runtime command files or aliases for Claude Code, Codex, Gemini CLI,
-  Antigravity, generic AGENTS.md tools, and terminal use.
+- Runtime command files or aliases for Claude Code, Codex, Antigravity, generic AGENTS.md tools, and terminal use.
 
 ## Self-Evolution Rule
 

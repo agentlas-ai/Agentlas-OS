@@ -1,6 +1,6 @@
 ---
 name: llm-runtime-architecture
-description: "Use when designing how one canonical agent core runs across Codex, Claude Code, Gemini CLI, Cursor, and AGENTS.md-compatible tools."
+description: "Use when designing how one canonical agent core runs across Codex, Claude Code, Antigravity, Cursor, and AGENTS.md-compatible tools."
 ---
 
 # LLM Runtime Architecture

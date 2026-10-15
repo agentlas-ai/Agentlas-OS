@@ -69,7 +69,7 @@ choices become concrete specialist behavior.
 - Runtime adapters for requested targets.
 - `.agentlas/global-commands.json`.
 - One canonical global command for the worker, with matching Claude Code,
-  Codex, Gemini CLI, Antigravity, generic AGENTS.md, and terminal command
+  Codex, Antigravity, generic AGENTS.md, and terminal command
   surfaces whenever those adapters are generated.
 
 ## System Agents - Copy, Never Write

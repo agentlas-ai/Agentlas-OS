@@ -28,7 +28,7 @@ A new runtime does not mean the host is using it. Each host caches its own copy
 of the adapter, and one host lagging behind is the usual reason a command is
 missing after an update that reported success.
 
-- Codex, Gemini/Antigravity, Grok, OpenCode: the updater rewrites their adapter
+- Codex, Antigravity, Grok, OpenCode: the updater rewrites their adapter
   directly, so the printed result is the answer.
 - Claude Code installs plugins through its own marketplace. The updater refreshes
   the source it points at, but Claude Code decides when to re-copy it into

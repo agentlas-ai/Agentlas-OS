@@ -36,6 +36,6 @@ blockers.
 
 Canonical command: `/{{COMMAND_SLUG}}`
 
-Expose this command in Claude Code, Codex, Gemini CLI, Antigravity, generic
+Expose this command in Claude Code, Codex, Antigravity, generic
 AGENTS.md tools, and terminal adapters. For teams, this command routes to
 orchestrator/HQ.

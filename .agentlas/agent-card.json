@@ -2,7 +2,7 @@
   "schemaVersion": "1.0",
   "name": "agentlas-meta-agent",
   "slug": "agentlas-meta-agent",
-  "summary": "Portable meta-agent team for creating Codex, Claude Code, Gemini, and AGENTS.md-compatible agent repositories.",
+  "summary": "Portable meta-agent team for creating Codex, Claude Code, Antigravity, and AGENTS.md-compatible agent repositories.",
   "capabilities": [
     "single_agent_builder",
     "multi_agent_team_builder",
@@ -29,7 +29,7 @@
     "agent": ".agents/agentlas-core-engine-meta-agent/agent.md",
     "codex": "codex/marketplace.json",
     "claude": ".claude/commands/meta-agent.md",
-    "gemini": "GEMINI.md",
+    "antigravity": "antigravity/workflows/hep-build.md",
     "globalCommands": ".agentlas/global-commands.json"
   },
   "contracts": {

@@ -1,9 +1,10 @@
-# {{TEAM_NAME}} Gemini Adapter
+# {{TEAM_NAME}} Antigravity Adapter
 
-Read `AGENTS.md` first. Use this file only as a Gemini CLI adapter.
+Read `AGENTS.md` first. Use this file only as an Antigravity adapter; Antigravity
+loads `GEMINI.md` as its instruction file.
 
 Global command: `/{{COMMAND_SLUG}}`
 
-The Gemini extension command file is
-`gemini/extension/commands/{{COMMAND_SLUG}}.toml`; the fallback user command
-path is `~/.gemini/commands/{{COMMAND_SLUG}}.toml`.
+The Antigravity workflow file is `antigravity/workflows/{{COMMAND_SLUG}}.md`; its
+global install target is
+`~/.gemini/antigravity/global_workflows/{{COMMAND_SLUG}}.md`.

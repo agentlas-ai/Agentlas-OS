@@ -23,7 +23,7 @@
 
 <p align="center">
   <strong>你的猎头。工作需要专家团队时，它把人带来。</strong><br>
-  <sub>在 Claude Code、Codex、Cursor、Gemini 里直接运行。</sub>
+  <sub>在 Claude Code、Codex、Cursor、Antigravity 里直接运行。</sub>
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
   <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
-  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
+  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
   <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
 </p>
@@ -52,7 +52,7 @@
 
 ### 安装
 
-**Agentlas OS** — 装进本机的 Claude Code、Codex、Gemini CLI、Antigravity、Cursor 等宿主。无需 <code>sudo</code>，不会写入 <code>$HOME</code> 之外的任何位置。安装后重启你的智能体宿主并运行 <code>hephaestus doctor</code>。
+**Agentlas OS** — 装进本机的 Claude Code、Codex、Antigravity、Cursor 等宿主。无需 <code>sudo</code>，不会写入 <code>$HOME</code> 之外的任何位置。安装后重启你的智能体宿主并运行 <code>hephaestus doctor</code>。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
@@ -226,7 +226,7 @@ Desktop 本身就是宿主，所以它在运行开始**之前**就用代码决�
 
 ## 安装：所有方式，以及它写了什么
 
-把下面内容粘贴到你正在使用的 LLM，例如 Claude Code、Codex、Gemini CLI、Antigravity 或 Cursor：
+把下面内容粘贴到你正在使用的 LLM，例如 Claude Code、Codex、Antigravity 或 Cursor：
 
 ```text
 从这个 GitHub 仓库安装 Hephaestus:
@@ -289,7 +289,7 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-该命令会把中立运行器安装到 `~/.agentlas/runtime/current/bin/hephaestus`，并为 Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode、OpenClaw、Hermes、Kimi Code CLI、goose 和 GitHub Copilot CLI 注册命令、技能或 MCP 适配器，并为 Grok 安装记忆钩子。本地模型使用 MCP 入口 `hephaestus mcp serve`。安装器会在注册后逐一验证每个运行时表面。
+该命令会把中立运行器安装到 `~/.agentlas/runtime/current/bin/hephaestus`，并为 Claude Code、Codex、Antigravity、Cursor、OpenCode、OpenClaw、Hermes、Kimi Code CLI、goose 和 GitHub Copilot CLI 注册命令、技能或 MCP 适配器，并为 Grok 安装记忆钩子。本地模型使用 MCP 入口 `hephaestus mcp serve`。安装器会在注册后逐一验证每个运行时表面。
 
 ### 各运行时的插件驱动
 
@@ -325,7 +325,7 @@ codex plugin add hephaestus@agentlas-core-engine
 <details>
 <summary>将文件复制到项目中（手动驱动）</summary>
 
-克隆本仓库，并把 `AGENTS.md`、`agent.md`、`agents/`、`skills/`、`modes/`、`schemas/`、`templates/` 和 `.agentlas/` 复制到你的工作区。运行时目录（`.claude/`、`codex/`、`.gemini/`、`.agents/`）作为同一规范内核之上的适配器工作。
+克隆本仓库，并把 `AGENTS.md`、`agent.md`、`agents/`、`skills/`、`modes/`、`schemas/`、`templates/` 和 `.agentlas/` 复制到你的工作区。运行时目录（`.claude/`、`codex/`、`antigravity/`、`.agents/`）作为同一规范内核之上的适配器工作。
 
 </details>
 

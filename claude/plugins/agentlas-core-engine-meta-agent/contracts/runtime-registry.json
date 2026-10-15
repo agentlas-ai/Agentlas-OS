@@ -22,14 +22,12 @@
       ".agents",
       ".claude",
       ".claude-plugin",
-      ".gemini",
       ".zcode",
       "antigravity",
       "claude",
       "codex",
       "copilot-cli",
       "cursor",
-      "gemini",
       "goose",
       "grok",
       "hermes",
@@ -132,38 +130,6 @@
         "cliVersion": "1.1.13"
       },
       "notes": "Multi-vendor proxy (measured: 11 google + 2 anthropic + 1 gpt-oss rows) with the weakest Agentlas integration. `agy models` is tab-separated 2 columns since 1.1.12; rc is 0 even on usage output."
-    },
-    {
-      "id": "gemini",
-      "installer": "gemini",
-      "label": "Gemini CLI (enterprise)",
-      "role": "tier1",
-      "grade": "B",
-      "installLevel": "L1",
-      "vendors": [
-        "google"
-      ],
-      "accessPath": "subscription-cli",
-      "binary": "gemini",
-      "configDir": "~/.gemini",
-      "entrypoint": "~/.gemini/GEMINI.md",
-      "hooks": {
-        "shape": "none"
-      },
-      "acp": {
-        "source": "native",
-        "command": "npx",
-        "args": [
-          "-y",
-          "@google/gemini-cli@0.63.0",
-          "--acp"
-        ],
-        "registryId": "gemini"
-      },
-      "pin": {
-        "registryVersion": "0.63.0"
-      },
-      "notes": "Individual-tier service ended 2026-06-18; enterprise only. Successor is Antigravity."
     },
     {
       "id": "cursor",

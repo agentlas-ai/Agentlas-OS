@@ -3,7 +3,7 @@
 ## Purpose
 
 Convert or repair existing agents and teams into Agentlas architecture. Inputs
-may come from local prompts, Claude folders, Codex skills, Gemini skills,
+may come from local prompts, Claude folders, Codex skills, Antigravity workflows,
 Cursor rules, another public repo, a ZIP, or an ad hoc Markdown structure.
 
 ## Required Structure
@@ -44,7 +44,7 @@ Cursor rules, another public repo, a ZIP, or an ad hoc Markdown structure.
 4. Add missing Agentlas contracts.
 5. Preserve or derive a canonical global command and add runtime command files.
 6. Remove private or unsafe material before public release.
-7. Add Codex plugin, Claude adapter, Gemini adapter, Antigravity workflow, and
+7. Add Codex plugin, Claude adapter, Antigravity workflow, and
    terminal install surfaces when requested.
 8. Run `scripts/verify-team-package.sh <package-root>` after repairing any
    package. If it fails, do not report `completed`; collapse to a valid

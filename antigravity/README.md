@@ -9,7 +9,7 @@ only carries the Antigravity-specific command surface.
 Antigravity natively loads, with no extra setup:
 
 - `AGENTS.md` — cross-tool project rules and routing (canonical).
-- `GEMINI.md` — Antigravity/Gemini context file.
+- `GEMINI.md` — Antigravity context file.
 - `.agents/skills/` — the reusable Agentlas skills.
 
 ## What this adapter adds
@@ -26,9 +26,7 @@ slash command. Hephaestus ships the staffing workflows at two install scopes:
 `antigravity/workflows/hep-network.md`, and
 `antigravity/workflows/hep-local.md`, `hep-cloud.md`, and `hep-hub.md` are the
 canonical staffing workflow bodies;
-the locations above mirror them (global install + in-repo project copy), the
-same way the Gemini adapter ships both extension commands and
-`~/.gemini/commands` fallbacks.
+the locations above mirror them (global install + in-repo project copy).
 
 ## Install
 
@@ -44,9 +42,9 @@ When Antigravity can run local shell commands, Hephaestus refreshes
 Antigravity before resolving the runner.
 
 Then reopen Antigravity and type `/hep-build`, `/hep-network`, `/hep-local`,
-`/hep-cloud`, or `/hep-hub`. Antigravity shares the `~/.gemini/` home with the
-Gemini CLI, so this install also keeps the Gemini extension and commands in
-sync.
+`/hep-cloud`, or `/hep-hub`. Antigravity keeps its data under `~/.gemini/`, so
+the global workflows above live there. Gemini CLI is no longer a supported host;
+the installer removes the extension and commands an older install left behind.
 
 Optional global router prompt block:
 
@@ -55,7 +53,7 @@ hep-global install --target antigravity
 ```
 
 This appends a managed Hephaestus block to `~/.gemini/GEMINI.md`, which
-Antigravity shares with Gemini CLI. After that, ordinary Antigravity prompts use
+Antigravity reads. After that, ordinary Antigravity prompts use
 the same Workforce contract as the other global-router hosts: Network
 federates Local + Cloud + Hub, while exact Local, Cloud, and Hub requests never
 widen. Status lines should name the final agents or skills, not `hep-network`.

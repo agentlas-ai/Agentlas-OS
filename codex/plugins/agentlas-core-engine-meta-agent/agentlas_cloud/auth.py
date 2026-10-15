@@ -2,7 +2,7 @@
 
 The public Hub supports standard OAuth metadata. This module turns that into a
 first-run browser sign-in for local runtimes, then keeps the refresh token in a
-local Agentlas auth store so Claude Code, Codex, Gemini, and other MCP hosts can
+local Agentlas auth store so Claude Code, Codex, Antigravity, and other MCP hosts can
 reuse the same session without teaching users what a session token is.
 """
 

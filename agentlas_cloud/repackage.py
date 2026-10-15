@@ -1389,7 +1389,7 @@ def fill_thin_runtime_adapters(root: Path, slug: str) -> list[str]:
             break
 
     written: list[str] = []
-    for filename, runtime_label in (("CLAUDE.md", "Claude Code"), ("GEMINI.md", "Gemini CLI")):
+    for filename, runtime_label in (("CLAUDE.md", "Claude Code"), ("GEMINI.md", "Antigravity")):
         target = root / filename
         existing = ""
         if target.is_file():

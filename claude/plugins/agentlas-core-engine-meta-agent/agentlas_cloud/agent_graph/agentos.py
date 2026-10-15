@@ -39,12 +39,6 @@ def runtime_adapters() -> list[dict[str, Any]]:
             "depends_on": [],
         },
         {
-            "runtime": "gemini-cli",
-            "adapter_root": "gemini/extension",
-            "kind": "extension_adapter",
-            "depends_on": [],
-        },
-        {
             "runtime": "antigravity",
             "adapter_root": "antigravity/workflows",
             "kind": "independent_workflow_hook_adapter",
@@ -183,7 +177,7 @@ def factory_contract() -> dict[str, Any]:
         ],
         "guarantee": "every Team-Builder / Single-Agent-Builder / Packager output is born ABI-compatible with the Agent OS",
         "runtime_adapters": runtime_adapters(),
-        "degraded_runtimes": {"codex": "thin adapter", "gemini-cli": "extension adapter"},
+        "degraded_runtimes": {"codex": "thin adapter"},
     }
 
 

@@ -51,7 +51,7 @@
     "manage_memory_tickets",
     "coordinate_ontology_runtime"
   ],
-  "card_version": "2.0.2",
+  "card_version": "2.0.4",
   "cloud_delegation_policy": "ask",
   "cost_hints": {
     "model_calls": "medium",
@@ -69,7 +69,7 @@
       "agent_package_contracts"
     ]
   },
-  "description": "Portable four-agent Agentlas meta-agent team for creating, repairing, packaging, validating, and compiling session-derived Agentlas agents and multi-agent teams across Codex, Claude Code, Gemini, Antigravity, Cursor, terminal, and AGENTS.md runtimes.",
+  "description": "Portable four-agent Agentlas meta-agent team for creating, repairing, packaging, validating, and compiling session-derived Agentlas agents and multi-agent teams across Codex, Claude Code, Antigravity, Cursor, terminal, and AGENTS.md runtimes.",
   "domains": [
     "software",
     "devops",
@@ -112,7 +112,7 @@
       "type": "string"
     },
     {
-      "description": "Target runtime adapter set such as Codex, Claude Code, Gemini, Antigravity, Cursor, terminal, or AGENTS.md.",
+      "description": "Target runtime adapter set such as Codex, Claude Code, Antigravity, Cursor, terminal, or AGENTS.md.",
       "name": "runtime_targets",
       "type": "array"
     }
@@ -142,7 +142,6 @@
   "supported_runtimes": [
     "claude-code",
     "codex",
-    "gemini-cli",
     "antigravity",
     "cursor",
     "terminal",

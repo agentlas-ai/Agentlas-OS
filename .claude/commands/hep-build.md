@@ -11,7 +11,7 @@ Use Hephaestus as the Agentlas builder surface:
 
 - create a new single agent
 - create a multi-agent team
-- package an existing Claude/Codex/Gemini workspace into Agentlas architecture
+- package an existing Claude/Codex/Antigravity workspace into Agentlas architecture
 - analyze the current interactive session and build its reusable agent
 - compile an explicitly exported session for terminal or headless replay
 - repair generated Agentlas command files
@@ -39,7 +39,6 @@ for candidate in \
   "${CLAUDE_PLUGIN_ROOT:-}" \
   "${CODEX_PLUGIN_ROOT:-}" \
   "${PLUGIN_ROOT:-}" \
-  "${GEMINI_EXTENSION_ROOT:-}" \
   "$HOME/.agentlas/runtime/current/host_adapters/claude/plugins/agentlas-core-engine-meta-agent" \
   "$HOME/.agentlas/runtime/current/host_adapters/codex/plugins/agentlas-core-engine-meta-agent" \
   "$HOME/.agentlas/runtime/current" \
@@ -78,7 +77,6 @@ for candidate in \
   "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/bin/hephaestus}" \
   "${CODEX_PLUGIN_ROOT:+$CODEX_PLUGIN_ROOT/bin/hephaestus}" \
   "${PLUGIN_ROOT:+$PLUGIN_ROOT/bin/hephaestus}" \
-  "${GEMINI_EXTENSION_ROOT:+$GEMINI_EXTENSION_ROOT/bin/hephaestus}" \
   "./bin/hephaestus" \
   "./claude/plugins/agentlas-core-engine-meta-agent/bin/hephaestus" \
   "./codex/plugins/agentlas-core-engine-meta-agent/bin/hephaestus"
@@ -300,7 +298,7 @@ Route to the Agentlas Core Engine Meta-Agent team, using the `$ENGINE` and
    `ENGINE`, the `contract scaffold` receipt, and the final `contract verify`
    blocker list — a build that cannot show those three did not run this flow.
    The `global_commands` section must tell the user the exact Claude Code,
-   Codex, Gemini CLI, generic AGENTS.md, and terminal commands for the generated
+   Codex, Antigravity, generic AGENTS.md, and terminal commands for the generated
    agent.
 
 ## Examples

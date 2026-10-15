@@ -82,7 +82,7 @@ ROUTER_TARGETS: dict[str, _TargetSpec] = {
         label="Antigravity GEMINI.md",
         host="Antigravity",
         host_surface_note="""
-- host: Antigravity is an independent runtime target, not a Gemini CLI mode; same config path possible, install and selection separate""",
+- host: Antigravity is an independent runtime target; its instruction file lives in the ~/.gemini config home, install and selection separate""",
         **_HEP_SLASH_COMMANDS,
     ),
 }

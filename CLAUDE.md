@@ -46,7 +46,7 @@ staged archive, not the dirty working tree.
 - agent team builder
 - package an existing local or external agent
 - Agentlas architecture packaging
-- Codex, Claude Code, Gemini, Cursor, or AGENTS.md compatibility
+- Codex, Claude Code, Antigravity, Cursor, or AGENTS.md compatibility
 - generated global command routing
 
 ## Verification

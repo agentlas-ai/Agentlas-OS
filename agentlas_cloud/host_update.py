@@ -2,7 +2,7 @@
 
 Runtime adapter files are already copied from a digest-verified release archive.
 This module additionally moves the host-owned plugin registries so Codex,
-Claude Code, and Gemini stop advertising or reloading an older marketplace
+and Claude Code stop advertising or reloading an older marketplace
 version.  Each host is isolated and restored from a private local snapshot if
 its CLI fails.
 """
@@ -1130,27 +1130,6 @@ def _claude_status(
     }
 
 
-def _gemini_status(home: Path, source: Path, target: str) -> dict[str, Any]:
-    extension = home / ".gemini" / "extensions" / "hephaestus"
-    installed_version = _json_version(extension / "gemini-extension.json")
-    install_meta = extension / ".gemini-extension-install.json"
-    try:
-        meta_text = install_meta.read_text(encoding="utf-8")
-    except OSError:
-        meta_text = ""
-    stable_source = home / ".gemini" / "hephaestus-extension-source"
-    source_bound = str(stable_source) in meta_text
-    return {
-        "host": "gemini",
-        "detected": extension.is_dir() or stable_source.is_dir(),
-        "version": installed_version,
-        "targetVersion": target,
-        "sourceBound": source_bound,
-        "current": installed_version == target and source_bound,
-        "cliAvailable": shutil.which("gemini") is not None,
-    }
-
-
 def host_plugin_status(source: Path, release_tag: str, *, home: Path | None = None) -> dict[str, Any]:
     home_dir = (home or Path.home()).expanduser().resolve()
     source_root = _stable_adapter_source(source.expanduser().resolve(), home_dir)
@@ -1170,7 +1149,6 @@ def host_plugin_status(source: Path, release_tag: str, *, home: Path | None = No
                 process_snapshot,
                 release_commit_sha,
             ),
-            _gemini_status(home_dir, source_root, target),
         ],
     }
 
@@ -1629,41 +1607,45 @@ def _replace_directory(source: Path, destination: Path) -> None:
     tmp.rename(destination)
 
 
-def _reconcile_gemini(home: Path, source: Path, target: str, execute: bool) -> dict[str, Any]:
-    status = _gemini_status(home, source, target)
-    if not status["detected"] or status["current"]:
-        return {**status, "status": "not_installed" if not status["detected"] else "current"}
-    extension_source = source / "gemini" / "extension"
+def _retire_gemini(home: Path, execute: bool) -> dict[str, Any]:
+    """Gemini CLI is no longer a supported host; remove what an older Agentlas put there.
+
+    The Gemini CLI individual-tier service ended 2026-06-18 and Antigravity is
+    its successor, with its own `~/.gemini/antigravity*` data that this never
+    touches. Only the engine-owned extension and its stable source copy are
+    removed, and fallback command files whose content names Hephaestus.
+    """
+
+    extension = home / ".gemini" / "extensions" / "hephaestus"
     stable_source = home / ".gemini" / "hephaestus-extension-source"
-    installed = home / ".gemini" / "extensions" / "hephaestus"
+    commands = home / ".gemini" / "commands"
+    owned: list[Path] = [path for path in (extension, stable_source) if path.exists()]
+    if commands.is_dir():
+        for candidate in sorted(commands.glob("hep-*.toml")) + sorted(commands.glob("agentlas*.toml")):
+            try:
+                if candidate.is_file() and "hephaestus" in candidate.read_text(encoding="utf-8", errors="ignore").lower():
+                    owned.append(candidate)
+            except OSError:
+                continue
+    status: dict[str, Any] = {"host": "gemini", "supported": False, "detected": bool(owned)}
+    if not owned:
+        return {**status, "status": "not_installed"}
     if not execute:
-        return {**status, "status": "planned"}
-    if not extension_source.is_dir():
-        return {**status, "status": "blocked", "reason": "verified_extension_source_missing"}
+        return {**status, "status": "planned", "wouldRemove": [str(path) for path in owned]}
     steps: list[dict[str, Any]] = []
-    with _Snapshot([stable_source, installed]) as snapshot:
-        _replace_directory(extension_source, stable_source)
-        if shutil.which("gemini"):
-            _run_best_effort(["gemini", "extensions", "uninstall", "hephaestus"], home=home, steps=steps)
-            command = [
-                "gemini",
-                "extensions",
-                "install",
-                str(stable_source),
-                "--consent",
-                "--skip-settings",
-            ]
-            if not _run_required(command, home=home, steps=steps):
-                snapshot.restore()
-                return {**status, "status": "rolled_back", "steps": steps}
-        else:
-            _replace_directory(extension_source, installed)
-            (installed / ".gemini-extension-install.json").write_text(
-                json.dumps({"source": str(stable_source), "type": "local"}, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-    verified = _gemini_status(home, source, target)
-    return {**verified, "status": "updated" if verified["current"] else "pending_restart", "steps": steps}
+    if shutil.which("gemini"):
+        _run_best_effort(["gemini", "extensions", "uninstall", "hephaestus"], home=home, steps=steps)
+    removed: list[str] = []
+    for path in owned:
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.exists():
+                path.unlink()
+            removed.append(str(path))
+        except OSError:
+            continue
+    return {**status, "status": "removed", "removed": removed, "steps": steps}
 
 
 def reconcile_host_plugins(
@@ -1744,7 +1726,7 @@ def reconcile_host_plugins(
             claude_ledger_migration,
             claude_registry_migration,
         ),
-        _reconcile_gemini(home_dir, source_root, target, execute),
+        _retire_gemini(home_dir, execute),
     ]
     if execute:
         _record_activation_markers(home_dir, target, hosts)

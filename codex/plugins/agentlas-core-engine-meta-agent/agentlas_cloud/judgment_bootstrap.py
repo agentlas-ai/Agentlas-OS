@@ -79,7 +79,7 @@ def _host_cmd_runner(cmd: list[str]):
     """Universal bridge: delegate the classification to the host's own runner.
 
     The host (Desktop/Terminal) already speaks every runtime it supports —
-    Claude/Codex/Gemini CLIs, all BYOK providers, and local models — and picks an
+    Claude/Codex/Antigravity CLIs, all BYOK providers, and local models — and picks an
     appropriate (cheap) model for a lightweight classification. Rather than
     reimplement each provider's API here, the OS judge hands the host a
     ``{"system","prompt"}`` request on stdin and reads the reply text on stdout.

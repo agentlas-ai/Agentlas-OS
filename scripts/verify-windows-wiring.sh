@@ -108,7 +108,7 @@ done
 #    a real registration hand-rolled its own JSON.
 render_sites="$(grep -cE '^[^#]*runtime_mcp_launch_render (json|toml|yaml)' "$installer" || true)"
 [[ "$render_sites" -ge 6 ]] \
-  || fail "only $render_sites host registration(s) render from runtime_mcp_launch_render; expected >= 6 (codex, claude/gemini/cursor/opencode via antigravity, goose, copilot)"
+  || fail "only $render_sites host registration(s) render from runtime_mcp_launch_render; expected >= 6 (codex, claude/cursor/opencode via antigravity, goose, copilot)"
 # Any MCP registration must take its command from the rendered entry. Catch the
 # bare runner path reaching a config writer under ANY variable name.
 bare_runner="$(grep -nE '^[^#]*(AGENTLAS_LOCAL_MCP|[A-Za-z_]+)="\$HOME/\.agentlas/runtime/current/bin/hephaestus"' "$installer" || true)"

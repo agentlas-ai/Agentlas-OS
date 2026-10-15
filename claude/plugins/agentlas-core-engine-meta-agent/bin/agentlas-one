@@ -205,7 +205,7 @@ EOF
 # lists below survive only as the fallback when no registry is reachable (a
 # checkout without Python, a runtime home from before the registry existed).
 # Env overrides keep their historical names: AGENTLAS_ONE_<ID>_MD /
-# AGENTLAS_ONE_<ID>_HOOKS with ID = codex|gemini|opencode|openclaw|cursor and
+# AGENTLAS_ONE_<ID>_HOOKS with ID = codex|opencode|openclaw|cursor and
 # AGY for antigravity (tests and users already set them).
 registry_json() {
   local f
@@ -221,7 +221,7 @@ registry_paths() {
   local reg; reg="$(registry_json)" || return 1
   ONE_REG="$reg" ONE_HOME="$HOME" "$PY" - <<'PYEOF' 2>/dev/null
 import json, os
-ENV = {"antigravity": "AGY", "codex": "CODEX", "gemini": "GEMINI", "opencode": "OPENCODE",
+ENV = {"antigravity": "AGY", "codex": "CODEX", "opencode": "OPENCODE",
        "openclaw": "OPENCLAW", "cursor": "CURSOR", "goose": "GOOSE"}
 home = os.environ["ONE_HOME"]
 def expand(p):
@@ -283,7 +283,7 @@ runtime_entrypoints() {
   else
     list="$(printf '%s\n' \
       "${AGENTLAS_ONE_CODEX_MD:-$HOME/.codex/AGENTS.md}" \
-      "${AGENTLAS_ONE_GEMINI_MD:-$HOME/.gemini/GEMINI.md}" \
+      "${AGENTLAS_ONE_AGY_MD:-$HOME/.gemini/GEMINI.md}" \
       "${AGENTLAS_ONE_OPENCODE_MD:-$HOME/.config/opencode/AGENTS.md}" \
       "${AGENTLAS_ONE_OPENCLAW_MD:-$HOME/.openclaw/workspace/AGENTS.md}")"
   fi

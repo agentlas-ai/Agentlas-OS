@@ -23,7 +23,7 @@
 
 <p align="center">
   <strong>전문 팀이 필요할 때 자동으로 에이전트를 데려오는, 당신의 헤드헌터.</strong><br>
-  <sub>Claude Code · Codex · Cursor · Gemini 안에서 그대로 돌아갑니다.</sub>
+  <sub>Claude Code · Codex · Cursor · Antigravity 안에서 그대로 돌아갑니다.</sub>
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
   <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
-  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
+  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
   <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
   <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
 </p>
@@ -52,7 +52,7 @@
 
 ### 설치
 
-**Agentlas OS** — Claude Code, Codex, Gemini CLI, Antigravity, Cursor 등 이 컴퓨터의
+**Agentlas OS** — Claude Code, Codex, Antigravity, Cursor 등 이 컴퓨터의
 호스트에 설치합니다. <code>sudo</code> 없음, <code>$HOME</code> 밖으로 아무것도 쓰지
 않습니다. 설치 후 쓰던 AI 도구를 껐다 켜고 <code>hephaestus doctor</code>를 실행하세요.
 
@@ -266,7 +266,7 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 
 ## 설치: 모든 방법과, 무엇을 어디에 쓰는지
 
-지금 쓰는 LLM, 예를 들어 Claude Code, Codex, Gemini CLI, Antigravity,
+지금 쓰는 LLM, 예를 들어 Claude Code, Codex, Antigravity,
 Cursor에 아래 내용을 붙여넣으세요. 이 프롬프트는 (이걸 읽는 LLM인) 당신이
 무작정 신뢰하고 실행하는 게 아니라, 실행하기 전에 직접 확인할 수 있도록
 쓰여 있습니다:
@@ -472,7 +472,7 @@ xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-이 명령은 중립 러너를 `~/.agentlas/runtime/current/bin/hephaestus`에 설치하고, Claude Code, Codex, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose, GitHub Copilot CLI용 명령·스킬·MCP 어댑터와 Grok용 메모리 훅을 등록합니다. 로컬 모델은 MCP 진입점 `hephaestus mcp serve`를 씁니다. 설치기는 등록이 끝난 뒤 각 런타임 표면을 검증합니다.
+이 명령은 중립 러너를 `~/.agentlas/runtime/current/bin/hephaestus`에 설치하고, Claude Code, Codex, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose, GitHub Copilot CLI용 명령·스킬·MCP 어댑터와 Grok용 메모리 훅을 등록합니다. 로컬 모델은 MCP 진입점 `hephaestus mcp serve`를 씁니다. 설치기는 등록이 끝난 뒤 각 런타임 표면을 검증합니다.
 
 Desktop 시작과 모든 `/hep-*` 명령은 동일한 무결성 검증·횟수 제한
 업데이트를 백그라운드에서 시작합니다. 현재 명령은 네트워크나 설치 작업을
@@ -509,12 +509,12 @@ status-line 계약을 명시적으로 포함합니다:
 
 | 명령 | 역할 |
 | --- | --- |
-| `hephaestus global install` | Codex, Claude Code, Antigravity/Gemini에 관리용 router block을 설치하거나 갱신합니다. |
+| `hephaestus global install` | Codex, Claude Code, Antigravity에 관리용 router block을 설치하거나 갱신합니다. |
 | `hephaestus global status` | 각 런타임 파일에 router block이 설치되어 있는지 확인합니다. |
 | `hephaestus global remove` | Hephaestus가 관리하는 router block만 제거합니다. 기존 사용자 내용은 유지합니다. |
 | `hephaestus global install --target codex` | `~/.codex/AGENTS.md`에만 설치합니다. |
 | `hephaestus global install --target claude` | `~/.claude/CLAUDE.md`에만 설치합니다. |
-| `hephaestus global install --target antigravity` | Antigravity가 Gemini CLI와 공유하는 `~/.gemini/GEMINI.md`에만 설치합니다. |
+| `hephaestus global install --target antigravity` | Antigravity가 읽는 `~/.gemini/GEMINI.md`에만 설치합니다. |
 | `hephaestus global install --target codex --target claude --target antigravity` | 지원되는 모든 타깃을 명시적으로 설치합니다. |
 | `hephaestus global install --dry-run` | 파일을 쓰지 않고 변경 예정 내용만 확인합니다. |
 | `hephaestus global install --no-backup` | timestamp `.bak.*` 백업 없이 수정합니다. |
@@ -560,7 +560,7 @@ codex plugin add hephaestus@agentlas-core-engine
 <details>
 <summary>프로젝트에 파일 복사하기 (수동 드라이버)</summary>
 
-저장소를 클론한 뒤 `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`, `schemas/`, `templates/`, `.agentlas/`를 워크스페이스에 복사하세요. 런타임 폴더(`.claude/`, `codex/`, `.gemini/`, `.agents/`)는 동일한 정본 코어 위의 어댑터로 동작합니다.
+저장소를 클론한 뒤 `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`, `schemas/`, `templates/`, `.agentlas/`를 워크스페이스에 복사하세요. 런타임 폴더(`.claude/`, `codex/`, `antigravity/`, `.agents/`)는 동일한 정본 코어 위의 어댑터로 동작합니다.
 
 </details>
 
@@ -594,7 +594,7 @@ codex plugin add hephaestus@agentlas-core-engine
 
 `/hep-orch`는 오케스트레이터와 워커를 각각 어떤 모델이 맡을지 정합니다. **두 모델이
 실제로 나뉘어 도는 곳은 Claude Code뿐입니다.** 서브에이전트마다 모델을 따로 받는
-호스트가 Claude Code 하나이기 때문입니다. Codex, Gemini/Antigravity, Cursor,
+호스트가 Claude Code 하나이기 때문입니다. Codex, Antigravity, Cursor,
 OpenCode에서는 한 모델이 모든 역할을 차례로 맡고, 배정 영수증과 상한은 그대로
 적용됩니다.
 

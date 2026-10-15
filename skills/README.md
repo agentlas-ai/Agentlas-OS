@@ -11,7 +11,7 @@ for runtime discovery.
 - `team-builder-packaging`: create a full multi-agent team package with
   orchestrator/HQ, PM Soul, memory, policy, eval, QA, and adapters.
 - `agentlas-packaging`: convert or repair existing agents/teams into Agentlas
-  architecture for local install, Agentlas import, Codex/Claude/Gemini adapters,
+  architecture for local install, Agentlas import, Codex/Claude/Antigravity adapters,
   or public release.
 
 ## Architecture Support Skills

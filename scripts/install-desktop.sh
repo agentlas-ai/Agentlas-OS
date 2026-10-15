@@ -17,7 +17,7 @@
 #      Linux: places the AppImage in ~/.local/opt/agentlas and links
 #      ~/.local/bin/agentlas-desktop. No sudo.
 #   4. --with-engine also installs Agentlas OS into your agent hosts (Claude Code,
-#      Codex, Gemini, Cursor ...) with scripts/install-all-runtimes.sh.
+#      Codex, Antigravity, Cursor ...) with scripts/install-all-runtimes.sh.
 #
 # Options:  --with-engine   also install Agentlas OS
 #           --no-open       do not launch the app afterwards

@@ -12,7 +12,7 @@ Guides the workflow through:
 1. Mode classification (`single-agent-creator`, `team-builder`, `agentlas-packager`, `session-agent-builder`)
 2. Interview/research gate
 3. Routing card and soul authoring
-4. Runtime adapter generation (Codex, Claude, Gemini, Antigravity)
+4. Runtime adapter generation (Codex, Claude, Antigravity)
 5. Package verification
 
 When the request is `session` in an interactive host, use the current

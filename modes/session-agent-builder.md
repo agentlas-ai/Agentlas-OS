@@ -51,8 +51,7 @@ from the number of tools, people, or turns mentioned in the conversation.
    local registration, and final Cloud-versus-local storage gate.
 
    The generated package must include `.agentlas/global-commands.json` and
-   expose the same global command in Claude Code, Codex, Gemini CLI,
-   Antigravity, and the Agentlas terminal whenever those adapters are emitted.
+   expose the same global command in Claude Code, Codex, Antigravity, and the Agentlas terminal whenever those adapters are emitted.
 
 ## Privacy boundary
 

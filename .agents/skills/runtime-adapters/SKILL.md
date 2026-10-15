@@ -8,7 +8,7 @@ description: "Use when creating Codex, Claude Code, Gemini CLI, Cursor, or AGENT
 ## Rules
 
 - `AGENTS.md` is canonical.
-- `.claude/`, `.codex/`, `.gemini/`, `.cursor/`, and root `skills/` are thin
+- `.claude/`, `.codex/`, `.cursor/`, `antigravity/`, and root `skills/` are thin
   adapters or mirrors.
 - `.agentlas/global-commands.json` records the command each adapter exposes.
 - Adapter text should point back to `AGENTS.md`.
@@ -19,5 +19,5 @@ description: "Use when creating Codex, Claude Code, Gemini CLI, Cursor, or AGENT
 
 - Codex: plugin manifest plus skill and `commands/<slug>.md`.
 - Claude Code: command, agent, and skill adapter under `.claude/commands/`.
-- Gemini CLI: `GEMINI.md` plus `.gemini/commands/<slug>.toml`.
+- Antigravity: `GEMINI.md` plus `antigravity/workflows/<slug>.md`.
 - Generic: root `AGENTS.md` with the command alias documented.

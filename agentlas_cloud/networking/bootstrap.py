@@ -217,7 +217,6 @@ def default_sources() -> dict[str, Any]:
     candidates = [
         home / ".claude" / "plugins" / "cache",
         codex_home / "plugins" / "cache",
-        home / ".gemini" / "extensions",
     ]
     return {
         "schemaVersion": SCHEMA_VERSION,

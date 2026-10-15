@@ -47,7 +47,7 @@ publishing the test.
 
 This repository is a portable four-agent meta-agent team. Use it to create or
 package Agentlas-compatible single agents and multi-agent teams for Codex,
-Claude Code, Gemini CLI, Antigravity, Cursor, OpenCode, OpenClaw, Hermes
+Claude Code, Antigravity, Cursor, OpenCode, OpenClaw, Hermes
 Agent, Ollama-served local models (Gemma, DeepSeek — see
 `docs/local-models.md`), and `AGENTS.md`-compatible runtimes.
 
@@ -107,7 +107,7 @@ do not require downloading private source material.
   `.agentlas/memory-tickets.jsonl`, `.agentlas/vault-references.json`,
   `.agentlas/local-credentials.map.json`, `.agentlas/mcp-policy.json`, and skill
   lifecycle files emitted in generated packages.
-- Public install surfaces: `codex/`, `.claude/`, `.gemini/`, `antigravity/`, and
+- Public install surfaces: `codex/`, `.claude/`, `antigravity/`, and
   `scripts/`.
 
 Runtime-specific folders are adapters. They must mirror the canonical core, not
@@ -237,7 +237,7 @@ authority model:
 9. Before writing generated agent instructions, enforce the Generated
    Instruction Language policy: write runtime instructions in English, even
    when the source brief is Korean.
-10. Add thin adapters for Codex, Claude Code, Gemini CLI, Antigravity, and
+10. Add thin adapters for Codex, Claude Code, Antigravity, and
    optional Cursor.
 11. Assign one canonical global command during creation, write
    `.agentlas/global-commands.json`, add runtime command files or aliases, and
@@ -291,9 +291,9 @@ commands `/hep-build`, `/hep-network`, `/hep-local`, `/hep-cloud`, `/hep-hub`,
 `/hep-graph`. Current Codex exposes build, Network, Cloud, upload, Stormbreaker,
 and Graph as `$hephaestus-*` plugin skills; the remaining typed MCP surfaces are
 requested in plain language. Custom `/prompts:hep-*` commands are legacy only.
-Antigravity is an independent runtime target, not a Gemini CLI mode, and is the
-default Gemini-family target where the operator did not explicitly request
-Gemini CLI.
+Antigravity is an independent runtime target. Gemini CLI is no longer a
+supported host (its individual tier ended 2026-06-18; Antigravity is the
+successor), and the updater removes what an older install left for it.
 
 `/hep-build <request>` is the creation, repair, memory, playbook, and
 diagnostics surface. `/hep-network <request>` (alias
@@ -340,7 +340,7 @@ compile into immutable workforce profiles and lifecycle events.
 
 `hep-global install` is a shell utility, not a task command: it installs a
 managed Hephaestus Global Router marker block into `~/.codex/AGENTS.md` and
-`~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md` for Antigravity/Gemini. That
+`~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md` for Antigravity. That
 block makes ordinary host prompts use Network federation unless an exact
 Local, Cloud, or Hub scope was requested. Exact-scope commands never silently
 widen when a source is unavailable, a workforce MCP call is rejected, or no
@@ -385,7 +385,7 @@ When asked to create, repair, or package an agent repo, return:
 - `status`: completed, blocked, or needs_clarification.
 - `evidence`: files inspected, commands run, and verification result.
 - `output`: generated path, changed files, or exact design.
-- `global_commands`: Claude Code, Codex, Gemini CLI, Antigravity, generic
+- `global_commands`: Claude Code, Codex, Antigravity, generic
   AGENTS.md, and terminal commands from `.agentlas/global-commands.json`.
 - `interview_research`: interview status, unresolved assumptions, similar
   agent/repository research, academic or professional theory basis,
@@ -421,8 +421,8 @@ Generated or packaged repos must include the relevant subset of:
 - runtime adapters and smoke-test docs;
 - global command adapter files such as `.claude/commands/<slug>.md`,
   `codex/plugins/<package-id>/commands/<slug>.md`, and
-  `gemini/extension/commands/<slug>.toml` with optional
-  `.gemini/commands/<slug>.toml` fallback;
+  `antigravity/workflows/<slug>.md` with the `.agents/workflows/<slug>.md`
+  project fallback;
 - production ontology runtime code, CLI, tests, and sample corpus when the
   package needs local-first knowledge storage, search, GraphRAG, Memory Curator
   bridge tickets, or Agent Working Memory;

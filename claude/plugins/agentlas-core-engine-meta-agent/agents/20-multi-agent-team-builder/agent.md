@@ -102,7 +102,7 @@ anywhere in the package.
 - Runtime adapters for requested targets.
 - `.agentlas/global-commands.json`.
 - One orchestrator/HQ global command that acts as the public entry point for
-  the whole team across Claude Code, Codex, Gemini CLI, Antigravity, generic
+  the whole team across Claude Code, Codex, Antigravity, generic
   AGENTS.md, and terminal adapters.
 - `scripts/verify-team-package.sh <package-root>` passes before final status is
   `completed`.

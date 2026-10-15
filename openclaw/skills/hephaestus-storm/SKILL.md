@@ -24,7 +24,7 @@ retain its `prompt_sha256` in the goal ledger. This adapter must never redefine,
 summarize, or replace Goal mode or UltraCode mode with host-local wording. The
 adapter owns invocation only; Agentlas Core owns the execution protocol.
 
-If the host exposes live Codex, Claude Code, Gemini, local-model, or other
+If the host exposes live Codex, Claude Code, Antigravity, local-model, or other
 sessions, provide their JSON array through `AGENTLAS_SESSION_INVENTORY` or
 `--session-inventory`. If it does not, accept Core's explicit `host:primary`
 fallback; never invent a model ID or claim unavailable parallel workers.

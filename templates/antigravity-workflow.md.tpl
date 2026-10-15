@@ -22,8 +22,8 @@ or a concrete task for this agent or team.
 4. Do the smallest useful unit of work, then verify with
    `scripts/verify-package.sh` when the package ships one.
 5. Return `status`, `evidence`, `output`, `global_commands`, and `blockers`.
-   The `global_commands` section must list the exact Claude Code, Codex, Gemini
-   CLI, Antigravity, generic `AGENTS.md`, and terminal commands from
+   The `global_commands` section must list the exact Claude Code, Codex,
+   Antigravity, generic `AGENTS.md`, and terminal commands from
    `.agentlas/global-commands.json`.
 
 ## What Antigravity already loads
@@ -35,13 +35,12 @@ thin.
 ## Install scope
 
 `antigravity/workflows/{{COMMAND_SLUG}}.md` is the canonical workflow body. It is
-mirrored at two scopes, the same way the Gemini adapter ships an extension
-command plus a `~/.gemini/commands` fallback:
+mirrored at two scopes:
 
 | Scope | File | Effect |
 | --- | --- | --- |
 | Global | `~/.gemini/antigravity/global_workflows/{{COMMAND_SLUG}}.md` | `/{{COMMAND_SLUG}}` in **every** Antigravity workspace. |
 | Project | `.agents/workflows/{{COMMAND_SLUG}}.md` | `/{{COMMAND_SLUG}}` whenever this repo is open. Ships in the package. |
 
-Antigravity shares the `~/.gemini/` home with the Gemini CLI, so a global install
-keeps the Gemini and Antigravity surfaces in sync.
+Antigravity keeps its data under `~/.gemini/` (`antigravity/`, `antigravity-ide/`),
+so the global workflow path above lives there.

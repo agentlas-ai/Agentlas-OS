@@ -15,7 +15,7 @@ description: "Use when packaging an Agentlas agent repo for public GitHub releas
 - `.claude/commands/<slug>.md` exists for the package command.
 - `.claude/agents/agentlas-core-engine-meta-agent.md` exists.
 - `.claude/skills/agentlas-core-engine-meta-agent/SKILL.md` exists.
-- `.gemini/commands/<slug>.toml` exists for Gemini CLI custom commands.
+- `antigravity/workflows/<slug>.md` exists for Antigravity workflows.
 - `.agentlas/global-commands.json` exists and final handoff includes
   `global_commands`.
 - `scripts/install.sh` supports one-line installation.

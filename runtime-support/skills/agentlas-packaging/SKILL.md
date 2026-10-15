@@ -48,7 +48,7 @@ description: "Use when converting, repairing, or packaging an existing local or 
    - `languages`: optional genuine delivery languages, never listing locales.
    New well-formed semantic IDs are valid graph concepts and must not be
    rejected merely because the seed snapshot has not seen them before.
-6. Add or repair the global command across Claude Code, Codex, Gemini CLI,
+6. Add or repair the global command across Claude Code, Codex, Antigravity,
    generic AGENTS.md tools, and terminal adapters.
 7. Remove secrets, raw logs, private local notes, and unsafe public paths.
 8. Run `scripts/verify-team-package.sh <package-root>` after repair. If it

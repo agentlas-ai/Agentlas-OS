@@ -20,15 +20,6 @@
       "status": "plugin-slash-command"
     },
     {
-      "runtime": "gemini-cli",
-      "command": "/{{COMMAND_SLUG}}",
-      "adapterPath": "gemini/extension/commands/{{COMMAND_SLUG}}.toml",
-      "globalInstallPath": "gemini extensions install <repo-or-path>",
-      "scope": "global",
-      "status": "extension-custom-command",
-      "notes": "Fallback user command can also be installed at ~/.gemini/commands/{{COMMAND_SLUG}}.toml."
-    },
-    {
       "runtime": "antigravity",
       "command": "/{{COMMAND_SLUG}}",
       "adapterPath": "antigravity/workflows/{{COMMAND_SLUG}}.md",
@@ -55,6 +46,6 @@
   ],
   "postCreationUserMessage": {
     "required": true,
-    "template": "global_commands: Claude Code /{{COMMAND_SLUG}}; Codex /{{COMMAND_SLUG}}; Gemini CLI /{{COMMAND_SLUG}}; Antigravity /{{COMMAND_SLUG}}; Agentlas terminal {{COMMAND_SLUG}} or agentlas run {{COMMAND_SLUG}}"
+    "template": "global_commands: Claude Code /{{COMMAND_SLUG}}; Codex /{{COMMAND_SLUG}}; Antigravity /{{COMMAND_SLUG}}; Agentlas terminal {{COMMAND_SLUG}} or agentlas run {{COMMAND_SLUG}}"
   }
 }

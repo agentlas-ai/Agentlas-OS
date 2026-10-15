@@ -128,6 +128,6 @@ The artifact names are concrete: `docs/builder-interview.md`,
 Return `status`, the generalized report, approval state, generated prompt or
 package path, destination, global command, verification evidence,
 interview/research state, and blockers. The global command must be exposed
-consistently in Claude Code, Codex, Gemini CLI, Antigravity, and the Agentlas
+consistently in Claude Code, Codex, Antigravity, and the Agentlas
 terminal when those adapters are generated. Never claim Skill promotion,
 upload, or publication without its distinct receipt.
