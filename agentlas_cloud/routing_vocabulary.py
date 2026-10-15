@@ -211,9 +211,9 @@ def require_canonical_runtimes(values: Iterable[str]) -> list[str]:
 def normalise_risk_capabilities(values: Any) -> list[str]:
     seen: list[str] = []
     for value in values or []:
-        token = normalise_risk_capability(value)
-        if token and token not in seen:
-            seen.append(token)
+        normalized = normalise_risk_capability(value)
+        if normalized and normalized not in seen:
+            seen.append(normalized)
     return seen
 
 
