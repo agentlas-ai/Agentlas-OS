@@ -1,5 +1,5 @@
 description = "Connect Agentlas agents or teams to Telegram."
-prompt = """
+prompt = '''
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
 # Hephaestus Connect
@@ -34,4 +34,4 @@ a test message pass.
 
 Report progress as one ladder and never skip a rung:
 `Draft -> Token checked -> Chat paired -> Test passed -> Running`.
-"""
+'''

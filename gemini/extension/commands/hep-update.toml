@@ -1,5 +1,5 @@
 description = "Update the installed Agentlas runtime and every host adapter on this machine."
-prompt = """
+prompt = '''
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
 Update the installed Agentlas runtime and every host adapter on this machine.
@@ -44,4 +44,4 @@ Never edit files under `~/.agentlas/runtime/` by hand to make a command appear.
 Two programs write that tree — the installer and the updater — so a hand-placed
 file survives until the next update and then vanishes, which reads as a
 regression that nobody can reproduce. Fix the source and update again.
-"""
+'''

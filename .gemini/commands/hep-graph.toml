@@ -1,5 +1,5 @@
 description = "Build an Agentlas automation by describing it, list saved ones, or request a run."
-prompt = """
+prompt = '''
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
 # /hep-graph
@@ -124,4 +124,4 @@ If the CLI exits non-zero, show its message verbatim and stop. Do not
 substitute a guess about why, and do not retry a run request.
 
 Raw arguments: `{{args}}`
-"""
+'''
