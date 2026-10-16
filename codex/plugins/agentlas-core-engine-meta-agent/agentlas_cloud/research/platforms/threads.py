@@ -13,12 +13,12 @@ import os
 import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+from urllib.request import HTTPRedirectHandler, Request, urlopen
 
 from agentlas_cloud.networking.bootstrap import utc_now
 
 from ..contracts import ResearchAttempt, ResearchModuleManifest, ResearchRequest, ResearchResult, _stable_hash
-from ..policy import DEFAULT_MAX_BYTES, DEFAULT_MAX_REDIRECTS, classify_url
+from ..policy import DEFAULT_MAX_BYTES, DEFAULT_MAX_REDIRECTS, classify_url, pinned_opener
 from ..redaction import redacted_exception_reason
 
 
@@ -242,9 +242,13 @@ class ThreadsPublicWebAdapter:
         return result, ResearchAttempt(self.module_id, "ok", f"public_html_status={status}", final_url, weight=self.weight)
 
     def _fetch(self, url: str) -> tuple[int, str, str, str]:
-        opener = build_opener(_NoRedirect)
         current = url
         for _ in range(DEFAULT_MAX_REDIRECTS + 1):
+            # Every hop is resolved once, checked, and connected to the checked
+            # address; letting urllib resolve again re-opened DNS rebinding.
+            opener, reason = pinned_opener(current, _NoRedirect)
+            if opener is None:
+                raise URLError(f"ssrf_blocked:{reason}")
             req = Request(
                 current,
                 headers={

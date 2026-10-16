@@ -14,13 +14,13 @@ import re
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, Request
 from xml.etree import ElementTree
 
 from agentlas_cloud.networking.bootstrap import utc_now
 
 from ..contracts import ResearchAttempt, ResearchModuleManifest, ResearchRequest, ResearchResult, _stable_hash
-from ..policy import DEFAULT_MAX_BYTES, DEFAULT_MAX_REDIRECTS, classify_url
+from ..policy import DEFAULT_MAX_BYTES, DEFAULT_MAX_REDIRECTS, classify_url, pinned_opener
 from .jina_reader import JINA_READER_BASE
 
 
@@ -196,9 +196,13 @@ class InsaneFetchAdapter:
         )
 
     def _fetch(self, url: str) -> tuple[int, str, str, str]:
-        opener = build_opener(_NoRedirect)
         current = url
         for _ in range(DEFAULT_MAX_REDIRECTS + 1):
+            # Every hop is resolved once, checked, and connected to the checked
+            # address; letting urllib resolve again re-opened DNS rebinding.
+            opener, reason = pinned_opener(current, _NoRedirect)
+            if opener is None:
+                raise URLError(f"ssrf_blocked:{reason}")
             req = Request(
                 current,
                 headers={
