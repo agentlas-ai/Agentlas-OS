@@ -775,6 +775,7 @@ install_runtime_home() {
 	    "$stage_dir/bin/hep-storm" \
 	    "$stage_dir/bin/hep-global" \
 	    "$stage_dir/bin/hep-update" \
+	    "$stage_dir/bin/hep-goal" \
 	    "$stage_dir/bin/agentlas-memory-hook" \
 	    "$stage_dir/bin/agentlas-one" 2>/dev/null || true
   printf '%s\n' "$version" > "$stage_dir/RELEASE"
@@ -843,7 +844,7 @@ install_runtime_home() {
 	  # was not a command on any machine — the runner shipped, but nothing put it
 	  # on PATH.
 	  local -a shell_commands=(
-	    hephaestus ontology hep-build hep-network hep-local hep-cloud hep-hub hep-search hep-browser hep-call hep-upload hep-storm hep-global hep-update agentlas-one
+	    hephaestus ontology hep-build hep-network hep-local hep-cloud hep-hub hep-search hep-browser hep-call hep-upload hep-storm hep-global hep-update hep-goal agentlas-one
 	  )
     local command
     local windows_shims=0

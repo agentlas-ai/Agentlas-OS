@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Add `/hep-goal`: a plan tree for long, measurable goals that adds to the host
+  `/goal` (shape, strategies and tactics, KPI readings, stall and infeasibility
+  reports, re-plan on a trigger). One MCP tool `goal.strategy`, CLI `hephaestus
+  goal ...`, rules in `contracts/goal-rules.json`, state under
+  `.agentlas/goal/`. A short goal stays a single tactic and adds nothing. The
+  default mode is `shadow`; `AGENTLAS_GOAL_STRATEGY=on` enables it.
+  Whether it beats a plain host goal on real long-running work is not measured.
+
 ## 1.2.64 — 2026-10-16
 
 - Core automatic memory curation moved to the canonical model: `curate()` queues

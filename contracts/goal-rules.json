@@ -1,0 +1,102 @@
+{
+  "schema": "agentlas.goal-rules.v1",
+  "note": "The one table behind /hep-goal. Thresholds under kpi.* and trigger.* are hypotheses calibrated on a single Desktop case; change them here, never in code.",
+  "natureShape": {
+    "clear": "single_tactic",
+    "complicated": "tactic_list",
+    "complex": "mission_tree",
+    "chaotic": "single_tactic"
+  },
+  "limits": {
+    "strategies": 6,
+    "tactics": 12,
+    "keyResults": 6,
+    "boundaries": 10,
+    "text": 600,
+    "shortText": 200,
+    "minReviewHours": 1,
+    "maxReviewHours": 168,
+    "defaultReviewHours": 24,
+    "defaultTimeboxHours": 72
+  },
+  "kpi": {
+    "longWindowHoursDefault": 72,
+    "shortWindowMinHours": 24,
+    "shortWindowDivisor": 3,
+    "minSamples": 3,
+    "minWindowFraction": 0.5,
+    "confirmEvaluations": 2,
+    "relativeNoisePerDay": 0.01,
+    "integerNoiseFloorPerDay": 0.25,
+    "ahead": {
+      "enterRho": 1.25,
+      "keepRho": 1.0
+    },
+    "onPace": {
+      "enterRho": 0.8,
+      "keepMinRho": 0.6,
+      "keepMaxRho": 1.4
+    },
+    "behind": {
+      "enterRho": 0.3,
+      "keepMinRho": 0.2,
+      "keepMaxRho": 0.9
+    },
+    "stalled": {
+      "enterRho": 0.3,
+      "keepBelowRho": 0.5
+    },
+    "breakout": {
+      "enterMultiple": 2.0,
+      "keepMultiple": 1.3,
+      "minPaceFraction": 0.8
+    }
+  },
+  "trigger": {
+    "fireStates": [
+      "stalled",
+      "declining",
+      "behind",
+      "breakout"
+    ],
+    "cooldownMinHours": 48,
+    "repeatCooldownFactor": 2,
+    "firesPerDay": 1,
+    "shiftsPerRolling7Days": 3,
+    "infeasibleRatio": 10,
+    "shiftsPerDay": 2,
+    "pauseAfterInfeasibleUntilOwnerAnswer": true,
+    "oscillation": {
+      "windowHours": 168,
+      "maxAddRetireRepeats": 2
+    }
+  },
+  "samples": {
+    "maxEvidenceChars": 300,
+    "valueCeilingFactor": 10,
+    "futureSkewSeconds": 300,
+    "maxAgeHours": 336,
+    "maxPerKpiPerDay": 24,
+    "sourceRequired": true
+  },
+  "trust": {
+    "verifiedCountsAlone": true,
+    "unverifiedNeedsDistinctSources": 2,
+    "unverifiedConsecutiveEvaluations": 2,
+    "note": "An unverified sample alone never fires a shift or an infeasible report."
+  },
+  "context": {
+    "maxActiveTactics": 3,
+    "maxKpiLines": 1,
+    "maxChars": 900
+  },
+  "review": {
+    "maxContextTokens": 600,
+    "maxOutputTokens": 400
+  },
+  "writes": {
+    "idempotencyKeyRequired": true,
+    "externalEffects": "none",
+    "note": "plan_op, kpi_sample and review change only the goal store. They never touch permissions, payments or external services."
+  }
+}

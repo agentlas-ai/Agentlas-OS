@@ -787,6 +787,7 @@ Inside native Agentlas environments, Hephaestus operates commandless. External L
 | **Cloud / Hub Destination Gate** | `/agentlas-upload` (or `/agentlas upload`, `/hep-upload`) | `/agentlas-upload ./agents/customer-support-hq` |
 | **Sign-in** | `/agentlas-login` (or `/agentlas login`, `/hep-login`) | `/agentlas-login` |
 | **Orchestrator / Worker Models** | `/agentlas-orch` (or `/agentlas orch`, `/hep-orch`) | `/agentlas-orch orchestrator=frontier worker=economy` |
+| **Goal Plan Tree (long, measurable goals)** | `/agentlas-goal` (or `/agentlas goal`, `/hep-goal`) | `/agentlas-goal reach 1000 followers in a month, today 30` |
 | **Runtime + Adapter Update** | `/agentlas-update` (or `/agentlas update`, `/hep-update`) | `/agentlas-update` |
 
 `/hep-orch` sets which model runs the orchestrator and which runs the workers,
@@ -796,6 +797,30 @@ real subagent and takes a model per subagent. Codex, Antigravity, Cursor,
 and OpenCode have no subagent of their own: one model plays every role in
 sequence there, the allocation receipt is still written, and the ceiling still
 bounds what that model may request — but no second, cheaper model appears.
+
+`/hep-goal` adds a plan tree to your host's own `/goal`. It first decides the
+shape of the goal. Short work with one clear check stays a single tactic and
+behaves exactly like the host goal, with no extra text. A long goal with a
+number you named becomes a mission tree: key results, strategies, tactics, and a
+KPI reading that says whether the plan is moving. It tells you when the numbers
+say the plan has stalled, and when the target looks out of reach it asks you
+instead of re-planning forever. The host goal still decides when the work is
+done; `/hep-goal` only keeps the plan and the numbers honest. A target is only a
+number you wrote in the goal text, and every reading needs a source and a short
+evidence quote. It changes only its own files under `.agentlas/goal/`, never
+permissions or payments. The default mode is `shadow` (it records and measures,
+injects nothing, applies no re-plan); set `AGENTLAS_GOAL_STRATEGY=on` to use it.
+
+What has been measured so far: against a simulated account, the engine saw a
+stalled approach on day 2 and told the owner about an unreachable target on day
+3, where a loop that keeps one approach never does; with a better alternative to
+switch to it reached 298 of 300 followers against 44. That simulation assumes the
+alternatives are known, so it shows the mechanism, not a model's judgment. With
+real models, sonnet and haiku stored a valid plan in 12 of 12 runs (the right
+shape every time, targets equal to the owner's numbers), and submitted an
+accepted re-plan in 6 of 6 review runs. Not measured: whether it beats a plain
+host goal on real long-running work. Treat it as unproven until it has run on
+real goals.
 
 Every row also answers to its original `/hep-*` name — `/agentlas network` and
 `/hep-network` are the same command. Nothing was renamed away, so existing

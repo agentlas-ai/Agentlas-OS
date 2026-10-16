@@ -2160,6 +2160,26 @@ TOOLS: list[dict[str, Any]] = [
         "_meta": workforce_tool_meta(),
     },
     {
+        "name": "goal.strategy",
+        "description": (
+            "Plan tree and KPI check for a long, measurable goal (adds to the host /goal; the host still decides when "
+            "the work is done). Start with action=schema. Changes only the goal's own files, never permissions or payments."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "action": {"type": "string", "enum": ["schema", "start", "plan_op", "kpi_define", "kpi_sample", "review", "owner_answer", "status", "refresh", "context"]},
+                "projectDir": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "goalId": {"type": "string", "maxLength": 64},
+                "goalText": {"type": "string", "maxLength": 4000, "description": "start only: the owner's exact goal text"},
+                "payload": {"type": "object", "description": "start: plan draft; plan_op / kpi_define / kpi_sample: the object from action=schema; review: an optional shift; owner_answer: {answer, note}"},
+                "key": {"type": "string", "maxLength": 80, "description": "idempotency key; a retry with the same key returns the first receipt"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
         "name": "context.refresh",
         "description": "Explicitly build one complete content-addressed project Context Map snapshot.",
         "inputSchema": {
@@ -2424,6 +2444,7 @@ _TOOL_ANNOTATIONS: dict[str, dict[str, bool]] = {
     # Releases a durable binding; not undoable by calling again.
     "workforce.complete_goal": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
     "context.refresh": {**_WRITE, "idempotentHint": True, "openWorldHint": False},
+    "goal.strategy": {**_WRITE, "idempotentHint": True, "openWorldHint": False},
 }
 for _tool in TOOLS:
     _declared = _tool.get("annotations")
@@ -2917,6 +2938,39 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if omissions:
             payload["omissions"] = omissions
         return payload
+
+    if name == "goal.strategy":
+        from .goal_strategy import service as goal_service
+
+        action = arguments.get("action")
+        payload = arguments.get("payload") if isinstance(arguments.get("payload"), dict) else {}
+        project = arguments.get("projectDir") if isinstance(arguments.get("projectDir"), str) else ""
+        goal_id = arguments.get("goalId") if isinstance(arguments.get("goalId"), str) else ""
+        key = arguments.get("key") if isinstance(arguments.get("key"), str) else None
+        try:
+            if action == "schema":
+                return {"action": name, **goal_service.contracts()}
+            if not project.strip():
+                return {"action": name, "status": "error", "error": "project_required"}
+            if action == "start":
+                return {"action": name, **goal_service.start(project, str(arguments.get("goalText") or ""), payload, key=key)}
+            if not goal_id:
+                return {"action": name, "status": "error", "error": "goal_id_required"}
+            routes = {
+                "plan_op": lambda: goal_service.plan_op(project, goal_id, payload, key=key),
+                "kpi_define": lambda: goal_service.kpi_define(project, goal_id, payload, key=key),
+                "kpi_sample": lambda: goal_service.kpi_sample(project, goal_id, payload, key=key),
+                "review": lambda: goal_service.review(project, goal_id, payload or None, key=key),
+                "owner_answer": lambda: goal_service.owner_answer(project, goal_id, str(payload.get("answer") or ""), str(payload.get("note") or ""), key=key),
+                "status": lambda: goal_service.status(project, goal_id),
+                "refresh": lambda: goal_service.refresh(project, goal_id),
+                "context": lambda: {"goal_id": goal_id, "mode": goal_service.mode(), "context": goal_service.context(project, goal_id)},
+            }
+            if action not in routes:
+                return {"action": name, "status": "error", "error": "action_invalid"}
+            return {"action": name, **routes[str(action)]()}
+        except (goal_service.GoalError, ValueError, OSError) as exc:
+            return {"action": name, "status": "error", "error": getattr(exc, "code", type(exc).__name__), "detail": str(exc)[:400]}
 
     if name in {
         "context.refresh",

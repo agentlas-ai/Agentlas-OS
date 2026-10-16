@@ -590,6 +590,7 @@ codex plugin add hephaestus@agentlas-core-engine
 | **Cloud / Hub 목적지 선택 게이트** | `/agentlas-upload` (또는 `/agentlas upload`, `/hep-upload`) | `/agentlas-upload ./agents/customer-support-hq` |
 | **로그인** | `/agentlas-login` (또는 `/agentlas login`, `/hep-login`) | `/agentlas-login` |
 | **오케스트레이터 / 워커 모델** | `/agentlas-orch` (또는 `/agentlas orch`, `/hep-orch`) | `/agentlas-orch orchestrator=frontier worker=economy` |
+| **목표 계획 트리(길고 측정 가능한 목표)** | `/agentlas-goal` (또는 `/agentlas goal`, `/hep-goal`) | `/agentlas-goal 한 달 안에 팔로워 1000명, 지금은 30명` |
 | **런타임 + 어댑터 업데이트** | `/agentlas-update` (또는 `/agentlas update`, `/hep-update`) | `/agentlas-update` |
 
 `/hep-orch`는 오케스트레이터와 워커를 각각 어떤 모델이 맡을지 정합니다. **두 모델이
@@ -597,6 +598,27 @@ codex plugin add hephaestus@agentlas-core-engine
 호스트가 Claude Code 하나이기 때문입니다. Codex, Antigravity, Cursor,
 OpenCode에서는 한 모델이 모든 역할을 차례로 맡고, 배정 영수증과 상한은 그대로
 적용됩니다.
+
+`/hep-goal`은 호스트의 `/goal`에 계획 트리를 더합니다. 먼저 목표의 모양을 정합니다.
+확인 기준이 하나뿐인 짧은 일은 단일 전술로 두고, 호스트 goal과 똑같이 동작하며
+글도 더하지 않습니다. 직접 쓰신 숫자가 있는 긴 목표는 핵심 결과, 전략, 전술과
+계획이 움직이는지 알려 주는 KPI 읽기를 갖춘 미션 트리가 됩니다. 숫자로 볼 때
+계획이 정체되면 알려 주고, 목표가 닿을 수 없어 보이면 끝없이 재계획하지 않고
+먼저 묻습니다. 일이 끝났는지는 여전히 호스트 goal이 정하고, `/hep-goal`은 계획과
+숫자가 정직한지만 지킵니다. 목표값은 목표 글에 직접 쓰신 숫자만 인정되고, 모든
+읽기에는 출처와 짧은 근거 인용이 필요합니다. 자기 파일(`.agentlas/goal/`)만 바꾸며
+권한이나 결제는 건드리지 않습니다. 기본 모드는 `shadow`(기록과 측정만 하고 문맥
+주입도 재계획 적용도 하지 않음)이고, `AGENTLAS_GOAL_STRATEGY=on`으로 켭니다.
+
+지금까지 측정한 것: 가짜 계정 시뮬레이션에서, 한 방법만 고집하는 루프는 못 보는
+정체를 이 엔진은 2일째에 보았고 닿을 수 없는 목표는 3일째에 오너에게 알렸습니다.
+바꿀 만한 대안이 있을 때는 300명 목표에서 298명까지 갔고, 고집하는 쪽은 44명이었습니다.
+이 시뮬레이션은 대안이 알려져 있다고 가정하므로 모델의 판단이 아니라 장치의
+동작만 보여 줍니다. 실제 모델로는 sonnet과 haiku가 12번 중 12번 유효한 계획을
+저장했고(모양이 매번 맞고 목표값은 오너의 숫자와 같음), 검토 단계에서는 6번 중
+6번 받아들여지는 재계획을 냈습니다. 측정하지 못한 것: 실제로 오래 걸리는 일에서
+기본 호스트 goal보다 나은지는 아직 모릅니다. 실제 목표로 돌려 보기 전까지는
+검증되지 않은 기능으로 보세요.
 
 각 명령은 원래 이름인 `/hep-*`로도 그대로 동작합니다. `/agentlas network`와
 `/hep-network`는 같은 명령입니다. 이름을 없앤 것이 아니므로 기존 스크립트와

@@ -205,6 +205,18 @@
       "routes": {"default": {"entrypoint": "hep-orch", "inputModes": ["host_request"]}}
     },
     {
+      "commandId": "agentlas.goal",
+      "publicCommand": "/hep-goal",
+      "terminalCommand": "hep-goal",
+      "aliases": ["/agentlas-goal", "/agentlas goal", "$hephaestus-goal", "/prompts:hep-goal", "hephaestus-goal"],
+      "engineEntrypoint": "hep-goal",
+      "surfaceStatus": "executable",
+      "owningBinary": "hephaestus",
+      "installedEntrypoint": "hep-goal",
+      "body": "contracts/commands/hep-goal.body.md",
+      "routes": {"default": {"entrypoint": "hep-goal", "inputModes": ["host_request"]}}
+    },
+    {
       "commandId": "agentlas.update",
       "publicCommand": "/hep-update",
       "terminalCommand": "hep-update",

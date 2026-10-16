@@ -1,6 +1,6 @@
 # Agentlas 도구 색인 (자동 생성 — 손으로 편집 금지)
 
-생성원: `agentlas_cloud/mcp_stdio.py` TOOLS (35개). 재생성: `python3 scripts/generate-ops-skill-index.py`.
+생성원: `agentlas_cloud/mcp_stdio.py` TOOLS (36개). 재생성: `python3 scripts/generate-ops-skill-index.py`.
 
 | 도구 | 요지 |
 |---|---|
@@ -27,6 +27,7 @@
 | `workforce.goal_runtime` | Load the exact locally cached prepared plans for an active account/project goal. |
 | `workforce.record_goal_turn` | Record the host LLM's content-free per-turn choice: reuse the bound roster, use local skills only, recruit a real gap, remain on standby, or |
 | `workforce.complete_goal` | Release a durable Workforce binding only after an explicit host/user goal completion or cancellation. |
+| `goal.strategy` | Plan tree and KPI check for a long, measurable goal (adds to the host /goal; the host still decides when the work is done). |
 | `context.refresh` | Explicitly build one complete content-addressed project Context Map snapshot. |
 | `context.locate` | Locate exact project symbols, definitions, and reverse references in the local dependency map. |
 | `context.refs` | Return every bounded local backlink for one exact symbol. |

@@ -619,6 +619,8 @@ def _normalize_upload_alias(argv: list[str]) -> list[str]:
     destination is ever assumed.
     """
 
+    if argv and argv[0] in {"hep-goal", "hephaestus-goal", "agentlas-goal"}:
+        return ["goal", *argv[1:]]
     if not argv or argv[0] not in {"hep-upload", "upload", "hephaestus-upload"}:
         return argv
     rewritten = ["publish"]
@@ -1121,6 +1123,28 @@ def main(argv: list[str] | None = None) -> int:
     route.add_argument("--max-workers", type=int, default=None, help="With --auto-run, maximum concurrent packet workers.")
     route.add_argument("--timeout", type=int, default=900, help="With --auto-run, per-packet executor timeout in seconds.")
 
+    goal = sub.add_parser("goal", help="Goal plan tree with KPI states (the engine behind /hep-goal)")
+    goal.add_argument("--project", default=".", help="Project folder that owns .agentlas/goal (default: current folder)")
+    goal.add_argument("--key", default=None, help="Idempotency key: a retried call with the same key returns the first receipt")
+    goal_sub = goal.add_subparsers(dest="goal_command", required=True)
+    goal_sub.add_parser("schema", help="Print the draft, operation, sample and shift shapes a model must follow")
+    goal_start = goal_sub.add_parser("start", help="Store a validated plan for a goal")
+    goal_start.add_argument("--goal-text", required=True, help="The owner's exact goal text")
+    goal_start.add_argument("--json", default="-", help="Plan draft JSON file, or - for stdin")
+    for name, help_text in (("plan-op", "Apply one plan operation"), ("kpi-define", "Add a tracking KPI without a target"),
+                            ("kpi-sample", "Record one KPI reading with source and evidence"), ("review", "Show the review table, or apply a strategy shift"),
+                            ("owner-answer", "Record the owner's answer to an infeasible or oscillation report"),
+                            ("status", "Plan, KPI states and open trigger"), ("refresh", "Re-evaluate with the clock only"),
+                            ("context", "The short block to add to the next turn (empty when it should stay silent)")):
+        sp = goal_sub.add_parser(name, help=help_text)
+        sp.add_argument("--goal-id", required=True)
+        if name in ("plan-op", "kpi-define", "kpi-sample"):
+            sp.add_argument("--json", default="-", help="Operation JSON file, or - for stdin")
+        if name == "review":
+            sp.add_argument("--json", default=None, help="Strategy shift JSON file (- for stdin); omit to only read the review table")
+        if name == "owner-answer":
+            sp.add_argument("--answer", required=True, choices=["continue", "adjust", "stop"])
+            sp.add_argument("--note", default="")
     stormbreaker = sub.add_parser("stormbreaker", help="Stormbreaker packet runner")
     stormbreaker_sub = stormbreaker.add_subparsers(dest="stormbreaker_command", required=True)
     stormbreaker_sub.add_parser(
@@ -3107,6 +3131,36 @@ def main(argv: list[str] | None = None) -> int:
                 "runner": "hep-storm",
             }
         return emit(decision)
+    if args.command == "goal":
+        from .goal_strategy import service as goal_service
+
+        def _goal_json(source: str | None):
+            raw = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+            return json.loads(raw)
+
+        try:
+            if args.goal_command == "schema":
+                return emit(goal_service.contracts())
+            if args.goal_command == "start":
+                return emit(goal_service.start(args.project, args.goal_text, _goal_json(args.json), key=args.key))
+            if args.goal_command == "plan-op":
+                return emit(goal_service.plan_op(args.project, args.goal_id, _goal_json(args.json), key=args.key))
+            if args.goal_command == "kpi-define":
+                return emit(goal_service.kpi_define(args.project, args.goal_id, _goal_json(args.json), key=args.key))
+            if args.goal_command == "kpi-sample":
+                return emit(goal_service.kpi_sample(args.project, args.goal_id, _goal_json(args.json), key=args.key))
+            if args.goal_command == "review":
+                return emit(goal_service.review(args.project, args.goal_id, _goal_json(args.json) if args.json else None, key=args.key))
+            if args.goal_command == "owner-answer":
+                return emit(goal_service.owner_answer(args.project, args.goal_id, args.answer, args.note, key=args.key))
+            if args.goal_command == "refresh":
+                return emit(goal_service.refresh(args.project, args.goal_id))
+            if args.goal_command == "status":
+                return emit(goal_service.status(args.project, args.goal_id))
+            return emit({"goal_id": args.goal_id, "mode": goal_service.mode(), "context": goal_service.context(args.project, args.goal_id)})
+        except (goal_service.GoalError, ValueError, OSError) as exc:
+            emit({"action": "goal", "status": "error", "error": getattr(exc, "code", type(exc).__name__), "detail": str(exc)[:400]})
+            return 2
     if args.command == "stormbreaker" and args.stormbreaker_command == "harness":
         from .networking.stormbreaker_harness import goal_ultracode_harness
 

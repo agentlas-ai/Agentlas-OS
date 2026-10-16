@@ -382,6 +382,10 @@ case "$command" in
 	  global|hep-global|hephaestus-global)
 	    run_python_module agentlas_cloud global "$@"
 	    ;;
+	  goal|hep-goal|hephaestus-goal|agentlas-goal)
+	    # Goal plan tree with KPI states; /goal plus a plan, nothing more.
+	    run_python_module agentlas_cloud goal "$@"
+	    ;;
 	  orch|hep-orch|hephaestus-orch|agentlas-orch)
 	    # Which model runs the orchestrator, and which runs the workers.
 	    # The allocator reads this policy before every role-split invocation;
