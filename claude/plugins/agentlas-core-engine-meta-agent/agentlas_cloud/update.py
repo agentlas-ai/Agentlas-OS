@@ -3111,7 +3111,14 @@ def _runtime_holder_text() -> str | None:
 
 
 def _mentions(text: str, path: Path) -> bool:
-    return re.search(re.escape(str(path)) + r"(?=[/\\\s\"',;:)]|$)", text, re.MULTILINE) is not None
+    # 호스트 설정은 경로를 이스케이프해 적는다 — JSON·TOML 기본 문자열은 `C:\\Users\\…`(비ASCII는
+    # \uXXXX 일 수도 있다), 일부는 `C:/Users/…`. Windows 에서는 이것만이 세대를 지키므로(holders 가
+    # 늘 None) 원형만 찾으면 아직 쓰는 세대를 지운다. Windows 경로는 대소문자를 가리지 않는다.
+    raw = str(path)
+    forms = {raw, raw.replace("\\", "/"), json.dumps(raw)[1:-1], json.dumps(raw, ensure_ascii=False)[1:-1]}
+    needle = "|".join(re.escape(form) for form in sorted(forms, key=len, reverse=True))
+    flags = re.MULTILINE | (re.IGNORECASE if os.name == "nt" else 0)
+    return re.search(f"(?:{needle})" + r"(?=[/\\\s\"',;:)]|$)", text, flags) is not None
 
 
 def _runtime_release(entry: Path) -> str:
