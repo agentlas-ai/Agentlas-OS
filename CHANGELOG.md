@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.65 — 2026-10-16
 
 - Add `/hep-goal`: a plan tree for long, measurable goals that adds to the host
   `/goal` (shape, strategies and tactics, KPI readings, stall and infeasibility
@@ -9,6 +9,13 @@
   `.agentlas/goal/`. A short goal stays a single tactic and adds nothing. The
   default mode is `shadow`; `AGENTLAS_GOAL_STRATEGY=on` enables it.
   Whether it beats a plain host goal on real long-running work is not measured.
+- Prune old runtime generations on every install and update. Hidden
+  `.generations/` folders were skipped, so each install left a 160 MB copy
+  behind. The rule keeps the current release, any generation a host config or a
+  running process still names, and one rollback of a different release.
+  `AGENTLAS_RUNTIME_KEEP` now defaults to 2.
+- The research browser launcher no longer lets the shared automation profile
+  download Chrome's on-device AI model, and caps its HTTP cache at 256 MB.
 
 ## 1.2.64 — 2026-10-16
 
