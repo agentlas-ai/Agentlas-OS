@@ -1036,10 +1036,13 @@ write_windows_command_shims() {
     esac
     # Only wrap actual shell scripts; a data file must not become a command.
     head -1 "$script" 2>/dev/null | grep -q '^#!.*sh' || continue
+    # %~dp0 (the wrapper's own directory), not the script's absolute path:
+    # bin_dir is the staging directory, which is moved to its generation path
+    # right after, so an absolute path would point at a directory that is gone.
     {
       printf '@echo off\r\n'
       printf 'setlocal\r\n'
-      printf '"%s" "%s" %%*\r\n' "$bash_native" "$(agentlas_native_path "$script")"
+      printf '"%s" "%%~dp0%s" %%*\r\n' "$bash_native" "$name"
       printf 'exit /b %%ERRORLEVEL%%\r\n'
     } > "$bin_dir/$name.cmd" 2>/dev/null && written=$((written + 1))
   done

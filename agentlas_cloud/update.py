@@ -1895,11 +1895,14 @@ def write_windows_command_shims(bin_dir: Path) -> list[str]:
         if not first_line.startswith("#!") or "sh" not in first_line:
             continue
         target = bin_dir / f"{script.name}.cmd"
+        # %~dp0, not the absolute script path: bin_dir is the staged directory,
+        # which _activate_runtime renames right after, so an absolute path here
+        # points every wrapper at a directory that no longer exists.
         _write_cmd_text(
         target,
             "@echo off\r\n"
             "setlocal\r\n"
-            f'"{bash}" "{script}" %*\r\n'
+            f'"{bash}" "%~dp0{script.name}" %*\r\n'
             "exit /b %ERRORLEVEL%\r\n",
         )
         written.append(target.name)
