@@ -246,7 +246,10 @@ async function ensureChrome() {
     '--user-data-dir=' + CDP_PROFILE, '--remote-debugging-port=' + PORT,
     '--remote-debugging-address=127.0.0.1',
     '--no-first-run', '--no-default-browser-check',
-    '--disable-session-crashed-bubble', '--disable-features=Translate',
+    '--disable-session-crashed-bubble',
+    // One --disable-features value (Chrome keeps the last). The OptimizationGuide
+    // features stop the ~4 GB on-device AI model download into this profile (2026-10-16).
+    '--disable-features=Translate,OptimizationGuideModelDownloading,OptimizationGuideOnDeviceModel,OptimizationHints,OptimizationHintsFetching,OptimizationTargetPrediction',
     '--disable-component-update', '--disable-background-networking',
     '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
     '--disable-background-timer-throttling',
