@@ -11,8 +11,8 @@
 #      github.com/agentlas-ai/agentlas-desktop-releases.
 #   2. Downloads the build for this OS and CPU and checks its sha512 against that
 #      metadata. A mismatch stops the install; nothing is written.
-#   3. macOS: unpacks the signed app with ditto (keeps the signature), verifies the
-#      signature, and places Agentlas.app in /Applications (or ~/Applications when
+#   3. macOS: unpacks the signed app with ditto (keeps the signature), verifies it is
+#      Agentlas's notarized Developer ID build, places Agentlas.app in /Applications (or ~/Applications when
 #      /Applications is not writable). No sudo.
 #      Linux: places the AppImage in ~/.local/opt/agentlas and links
 #      ~/.local/bin/agentlas-desktop. No sudo.
@@ -110,7 +110,16 @@ if [ "$os" = "Darwin" ]; then
   ditto -x -k "$work/$asset" "$work/unpacked"
   app="$(find "$work/unpacked" -maxdepth 2 -name '*.app' -type d | head -1)"
   [ -n "$app" ] || die "the archive did not contain an app."
-  codesign --verify --deep --strict "$app" >/dev/null 2>&1 || die "the app signature did not verify."
+  # The sha512 above comes from the same release as the asset: it catches a
+  # broken download, not a replaced one. So pin the signer, not just "signed"
+  # (plain --verify accepts any signature, ad-hoc included). This is the app's
+  # own designated requirement, the same string agentlas_cloud/desktop_repair.py
+  # DESKTOP_REQUIREMENT checks. curl + ditto set no quarantine flag, so
+  # Gatekeeper never looks at the app unless it is asked here.
+  desktop_requirement='identifier "com.agentlas.desktop" and anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[subject.OU] = "F469CGM7T5"'
+  codesign --verify --deep --strict -R="$desktop_requirement" "$app" >/dev/null 2>&1 \
+    || die "the app is not signed by Agentlas (Developer ID, team F469CGM7T5); it was not installed."
+  spctl -a -t exec "$app" >/dev/null 2>&1 || die "macOS Gatekeeper did not accept the app; it was not installed."
   dest="${AGENTLAS_DESKTOP_INSTALL_DIR:-/Applications}"
   if [ -z "${AGENTLAS_DESKTOP_INSTALL_DIR:-}" ] && [ ! -w "$dest" ]; then dest="$HOME/Applications"; fi
   mkdir -p "$dest"

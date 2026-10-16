@@ -29,7 +29,9 @@ $engineUrl = "https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scr
 $base = "https://github.com/$releases/releases/latest/download"
 
 function Say([string]$message) { Write-Host "==> $message" }
-function Stop-Install([string]$message) { Write-Host "Agentlas Desktop install stopped: $message" -ForegroundColor Red; exit 1 }
+# throw, not exit: under `irm | iex` this runs inside the user's own PowerShell
+# session, and `exit` closes that window before the reason can be read.
+function Stop-Install([string]$message) { Write-Host "Agentlas Desktop install stopped: $message" -ForegroundColor Red; throw "Agentlas Desktop install stopped: $message" }
 
 if (-not [Environment]::Is64BitOperatingSystem) { Stop-Install "Agentlas Desktop needs 64-bit Windows." }
 
