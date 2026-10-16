@@ -2148,10 +2148,19 @@ def _spawn_auto_update_worker(runtime_root: Path) -> None:
     env["HEPHAESTUS_AUTO_UPDATE_WORKER"] = "1"
     existing_pythonpath = env.get("PYTHONPATH")
     env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
+    # The worker is what replaces `current`, so its cwd must not be inside a
+    # generation: Windows refuses to rename a directory that is any process's
+    # cwd (current is a plain copy there without symlink privilege), and the
+    # worker would block its own activation. PYTHONPATH still finds the code.
+    worker_cwd = _runtime_base()
+    try:
+        worker_cwd.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        worker_cwd = Path.home()
     with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as stdout, open(os.devnull, "wb") as stderr:
         subprocess.Popen(
             [sys.executable, "-m", "agentlas_cloud.update", "--auto-update-worker", str(runtime_root)],
-            cwd=str(runtime_root),
+            cwd=str(worker_cwd),
             env=env,
             stdin=stdin,
             stdout=stdout,
