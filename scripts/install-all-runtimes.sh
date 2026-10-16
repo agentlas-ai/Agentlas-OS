@@ -823,7 +823,7 @@ install_runtime_home() {
   promote_runtime_home "$runtime_root" "$home_dir" "$stage_dir" "$version" "$py" record-adapters \
     || return 1
   log "Installed runner: $HOME/.agentlas/runtime/current/bin/hephaestus"
-  prune_runtime_homes || warn "Old runtime home versions were left in place."
+  prune_runtime_homes "$py" || warn "Old runtime home versions were left in place."
 
   local user_bin="$HOME/.local/bin"
   if mkdir -p "$user_bin" 2>/dev/null; then
@@ -1874,40 +1874,27 @@ register_claude_mcp() {
 # 옛 버전 디렉터리에는 사용자 상태가 없다(2026-08-23 실측 확인).
 # 정리는 설치기와 업데이터 **양쪽**에 있어야 한다 — 한쪽에만 두면 다른 경로로 갱신한
 # 머신은 계속 쌓인다.
-ONE_RUNTIME_KEEP="${AGENTLAS_RUNTIME_KEEP:-3}"
+ONE_RUNTIME_KEEP="${AGENTLAS_RUNTIME_KEEP:-2}"
 
+# One rule for both update paths: the newly activated runtime's own
+# agentlas_cloud.update._prune_runtime_homes. It also covers .generations/,
+# which the old shell copy skipped as a hidden directory, so every reinstall
+# left another 160 MB generation behind (10 on one Mac, 2026-10-16). It keeps
+# current, anything a host config or a running process still names, and one
+# rollback of a different release; see that docstring for the full rule.
 prune_runtime_homes() {
-  local runtime_root="$HOME/.agentlas/runtime"
-  [[ -d "$runtime_root" ]] || return 0
-  local current_target=""
-  if [[ -L "$runtime_root/current" ]]; then
-    current_target="$(basename "$(readlink "$runtime_root/current")")"
-  fi
-  local -a versions=()
-  local dir name
-  while IFS= read -r dir; do
-    name="$(basename "$dir")"
-    # 숨김 스테이징/롤백 디렉터리와 현재 대상은 건드리지 않는다.
-    [[ "$name" == .* ]] && continue
-    [[ "$name" == "current" ]] && continue
-    [[ -n "$current_target" && "$name" == "$current_target" ]] && continue
-    versions+=("$name")
-  done < <(find "$runtime_root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
-  local total="${#versions[@]}"
-  local keep=$((ONE_RUNTIME_KEEP - 1))   # current 를 포함해 KEEP 개
-  [[ "$keep" -lt 0 ]] && keep=0
-  [[ "$total" -gt "$keep" ]] || return 0
-  local -a ordered=()
-  while IFS= read -r name; do
-    [[ -n "$name" ]] && ordered+=("$name")
-  done < <(printf '%s\n' "${versions[@]+"${versions[@]}"}" | sort -t. -k1,1n -k2,2n -k3,3n)
-  local removed=0 index=0
-  while [[ "$index" -lt $((total - keep)) ]]; do
-    rm -rf "$runtime_root/${ordered[$index]}" 2>/dev/null && removed=$((removed + 1))
-    index=$((index + 1))
-  done
-  [[ "$removed" -gt 0 ]] && log "Pruned $removed old runtime home version(s); kept the current one and $keep rollback target(s)."
-  return 0
+  local py="$1" runtime_root="$HOME/.agentlas/runtime"
+  [[ -d "$runtime_root" && -L "$runtime_root/current" ]] || return 0
+  [[ -f "$runtime_root/current/agentlas_cloud/update.py" ]] || return 1
+  AGENTLAS_RUNTIME_KEEP="$ONE_RUNTIME_KEEP" PYTHONPATH="$(installer_pythonpath "$runtime_root/current")" \
+    run_resolved_python "$py" - "$runtime_root" <<'PY_PRUNE'
+import sys
+from pathlib import Path
+
+from agentlas_cloud.update import _prune_runtime_homes
+
+_prune_runtime_homes(Path(sys.argv[1]))
+PY_PRUNE
 }
 
 prune_claude_plugin_cache() {

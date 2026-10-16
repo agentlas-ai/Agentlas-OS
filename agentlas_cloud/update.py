@@ -3043,34 +3043,128 @@ def _activate_runtime(staged: Path, target: Path) -> None:
     _prune_runtime_homes(target.parent)
 
 
-RUNTIME_HOMES_KEPT = 3
+def _runtime_homes_kept() -> int:
+    raw = os.environ.get("AGENTLAS_RUNTIME_KEEP", "").strip()
+    return int(raw) if raw.isdigit() and int(raw) >= 1 else 2
+
+
+# 런타임 경로를 `current` 를 거치지 않고 직접 적을 수 있는 호스트 설정 파일.
+# 여기에 적힌 세대는 아직 살아 있다(예: Claude 마켓플레이스 원본 경로).
+RUNTIME_REFERENCE_FILES = (
+    ".claude.json",
+    ".claude/settings.json",
+    ".claude/plugins/known_marketplaces.json",
+    ".codex/config.toml",
+    ".gemini/settings.json",
+    ".gemini/antigravity/mcp_config.json",
+    ".cursor/mcp.json",
+    ".config/opencode/opencode.json",
+)
+
+
+def _runtime_reference_text() -> str:
+    home = Path.home()
+    chunks = []
+    for name in RUNTIME_REFERENCE_FILES:
+        try:
+            with open(home / name, encoding="utf-8", errors="replace") as handle:
+                chunks.append(handle.read(4 * 1024 * 1024))
+        except OSError:
+            continue
+    return "\n".join(chunks)
+
+
+def _runtime_holder_text() -> str | None:
+    """실행 중인 프로세스의 명령줄·작업 폴더·열린 파일 경로. 알 수 없으면 None.
+
+    파이썬 서버는 모듈을 읽고 파일을 닫으므로 열린 파일만으로는 부족하다 — 명령줄과
+    환경 인자에 세대 경로가 남는다(실측 2026-10-16: 옛 세대 1.2.59 를 명령줄 10개가 가리킴).
+    """
+    if os.name == "nt":
+        return None
+    texts = []
+    try:
+        texts.append(subprocess.run(["ps", "-axww", "-o", "command="], capture_output=True, text=True,
+                                    errors="replace", timeout=20, check=True).stdout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lsof = shutil.which("lsof")
+    if lsof:
+        try:
+            texts.append(subprocess.run([lsof, "-w", "-u", str(os.getuid()), "-Fn"], capture_output=True,
+                                        text=True, errors="replace", timeout=60).stdout)
+        except (OSError, subprocess.SubprocessError):
+            return None
+    return "\n".join(texts)
+
+
+def _mentions(text: str, path: Path) -> bool:
+    return re.search(re.escape(str(path)) + r"(?=[/\\\s\"',;:)]|$)", text, re.MULTILINE) is not None
+
+
+def _runtime_release(entry: Path) -> str:
+    try:
+        release = (entry / "RELEASE").read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        release = ""
+    name = entry.name.rsplit(".", 1)[0] if entry.parent.name == ".generations" else entry.name
+    return release.lstrip("v") or name
+
+
+def _remove_unheld_on_windows(entry: Path) -> None:
+    # Windows 는 열린 파일이 있는 폴더의 이름을 바꿀 수 없다. 이름이 바뀌면 아무도 쓰지 않는 것이다.
+    moved = _unique_sibling(entry, "prune")
+    os.rename(entry, moved)
+    _remove_path(moved)
 
 
 def _prune_runtime_homes(runtime_root: Path) -> None:
     """옛 런타임 홈 버전을 거둔다 (PRD §4.22).
 
     버전별 디렉터리에 설치하고 링크만 바꾸는데 정리 코드가 없어 무한히 커졌다
-    (실측 2026-08-23: 124개 9.1GB). 살아 있는 호스트 설정은 전부 `current` 를 보므로
-    옛 버전에는 사용자 상태가 없다. 현재 것과 되돌리기용 몇 개만 남긴다.
-    설치기(scripts/install-all-runtimes.sh prune_runtime_homes)와 **양쪽 모두** 있어야 한다 —
+    (실측 2026-08-23: 124개 9.1GB). 설치기가 `.generations/<버전>.<임의>` 에 설치하게 바뀐 뒤로는
+    이 함수가 숨김 폴더를 건너뛰어 세대가 다시 쌓였다(실측 2026-10-16: 10세대 1.6GB).
+    남기는 것: `current` 가 가리키는 것, 호스트 설정이 경로로 직접 적은 것, 실행 중인 프로세스가
+    쓰는 것, 그리고 현재와 다른 릴리스 중 최신 `AGENTLAS_RUNTIME_KEEP - 1`(기본 1)개(되돌리기용).
+    같은 릴리스를 다시 설치해 생긴 세대는 되돌리기 가치가 없어 남기지 않는다.
+    사용 여부를 확인할 수 없는 POSIX 머신에서는 지우지 않는다.
+    설치기(scripts/install-all-runtimes.sh prune_runtime_homes)는 이 함수를 그대로 부른다 —
     한쪽에만 두면 다른 경로로 갱신한 머신은 계속 쌓인다.
     """
     try:
         current = runtime_root / "current"
-        active = os.path.basename(os.readlink(current)) if current.is_symlink() else ""
-        candidates = sorted(
+        active = Path(os.path.realpath(current)) if current.is_symlink() else None
+        candidates = [
             entry for entry in runtime_root.iterdir()
-            if entry.is_dir()
-            and not entry.name.startswith(".")
-            and entry.name != "current"
-            and entry.name != active
-        )
+            if entry.is_dir() and not entry.is_symlink()
+            and not entry.name.startswith(".") and entry.name != "current"
+        ]
+        generations = runtime_root / ".generations"
+        if generations.is_dir() and not generations.is_symlink():
+            candidates += [entry for entry in generations.iterdir() if entry.is_dir() and not entry.is_symlink()]
+        candidates = [entry for entry in candidates if active is None or Path(os.path.realpath(entry)) != active]
+        candidates.sort(key=lambda entry: entry.stat().st_mtime, reverse=True)
     except OSError:
         return
-    keep = max(0, RUNTIME_HOMES_KEPT - 1)  # current 를 포함해 RUNTIME_HOMES_KEPT 개
-    for stale in candidates[:max(0, len(candidates) - keep)]:
+    if not candidates:
+        return
+    references = _runtime_reference_text()
+    holders = _runtime_holder_text()
+    kept_releases = {_runtime_release(active)} if active is not None else set()
+    rollbacks = max(0, _runtime_homes_kept() - 1)  # current 를 포함해 AGENTLAS_RUNTIME_KEEP 개
+    for entry in candidates:
+        if _mentions(references, entry) or (holders is not None and _mentions(holders, entry)):
+            continue
+        release = _runtime_release(entry)
+        if rollbacks > 0 and release not in kept_releases:
+            kept_releases.add(release)
+            rollbacks -= 1
+            continue
         try:
-            _remove_path(stale)
+            if os.name == "nt":
+                _remove_unheld_on_windows(entry)
+            elif holders is not None:
+                _remove_path(entry)
         except OSError:
             # 지우지 못한 것은 다음 갱신에서 다시 시도한다 — 실패가 업데이트를 막지 않는다.
             continue
