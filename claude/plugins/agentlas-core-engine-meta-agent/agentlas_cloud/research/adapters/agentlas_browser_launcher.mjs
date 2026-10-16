@@ -250,6 +250,8 @@ async function ensureChrome() {
     // One --disable-features value (Chrome keeps the last). The OptimizationGuide
     // features stop the ~4 GB on-device AI model download into this profile (2026-10-16).
     '--disable-features=Translate,OptimizationGuideModelDownloading,OptimizationGuideOnDeviceModel,OptimizationHints,OptimizationHintsFetching,OptimizationTargetPrediction',
+    // HTTP cache ceiling shared with Agentlas Desktop (the profile's cache reached 1.4 GB without one).
+    '--disk-cache-size=268435456',
     '--disable-component-update', '--disable-background-networking',
     '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
     '--disable-background-timer-throttling',
