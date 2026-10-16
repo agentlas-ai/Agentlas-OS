@@ -11,7 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
+import signal
 import subprocess
+import tempfile
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -1184,21 +1188,25 @@ def _run_packet_goal_loop(
 def _run_goal_check(command: str, *, project: Path, timeout_seconds: int) -> dict[str, Any]:
     """Run a packet's goal verifier in the project dir; exit 0 means goal met."""
 
+    scratch = Path(tempfile.mkdtemp(prefix="stormbreaker-goal-"))
     try:
-        completed = subprocess.run(
+        returncode = _run_bounded_shell(
             command,
-            shell=True,
-            cwd=str(project),
+            cwd=project,
             env=os.environ.copy(),
-            capture_output=True,
-            text=True,
             timeout=timeout_seconds,
-            check=False,
-            **_stormbreaker_worker_process_options(),
+            stdout_file=scratch / "stdout.log",
+            stderr_file=scratch / "stderr.log",
+            label="goal check",
         )
-    except (subprocess.TimeoutExpired, OSError):
+        if returncode is None:
+            return {"returncode": None, "stdout": ""}
+        stdout = (scratch / "stdout.log").read_text(encoding="utf-8", errors="replace")
+    except OSError:
         return {"returncode": None, "stdout": ""}
-    return {"returncode": completed.returncode, "stdout": completed.stdout or ""}
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    return {"returncode": returncode, "stdout": stdout}
 
 
 def _short_digest(text: str) -> str:
@@ -1212,6 +1220,151 @@ def _stormbreaker_worker_process_options(platform_name: str | None = None) -> di
     if target == "nt":
         return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
     return {}
+
+
+# Per evidence file. Executor output streams to disk, never into memory; past
+# this size only the head and tail are kept (a stream-json agent can emit
+# hundreds of MB over one 900 s packet).
+STORMBREAKER_OUTPUT_CAP_BYTES = 16 * 1024 * 1024
+_STORMBREAKER_KILL_GRACE_SECONDS = 5.0
+
+
+def _process_group_alive(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _terminate_process_tree(process: subprocess.Popen, grace_seconds: float = _STORMBREAKER_KILL_GRACE_SECONDS) -> None:
+    """End a packet shell and everything it started. Bounded; never raises."""
+
+    if os.name == "nt":
+        # taskkill /T walks the parent/child tree, so no process group is
+        # needed (workers deliberately get none, see the options above).
+        try:
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=grace_seconds * 2,
+                check=False,
+                **_stormbreaker_worker_process_options(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+        try:
+            process.kill()
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=grace_seconds)
+        except subprocess.TimeoutExpired:
+            pass
+        return
+    pgid = process.pid  # start_new_session: the shell leads its own group
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except OSError:
+        pass
+    deadline = time.monotonic() + grace_seconds
+    while time.monotonic() < deadline:
+        process.poll()  # reap the shell so a zombie leader does not keep the group alive
+        if not _process_group_alive(pgid):
+            break
+        time.sleep(0.1)
+    else:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except OSError:
+            pass
+    try:
+        process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _cap_output_file(path: Path, cap_bytes: int) -> None:
+    """Cut an oversized evidence file down to its head and tail. Never raises."""
+
+    partial = path.with_name(path.name + ".partial")
+    try:
+        size = path.stat().st_size
+        if size <= cap_bytes:
+            return
+        keep = max(0, cap_bytes - 128)
+        head_len = keep // 2
+        tail_len = keep - head_len
+        with open(path, "rb") as handle:
+            head = handle.read(head_len)
+            handle.seek(size - tail_len)
+            tail = handle.read(tail_len)
+        marker = f"\n[stormbreaker: {size - head_len - tail_len} bytes omitted]\n".encode("utf-8")
+        partial.write_bytes(head + marker + tail)
+        os.replace(partial, path)
+    except OSError:
+        try:
+            partial.unlink()
+        except OSError:
+            pass
+
+
+def _run_bounded_shell(
+    command: str,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    timeout: int,
+    stdout_file: Path,
+    stderr_file: Path,
+    label: str = "command",
+    cap_bytes: int | None = None,
+) -> int | None:
+    """Run a packet shell command; return its exit code, or None on timeout.
+
+    subprocess.run(shell=True, timeout=...) killed only /bin/sh, so the real
+    agent kept writing into the write scope while the replan started another,
+    and its TimeoutExpired carried bytes that crashed the str writer. Here the
+    shell leads its own process group (POSIX) or tree (Windows): a timeout ends
+    all of it, and nothing it started outlives the packet. Output streams
+    straight into the evidence files and is capped to head and tail.
+    Raises OSError when the shell cannot start.
+    """
+
+    cap = STORMBREAKER_OUTPUT_CAP_BYTES if cap_bytes is None else cap_bytes
+    options: dict[str, Any] = dict(_stormbreaker_worker_process_options())
+    if os.name != "nt":
+        options["start_new_session"] = True
+    with open(stdout_file, "wb") as stdout, open(stderr_file, "wb") as stderr:
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            cwd=str(cwd),
+            env=dict(env),
+            stdout=stdout,
+            stderr=stderr,
+            **options,
+        )
+        try:
+            returncode: int | None = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(process)
+            returncode = None
+        except BaseException:
+            _terminate_process_tree(process)
+            raise
+        else:
+            if os.name != "nt" and _process_group_alive(process.pid):
+                _terminate_process_tree(process)
+    _cap_output_file(stdout_file, cap)
+    _cap_output_file(stderr_file, cap)
+    if returncode is None:
+        with open(stderr_file, "a", encoding="utf-8") as handle:
+            handle.write(f"\n{label} timed out after {timeout}s\n")
+    return returncode
 
 
 def _positive_int(value: Any, default: int) -> int:
@@ -1257,36 +1410,29 @@ def _run_subprocess(
         }
     )
     try:
-        completed = subprocess.run(
+        returncode = _run_bounded_shell(
             command,
-            shell=True,
-            cwd=str(project),
+            cwd=project,
             env=env,
-            capture_output=True,
-            text=True,
             timeout=timeout_seconds,
-            check=False,
-            **_stormbreaker_worker_process_options(),
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
         )
-    except subprocess.TimeoutExpired as exc:
-        stdout_file.write_text(exc.stdout or "", encoding="utf-8")
-        stderr_file.write_text((exc.stderr or "") + f"\ncommand timed out after {timeout_seconds}s\n", encoding="utf-8")
-        return {"ok": False, "detail": f"executor_timeout:{timeout_seconds}s", "returncode": None}
     except OSError as exc:
         stdout_file.write_text("", encoding="utf-8")
         stderr_file.write_text(str(exc), encoding="utf-8")
         return {"ok": False, "detail": f"executor_os_error:{exc}", "returncode": None}
+    if returncode is None:
+        return {"ok": False, "detail": f"executor_timeout:{timeout_seconds}s", "returncode": None}
 
-    stdout_file.write_text(completed.stdout or "", encoding="utf-8")
-    stderr_file.write_text(completed.stderr or "", encoding="utf-8")
-    if completed.returncode == 0:
+    if returncode == 0:
         return {
             "ok": True,
             "verified": False,
             "detail": "executor_completed_verification_required",
-            "returncode": completed.returncode,
+            "returncode": returncode,
         }
-    return {"ok": False, "detail": f"executor_failed:{completed.returncode}", "returncode": completed.returncode}
+    return {"ok": False, "detail": f"executor_failed:{returncode}", "returncode": returncode}
 
 
 def _verify_completed_execution(
@@ -1349,36 +1495,27 @@ def _verify_completed_execution(
         }
     )
     try:
-        verified = subprocess.run(
+        verifier_returncode = _run_bounded_shell(
             verifier_command,
-            shell=True,
-            cwd=str(project),
+            cwd=project,
             env=env,
-            capture_output=True,
-            text=True,
             timeout=timeout_seconds,
-            check=False,
-            **_stormbreaker_worker_process_options(),
+            stdout_file=verifier_stdout_file,
+            stderr_file=verifier_stderr_file,
+            label="verifier",
         )
-    except subprocess.TimeoutExpired as exc:
-        verifier_stdout_file.write_text(exc.stdout or "", encoding="utf-8")
-        verifier_stderr_file.write_text(
-            (exc.stderr or "") + f"\nverifier timed out after {timeout_seconds}s\n",
-            encoding="utf-8",
-        )
-        return {**dict(completed), "verified": False, "detail": f"verifier_timeout:{timeout_seconds}s"}
     except OSError as exc:
         verifier_stdout_file.write_text("", encoding="utf-8")
         verifier_stderr_file.write_text(str(exc), encoding="utf-8")
         return {**dict(completed), "verified": False, "detail": f"verifier_os_error:{exc}"}
+    if verifier_returncode is None:
+        return {**dict(completed), "verified": False, "detail": f"verifier_timeout:{timeout_seconds}s"}
 
-    verifier_stdout_file.write_text(verified.stdout or "", encoding="utf-8")
-    verifier_stderr_file.write_text(verified.stderr or "", encoding="utf-8")
-    if verified.returncode != 0:
+    if verifier_returncode != 0:
         return {
             **dict(completed),
             "verified": False,
-            "detail": f"verifier_failed:{verified.returncode}",
+            "detail": f"verifier_failed:{verifier_returncode}",
         }
     receipt, receipt_error = _read_passing_verification_receipt(
         verification_receipt_file,
