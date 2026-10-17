@@ -401,14 +401,7 @@ def _release_claim(path: Path, token: str) -> None:
 
 
 def _pid_is_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    # Unknown liveness (None) is alive: a claim is never stolen on a guess.
+    from ..process_liveness import pid_alive
+
+    return pid_alive(pid) is not False

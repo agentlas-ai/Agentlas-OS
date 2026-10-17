@@ -301,15 +301,10 @@ def _write_token_record_unlocked(record: dict[str, Any], path: Path) -> Path:
 
 
 def _lock_process_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except PermissionError:
-        return True
-    except (ProcessLookupError, OSError):
-        return False
+    # Unknown liveness (None) counts as alive; the stale-mtime bound still applies.
+    from .process_liveness import pid_alive
+
+    return pid_alive(pid) is not False
 
 
 def _read_lock_owner_pid(lock: Path) -> int:

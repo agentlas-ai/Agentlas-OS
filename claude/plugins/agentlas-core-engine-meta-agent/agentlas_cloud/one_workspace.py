@@ -656,13 +656,9 @@ class _LedgerLock:
             return True
         if not holder.isdigit():
             return True
-        try:
-            os.kill(int(holder), 0)
-            return False
-        except ProcessLookupError:
-            return True
-        except OSError:
-            return False
+        from .process_liveness import pid_alive
+
+        return pid_alive(int(holder)) is False
 
     def __exit__(self, *exc: Any) -> None:
         if self.fd is not None:
