@@ -30,11 +30,25 @@ _LOCK = threading.Lock()
 _CAPACITY = threading.BoundedSemaphore(4)
 _SEEN: dict[tuple[str, ...], float] = {}
 MEMORY_TOOLS = frozenset((*_SLOTS, "agentlas.memory_session_open", "agentlas.memory_session_recap", _COMPLETE))
+_SUBJECT_RE = re.compile(r"sha256:[0-9a-f]{64}")
 
 
 def binding_identity(binding):
     # Renewal may extend expiry; it never changes an already captured identity.
     return {k: v for k, v in binding.items() if k != "expires_at"} if binding else None
+
+
+def _subject(value: Any) -> bool:
+    return isinstance(value, str) and _SUBJECT_RE.fullmatch(value) is not None
+
+
+def _identity_subject(base: str, token: str) -> str | None:
+    # The owner is proven through an MCP resource this token is scoped to. The
+    # Web session route reads only the cookie and ignores a bearer, so asking it
+    # always said "signed out" and every curation job was dropped.
+    identity = _bounded_route({"kind": "identity", "base": base, "token": token}, 3)
+    subject = identity.get("accountSubject") if isinstance(identity, dict) else None
+    return subject if _subject(subject) else None
 
 
 def assert_web_memory_binding(base: str, token: str | None):
@@ -47,11 +61,13 @@ def assert_web_memory_binding(base: str, token: str | None):
     pin = _record_pin(base, token) if token else None
     if not pin or not _text(binding.get("user_id")):
         raise ValueError("memory_web_owner_unavailable")
-    session = _bounded_route({"kind": "session", "base": base, "token": token}, 3)
-    if (session.get("authenticated") is not True or not isinstance(session.get("user"), dict)
-            or session["user"].get("id") != binding["user_id"]
-            or (binding.get("workspace_id") is not None and
-                (not isinstance(session.get("workspace"), dict) or session["workspace"].get("id") != binding["workspace_id"]))):
+    # The Web identity tool returns only the opaque account subject, so a
+    # binding without one cannot be checked against the server: typed, not
+    # reported as an owner change.
+    if not _subject(binding.get("account_subject")):
+        raise ValueError("memory_web_owner_unverifiable")
+    subject = _identity_subject(base, token)
+    if subject is None or subject != pin[0] or subject != binding["account_subject"]:
         raise ValueError("memory_web_owner_changed")
     if binding_identity(host_binding()) != binding_identity(binding) or _record_pin(base, token) != pin:
         raise ValueError("memory_host_binding_changed")
@@ -70,21 +86,14 @@ def strict_urlopen(request, *, timeout):
 
 def _remote_route(payload: dict[str, Any]) -> dict[str, Any]:
     """Child's fixed authenticated route; no token refresh or local admission."""
-    if payload["kind"] == "session":
-        url = payload["base"] + "/api/auth/session"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {payload['token']}",
-                                                   "Accept": "application/json"})
-        with strict_urlopen(req, timeout=3) as response:
-            if response.geturl() != url:
-                raise ValueError("hub_endpoint_changed")
-            raw = response.read(16385)
-        if len(raw) > 16384:
-            raise ValueError("hub_session_response_too_large")
-        result = json.loads(raw)
-        if not isinstance(result, dict):
-            raise ValueError("hub_session_response_invalid")
-        return result
     from .hub_client import _call_hub_tool_once
+    if payload["kind"] == "identity":
+        result = _call_hub_tool_once("agentlas.account_context", {}, base_url=payload["base"], timeout=3,
+                                     token=payload["token"], endpoint_path="/api/mcp/v1", strict_endpoint=True)
+        subject = result.get("accountSubject") if isinstance(result, dict) else None
+        if not _subject(subject):
+            raise ValueError("hub_identity_response_invalid")
+        return {"accountSubject": subject}
     return _call_hub_tool_once(_COMPLETE, payload["arguments"], base_url=payload["base"],
                               timeout=5, token=payload["token"], endpoint_path=payload["path"],
                               strict_endpoint=True)
@@ -176,12 +185,15 @@ def make_observer(name: str, *, base_url: str, token: str | None,
     def owner_matches(p: dict[str, Any]) -> bool:
         if not current():
             return False
-        session = _bounded_route({"kind": "session", "base": base, "token": token}, 3)
-        return (session.get("authenticated") is True
-                and isinstance(session.get("user"), dict) and isinstance(session.get("workspace"), dict)
-                and session["user"].get("id") == p["owner"]["userId"]
-                and session["workspace"].get("id") == p["owner"]["workspaceId"]
-                and (binding is None or (binding.get("user_id") == p["owner"]["userId"]
+        if binding is not None and not _subject(binding.get("account_subject")):
+            return False
+        # The packet arrived on this token's own authenticated call and the
+        # server scoped it to that account; the server identity for the token
+        # must still be the account pinned in the local token record.
+        subject = _identity_subject(base, token)
+        return (subject is not None and subject == pin[0]
+                and (binding is None or (binding["account_subject"] == subject
+                     and binding.get("user_id") == p["owner"]["userId"]
                      and (binding.get("workspace_id") is None or binding["workspace_id"] == p["owner"]["workspaceId"])))
                 and current())
 
