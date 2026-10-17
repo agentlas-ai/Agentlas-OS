@@ -2999,6 +2999,14 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             project_root = Path(project_dir).expanduser().resolve(strict=True)
             if not project_root.is_dir() or project_root.is_symlink():
                 return {"action": name, "status": "error", "error": "context_project_invalid"}
+            # context.refresh creates project state, so a model-named folder is
+            # bootstrapped only inside the host-approved roots (the same
+            # boundary as first-contact bootstrap) or when already initialized.
+            if name == "context.refresh" and not (project_root / ".agentlas").is_dir():
+                from .project_bootstrap import _within_auto_boundary
+
+                if not _within_auto_boundary(project_root):
+                    return {"action": name, "status": "refused", "reason": "context_refresh_outside_boundary"}
             if name != "context.refresh" and not (project_root / ".agentlas").is_dir():
                 return {
                     "action": name,
@@ -4173,12 +4181,28 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         )
         requested_slug = arguments.get("slug")
         exact_slug = requested_slug.strip() if isinstance(requested_slug, str) else ""
+        # A borrowed agent's memory files and soul appends stay under the
+        # host's hub-agents drawer; a model-supplied path elsewhere is ignored
+        # in favour of the per-agent default.
+        requested_memory_root = arguments.get("memory_root")
+        memory_root = None
+        if requested_memory_root:
+            from .networking.bootstrap import hub_agents_dir
+
+            try:
+                inside = (
+                    Path(str(requested_memory_root)).expanduser().resolve()
+                    .is_relative_to(hub_agents_dir().expanduser().resolve())
+                )
+            except (OSError, RuntimeError, ValueError):
+                inside = False
+            memory_root = requested_memory_root if inside else None
         invocation = invoke_hub_agent(
             arguments["request"],
             slug=exact_slug or None,
             hub_decision=decision,
             project_dir=arguments.get("project_dir", "."),
-            memory_root=arguments.get("memory_root"),
+            memory_root=memory_root,
             version=str(arguments.get("version") or "latest"),
             local_inventory=arguments.get("local_inventory") or [],
         )
@@ -4186,6 +4210,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             invocation["routing_decision"] = decision
         if brief_warning:
             invocation["work_brief_warning"] = brief_warning
+        if requested_memory_root and memory_root is None:
+            invocation["memory_root_ignored"] = True
         return with_bootstrap(invocation)
     if name == "agentlas_resolve_plugins":
         from .plugin_discovery import resolve_plugins
