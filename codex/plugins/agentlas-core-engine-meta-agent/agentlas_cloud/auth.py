@@ -32,10 +32,20 @@ LOGIN_TIMEOUT_SECONDS = 180
 _TOKEN_RECORD_MAX_BYTES = 1024 * 1024
 _TOKEN_LOCK_TIMEOUT_SECONDS = 5.0
 _TOKEN_LOCK_STALE_SECONDS = 30.0
+# The server consumes a refresh token once, so only one process may spend it. The
+# refresh lock is held across the network call (token request timeout is 20 s),
+# which is why it has its own, longer wait and stale bound than the record lock.
+_TOKEN_REFRESH_WAIT_SECONDS = 45.0
+_TOKEN_REFRESH_STALE_SECONDS = 120.0
+_TOKEN_WRITE_BUSY_RETRIES = 3
 
 
 class AgentlasAuthError(RuntimeError):
     """Raised when the local OAuth flow cannot complete safely."""
+
+
+class _AuthLockBusy(AgentlasAuthError):
+    """A local auth lock stayed held past its wait; nothing was written."""
 
 
 def _account_subject(value: Any) -> str | None:
@@ -335,8 +345,33 @@ def _unlink_if_same_file(path: Path, identity: tuple[int, int]) -> None:
 
 @contextmanager
 def _token_record_lock(path: Path):
-    lock = path.with_name(f".{path.name}.lock")
-    deadline = time.monotonic() + _TOKEN_LOCK_TIMEOUT_SECONDS
+    with _exclusive_lock_file(
+        path.with_name(f".{path.name}.lock"),
+        timeout_seconds=_TOKEN_LOCK_TIMEOUT_SECONDS,
+        stale_seconds=_TOKEN_LOCK_STALE_SECONDS,
+    ):
+        yield
+
+
+@contextmanager
+def _token_refresh_lock(path: Path):
+    """Single-flight guard for spending the refresh token.
+
+    Lock order is always refresh lock, then record lock (the refreshed record is
+    written inside). Nothing takes the refresh lock while holding the record lock.
+    """
+
+    with _exclusive_lock_file(
+        path.with_name(f".{path.name}.refresh.lock"),
+        timeout_seconds=_TOKEN_REFRESH_WAIT_SECONDS,
+        stale_seconds=_TOKEN_REFRESH_STALE_SECONDS,
+    ):
+        yield
+
+
+@contextmanager
+def _exclusive_lock_file(lock: Path, *, timeout_seconds: float, stale_seconds: float):
+    deadline = time.monotonic() + timeout_seconds
     descriptor: int | None = None
     lock_identity: tuple[int, int] | None = None
     while descriptor is None:
@@ -360,7 +395,7 @@ def _token_record_lock(path: Path):
                 raise
         except FileExistsError:
             metadata = _assert_private_regular_file(lock, allow_missing=True)
-            if metadata is not None and time.time() - metadata.st_mtime > _TOKEN_LOCK_STALE_SECONDS:
+            if metadata is not None and time.time() - metadata.st_mtime > stale_seconds:
                 try:
                     owner_pid = _read_lock_owner_pid(lock)
                 except OSError:
@@ -369,7 +404,7 @@ def _token_record_lock(path: Path):
                     _unlink_if_same_file(lock, (metadata.st_dev, metadata.st_ino))
                     continue
             if time.monotonic() >= deadline:
-                raise AgentlasAuthError("Agentlas auth record is busy; retry shortly.")
+                raise _AuthLockBusy("Agentlas auth record is busy; retry shortly.")
             time.sleep(0.025)
         except OSError as exc:
             raise AgentlasAuthError("Agentlas auth record lock is unavailable.") from exc
@@ -466,30 +501,38 @@ def auth_status(base_url: str | None = None) -> dict[str, Any]:
     return payload
 
 
-def invalidate_access_token(base_url: str | None = None) -> bool:
+def invalidate_access_token(base_url: str | None = None, rejected_token: str | None = None) -> bool:
     """Record that the server refused this access token.
 
     Keeps the refresh grant so the next call can re-mint silently. Without this
     the stored record still looks valid to `_valid_access_token`, so both the
     refresh branch and the interactive-login branch of `ensure_access_token`
     become unreachable and every retry replays the same dead token.
+
+    `rejected_token` is the token the caller actually sent. When given, the
+    record is cleared only if it still holds that token (compare-and-clear): a
+    401 for an old token must not blank a newer one another process just minted.
     """
 
     base = normalize_base_url(base_url)
-    record = read_token_record(base)
-    if not record:
-        return False
-    now = int(time.time())
-    if int(record.get("server_rejected_at") or 0) >= int(record.get("updated_at") or 0) and not record.get("access_token"):
-        return False
-    record = {
-        **record,
-        "access_token": "",
-        "expires_at": 0,
-        "server_rejected_at": now,
-        "updated_at": now,
-    }
-    write_token_record(record, base)
+    path = token_path(base)
+    with _token_record_lock(path):
+        record = read_token_record(base)
+        if not record:
+            return False
+        if rejected_token is not None and str(record.get("access_token") or "") != rejected_token:
+            return False
+        now = int(time.time())
+        if int(record.get("server_rejected_at") or 0) >= int(record.get("updated_at") or 0) and not record.get("access_token"):
+            return False
+        record = {
+            **record,
+            "access_token": "",
+            "expires_at": 0,
+            "server_rejected_at": now,
+            "updated_at": now,
+        }
+        _write_token_record_unlocked(record, path)
     return True
 
 
@@ -562,22 +605,41 @@ def ensure_access_token(
     timeout_seconds: int = LOGIN_TIMEOUT_SECONDS,
     force_refresh: bool = False,
     require_browser_open: bool = False,
+    rejected_token: str | None = None,
 ) -> str | None:
     """Return a usable Bearer token, refreshing or opening a browser if allowed.
 
     `force_refresh` skips the stored access token even when it still looks valid
     locally. Callers use it after the server answered 401: the record's own
     expiry cannot see a revocation, so trusting it there returns the same dead
-    token and the retry is not a retry.
+    token and the retry is not a retry. With `rejected_token`, only a stored
+    token equal to it is skipped; a newer one minted elsewhere is returned.
+
+    Refreshing is single-flight across processes and threads: the refresh token
+    is spent under `_token_refresh_lock`, and a waiter that finds a token minted
+    while it waited returns that token instead of spending the consumed grant.
     """
 
     base = normalize_base_url(base_url)
     record = read_token_record(base)
-    token = None if force_refresh else _valid_access_token(record)
-    if token:
-        return token
+    stored = _valid_access_token(record)
+    refused = (rejected_token if rejected_token is not None else stored) if force_refresh else None
+    if stored and stored != refused:
+        return stored
     if record and record.get("refresh_token") and record.get("client_id"):
-        refreshed = _refresh_token(base, record)
+        refreshed: dict[str, Any] | None = None
+        try:
+            with _token_refresh_lock(token_path(base)):
+                current = read_token_record(base) or {}
+                fresh = _valid_access_token(current)
+                if fresh and fresh != refused:
+                    return fresh
+                if current.get("refresh_token") and current.get("client_id"):
+                    refreshed = _refresh_token(base, current)
+        except _AuthLockBusy:
+            fresh = _valid_access_token(read_token_record(base))
+            if fresh and fresh != refused:
+                return fresh
         if refreshed:
             return str(refreshed["access_token"])
     if not interactive:
@@ -756,7 +818,16 @@ def _refresh_token(base_url: str, record: dict[str, Any]) -> dict[str, Any] | No
     subject = _account_subject(tokens.get("agentlas_account_subject"))
     if subject:
         refreshed["account_subject"] = subject
-    write_token_record(refreshed, base_url)
+    # The grant is already spent on the server; a busy record lock must not
+    # throw the new tokens away, or the next caller replays a consumed refresh.
+    for attempt in range(_TOKEN_WRITE_BUSY_RETRIES + 1):
+        try:
+            write_token_record(refreshed, base_url)
+            break
+        except _AuthLockBusy:
+            if attempt >= _TOKEN_WRITE_BUSY_RETRIES:
+                break
+            time.sleep(0.2)
     return refreshed
 
 

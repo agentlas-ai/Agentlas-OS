@@ -283,7 +283,10 @@ def call_hub_tool(
         # browser-login branches below are never reached. Measured: owner-scoped
         # cloud staffing failed `source_unauthorized` on every attempt while
         # `auth status` kept reporting `authenticated`.
-        invalidate_access_token(base_url)
+        # Compare-and-clear: only the token this call sent is blanked, so a 401
+        # for a superseded token cannot erase one another process just minted.
+        rejected = token or ""
+        invalidate_access_token(base_url, rejected)
         if not auto_auth or not _interactive_auth_allowed():
             raise
         # 동시 소스 호출(예: network 페더레이션의 cloud+prepare)이 로그인 창을
@@ -297,6 +300,7 @@ def call_hub_tool(
                     interactive=True,
                     force_refresh=True,
                     require_browser_open=True,
+                    rejected_token=rejected,
                 )
         if not token:
             raise

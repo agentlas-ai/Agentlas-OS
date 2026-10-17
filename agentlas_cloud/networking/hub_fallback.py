@@ -216,9 +216,9 @@ def search_hub(
             # dead token and `auth status` keeps answering `authenticated`.
             if first.code != 401 or not owner_scoped:
                 raise
-            invalidate_access_token(_hub_url(base))
+            invalidate_access_token(_hub_url(base), token or "")
             retried = ensure_access_token(
-                _hub_url(base), interactive=False, force_refresh=True
+                _hub_url(base), interactive=False, force_refresh=True, rejected_token=token or ""
             )
             if not retried or retried == token:
                 raise
