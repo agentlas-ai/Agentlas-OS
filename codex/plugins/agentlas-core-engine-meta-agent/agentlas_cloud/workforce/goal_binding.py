@@ -36,6 +36,9 @@ _DECISIONS = frozenset({"reuse", "recruit", "local-only", "blocked", "standby"})
 _TERMINAL_STATUSES = frozenset({"completed", "cancelled"})
 _OPAQUE_LABEL_RE = re.compile(r"^(release|agr_|definition)[:_]?[0-9a-f]{8,}", re.IGNORECASE)
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+# Implicit goals are never completed, so plan files (each carrying a full
+# preparation) are pruned on write and runtime_context reads only the newest.
+_RUNTIME_PLANS_KEPT = 8
 
 
 class WorkforceGoalBindingError(ValueError):
@@ -490,6 +493,12 @@ class WorkforceGoalStore:
             os.chmod(root, 0o700)
             os.chmod(directory, 0o700)
             os.chmod(target, 0o600)
+        for stale in sorted(directory.glob("[0-9]*.json"), reverse=True)[_RUNTIME_PLANS_KEPT:]:
+            try:
+                if stale.is_file() and not stale.is_symlink():
+                    stale.unlink()
+            except OSError:
+                pass
 
     @staticmethod
     def _lease_expirations(value: Any) -> list[str]:
@@ -810,7 +819,9 @@ class WorkforceGoalStore:
             directory = self._binding_runtime_dir(goal["bindingId"])
             plans: list[dict[str, Any]] = []
             if directory.is_dir() and not directory.is_symlink():
-                for path in sorted(directory.glob("*.json"))[:128]:
+                # Newest revisions first (names are zero-padded), then restored
+                # to ascending order below so consumers see the same ordering.
+                for path in sorted(directory.glob("*.json"), reverse=True)[:_RUNTIME_PLANS_KEPT]:
                     try:
                         if path.is_symlink() or path.stat().st_size > 16 * 1024 * 1024:
                             continue
@@ -857,6 +868,7 @@ class WorkforceGoalStore:
                             **({"preparation": payload["preparation"]} if lease_active else {}),
                         }
                     )
+                plans.reverse()
             goals.append(
                 {
                     "goalId": goal["goalId"],
