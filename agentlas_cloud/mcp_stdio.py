@@ -4217,9 +4217,24 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
         return auth_status(arguments.get("base_url"))
     if name == "agentlas_authenticate":
-        from .auth import AgentlasAuthError, ensure_access_token, token_path
+        from .auth import AgentlasAuthError, ensure_access_token, normalize_base_url, token_path
+        from .networking.hub_client import hub_url
 
         base_url = arguments.get("base_url")
+        # The host configuration decides which origin a sign-in may open, never
+        # the tool payload: a model-supplied base_url would make Core fetch that
+        # host's OAuth metadata and open whatever authorization_endpoint it names.
+        if base_url:
+            try:
+                foreign = normalize_base_url(str(base_url)) != normalize_base_url(hub_url())
+            except AgentlasAuthError:
+                foreign = True
+            if foreign:
+                return {
+                    "action": "agentlas_authenticate",
+                    "status": "error",
+                    "error": "auth_base_url_not_configured",
+                }
         try:
             token = ensure_access_token(
                 str(base_url) if base_url else None,

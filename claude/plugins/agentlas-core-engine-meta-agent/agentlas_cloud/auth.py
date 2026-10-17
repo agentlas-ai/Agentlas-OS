@@ -772,6 +772,17 @@ def _fetch_metadata(base_url: str) -> dict[str, Any]:
     missing = [key for key in required if not payload.get(key)]
     if missing:
         raise AgentlasAuthError(f"Agentlas OAuth metadata is missing: {', '.join(missing)}")
+    # The authorization endpoint is handed to the OS URL opener (ShellExecute on
+    # Windows reaches any registered protocol handler) and the others receive
+    # tokens, so every endpoint must be HTTP(S) on the hub's own origin.
+    expected = _url_origin(base_url)
+    for key in required:
+        try:
+            same = _url_origin(str(payload[key])) == expected
+        except AgentlasAuthError:
+            same = False
+        if not same:
+            raise AgentlasAuthError("oauth_metadata_origin_mismatch")
     return payload
 
 
