@@ -5,21 +5,24 @@ decisions.jsonl  append-only ledger of plan operations, state changes, shifts an
 kpi.jsonl        append-only KPI samples
 state.json       KPI state rows and the open trigger
 
-Writes take an exclusive flock on `.lock`, then replace files by rename, so the app, a daemon and a host session cannot
-interleave. A repeated call with the same idempotency key returns the first receipt instead of writing again.
+Writes take an exclusive lock on `.lock` (flock on POSIX, msvcrt byte lock on Windows), then replace files by rename, so
+the app, a daemon and a host session cannot interleave. A repeated call with the same idempotency key returns the first
+receipt instead of writing again.
 """
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
 GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+# Windows has no blocking flock; msvcrt.LK_LOCK gives up after ~10 s, so it is retried up to this deadline.
+_WINDOWS_LOCK_WAIT_SECONDS = 60.0
 
 
 class GoalStoreError(ValueError):
@@ -52,13 +55,36 @@ class GoalStore:
         self.root.mkdir(parents=True, exist_ok=True)
         fd = os.open(self.root / ".lock", os.O_RDWR | os.O_CREAT, 0o644)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
-            yield
+            if os.name == "nt":
+                import msvcrt
+
+                if os.fstat(fd).st_size == 0:
+                    os.write(fd, b"\0")
+                deadline = time.monotonic() + _WINDOWS_LOCK_WAIT_SECONDS
+                while True:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    try:
+                        msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                        break
+                    except OSError:
+                        if time.monotonic() >= deadline:
+                            raise GoalStoreError("goal_store_busy", str(self.root)) from None
+                        time.sleep(0.1)
+                try:
+                    yield
+                finally:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
         finally:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            finally:
-                os.close(fd)
+            os.close(fd)
 
     def exists(self) -> bool:
         return self.plan_path.is_file()
