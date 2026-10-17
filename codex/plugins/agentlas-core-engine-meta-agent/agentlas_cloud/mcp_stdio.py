@@ -4312,6 +4312,9 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
         arguments = params.get("arguments") or {}
         try:
             payload = _call_tool(name, arguments)
+            # Serialized inside the error boundary: a value JSON cannot encode
+            # becomes this tool's error, never an exception that ends the server.
+            payload_text = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
         except UnknownToolError:
             return _error(msg_id, -32602, f"unknown tool: {name}")
         except Exception as exc:  # surfaced as a tool error, not a protocol error
@@ -4326,9 +4329,7 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
                     "isError": True,
                 },
             )
-        tool_result = {
-            "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, sort_keys=True)}]
-        }
+        tool_result = {"content": [{"type": "text", "text": payload_text}]}
         if isinstance(payload, Mapping) and payload.get("status") in {
             "error",
             "rejected",
@@ -4409,7 +4410,18 @@ def serve(stdin=None, stdout=None) -> int:
         except ValueError:
             response: dict[str, Any] | None = _error(None, -32700, "parse error")
         else:
-            response = _handle(message)
+            # One malformed line must not end the server: every hephaestus tool
+            # would be gone for the rest of the host session.
+            if isinstance(message, list):
+                response = _error(None, -32600, "batch requests are not supported")
+            elif not isinstance(message, dict):
+                response = _error(None, -32600, "invalid request")
+            else:
+                try:
+                    response = _handle(message)
+                except Exception as exc:
+                    print(f"hephaestus mcp: internal error: {type(exc).__name__}", file=sys.stderr, flush=True)
+                    response = _error(message["id"], -32603, "internal error") if message.get("id") is not None else None
         if response is not None:
             stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
             stdout.flush()
