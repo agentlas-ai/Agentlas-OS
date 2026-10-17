@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.2.66 — 2026-10-17
+
+- MCP server: one malformed JSON-RPC line no longer ends the server, and
+  model-supplied paths (`context.refresh`, `memory_root`) must stay inside the
+  roots the host approved.
+- Sign-in: OAuth token refresh happens once across processes, invalidation
+  clears only the token it read, and sign-in opens only the configured hub with
+  same-origin OAuth metadata.
+- Memory curation proves the owner through the MCP identity tool
+  (`account_context`) before it writes.
+- Windows: `/hep-goal` locks its strategy store without `fcntl`, process
+  liveness is probed correctly, `.cmd` wrappers name their script through
+  `%~dp0`, and runtime pruning recognises escaped Windows paths in host configs.
+- `goal_runtime` returns the newest plans and prunes old plan files; the One
+  ledger lock recovers a stale directory lock.
+- Research fetches fail closed on the SSRF guard and connect to the address
+  that was checked; the Stormbreaker executor timeout ends the whole process
+  tree.
+- The auto-update worker starts outside the runtime generation it replaces.
+- Installers pin the Desktop signer on macOS, and the PowerShell installer
+  stops on errors.
+- The Hub WorkOrder privacy boundary recognises the upload scanner's secret
+  key prefixes.
+
 ## 1.2.65 — 2026-10-16
 
 - Add `/hep-goal`: a plan tree for long, measurable goals that adds to the host
