@@ -63,7 +63,11 @@ _SECRET_VALUE_PATTERNS = (
         re.compile(
             r"\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|"
             r"github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|"
-            r"xox[baprs]-[A-Za-z0-9-]{10,})\b"
+            r"xox[baprs]-[A-Za-z0-9-]{10,}|"
+            # Same issuer prefixes the upload scanner knows (upload.SECRET_PATTERNS).
+            r"sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|"
+            r"glpat-[0-9A-Za-z_-]{20,}|hf_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{20,}|"
+            r"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,})\b"
         ),
     ),
     (
