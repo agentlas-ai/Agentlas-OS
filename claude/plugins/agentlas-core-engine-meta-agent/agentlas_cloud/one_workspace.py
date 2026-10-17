@@ -18,6 +18,7 @@ import math
 import os
 import platform
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -633,17 +634,39 @@ class _LedgerLock:
                 except OSError:
                     pass
                 return True
-            except FileExistsError:
+            except OSError as exc:
+                # The Terminal locks the same ledger with a directory holding
+                # owner.json; opening it may surface as PermissionError on Windows.
+                directory_lock = self.path.is_dir() and not self.path.is_symlink()
+                if not isinstance(exc, FileExistsError) and not directory_lock:
+                    return False
                 try:
-                    if (time.time() - self.path.stat().st_mtime) * 1000 > stale_ms and self._holder_is_dead():
-                        self.path.unlink(missing_ok=True)
-                        continue
+                    if (time.time() - self.path.stat().st_mtime) * 1000 > stale_ms:
+                        if directory_lock:
+                            if self._directory_holder_is_dead():
+                                stale = Path(f"{self.path}.stale-{int(time.time() * 1000)}")
+                                os.rename(self.path, stale)
+                                shutil.rmtree(stale, ignore_errors=True)
+                                continue
+                        elif self._holder_is_dead():
+                            self.path.unlink(missing_ok=True)
+                            continue
                 except OSError:
                     pass
                 time.sleep(delay)
-            except OSError:
-                return False
         return False
+
+    def _directory_holder_is_dead(self) -> bool:
+        """A Terminal directory lock is reclaimed only when its owner.json names
+        a pid that is provably gone; a missing or unreadable owner keeps waiting."""
+        try:
+            owner = json.loads((self.path / "owner.json").read_text(encoding="utf-8"))
+            pid = int(owner["pid"])
+        except (OSError, ValueError, TypeError, KeyError):
+            return False
+        from .process_liveness import pid_alive
+
+        return pid_alive(pid) is False
 
     def _holder_is_dead(self) -> bool:
         """True only when the recorded holder pid is provably gone. An unknown or
