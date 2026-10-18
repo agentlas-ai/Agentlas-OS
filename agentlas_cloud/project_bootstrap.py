@@ -58,7 +58,7 @@ AUTO_BOOTSTRAP_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_AUTO"
 MCP_AUTO_BOOTSTRAP_ENV = "AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO"
 AUTO_ALLOWED_ROOTS_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_ALLOWED_ROOTS"
 CODE_MAP_CACHE_SCHEMA = "agentlas.code-map-cache.v4"
-CODE_MAP_POLICY_VERSION = "content-snapshot-precision-index.v3"
+CODE_MAP_POLICY_VERSION = "content-snapshot-precision-index.v4"
 VERIFICATION_MAP_SCHEMA = "agentlas.verification-map.v2"
 CONTEXT_INDEX_POLICY_SCHEMA = "agentlas.context-index-policy.v1"
 CODE_MAP_MANIFEST_SCHEMA = "agentlas.code-map-manifest.v3"
@@ -2139,6 +2139,52 @@ def _read_verification_text(root: Path, relative: str) -> str:
         return ""
 
 
+def _verification_reference_files(
+    root: Path,
+    relative_files: Sequence[str],
+    policy: Mapping[str, Any],
+) -> set[str]:
+    """Include declared local verification dependencies in the content snapshot.
+
+    Support modules and fixture data may be ignored by Git. Discover only
+    explicit command/workflow references; discovery never marks them executed
+    or changes their existing file roles.
+    """
+    references: list[tuple[str, Path]] = []
+    for relative in relative_files:
+        if not (_is_ci_workflow_path(relative) or _is_version_contract_path(relative)):
+            continue
+        text = _read_verification_text(root, relative)
+        if _is_ci_workflow_path(relative):
+            references.append((text, Path(".")))
+        else:
+            references.extend(
+                (command["command"], Path(relative).parent)
+                for command in _package_test_commands(relative, text)
+            )
+    discovered: set[str] = set()
+    for text, base in references:
+        for match in TEST_PATH_REFERENCE_PATTERN.finditer(text):
+            reference = Path(match.group(1).rstrip(".,:;)"))
+            if reference.is_absolute() or ".." in reference.parts:
+                continue
+            for candidate in {base / reference, reference}:
+                relative = candidate.as_posix()
+                path = root / candidate
+                if not _policy_allows(relative, policy) or not _safe_file(root, path):
+                    continue
+                # Alias directories must not admit files through a symlink,
+                # even when the current destination happens to be local.
+                if any(
+                    parent.is_symlink()
+                    for parent in path.parents
+                    if parent != root and root in parent.parents
+                ):
+                    continue
+                discovered.add(relative)
+    return discovered
+
+
 def _version_value(relative: str, text: str) -> str | None:
     name = Path(relative).name.lower()
     if name.endswith(".json"):
@@ -2683,7 +2729,10 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         for relative in local_test_relative_files
         if Path(relative).suffix.lower() in CODE_EXTENSIONS
     }
-    relative_files = sorted(listed_relative_files | local_test_relative_files)
+    reference_files = _verification_reference_files(
+        project, sorted(listed_relative_files | local_test_relative_files), policy,
+    )
+    relative_files = sorted(listed_relative_files | local_test_relative_files | reference_files)
     verification_test_code_files = sorted(
         relative
         for relative in relative_files

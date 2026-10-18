@@ -41,6 +41,7 @@ from .project_bootstrap import (
     multi_repository_root_children,
     _walk_file_list,
     _walk_local_test_files,
+    _verification_reference_files,
     generate_code_map,
 )
 
@@ -417,7 +418,10 @@ def _passive_code_map_fingerprint(
         for relative in local_test_relative_files
         if Path(relative).suffix.lower() in CODE_EXTENSIONS
     }
-    relative_files = sorted(listed_relative_files | local_test_relative_files)
+    reference_files = _verification_reference_files(
+        root, sorted(listed_relative_files | local_test_relative_files), policy,
+    )
+    relative_files = sorted(listed_relative_files | local_test_relative_files | reference_files)
     source_code_candidates = [
         relative
         for relative in relative_files
