@@ -173,7 +173,12 @@ def search_hub(
     # Owner cloud search asks the Hub to restrict results to the authenticated
     # owner's own packages (`mine: true`). Bookmark search is also authenticated,
     # but it reads saved Hub refs rather than cloud package ownership.
-    arguments: dict[str, Any] = {"q": redacted_query, "limit": _HUB_RESULT_LIMIT}
+    # `verbose` asks for the listing taglines. Without it the Hub answers its
+    # compact routing shape (slug/name/kind only): every candidate then reached
+    # the caller as the same fallback sentence, and the local rerank below had
+    # only names to read. Each search tool accepts the flag; it changes only
+    # which fields come back, never which agents match.
+    arguments: dict[str, Any] = {"q": redacted_query, "limit": _HUB_RESULT_LIMIT, "verbose": True}
     if scope == SCOPE_CLOUD:
         arguments["mine"] = True
         arguments["scope"] = "owner"
