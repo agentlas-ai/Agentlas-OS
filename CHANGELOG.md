@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.67 — 2026-10-20
+
+- Hub search: the networking client asks the marketplace, owner Cloud and
+  bookmark search tools for listing taglines in every search scope, so Hub
+  candidates in the search menu carry their own descriptions and the local
+  rerank reads more than names.
+- Context Map: local verification dependencies that CI workflows and test
+  commands name (support modules and fixture data, even when Git ignores them)
+  are part of the content snapshot; the code-map policy moves to v4.
+
 ## 1.2.66 — 2026-10-17
 
 - MCP server: one malformed JSON-RPC line no longer ends the server, and
