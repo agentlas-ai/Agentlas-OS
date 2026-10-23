@@ -101,24 +101,115 @@ def _host_cmd_runner(cmd: list[str]):
     return run
 
 
+class ModelContextExceeded(ValueError):
+    """The request does not fit the largest window the model (and this machine) allow. Nothing was cut.
+
+    A ValueError, so every existing caller that maps model failures to its labeled "no verdict" outcome keeps doing so;
+    ``code`` is the typed cause for callers that report it.
+    """
+
+    code = "local_context_limit_exceeded"
+
+
+# Twin of Desktop electron/runtime/ollama-native.ts and Terminal engine/runtimes/ollama-context.cjs: Ollama without
+# num_ctx uses its own default (4096 on a machine without VRAM) and cuts a longer prompt to its first 4 tokens plus the
+# tail without telling the caller (Windows 1.3.88 test 2026-10-23: "truncating input prompt" 6463 -> 2050).
+_OLLAMA_CONTEXT_TIERS = (4096, 8192, 16384, 32768, 65536, 131072, 262144)
+_OLLAMA_DEFAULT_CONTEXT_CEILING = 65536
+_OLLAMA_DEFAULT_OUTPUT_RESERVE = 2048
+
+
+def _estimate_tokens(text: str) -> int:
+    """Conservative token count without a tokenizer: UTF-8 bytes / 3 (BPE prose is ~4 bytes/token, Hangul ~3)."""
+
+    return -(-len(text.encode("utf-8")) // 3)
+
+
+def _ollama_model_max(endpoint: str, model: str, *, timeout: float, strict_endpoint: bool) -> int | None:
+    """The model's trained maximum window (/api/show model_info "<arch>.context_length"); None when not reported."""
+
+    request = urllib.request.Request(
+        endpoint.rstrip("/") + "/api/show",
+        data=json.dumps({"model": model}).encode("utf-8"),
+        headers={"content-type": "application/json"},
+    )
+    try:
+        with _model_urlopen(request, timeout=min(timeout, 10.0), strict_endpoint=strict_endpoint) as resp:
+            info = (json.loads(_read_model_response(resp).decode("utf-8")) or {}).get("model_info") or {}
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        return None
+    for name, raw in info.items():
+        if name.endswith(".context_length") and type(raw) is int and raw > 0:
+            return raw
+    return None
+
+
+def _ollama_num_ctx(prompt_tokens: int, output_reserve: int, model_max: int | None) -> tuple[int, bool]:
+    """(num_ctx, fits): the smallest tier holding the request with 1.25x headroom, capped by the model maximum."""
+
+    ceiling = max(_OLLAMA_CONTEXT_TIERS[0], min(_OLLAMA_DEFAULT_CONTEXT_CEILING, model_max or _OLLAMA_DEFAULT_CONTEXT_CEILING))
+    need = prompt_tokens + output_reserve
+    wanted = -(-need * 5 // 4)
+    tier = next((value for value in _OLLAMA_CONTEXT_TIERS if value >= wanted), _OLLAMA_CONTEXT_TIERS[-1])
+    num_ctx = min(ceiling, tier)
+    return num_ctx, need <= num_ctx
+
+
+def _is_context_refusal(status: int, body: str) -> bool:
+    """Ollama relays llama-server's machine error as a JSON string; read the nested object, never the prose."""
+
+    if status == 413:
+        return True
+    try:
+        error = json.loads(body).get("error")
+        if isinstance(error, str):
+            error = json.loads(error).get("error")
+    except (ValueError, AttributeError):
+        return False
+    return isinstance(error, dict) and (
+        error.get("type") in ("exceed_context_size_error", "context_length_exceeded") or error.get("code") == "context_length_exceeded"
+    )
+
+
 def _ollama_runner(endpoint: str, model: str):
     url = endpoint.rstrip("/") + "/api/chat"
 
     def run(system: str, prompt: str, *, timeout_s: float | None = None, max_output_tokens: int | None = None, strict_endpoint: bool = False) -> str:
+        timeout = _connected_model_timeout_s(timeout_s)
+        output_limit = _output_limit(max_output_tokens)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        num_ctx, fits = _ollama_num_ctx(
+            _estimate_tokens(json.dumps(messages, ensure_ascii=False)),
+            output_limit if output_limit is not None else _OLLAMA_DEFAULT_OUTPUT_RESERVE,
+            _ollama_model_max(endpoint, model, timeout=timeout, strict_endpoint=strict_endpoint),
+        )
+        if not fits:
+            raise ModelContextExceeded(f"model_context_exceeded: request does not fit the {num_ctx}-token window")
+        options: dict[str, int] = {"num_ctx": num_ctx}
+        if output_limit is not None:
+            options["num_predict"] = output_limit
         body = json.dumps(
             {
                 "model": model,
                 "stream": False,
-                **({"options": {"num_predict": _output_limit(max_output_tokens)}} if max_output_tokens is not None else {}),
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
+                # The server refuses (HTTP 400) instead of cutting the prompt when the window is still too small.
+                "truncate": False,
+                "options": options,
+                "messages": messages,
             }
         ).encode("utf-8")
         req = urllib.request.Request(url, data=body, headers={"content-type": "application/json"})
-        with _model_urlopen(req, timeout=_connected_model_timeout_s(timeout_s), strict_endpoint=strict_endpoint) as resp:
-            data = json.loads(_read_model_response(resp).decode("utf-8"))
+        try:
+            with _model_urlopen(req, timeout=timeout, strict_endpoint=strict_endpoint) as resp:
+                data = json.loads(_read_model_response(resp).decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            detail = error.read(_MODEL_RESPONSE_MAX_BYTES).decode("utf-8", "replace") if error.fp else ""
+            if _is_context_refusal(error.code, detail):
+                raise ModelContextExceeded(f"model_context_exceeded: the server refused a {num_ctx}-token window") from error
+            raise
         return ((data.get("message") or {}).get("content")) or ""
 
     return run
