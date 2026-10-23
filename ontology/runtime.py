@@ -32,6 +32,30 @@ from .utils import clamp, content_hash, estimate_tokens, json_dumps, json_loads,
 
 
 SCHEMA_VERSION = 4
+_WINDOWS_DRIVE_URI_PATH = re.compile(r"^/[A-Za-z]:")
+
+
+def file_uri_path_text(uri: str, *, windows: bool | None = None) -> str | None:
+    """The local path a ``Path.as_uri()`` source URI names, or None for a non-file URI.
+
+    Sources are stored with ``Path.resolve().as_uri()``. On Windows that is ``file:///C:/x/y.md`` (or
+    ``file://server/share/y.md`` for UNC), and the URL path ``/C:/x/y.md`` is not a Windows path: ``Path("/C:/x")`` is
+    rooted on the current drive, never exists, and every source read back as ``source_deleted``. ``verify`` then
+    answered ``status=fail`` (integrity ok) and every query ``stale_index`` once anything was ingested (Windows retest 2,
+    2026-10-24: a new empty Work project). POSIX keeps the URL path as it was.
+    """
+    parsed = urlparse(uri)
+    if parsed.scheme != "file":
+        return None
+    path = unquote(parsed.path)
+    if not (os.name == "nt" if windows is None else windows):
+        return path
+    host = parsed.netloc
+    if host and host.lower() != "localhost":
+        return "\\\\" + host + path.replace("/", "\\")
+    if _WINDOWS_DRIVE_URI_PATH.match(path):
+        path = path[1:]
+    return path.replace("/", "\\")
 DEFAULT_DB_PATH = Path(".agentlas/ontology-runtime.sqlite")
 MAX_INGEST_FILES = 1_000
 MAX_ONTOLOGY_INBOX_FILES = 80
@@ -871,10 +895,8 @@ class OntologyRuntime:
 
     @staticmethod
     def _path_from_file_uri(uri: str) -> Path | None:
-        parsed = urlparse(uri)
-        if parsed.scheme != "file":
-            return None
-        return Path(unquote(parsed.path))
+        text = file_uri_path_text(uri)
+        return None if text is None else Path(text)
 
     @staticmethod
     def _file_content_hash(path: Path) -> str:
