@@ -836,6 +836,14 @@ def main(argv: list[str] | None = None) -> int:
     for auth_name in ("status", "login", "ensure", "logout"):
         auth_cmd = auth_sub.add_parser(auth_name)
         auth_cmd.add_argument("--base-url", default=None)
+        if auth_name == "status":
+            # Default: renew an aged-out access token from the saved grant
+            # before answering, so a saved sign-in never reads as signed out.
+            auth_cmd.add_argument(
+                "--no-refresh",
+                action="store_true",
+                help="Only read the saved sign-in file; do not renew an aged-out access token",
+            )
         if auth_name in {"login", "ensure"}:
             auth_cmd.add_argument("--no-open", action="store_true", help="Print the authorization URL instead of opening a browser")
             # 실측 2026-08-24: 사용자가 180초를 넘겨 로그인을 마치면 콜백 서버가
@@ -1790,7 +1798,7 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             if args.auth_command == "status":
-                result = auth_status(args.base_url)
+                result = auth_status(args.base_url, refresh=not args.no_refresh)
             elif args.auth_command == "logout":
                 result = logout(args.base_url)
             elif args.auth_command == "login":

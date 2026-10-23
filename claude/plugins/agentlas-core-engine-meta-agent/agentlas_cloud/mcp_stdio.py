@@ -4239,9 +4239,21 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if name == "hephaestus_network_status":
         return network_status()
     if name == "agentlas_auth_status":
-        from .auth import auth_status
+        from .auth import AgentlasAuthError, auth_status, normalize_base_url
+        from .networking.hub_client import hub_url
 
-        return auth_status(arguments.get("base_url"))
+        base_url = arguments.get("base_url")
+        # Renew an aged-out access token from the saved grant before answering,
+        # so a saved sign-in does not read as signed out after an idle hour or
+        # an update. Only for the configured hub: a model-supplied base_url
+        # stays a pure local read, like agentlas_authenticate refuses it.
+        renew = True
+        if base_url:
+            try:
+                renew = normalize_base_url(str(base_url)) == normalize_base_url(hub_url())
+            except AgentlasAuthError:
+                renew = False
+        return auth_status(base_url, refresh=renew)
     if name == "agentlas_authenticate":
         from .auth import AgentlasAuthError, ensure_access_token, normalize_base_url, token_path
         from .networking.hub_client import hub_url

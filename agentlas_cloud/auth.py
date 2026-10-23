@@ -48,6 +48,16 @@ class _AuthLockBusy(AgentlasAuthError):
     """A local auth lock stayed held past its wait; nothing was written."""
 
 
+class _OAuthRefused(AgentlasAuthError):
+    """The OAuth server answered and refused (as opposed to being unreachable)."""
+
+
+# `auth status` renews an aged-out access token before answering. Desktop runs
+# it with a 20 s budget, so the refresh gets a shorter network bound than the
+# 20 s used by commands that actually need the token.
+_STATUS_REFRESH_TIMEOUT_SECONDS = 8
+
+
 def _account_subject(value: Any) -> str | None:
     if (
         isinstance(value, str)
@@ -458,11 +468,64 @@ def delete_token_record(base_url: str | None = None) -> bool:
     return removed
 
 
-def auth_status(base_url: str | None = None) -> dict[str, Any]:
+def auth_status(
+    base_url: str | None = None,
+    *,
+    refresh: bool = False,
+    refresh_timeout_seconds: int = _STATUS_REFRESH_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Report the saved sign-in; with ``refresh`` renew an aged-out one first.
+
+    The access token lives one hour, so any machine that was idle, restarted,
+    or updated more than an hour after its last call holds a `refreshable`
+    record: a saved sign-in whose refresh grant renews it silently on the next
+    call. Answering `refreshable` from a pure file read made every surface that
+    shows a yes/no account line say "not signed in" right after an update
+    (measured 2026-10-23: Desktop 1.3.88 update, Settings showed the engine
+    signed out, the owner signed in again by browser although the saved grant
+    was still valid). With ``refresh`` the status spends that grant the same
+    single-flight way a command would and reports the result: `authenticated`,
+    `expired` with ``reason`` when the server refused the grant, or
+    `refreshable` with ``reason`` when the server could not be reached.
+    """
+
     base = normalize_base_url(base_url)
+    payload = _local_auth_status(base)
+    if not refresh or payload["status"] != "refreshable":
+        return payload
+    _token, outcome = _refresh_single_flight(base, None, timeout_seconds=refresh_timeout_seconds)
+    payload = _local_auth_status(base)
+    payload["refresh"] = outcome
+    if outcome == "rejected":
+        payload["status"] = "expired"
+        payload["reason"] = (
+            "sign_in_required: the Agentlas server no longer accepts this machine's "
+            "saved sign-in; run `hephaestus auth login` once"
+        )
+    elif payload["status"] == "refreshable":
+        payload["reason"] = (
+            "refresh_deferred: the saved sign-in is kept and renews on the next call; "
+            "the Agentlas server could not be reached just now"
+        )
+    return payload
+
+
+def _local_auth_status(base: str) -> dict[str, Any]:
     record = read_token_record(base)
     if not record:
-        return {"status": "signed_out", "base_url": base, "token_path": str(token_path(base))}
+        signed_out = {"status": "signed_out", "base_url": base, "token_path": str(token_path(base))}
+        try:
+            token_path(base).lstat()
+            present = True
+        except FileNotFoundError:
+            present = False
+        if present:
+            # A file that exists but does not parse is not "never signed in".
+            signed_out["reason"] = (
+                "auth_record_unreadable: the saved sign-in file could not be read; "
+                "run `hephaestus auth login` once to replace it"
+            )
+        return signed_out
     now = int(time.time())
     expires_at = int(record.get("expires_at") or 0)
     has_access = bool(record.get("access_token")) and expires_at > now + TOKEN_REFRESH_SKEW_SECONDS
@@ -622,21 +685,9 @@ def ensure_access_token(
     if stored and stored != refused:
         return stored
     if record and record.get("refresh_token") and record.get("client_id"):
-        refreshed: dict[str, Any] | None = None
-        try:
-            with _token_refresh_lock(token_path(base)):
-                current = read_token_record(base) or {}
-                fresh = _valid_access_token(current)
-                if fresh and fresh != refused:
-                    return fresh
-                if current.get("refresh_token") and current.get("client_id"):
-                    refreshed = _refresh_token(base, current)
-        except _AuthLockBusy:
-            fresh = _valid_access_token(read_token_record(base))
-            if fresh and fresh != refused:
-                return fresh
-        if refreshed:
-            return str(refreshed["access_token"])
+        token, _outcome = _refresh_single_flight(base, refused)
+        if token:
+            return token
     if not interactive:
         return None
     login_result = login(
@@ -646,6 +697,39 @@ def ensure_access_token(
         require_browser_open=require_browser_open,
     )
     return str(login_result["access_token"])
+
+
+def _refresh_single_flight(
+    base: str,
+    refused: str | None,
+    *,
+    timeout_seconds: int | None = None,
+) -> tuple[str | None, str]:
+    """Spend the stored refresh grant once across processes; say what happened.
+
+    Returns ``(token, outcome)``. ``outcome`` is ``fresh`` (another process had
+    already minted a usable token), ``refreshed``, ``rejected`` (the server
+    refused the grant), ``unreachable`` (no answer, nothing spent), ``busy``
+    (another process held the refresh lock past the wait) or ``no_grant``.
+    """
+
+    try:
+        with _token_refresh_lock(token_path(base)):
+            current = read_token_record(base) or {}
+            fresh = _valid_access_token(current)
+            if fresh and fresh != refused:
+                return fresh, "fresh"
+            if not (current.get("refresh_token") and current.get("client_id")):
+                return None, "no_grant"
+            refreshed, outcome = _refresh_token_outcome(base, current, timeout_seconds=timeout_seconds)
+    except _AuthLockBusy:
+        fresh = _valid_access_token(read_token_record(base))
+        if fresh and fresh != refused:
+            return fresh, "fresh"
+        return None, "busy"
+    if refreshed:
+        return str(refreshed["access_token"]), outcome
+    return None, outcome
 
 
 def login(
@@ -800,17 +884,29 @@ def _register_client(registration_endpoint: str, redirect_uri: str) -> str:
 
 
 def _refresh_token(base_url: str, record: dict[str, Any]) -> dict[str, Any] | None:
+    return _refresh_token_outcome(base_url, record)[0]
+
+
+def _refresh_token_outcome(
+    base_url: str,
+    record: dict[str, Any],
+    *,
+    timeout_seconds: int | None = None,
+) -> tuple[dict[str, Any] | None, str]:
+    params = {
+        "grant_type": "refresh_token",
+        "refresh_token": str(record["refresh_token"]),
+        "client_id": str(record["client_id"]),
+    }
     try:
-        tokens = _token_request(
-            str(record["token_endpoint"]),
-            {
-                "grant_type": "refresh_token",
-                "refresh_token": str(record["refresh_token"]),
-                "client_id": str(record["client_id"]),
-            },
-        )
+        if timeout_seconds is None:
+            tokens = _token_request(str(record["token_endpoint"]), params)
+        else:
+            tokens = _token_request(str(record["token_endpoint"]), params, timeout=timeout_seconds)
+    except _OAuthRefused:
+        return None, "rejected"
     except AgentlasAuthError:
-        return None
+        return None, "unreachable"
     refreshed = {
         **record,
         "server_rejected_at": 0,
@@ -834,7 +930,7 @@ def _refresh_token(base_url: str, record: dict[str, Any]) -> dict[str, Any] | No
             if attempt >= _TOKEN_WRITE_BUSY_RETRIES:
                 break
             time.sleep(0.2)
-    return refreshed
+    return refreshed, "refreshed"
 
 
 def _exchange_code(
@@ -857,12 +953,13 @@ def _exchange_code(
     )
 
 
-def _token_request(token_endpoint: str, params: dict[str, str]) -> dict[str, Any]:
+def _token_request(token_endpoint: str, params: dict[str, str], timeout: int = 20) -> dict[str, Any]:
     payload = _json_request(
         token_endpoint,
         method="POST",
         body=urllib.parse.urlencode(params).encode("utf-8"),
         headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+        timeout=timeout,
     )
     if not payload.get("access_token"):
         raise AgentlasAuthError("Agentlas OAuth token response did not include an access_token.")
@@ -887,13 +984,18 @@ def _json_request(
             parsed = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = _safe_http_error_detail(exc)
-        raise AgentlasAuthError(f"Agentlas OAuth request failed ({exc.code}): {detail}") from exc
+        # 4xx is the server's answer (invalid_grant, revoked client); 5xx and
+        # 429 are "try again", which must never read as a dead sign-in.
+        refused = 400 <= exc.code < 500 and exc.code != 429
+        error_type = _OAuthRefused if refused else AgentlasAuthError
+        raise error_type(f"Agentlas OAuth request failed ({exc.code}): {detail}") from exc
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
         raise AgentlasAuthError(f"Agentlas OAuth request failed: {exc}") from exc
     if not isinstance(parsed, dict):
         raise AgentlasAuthError("Agentlas OAuth response was not a JSON object.")
     if parsed.get("error"):
-        raise AgentlasAuthError(str(parsed.get("error_description") or parsed.get("error")))
+        error_type = AgentlasAuthError if parsed.get("error") == "temporarily_unavailable" else _OAuthRefused
+        raise error_type(str(parsed.get("error_description") or parsed.get("error")))
     return parsed
 
 
