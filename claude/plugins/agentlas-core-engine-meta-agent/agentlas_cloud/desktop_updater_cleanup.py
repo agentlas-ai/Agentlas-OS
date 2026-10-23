@@ -23,6 +23,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from .windows_console import no_console_window
 
 
 DESKTOP_VERSIONS = {"0.8.65", "0.8.66"}
@@ -92,6 +93,7 @@ def _command(command: str, *args: str, deadline: float) -> subprocess.CompletedP
             text=True,
             timeout=max(0.05, min(COMMAND_TIMEOUT_SECONDS, remaining)),
             check=False,
+            **no_console_window(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return subprocess.CompletedProcess(
@@ -687,6 +689,7 @@ def _show_dialog(script: str) -> None:
             stderr=subprocess.DEVNULL,
             close_fds=True,
             start_new_session=True,
+            **no_console_window(),
         )
     except OSError:
         pass

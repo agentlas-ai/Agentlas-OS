@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .desktop_repair import DESKTOP_AUTHORITY, DESKTOP_BUNDLE_ID, DESKTOP_REQUIREMENT, DESKTOP_TEAM_ID
+from .windows_console import no_console_window
 
 VERSIONS = {"1.2.14", "1.2.15"}
 MARKER_NAME = "desktop-npm-repair-bridge-v1.json"
@@ -174,7 +175,7 @@ def _verified_context(source: Path) -> bool:
 def _command(command: list[str], deadline: float) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(command, capture_output=True, text=True, check=False,
-                              timeout=min(6.0, _remaining(deadline)))
+                              timeout=min(6.0, _remaining(deadline)), **no_console_window())
     except subprocess.TimeoutExpired as exc:
         raise RepairBlocked("verification_timeout") from exc
 

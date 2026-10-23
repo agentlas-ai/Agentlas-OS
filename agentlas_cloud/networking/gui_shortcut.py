@@ -25,6 +25,7 @@ from .bootstrap import networking_home
 from .card_lint import effective_status
 from .card_store import load_global_cards
 from .hub_client import HubToolError, call_hub_tool
+from ..windows_console import no_console_window
 
 
 HUB_GUI_SHORTCUTS = {
@@ -291,9 +292,10 @@ def _launch_python_gui(launcher_path: Path, cwd: Path, *, no_open: bool, detach:
             stdin=subprocess.DEVNULL,
             env=env,
             start_new_session=True,
+            **no_console_window(),
         )
         return {"status": "opening", "pid": proc.pid, "launcher_result": {}}
-    proc = subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    proc = subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False, **no_console_window())
     return {
         "status": "opened" if proc.returncode == 0 else "error",
         "launcher_result": _launcher_payload(proc.stdout),

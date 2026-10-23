@@ -21,6 +21,7 @@ from typing import Any, Callable
 from ..auth import normalize_base_url, read_token_record
 from ..memory_runtime import configured_no_tools_runtime, run_configured_no_tools
 from ..memory_owner_binding import host_binding
+from ..windows_console import no_console_window
 
 _SLOTS = {"agentlas.record_agent_memory": "curation",
           "agentlas.decide_agent_learning": "curation",
@@ -107,7 +108,7 @@ def _bounded_route(payload: dict[str, Any], timeout: int) -> dict[str, Any]:
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
     result = subprocess.run([sys.executable, "-c", code], input=json.dumps(payload), text=True, encoding="utf-8", env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=timeout,
-                            cwd=str(Path(__file__).resolve().parents[2]))
+                            cwd=str(Path(__file__).resolve().parents[2]), **no_console_window())
     if result.returncode or len(result.stdout.encode("utf-8")) > 128 * 1024:
         raise ValueError("hub_private_route_unavailable")
     return json.loads(result.stdout)

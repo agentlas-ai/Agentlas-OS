@@ -27,6 +27,7 @@ from agentlas_cloud.networking.bootstrap import utc_now
 
 from ..contracts import ResearchAttempt, ResearchResult, _stable_hash
 from ..policy import classify_url
+from ...windows_console import no_console_window
 
 BUNDLED_LAUNCHER = Path(__file__).with_name("agentlas_browser_launcher.mjs")
 
@@ -102,6 +103,7 @@ class _McpSession:
             env=env,
             text=True,
             bufsize=1,
+            **no_console_window(),
         )
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()

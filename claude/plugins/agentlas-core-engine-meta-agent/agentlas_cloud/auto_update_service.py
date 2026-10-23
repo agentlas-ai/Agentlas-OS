@@ -17,6 +17,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from .windows_console import no_console_window
 
 SERVICE_ID = "com.agentlas.hephaestus-update"
 WINDOWS_TASK_NAME = "AgentlasHephaestusUpdate"
@@ -39,6 +40,7 @@ def _run(command: list[str], *, timeout: int = COMMAND_TIMEOUT_SECONDS) -> dict[
             text=True,
             timeout=timeout,
             check=False,
+            **no_console_window(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"ok": False, "exitCode": None, "error": type(exc).__name__}

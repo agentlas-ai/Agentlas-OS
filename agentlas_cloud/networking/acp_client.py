@@ -48,6 +48,7 @@ import time
 from typing import Any, Callable, Mapping, Optional
 
 from .runtime_capabilities import normalize_runtime_capability_descriptor
+from ..windows_console import no_console_window
 
 PROTOCOL_VERSION = 1
 
@@ -248,6 +249,7 @@ class AcpClient:
             env=self.env,
             text=True,
             bufsize=1,
+            **no_console_window(),
         )
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()

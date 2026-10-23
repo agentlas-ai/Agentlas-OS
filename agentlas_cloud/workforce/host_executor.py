@@ -62,6 +62,7 @@ from .execution import (
     workforce_tool_inventory_digest,
 )
 from .goal_binding import WorkforceGoalStore
+from ..windows_console import no_console_window
 
 
 HOST_EXECUTOR_REQUEST_SCHEMA = "agentlas.workforce-host-executor-request.v1"
@@ -276,6 +277,7 @@ def _call_adapter(
                 stderr=subprocess.DEVNULL,
                 cwd=project_dir,
                 start_new_session=os.name == "posix",
+                **no_console_window(),
             )
             try:
                 process.communicate(input=request_bytes, timeout=timeout_seconds)

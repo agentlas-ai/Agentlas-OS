@@ -89,6 +89,7 @@ from agentlas_cloud.desktop_npm_repair import (
     repair_installed_desktop_npm_seal as run_desktop_npm_repair_bridge,
 )
 from agentlas_cloud.memory_hosts import INSTALLABLE_HOSTS, MEMORY_HOOK_HOSTS
+from agentlas_cloud.windows_console import no_console_window
 from agentlas_cloud.update import (
     _safe_python_cache_prefix,
     reconcile_legacy_host_plugin_transition,
@@ -130,7 +131,7 @@ class InstallError(RuntimeError):
 
 def _command(command: str, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [command, *args], capture_output=True, text=True, timeout=15, check=False
+        [command, *args], capture_output=True, text=True, timeout=15, check=False, **no_console_window()
     )
 
 

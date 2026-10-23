@@ -31,6 +31,7 @@ from .receipts import record_execution
 from .router import route_request
 from .run_journal import RunJournal
 from .stormbreaker_harness import goal_ultracode_harness
+from ..windows_console import no_console_window
 
 
 RUNNER_VERSION = "stormbreaker.auto_runner.v3"
@@ -1217,9 +1218,7 @@ def _stormbreaker_worker_process_options(platform_name: str | None = None) -> di
     """Keep packet executors out of the host's Windows console signal group."""
 
     target = os.name if platform_name is None else platform_name
-    if target == "nt":
-        return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
-    return {}
+    return no_console_window(target)
 
 
 # Per evidence file. Executor output streams to disk, never into memory; past

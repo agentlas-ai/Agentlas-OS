@@ -22,6 +22,7 @@ from ..contracts import ResearchAttempt, ResearchModuleManifest, ResearchRequest
 from ..hardpoints import active_hardpoint_argv
 from ..policy import classify_url
 from ..redaction import redact_secret_values, redacted_exception_reason
+from ...windows_console import no_console_window
 
 
 class AgentBrowserCliAdapter:
@@ -362,6 +363,7 @@ class AgentBrowserCliAdapter:
             text=True,
             check=False,
             timeout=timeout or self.timeout_seconds,
+            **no_console_window(),
         )
 
     def _run_step(

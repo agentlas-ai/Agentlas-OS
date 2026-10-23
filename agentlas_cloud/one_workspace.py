@@ -26,6 +26,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+try:
+    from .windows_console import no_console_window
+except ImportError:
+    # bin/agentlas-one runs this file directly (`python one_workspace.py`), so
+    # there is no package; this file's own folder is first on sys.path.
+    from windows_console import no_console_window  # type: ignore[no-redef]
+
 CONTRACT_VERSION = "1.0.0"
 SCHEMA_VERSION = "agentlas.one-workspace.v1"
 
@@ -1539,6 +1546,7 @@ def _ingest_drawer_notes(drawer: Path) -> str:
             [str(binary), "--db", str(drawer / "memory" / "experience.sqlite"),
              "ingest", str(drawer / "notes"), "--scope", "internal"],
             capture_output=True, timeout=60, check=False,
+            **no_console_window(),
         )
         return "ok" if completed.returncode == 0 else f"failed:rc{completed.returncode}"
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -2407,6 +2415,7 @@ def _spawn_project_soul_refresh(project_root: Path) -> bool:
                 stderr=out,
                 close_fds=True,
                 start_new_session=True,
+                **no_console_window(),
             )
     except Exception:  # noqa: BLE001
         return False
@@ -2831,6 +2840,7 @@ def _spawn_detached_index(root: Path) -> bool:
                 [sys.executable, "-m", "agentlas_cloud.one_workspace", "index", "--root", str(root)],
                 cwd=str(runtime_root), env=env, stdin=stdin, stdout=out, stderr=out,
                 close_fds=True, start_new_session=True,
+                **no_console_window(),
             )
     except Exception as exc:  # noqa: BLE001 — recorded, never raised into a hook
         _write_index_status(Path(root).expanduser() / META_DIR,

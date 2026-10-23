@@ -14,6 +14,7 @@ from agentlas_cloud.networking.bootstrap import utc_now
 from ..contracts import ResearchAttempt, ResearchModuleManifest, ResearchRequest, ResearchResult, _stable_hash
 from ..policy import DEFAULT_MAX_BYTES, classify_url
 from ..redaction import redact_secret_values, redacted_exception_reason
+from ...windows_console import no_console_window
 
 
 class CommandSnapshotAdapter:
@@ -108,6 +109,7 @@ class CommandSnapshotAdapter:
             text=True,
             check=False,
             timeout=self.timeout_seconds,
+            **no_console_window(),
         )
 
 

@@ -26,6 +26,7 @@ from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+from .windows_console import no_console_window
 
 
 BOOTSTRAP_SCHEMA = "agentlas.project-bootstrap.v1"
@@ -1540,6 +1541,7 @@ def _run_bounded_stdout(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
+            **no_console_window(),
         )
     except OSError:
         return None, "unavailable"
@@ -2668,6 +2670,7 @@ def multi_repository_root_children(project: Path) -> list[str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         check=False,
+        **no_console_window(),
     )
     if probe.returncode == 0 and probe.stdout.strip() == b"true":
         return []

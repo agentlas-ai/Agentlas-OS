@@ -19,6 +19,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from .windows_console import no_console_window
 
 PLUGIN_ID = "hephaestus@agentlas-core-engine"
 MARKETPLACE_ID = "agentlas-core-engine"
@@ -529,6 +530,7 @@ def _selected_process_environments(pids: list[int]) -> dict[int, dict[str, str] 
             text=True,
             timeout=5,
             check=False,
+            **no_console_window(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -566,6 +568,7 @@ def _process_snapshot() -> list[dict[str, Any]] | None:
             text=True,
             timeout=5,
             check=False,
+            **no_console_window(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -930,6 +933,7 @@ def _run(command: list[str], *, home: Path) -> dict[str, Any]:
             text=True,
             timeout=COMMAND_TIMEOUT_SECONDS,
             check=False,
+            **no_console_window(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"ok": False, "exitCode": None, "error": type(exc).__name__}

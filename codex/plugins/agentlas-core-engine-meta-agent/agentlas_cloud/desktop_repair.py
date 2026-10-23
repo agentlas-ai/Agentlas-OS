@@ -20,6 +20,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from .windows_console import no_console_window
 
 
 DESKTOP_REPAIR_VERSIONS = {"0.8.58", "0.8.59"}
@@ -47,7 +48,7 @@ class DesktopRepairError(RuntimeError):
 
 def _command(command: str, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [command, *args], capture_output=True, text=True, timeout=15, check=False
+        [command, *args], capture_output=True, text=True, timeout=15, check=False, **no_console_window()
     )
 
 

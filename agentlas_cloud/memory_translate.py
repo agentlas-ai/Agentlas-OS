@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from . import one_workspace as ow
+from .windows_console import no_console_window
 
 TRANSLATE_WORKER_ENV = "AGENTLAS_TRANSLATE_WORKER"
 TRANSLATE_RUNTIME_ENV = "AGENTLAS_TRANSLATE_RUNTIME"
@@ -233,6 +234,7 @@ def _claude_translator(cfg: dict[str, Any]) -> Translator | None:
                  "--system-prompt", system, "--output-format", "json"],
                 input=prompt, capture_output=True, text=True, timeout=timeout,
                 cwd=cwd, env={**_child_env(), "MAX_THINKING_TOKENS": "0"},
+                **no_console_window(),
             )
         finally:
             shutil.rmtree(cwd, ignore_errors=True)
@@ -267,6 +269,7 @@ def _codex_translator(cfg: dict[str, Any]) -> Translator | None:
                  "-C", cwd, "--output-last-message", str(out_file), "-"],
                 input=f"{system}\n\n{prompt}", capture_output=True, text=True, timeout=timeout,
                 cwd=cwd, env=_child_env(),
+                **no_console_window(),
             )
             return out_file.read_text(encoding="utf-8") if out_file.exists() else ""
         finally:
@@ -873,6 +876,7 @@ def _spawn(args: list[str], cwd: Path) -> bool:
                 [sys.executable, "-m", "agentlas_cloud.memory_translate", *args],
                 cwd=str(cwd), env=env, stdin=stdin, stdout=out, stderr=out,
                 close_fds=True, start_new_session=True,
+                **no_console_window(),
             )
     except Exception:  # noqa: BLE001
         return False

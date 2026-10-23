@@ -31,6 +31,7 @@ import urllib.request
 from typing import Any
 
 from . import judgment
+from .windows_console import no_console_window
 
 JUDGE_RUNTIME_ENV = "AGENTLAS_JUDGE_RUNTIME"
 
@@ -95,6 +96,7 @@ def _host_cmd_runner(cmd: list[str]):
             capture_output=True,
             text=True,
             timeout=_connected_model_timeout_s(timeout_s),
+            **no_console_window(),
         )
         return proc.stdout or ""
 

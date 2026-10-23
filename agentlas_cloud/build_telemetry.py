@@ -37,6 +37,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from .windows_console import no_console_window
 
 _SEND_TIMEOUT_SECONDS = 3
 _ENDPOINT_PATH = "/api/telemetry/build"
@@ -213,6 +214,7 @@ def _spawn_send_worker(payload: dict[str, Any]) -> None:
                 stderr=stderr,
                 close_fds=True,
                 start_new_session=True,
+                **no_console_window(),
             )
     except Exception:
         pass

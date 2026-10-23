@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import platform
 import re
 import shutil
@@ -14,6 +15,19 @@ from typing import Any
 from xml.etree import ElementTree
 
 from .korean_document_model import HephaestusKoreanDocumentModel, KoreanParseResult
+
+# Same value as subprocess.CREATE_NO_WINDOW, which only exists on Windows builds.
+_CREATE_NO_WINDOW = 0x08000000
+
+
+def _no_console_window() -> dict[str, int]:
+    """Keep pdftotext/tesseract from opening a console window on Windows.
+
+    Mirrors ``agentlas_cloud.windows_console.no_console_window``; the ontology
+    package does not import ``agentlas_cloud``. No options elsewhere.
+    """
+
+    return {"creationflags": _CREATE_NO_WINDOW} if os.name == "nt" else {}
 
 
 @dataclass
@@ -209,6 +223,7 @@ class SourceParserRegistry:
                 capture_output=True,
                 check=True,
                 timeout=30,
+                **_no_console_window(),
             )
         except Exception as exc:
             return ParsedDocument("pdf", "parser_error", [], str(exc), "pdf_text_adapter")
@@ -265,6 +280,7 @@ class SourceParserRegistry:
                 capture_output=True,
                 check=True,
                 timeout=45,
+                **_no_console_window(),
             )
         except Exception as exc:
             return ParsedDocument("image", "parser_error", [], str(exc), "tesseract_ocr_adapter")
@@ -289,6 +305,7 @@ class SourceParserRegistry:
                     capture_output=True,
                     check=True,
                     timeout=60,
+                    **_no_console_window(),
                 )
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as exc:
                 detail = getattr(exc, "stderr", "") or str(exc)

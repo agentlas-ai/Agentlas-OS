@@ -27,6 +27,7 @@ function checkpoint(transcript, workspace) {
     try {
       child = spawn(runnerPath(), ["stop-hook", "openclaw"], {
         stdio: ["pipe", "ignore", "ignore"],
+        windowsHide: true,
       });
     } catch {
       resolve();

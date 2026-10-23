@@ -396,6 +396,7 @@ def _source_label(item: dict[str, Any]) -> str:
 
 
 from .project_index_backstop import STALE_AFTER_SECONDS as STALE_SOURCE_AFTER_SECONDS
+from .windows_console import no_console_window
 
 
 def _source_path(item: dict[str, Any]) -> Path | None:
@@ -1395,6 +1396,7 @@ def _spawn_project_ensure(target: Path, *, reason: str) -> bool:
                 stderr=out,
                 close_fds=True,
                 start_new_session=True,
+                **no_console_window(),
             )
     except Exception:
         return False
@@ -1434,6 +1436,7 @@ def _spawn_project_ingest(target: Path, *, reason: str) -> bool:
                 stderr=out,
                 close_fds=True,
                 start_new_session=True,
+                **no_console_window(),
             )
     except Exception:
         return False

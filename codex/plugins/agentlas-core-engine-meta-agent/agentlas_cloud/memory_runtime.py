@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Callable
 from .memory_actor_family import CORE_ONE_ACTOR_ID, memory_actor_ids
 from .prompt_order import compose_prompt
+from .windows_console import no_console_window
 
 SCHEMA = "agentlas.core-memory-runtime.v1"
 ONE_ACTOR_ID = CORE_ONE_ACTOR_ID
@@ -87,7 +88,7 @@ def run_configured_no_tools(runtime: dict[str, Any], system: str, prompt: str,
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
     result = subprocess.run([sys.executable, "-c", child], input=payload, text=True, encoding="utf-8", env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            timeout=timeout_s, cwd=str(Path(__file__).resolve().parent.parent))
+                            timeout=timeout_s, cwd=str(Path(__file__).resolve().parent.parent), **no_console_window())
     if result.returncode or len(result.stdout.encode("utf-8")) > 128 * 1024:
         raise ValueError("memory_model_unavailable")
     output = json.loads(result.stdout)["output"]
@@ -145,9 +146,10 @@ def schedule_worker(operation_id: str, owner_namespace: str) -> bool:
     options: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
                                "stderr": subprocess.DEVNULL, "env": env,
                                "cwd": str(Path(__file__).resolve().parent.parent)}
-    if os.name == "nt":
-        options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-    else:
+    # Windows: a hidden console, not DETACHED_PROCESS. A detached worker has no
+    # console, so the model-call child it starts opened a visible window.
+    options.update(no_console_window())
+    if os.name != "nt":
         options["start_new_session"] = True
     subprocess.Popen([sys.executable, "-m", "agentlas_cloud.memory_runtime", "process",
                       "--operation-id", _safe_id(operation_id)], **options)

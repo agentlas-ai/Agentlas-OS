@@ -458,7 +458,7 @@ async function main() {
     return flight;
   };
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const child = spawn(npx, ['-y', '@playwright/mcp@latest', '--cdp-endpoint', 'http://127.0.0.1:' + PORT], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const child = spawn(npx, ['-y', '@playwright/mcp@latest', '--cdp-endpoint', 'http://127.0.0.1:' + PORT], { stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true });
   const childDrain = createOwnedChildDrain(child);
   let finishing = false;
   const finish = (code) => {

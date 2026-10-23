@@ -27,6 +27,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
+from .windows_console import no_console_window
 
 LATEST_RELEASE_URL = os.environ.get(
     "HEPHAESTUS_LATEST_RELEASE_URL",
@@ -1540,6 +1541,7 @@ def _sync_installed_global_router(runtime_root: Path, *, home: Path | None = Non
             text=True,
             timeout=30,
             check=False,
+            **no_console_window(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"status": "failed", "reason": type(exc).__name__}
@@ -1588,6 +1590,7 @@ def sync_installed_memory_hooks(source: Path, home: Path | None = None) -> dict[
             text=True,
             timeout=MEMORY_HOOK_SYNC_TIMEOUT_SECONDS,
             check=False,
+            **no_console_window(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"status": "fail", "installed": {}, "errors": {"installer": str(exc)}}
@@ -2167,6 +2170,7 @@ def _spawn_auto_update_worker(runtime_root: Path) -> None:
             stderr=stderr,
             close_fds=True,
             start_new_session=True,
+            **no_console_window(),
         )
 
 
@@ -2313,6 +2317,7 @@ def _active_plugin_cache_paths(home: Path) -> set[Path] | None:
             text=True,
             timeout=5,
             check=False,
+            **no_console_window(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -2574,6 +2579,7 @@ def _grok_marketplace_cache_targets(home: Path) -> list[Path]:
                 text=True,
                 timeout=5,
                 check=False,
+                **no_console_window(),
             )
         except Exception:
             continue
@@ -2605,12 +2611,14 @@ def _sync_grok_marketplace_cache(home: Path) -> dict[str, Any]:
                 capture_output=True,
                 timeout=20,
                 check=True,
+                **no_console_window(),
             )
             subprocess.run(
                 ["git", "-C", str(cache_dir), "reset", "--quiet", "--hard", "FETCH_HEAD"],
                 capture_output=True,
                 timeout=20,
                 check=True,
+                **no_console_window(),
             )
             updated.append(str(cache_dir))
         except Exception as exc:
@@ -2924,6 +2932,7 @@ def _healthcheck_runtime(runtime_root: Path) -> None:
             text=True,
             timeout=HEALTHCHECK_TIMEOUT_SECONDS,
             check=False,
+            **no_console_window(),
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"runtime healthcheck timed out after {HEALTHCHECK_TIMEOUT_SECONDS}s") from exc
@@ -3097,14 +3106,14 @@ def _runtime_holder_text() -> str | None:
     texts = []
     try:
         texts.append(subprocess.run(["ps", "-axww", "-o", "command="], capture_output=True, text=True,
-                                    errors="replace", timeout=20, check=True).stdout)
+                                    errors="replace", timeout=20, check=True, **no_console_window()).stdout)
     except (OSError, subprocess.SubprocessError):
         return None
     lsof = shutil.which("lsof")
     if lsof:
         try:
             texts.append(subprocess.run([lsof, "-w", "-u", str(os.getuid()), "-Fn"], capture_output=True,
-                                        text=True, errors="replace", timeout=60).stdout)
+                                        text=True, errors="replace", timeout=60, **no_console_window()).stdout)
         except (OSError, subprocess.SubprocessError):
             return None
     return "\n".join(texts)

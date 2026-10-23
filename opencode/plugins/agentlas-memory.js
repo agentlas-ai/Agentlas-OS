@@ -15,7 +15,7 @@ function spawnLocal(command, args, options) {
   // Node 폴백. 같은 계약(stdin 으로 JSON 한 덩이, stdout 수집)을 지킨다.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { spawn } = require("node:child_process")
-  const child = spawn(command, args, { env: options.env, stdio: ["pipe", options.stdout === "pipe" ? "pipe" : "ignore", "ignore"] })
+  const child = spawn(command, args, { env: options.env, windowsHide: true, stdio: ["pipe", options.stdout === "pipe" ? "pipe" : "ignore", "ignore"] })
   return { kind: "node", child }
 }
 

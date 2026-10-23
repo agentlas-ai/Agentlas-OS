@@ -28,6 +28,7 @@ from .update import (
     run_update,
     write_python_shims,
 )
+from .windows_console import no_console_window
 
 
 def _build_telemetry_tracker(event: str, mode: str | None = None) -> Any:
@@ -3918,7 +3919,7 @@ def _stormbreaker_background_process_options(platform_name: str | None = None) -
     if target == "nt":
         # Run without a console. Do not also request a new process group: the
         # combination can leak Windows control events back to the host process.
-        return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+        return no_console_window(target)
     return {"start_new_session": True}
 
 
@@ -4107,6 +4108,7 @@ def _probe_python_command(command: str) -> dict[str, Any]:
             capture_output=True,
             text=True,
             timeout=5,
+            **no_console_window(),
         )
     except OSError as exc:
         result["error"] = str(exc)

@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from .runtime import SECRET_PATTERNS
+from .windows_console import no_console_window
 
 STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
 INBOX_DIR = "ontology-inbox"
@@ -317,6 +318,7 @@ def _spawn_detached_ingest(project_root: Path) -> None:
             stderr=out,
             close_fds=True,
             start_new_session=True,
+            **no_console_window(),
         )
 
 
