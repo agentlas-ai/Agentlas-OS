@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.2.69 — 2026-10-25
+
+- Memory recall: source files with Korean or spaced names are found again, so
+  recall no longer labels them "source missing"; labels show the decoded name.
+  On Windows, stored `file:///C:/...` sources are checked as the same files.
+- Windows: `.cmd` launchers (`python3.cmd`, `hephaestus.cmd`, memory hooks) work
+  under a user folder with a Korean or other non-ASCII name.
+- Windows: the local judge and translator reach loopback model servers
+  (`127.0.0.1`, `localhost`, `::1`) directly instead of through a company proxy.
+- Windows: without symlink privilege, `runtime/current` becomes a directory
+  junction instead of a copy, so a running engine never mixes files from two
+  versions, and pruning keeps the active generation.
+- Windows: crashed update, translation and ingest jobs no longer hold their
+  locks for up to an hour; process checks use the Windows process API.
+- Windows: engine files are written and read as exact bytes, so CRLF sources,
+  upload digests and artifact digests match on every OS.
+- Windows: uploads, agent revision reads and local package registration work;
+  they walk by path and re-check every folder before and after each read, and
+  refuse links and junctions.
+- Windows: shorter release folder names leave room for package files under the
+  path limit; existing folders are still used.
+- Windows: ledger appends and the networking init lock take a file lock, atomic
+  JSON writes retry a brief sharing violation, the memory database waits longer
+  on a busy file, scheduled-task output is decoded in the console code page, and
+  directory swaps no longer half-delete a cache that holds a loaded module.
+- Browser: the browser launcher can add notes from an approved per-site
+  learning to page results. Nothing creates such a learning yet, so pages read
+  the same as before.
+
 ## 1.2.68 — 2026-10-24
 
 - Sign-in: `auth status` (CLI and the `agentlas_auth_status` MCP tool) renews a
