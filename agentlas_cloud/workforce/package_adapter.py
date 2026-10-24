@@ -72,6 +72,8 @@ _SECURE_DIR_FD_AVAILABLE = bool(
     and os.stat in os.supports_follow_symlinks
     and os.scandir in os.supports_fd
 )
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+_FILE_ATTRIBUTE_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 
 
 class PackageAdaptationError(ValueError):
@@ -186,24 +188,26 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
     to a held directory fd, so renames do not retarget later reads.
     """
 
-    if not _secure_dir_fd_available():
-        # A path-based fallback would silently reintroduce the ancestor-swap
-        # race (notably on Windows, where Python's dir_fd APIs are absent).
+    path_walk = not _secure_dir_fd_available()
+    if path_walk and os.name != "nt":
+        # A plain path-based fallback would silently reintroduce the
+        # ancestor-swap race. Windows alone gets the re-checked path walk below
+        # (Python has no dir_fd APIs there); any other host lacking them refuses.
         raise PackageAdaptationError(
             "source_secure_snapshot_unavailable",
             "this platform cannot safely snapshot a mutable local package",
             "This OS/Python build lacks the directory-handle APIs the safe snapshot needs, so no local root can be registered here. Use a host where they are available, or borrow the package from Cloud/Hub instead of registering it locally.",
         )
     absolute_root = Path(os.path.abspath(os.fspath(root.expanduser())))
-    root_fd = _open_absolute_directory(absolute_root)
+    root_fd: Any = _open_absolute_path_directory(absolute_root) if path_walk else _open_absolute_directory(absolute_root)
     files: list[PackageFile] = []
     total = 0
     read_files = 0
 
-    def visit(directory_fd: int, relative_parts: tuple[str, ...]) -> None:
+    def visit(directory_fd: Any, relative_parts: tuple[str, ...]) -> None:
         nonlocal read_files, total
         try:
-            with os.scandir(directory_fd) as entries:
+            with _dir_scandir(directory_fd) as entries:
                 names = sorted(entry.name for entry in entries)
         except OSError as exc:
             raise PackageAdaptationError(
@@ -214,13 +218,13 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
         regular_files: list[str] = []
         for name in names:
             try:
-                metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                metadata = _dir_entry_lstat(directory_fd, name)
             except OSError as exc:
                 raise PackageAdaptationError(
                     "source_changed_during_snapshot",
                     "package changed while its safe snapshot was being captured",
                 ) from exc
-            if stat.S_ISLNK(metadata.st_mode):
+            if _is_link_like(metadata):
                 raise PackageAdaptationError(
                     "source_symlink_forbidden", "package paths cannot be symlinks"
                 )
@@ -305,17 +309,120 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
             try:
                 visit(child_fd, (*relative_parts, name))
             finally:
-                os.close(child_fd)
+                _dir_close(child_fd)
 
     try:
         visit(root_fd, ())
     finally:
-        os.close(root_fd)
+        _dir_close(root_fd)
     return tuple(files)
 
 
 def _secure_dir_fd_available() -> bool:
     return _SECURE_DIR_FD_AVAILABLE
+
+
+# Windows path walk. Windows has no O_DIRECTORY / O_NOFOLLOW, refuses os.open on
+# a directory and supports neither dir_fd= nor scandir(fd), so the descriptor
+# walk above cannot run and every local registration was refused there. The
+# same guard batch 3 gave the upload snapshot (agentlas_cloud/upload.py
+# _PathDir) is used instead: the walk goes by path, every component from the
+# drive root down is a plain directory (a symlink or junction - any reparse
+# point - is refused), and the identity (device, file id, type) of every
+# ancestor is re-checked before each scan or open and after each file read; a
+# file is opened by path and its handle must be the file lstat saw. POSIX keeps
+# the descriptor walk unchanged.
+
+
+def _is_link_like(metadata: os.stat_result) -> bool:
+    """A symlink, or on Windows any reparse point (junctions do not set S_IFLNK)."""
+
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT
+    )
+
+
+def _path_identity(metadata: os.stat_result) -> tuple[int, int, int]:
+    if _is_link_like(metadata) or not stat.S_ISDIR(metadata.st_mode):
+        return (-1, -1, -1)  # a link or non-directory appearing on the chain is a swap
+    return (metadata.st_dev, metadata.st_ino, stat.S_IFMT(metadata.st_mode))
+
+
+@dataclass(frozen=True)
+class _PathDir:
+    """A directory reached by path, with the identity of itself and every ancestor."""
+
+    path: Path
+    chain: tuple[tuple[Path, tuple[int, int, int]], ...]
+
+    def verify(self) -> None:
+        for component, identity in self.chain:
+            try:
+                metadata = os.lstat(component)
+            except OSError as exc:
+                raise PackageAdaptationError(
+                    "source_changed_during_snapshot",
+                    "package changed while its safe snapshot was being captured",
+                ) from exc
+            if _path_identity(metadata) != identity:
+                raise PackageAdaptationError(
+                    "source_changed_during_snapshot",
+                    "package changed while its safe snapshot was being captured",
+                )
+
+
+def _open_absolute_path_directory(path: Path) -> _PathDir:
+    """Windows: check every component of the root is a plain directory, keep their identities."""
+
+    if not path.is_absolute():
+        raise PackageAdaptationError("source_read_failed", "package root must be absolute")
+    chain: list[tuple[Path, tuple[int, int, int]]] = []
+    current = Path(path.anchor)
+    for index, component in enumerate((path.anchor, *path.parts[1:])):
+        current = current if index == 0 else current / component
+        try:
+            metadata = os.lstat(current)
+        except FileNotFoundError as exc:
+            raise PackageAdaptationError(
+                "source_missing",
+                "local package root does not exist",
+                "Check the path for a typo and register a folder that exists on this machine.",
+            ) from exc
+        except OSError as exc:
+            raise PackageAdaptationError("source_read_failed", "package root could not be opened safely") from exc
+        if _is_link_like(metadata):
+            raise PackageAdaptationError(
+                "source_symlink_forbidden",
+                "package root and its path ancestors cannot be symlinks",
+                "Register the real folder this path resolves to instead of a symlinked path.",
+            )
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise PackageAdaptationError(
+                "source_read_failed",
+                "package path is not a directory",
+                "Register the folder that contains the agent or team, not a file inside it.",
+            )
+        chain.append((current, _path_identity(metadata)))
+    return _PathDir(path, tuple(chain))
+
+
+def _dir_scandir(directory: Any):
+    if isinstance(directory, _PathDir):
+        directory.verify()
+        return os.scandir(directory.path)
+    return os.scandir(directory)
+
+
+def _dir_entry_lstat(directory: Any, name: str) -> os.stat_result:
+    if isinstance(directory, _PathDir):
+        # DirEntry.stat() on Windows reports st_ino/st_dev as 0; lstat has the real ones.
+        return os.lstat(directory.path / name)
+    return os.stat(name, dir_fd=directory, follow_symlinks=False)
+
+
+def _dir_close(directory: Any) -> None:
+    if not isinstance(directory, _PathDir):
+        os.close(directory)
 
 
 def _directory_open_flags() -> int:
@@ -348,7 +455,29 @@ def _open_absolute_directory(path: Path) -> int:
         raise
 
 
-def _open_directory_at(parent_fd: int, name: str, *, root_lookup: bool = False) -> int:
+def _open_directory_at(parent_fd: Any, name: str, *, root_lookup: bool = False) -> Any:
+    if isinstance(parent_fd, _PathDir):
+        parent_fd.verify()
+        try:
+            metadata = os.lstat(parent_fd.path / name)
+        except OSError as exc:
+            raise PackageAdaptationError(
+                "source_changed_during_snapshot",
+                "package directory changed while its safe snapshot was being captured",
+            ) from exc
+        if _is_link_like(metadata):
+            raise PackageAdaptationError(
+                "source_changed_during_snapshot",
+                "package directory changed while its safe snapshot was being captured",
+            )
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise PackageAdaptationError(
+                "source_read_failed",
+                "package path is not a directory",
+                "Register the folder that contains the agent or team, not a file inside it.",
+            )
+        child = parent_fd.path / name
+        return _PathDir(child, (*parent_fd.chain, (child, _path_identity(metadata))))
     try:
         descriptor = os.open(name, _directory_open_flags(), dir_fd=parent_fd)
     except OSError as exc:
@@ -379,8 +508,8 @@ def _open_directory_at(parent_fd: int, name: str, *, root_lookup: bool = False) 
     return descriptor
 
 
-def _bounded_regular_file_bytes_at(directory_fd: int, name: str, *, remaining: int) -> bytes:
-    """Read one regular file through a no-follow openat within the budget."""
+def _bounded_regular_file_bytes_at(directory_fd: Any, name: str, *, remaining: int) -> bytes:
+    """Read one regular file through a no-follow openat (Windows: a re-checked path) within the budget."""
 
     if remaining < 0:
         raise PackageAdaptationError(
@@ -394,8 +523,19 @@ def _bounded_regular_file_bytes_at(directory_fd: int, name: str, *, remaining: i
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_NONBLOCK", 0)
     )
+    expected: os.stat_result | None = None
     try:
-        descriptor = os.open(name, flags, dir_fd=directory_fd)
+        if isinstance(directory_fd, _PathDir):
+            # No O_NOFOLLOW on Windows: what lstat saw must be a plain file, and
+            # the handle opened must be that same file (a link swapped in
+            # between would open its target, whose identity differs).
+            directory_fd.verify()
+            expected = os.lstat(directory_fd.path / name)
+            if _is_link_like(expected) or not stat.S_ISREG(expected.st_mode):
+                raise OSError(errno.ELOOP, "not a plain file", name)
+            descriptor = os.open(directory_fd.path / name, flags | _O_BINARY)
+        else:
+            descriptor = os.open(name, flags | _O_BINARY, dir_fd=directory_fd)
     except OSError as exc:
         raise PackageAdaptationError(
             "source_changed_during_snapshot",
@@ -405,6 +545,11 @@ def _bounded_regular_file_bytes_at(directory_fd: int, name: str, *, remaining: i
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode):
             raise PackageAdaptationError("source_read_failed", "package file is not regular")
+        if expected is not None and (metadata.st_dev, metadata.st_ino) != (expected.st_dev, expected.st_ino):
+            raise PackageAdaptationError(
+                "source_changed_during_snapshot",
+                "package file changed while its safe snapshot was being captured",
+            )
         if metadata.st_size > remaining:
             raise PackageAdaptationError(
                 "source_too_large",
@@ -425,6 +570,8 @@ def _bounded_regular_file_bytes_at(directory_fd: int, name: str, *, remaining: i
                     _SOURCE_LIMIT_REMEDIATION,
                 )
             chunks.append(chunk)
+        if isinstance(directory_fd, _PathDir):
+            directory_fd.verify()
         return b"".join(chunks)
     except OSError as exc:
         raise PackageAdaptationError("source_read_failed", "package file could not be read safely") from exc
@@ -767,7 +914,12 @@ def _snapshot(files: tuple[PackageFile, ...], destination: Path) -> None:
     for parts, content in validated:
         target = destination.joinpath(*parts)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+        # newline="": the snapshot keeps the source's exact line endings on every
+        # OS (Path.write_text re-translates "\n" to "\r\n" on Windows, which
+        # would double a CRLF source; its newline= needs Python 3.10, the
+        # launchers accept 3.9).
+        with open(target, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
 
 
 def materialize_package(
