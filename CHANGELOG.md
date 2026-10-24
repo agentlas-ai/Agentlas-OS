@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.68 — 2026-10-24
+
+- Sign-in: `auth status` (CLI and the `agentlas_auth_status` MCP tool) renews a
+  saved sign-in whose one-hour access token has aged out, instead of reporting
+  the engine as signed out after an app update or restart. A refused grant
+  reports `sign_in_required`, an unreachable server reports `refresh_deferred`,
+  and an unreadable record says so; `--no-refresh` keeps the plain read.
+- Local models: the OS judge's Ollama runner sizes the context window from the
+  model's trained maximum and tells Ollama not to truncate, so long prompts are
+  no longer silently cut on machines with a small default window. A prompt too
+  large for the model stops with `local_context_limit_exceeded`.
+- Windows: engine background jobs (update worker, runtime health checks, memory
+  hook installer, detached memory worker and their children) no longer open
+  blank console windows.
+- Windows: the ontology reads its stored `file:///C:/...` and UNC source
+  addresses back as the same files, so project verification and queries no
+  longer report every source as deleted. Existing databases need no migration.
+
 ## 1.2.67 — 2026-10-20
 
 - Hub search: the networking client asks the marketplace, owner Cloud and
