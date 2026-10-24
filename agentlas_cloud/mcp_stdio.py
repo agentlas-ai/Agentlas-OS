@@ -45,6 +45,10 @@ from .workforce.goal_binding import (
     workforce_preparation_ready,
     workforce_preparation_refusal,
 )
+from .workforce.host_execution_contract import (
+    goal_runtime_execution_contract,
+    host_execution_contract,
+)
 from .workforce.provenance import (
     WORKFORCE_FEDERATED_PREPARATION_SCHEMA,
     WORKFORCE_FEDERATED_SELECTION_SCHEMA,
@@ -1145,6 +1149,7 @@ def _preparation_projection(result: dict[str, Any]) -> dict[str, Any]:
         "executionPlan": projected_plan,
         "bundleContents": bundle_contents,
         "projection": "prepare.v2",
+        "hostExecutionContract": host_execution_contract(plan, projected=True),
         "projectionNote": (
             "executionRoster rows reference their directiveBundle/executionGraph "
             "by contentDigest in bundleContents (one copy per digest). The bound "
@@ -2710,20 +2715,32 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             # the only answer the host ever got.
             result = {
                 **result,
+                "hostExecutionBlocked": False,
+                "hostExecutionBlockScope": "receipt-validation-only",
+                "hostAuthorizationRequired": True,
+                "evidenceStatus": "unvalidated",
+                "hostExecutionContract": host_execution_contract(arguments["executionPlan"], wrapped=False),
                 "receiptContract": {
                     "schemaVersion": "agentlas.workforce-execution-receipt.v2",
                     "schemaRef": "schemas/workforce-execution-receipt.schema.json",
                     "producedBy": [
+                        "Current host native executor (when runtime receipt telemetry is available)",
                         "hephaestus workforce execute --project <project> --goal-id <goal> --adapter-argv-json '[\"<host-adapter>\"]' (external host adapter)",
                         "agentlas workforce \"<request>\" (Agentlas Terminal executor)",
                         "Agentlas Desktop Work (borrowed task force executor)",
                     ],
                     "adapterContractRef": "agentlas_cloud/workforce/host_executor.py",
+                    # prompt-module: {"id":"tool.workforce.receipt-recovery","revision":2,"stability":"fixed-policy","changeTriggers":["release"],"order":0}
                     "hostGuidance": (
-                        "Do not hand-author this receipt. Run the prepared roster through a "
-                        "runtime executor that emits it, or tell the user plainly that the "
-                        "roster is prepared but not executed and record the turn with "
-                        "workforce.record_goal_turn."
+                        "Use the current host's native delegation with the exact prepared "
+                        "directives, identities, dependencies, and artifact handoffs when "
+                        "available and authorized. Missing receipt telemetry alone does not "
+                        "block host execution. Preserve every host and explicit row restriction. "
+                        "Use an external adapter only when native delegation is unavailable; "
+                        "do not switch hosts automatically. Do not hand-author telemetry or "
+                        "claim validated execution from this rejected receipt. Retain actual "
+                        "invocations, artifacts, and unvalidated evidence separately, and "
+                        "record per-turn roster use with workforce.record_goal_turn."
                     ),
                 },
             }
@@ -3221,10 +3238,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 )
             if name == "workforce.goal_runtime":
                 goal_id = arguments.get("goalId")
-                return store.runtime_context(
+                return goal_runtime_execution_contract(store.runtime_context(
                     project_dir=project_dir,
                     goal_id=str(goal_id) if isinstance(goal_id, str) else None,
-                )
+                ))
             if name == "workforce.record_goal_turn":
                 return store.record_turn(
                     goal_id=str(arguments.get("goalId") or ""),

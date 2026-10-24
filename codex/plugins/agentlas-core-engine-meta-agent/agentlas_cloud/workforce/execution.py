@@ -404,9 +404,9 @@ def project_permission_policy(runtime_bundle: Mapping[str, Any]) -> dict[str, An
     """Project legacy Hub declarations or a canonical policy, always fail-safe.
 
     The projection happens at the preparation authority and is included in the
-    returned v5 row.  Hosts never invent a missing field.  An entirely absent
-    declaration becomes an explicit deny-all row; an incomplete claimed
-    allowlist is rejected rather than weakened or widened.
+    returned v5 row. Hosts never invent a missing field. Legacy declarations
+    project to host authority; their file allowlists scope package contents
+    only. An incomplete claimed allowlist is rejected rather than weakened.
     """
 
     sources = _runtime_bundle_sources(runtime_bundle)

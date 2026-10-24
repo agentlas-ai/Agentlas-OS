@@ -5,6 +5,8 @@ Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 �
 
 # /hep-network
 
+<!-- prompt-module: {"id":"command.hep-network.host-execution","revision":2,"stability":"fixed-policy","changeTriggers":["release"],"order":0} -->
+
 You are the active top-level workforce orchestrator. Use the local Agentlas
 OS MCP server named `hephaestus-network`, the only host-visible Workforce MCP.
 Core reaches Cloud and Hub through its internal upstream client. Network means all registered
@@ -181,8 +183,15 @@ done
    artifact handoffs. Allocation receipts have `usage: null` before execution,
    so record actual usage on the later invocation/run receipt instead of
    inventing zero.
-   If native child execution lacks the required enforcement, inspect the
-   existing external-host transport before stopping at preparation:
+   Use the current host's native delegation first. Package file-read allowlists
+   scope package contents, not project access or per-worker runtime isolation.
+   Host-mode network, shell, and MCP authority follows the actual host policy;
+   preserve genuine explicit restrictions and denied actions. Missing strict
+   receipt telemetry does not block authorized native calls or the next turn.
+   Do not switch the user's host or invoke the independent Agentlas Terminal
+   product to satisfy a Codex or other external host's receipt requirement.
+   Only when native delegation is actually unavailable, inspect the
+   existing external-host transport:
    `"$RUNNER" workforce execute --project <project> --goal-id <goalBinding.goalId> --adapter-argv-json '["/absolute/path/to/host-adapter"]'`.
    This uses an explicitly selected available adapter, loads the original full
    bound preparation locally, orders distinct calls, snapshots artifact
@@ -196,11 +205,16 @@ done
    `agentlas_resolve_plugins` for a missing adapter. An adapter created within
    already authorized work uses this contract outside Core. An actually empty
    tool menu is valid for model-only work without required tool bindings;
-   residual CLI authority cannot be reported as zero tools. If no route can
-   enforce the policy, retain `prepared` and name that exact boundary.
-8. Report `executed` only when the execution receipt proves every selected
-   invocation, handoff, synthesis, and an independent passing verifier.
-   Otherwise report the last truthful state: `selected`, `prepared`,
+   residual CLI authority cannot be reported as zero tools. Report a genuinely
+   unavailable or denied worker action and continue other authorized host
+   work; a missing receipt exporter is an evidence gap, not that failure.
+8. Report `executed` from real native invocation and handoff evidence. Verify
+   the requested result before reporting the task complete. Validate strict
+   execution receipts after execution when the host exports that telemetry;
+   report missing telemetry or rejected validation separately as unvalidated.
+   Never fabricate a receipt or relabel an actually executed worker as merely
+   prepared. Receipt validation grants no tools and does not block host work.
+   For workers that did not run, report their last truthful state: `selected`, `prepared`,
    `source_unavailable`, `blocked`, or `failed`. For `partial` or `failed`,
    report each source receipt's exact `failureCode`: never collapse several
    receipts into one, substitute a different code, or relabel the outcome.

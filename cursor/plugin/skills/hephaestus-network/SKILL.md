@@ -5,6 +5,8 @@ description: "Use when the user types $hephaestus-network, /hep-network, or /age
 
 # Hephaestus Agent Workforce Network
 
+<!-- prompt-module: {"id":"skill.network.host-execution","revision":2,"stability":"fixed-policy","changeTriggers":["release"],"order":0} -->
+
 The active host LLM staffs the task. Agentlas Core federates content menus from
 registered Local, owner Cloud, and public Hub inventory. No source and no
 deterministic layer is the decision-maker or a server-side LLM executor.
@@ -246,9 +248,11 @@ allow only Unicode-scalar strings, booleans, null, arrays, and ASCII-keyed
 objects; numbers, invalid keys, and `__proto__`/`prototype`/`constructor` fail
 closed. A row must also carry a nonblank top-level `systemPrompt`,
 `instructions`, or `agentMd`, a first-class digest-bound `permissionPolicy`,
-and an agent-null/team-authoritative `executionGraph`. Missing permission
-declarations become an explicit deny-all policy, never inherited host access;
-incomplete claimed allowlists fail. The plan's digest-bound `executionContext`
+and an agent-null/team-authoritative `executionGraph`. Core owns policy projection;
+do not invent a missing canonical row policy or weaken an incomplete allowlist.
+Package `fileRead` allow/deny patterns scope files below the package root, not
+the project's files or the host's tool authority. Network, shell, MCP, and
+project access follow the current host's actual authorization. The plan's digest-bound `executionContext`
 must preserve every validated slot demand, WorkOrder/Selection edge and
 artifact kind, assignment and reason code. Missing or
 changed releases create unfilled posts; there is no silent substitution.
@@ -333,24 +337,35 @@ Run the prepared roster through the current host runtime:
 4. synthesis runs after dependencies complete;
 5. an independent verifier checks the requested result.
 
+Use the current host's native delegation first: pass each exact prepared
+directive bundle to a distinct native sub-agent, consume its handoff, and
+verify the requested result. Codex, Claude Code, and other external MCP hosts
+do not need the independent Agentlas Terminal product to run these packages.
+Do not change the user's execution host to obtain a receipt.
+
 When a prepared release is itself a Team, honor its authoritative
-manager/worker/synthesis graph; do not flatten it into one prompt. Follow the
-row policy intersected with the host policy for all side effects. Unsupported
-enforcement blocks execution. `zero-tools` requires an actually empty tool
+manager/worker/synthesis graph; do not flatten it into one prompt. The host
+continues to enforce its actual permissions. A package manifest allowlist is
+not a per-worker project sandbox requirement. For host-mode policies, a missing
+package-specific sandbox or receipt exporter does not block native invocation.
+Preserve genuine explicit policy restrictions, exact release pins, and host
+denials; report a failed action without widening its authority. `zero-tools` requires an actually empty tool
 inventory; a residual primitive isolated by forced read-only/no-filesystem is
 `no-authority-sandbox`, not zero-tools.
 
 Snapshot the just-in-time policy-filtered local tool menu as a private
 `agentlas.workforce-tool-inventory.v1` artifact and give only that menu to the
 executor planner. Never send the snapshot to Hub. The host LLM, not Hub or a
-lexical rule, records the pair-scoped `capabilityBindingPlan`; its context,
-tool-inventory, and planner-bound digests must validate before execution. Every
+lexical rule, records the pair-scoped `capabilityBindingPlan`. Validate capability
+bindings before using the corresponding tools; unavailable inventory or receipt
+telemetry is an evidence gap, not a new host-admission gate. Every
 required tool capability maps to an exact snapshot entry and permitted tool.
 A package policy mentioning a tool is not inventory proof, and a required
 binding cannot run under no-authority enforcement.
 
-Before declaring that the current host cannot execute the roster, inspect the
-existing external-host transport. With an explicitly selected, available host
+Use the external-host transport only when native delegation is actually
+unavailable. Its absence does not establish that the current host cannot run
+the roster. With an explicitly selected, available host
 adapter, the resolved runner executes the exact cached goal:
 
 ```bash
@@ -376,8 +391,9 @@ execution and existing adapters, then resolve a missing adapter with
 must use this provider-neutral contract outside Core. A model-only invocation
 can use an actually empty tool menu when no required capability binding needs
 tools; a prompt promise or a CLI flag with residual authority is not isolation.
-If no supported route can make distinct, policy-enforced invocations, report
-that exact boundary at `prepared`. A route id, bundle id, process exit code, or
+If a worker genuinely cannot be invoked, report its observed failure and the
+remaining work; continue other authorized host work. Missing receipt telemetry
+alone is not that failure. A route id, bundle id, process exit code, or
 prose that imitates several roles is not execution proof.
 
 Preparation is not delivery. A turn that pinned a roster and produced no worker
@@ -388,7 +404,14 @@ but not executed and what remains.
 
 ## 7. Truthful receipts
 
-For an executed task force, retain one joined
+Receipt validation follows execution and never grants permissions or blocks
+the next authorized host action or turn. Preserve real native invocation IDs,
+exact package hashes, tool/action records, and handoffs even if the host cannot
+export the strict receipt. Report that receipt validation as unverified; do not
+call an actually executed worker merely prepared. Never fabricate telemetry or
+claim accepted validation when the validator rejected it.
+
+When the host exports the required telemetry, retain one joined
 `agentlas.workforce-execution-receipt.v2` joined to the exact v5 plan containing:
 
 - selection and preparation receipt ids;
@@ -405,6 +428,8 @@ For an executed task force, retain one joined
   exact granted tool ids and inventory digest match the binding plan;
 - synthesis and verifier invocation ids and verifier verdict.
 
-Never report success when planner JSON fell back, child receipts are missing,
-or verification did not pass. In the user-facing summary, name the actual
-workers and distinguish `selected`, `prepared`, and `executed`.
+Never report the requested task complete when its result verification did not
+pass. Missing strict receipt fields remain an explicit evidence limitation,
+separate from observed native execution and verified task artifacts. In the
+user-facing summary, name the actual workers and distinguish `selected`,
+`prepared`, `executed`, and strict receipt validation.
