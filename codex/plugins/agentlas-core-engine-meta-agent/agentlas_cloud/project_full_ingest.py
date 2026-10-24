@@ -47,6 +47,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 MIGRATION_ID = "project-full-ingest.v1"
 SCHEMA = "agentlas.project-full-ingest.v1"
 MIGRATION_LEDGER = "migrations.jsonl"
@@ -261,9 +263,12 @@ def _pid_alive(pid: Any) -> bool:
     if value <= 0:
         return False
     if os.name == "nt":
-        # os.kill(pid, 0) on Windows sends CTRL_C_EVENT (0) rather than probing.
-        # The RUNNING_STALE_SECONDS window alone bounds a dead run there.
-        return True
+        # os.kill(pid, 0) on Windows sends CTRL_C_EVENT (0) rather than probing, so ask
+        # the kernel (OpenProcess + Wait). A crashed ingest no longer blocks the next one
+        # for RUNNING_STALE_SECONDS; unknown stays alive (never steal).
+        from .process_liveness import pid_alive
+
+        return pid_alive(value) is not False
     try:
         os.kill(value, 0)
     except ProcessLookupError:
@@ -784,7 +789,7 @@ def run_full_ingest(project: str | Path, *, reason: str = "explicit") -> dict[st
         return {"action": "project_full_ingest", "status": "skipped", "detail": "installed_runtime_root"}
 
     lock_path = agentlas / LOCK_FILE
-    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR | _O_BINARY, 0o600)
     if not _try_advisory_lock(descriptor):
         os.close(descriptor)
         return {"action": "project_full_ingest", "status": "busy"}
@@ -912,7 +917,7 @@ def refresh_project_soul(project: str | Path, *, wait_seconds: float = SOUL_REFR
     if soul is None:
         return {**base, "status": "skipped", "detail": "no_soul"}
     started = time.monotonic()
-    descriptor = os.open(agentlas / LOCK_FILE, os.O_CREAT | os.O_RDWR, 0o600)
+    descriptor = os.open(agentlas / LOCK_FILE, os.O_CREAT | os.O_RDWR | _O_BINARY, 0o600)
     acquired = False
     try:
         deadline = started + max(0.0, wait_seconds)

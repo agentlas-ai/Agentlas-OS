@@ -30,6 +30,20 @@ def _runtime_base(home: Path) -> Path:
     return Path(configured).expanduser() if configured else home / ".agentlas" / "runtime"
 
 
+def _text_mode() -> dict[str, Any]:
+    """How to decode the service manager's output.
+
+    schtasks prints in the console OEM code page (949 on Korean Windows). The runtime runs
+    with PYTHONUTF8=1, so ``text=True`` decoded it as strict UTF-8 and raised
+    UnicodeDecodeError on the first Korean error message — swallowed by the caller, so the
+    retirement marker was never written and schtasks ran again on every maintenance pass.
+    POSIX launchctl/systemctl output is unchanged (``text=True``).
+    """
+    if os.name == "nt":
+        return {"encoding": "oem", "errors": "replace"}
+    return {"text": True}
+
+
 def _run(command: list[str], *, timeout: int = COMMAND_TIMEOUT_SECONDS) -> dict[str, Any]:
     try:
         completed = subprocess.run(
@@ -37,7 +51,7 @@ def _run(command: list[str], *, timeout: int = COMMAND_TIMEOUT_SECONDS) -> dict[
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
+            **_text_mode(),
             timeout=timeout,
             check=False,
             **no_console_window(),

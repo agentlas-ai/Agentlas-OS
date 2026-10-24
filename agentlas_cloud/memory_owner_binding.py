@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 SCHEMA = "agentlas.memory-owner-binding.v1"
 FILE_ENV = "AGENTLAS_MEMORY_BINDING_FILE"
 REV_ENV = "AGENTLAS_MEMORY_BINDING_REVISION"
@@ -17,7 +19,7 @@ REV_ENV = "AGENTLAS_MEMORY_BINDING_REVISION"
 def _private_json(path: Path, maximum: int = 16384) -> dict[str, Any]:
     if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)):
         raise ValueError("memory_host_binding_path_invalid")
-    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | _O_BINARY)
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > maximum:

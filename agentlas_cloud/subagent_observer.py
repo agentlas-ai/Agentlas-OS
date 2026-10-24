@@ -143,24 +143,27 @@ def _append(path: Path, record: Mapping[str, Any]) -> bool:
         if len(line) > MAX_RECORD_BYTES:
             return False
         with path.open("ab") as handle:
+            # POSIX flock as before; Windows locks a byte past the end (it had no lock, so
+            # parallel subagents could interleave lines) — see file_locks.
             try:
-                import fcntl
+                from .file_locks import lock_handle
 
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            except (ImportError, OSError):
-                pass
+                locked = lock_handle(handle)
+            except OSError:
+                locked = False
             handle.write(line)
             handle.flush()
             try:
                 os.fsync(handle.fileno())
             except OSError:
                 pass
-            try:
-                import fcntl
+            if locked:
+                try:
+                    from .file_locks import unlock_handle
 
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            except (ImportError, OSError):
-                pass
+                    unlock_handle(handle)
+                except OSError:
+                    pass
         os.chmod(path, 0o600)
         return True
     except OSError:

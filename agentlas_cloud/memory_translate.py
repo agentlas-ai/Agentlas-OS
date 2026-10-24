@@ -43,6 +43,8 @@ from typing import Any, Callable, Iterable
 from . import one_workspace as ow
 from .windows_console import no_console_window
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 TRANSLATE_WORKER_ENV = "AGENTLAS_TRANSLATE_WORKER"
 TRANSLATE_RUNTIME_ENV = "AGENTLAS_TRANSLATE_RUNTIME"
 TRANSLATE_SWITCH_ENV = "AGENTLAS_TRANSLATE"  # "off" disables every spawn and run
@@ -179,7 +181,10 @@ def _ollama_resident_translator(endpoint: str = "http://127.0.0.1:11434") -> Tra
     Loading an 18 GB model from a background worker on a laptop that is already
     short of memory is worse than not translating today."""
     try:
-        with urllib.request.urlopen(endpoint + "/api/ps", timeout=0.5) as resp:
+        # Loopback model: never through the system proxy (see judgment_bootstrap.model_urlopen).
+        from .judgment_bootstrap import model_urlopen  # noqa: PLC0415
+
+        with model_urlopen(endpoint + "/api/ps", timeout=0.5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception:  # noqa: BLE001
         return None
@@ -196,7 +201,7 @@ def _ollama_resident_translator(endpoint: str = "http://127.0.0.1:11434") -> Tra
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
         }).encode("utf-8")
         req = urllib.request.Request(endpoint + "/api/chat", data=body, headers={"content-type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with model_urlopen(req, timeout=timeout) as resp:
             out = json.loads(resp.read().decode("utf-8"))
         return str((out.get("message") or {}).get("content") or "")
 
@@ -534,7 +539,11 @@ def _pid_alive(pid: Any) -> bool:
     if value <= 0:
         return False
     if os.name == "nt":
-        return True  # bounded by the stale window below
+        # Kernel probe (OpenProcess + Wait); os.kill(pid, 0) is not a probe on Windows.
+        # Unknown stays alive (never steal), still bounded by the stale window below.
+        from .process_liveness import pid_alive
+
+        return pid_alive(value) is not False
     try:
         os.kill(value, 0)
     except ProcessLookupError:
@@ -564,7 +573,7 @@ class _WorkerLock:
     def __enter__(self) -> bool:
         for _ in range(2):
             try:
-                self.fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                self.fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_BINARY, 0o600)
                 os.write(self.fd, json.dumps({"pid": os.getpid(), "at": time.time()}).encode("ascii"))
                 return True
             except FileExistsError:
@@ -1012,7 +1021,7 @@ def run_project(project_root: Path, *, translators: list[Translator] | None = No
         from .project_full_ingest import LOCK_FILE, _open_runtime, _purge_sources, _write_snapshot  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001
         return {**receipt, "skipped": f"import:{type(exc).__name__}"}
-    descriptor = os.open(paths["agentlas"] / LOCK_FILE, os.O_CREAT | os.O_RDWR, 0o600)
+    descriptor = os.open(paths["agentlas"] / LOCK_FILE, os.O_CREAT | os.O_RDWR | _O_BINARY, 0o600)
     try:
         if not _try_advisory_lock(descriptor):
             return {**receipt, "skipped": "ingest-busy"}

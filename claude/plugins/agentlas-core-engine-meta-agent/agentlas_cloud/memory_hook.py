@@ -10,10 +10,11 @@ import re
 import subprocess
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Iterable
 
 from ontology import OntologyRuntime, RuntimeConfig
+from ontology.runtime import file_uri_path_text
 
 from . import context_markers, evolution_proposals
 from .memory_hosts import HOST_CHOICES, host_spec
@@ -386,10 +387,25 @@ def _english_project_seed(question: str, db_path: Path) -> str:
     return query if mode in ("seeded", "identifiers") and query != question else ""
 
 
+def _source_uri_name(raw: str) -> str:
+    """The file name a source URI or id names, decoded.
+
+    Sources are stored as ``Path.resolve().as_uri()``, which percent-encodes every
+    non-ASCII byte and space: ``한글 문서.md`` is ``%ED%95%9C%EA%B8%80%20…``. Cutting
+    ``file://`` off and taking the name gave the encoded form as the label.
+    """
+    if raw.startswith("file://"):
+        text = file_uri_path_text(raw)
+        if text is None:
+            return ""
+        return PureWindowsPath(text).name if os.name == "nt" else Path(text).name
+    return Path(raw).name
+
+
 def _source_label(item: dict[str, Any]) -> str:
     raw = str(item.get("source_uri") or item.get("source_id") or "project")
     try:
-        label = Path(raw.removeprefix("file://")).name
+        label = _source_uri_name(raw)
     except (OSError, ValueError):
         label = "project"
     return _compact_text(label or "project", 80)
@@ -400,14 +416,20 @@ from .windows_console import no_console_window
 
 
 def _source_path(item: dict[str, Any]) -> Path | None:
+    # The same reading as the ontology's own stale check (ontology.runtime.file_uri_path_text):
+    # percent-decoded, and on Windows ``file:///C:/x`` is ``C:\x`` — not ``/C:/x``, which has no
+    # drive, is never absolute there, and silently switched every stale label off. Without the
+    # decoding a Korean or spaced file name was stat'ed in its %XX form and reported as
+    # "source missing" on every OS.
     raw = str(item.get("source_uri") or "")
     if not raw.startswith("file://"):
         return None
     try:
-        path = Path(raw.removeprefix("file://"))
+        text = file_uri_path_text(raw)
+        path = Path(text) if text else None
     except (OSError, ValueError):
         return None
-    return path if path.is_absolute() else None
+    return path if path is not None and path.is_absolute() else None
 
 
 def _source_staleness(item: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -445,7 +467,7 @@ def _source_staleness(item: dict[str, Any]) -> tuple[str | None, str | None]:
 def _is_host_policy_chunk(item: dict[str, Any]) -> bool:
     raw = str(item.get("source_uri") or "")
     try:
-        basename = Path(raw.removeprefix("file://")).name.lower()
+        basename = _source_uri_name(raw).lower()
     except (OSError, ValueError):
         return False
     return basename in HOST_POLICY_BASENAMES

@@ -64,6 +64,8 @@ from .execution import (
 from .goal_binding import WorkforceGoalStore
 from ..windows_console import no_console_window
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 
 HOST_EXECUTOR_REQUEST_SCHEMA = "agentlas.workforce-host-executor-request.v1"
 HOST_EXECUTOR_RESPONSE_SCHEMA = "agentlas.workforce-host-executor-response.v1"
@@ -415,7 +417,7 @@ def _file_digest(path: Path) -> str:
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(path, flags)
+    descriptor = os.open(path, flags | _O_BINARY)
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise WorkforceHostExecutorError("workforce_adapter_artifact_not_regular_file")
@@ -443,11 +445,11 @@ def _snapshot_verified_artifact(
     if hasattr(os, "O_NOFOLLOW"):
         read_flags |= os.O_NOFOLLOW
         write_flags |= os.O_NOFOLLOW
-    source_fd = os.open(source, read_flags)
+    source_fd = os.open(source, read_flags | _O_BINARY)
     try:
         if not stat.S_ISREG(os.fstat(source_fd).st_mode):
             raise WorkforceHostExecutorError("workforce_adapter_artifact_not_regular_file")
-        target_fd = os.open(target, write_flags, 0o600)
+        target_fd = os.open(target, write_flags | _O_BINARY, 0o600)
         try:
             digest = hashlib.sha256()
             size = 0
@@ -501,7 +503,7 @@ def _write_private_output(
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(temporary, flags, 0o600)
+    descriptor = os.open(temporary, flags | _O_BINARY, 0o600)
     try:
         remaining = memoryview(data.encode("utf-8"))
         while remaining:

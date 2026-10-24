@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 try:
     from .windows_console import no_console_window
 except ImportError:
@@ -251,7 +253,7 @@ def _atomic_write(path: Path, text: str) -> None:
         name = base_name if suffix == 0 else f"{base_name}.{suffix}"
         candidate = path.with_name(name)
         try:
-            descriptor = os.open(candidate, flags, 0o600)
+            descriptor = os.open(candidate, flags | _O_BINARY, 0o600)
         except FileExistsError:
             continue
         tmp = candidate
@@ -259,7 +261,7 @@ def _atomic_write(path: Path, text: str) -> None:
     if tmp is None or descriptor is None:
         raise OSError(f"could not allocate a unique temporary file for {path.name}")
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
             descriptor = None
             handle.write(text)
             handle.flush()
@@ -629,7 +631,7 @@ class _LedgerLock:
         delay = int(_rule("concurrency.lockRetryDelayMs", 20)) / 1000.0
         for _ in range(attempts):
             try:
-                self.fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                self.fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_BINARY, 0o600)
                 # Record the holder pid so a stale-lock takeover can prove the
                 # holder is really gone before stealing. A live-but-slow holder
                 # (a >stale_ms critical section — a big under-lock read, a paused

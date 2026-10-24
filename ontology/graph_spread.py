@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+from urllib.parse import unquote, urlparse
 
 # relation_type -> (default transition weight, causal?, basis). ``causal`` is
 # False for every edge here on purpose: none of them is evidence that one
@@ -81,6 +82,27 @@ _NOT_FILES = {
 _IDENTIFIER_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{4,}")
 
 
+_WINDOWS_DRIVE_URI_PATH = re.compile(r"^/[A-Za-z]:")
+
+
+def _file_uri_mention(value: str) -> str:
+    """The path text a ``Path.as_uri()`` source ref names (decoded, drive form without the URL slash).
+
+    Cutting ``file://`` off kept ``%ED%95%9C…`` for Korean and ``%20`` for spaced names, and
+    ``/C:/…`` for Windows sources, so such a ref never met the same file named in memory text.
+    Mentions are compared as ``/``-separated text, so the result is OS-independent; runtime.py
+    has the OS-path form (file_uri_path_text), which this module cannot import (runtime imports it).
+    """
+    parsed = urlparse(value)
+    path = unquote(parsed.path)
+    host = parsed.netloc
+    if host and host.lower() != "localhost":
+        return "//" + host + path
+    if _WINDOWS_DRIVE_URI_PATH.match(path):
+        path = path[1:]
+    return path
+
+
 def _normalize_path(value: str) -> str | None:
     raw = value.strip().replace("\\", "/")
     while raw.startswith("./"):
@@ -120,7 +142,7 @@ def extract_file_mentions(text: str, source_refs: Iterable[Any] | None = None) -
             value = value.split("#", 1)[0]
             value = re.sub(r":\d+(?::\d+)?$", "", value)
             if value.startswith("file://"):
-                value = value[len("file://"):]
+                value = _file_uri_mention(value)
             normalized = _normalize_path(value)
             if normalized and "." in Path(normalized).name:
                 found.add(normalized)

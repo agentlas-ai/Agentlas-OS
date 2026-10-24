@@ -122,8 +122,72 @@ def build_revision(*, workspace_lineage_id: str, files: Sequence[Mapping[str, An
             "files": tree["files"], "originRef": dict(origin_ref), "provenance": provenance}
 
 
+_O_BINARY = getattr(os, "O_BINARY", 0)
+_FILE_ATTRIBUTE_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+
+
+def _dir_fd_reads_supported() -> bool:
+    return bool(
+        os.name != "nt"
+        and getattr(os, "O_DIRECTORY", 0)
+        and os.open in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+    )
+
+
+def _read_asset_by_path(root: Path, parts: list[str]) -> tuple[bytes, bool]:
+    """Windows form of read_asset: no O_DIRECTORY, no directory os.open, no dir_fd.
+
+    Every ancestor is lstat'ed before the open and again after the read; a link, junction
+    or identity change anywhere on the chain is ``asset_changed`` — the same guard as
+    runtime.read_package_bytes' path fallback. The file itself is checked as on POSIX.
+    """
+    def ancestor(metadata: os.stat_result) -> tuple[int, int]:
+        if (
+            stat.S_ISLNK(metadata.st_mode)
+            or getattr(metadata, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT
+            or not stat.S_ISDIR(metadata.st_mode)
+        ):
+            raise RevisionError("unsafe_asset_file")
+        return metadata.st_dev, metadata.st_ino
+
+    chain = [Path(root)]
+    for part in parts[:-1]:
+        chain.append(chain[-1] / part)
+    target = chain[-1] / parts[-1]
+    try:
+        identities = [ancestor(os.lstat(path)) for path in chain]
+        leaf = os.lstat(target)
+    except OSError as exc:
+        raise RevisionError("unsafe_asset_file") from exc
+    if stat.S_ISLNK(leaf.st_mode) or getattr(leaf, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT:
+        raise RevisionError("unsafe_asset_file")
+    fd = os.open(target, os.O_RDONLY | _O_BINARY)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > MAX_FILE_BYTES:
+            raise RevisionError("unsafe_asset_file")
+        with os.fdopen(os.dup(fd), "rb") as handle:
+            body = handle.read(MAX_FILE_BYTES + 1)
+        after = os.fstat(fd)
+        live = os.lstat(target)
+        identity = lambda st: (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_mode, st.st_nlink)
+        if (
+            len(body) != before.st_size
+            or identity(before) != identity(after)
+            or identity(after) != identity(live)
+            or [ancestor(os.lstat(path)) for path in chain] != identities
+        ):
+            raise RevisionError("asset_changed")
+        return body, bool(before.st_mode & 0o111)
+    finally:
+        os.close(fd)
+
+
 def read_asset(root: Path, relative: str) -> tuple[bytes, bool]:
     relative = asset_path(relative)
+    if not _dir_fd_reads_supported():
+        return _read_asset_by_path(root, relative.split("/"))
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     directories = [os.open(root, flags | os.O_DIRECTORY)]
     fd = None
@@ -307,7 +371,7 @@ def stage_proposal(*, agent_root: Path, staging_parent: Path, workspace_lineage_
         for row in tree["files"]:
             target = destination / row["path"]
             target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700 if row["executable"] else 0o600)
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_BINARY, 0o700 if row["executable"] else 0o600)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(blobs[row["blobHash"]]); handle.flush(); os.fsync(handle.fileno())
     if snapshot(base_stage, canonical_entry)[0]["treeDigest"] != baseline["treeDigest"]:

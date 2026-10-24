@@ -416,6 +416,312 @@ function saveSkill(name, steps, description) {
 }
 function loadSkill(name) { const p = skillPath(name); if (!fs.existsSync(p)) return null; return JSON.parse(fs.readFileSync(p, 'utf8')); }
 
+// @agentlas-site-learning-core begin
+const SITE_LEARNING_SCHEMA = 'agentlas.site-learning.v1';
+const SITE_LEARNING_ID = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
+const SITE_LEARNING_HOST_PART = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const SITE_LEARNING_NOTE = /^[a-z][a-z0-9_-]{0,31}: \S[^\u0000-\u001f\u007f]*$/;
+const SITE_LEARNING_LINE = /^[^\u0000-\u001f\u007f]+$/;
+const SITE_LEARNING_CSS = /^[A-Za-z0-9_#.\[\]=~|^$*:"'(),>+ @\/\\-]{1,200}$/;
+const SITE_LEARNING_PATH = /^\/[A-Za-z0-9_.\/{}?=&%:@~+,-]{0,198}$/;
+const SITE_LEARNING_PARAM = /^[a-z][A-Za-z0-9_]{0,23}$/;
+const SITE_LEARNING_TOOL = /^[a-z][a-z0-9_]{1,39}$/;
+const SITE_LEARNING_FIELD = /^[a-z][a-z0-9_]{0,23}$/;
+const SITE_LEARNING_ATTR = /^[a-z][a-z-]{0,23}$/;
+const SITE_LEARNING_ROLE = /^[a-z]{3,24}$/;
+const SITE_LEARNING_KEY = /^[A-Za-z0-9+]{1,24}$/;
+const SITE_LEARNING_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const SITE_LEARNING_RUN = /^[A-Za-z0-9_.:-]{1,64}$/;
+const SITE_LEARNING_SHA = /^[a-f0-9]{64}$/;
+const SITE_LEARNING_LIMITS = { domains: 8, notes: 12, noteText: 240, tools: 8, description: 120, params: 6, steps: 20, fields: 12, rowLimit: 100, json: 24000 };
+const SITE_LEARNING_STATUS = ['proposed', 'active', 'disabled'];
+const SITE_LEARNING_ORIGIN = ['agent', 'owner', 'release'];
+const SITE_LEARNING_NOTE_KINDS = ['selector', 'url-pattern', 'quirk', 'flow'];
+const SITE_LEARNING_CLICK_EFFECTS = ['none', 'like', 'follow', 'repost', 'reply', 'message', 'post', 'send', 'publish', 'delete', 'payment'];
+const SITE_LEARNING_STEP_KEYS = {
+  browser_navigate: ['tool', 'url'],
+  browser_click: ['tool', 'target', 'effect'],
+  browser_type: ['tool', 'target', 'value'],
+  browser_select_option: ['tool', 'target', 'value'],
+  browser_press_key: ['tool', 'key'],
+  browser_wait_for: ['tool', 'text', 'time'],
+};
+// Not a full public-suffix list. A wildcard under one of these would span unrelated owners, so it is refused;
+// an exact host under them stays allowed. The owner sees every domain on the approval card either way.
+const SITE_LEARNING_SHARED_SUFFIXES = new Set([
+  'co.kr', 'or.kr', 'ne.kr', 'go.kr', 'ac.kr', 're.kr', 'pe.kr', 'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'net.au',
+  'org.au', 'co.jp', 'ne.jp', 'or.jp', 'com.br', 'com.cn', 'com.tw', 'com.hk', 'com.sg', 'com.mx', 'co.in', 'co.nz', 'co.za',
+  'github.io', 'gitlab.io', 'vercel.app', 'netlify.app', 'pages.dev', 'workers.dev', 'web.app', 'firebaseapp.com',
+  'herokuapp.com', 'blogspot.com', 'wordpress.com', 'appspot.com', 'azurewebsites.net', 'cloudfront.net', 'amazonaws.com',
+  'fly.dev', 'onrender.com', 'notion.site', 'substack.com', 'myshopify.com', 'wixsite.com',
+]);
+
+/** One domain entry: exact host or '*.' + base. Canonical lowercase only; null when it is not a site. */
+function siteLearningNormalizeDomain(entry) {
+  if (typeof entry !== 'string' || entry.length < 3 || entry.length > 100) return null;
+  const wildcard = entry.startsWith('*.');
+  const host = wildcard ? entry.slice(2) : entry;
+  const parts = host.split('.');
+  if (parts.length < 2 || parts.length > 8) return null;
+  if (!parts.every((part) => SITE_LEARNING_HOST_PART.test(part))) return null;
+  const last = parts[parts.length - 1];
+  if (/^\d+$/.test(last) || last === 'localhost') return null;
+  if (SITE_LEARNING_SHARED_SUFFIXES.has(host)) return null;
+  return { kind: wildcard ? 'wildcard' : 'exact', host: host };
+}
+
+/** The host the browser is on, from a URL the HOST observed (never one the model typed). https, no port, no userinfo. */
+function siteLearningParseObservedUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  let parsed;
+  try { parsed = new URL(value); } catch (error) { return null; }
+  if (parsed.protocol !== 'https:' || parsed.username !== '' || parsed.password !== '' || parsed.port !== '') return null;
+  const host = parsed.hostname.endsWith('.') ? parsed.hostname.slice(0, -1) : parsed.hostname;
+  const normalized = siteLearningNormalizeDomain(host);
+  return normalized && normalized.kind === 'exact' ? { host: host, path: parsed.pathname } : null;
+}
+
+function siteLearningDomainMatches(patterns, host) {
+  if (!Array.isArray(patterns) || typeof host !== 'string') return false;
+  return patterns.some((entry) => {
+    const normalized = siteLearningNormalizeDomain(entry);
+    if (!normalized) return false;
+    return normalized.kind === 'exact' ? host === normalized.host : host.endsWith('.' + normalized.host);
+  });
+}
+
+function siteLearningCanonicalJson(value) {
+  if (Array.isArray(value)) return '[' + value.map(siteLearningCanonicalJson).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map((key) => JSON.stringify(key) + ':' + siteLearningCanonicalJson(value[key])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
+/** What the SHA-256 covers: the content an owner approved, not its status or bookkeeping. */
+function siteLearningContentJson(doc) {
+  return siteLearningCanonicalJson({ schema: doc.schema, id: doc.id, domains: doc.domains, notes: doc.notes || [], tools: doc.tools || [] });
+}
+
+function siteLearningParamRef(value, declared) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === 1 && keys[0] === 'param' && typeof value.param === 'string' && declared.has(value.param);
+}
+
+function siteLearningCheckTarget(ctx, target, where) {
+  if (!ctx.isObject(target)) return ctx.bad(where + ':target');
+  const keys = Object.keys(target);
+  if (keys.length === 1 && keys[0] === 'css') {
+    if (!ctx.fits(SITE_LEARNING_CSS, target.css)) ctx.bad(where + ':target-css');
+  } else if (keys.length === 2 && keys.includes('role') && keys.includes('name')) {
+    if (!ctx.fits(SITE_LEARNING_ROLE, target.role)) ctx.bad(where + ':target-role');
+    if (!ctx.line(target.name, 120)) ctx.bad(where + ':target-name');
+  } else {
+    ctx.bad(where + ':target-shape');
+  }
+}
+
+function siteLearningCheckUrlTemplate(ctx, value, declared, domains, where) {
+  if (!ctx.line(value, 400)) return ctx.bad(where + ':url');
+  const slots = value.match(/\{[^{}]*\}/g) || [];
+  for (const slot of slots) {
+    const name = slot.slice(1, -1);
+    if (!SITE_LEARNING_PARAM.test(name) || !declared.has(name)) ctx.bad(where + ':url-slot');
+  }
+  const hostEnd = value.indexOf('/', 8);
+  const hostPart = hostEnd === -1 ? value : value.slice(0, hostEnd);
+  if (hostPart.indexOf('{') !== -1 || hostPart.indexOf('}') !== -1) return ctx.bad(where + ':url-host-slot');
+  const probe = value.replace(/\{[^{}]*\}/g, 'x');
+  if (probe.indexOf('{') !== -1 || probe.indexOf('}') !== -1) return ctx.bad(where + ':url-braces');
+  const parsed = siteLearningParseObservedUrl(probe);
+  if (!parsed) return ctx.bad(where + ':url-grammar');
+  if (!siteLearningDomainMatches(domains, parsed.host)) ctx.bad(where + ':url-domain');
+}
+
+function siteLearningCheckSteps(ctx, steps, declared, domains, at) {
+  if (!Array.isArray(steps) || steps.length < 1 || steps.length > SITE_LEARNING_LIMITS.steps) return ctx.bad(at + ':steps');
+  steps.forEach((step, index) => {
+    const where = at + ':step:' + index;
+    if (!ctx.isObject(step)) return ctx.bad(where);
+    if (typeof step.tool !== 'string' || !Object.prototype.hasOwnProperty.call(SITE_LEARNING_STEP_KEYS, step.tool)) return ctx.bad(where + ':tool');
+    ctx.onlyKeys(step, SITE_LEARNING_STEP_KEYS[step.tool], where);
+    if (step.tool === 'browser_navigate') {
+      siteLearningCheckUrlTemplate(ctx, step.url, declared, domains, where);
+    } else if (step.tool === 'browser_click') {
+      siteLearningCheckTarget(ctx, step.target, where);
+      if (!SITE_LEARNING_CLICK_EFFECTS.includes(step.effect)) ctx.bad(where + ':effect');
+    } else if (step.tool === 'browser_type') {
+      siteLearningCheckTarget(ctx, step.target, where);
+      // Typed text always arrives as a run-time argument; a literal would persist whatever the model typed.
+      if (!siteLearningParamRef(step.value, declared)) ctx.bad(where + ':type-needs-param');
+    } else if (step.tool === 'browser_select_option') {
+      siteLearningCheckTarget(ctx, step.target, where);
+      if (!siteLearningParamRef(step.value, declared) && !ctx.line(step.value, 80)) ctx.bad(where + ':value');
+    } else if (step.tool === 'browser_press_key') {
+      if (!ctx.fits(SITE_LEARNING_KEY, step.key)) ctx.bad(where + ':key');
+    } else if (step.tool === 'browser_wait_for') {
+      const hasText = step.text !== undefined;
+      const hasTime = step.time !== undefined;
+      if (hasText === hasTime) ctx.bad(where + ':wait-shape');
+      else if (hasText && !ctx.line(step.text, 120)) ctx.bad(where + ':wait-text');
+      else if (hasTime && !(Number.isInteger(step.time) && step.time >= 1 && step.time <= 10)) ctx.bad(where + ':wait-time');
+    }
+  });
+}
+
+function siteLearningCheckExtract(ctx, spec, at) {
+  if (!ctx.isObject(spec)) return ctx.bad(at + ':extract');
+  ctx.onlyKeys(spec, ['rows', 'fields', 'limit'], at + ':extract');
+  if (!ctx.fits(SITE_LEARNING_CSS, spec.rows)) ctx.bad(at + ':rows');
+  if (spec.limit !== undefined && !(Number.isInteger(spec.limit) && spec.limit >= 1 && spec.limit <= SITE_LEARNING_LIMITS.rowLimit)) ctx.bad(at + ':limit');
+  if (!Array.isArray(spec.fields) || spec.fields.length < 1 || spec.fields.length > SITE_LEARNING_LIMITS.fields) return ctx.bad(at + ':fields');
+  const names = new Set();
+  spec.fields.forEach((field, index) => {
+    const where = at + ':field:' + index;
+    if (!ctx.isObject(field)) return ctx.bad(where);
+    ctx.onlyKeys(field, ['name', 'css', 'text', 'attr'], where);
+    if (!ctx.fits(SITE_LEARNING_FIELD, field.name) || names.has(field.name)) ctx.bad(where + ':name');
+    else names.add(field.name);
+    if (!ctx.fits(SITE_LEARNING_CSS, field.css)) ctx.bad(where + ':css');
+    const hasText = field.text !== undefined;
+    const hasAttr = field.attr !== undefined;
+    if (hasText === hasAttr) return ctx.bad(where + ':read-shape');
+    if (hasText && field.text !== true) ctx.bad(where + ':text');
+    // The value attribute of a form control is what a person typed, a password included; a text read never is.
+    if (hasAttr && (!ctx.fits(SITE_LEARNING_ATTR, field.attr) || field.attr === 'value')) ctx.bad(where + ':attr');
+  });
+}
+
+/**
+ * Strict structural check. Returns { ok: true, value } with a deep copy, or { ok: false, errors: [machine codes] }.
+ * deps.sha256Hex (optional): when given, an active learning's sha256 must equal the hash of its content JSON.
+ */
+function siteLearningValidate(doc, deps) {
+  const errors = [];
+  const ctx = {
+    bad: function (code) { if (errors.length < 24) errors.push(code); },
+    isObject: function (value) { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); },
+    fits: function (pattern, value) { return typeof value === 'string' && pattern.test(value); },
+    line: function (value, max) { return typeof value === 'string' && value.length >= 1 && value.length <= max && SITE_LEARNING_LINE.test(value); },
+    onlyKeys: function (value, allowed, where) {
+      for (const key of Object.keys(value)) if (!allowed.includes(key)) ctx.bad('unknown-key:' + where + ':' + String(key).slice(0, 40));
+    },
+  };
+  if (!ctx.isObject(doc)) return { ok: false, errors: ['doc-not-object'] };
+  ctx.onlyKeys(doc, ['schema', 'id', 'domains', 'revision', 'status', 'provenance', 'sha256', 'notes', 'tools'], 'doc');
+  if (doc.schema !== SITE_LEARNING_SCHEMA) ctx.bad('schema');
+  if (!ctx.fits(SITE_LEARNING_ID, doc.id)) ctx.bad('id');
+  if (!Number.isInteger(doc.revision) || doc.revision < 1 || doc.revision > 1000000) ctx.bad('revision');
+  if (!SITE_LEARNING_STATUS.includes(doc.status)) ctx.bad('status');
+
+  if (!Array.isArray(doc.domains) || doc.domains.length < 1 || doc.domains.length > SITE_LEARNING_LIMITS.domains) {
+    ctx.bad('domains');
+  } else {
+    const seen = new Set();
+    doc.domains.forEach((entry, index) => {
+      if (!siteLearningNormalizeDomain(entry)) ctx.bad('domain:' + index);
+      else if (seen.has(entry)) ctx.bad('domain-duplicate:' + index);
+      seen.add(entry);
+    });
+  }
+
+  const provenance = doc.provenance;
+  if (!ctx.isObject(provenance)) {
+    ctx.bad('provenance');
+  } else {
+    ctx.onlyKeys(provenance, ['origin', 'createdAt', 'runId', 'sourceHost'], 'provenance');
+    if (!SITE_LEARNING_ORIGIN.includes(provenance.origin)) ctx.bad('provenance-origin');
+    if (!ctx.fits(SITE_LEARNING_TIME, provenance.createdAt)) ctx.bad('provenance-created-at');
+    if (provenance.runId !== undefined && !ctx.fits(SITE_LEARNING_RUN, provenance.runId)) ctx.bad('provenance-run-id');
+    if (provenance.sourceHost !== undefined) {
+      const source = siteLearningNormalizeDomain(provenance.sourceHost);
+      if (!source || source.kind !== 'exact') ctx.bad('provenance-source-host');
+    }
+  }
+
+  const notes = doc.notes === undefined ? [] : doc.notes;
+  if (!Array.isArray(notes) || notes.length > SITE_LEARNING_LIMITS.notes) {
+    ctx.bad('notes');
+  } else {
+    notes.forEach((note, index) => {
+      const where = 'note:' + index;
+      if (!ctx.isObject(note)) return ctx.bad(where);
+      ctx.onlyKeys(note, ['kind', 'text'], where);
+      if (!SITE_LEARNING_NOTE_KINDS.includes(note.kind)) ctx.bad(where + ':kind');
+      if (!ctx.fits(SITE_LEARNING_NOTE, note.text) || note.text.length > SITE_LEARNING_LIMITS.noteText) return ctx.bad(where + ':text');
+      const noteValue = note.text.slice(note.text.indexOf(': ') + 2);
+      if (note.kind === 'selector' && !SITE_LEARNING_CSS.test(noteValue)) ctx.bad(where + ':selector');
+      if (note.kind === 'url-pattern' && !SITE_LEARNING_PATH.test(noteValue)) ctx.bad(where + ':path');
+    });
+  }
+
+  const tools = doc.tools === undefined ? [] : doc.tools;
+  if (!Array.isArray(tools) || tools.length > SITE_LEARNING_LIMITS.tools) {
+    ctx.bad('tools');
+  } else {
+    const names = new Set();
+    tools.forEach((tool, index) => {
+      const at = 'tool:' + index;
+      if (!ctx.isObject(tool)) return ctx.bad(at);
+      ctx.onlyKeys(tool, ['name', 'description', 'kind', 'params', 'steps', 'extract'], at);
+      if (!ctx.fits(SITE_LEARNING_TOOL, tool.name)) ctx.bad(at + ':name');
+      else if (names.has(tool.name)) ctx.bad(at + ':name-duplicate');
+      else names.add(tool.name);
+      if (!ctx.line(tool.description, SITE_LEARNING_LIMITS.description)) ctx.bad(at + ':description');
+      const params = tool.params === undefined ? {} : tool.params;
+      const declared = new Set();
+      if (!ctx.isObject(params) || Object.keys(params).length > SITE_LEARNING_LIMITS.params) {
+        ctx.bad(at + ':params');
+      } else {
+        for (const name of Object.keys(params)) {
+          const spec = params[name];
+          if (!SITE_LEARNING_PARAM.test(name) || !ctx.isObject(spec)) { ctx.bad(at + ':param'); continue; }
+          declared.add(name);
+          ctx.onlyKeys(spec, ['type', 'required', 'maxLength', 'max'], at + ':param:' + name);
+          if (spec.required !== undefined && typeof spec.required !== 'boolean') ctx.bad(at + ':param-required');
+          if (spec.type === 'string') {
+            if (spec.max !== undefined) ctx.bad(at + ':param-max');
+            if (spec.maxLength !== undefined && !(Number.isInteger(spec.maxLength) && spec.maxLength >= 1 && spec.maxLength <= 500)) ctx.bad(at + ':param-max-length');
+          } else if (spec.type === 'integer') {
+            if (spec.maxLength !== undefined) ctx.bad(at + ':param-max-length');
+            if (spec.max !== undefined && !(Number.isInteger(spec.max) && spec.max >= 1 && spec.max <= 1000000000)) ctx.bad(at + ':param-max');
+          } else {
+            ctx.bad(at + ':param-type');
+          }
+        }
+      }
+      if (tool.kind === 'steps') {
+        if (tool.extract !== undefined) ctx.bad(at + ':extract-on-steps');
+        siteLearningCheckSteps(ctx, tool.steps, declared, doc.domains, at);
+      } else if (tool.kind === 'extract') {
+        if (tool.steps !== undefined) ctx.bad(at + ':steps-on-extract');
+        siteLearningCheckExtract(ctx, tool.extract, at);
+      } else {
+        ctx.bad(at + ':kind');
+      }
+    });
+  }
+
+  if (doc.status === 'active' && !ctx.fits(SITE_LEARNING_SHA, doc.sha256)) ctx.bad('sha256');
+  else if (doc.sha256 !== undefined && !ctx.fits(SITE_LEARNING_SHA, doc.sha256)) ctx.bad('sha256');
+
+  if (!errors.length) {
+    const canonical = siteLearningCanonicalJson(doc);
+    if (canonical.length > SITE_LEARNING_LIMITS.json) ctx.bad('too-large');
+    else if (doc.status === 'active' && deps && typeof deps.sha256Hex === 'function' && deps.sha256Hex(siteLearningContentJson(doc)) !== doc.sha256) ctx.bad('sha256-mismatch');
+  }
+  return errors.length ? { ok: false, errors: errors } : { ok: true, value: JSON.parse(JSON.stringify(doc)) };
+}
+
+/** The active learnings whose domains cover the host-observed URL. Input must already be validated. */
+function siteLearningMatch(docs, observedUrl) {
+  const parsed = siteLearningParseObservedUrl(observedUrl);
+  if (!parsed || !Array.isArray(docs)) return [];
+  return docs.filter((doc) => doc && doc.status === 'active' && siteLearningDomainMatches(doc.domains, parsed.host));
+}
+// @agentlas-site-learning-core end
+
 async function main() {
   let browserChild = null;
   let browserReadyPromise = null;
@@ -665,4 +971,4 @@ function structureFromReply(reply) {
   try { const value = JSON.parse(body); return value && typeof value === 'object' && value.found === true ? value : null; } catch (e) { return null; }
 }
 
-export { classifyAction, normalizeActionKindOverride, stripClickEffect, withClickEffectSchema, actionStructureTargets, mergeActionStructure, structureFromReply, ACTION_STRUCTURE_PROBE };
+export { classifyAction, normalizeActionKindOverride, stripClickEffect, withClickEffectSchema, actionStructureTargets, mergeActionStructure, structureFromReply, ACTION_STRUCTURE_PROBE, siteLearningValidate, siteLearningMatch, siteLearningNormalizeDomain, siteLearningParseObservedUrl, siteLearningDomainMatches, siteLearningCanonicalJson, siteLearningContentJson };

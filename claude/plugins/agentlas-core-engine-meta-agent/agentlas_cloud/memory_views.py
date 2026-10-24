@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 from .memory_actor_family import MEMORY_ACTOR_FAMILY_SCHEMA, DESKTOP_ONE_ACTOR_ID, is_one_memory_actor
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 SCHEMA = "agentlas.memory-view.v1"
 MAX_ROWS = 20_000
 MAX_BYTES = 12 * 1024 * 1024
@@ -66,7 +68,7 @@ def _managed(file: Path, owner_ref: str) -> dict[str, Any] | None:
         return None
     if not stat.S_ISREG(info.st_mode) or file.is_symlink() or info.st_size > MAX_BYTES:
         raise ValueError("memory_view_file_changed")
-    fd = os.open(file, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    fd = os.open(file, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | _O_BINARY)
     try:
         opened = os.fstat(fd)
         if opened.st_ino != info.st_ino or opened.st_dev != info.st_dev:
@@ -90,7 +92,7 @@ def _write(db: sqlite3.Connection, base: Path, relative: str, value: Any, owner_
     _managed(target, owner_ref)
     temporary = parent / (".memory-" + str(uuid.uuid4()) + ".tmp")
     try:
-        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_BINARY, 0o600)
         with os.fdopen(fd, "wb") as stream:
             stream.write(_json(value))
             stream.flush()

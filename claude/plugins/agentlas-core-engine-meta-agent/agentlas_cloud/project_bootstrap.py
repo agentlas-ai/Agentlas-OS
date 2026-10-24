@@ -28,6 +28,8 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 from .windows_console import no_console_window
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 
 BOOTSTRAP_SCHEMA = "agentlas.project-bootstrap.v1"
 MANAGED_GITIGNORE_START = "# >>> agentlas local project state >>>"
@@ -555,9 +557,9 @@ def _render_template(name: str, replacements: dict[str, str]) -> str | None:
 def _atomic_write(path: Path, content: str, *, mode: int = 0o600, parent_mode: int = 0o700) -> None:
     _ensure_dir(path.parent, parent_mode)
     temp = path.with_name(f".{path.name}.tmp-{os.getpid()}-{time.time_ns()}")
-    descriptor = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
+    descriptor = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_BINARY, mode)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
@@ -632,7 +634,7 @@ def _project_lock(root: Path, timeout_seconds: float = 15.0) -> Iterable[None]:
     deadline = time.monotonic() + timeout_seconds
     token = secrets.token_hex(16)
     payload = json.dumps({"pid": os.getpid(), "token": token, "createdAt": utc_now()}, separators=(",", ":")) + "\n"
-    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR | _O_BINARY, 0o600)
     os.chmod(lock, 0o600)
     while True:
         if _try_advisory_lock(descriptor):
@@ -671,7 +673,7 @@ def _read_bounded_regular_text(path: Path, max_bytes: int) -> str:
         raise ValueError("gitignore_too_large")
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(path, flags)
+        descriptor = os.open(path, flags | _O_BINARY)
     except OSError as exc:
         raise ValueError("unsafe_gitignore_file") from exc
     try:

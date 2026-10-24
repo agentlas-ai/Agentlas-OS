@@ -26,8 +26,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any
+from typing import Any, Mapping
 from .windows_console import no_console_window
+
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
 
 LATEST_RELEASE_URL = os.environ.get(
     "HEPHAESTUS_LATEST_RELEASE_URL",
@@ -1787,6 +1789,43 @@ def _is_shipped_interpreter(executable: str) -> bool:
     return any(marker in resolved for marker in markers)
 
 
+_CMD_PATH_BASES = ("USERPROFILE", "LOCALAPPDATA", "APPDATA")
+
+
+def windows_cmd_path(absolute: str, env: Mapping[str, str] | None = None) -> tuple[str, bool]:
+    """(text to write inside a .cmd file, whether the file must switch cmd.exe to UTF-8).
+
+    cmd.exe reads a batch file in the console's OEM code page (949 on Korean Windows), not
+    UTF-8. An absolute path written as UTF-8 for a user named 홍길동 reads back as mojibake and
+    the shim fails with "The system cannot find the path specified" every time. A path under
+    %USERPROFILE% / %LOCALAPPDATA% / %APPDATA% is written relative to that variable (ASCII;
+    cmd.exe expands it to the real Unicode path at run time). Anything else that is still not
+    ASCII is written as-is and the caller puts `chcp 65001 >nul` first. Same rule as Agentlas
+    Desktop's windowsCmdPath (electron/runtime/install-cli.ts). ASCII paths are unchanged.
+    """
+    def ascii(value: str) -> bool:
+        return all(" " <= character <= "~" for character in value)
+
+    if ascii(absolute):
+        return absolute.replace("%", "%%"), False
+    variables = os.environ if env is None else env
+    for name in _CMD_PATH_BASES:
+        base = str(variables.get(name) or "").rstrip("\\/")
+        if not base:
+            continue
+        head, rest = absolute[: len(base)], absolute[len(base):]
+        if head.lower() != base.lower() or rest[:1] not in ("\\", "/"):
+            continue
+        relative = rest.lstrip("\\/")
+        if relative and ascii(relative) and ".." not in relative.replace("/", "\\").split("\\"):
+            return f"%{name}%\\" + relative.replace("/", "\\").replace("%", "%%"), False
+    return absolute.replace("%", "%%"), True
+
+
+def _cmd_utf8_prologue(needs_utf8: bool) -> str:
+    return "chcp 65001 >nul\r\n" if needs_utf8 else ""
+
+
 def write_python_shims(bin_dir: Path, executable: str) -> None:
     bin_dir.mkdir(parents=True, exist_ok=True)
     shell_shim = bin_dir / "python3"
@@ -1797,8 +1836,11 @@ def write_python_shims(bin_dir: Path, executable: str) -> None:
     cache_prefix = _safe_python_cache_prefix(executable)
     shell_executable = shlex.quote(executable_text)
     shell_cache_prefix = shlex.quote(str(cache_prefix))
+    cmd_executable, executable_utf8 = windows_cmd_path(executable_text)
+    cache_utf8 = False
     if os.name == "nt":
-        cmd_cache = f'set "PYTHONPYCACHEPREFIX={cache_prefix}"\r\n'
+        cmd_cache_path, cache_utf8 = windows_cmd_path(str(cache_prefix))
+        cmd_cache = f'set "PYTHONPYCACHEPREFIX={cmd_cache_path}"\r\n'
     else:
         cmd_cache = (
             'if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\\Agentlas\\PythonCache") '
@@ -1829,16 +1871,18 @@ def write_python_shims(bin_dir: Path, executable: str) -> None:
     _write_cmd_text(
         cmd_shim,
         '@echo off\r\n'
+        f"{_cmd_utf8_prologue(executable_utf8 or cache_utf8)}"
         'setlocal\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
         f"{cmd_cache}"
-        f'"{executable_text}" %*\r\n'
+        f'"{cmd_executable}" %*\r\n'
         'exit /b %ERRORLEVEL%\r\n',
     )
     _write_cmd_runner(cmd_runner, cache_prefix)
     _write_cmd_text(
         env_cmd,
         '@echo off\r\n'
+        f"{_cmd_utf8_prologue(cache_utf8)}"
         'set "PYTHONUTF8=1"\r\n'
         'set "PYTHONIOENCODING=utf-8"\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
@@ -1884,6 +1928,9 @@ def write_windows_command_shims(bin_dir: Path) -> list[str]:
     # MSYS. Fall back to letting cmd.exe resolve `bash` from PATH.
     if not re.match(r"^[A-Za-z]:[\\/]", bash):
         bash = "bash"
+    # A per-user Git install lives under %LOCALAPPDATA%\Programs\Git — a Korean user name would
+    # put a non-ASCII absolute path into every wrapper (see windows_cmd_path).
+    bash, bash_utf8 = windows_cmd_path(bash)
     # python3/hephaestus own native .cmd entrypoints from write_python_shims, and
     # agentlas-python-cache-boundary is a sourced library, not a command.
     skip = {"python3", "hephaestus", "Hephaestus", "agentlas-python-cache-boundary"}
@@ -1904,6 +1951,7 @@ def write_windows_command_shims(bin_dir: Path) -> list[str]:
         _write_cmd_text(
         target,
             "@echo off\r\n"
+            f"{_cmd_utf8_prologue(bash_utf8)}"
             "setlocal\r\n"
             f'"{bash}" "%~dp0{script.name}" %*\r\n'
             "exit /b %ERRORLEVEL%\r\n",
@@ -1913,8 +1961,10 @@ def write_windows_command_shims(bin_dir: Path) -> list[str]:
 
 
 def _write_cmd_runner(path: Path, cache_prefix: Path | None = None) -> None:
+    cache_utf8 = False
     if cache_prefix is not None and os.name == "nt":
-        cmd_cache = f'set "PYTHONPYCACHEPREFIX={cache_prefix}"\r\n'
+        cmd_cache_path, cache_utf8 = windows_cmd_path(str(cache_prefix))
+        cmd_cache = f'set "PYTHONPYCACHEPREFIX={cmd_cache_path}"\r\n'
     else:
         cmd_cache = (
             'if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\\Agentlas\\PythonCache") '
@@ -1923,6 +1973,7 @@ def _write_cmd_runner(path: Path, cache_prefix: Path | None = None) -> None:
     _write_cmd_text(
         path,
         '@echo off\r\n'
+        f"{_cmd_utf8_prologue(cache_utf8)}"
         'setlocal\r\n'
         'set "PYTHONUTF8=1"\r\n'
         'set "PYTHONIOENCODING=utf-8"\r\n'
@@ -2634,12 +2685,33 @@ def _replace_directory(src: Path, dest: Path) -> None:
         else:
             tmp.unlink()
     shutil.copytree(src, tmp, ignore=PYTHON_CACHE_IGNORE)
+    if os.name == "nt" and dest.is_dir() and not _is_link(dest):
+        _swap_directory_into_place(tmp, dest)
+        return
     if dest.exists() or dest.is_symlink():
         if dest.is_dir() and not dest.is_symlink():
             shutil.rmtree(dest)
         else:
             dest.unlink()
     tmp.rename(dest)
+
+
+def _swap_directory_into_place(staged: Path, destination: Path) -> None:
+    """Windows: move the old directory aside first, then the new one in, then delete the old.
+
+    rmtree(destination) followed by a rename half-deleted a plugin/adapter cache whenever a
+    file in it was loaded (.pyd/.node/.exe cannot be deleted while mapped): the tree was left
+    partly gone and the rename then failed. Renaming the whole directory away fails cleanly
+    instead and leaves the old copy intact; a leftover aside copy is only disk space.
+    """
+    aside = destination.parent / f".{destination.name}.old-{os.getpid()}-{time.time_ns()}"
+    os.rename(destination, aside)
+    try:
+        os.rename(staged, destination)
+    except BaseException:
+        os.rename(aside, destination)
+        raise
+    shutil.rmtree(aside, ignore_errors=True)
 
 
 def _source_release_tag(source: Path) -> str | None:
@@ -2995,14 +3067,48 @@ def _safe_extract(tf: tarfile.TarFile, destination: Path) -> None:
         target.chmod(0o755 if member.mode & 0o111 else 0o644)
 
 
+_IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
+
+
+def _is_junction(path: Path) -> bool:
+    """A Windows directory junction (always False elsewhere).
+
+    Path.is_symlink() is False for a junction and shutil.rmtree() refuses one, so every
+    place that handles `runtime/current` as a link must also ask this.
+    """
+    if os.name != "nt":
+        return False
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction is not None:
+        return bool(isjunction(path))
+    try:
+        metadata = os.lstat(path)
+    except (OSError, ValueError):
+        return False
+    return getattr(metadata, "st_reparse_tag", 0) == _IO_REPARSE_TAG_MOUNT_POINT
+
+
+def _is_link(path: Path) -> bool:
+    return path.is_symlink() or _is_junction(path)
+
+
+def _create_junction(target: Path, link: Path) -> None:
+    import _winapi  # noqa: PLC0415 - Windows only
+
+    _winapi.CreateJunction(os.path.abspath(str(target)), os.path.abspath(str(link)))
+
+
 def _path_present(path: Path) -> bool:
-    return path.exists() or path.is_symlink()
+    return path.exists() or path.is_symlink() or _is_junction(path)
 
 
 def _remove_path(path: Path) -> None:
     if not _path_present(path):
         return
-    if path.is_symlink() or not path.is_dir():
+    if _is_junction(path):
+        # Removes the junction itself; the generation it points at is untouched.
+        os.rmdir(path)
+    elif path.is_symlink() or not path.is_dir():
         path.unlink()
     else:
         shutil.rmtree(path)
@@ -3161,7 +3267,7 @@ def _prune_runtime_homes(runtime_root: Path) -> None:
     """
     try:
         current = runtime_root / "current"
-        active = Path(os.path.realpath(current)) if current.is_symlink() else None
+        active = Path(os.path.realpath(current)) if _is_link(current) else None
         candidates = [
             entry for entry in runtime_root.iterdir()
             if entry.is_dir() and not entry.is_symlink()
@@ -3205,7 +3311,21 @@ def _point_current_at(target: Path) -> dict[str, str]:
         replacement.symlink_to(target, target_is_directory=True)
     except OSError:
         _remove_path(replacement)
-        shutil.copytree(target, replacement, ignore=PYTHON_CACHE_IGNORE)
+        linked = False
+        if os.name == "nt":
+            # Ordinary Windows (no Developer Mode, not elevated) refuses symlinks with
+            # WinError 1314. A copy made `current` a second tree: Desktop's realpath pin then
+            # pinned the copy, the next update replaced it wholesale, and an engine server
+            # already running from it imported new-version files lazily into old-version
+            # modules. A junction needs no privilege and resolves to the generation itself
+            # (the same choice as Desktop's config-home-mirror).
+            try:
+                _create_junction(target, replacement)
+                linked = True
+            except (ImportError, AttributeError, OSError):
+                _remove_path(replacement)
+        if not linked:
+            shutil.copytree(target, replacement, ignore=PYTHON_CACHE_IGNORE)
 
     try:
         if current.is_symlink():
@@ -3300,6 +3420,13 @@ def _read_lock_metadata(path: Path) -> dict[str, Any]:
 def _pid_is_running(pid: int) -> bool:
     if pid <= 0:
         return False
+    if os.name == "nt":
+        # os.kill(pid, 0) is not a probe on Windows (it sends CTRL_C_EVENT and raises
+        # WinError 87 for a live pid, which read as "alive" here, so a crashed update kept
+        # the lock for LOCK_STALE_SECONDS). Ask the kernel; unknown stays "running".
+        from .process_liveness import pid_alive
+
+        return pid_alive(pid) is not False
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -3366,12 +3493,12 @@ def _acquire_lock(path: Path) -> str:
     token = secrets.token_hex(16)
     for _ in range(3):
         try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_BINARY, 0o600)
         except FileExistsError as exc:
             if _remove_stale_lock(path):
                 continue
             raise RuntimeError(f"update already running: {path}") from exc
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             json.dump({"pid": os.getpid(), "created_epoch": int(time.time()), "token": token}, fh, sort_keys=True)
             fh.write("\n")
         return token

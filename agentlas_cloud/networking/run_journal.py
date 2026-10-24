@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 
 TERMINAL_EVENTS = ("complete", "fail")
 DEFAULT_LOOP_THRESHOLD = 3
@@ -323,7 +325,7 @@ def _publish_claim(path: Path, token: str) -> None:
     temporary = path.with_name(f".{path.name}.{token}.publishing")
     descriptor: int | None = None
     try:
-        descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_BINARY, 0o600)
         payload = json.dumps(
             {"pid": os.getpid(), "token": token, "created_at": _now()},
             sort_keys=True,

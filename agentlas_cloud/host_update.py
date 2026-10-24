@@ -1606,6 +1606,12 @@ def _replace_directory(source: Path, destination: Path) -> None:
     if tmp.exists():
         shutil.rmtree(tmp)
     shutil.copytree(source, tmp)
+    if os.name == "nt" and destination.is_dir() and not destination.is_symlink():
+        # See update._swap_directory_into_place: never rmtree a cache that may be loaded.
+        from .update import _swap_directory_into_place
+
+        _swap_directory_into_place(tmp, destination)
+        return
     if destination.exists():
         shutil.rmtree(destination)
     tmp.rename(destination)

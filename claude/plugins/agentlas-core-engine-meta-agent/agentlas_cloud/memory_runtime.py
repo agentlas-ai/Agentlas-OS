@@ -232,7 +232,7 @@ def owner_binding(*, create: bool = False) -> str | None:
     device_id = str(uuid.uuid4())
     descriptor, temporary = tempfile.mkstemp(prefix=".memory-registry-", dir=root)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
             handle.write(_json({"schemaVersion": "agentlas.memory-registry.v1", "deviceCustodyId": device_id}) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
@@ -271,8 +271,18 @@ def memory_path(owner_namespace: str) -> Path:
     return memory_root() / "owners" / _hash(_safe_id(owner_namespace)) / "memory.sqlite"
 
 
+# memory.sqlite is a rollback-journal database shared with Agentlas Desktop (ATTACH, 15 s busy
+# timeout) and the terminal. On Windows the -journal file is created and deleted on every write
+# and antivirus/indexers open it, so a writer there routinely holds the lock past 0.5 s and every
+# Python write gave up with "database is locked". Windows waits like Desktop does (bounded at
+# 5 s so a hook never stalls a CLI); POSIX keeps 0.5 s.
+DEFAULT_BUSY_TIMEOUT_SECONDS = 5.0 if os.name == "nt" else 0.5
+
+
 class MemoryRuntime:
-    def __init__(self, owner_namespace: str, *, initialize: bool = True, timeout: float = 0.5):
+    def __init__(self, owner_namespace: str, *, initialize: bool = True, timeout: float | None = None):
+        if timeout is None:
+            timeout = DEFAULT_BUSY_TIMEOUT_SECONDS
         from .memory_owner_binding import BindingConnection, assert_host_binding
         self.owner = _safe_id(owner_namespace)
         assert_host_binding(self.owner, memory_root())

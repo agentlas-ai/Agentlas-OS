@@ -26,6 +26,8 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 DEFAULT_AGENTLAS_URL = "https://agentlas.cloud"
 TOKEN_REFRESH_SKEW_SECONDS = 60
 LOGIN_TIMEOUT_SECONDS = 180
@@ -213,7 +215,7 @@ def _read_token_record_path(path: Path) -> dict[str, Any] | None:
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     try:
-        descriptor = os.open(path, flags)
+        descriptor = os.open(path, flags | _O_BINARY)
     except FileNotFoundError:
         return None
     except OSError as exc:
@@ -266,7 +268,7 @@ def _write_token_record_unlocked(record: dict[str, Any], path: Path) -> Path:
         flags |= os.O_NOFOLLOW
     descriptor: int | None = None
     try:
-        descriptor = os.open(tmp, flags, 0o600)
+        descriptor = os.open(tmp, flags | _O_BINARY, 0o600)
         view = memoryview(raw)
         while view:
             written = os.write(descriptor, view)
@@ -282,7 +284,7 @@ def _write_token_record_unlocked(record: dict[str, Any], path: Path) -> Path:
         final_flags = os.O_RDONLY
         if hasattr(os, "O_NOFOLLOW"):
             final_flags |= os.O_NOFOLLOW
-        final_descriptor = os.open(path, final_flags)
+        final_descriptor = os.open(path, final_flags | _O_BINARY)
         try:
             metadata = os.fstat(final_descriptor)
             if not stat.S_ISREG(metadata.st_mode) or getattr(metadata, "st_nlink", 1) != 1:
@@ -321,7 +323,7 @@ def _read_lock_owner_pid(lock: Path) -> int:
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(lock, flags)
+    descriptor = os.open(lock, flags | _O_BINARY)
     try:
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode) or getattr(metadata, "st_nlink", 1) != 1:
@@ -384,7 +386,7 @@ def _exclusive_lock_file(lock: Path, *, timeout_seconds: float, stale_seconds: f
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         try:
-            descriptor = os.open(lock, flags, 0o600)
+            descriptor = os.open(lock, flags | _O_BINARY, 0o600)
             try:
                 metadata = os.fstat(descriptor)
                 lock_identity = (metadata.st_dev, metadata.st_ino)

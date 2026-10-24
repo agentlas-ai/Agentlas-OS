@@ -30,6 +30,8 @@ from . import graph_spread
 from .parsers import ParsedRecord, SourceParserRegistry
 from .utils import clamp, content_hash, estimate_tokens, json_dumps, json_loads, normalize_name, normalized_key, stable_hash, utc_now
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 
 SCHEMA_VERSION = 4
 _WINDOWS_DRIVE_URI_PATH = re.compile(r"^/[A-Za-z]:")
@@ -2997,7 +2999,7 @@ class OntologyRuntime:
             raise ValueError(f"ontology ingest refuses a symlink source: {path}")
         resolved_before = path.resolve(strict=True)
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-        descriptor = os.open(path, flags)
+        descriptor = os.open(path, flags | _O_BINARY)
         try:
             before = os.fstat(descriptor)
             if not stat.S_ISREG(before.st_mode):

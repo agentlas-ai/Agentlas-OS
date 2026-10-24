@@ -93,6 +93,7 @@ from agentlas_cloud.windows_console import no_console_window
 from agentlas_cloud.update import (
     _safe_python_cache_prefix,
     reconcile_legacy_host_plugin_transition,
+    windows_cmd_path,
 )
 
 
@@ -605,23 +606,30 @@ def _shim_payloads(
         raise InstallError("Python executable path cannot be represented safely")
     shell_executable = shlex.quote(executable_text)
     shell_cache_prefix = shlex.quote(str(cache_prefix))
+    # cmd.exe reads .cmd files in the OEM code page; see agentlas_cloud.update.windows_cmd_path.
+    cmd_executable, executable_utf8 = windows_cmd_path(executable_text)
+    cache_utf8 = False
     if os.name == "nt":
-        cmd_cache = f'set "PYTHONPYCACHEPREFIX={cache_prefix}"\r\n'
+        cmd_cache_path, cache_utf8 = windows_cmd_path(str(cache_prefix))
+        cmd_cache = f'set "PYTHONPYCACHEPREFIX={cmd_cache_path}"\r\n'
     else:
         cmd_cache = (
             'if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\\Agentlas\\PythonCache") '
             'else (set "PYTHONPYCACHEPREFIX=%TEMP%\\Agentlas-PythonCache")\r\n'
         )
+    cache_prologue = "chcp 65001 >nul\r\n" if cache_utf8 else ""
     python_cmd = (
         '@echo off\r\n'
-        'setlocal\r\n'
+        + ("chcp 65001 >nul\r\n" if executable_utf8 or cache_utf8 else "")
+        + 'setlocal\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
         f"{cmd_cache}"
-        f'"{executable_text}" %*\r\n'
+        f'"{cmd_executable}" %*\r\n'
         'exit /b %ERRORLEVEL%\r\n'
     )
     hephaestus_cmd = (
         '@echo off\r\n'
+        f"{cache_prologue}"
         'setlocal\r\n'
         'set "PYTHONUTF8=1"\r\n'
         'set "PYTHONIOENCODING=utf-8"\r\n'
@@ -655,6 +663,7 @@ def _shim_payloads(
     )
     env_cmd = (
         '@echo off\r\n'
+        f"{cache_prologue}"
         'set "PYTHONUTF8=1"\r\n'
         'set "PYTHONIOENCODING=utf-8"\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'

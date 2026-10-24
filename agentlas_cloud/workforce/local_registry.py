@@ -31,6 +31,8 @@ from .package_adapter import (
     snapshot_package_hash,
 )
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 try:
     import fcntl
 
@@ -67,6 +69,9 @@ def _now() -> str:
 
 def _token(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+_WINDOWS_RELEASE_TOKEN_CHARS = 16
 
 
 def _detached(value: Any) -> Any:
@@ -218,7 +223,7 @@ def _local_team_execution_graph(
 def _bounded_nofollow_text(path: Path, *, maximum: int) -> str:
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(path, flags)
+        descriptor = os.open(path, flags | _O_BINARY)
     except OSError as exc:
         raise KeyError("local_runtime_bundle_file_invalid") from exc
     try:
@@ -293,7 +298,21 @@ class LocalWorkforceRegistry:
         return self.home / "definitions" / f"{_token(definition_id)}.json"
 
     def _release_dir(self, definition_id: str, release_id: str) -> Path:
-        return self.home / "releases" / _token(definition_id) / _token(release_id)
+        legacy = self.home / "releases" / _token(definition_id) / _token(release_id)
+        if os.name != "nt" or legacy.is_dir():
+            return legacy
+        # Windows MAX_PATH: two 64-char digests plus `package\` left ~67 characters of the
+        # 259 for the package's own paths under C:\Users\<name>\.agentlas\workforce\local,
+        # and the bundled Python cannot create longer paths unless LongPathsEnabled is set
+        # (off by default). New Windows releases use 16-hex-digit names (64 bits; the full
+        # ids stay in registration.json). An existing full-length release is still found
+        # and used as it is, so registries written before this change keep working.
+        return (
+            self.home
+            / "releases"
+            / _token(definition_id)[:_WINDOWS_RELEASE_TOKEN_CHARS]
+            / _token(release_id)[:_WINDOWS_RELEASE_TOKEN_CHARS]
+        )
 
     def _records(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -324,7 +343,7 @@ class LocalWorkforceRegistry:
             cursor = 1
         fd, temporary = tempfile.mkstemp(dir=str(self.home), prefix=".cursor-")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
                 handle.write(str(cursor) + "\n")
                 handle.flush()
                 os.fsync(handle.fileno())

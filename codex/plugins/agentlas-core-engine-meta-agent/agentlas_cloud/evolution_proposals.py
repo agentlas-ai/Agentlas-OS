@@ -174,7 +174,7 @@ def refresh_memory_candidates(project_dir: Path, db_path: Path, agent_id: str) -
     import tempfile
     fd, name = tempfile.mkstemp(prefix=".memory-evolution-", dir=folder)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
             handle.flush()
             os.fsync(handle.fileno())

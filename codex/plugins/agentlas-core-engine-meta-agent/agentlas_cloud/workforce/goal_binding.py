@@ -27,6 +27,8 @@ from typing import Any, Iterable, Iterator, Mapping
 
 from .contracts import canonical_digest
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 
 WORKFORCE_GOAL_BINDING_SCHEMA = "agentlas.workforce-goal-binding.v1"
 WORKFORCE_GOAL_CONTEXT_SCHEMA = "agentlas.workforce-goal-context.v1"
@@ -477,7 +479,7 @@ class WorkforceGoalStore:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
-        descriptor = os.open(temporary, flags, 0o600)
+        descriptor = os.open(temporary, flags | _O_BINARY, 0o600)
         try:
             remaining = memoryview(data.encode("utf-8"))
             while remaining:

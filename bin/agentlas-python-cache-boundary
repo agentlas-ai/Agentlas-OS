@@ -165,6 +165,46 @@ agentlas_native_path() {
   printf '%s\n' "$path"
 }
 
+# True when the text is printable ASCII only (bytes 0x20-0x7e).
+agentlas_ascii_text() {
+  local LC_ALL=C
+  [[ "${1:-}" != *[![:print:]]* ]]
+}
+
+# A native Windows path -> the text to write inside a .cmd file. cmd.exe reads a
+# batch file in the console's OEM code page (949 on Korean Windows), so an
+# absolute path under C:\Users\홍길동 written as UTF-8 reads back as mojibake and
+# the wrapper fails every time. A path under %USERPROFILE%, %LOCALAPPDATA% or
+# %APPDATA% is written relative to that variable (ASCII; cmd.exe expands it to
+# the real path at run time). A path that stays non-ASCII is printed as-is and
+# the caller must put `chcp 65001 >nul` first (agentlas_ascii_text on the
+# result says which). Same rule as agentlas_cloud.update.windows_cmd_path and
+# Agentlas Desktop's windowsCmdPath. ASCII paths are unchanged.
+agentlas_cmd_path() {
+  local path="${1:-}" name base rest head
+  [[ -n "$path" ]] || return 1
+  if agentlas_ascii_text "$path"; then
+    printf '%s\n' "${path//\%/%%}"
+    return 0
+  fi
+  for name in USERPROFILE LOCALAPPDATA APPDATA; do
+    base="${!name:-}"
+    base="${base%[\\/]}"
+    [[ -n "$base" && ${#path} -gt ${#base} ]] || continue
+    head="${path:0:${#base}}"
+    [[ "$(printf '%s' "$head" | tr '[:upper:]' '[:lower:]')" == "$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')" ]] || continue
+    rest="${path:${#base}}"
+    [[ "$rest" == \\* || "$rest" == /* ]] || continue
+    rest="${rest#[\\/]}"
+    rest="${rest//\//\\}"
+    [[ -n "$rest" ]] && agentlas_ascii_text "$rest" || continue
+    case "\\$rest\\" in *\\..\\*) continue ;; esac
+    printf '%%%s%%\\%s\n' "$name" "${rest//\%/%%}"
+    return 0
+  done
+  printf '%s\n' "${path//\%/%%}"
+}
+
 # Export PYTHONPATH for a runtime root in native form with the native
 # separator. Exported instead of printed so no caller can reintroduce ':'.
 agentlas_export_pythonpath() {

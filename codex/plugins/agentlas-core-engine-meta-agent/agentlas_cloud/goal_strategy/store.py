@@ -20,6 +20,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 # Windows has no blocking flock; msvcrt.LK_LOCK gives up after ~10 s, so it is retried up to this deadline.
 _WINDOWS_LOCK_WAIT_SECONDS = 60.0
@@ -53,7 +55,7 @@ class GoalStore:
     @contextmanager
     def locked(self) -> Iterator[None]:
         self.root.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.root / ".lock", os.O_RDWR | os.O_CREAT, 0o644)
+        fd = os.open(self.root / ".lock", os.O_RDWR | os.O_CREAT | _O_BINARY, 0o644)
         try:
             if os.name == "nt":
                 import msvcrt
@@ -99,7 +101,7 @@ class GoalStore:
         self.root.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(self.root), prefix=".tmp-", suffix=".json")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
                 json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
                 handle.write("\n")
                 handle.flush()

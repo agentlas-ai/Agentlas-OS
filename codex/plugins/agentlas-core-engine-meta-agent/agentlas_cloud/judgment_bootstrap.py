@@ -22,11 +22,13 @@ aborts instead of stalling an OS operation.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import math
 import os
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -63,13 +65,53 @@ def _output_limit(value: int | None) -> int | None:
     return value
 
 
+def _is_loopback_url(url: str) -> bool:
+    try:
+        host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def loopback_aware_opener(url: str, *handlers: Any) -> urllib.request.OpenerDirector:
+    """An opener that never sends a loopback model request through a proxy.
+
+    urllib reads the system proxy (on Windows the registry Internet Settings) and its
+    ``<local>`` bypass only covers names without a dot, so 127.0.0.1 — the local model
+    every host configures — went to the company proxy and came back 502/403 while Ollama
+    itself was fine. A local endpoint has no business with any proxy on any OS, so
+    loopback URLs get ``ProxyHandler({})`` (the research/policy.py pinned-opener pattern);
+    every other URL keeps urllib's default proxy handling unchanged.
+    """
+    if _is_loopback_url(url):
+        return urllib.request.build_opener(urllib.request.ProxyHandler({}), *handlers)
+    return urllib.request.build_opener(*handlers)
+
+
+def _request_url(request: Any) -> str:
+    return request.full_url if isinstance(request, urllib.request.Request) else str(request)
+
+
+def model_urlopen(request: Any, *, timeout: float):
+    """urlopen for a model endpoint; loopback endpoints bypass any proxy."""
+    url = _request_url(request)
+    if not _is_loopback_url(url):
+        return urllib.request.urlopen(request, timeout=timeout)
+    return loopback_aware_opener(url).open(request, timeout=timeout)
+
+
 def _model_urlopen(request, *, timeout: float, strict_endpoint: bool):
     if not strict_endpoint:
-        return urllib.request.urlopen(request, timeout=timeout)
+        return model_urlopen(request, timeout=timeout)
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             return None
-    response = urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout)
+    response = loopback_aware_opener(_request_url(request), NoRedirect()).open(request, timeout=timeout)
     if response.geturl() != request.full_url:
         response.close()
         raise ValueError("model_endpoint_changed")

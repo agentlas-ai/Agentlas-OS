@@ -19,6 +19,8 @@ from .experience_contracts import (
     validate_mcp_policy,
 )
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 
 SECRET_PATTERNS = [
     re.compile(r"sk-(?:ant-)?[A-Za-z0-9_-]{20,}"),
@@ -1192,7 +1194,7 @@ def _package_read_bytes(base: Path, relative: str) -> bytes:
             descriptors.append(os.open(base, flags | getattr(os, "O_DIRECTORY", 0)))
             for part in parts[:-1]:
                 descriptors.append(os.open(part, flags | getattr(os, "O_DIRECTORY", 0), dir_fd=descriptors[-1]))
-            descriptor = os.open(parts[-1], flags, dir_fd=descriptors[-1])
+            descriptor = os.open(parts[-1], flags | _O_BINARY, dir_fd=descriptors[-1])
             descriptors.append(descriptor)
             before = identity(os.fstat(descriptor))
             check = lambda: identity(os.stat(parts[-1], dir_fd=descriptors[-2], follow_symlinks=False))
@@ -1203,7 +1205,7 @@ def _package_read_bytes(base: Path, relative: str) -> bytes:
             identities = [identity(path.lstat()) for path in paths]
             if any(not stat.S_ISDIR(key[2]) for key in identities[:-1]):
                 raise ValueError("package_read_parent_invalid")
-            descriptor = os.open(paths[-1], flags)
+            descriptor = os.open(paths[-1], flags | _O_BINARY)
             descriptors.append(descriptor)
             before = identity(os.fstat(descriptor))
             def check() -> tuple[int, int, int]:

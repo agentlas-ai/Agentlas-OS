@@ -20,6 +20,8 @@ from uuid import uuid4
 
 from .contracts import canonical_digest, canonical_json
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 
 WORKFORCE_PREPARE_ATTEMPT_SCHEMA = "agentlas.workforce-prepare-attempt.v1"
 WORKFORCE_PREPARE_PIN_BINDING_SCHEMA = "agentlas.workforce-prepare-pin-binding.v1"
@@ -334,7 +336,7 @@ class WorkforcePrepareReceiptCache:
                 flags = os.O_CREAT | os.O_EXCL | os.O_RDWR
                 if hasattr(os, "O_NOFOLLOW"):
                     flags |= os.O_NOFOLLOW
-                descriptor = os.open(self.path, flags, 0o600)
+                descriptor = os.open(self.path, flags | _O_BINARY, 0o600)
                 os.close(descriptor)
             self._harden_private_store_files()
         except WorkforcePrepareCacheError:

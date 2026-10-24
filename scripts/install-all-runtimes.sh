@@ -870,10 +870,19 @@ EOF
       # commands exist outside Git Bash.
       if declare -F agentlas_is_windows >/dev/null 2>&1 && agentlas_is_windows; then
         rm -f "$user_bin/$command.cmd" 2>/dev/null || true
+        # agentlas_cmd_path: cmd.exe reads .cmd files in the OEM code page, so a
+        # C:\Users\<non-ASCII name> path is written relative to %USERPROFILE%.
+        cmd_target="$(agentlas_native_path "$current_link/bin/$command.cmd")"
+        cmd_codepage=""
+        if declare -F agentlas_cmd_path >/dev/null 2>&1; then
+          cmd_target="$(agentlas_cmd_path "$cmd_target")"
+          agentlas_ascii_text "$cmd_target" || cmd_codepage=$'chcp 65001 >nul\r\n'
+        fi
         {
           printf '@echo off\r\n'
+          printf '%s' "$cmd_codepage"
           printf 'setlocal\r\n'
-          printf '"%s" %%*\r\n' "$(agentlas_native_path "$current_link/bin/$command.cmd")"
+          printf '"%s" %%*\r\n' "$cmd_target"
           printf 'if errorlevel 1 exit /b %%ERRORLEVEL%%\r\n'
         } > "$user_bin/$command.cmd" 2>/dev/null && windows_shims=$((windows_shims + 1))
       fi
@@ -941,12 +950,20 @@ export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPYCACHEPREFIX=$py_cache_quoted
 exec "$py" "\$@"
 EOF
+    # cmd.exe reads .cmd files in the OEM code page: a per-user Python under
+    # C:\Users\<non-ASCII name> is written relative to %USERPROFILE%.
+    local py_cmd py_cmd_codepage=""
+    py_cmd="$py"
+    if declare -F agentlas_cmd_path >/dev/null 2>&1 && agentlas_is_windows; then
+      py_cmd="$(agentlas_cmd_path "$(agentlas_native_path "$py")")" || py_cmd="$py"
+      agentlas_ascii_text "$py_cmd" || py_cmd_codepage=$'chcp 65001 >nul\n'
+    fi
     cat > "$bin_dir/python3.cmd" <<EOF
 @echo off
-setlocal
+${py_cmd_codepage}setlocal
 set "PYTHONDONTWRITEBYTECODE=1"
 if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\Agentlas\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\Agentlas-PythonCache")
-"$py" %*
+"$py_cmd" %*
 exit /b %ERRORLEVEL%
 EOF
   fi
@@ -1023,6 +1040,12 @@ write_windows_command_shims() {
       bash_native="bash"
       ;;
   esac
+  # A per-user Git lives under %LOCALAPPDATA%\Programs\Git; see agentlas_cmd_path.
+  local bash_codepage=""
+  if declare -F agentlas_cmd_path >/dev/null 2>&1; then
+    bash_native="$(agentlas_cmd_path "$bash_native")" || bash_native="bash"
+    agentlas_ascii_text "$bash_native" || bash_codepage=$'chcp 65001 >nul\r\n'
+  fi
 
   local name script written=0
   for script in "$bin_dir"/*; do
@@ -1041,6 +1064,7 @@ write_windows_command_shims() {
     # right after, so an absolute path would point at a directory that is gone.
     {
       printf '@echo off\r\n'
+      printf '%s' "$bash_codepage"
       printf 'setlocal\r\n'
       printf '"%s" "%%~dp0%s" %%*\r\n' "$bash_native" "$name"
       printf 'exit /b %%ERRORLEVEL%%\r\n'

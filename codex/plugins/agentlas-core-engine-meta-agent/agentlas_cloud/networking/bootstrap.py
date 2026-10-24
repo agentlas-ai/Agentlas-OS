@@ -18,20 +18,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-try:  # POSIX only — Windows runtimes fall back to best-effort, lock-free writes.
-    import fcntl
+from ..file_locks import lock_handle, replace_with_retry, unlock_handle
 
-    def _lock(handle) -> None:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
 
-    def _unlock(handle) -> None:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-except ImportError:  # pragma: no cover
-    def _lock(handle) -> None:
-        return None
+# POSIX: fcntl.flock as before. Windows: a byte-range lock past the end of the file (it used
+# to be no lock at all, so parallel appends could interleave) — see file_locks.
+def _lock(handle) -> None:
+    lock_handle(handle)
 
-    def _unlock(handle) -> None:
-        return None
+
+def _unlock(handle) -> None:
+    unlock_handle(handle)
 
 SCHEMA_VERSION = "2.0"
 
@@ -103,12 +100,12 @@ def atomic_write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".json")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp, path)
+        replace_with_retry(tmp, path)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)

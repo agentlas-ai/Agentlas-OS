@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Iterator
 from .prompt_order import compose_prompt
 
+_O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
+
 BEGIN = "<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->"
 END = "<!-- HEPHAESTUS:GLOBAL-ROUTER:END -->"
 VERSION = "global-router.v8"
@@ -290,7 +292,7 @@ def _target_mutation_lock(path: Path, *, timeout_seconds: float = 15.0) -> Itera
     """
 
     lock_path = path.with_name(f".{path.name}.agentlas-router.lock")
-    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR | _O_BINARY, 0o600)
     try:
         try:
             os.chmod(lock_path, 0o600)
@@ -341,11 +343,11 @@ def _backup(path: Path, content: str) -> Path:
         name = base_name if suffix == 0 else f"{base_name}.{suffix}"
         backup = path.with_name(name)
         try:
-            descriptor = os.open(backup, flags, 0o600)
+            descriptor = os.open(backup, flags | _O_BINARY, 0o600)
         except FileExistsError:
             continue
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
                 handle.write(content)
                 handle.flush()
                 os.fsync(handle.fileno())

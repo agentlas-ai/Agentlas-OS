@@ -1007,7 +1007,7 @@ def _hash_regular_source(path: Path) -> str | None:
         return None
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(path, flags)
+        descriptor = os.open(path, flags | getattr(os, "O_BINARY", 0))
     except OSError:
         return None
     digest = hashlib.sha256()
@@ -1136,15 +1136,129 @@ def _attach_omission_manifest(packaged: dict[str, Any], source_root: Path) -> li
     return f"Dry run completed with warnings: {slug} — " + "; ".join(notes)
 
 
+_O_BINARY = getattr(os, "O_BINARY", 0)
+_FILE_ATTRIBUTE_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+
+
+def _dir_fd_tree_supported() -> bool:
+    """Whether the snapshot can walk the tree through held directory descriptors.
+
+    Windows has no ``O_DIRECTORY``, refuses ``os.open`` on a directory and does not support
+    ``dir_fd=`` or ``scandir(fd)``: every upload failed there with "Upload source changed
+    while being opened." Those hosts walk by path instead (``_PathDir``), re-checking the
+    identity of every ancestor before each open and after each read — the same guard as
+    runtime.read_package_bytes' fallback. POSIX keeps the descriptor walk unchanged.
+    """
+    return bool(
+        os.name != "nt"
+        and getattr(os, "O_DIRECTORY", 0)
+        and os.open in os.supports_dir_fd
+        and os.readlink in os.supports_dir_fd
+        and os.scandir in os.supports_fd
+    )
+
+
+@dataclass(frozen=True)
+class _PathDir:
+    """A directory reached by path, with the identities of itself and every ancestor."""
+
+    path: Path
+    chain: tuple[tuple[Path, tuple[int, int, int]], ...]
+
+    def verify(self) -> None:
+        for component, identity in self.chain:
+            try:
+                metadata = os.lstat(component)
+            except OSError as exc:
+                raise UploadError(
+                    "Upload source changed while being read.", code="unsafe_package_tree"
+                ) from exc
+            if _path_identity(metadata) != identity:
+                raise UploadError("Upload source changed while being read.", code="unsafe_package_tree")
+
+    def child(self, name: str, metadata: os.stat_result) -> "_PathDir":
+        path = self.path / name
+        return _PathDir(path, (*self.chain, (path, _path_identity(metadata))))
+
+
+def _is_reparse_point(metadata: os.stat_result) -> bool:
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT
+    )
+
+
+def _path_identity(metadata: os.stat_result) -> tuple[int, int, int]:
+    if _is_reparse_point(metadata) or not stat.S_ISDIR(metadata.st_mode):
+        # A junction or symlink appearing anywhere on the chain is a swap.
+        return (-1, -1, -1)
+    return (metadata.st_dev, metadata.st_ino, stat.S_IFMT(metadata.st_mode))
+
+
+def _dir_scandir(directory: Any):
+    if isinstance(directory, _PathDir):
+        directory.verify()
+        return os.scandir(directory.path)
+    return os.scandir(directory)
+
+
+def _dir_entry_stat(directory: Any, entry: os.DirEntry) -> os.stat_result:
+    # DirEntry.stat() on Windows reports st_ino/st_dev/st_nlink as 0; lstat has the real ones.
+    if isinstance(directory, _PathDir):
+        return os.lstat(directory.path / entry.name)
+    return entry.stat(follow_symlinks=False)
+
+
+def _dir_open_child(directory: Any, name: str) -> Any:
+    if isinstance(directory, _PathDir):
+        directory.verify()
+        metadata = os.lstat(directory.path / name)
+        if _is_reparse_point(metadata) or not stat.S_ISDIR(metadata.st_mode):
+            raise OSError(f"not an ordinary directory: {name}")
+        return directory.child(name, metadata)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    return os.open(name, flags, dir_fd=directory)
+
+
+def _dir_stat(directory: Any) -> os.stat_result:
+    if isinstance(directory, _PathDir):
+        directory.verify()
+        return os.lstat(directory.path)
+    return os.fstat(directory)
+
+
+def _dir_close(directory: Any) -> None:
+    if not isinstance(directory, _PathDir):
+        os.close(directory)
+
+
+def _dir_readlink(directory: Any, name: str) -> str:
+    if isinstance(directory, _PathDir):
+        directory.verify()
+        return os.readlink(directory.path / name)
+    return os.readlink(name, dir_fd=directory)
+
+
+def _open_file_in(path: Path | str, flags: int, directory: Any) -> int:
+    if isinstance(directory, _PathDir):
+        directory.verify()
+        return os.open(directory.path / Path(path).name, flags | _O_BINARY)
+    return os.open(path, flags | _O_BINARY, dir_fd=directory)
+
+
+def _verify_dir(directory: Any) -> None:
+    if isinstance(directory, _PathDir):
+        directory.verify()
+
+
 def _read_regular_file(
-    path: Path | str, expected: os.stat_result, *, directory_fd: int | None = None
+    path: Path | str, expected: os.stat_result, *, directory_fd: Any = None
 ) -> bytes:
     """Read one file without following a last-moment symlink or inode swap."""
 
     path_name = Path(path).name
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | _O_BINARY
     try:
-        descriptor = os.open(path, flags, dir_fd=directory_fd)
+        descriptor = _open_file_in(path, flags, directory_fd)
     except OSError as exc:
         raise UploadError(f"Unsafe or unreadable package file: {path_name}", code="unsafe_package_tree") from exc
     try:
@@ -1161,6 +1275,7 @@ def _read_regular_file(
                 f"Package file changed while being read: {path_name}",
                 code="unsafe_package_tree",
             )
+        _verify_dir(directory_fd)
         return raw
     finally:
         os.close(descriptor)
@@ -1179,13 +1294,17 @@ def _snapshot_entry(metadata: os.stat_result, kind: str) -> SnapshotEntry:
     )
 
 
-def _open_snapshot_root(source: Path) -> tuple[int, os.stat_result]:
+def _open_snapshot_root(source: Path) -> tuple[Any, os.stat_result]:
     root_meta = source.lstat()
     if not stat.S_ISDIR(root_meta.st_mode) or stat.S_ISLNK(root_meta.st_mode):
         raise UploadError("Upload source must be an ordinary directory.", code="unsafe_package_tree")
+    if not _dir_fd_tree_supported():
+        if _is_reparse_point(root_meta):
+            raise UploadError("Upload source must be an ordinary directory.", code="unsafe_package_tree")
+        return _PathDir(source, ((source, _path_identity(root_meta)),)), root_meta
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(source, flags)
+        descriptor = os.open(source, flags)  # os.open: directory (POSIX descriptor walk)
     except OSError as exc:
         raise UploadError("Upload source changed while being opened.", code="unsafe_package_tree") from exc
     opened = os.fstat(descriptor)
@@ -1199,13 +1318,13 @@ _SNAPSHOT_TRUNCATED = "__agentlas_snapshot_truncated__"
 
 
 def _hash_snapshot_file(
-    path_name: str, expected: os.stat_result, *, directory_fd: int
+    path_name: str, expected: os.stat_result, *, directory_fd: Any
 ) -> str:
     """Hash an omitted regular file without following links or accepting mutation."""
 
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | _O_BINARY
     try:
-        descriptor = os.open(path_name, flags, dir_fd=directory_fd)
+        descriptor = _open_file_in(path_name, flags, directory_fd)
     except OSError as exc:
         raise UploadError(
             f"Unsafe or unreadable omitted package file: {path_name}",
@@ -1239,6 +1358,7 @@ def _hash_snapshot_file(
                 f"Omitted package file changed while being hashed: {path_name}",
                 code="unsafe_package_tree",
             )
+        _verify_dir(directory_fd)
     finally:
         os.close(descriptor)
     return f"sha256:{digest.hexdigest()}"
@@ -1261,14 +1381,14 @@ def _capture_snapshot_inventory(
         relative: str,
         metadata: os.stat_result,
         *,
-        directory_fd: int,
+        directory_fd: Any,
         entry_name: str,
     ) -> None:
         nonlocal omitted_count, omitted_bytes
         if stat.S_ISLNK(metadata.st_mode):
             kind = "symlink"
             try:
-                target = os.readlink(entry_name, dir_fd=directory_fd)
+                target = _dir_readlink(directory_fd, entry_name)
             except OSError as exc:
                 raise UploadError(
                     f"Could not inspect omitted package link: {relative}",
@@ -1308,14 +1428,14 @@ def _capture_snapshot_inventory(
         omitted_count += 1
 
     def scan_directory(
-        directory_fd: int,
+        directory_fd: Any,
         relative_parts: tuple[str, ...],
         *,
         parent_withheld: bool = False,
     ) -> None:
         nonlocal walked, total_bytes, truncated
         try:
-            iterator = os.scandir(directory_fd)
+            iterator = _dir_scandir(directory_fd)
         except OSError as exc:
             location = "/".join(relative_parts) or "."
             raise UploadError(f"Could not read package directory: {location}", code="unsafe_package_tree") from exc
@@ -1328,7 +1448,7 @@ def _capture_snapshot_inventory(
                 parts = (*relative_parts, entry.name)
                 relative = Path(*parts).as_posix()
                 try:
-                    metadata = entry.stat(follow_symlinks=False)
+                    metadata = _dir_entry_stat(directory_fd, entry)
                 except OSError as exc:
                     raise UploadError(f"Could not inspect package path: {relative}", code="unsafe_package_tree") from exc
                 withheld = parent_withheld or walked > MAX_WALKED_ENTRIES
@@ -1342,23 +1462,22 @@ def _capture_snapshot_inventory(
                     )
                     if stat.S_ISDIR(metadata.st_mode) and not stat.S_ISLNK(metadata.st_mode):
                         expected = _snapshot_entry(metadata, "directory")
-                        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
                         try:
-                            child_fd = os.open(entry.name, flags, dir_fd=directory_fd)
+                            child_fd = _dir_open_child(directory_fd, entry.name)
                         except OSError as exc:
                             raise UploadError(
                                 f"Package directory changed while being read: {relative}",
                                 code="unsafe_package_tree",
                             ) from exc
                         try:
-                            if _snapshot_entry(os.fstat(child_fd), "directory") != expected:
+                            if _snapshot_entry(_dir_stat(child_fd), "directory") != expected:
                                 raise UploadError(
                                     f"Package directory changed while being read: {relative}",
                                     code="unsafe_package_tree",
                                 )
                             scan_directory(child_fd, parts, parent_withheld=True)
                         finally:
-                            os.close(child_fd)
+                            _dir_close(child_fd)
                     continue
                 if stat.S_ISLNK(metadata.st_mode):
                     inventory[relative] = _snapshot_entry(metadata, "ignored-symlink")
@@ -1366,23 +1485,22 @@ def _capture_snapshot_inventory(
                 if stat.S_ISDIR(metadata.st_mode):
                     expected = _snapshot_entry(metadata, "directory")
                     inventory[relative] = expected
-                    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
                     try:
-                        child_fd = os.open(entry.name, flags, dir_fd=directory_fd)
+                        child_fd = _dir_open_child(directory_fd, entry.name)
                     except OSError as exc:
                         raise UploadError(
                             f"Package directory changed while being read: {relative}",
                             code="unsafe_package_tree",
                         ) from exc
                     try:
-                        if _snapshot_entry(os.fstat(child_fd), "directory") != expected:
+                        if _snapshot_entry(_dir_stat(child_fd), "directory") != expected:
                             raise UploadError(
                                 f"Package directory changed while being read: {relative}",
                                 code="unsafe_package_tree",
                             )
                         scan_directory(child_fd, parts)
                     finally:
-                        os.close(child_fd)
+                        _dir_close(child_fd)
                     continue
                 if not stat.S_ISREG(metadata.st_mode):
                     inventory[relative] = _snapshot_entry(metadata, "ignored-special-file")
@@ -1401,7 +1519,7 @@ def _capture_snapshot_inventory(
     try:
         scan_directory(root_fd, ())
     finally:
-        os.close(root_fd)
+        _dir_close(root_fd)
     if truncated:
         inventory[_SNAPSHOT_TRUNCATED] = SnapshotEntry(
             kind="ignored-entry-budget",
@@ -1425,9 +1543,9 @@ def _copy_snapshot_inventory(source: Path, destination: Path, inventory: dict[st
     seen = {"."}
     destination.mkdir(mode=0o700)
 
-    def copy_directory(directory_fd: int, target: Path, relative_parts: tuple[str, ...]) -> None:
+    def copy_directory(directory_fd: Any, target: Path, relative_parts: tuple[str, ...]) -> None:
         try:
-            iterator = os.scandir(directory_fd)
+            iterator = _dir_scandir(directory_fd)
         except OSError as exc:
             location = "/".join(relative_parts) or "."
             raise UploadError(f"Could not read package directory: {location}", code="unsafe_package_tree") from exc
@@ -1446,7 +1564,7 @@ def _copy_snapshot_inventory(source: Path, destination: Path, inventory: dict[st
                         code="unsafe_package_tree",
                     )
                 try:
-                    metadata = entry.stat(follow_symlinks=False)
+                    metadata = _dir_entry_stat(directory_fd, entry)
                 except OSError as exc:
                     raise UploadError(f"Could not inspect package path: {relative}", code="unsafe_package_tree") from exc
                 if expected.kind.startswith("ignored-"):
@@ -1474,16 +1592,15 @@ def _copy_snapshot_inventory(source: Path, destination: Path, inventory: dict[st
                 seen.add(relative)
                 target_path = target / entry.name
                 if expected.kind == "directory":
-                    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
                     try:
-                        child_fd = os.open(entry.name, flags, dir_fd=directory_fd)
+                        child_fd = _dir_open_child(directory_fd, entry.name)
                     except OSError as exc:
                         raise UploadError(
                             f"Package directory changed while being copied: {relative}",
                             code="unsafe_package_tree",
                         ) from exc
                     try:
-                        if _snapshot_entry(os.fstat(child_fd), "directory") != expected:
+                        if _snapshot_entry(_dir_stat(child_fd), "directory") != expected:
                             raise UploadError(
                                 f"Package directory changed while being copied: {relative}",
                                 code="unsafe_package_tree",
@@ -1491,7 +1608,7 @@ def _copy_snapshot_inventory(source: Path, destination: Path, inventory: dict[st
                         target_path.mkdir(mode=expected.mode or 0o700)
                         copy_directory(child_fd, target_path, parts)
                     finally:
-                        os.close(child_fd)
+                        _dir_close(child_fd)
                     continue
                 if expected.size > MAX_FILE_BYTES:
                     with target_path.open("wb") as handle:
@@ -1508,7 +1625,7 @@ def _copy_snapshot_inventory(source: Path, destination: Path, inventory: dict[st
             raise UploadError("Upload source changed before it could be copied.", code="unsafe_package_tree")
         copy_directory(root_fd, destination, ())
     finally:
-        os.close(root_fd)
+        _dir_close(root_fd)
     missing = sorted(set(inventory) - seen - {_SNAPSHOT_TRUNCATED})
     if missing:
         raise UploadError(
