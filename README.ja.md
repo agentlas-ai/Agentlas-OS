@@ -317,7 +317,7 @@ one-touch installer を使用してください。これは
 
 OS のターミナルから:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.69
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.70
 codex plugin add hephaestus@agentlas-core-engine
 ```
 *注: Codex アプリ内では `/plugin marketplace add` は利用できません。上記の 2 つのコマンドを OS のターミナルで実行してください。OS ターミナルの CLI コマンドは単数形（`codex plugin`）ですが、Codex アプリ内のプラグインブラウザーのスラッシュコマンドは複数形（`/plugins`）です。Codex 0.117+ ではカスタム `/prompts:*` コマンドが廃止されたため、インストール後は `$hephaestus-network <request>` でプラグインスキルを呼び出します。*

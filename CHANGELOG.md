@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.70 — 2026-10-27
+
+- Workforce: prepared agents can use the current host's native delegation when
+  it is available and authorized, without switching to another application.
+- Package read allowlists describe package contents. Project access and tools
+  continue to follow the current host's permissions and explicit restrictions.
+- Missing execution-receipt telemetry no longer blocks authorized host work.
+  Receipt validation remains strict, and unvalidated work is not reported as
+  validated execution.
+
 ## 1.2.69 — 2026-10-25
 
 - Memory recall: source files with Korean or spaced names are found again, so
