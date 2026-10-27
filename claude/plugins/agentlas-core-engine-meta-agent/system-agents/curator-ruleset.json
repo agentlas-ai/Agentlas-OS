@@ -1,7 +1,7 @@
 {
   "schemaVersion": "agentlas.curator-ruleset.v1",
-  "rulesetVersion": "1.3.0",
-  "updatedAt": "2026-08-12",
+  "rulesetVersion": "1.4.0",
+  "updatedAt": "2026-10-27",
   "description": "Single canonical rule data for every Memory Curator executor (Desktop curator.ts, OS one_workspace.py, later terminal vendor). Executors load values from here; hard-coding a judgment value in an executor is a defect. memory-curator.md stays the human companion text.",
   "patterns": {
     "_note": "flags are declared separately for portability — inline (?i) is illegal in JS RegExp and scoped (?i:) needs Python 3.11+",
@@ -19,6 +19,11 @@
       "regex": "(?:/Users/|/home/|[A-Za-z]:\\\\Users\\\\|file://)",
       "flags": "",
       "sourceRef": "one_workspace.py _HOST_PATH_RE == package_contract.py HOST_PATH_RE"
+    },
+    "projectBoundaryPath": {
+      "regex": "(?:^|[\\s`\"'(\\[=:,])(?:\\/(?:Users|home|var|opt|private)\\/|~\\/|[A-Za-z]:[\\\\/]|file:\\/\\/)",
+      "flags": "",
+      "sourceRef": "curator-rules.ts projectBoundaryPathRe / mentionsProjectSpecifics: a path that starts a token, also after a backtick, quote, bracket, '=' or ':' (models wrap paths in backticks), with / or \\ after a drive letter. A word character before the root (a URL path piece such as example.com/home/) is not a host path. The Desktop executor narrows an agent_repo event that matches; one_workspace.py rejects the same event outright through hostAbsolutePath."
     },
     "imperative": {
       "regex": "^(?:ignore\\s+(?:previous|all\\s+previous|the\\s+above)|disregard|forget\\s+(?:everything|all|previous|the\\s+above))\\b",

@@ -112,6 +112,8 @@ _RULESET_DEFAULTS: dict[str, Any] = {
             "flags": "",
         },
         "hostAbsolutePath": {"regex": r"(?:/Users/|/home/|[A-Za-z]:\\Users\\|file://)", "flags": ""},
+        # Desktop-executor pattern (curator-rules.ts); declared here only so the embedded set stays equal to the canonical one.
+        "projectBoundaryPath": {"regex": r'(?:^|[\s`"' r"'(\[=:,])(?:\/(?:Users|home|var|opt|private)\/|~\/|[A-Za-z]:[\\/]|file:\/\/)", "flags": ""},
         # Mirror of the canonical ruleset entry; the verify-curator-fixtures gate
         # asserts these embedded regexes stay byte-identical to system-agents/
         # curator-ruleset.json (2026-08-12 set 3 F3: they had drifted).
