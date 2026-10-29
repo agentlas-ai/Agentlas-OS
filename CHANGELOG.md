@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.71 — 2026-10-30
+
+- Memory curation: a lesson that names a project path (in backticks, quotes,
+  brackets, after `=`, `:` or `,`, including `C:/...`) is now treated as
+  specific to that project instead of portable, so it is no longer recalled in
+  an unrelated project (curator ruleset 1.4.0). Word characters before a root
+  such as `/home/` (URL fragments) are still not treated as host paths.
+
 ## 1.2.70 — 2026-10-27
 
 - Workforce: prepared agents can use the current host's native delegation when
