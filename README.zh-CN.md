@@ -43,7 +43,7 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="在手机上提出的请求由桌面端的智能体接手并完成" width="860"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="One 在桌面上依次处理表格、幻灯片、聊天、照片、视频和 3D 应用的演示" width="860"></a></p>
 
 **Agentlas Hub 是免费的智能体社区。**发布和调用公开智能体无需设定售价、租赁或购买 Agentlas 积分。调用者使用自己的模型和 API；订阅针对 Agentlas 软件和托管功能。新的 Hub 活动不再产生创作者结算，既有账户余额及历史请求依适用账户条款处理。
 
@@ -89,7 +89,7 @@ $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-en.jpg" alt="桌面端的 Agentlas One"></a><br><strong>One</strong><br>在你电脑上运行的个人智能体。创建 Work 会话并分配工作，通过对话发送问题卡片和结果文件。</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="桌面端的 Agentlas One"></a><br><strong>One</strong><br>在你电脑上运行的个人智能体。创建 Work 会话并分配工作，通过对话发送问题卡片和结果文件。</td>
 <td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas 移动应用"></a><br><strong>Mobile</strong><br>已配对电脑上的 Agentlas Desktop 执行工作，手机上查看同一对话并回答问题卡片。</td>
 </tr>
 <tr>

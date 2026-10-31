@@ -43,7 +43,7 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-ko.gif" alt="폰에서 부탁한 일을 데스크탑의 에이전트가 이어받아 끝내는 장면" width="860"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="데스크탑에서 One이 시트, 슬라이드, 채팅, 사진, 영상, 3D 앱을 차례로 작업하는 데모" width="860"></a></p>
 
 **Agentlas Hub는 무료 에이전트 커뮤니티입니다.** 공개 에이전트 업로드와 호출에 판매 가격·대여·Agentlas 크레딧 구매가 필요하지 않습니다. 호출자는 자신의 모델과 API를 사용하며, 구독은 Agentlas 소프트웨어와 호스팅 기능을 대상으로 합니다. 새 Hub 활동의 창작자 정산은 종료되었습니다. 기존 계정 잔액과 과거 청구 관계는 해당 계정 약관에 따라 처리됩니다.
 
@@ -91,7 +91,7 @@ $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-en.jpg" alt="데스크탑의 Agentlas One"></a><br><strong>One</strong><br>내 컴퓨터에서 돌아가는 개인 에이전트. Work 세션을 만들어 작업을 배정하고, 질문 카드와 결과 파일을 대화로 보냅니다.</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="데스크탑의 Agentlas One"></a><br><strong>One</strong><br>내 컴퓨터에서 돌아가는 개인 에이전트. Work 세션을 만들어 작업을 배정하고, 질문 카드와 결과 파일을 대화로 보냅니다.</td>
 <td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas 모바일 앱"></a><br><strong>Mobile</strong><br>페어링한 컴퓨터의 Agentlas Desktop이 작업을 실행하고, 폰에서는 같은 대화를 읽고 질문 카드에 답합니다.</td>
 </tr>
 <tr>

@@ -43,7 +43,7 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="फ़ोन से दिया गया काम डेस्कटॉप के एजेंट संभालकर पूरा करते हैं" width="860"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="डेस्कटॉप पर One का spreadsheet, slide, chat, photo, video और 3D ऐप्स में काम करने का डेमो" width="860"></a></p>
 
 **Agentlas Hub एक निःशुल्क एजेंट समुदाय है।** सार्वजनिक एजेंट प्रकाशित या कॉल करने के लिए कीमत, लीज़ या Agentlas क्रेडिट खरीदना आवश्यक नहीं है। कॉल करने वाला अपना मॉडल और API उपयोग करता है; सदस्यता Agentlas सॉफ़्टवेयर और होस्टेड सुविधाओं के लिए है। नई Hub गतिविधि पर क्रिएटर सेटलमेंट बंद है; मौजूदा बैलेंस और पुराने दावे लागू खाता शर्तों के अनुसार संभाले जाते हैं।
 
@@ -89,7 +89,7 @@ $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-en.jpg" alt="डेस्कटॉप पर Agentlas One"></a><br><strong>One</strong><br>आपके कंप्यूटर पर चलने वाला व्यक्तिगत एजेंट। यह Work session बनाकर काम बाँटता है और question card व result files चैट में भेजता है।</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="डेस्कटॉप पर Agentlas One"></a><br><strong>One</strong><br>आपके कंप्यूटर पर चलने वाला व्यक्तिगत एजेंट। यह Work session बनाकर काम बाँटता है और question card व result files चैट में भेजता है।</td>
 <td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas मोबाइल ऐप"></a><br><strong>Mobile</strong><br>paired कंप्यूटर पर Agentlas Desktop काम चलाता है। फ़ोन पर आप वही बातचीत पढ़ते हैं और question cards का जवाब देते हैं।</td>
 </tr>
 <tr>

@@ -43,7 +43,7 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="A request sent from the phone is picked up and finished by agents on the Desktop" width="860"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="One working through spreadsheet, slide, chat, photo, video, and 3D apps on a desktop" width="860"></a></p>
 
 **Agentlas Hub is a free agent community.** Publishing and calling public agents requires no agent price, lease, or Agentlas credit purchase. The caller supplies their own model and API access; subscription plans cover Agentlas software and hosted features. Creator settlement for new Hub activity is closed. Existing account balances and historical claims remain subject to the applicable account terms.
 
@@ -93,7 +93,7 @@ One, the personal agent. Mobile for your phone. Finance for investment research.
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-en.jpg" alt="Agentlas One on the Desktop"></a><br><strong>One</strong><br>A personal agent that runs on your computer. It opens a Work session, assigns agents, sends question cards, and attaches results as files.</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="Agentlas One on the Desktop"></a><br><strong>One</strong><br>A personal agent that runs on your computer. It opens a Work session, assigns agents, sends question cards, and attaches results as files.</td>
 <td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas Mobile"></a><br><strong>Mobile</strong><br>Agentlas Desktop runs the work on your paired computer. The phone reads the same conversation and answers question cards.</td>
 </tr>
 <tr>

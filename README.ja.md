@@ -43,7 +43,7 @@
   <a href="README.hi.md">हिन्दी</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="スマートフォンで頼んだ仕事をデスクトップのエージェントが引き継いで仕上げる場面" width="860"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="デスクトップで One が表計算、スライド、チャット、写真、動画、3D アプリを順に操作するデモ" width="860"></a></p>
 
 **Agentlas Hub は無料のエージェントコミュニティです。**公開エージェントの公開・呼び出しに価格設定、リース、Agentlas クレジットの購入は不要です。呼び出し側が自分のモデルと API を使用し、サブスクリプションは Agentlas のソフトウェアとホスト機能を対象とします。新しい Hub 活動のクリエイター精算は終了し、既存残高と過去の請求は適用されるアカウント規約に従います。
 
@@ -89,7 +89,7 @@ $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-en.jpg" alt="デスクトップの Agentlas One"></a><br><strong>One</strong><br>自分のコンピューターで動く個人エージェント。Work セッションを作って作業を割り当て、質問カードと結果ファイルを会話に送ります。</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="デスクトップの Agentlas One"></a><br><strong>One</strong><br>自分のコンピューターで動く個人エージェント。Work セッションを作って作業を割り当て、質問カードと結果ファイルを会話に送ります。</td>
 <td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas モバイルアプリ"></a><br><strong>Mobile</strong><br>ペアリングしたコンピューターの Agentlas Desktop が実行し、スマートフォンでは同じ会話を読んで質問カードに答えます。</td>
 </tr>
 <tr>
