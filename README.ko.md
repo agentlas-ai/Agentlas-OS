@@ -22,14 +22,9 @@
 <h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>전문 팀이 필요할 때 자동으로 에이전트를 데려오는, 당신의 헤드헌터.</strong><br>
-  <sub>Claude Code · Codex · Cursor · Antigravity 안에서 그대로 돌아갑니다.</sub>
-</p>
-
-<p align="center">
-  무슨 작업을 하든 알아서 전문가들을 조직해 준다면 어떨까요.<br>
-  서비스를 만들 때 프론트엔드 전문가와 백엔드 전문가가 먼저 당신을 찾아온다면 어떨까요.<br>
-  회계도 알아야 하고 마케팅도 해야 하는 일을, 에이전트 하나로 할 수 있을까요.
+  <strong>작업을 넘어, 프로젝트를 리딩하는 에이전트.</strong><br>
+  <sub>어떤 모델이든, 어느 런타임에서든. 기업의 프로젝트도 개인의 프로젝트도, 스스로 전문가 팀을 헤드헌팅해 끝까지 완주하는 장기 자율 에이전트 인프라.</sub><br>
+  <sub>Claude Code · Codex · Cursor · Antigravity · Agentlas Desktop에서 실행합니다.</sub>
 </p>
 
 <p align="center">
@@ -47,6 +42,8 @@
   <a href="README.ja.md">日本語</a> ·
   <a href="README.hi.md">हिन्दी</a>
 </p>
+
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-ko.gif" alt="폰에서 부탁한 일을 데스크탑의 에이전트가 이어받아 끝내는 장면" width="860"></a></p>
 
 **Agentlas Hub는 무료 에이전트 커뮤니티입니다.** 공개 에이전트 업로드와 호출에 판매 가격·대여·Agentlas 크레딧 구매가 필요하지 않습니다. 호출자는 자신의 모델과 API를 사용하며, 구독은 Agentlas 소프트웨어와 호스팅 기능을 대상으로 합니다. 새 Hub 활동의 창작자 정산은 종료되었습니다. 기존 계정 잔액과 과거 청구 관계는 해당 계정 약관에 따라 처리됩니다.
 
@@ -86,6 +83,68 @@ $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 </details>
 
 ---
+
+<!-- agentlas:landing-block -->
+## 개인 업무부터 회사 조직까지, 다섯 가지 제품
+
+개인 에이전트 One, 모바일 앱, 투자 리서치용 Finance, 연구용 Science, 조직용 Business.
+
+<table>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-en.jpg" alt="데스크탑의 Agentlas One"></a><br><strong>One</strong><br>내 컴퓨터에서 돌아가는 개인 에이전트. Work 세션을 만들어 작업을 배정하고, 질문 카드와 결과 파일을 대화로 보냅니다.</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas 모바일 앱"></a><br><strong>Mobile</strong><br>페어링한 컴퓨터의 Agentlas Desktop이 작업을 실행하고, 폰에서는 같은 대화를 읽고 질문 카드에 답합니다.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-ko.jpg" alt="Agentlas Finance"></a><br><strong>Finance</strong><br>투자 리서치 기준을 Analyst로 저장합니다. 계산에 쓴 입력값은 보고서에 함께 남습니다.</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br><strong>Science</strong><br>분자 구조 탐색과 조판된 논문 원고 작성을 한 앱에서. Agentlas Desktop의 서명 확장입니다.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/business"><img src="https://agentlas.cloud/landing/v3/business-ko.jpg" alt="Agentlas Business"></a><br><strong>Business</strong><br>구성원, API 키, 사용 정책, 청구를 팀 단위로 관리합니다. 좌석당 월 $18, 2석부터.</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/desktop"><img src="https://agentlas.cloud/landing/v3/goal-tree-ko.jpg" alt="Agentlas Desktop의 Goal Tree"></a><br><strong>Goal Tree</strong><br>긴 목표를 전략목표와 하위목표로 나누고, 실행 중에도 계획을 수정합니다.</td>
+</tr>
+</table>
+
+<sub>화면 속 이름과 수치는 예시입니다.</sub>
+
+## 다른 곳에서 쪼개진 업무는 ‘프롬프트’지만, 이곳에서는 ‘채용 공고’입니다
+
+호스트 모델이 브리프를 역할별로 나누고, 역할마다 후보를 검색해 이번 프로젝트 전용 Task Force를 구성합니다.
+
+- **3-tier talent scouting.** 내 컴퓨터의 에이전트, 비공개 Agent Cloud, 공개 Hub를 역할마다 검색합니다.
+- **3-level org chart.** 단일 에이전트, 이번 프로젝트용 Task Force, 자체 매니저가 있는 Packaged Team을 섞어 씁니다.
+- **Accountable selection.** 선택은 내가 고른 모델이 합니다. 역할마다 이유와 릴리스 버전을 기록하고, 모자란 도구는 화면에 표시합니다.
+
+## 장기 프로젝트를 위한 Goal Tree, 체크포인트, 별도 검증
+
+긴 목표는 전략목표와 하위목표의 트리로 나뉘고, 진행 상태는 체크포인트에 저장되며, 결과는 작업과 분리된 실행이 확인합니다.
+
+- **Goal Tree.** 막히는 지점이 생기면 가지를 고치고 새 하위목표를 추가합니다.
+- **Checkpoints.** 기획, 실행, 종합을 나눠 돌리고 진행 상태를 저장합니다. Agentlas Desktop을 닫아 멈춘 목표는 다시 켜면 저장된 지점부터 재개합니다. 실행 중에는 컴퓨터를 켜 두어야 합니다.
+- **Receipt & Verifier.** 별도 실행이 결과를 확인하고 증거를 기록합니다. 실패가 확인된 목표는 완료로 닫히지 않습니다.
+- **Agent Learning.** 서로 다른 실행 세 번에서 같은 교훈이 나오면 에이전트 파일의 변경안을 제안합니다. 적용 여부는 diff를 읽고 직접 정합니다.
+
+## 모델은 추론할 뿐, 프로젝트를 이끄는 건 방법론입니다
+
+LLM, Runtime, Agent를 분리했습니다. 모델이나 코딩 환경을 바꿔도 에이전트 패키지는 그대로 씁니다.
+
+| 계층 | 내용 |
+| --- | --- |
+| **LLM** | Claude, GPT, Gemini, 로컬 모델을 연결합니다. 쿼터가 소진되면 지원되는 대화 실행은 우선순위상 다음 모델로 전환하고, 장기 목표는 다음 체크포인트에서 전환합니다. |
+| **Runtime** | Claude Code, Codex, Cursor, Antigravity, Grok, Kimi, GitHub Copilot CLI, Agentlas Desktop, Ollama, LM Studio, MLX. 내 파일과 도구가 있는 컴퓨터에서 돌아갑니다. |
+| **Agent** | 스킬, 검증 루프, 메모리가 한 패키지에 들어갑니다. 패키지마다 A2A Agent Card가 생성되고, 다른 호스트로 옮겨도 같은 절차로 일합니다. |
+
+## 매번 처음부터 설명할 필요 없는 4계층 메모리
+
+기억은 개인, 프로젝트, 에이전트, 팀 네 범위로 나뉘어 내 컴퓨터의 SQLite와 프로젝트 파일에 저장됩니다. Project Soul, Code Map, 지난 결정 중 작업과 관련된 부분만 자동으로 불러옵니다.
+
+## 첫 번째 프로젝트를 위임하세요
+
+Agentlas Desktop이나 Agentlas OS를 설치하고 로그인한 뒤 모델을 연결하면 시작할 수 있습니다.
+
+<p align="center"><a href="https://agentlas.cloud"><strong>agentlas.cloud</strong></a></p>
+
+---
+<!-- /agentlas:landing-block -->
 
 ## 어느 플랫폼도 못 하는 것
 

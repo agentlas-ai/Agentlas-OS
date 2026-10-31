@@ -22,14 +22,9 @@
 <h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>आपका headhunter. काम को specialist टीम चाहिए, तो वह ले आता है।</strong><br>
-  <sub>Claude Code, Codex, Cursor और Antigravity के भीतर वैसे ही चलता है।</sub>
-</p>
-
-<p align="center">
-  आप जो भी कर रहे हों, सही specialists अपने आप संगठित हो जाएँ तो कैसा हो।<br>
-  service बनाना शुरू करते ही frontend और backend specialist खुद आपके पास आ जाएँ तो कैसा हो।<br>
-  जिस काम में accounting भी आनी चाहिए और marketing भी करनी है — क्या एक अकेला agent वह कर सकता है?
+  <strong>टास्क से आगे। प्रोजेक्ट का नेतृत्व करने वाले एजेंट।</strong><br>
+  <sub>कोई भी मॉडल, कोई भी रनटाइम। कंपनी हो या व्यक्ति, Agentlas खुद specialist टीम चुनता है और लंबे प्रोजेक्ट को पूरा होने तक आगे बढ़ाता है।</sub><br>
+  <sub>Claude Code, Codex, Cursor, Antigravity और Agentlas Desktop में चलता है।</sub>
 </p>
 
 <p align="center">
@@ -47,6 +42,8 @@
   <a href="README.ja.md">日本語</a> ·
   <a href="README.hi.md">हिन्दी</a>
 </p>
+
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="फ़ोन से दिया गया काम डेस्कटॉप के एजेंट संभालकर पूरा करते हैं" width="860"></a></p>
 
 **Agentlas Hub एक निःशुल्क एजेंट समुदाय है।** सार्वजनिक एजेंट प्रकाशित या कॉल करने के लिए कीमत, लीज़ या Agentlas क्रेडिट खरीदना आवश्यक नहीं है। कॉल करने वाला अपना मॉडल और API उपयोग करता है; सदस्यता Agentlas सॉफ़्टवेयर और होस्टेड सुविधाओं के लिए है। नई Hub गतिविधि पर क्रिएटर सेटलमेंट बंद है; मौजूदा बैलेंस और पुराने दावे लागू खाता शर्तों के अनुसार संभाले जाते हैं।
 
@@ -84,6 +81,68 @@ $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 </details>
 
 ---
+
+<!-- agentlas:landing-block -->
+## व्यक्तिगत काम से कंपनी की टीम तक, पाँच उत्पाद
+
+व्यक्तिगत एजेंट One, मोबाइल ऐप, निवेश रिसर्च के लिए Finance, शोध के लिए Science और संगठनों के लिए Business।
+
+<table>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-en.jpg" alt="डेस्कटॉप पर Agentlas One"></a><br><strong>One</strong><br>आपके कंप्यूटर पर चलने वाला व्यक्तिगत एजेंट। यह Work session बनाकर काम बाँटता है और question card व result files चैट में भेजता है।</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas मोबाइल ऐप"></a><br><strong>Mobile</strong><br>paired कंप्यूटर पर Agentlas Desktop काम चलाता है। फ़ोन पर आप वही बातचीत पढ़ते हैं और question cards का जवाब देते हैं।</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br><strong>Finance</strong><br>निवेश रिसर्च के मानदंड Analyst के रूप में सहेजें। गणना के इनपुट रिपोर्ट में रहते हैं।</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br><strong>Science</strong><br>अणु संरचना और typeset पांडुलिपि एक ही ऐप में। यह Agentlas Desktop का signed extension है।</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/business"><img src="https://agentlas.cloud/landing/v3/business-en.jpg" alt="Agentlas Business"></a><br><strong>Business</strong><br>सदस्य, API keys, उपयोग नीतियाँ और बिलिंग टीम स्तर पर। प्रति सीट $18 प्रति माह, 2 सीटों से।</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/desktop"><img src="https://agentlas.cloud/landing/v3/goal-tree-en.jpg" alt="Agentlas Desktop पर Goal Tree"></a><br><strong>Goal Tree</strong><br>लंबे लक्ष्य रणनीतिक लक्ष्यों और उप-लक्ष्यों में बँटते हैं, और चलते समय भी योजना बदली जा सकती है।</td>
+</tr>
+</table>
+
+<sub>स्क्रीन पर दिखे नाम और आँकड़े केवल उदाहरण हैं।</sub>
+
+## बाकी जगह अलग किया गया काम एक prompt होता है। यहाँ वह एक job opening है
+
+host मॉडल ब्रीफ़ को भूमिकाओं में बाँटता है, हर भूमिका के लिए उम्मीदवार खोजता है और इस प्रोजेक्ट के लिए Task Force बनाता है।
+
+- **3-tier talent scouting.** हर भूमिका के लिए आपकी मशीन, निजी Agent Cloud और सार्वजनिक Hub में खोज होती है।
+- **3-level org chart.** एकल एजेंट, इस प्रोजेक्ट का Task Force और अपने manager वाली Packaged Team मिलाकर इस्तेमाल होते हैं।
+- **Accountable selection.** चयन आपका चुना मॉडल करता है। हर भूमिका का कारण और release version दर्ज होता है, और कम पड़े tools स्क्रीन पर दिखते हैं।
+
+## लंबे प्रोजेक्ट के लिए Goal Tree, checkpoints और अलग सत्यापन
+
+लंबे लक्ष्य रणनीतिक लक्ष्यों और उप-लक्ष्यों के tree में बँटते हैं, प्रगति checkpoints पर सहेजी जाती है, और काम से अलग run नतीजे की जाँच करता है।
+
+- **Goal Tree.** काम रुकने पर शाखाएँ बदली जाती हैं और नए उप-लक्ष्य जोड़े जाते हैं।
+- **Checkpoints.** योजना, निष्पादन और संश्लेषण अलग चलते हैं और प्रगति सहेजी जाती है। Agentlas Desktop बंद करने से रुका लक्ष्य दोबारा खोलने पर सहेजे गए बिंदु से चलता है। चलते समय कंप्यूटर चालू रहना ज़रूरी है।
+- **Receipt & Verifier.** अलग run नतीजे की जाँच करके प्रमाण दर्ज करता है। पुष्ट विफलता वाला लक्ष्य पूरा मानकर बंद नहीं होता।
+- **Agent Learning.** तीन अलग runs से एक ही सबक मिलने पर एजेंट की फ़ाइलों में बदलाव का प्रस्ताव बनता है। diff पढ़कर फ़ैसला आप करते हैं।
+
+## मॉडल सोचता है। नेतृत्व आपका तरीका करता है
+
+LLM, Runtime और Agent अलग परतें हैं। मॉडल या coding tool बदलने पर भी वही agent package चलता है।
+
+| परत | विवरण |
+| --- | --- |
+| **LLM** | Claude, GPT, Gemini या local मॉडल जोड़ें। quota खत्म होने पर समर्थित chat runs प्राथमिकता सूची के अगले मॉडल पर जाते हैं, और लंबे लक्ष्य अगले checkpoint पर बदलते हैं। |
+| **Runtime** | Claude Code, Codex, Cursor, Antigravity, Grok, Kimi, GitHub Copilot CLI, Agentlas Desktop, Ollama, LM Studio और MLX। यह उसी कंप्यूटर पर चलता है जहाँ आपकी फ़ाइलें और tools हैं। |
+| **Agent** | Skills, verification loops और memory एक package में रहते हैं। हर package का A2A Agent Card बनता है, और दूसरे host पर भी वही प्रक्रिया चलती है। |
+
+## चार स्तरों की मेमोरी, ताकि प्रोजेक्ट बार-बार न समझाना पड़े
+
+मेमोरी चार दायरों (व्यक्तिगत, प्रोजेक्ट, एजेंट, टीम) में स्थानीय SQLite और प्रोजेक्ट फ़ाइलों में रहती है। Project Soul, Code Map और पिछले फ़ैसलों का केवल काम से जुड़ा हिस्सा अपने आप लोड होता है।
+
+## अपना पहला प्रोजेक्ट सौंपिए
+
+Agentlas Desktop या Agentlas OS इंस्टॉल करें, साइन इन करें और मॉडल जोड़कर शुरू करें।
+
+<p align="center"><a href="https://agentlas.cloud"><strong>agentlas.cloud</strong></a></p>
+
+---
+<!-- /agentlas:landing-block -->
 
 ## जो कोई platform नहीं कर पाता
 

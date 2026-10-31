@@ -22,14 +22,9 @@
 <h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>あなたのヘッドハンター。専門チームが要る仕事には、連れてきます。</strong><br>
-  <sub>Claude Code・Codex・Cursor・Antigravity の中でそのまま動きます。</sub>
-</p>
-
-<p align="center">
-  何をしていても、ふさわしい専門家が勝手に組まれるとしたら。<br>
-  サービスを作り始めた瞬間、フロントエンドとバックエンドの専門家の方から来てくれるとしたら。<br>
-  会計の知識も要りマーケティングもやる仕事を、エージェント一体でこなせますか。
+  <strong>タスクを超えて、プロジェクトをリードするエージェント。</strong><br>
+  <sub>どのモデルでも、どのランタイムでも。企業でも個人でも、Agentlas は専門家チームを自らヘッドハントし、長期プロジェクトを最後まで走り切ります。</sub><br>
+  <sub>Claude Code・Codex・Cursor・Antigravity・Agentlas Desktop で動きます。</sub>
 </p>
 
 <p align="center">
@@ -47,6 +42,8 @@
   <a href="README.ja.md">日本語</a> ·
   <a href="README.hi.md">हिन्दी</a>
 </p>
+
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="スマートフォンで頼んだ仕事をデスクトップのエージェントが引き継いで仕上げる場面" width="860"></a></p>
 
 **Agentlas Hub は無料のエージェントコミュニティです。**公開エージェントの公開・呼び出しに価格設定、リース、Agentlas クレジットの購入は不要です。呼び出し側が自分のモデルと API を使用し、サブスクリプションは Agentlas のソフトウェアとホスト機能を対象とします。新しい Hub 活動のクリエイター精算は終了し、既存残高と過去の請求は適用されるアカウント規約に従います。
 
@@ -84,6 +81,68 @@ $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 </details>
 
 ---
+
+<!-- agentlas:landing-block -->
+## 個人の仕事から会社の組織まで、五つのプロダクト
+
+個人エージェント One、モバイルアプリ、投資リサーチ向けの Finance、研究向けの Science、組織向けの Business。
+
+<table>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-en.jpg" alt="デスクトップの Agentlas One"></a><br><strong>One</strong><br>自分のコンピューターで動く個人エージェント。Work セッションを作って作業を割り当て、質問カードと結果ファイルを会話に送ります。</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas モバイルアプリ"></a><br><strong>Mobile</strong><br>ペアリングしたコンピューターの Agentlas Desktop が実行し、スマートフォンでは同じ会話を読んで質問カードに答えます。</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br><strong>Finance</strong><br>投資リサーチの基準を Analyst として保存します。計算に使った入力値はレポートに残ります。</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br><strong>Science</strong><br>分子構造の確認と組版された論文原稿の作成を一つのアプリで。Agentlas Desktop の署名付き拡張です。</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/business"><img src="https://agentlas.cloud/landing/v3/business-en.jpg" alt="Agentlas Business"></a><br><strong>Business</strong><br>メンバー、API キー、利用ポリシー、請求をチーム単位で管理します。1 席あたり月額 $18、2 席から。</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/desktop"><img src="https://agentlas.cloud/landing/v3/goal-tree-en.jpg" alt="Agentlas Desktop の Goal Tree"></a><br><strong>Goal Tree</strong><br>長い目標を戦略目標とサブ目標に分け、実行中でも計画を修正できます。</td>
+</tr>
+</table>
+
+<sub>画面内の名前と数値は例です。</sub>
+
+## 他では、切り出された仕事はプロンプトです。ここでは、それは求人票です
+
+ホストのモデルがブリーフを役割ごとに分け、役割ごとに候補を検索して、このプロジェクト専用の Task Force を編成します。
+
+- **3-tier talent scouting.** 役割ごとに、自分のコンピューターのエージェント、非公開の Agent Cloud、公開 Hub を検索します。
+- **3-level org chart.** 単体エージェント、このプロジェクト用の Task Force、マネージャーを持つ Packaged Team を組み合わせます。
+- **Accountable selection.** 選択は自分で選んだモデルが行います。役割ごとに理由とリリースバージョンを記録し、足りないツールは画面に表示します。
+
+## 長期プロジェクトのための Goal Tree、チェックポイント、別実行の検証
+
+長い目標は戦略目標とサブ目標のツリーに分かれ、進捗はチェックポイントに保存され、結果は作業とは別の実行が確認します。
+
+- **Goal Tree.** 作業が止まる箇所が出たら、枝を修正して新しいサブ目標を追加します。
+- **Checkpoints.** 計画、実行、統合を分けて回し、進捗を保存します。Agentlas Desktop を閉じて止まった目標は、開き直すと保存された地点から再開します。実行中はコンピューターを起動したままにする必要があります。
+- **Receipt & Verifier.** 別の実行が結果を確認して証拠を記録します。失敗が確認された目標は完了として閉じません。
+- **Agent Learning.** 異なる実行 3 回で同じ教訓が出ると、エージェントのファイルへの変更案を提示します。diff を読んで適用を決めます。
+
+## モデルは推論し、あなたの方法がリードする
+
+LLM、Runtime、Agent を分離しました。モデルやコーディングツールを変えても、エージェントパッケージはそのまま使えます。
+
+| レイヤー | 内容 |
+| --- | --- |
+| **LLM** | Claude、GPT、Gemini、ローカルモデルを接続します。クォータが尽きると、対応する会話実行は優先順位の次のモデルへ切り替わり、長い目標は次のチェックポイントで切り替わります。 |
+| **Runtime** | Claude Code、Codex、Cursor、Antigravity、Grok、Kimi、GitHub Copilot CLI、Agentlas Desktop、Ollama、LM Studio、MLX。ファイルとツールがあるコンピューターで動きます。 |
+| **Agent** | スキル、検証ループ、メモリが一つのパッケージに入ります。パッケージごとに A2A Agent Card が生成され、別のホストへ移しても同じ手順で動きます。 |
+
+## 毎回最初から説明しなくていい 4 層メモリ
+
+記憶は個人、プロジェクト、エージェント、チームの四つの範囲に分かれ、ローカルの SQLite とプロジェクトファイルに保存されます。Project Soul、Code Map、過去の決定のうち作業に関係する部分だけを自動で読み込みます。
+
+## 最初のプロジェクトを任せましょう
+
+Agentlas Desktop か Agentlas OS をインストールし、サインインしてモデルを接続すると始められます。
+
+<p align="center"><a href="https://agentlas.cloud"><strong>agentlas.cloud</strong></a></p>
+
+---
+<!-- /agentlas:landing-block -->
 
 ## どのプラットフォームにもできないこと
 

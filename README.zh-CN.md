@@ -22,14 +22,9 @@
 <h1 align="center">Agentlas OS</h1>
 
 <p align="center">
-  <strong>你的猎头。工作需要专家团队时，它把人带来。</strong><br>
-  <sub>在 Claude Code、Codex、Cursor、Antigravity 里直接运行。</sub>
-</p>
-
-<p align="center">
-  如果不管你在做什么，合适的专家都会自己组织起来，会怎么样。<br>
-  如果你一开始做服务，前端专家和后端专家就主动找上门，会怎么样。<br>
-  既要懂会计又要做营销的活儿，一个智能体做得了吗？
+  <strong>超越任务，能带领项目的智能体。</strong><br>
+  <sub>任何模型，任何运行时。无论企业还是个人，Agentlas 都能自己猎聘专家团队，把长期项目一路推进到完成。</sub><br>
+  <sub>在 Claude Code、Codex、Cursor、Antigravity 和 Agentlas Desktop 中运行。</sub>
 </p>
 
 <p align="center">
@@ -47,6 +42,8 @@
   <a href="README.ja.md">日本語</a> ·
   <a href="README.hi.md">हिन्दी</a>
 </p>
+
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="在手机上提出的请求由桌面端的智能体接手并完成" width="860"></a></p>
 
 **Agentlas Hub 是免费的智能体社区。**发布和调用公开智能体无需设定售价、租赁或购买 Agentlas 积分。调用者使用自己的模型和 API；订阅针对 Agentlas 软件和托管功能。新的 Hub 活动不再产生创作者结算，既有账户余额及历史请求依适用账户条款处理。
 
@@ -84,6 +81,68 @@ $env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
 </details>
 
 ---
+
+<!-- agentlas:landing-block -->
+## 从个人工作到公司团队的五款产品
+
+个人智能体 One、移动应用、投资研究用的 Finance、科研用的 Science、组织用的 Business。
+
+<table>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-en.jpg" alt="桌面端的 Agentlas One"></a><br><strong>One</strong><br>在你电脑上运行的个人智能体。创建 Work 会话并分配工作，通过对话发送问题卡片和结果文件。</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas 移动应用"></a><br><strong>Mobile</strong><br>已配对电脑上的 Agentlas Desktop 执行工作，手机上查看同一对话并回答问题卡片。</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br><strong>Finance</strong><br>把投资研究标准保存为 Analyst。计算所用的输入保留在报告中。</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br><strong>Science</strong><br>在一个应用中查看分子结构并撰写排版好的论文手稿，以 Agentlas Desktop 签名扩展提供。</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/business"><img src="https://agentlas.cloud/landing/v3/business-en.jpg" alt="Agentlas Business"></a><br><strong>Business</strong><br>按团队管理成员、API 密钥、使用策略和账单。每席每月 $18，2 席起。</td>
+<td width="50%" valign="top"><a href="https://agentlas.cloud/desktop"><img src="https://agentlas.cloud/landing/v3/goal-tree-en.jpg" alt="Agentlas Desktop 上的 Goal Tree"></a><br><strong>Goal Tree</strong><br>长目标拆分为战略目标和子目标，运行中也可以修改计划。</td>
+</tr>
+</table>
+
+<sub>画面中的名称和数字均为示例。</sub>
+
+## 在别处，拆出来的任务是提示词；在这里，它是一份招聘启事
+
+宿主模型把简报按角色拆分，为每个角色搜索候选者，并组建本项目专用的 Task Force。
+
+- **3-tier talent scouting.** 为每个角色搜索你电脑上的智能体、私有 Agent Cloud 和公开 Hub。
+- **3-level org chart.** 混合使用单个智能体、本项目专用的 Task Force，以及自带经理的 Packaged Team。
+- **Accountable selection.** 由你选择的模型作出选择。每个角色都记录理由和发布版本，缺少的工具会显示在界面上。
+
+## 面向长期项目的 Goal Tree、检查点和独立验证
+
+长目标拆分为战略目标和子目标的树，进度保存在检查点，结果由与工作分离的运行来核对。
+
+- **Goal Tree.** 工作受阻时，修改分支并添加新的子目标。
+- **Checkpoints.** 规划、执行和综合分开运行并保存进度。因关闭 Agentlas Desktop 而暂停的目标，重新打开后从保存点继续。运行时电脑必须保持开机。
+- **Receipt & Verifier.** 独立运行核对结果并记录证据。确认失败的目标不会以完成关闭。
+- **Agent Learning.** 三次不同运行得出同一教训时，会提出对智能体文件的修改建议。由你阅读 diff 并决定。
+
+## 模型负责推理，方法负责带领
+
+LLM、Runtime、Agent 三层相互分离。更换模型或编码工具时，智能体包保持不变。
+
+| 层 | 内容 |
+| --- | --- |
+| **LLM** | 连接 Claude、GPT、Gemini 或本地模型。配额耗尽时，受支持的对话运行切换到优先级列表中的下一个模型，长目标在下一个检查点切换。 |
+| **Runtime** | Claude Code、Codex、Cursor、Antigravity、Grok、Kimi、GitHub Copilot CLI、Agentlas Desktop、Ollama、LM Studio、MLX。在存放你的文件和工具的电脑上运行。 |
+| **Agent** | 技能、验证循环和记忆都在一个包里。每个包都会生成 A2A Agent Card，换到其他宿主也按相同流程工作。 |
+
+## 四层记忆，不必每次从头解释项目
+
+记忆分为个人、项目、智能体、团队四个范围，保存在本地 SQLite 和项目文件中。只自动加载 Project Soul、Code Map 和过往决定中与任务相关的部分。
+
+## 委派你的第一个项目
+
+安装 Agentlas Desktop 或 Agentlas OS，登录并连接模型即可开始。
+
+<p align="center"><a href="https://agentlas.cloud"><strong>agentlas.cloud</strong></a></p>
+
+---
+<!-- /agentlas:landing-block -->
 
 ## 没有平台做得到的事
 
