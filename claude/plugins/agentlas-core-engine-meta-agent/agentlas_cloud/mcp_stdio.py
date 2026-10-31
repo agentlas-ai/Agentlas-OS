@@ -3030,9 +3030,11 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     "status": "error",
                     "error": "project_not_initialized",
                     "hint": (
-                        "Run `hephaestus project ensure --project <folder>` first. "
-                        "Read-only context tools never create project state."
+                        "This folder has no project map yet, and read-only context tools never create project state. "
+                        "Call context.refresh once for this projectDir (it creates the map inside the host-approved folders), then repeat this call; "
+                        "if context.refresh refuses the folder, carry on without the Context Map."
                     ),
+                    "repairable": True,
                 }
             # Omitted refresh means "automatic once if stale" at the MCP
             # adapter. Explicit false preserves the strict passive/no-write
@@ -3267,10 +3269,23 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         except (OSError, sqlite3.Error, WorkforceGoalBindingError, ValueError) as exc:
             from .workforce.package_adapter import refusal_fields
 
+            code = getattr(exc, "code", "workforce_goal_binding_failed")
+            if name == "workforce.record_goal_turn" and code == "workforce_goal_active_binding_not_found":
+                # Recording a turn needs a roster bound to the goal in this project. With none there is nothing to record and nothing went
+                # wrong: say so calmly instead of an error the model reads as a failure of the turn.
+                return {
+                    "action": name,
+                    "status": "skipped",
+                    "reason": code,
+                    "detail": (
+                        "No roster is bound to this goal in this project, so there is nothing to record. Carry on; "
+                        "workforce.prepare_execution binds a roster when one is needed."
+                    ),
+                }
             return {
                 "action": name,
                 "status": "error",
-                "error": getattr(exc, "code", "workforce_goal_binding_failed"),
+                "error": code,
                 **refusal_fields(exc),
             }
     if name == "workforce.expand_candidates":
