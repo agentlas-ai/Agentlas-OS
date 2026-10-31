@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.72 — 2026-11-01
+
+- Context: in a folder with no project map, the hint now tells the model to call
+  `context.refresh` once for that folder and repeat the call (or carry on without
+  the Context Map if the refresh refuses the folder), instead of naming a command
+  line tool the model of a runtime session often does not have. The typed
+  `project_not_initialized` error stays and is marked repairable. Read-only
+  context tools still never create project state.
+- Workforce: recording a Goal turn for a Goal with no roster bound in the project
+  now answers `skipped` with a plain sentence instead of an error. Completing a
+  Goal and the other Goal tools keep their typed errors.
+
 ## 1.2.71 — 2026-10-30
 
 - Memory curation: a lesson that names a project path (in backticks, quotes,
