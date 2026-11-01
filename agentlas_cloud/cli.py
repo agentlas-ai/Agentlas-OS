@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import platform
 import shutil
@@ -84,6 +85,144 @@ class _UploadVisibilityAction(_ExplicitSingleValueAction):
 
     def __call__(self, parser, namespace, values, option_string=None):
         super().__call__(parser, namespace, "marketplace" if values == "hub-public" else values, option_string)
+
+
+class _BuildCliInputError(ValueError):
+    def __init__(self, code: str, input_name: str):
+        self.code = code
+        self.input_name = input_name
+        super().__init__(code)
+
+
+def _build_cli_error(args: argparse.Namespace, code: str, **details: Any) -> int:
+    payload: dict[str, Any] = {"status": "error", "code": code, **details}
+    if args.contract_command == "workspace-prepare":
+        payload.update({"stagingDir": args.staging_dir, "partialWorkspaceMayRemain": True, "automaticCleanupPerformed": False})
+    elif args.contract_command == "workspace-restore":
+        payload.update({"workspaceJson": args.workspace_json, "partialContractRestoreMayRemain": True, "automaticCleanupPerformed": False})
+    elif args.contract_command == "experiment-snapshot":
+        payload.update({"workspaceJson": args.workspace_json, "partialSnapshotMayRemain": True, "automaticCleanupPerformed": False, "executionPerformed": False})
+    return emit(payload) or 1
+
+
+def _load_build_cli_json(filename: str, *, input_name: str, limit: int) -> Any:
+    """Read a bounded JSON file without following links on its path."""
+    from .build_workspace import BuildWorkspaceError, _open_dir, _read_file
+    from .workforce.package_adapter import _dir_close
+
+    expanded = os.path.expanduser(filename)
+    if not expanded or "\x00" in expanded or ".." in Path(expanded).parts:
+        raise _BuildCliInputError("json_path_invalid", input_name)
+    path = Path(os.path.abspath(expanded))
+    try:
+        parent = _open_dir(path.parent)
+        try:
+            body = _read_file(parent, path.name, limit)
+        finally:
+            _dir_close(parent)
+    except BuildWorkspaceError as exc:
+        raise _BuildCliInputError(exc.code, input_name) from exc
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise _BuildCliInputError("json_duplicate_key", input_name)
+            result[key] = value
+        return result
+
+    def invalid_constant(_: str) -> None:
+        raise _BuildCliInputError("json_nonfinite_number", input_name)
+
+    def finite_float(raw: str) -> float:
+        value = float(raw)
+        if not math.isfinite(value):
+            raise _BuildCliInputError("json_nonfinite_number", input_name)
+        return value
+
+    try:
+        return json.loads(body.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=invalid_constant, parse_float=finite_float)
+    except _BuildCliInputError:
+        raise
+    except (UnicodeError, ValueError, RecursionError) as exc:
+        raise _BuildCliInputError("invalid_json", input_name) from exc
+
+
+def _build_contract_command(args: argparse.Namespace) -> int:
+    """Use local build APIs without scheduling a model or touching project indexes."""
+    from . import build_experiments, build_workspace
+    from .agent_revisions import MAX_TREE_BYTES
+
+    try:
+        if args.contract_command == "workspace-prepare":
+            return emit(build_workspace.prepare_build_workspace(args.target, args.source, args.staging_dir))
+        if args.contract_command == "experiment-check":
+            plan = _load_build_cli_json(args.plan, input_name="plan", limit=build_experiments.MAX_SPEC_BYTES)
+            loaded = _load_build_cli_json(args.records, input_name="records", limit=MAX_TREE_BYTES)
+            if isinstance(loaded, list):
+                records, reviews = loaded, []
+            elif isinstance(loaded, dict) and set(loaded).issubset({"records", "reviews"}) and "records" in loaded:
+                records, reviews = loaded["records"], loaded.get("reviews", [])
+            else:
+                raise _BuildCliInputError("records_shape_invalid", "records")
+            report = build_experiments.validate_experiment(plan, records, reviews=reviews)
+            statuses = {pair["comparability"] for pair in report["pairs"]}
+            if "not_comparable" in statuses or report["rejectedRecordCount"]:
+                validation_status, exit_code = "not_comparable", 1
+            elif "unverified" in statuses:
+                validation_status, exit_code = "unverified", 2
+            else:
+                validation_status, exit_code = "comparable", 0
+            emit({**report, "validationStatus": validation_status, "executionPerformed": False})
+            return exit_code
+
+        expanded_path = os.path.expanduser(args.workspace_json)
+        if not expanded_path or "\x00" in expanded_path or ".." in Path(expanded_path).parts:
+            raise _BuildCliInputError("workspace_receipt_path_invalid", "workspace")
+        path = Path(os.path.abspath(expanded_path))
+        if path.name != "workspace.json":
+            raise _BuildCliInputError("workspace_receipt_path_invalid", "workspace")
+        receipt = _load_build_cli_json(str(path), input_name="workspace", limit=MAX_TREE_BYTES)
+        if not isinstance(receipt, dict) or not isinstance(receipt.get("stagingDir"), str):
+            raise _BuildCliInputError("invalid_receipt", "workspace")
+        expected_path = Path(os.path.abspath(os.path.expanduser(receipt["stagingDir"]))) / "workspace.json"
+        if path != expected_path:
+            raise _BuildCliInputError("workspace_receipt_path_mismatch", "workspace")
+        if args.contract_command == "workspace-inspect":
+            return emit(build_workspace.inspect_build_candidate(receipt, allow_added_skills=args.allow_added_skills))
+        if args.contract_command == "workspace-verify":
+            return emit(build_workspace.verify_build_workspace(receipt, expected_candidate_digest=args.candidate_digest, allow_added_skills=args.allow_added_skills))
+        if args.contract_command == "workspace-restore":
+            return emit(build_workspace.restore_candidate_contracts(receipt, expected_candidate_digest=args.candidate_digest, allow_added_skills=args.allow_added_skills))
+        if args.contract_command == "experiment-snapshot":
+            return emit(build_workspace.create_experiment_snapshot(receipt, expected_candidate_digest=args.candidate_digest, allow_added_skills=args.allow_added_skills))
+        if args.contract_command == "experiment-snapshot-verify":
+            expanded_snapshot = os.path.expanduser(args.snapshot_json)
+            if not expanded_snapshot or "\x00" in expanded_snapshot or ".." in Path(expanded_snapshot).parts:
+                raise _BuildCliInputError("snapshot_receipt_path_invalid", "snapshot")
+            snapshot_path = Path(os.path.abspath(expanded_snapshot))
+            if snapshot_path.name != "snapshot.json":
+                raise _BuildCliInputError("snapshot_receipt_path_invalid", "snapshot")
+            snapshot = _load_build_cli_json(str(snapshot_path), input_name="snapshot", limit=MAX_TREE_BYTES)
+            if not isinstance(snapshot, dict) or not isinstance(snapshot.get("snapshotDir"), str):
+                raise _BuildCliInputError("invalid_snapshot_receipt", "snapshot")
+            expected_snapshot_path = Path(os.path.abspath(os.path.expanduser(snapshot["snapshotDir"]))) / "snapshot.json"
+            if snapshot_path != expected_snapshot_path:
+                raise _BuildCliInputError("snapshot_receipt_path_mismatch", "snapshot")
+            return emit(build_workspace.verify_experiment_snapshot(receipt, snapshot, expected_snapshot_digest=args.snapshot_digest, allow_added_skills=args.allow_added_skills))
+        raise _BuildCliInputError("unknown_build_command", "command")
+    except _BuildCliInputError as exc:
+        return _build_cli_error(args, exc.code, input=exc.input_name, activationAuthorized=False)
+    except build_workspace.BuildWorkspaceError as exc:
+        details: dict[str, Any] = {"activationAuthorized": False}
+        snapshot_id = getattr(exc, "partial_snapshot_id", None)
+        if args.contract_command == "experiment-snapshot" and isinstance(snapshot_id, str):
+            details["partialSnapshotId"] = snapshot_id
+        return _build_cli_error(args, exc.code, **details)
+    except build_experiments.ExperimentSpecError as exc:
+        return _build_cli_error(args, str(exc), executionPerformed=False)
+    except (OSError, ValueError, TypeError, KeyError, RecursionError):
+        return _build_cli_error(args, "build_command_failed", activationAuthorized=False)
 
 
 RESEARCH_SEARCH_PROVIDER_HINTS = {
@@ -637,12 +776,6 @@ def _normalize_upload_alias(argv: list[str]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     configure_utf8_stdio()
-    # Wire the resident judge to the host's connected model (if the host opted in
-    # via AGENTLAS_JUDGE_RUNTIME). Judged sites then decide by meaning; without it
-    # they return the labeled "connect a model" outcome, never a keyword verdict.
-    from .judgment_bootstrap import install_judgment_from_env
-
-    install_judgment_from_env()
     parser = argparse.ArgumentParser(prog="agentlas-cloud", description="Agentlas local package and revision tools")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -1010,6 +1143,30 @@ def main(argv: list[str] | None = None) -> int:
     contract_resolve_target.add_argument("--base", default=None)
     contract_prompt = contract_sub.add_parser("prompt", help="Render the contract artifact list as prompt bullet lines")
     contract_prompt.add_argument("--mode", choices=["single", "team", "package"], default="single")
+    contract_workspace_prepare = contract_sub.add_parser("workspace-prepare", help="Create a private target-only candidate with read-only donor inventories")
+    contract_workspace_prepare.add_argument("--target", action=_ExplicitSingleValueAction, required=True, help="Explicit canonical target folder")
+    contract_workspace_prepare.add_argument("--source", action="append", default=[], help="Additional read-only source folder; repeat for more sources")
+    contract_workspace_prepare.add_argument("--staging-dir", action=_ExplicitSingleValueAction, required=True, help="New private staging directory")
+    contract_workspace_inspect = contract_sub.add_parser("workspace-inspect", help="Inspect the current candidate without approving or executing it")
+    contract_workspace_inspect.add_argument("workspace_json", help="Exact workspace.json path")
+    contract_workspace_verify = contract_sub.add_parser("workspace-verify", help="Verify source and candidate snapshot digests")
+    contract_workspace_verify.add_argument("workspace_json", help="Exact workspace.json path")
+    contract_workspace_verify.add_argument("--candidate-digest", action=_ExplicitSingleValueAction, default=None, help="Expected inspected candidate digest; defaults to the initial digest")
+    contract_workspace_restore = contract_sub.add_parser("workspace-restore", help="Restore selected validated target contracts to one inspected candidate")
+    contract_workspace_restore.add_argument("workspace_json", help="Exact workspace.json path")
+    contract_workspace_restore.add_argument("--candidate-digest", action=_ExplicitSingleValueAction, required=True, help="Expected inspected candidate digest")
+    contract_snapshot = contract_sub.add_parser("experiment-snapshot", help="Capture a hash-pinned candidate package without executing it")
+    contract_snapshot.add_argument("workspace_json", help="Exact workspace.json path")
+    contract_snapshot.add_argument("--candidate-digest", action=_ExplicitSingleValueAction, required=True, help="Expected inspected and restored candidate digest")
+    contract_snapshot_verify = contract_sub.add_parser("experiment-snapshot-verify", help="Verify a pinned candidate package without executing or approving it")
+    contract_snapshot_verify.add_argument("workspace_json", help="Exact workspace.json path")
+    contract_snapshot_verify.add_argument("snapshot_json", help="Exact snapshot.json path")
+    contract_snapshot_verify.add_argument("--snapshot-digest", action=_ExplicitSingleValueAction, required=True, help="Snapshot digest retained independently of snapshot.json")
+    for candidate_command in (contract_workspace_inspect, contract_workspace_verify, contract_workspace_restore, contract_snapshot, contract_snapshot_verify):
+        candidate_command.add_argument("--allow-added-skills", action="store_true", help="Explicitly allow validated additive manifest skills; pass at each step")
+    contract_experiment_check = contract_sub.add_parser("experiment-check", help="Validate previously reported experiment records without running a model")
+    contract_experiment_check.add_argument("--plan", action=_ExplicitSingleValueAction, required=True, help="Bounded experiment plan JSON")
+    contract_experiment_check.add_argument("--records", action=_ExplicitSingleValueAction, required=True, help="JSON array of records, or an object with records and optional reviews")
 
     ao = sub.add_parser("ao", help="Agent Ontology commands")
     ao_sub = ao.add_subparsers(dest="ao_command", required=True)
@@ -1562,6 +1719,15 @@ def main(argv: list[str] | None = None) -> int:
     workforce_goal_ledger.add_argument("--reason", default=None)
 
     args = parser.parse_args(_normalize_upload_alias(sys.argv[1:] if argv is None else list(argv)))
+    if args.command == "contract" and args.contract_command in {
+        "workspace-prepare", "workspace-inspect", "workspace-verify", "workspace-restore", "experiment-check",
+        "experiment-snapshot", "experiment-snapshot-verify",
+    }:
+        return _build_contract_command(args)
+    # Wire the resident judge only after the isolated build commands have returned.
+    from .judgment_bootstrap import install_judgment_from_env
+
+    install_judgment_from_env()
     # Resolve the launcher-provided spelling into process-local command context.
     # A missing/older registry must not make an existing command unusable; the
     # explicit `command check` path reports that failure instead.
