@@ -387,13 +387,12 @@ def migrate_package(
         "updated_at": utc_now(),
     }
 
-    # Briefing interview output is the highest-quality card source: the user's
-    # own words about what the agent must NOT do become anti_triggers verbatim
-    # (always better than a generated guess), and the confirmed goal/acceptance
-    # criteria replace the name/description trigger stubs.
+    # A Work Brief can supply triggers and anti-triggers, but it is a caller's
+    # declaration. This migration does not verify a host interview, user
+    # confirmation, source access, or the provenance of an ambiguity score.
     # A package that HAS a work-brief.json the loader rejects is not the same as
     # a package with none: the card silently falls back to name/description
-    # trigger stubs and ships without the user-confirmed anti_triggers, which is
+    # trigger stubs and ships without the Work Brief's anti_triggers, which is
     # only visible at borrow time. Migration still succeeds, but the receipt
     # carries the exact reason so the brief can be fixed and the card re-derived.
     brief_resolution = resolve_work_brief(pkg_dir)
@@ -402,7 +401,7 @@ def migrate_package(
         {
             "path": str(brief_resolution.path),
             "problem": brief_resolution.problem,
-            "effect": "routing card was derived without the Work Brief (no user-confirmed anti_triggers)",
+            "effect": "routing card was derived without the Work Brief",
         }
         if brief_resolution.problem
         else None
@@ -423,10 +422,14 @@ def migrate_package(
                 {"text": item, "locale": "ko" if any("가" <= ch <= "힣" for ch in item) else "en"}
                 for item in brief_triggers
             ]
-        card["routing_status_reason"] = "derived from briefing interview work-brief; triggers/anti-triggers are user-confirmed"
+        card["routing_status_reason"] = (
+            "derived from Work Brief; source, user confirmation and any ambiguity score are not independently verified"
+        )
+        metadata = work_brief.get("metadata") if isinstance(work_brief.get("metadata"), dict) else {}
+        ambiguity_score = metadata.get("ambiguity_score")
         card["work_brief_ref"] = {
             "path": ".agentlas/work-brief.json",
-            "ambiguity_score": (work_brief.get("metadata") or {}).get("ambiguity_score"),
+            "ambiguity_score": ambiguity_score,
         }
 
     local_path = pkg_dir / ".agentlas" / "routing-card.json"
@@ -452,7 +455,9 @@ def migrate_package(
             # The stub reason would now be a lie ("auto-migrated from
             # agent-card.json") about a card whose content was preserved.
             card["routing_status_reason"] = (
-                "re-migrated; authored routing-card content preserved"
+                "re-migrated; authored routing-card content preserved; Work Brief source, user confirmation "
+                "and any ambiguity score are not independently verified"
+                if work_brief else "re-migrated; authored routing-card content preserved"
             )
 
     from .bootstrap import atomic_write_json
