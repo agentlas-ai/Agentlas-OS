@@ -692,6 +692,32 @@ def package_agent(
                 "Install jsonschema for the interpreter this CLI runs under (the verify report names it), then rerun the upload.",
             )
         )
+    input_evidence = contract_report.get("input_evidence")
+    invalid_work_brief = any(
+        isinstance(row, dict) and row.get("path") == ".agentlas/work-brief.json"
+        and row.get("error_code") in {"work_brief_invalid_json_or_shape", "work_brief_invalid_context"}
+        for row in contract_report.get("artifacts", [])
+    )
+    if visibility != "private-link" and invalid_work_brief:
+        findings.append(
+            _finding(
+                "work-brief-invalid-shape", "blocker", "structure",
+                "The Work Brief is invalid or its declared context assessment is malformed; input provenance cannot be assessed.",
+                ".agentlas/work-brief.json",
+                "Provide a valid Work Brief before public publication.",
+            )
+        )
+    if (visibility != "private-link" and isinstance(input_evidence, dict)
+            and input_evidence.get("basis") == "context"
+            and input_evidence.get("sourceVerification") == "unverified"):
+        findings.append(
+            _finding(
+                "context-source-unverified", "blocker", "structure",
+                "The context-based Work Brief contains caller claims whose sources have not been independently verified.",
+                ".agentlas/work-brief.json",
+                "Use an independently verified host evidence path before public publication; do not fabricate an interview receipt.",
+            )
+        )
     for blocker in contract_report["blockers"]:
         artifact_path = blocker.split(":", 1)[0] if ":" in blocker else None
         # Upload packages the collected file set, not the mutable source tree.
@@ -887,6 +913,8 @@ def package_agent(
         "package-size-limit",
         "package-uncompressed-size-limit",
         "file-count-limit",
+        "context-source-unverified-",
+        "work-brief-invalid-shape-",
     )
     def _must_stay_blocked(finding: dict[str, Any]) -> bool:
         return str(finding.get("id", "")).startswith(HARD_BLOCK_ID_PREFIXES)

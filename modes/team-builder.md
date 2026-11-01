@@ -55,8 +55,9 @@ separate unrelated single-agent packages.
 
 ## Builder Quality Rule
 
-Run `contracts/builder-interview-research-gate.md` before generation. Ask an 8-12
-question first batch and keep asking follow-ups until the team's mission,
+Run `contracts/builder-interview-research-gate.md` before generation. Assess
+supplied context first and ask only real gaps, including zero questions when
+sufficient (8-12 only if that many gaps remain), until the team's mission,
 worker boundaries, handoff artifacts, examples, tools/plugins, memory policy,
 safety gates, and evaluation rubric are clear. Research official sources,
 similar agents or repositories, academic/professional theory, and plugin docs

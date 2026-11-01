@@ -33,8 +33,9 @@ runtime adapters.
 ## Builder Interview and Research Gate
 
 Before writing the team roster, run `contracts/builder-interview-research-gate.md`.
-Do not jump from a rough idea to a generic HQ/worker list. Ask an 8-12 question
-first batch and continue follow-ups until the team mission, owner, user, worker
+Do not jump from a rough idea to a generic HQ/worker list. Assess supplied
+context first; ask only real gaps, including zero questions when sufficient
+(8-12 only if that many gaps remain), until the team mission, owner, user, worker
 boundaries, handoff artifacts, tools/plugins, memory policy, safety gates,
 examples, and evaluation rubric are clear. If single vs multi is unclear, ask
 the ownership-boundary question before generation; do not infer from the word

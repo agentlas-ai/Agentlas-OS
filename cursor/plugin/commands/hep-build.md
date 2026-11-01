@@ -160,14 +160,17 @@ Route to the Agentlas Core Engine Meta-Agent team, using the `$ENGINE` and
    like ownership boundary, memory/context, synthesis, or produces/consumes.
 4. Run the Builder Interview and Research Gate in
    `$ENGINE/contracts/builder-interview-research-gate.md` before writing substantial
-   package files. Ask an 8-12 question first batch when the request is vague; continue
-   follow-ups until target user, tasks, inputs, outputs, examples,
+   package files. Assess the supplied request, conversation and authorized
+   sources first. Ask zero questions when the material decisions are already
+   clear; otherwise ask only real gaps (8-12 only if that many gaps remain).
+   Clarify target user, tasks, inputs, outputs, examples,
    tools/plugins, memory, failure modes, ownership boundaries, execution order,
-   and evals are clear. Question selection, ambiguity scoring and the stop
-   decision follow the briefing interview engine (`agentlas_cloud/interview/`):
-   lens-table questions (anti_scope / done_signal / stop_criterion are
-   required), stop only at ambiguity <= 0.2 with all dimension floors met for 2
-   consecutive rounds, then one coverage check plus a one-sentence goal restate. Research official
+   and evals. Apply the anti_scope / done_signal / stop_criterion lenses to
+   the available evidence. Validate a context-only assessment with
+   `"$RUNNER" contract context-assess --input <assessment.json>`; its valid
+   `sufficient` status is a caller claim, not a host witness or permission.
+   Do not fabricate scores, user answers, interview receipts, or opt-outs.
+   When actual questions cannot be delivered, stop with needs-input. Research official
    or primary docs, similar agent repositories or comparables, GitHub examples,
    academic/professional theory, and tool/plugin docs. Record selected and
    rejected tools/plugins with permission, secret, fallback, and smoke-test
@@ -178,10 +181,13 @@ Route to the Agentlas Core Engine Meta-Agent team, using the `$ENGINE` and
    default to `.`, the cwd, or `$ENGINE`. Run
    `"$RUNNER" contract resolve-target "$PACKAGE_TARGET" --base "$PWD"` and set
    `PACKAGE_ROOT` only to the status-`ok` receipt's exact `package_root`. A
-   nonzero exit or any error receipt is a blocker. Then:
+   nonzero exit or any error receipt is a blocker. Before scaffold, prepare a
+   Work Brief outside the package at `BRIEF_PATH` using the actual sources or
+   real interview, including `metadata.inputBasis: context` and the validated
+   `metadata.contextAssessment` for the context-only route. Then:
 
    ```bash
-   "$RUNNER" contract scaffold "$PACKAGE_ROOT" --mode "<single|team|package>"   # substitute exactly one; the angle brackets are not literal
+   "$RUNNER" contract scaffold "$PACKAGE_ROOT" --mode "<single|team|package>" --work-brief "$BRIEF_PATH"   # substitute exactly one mode and a real brief path
    ```
 
    Then, as soon as the routing card exists, let the engine answer every hole it
@@ -211,8 +217,29 @@ Route to the Agentlas Core Engine Meta-Agent team, using the `$ENGINE` and
    Then fill the holes. `contract prompt --mode <mode>` prints the artifact list
    with what each one is for.
 
+   For an existing agent edit or merge, preserve the original target and all
+   donors. With an existing target and a new private staging directory, use:
+
+   ```bash
+   "$RUNNER" contract workspace-prepare --target "$EXISTING_TARGET" --source "$DONOR" --staging-dir "$STAGING_DIR"
+   "$RUNNER" contract workspace-inspect "$STAGING_DIR/workspace.json"
+   "$RUNNER" contract workspace-verify "$STAGING_DIR/workspace.json" --candidate-digest "$INSPECTED_CANDIDATE_DIGEST"
+   ```
+
+   Inspect collisions and omissions and edit only the staged candidate. If its
+   original validated contracts are needed, `workspace-restore` requires the
+   inspected candidate digest; it restores only selected target contracts. Use
+   `experiment-snapshot` with the inspected digest and retain the returned
+   snapshot digest independently, then `experiment-snapshot-verify` with both
+   receipt paths and that digest. `experiment-check --plan <json> --records
+   <json>` checks already-reported records; it does not run an experiment or a
+   model. Do not present a prepared or checked candidate as executed, activated,
+   installed, or approved. These workspace commands require an existing target;
+   they do not create a new identity from donors. Never choose a donor as the
+   target merely to claim support for a new agent.
+
 6. Generate `.agentlas/work-brief.json` (Work Brief `work-brief/1.0` — the
-   machine-readable interview output; `cards migrate` consumes its anti_scope
+   machine-readable account of supplied context or an interview; `cards migrate` consumes its anti_scope
    and goal/acceptance as routing-card triggers), plus
    `docs/builder-interview.md`, `docs/research-sources.md`,
    `docs/tool-selection.md`, `docs/domain-expert-synthesis.md`,

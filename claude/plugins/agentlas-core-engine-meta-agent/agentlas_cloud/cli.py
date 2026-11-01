@@ -123,6 +123,10 @@ def _load_build_cli_json(filename: str, *, input_name: str, limit: int) -> Any:
     except BuildWorkspaceError as exc:
         raise _BuildCliInputError(exc.code, input_name) from exc
 
+    return _decode_build_cli_json(body, input_name=input_name)
+
+
+def _decode_build_cli_json(body: bytes, *, input_name: str) -> Any:
     def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
@@ -146,6 +150,31 @@ def _load_build_cli_json(filename: str, *, input_name: str, limit: int) -> Any:
         raise
     except (UnicodeError, ValueError, RecursionError) as exc:
         raise _BuildCliInputError("invalid_json", input_name) from exc
+
+
+def _build_context_assess_command(args: argparse.Namespace) -> int:
+    """Validate a bounded caller claim without invoking a model or any host witness."""
+    from .interview import ContextAssessmentError, assess_build_context
+
+    try:
+        if args.input == "-":
+            body = sys.stdin.buffer.read(65537)
+            if len(body) > 65536:
+                raise _BuildCliInputError("json_too_large", "assessment")
+            value = _decode_build_cli_json(body, input_name="assessment")
+        else:
+            value = _load_build_cli_json(args.input, input_name="assessment", limit=65536)
+        return emit(assess_build_context(value))
+    except (_BuildCliInputError, ContextAssessmentError) as exc:
+        emit({"status": "unverified", "reasonCode": exc.code, "semanticProvenance": "caller_claim",
+              "sourceVerification": "unverified", "hostWitness": "not_checked", "authorizationGranted": False,
+              "modelInvoked": False})
+        return 2
+    except OSError:
+        emit({"status": "unverified", "reasonCode": "input_unavailable", "semanticProvenance": "caller_claim",
+              "sourceVerification": "unverified", "hostWitness": "not_checked", "authorizationGranted": False,
+              "modelInvoked": False})
+        return 2
 
 
 def _build_contract_command(args: argparse.Namespace) -> int:
@@ -1107,18 +1136,20 @@ def main(argv: list[str] | None = None) -> int:
 
     contract = sub.add_parser("contract", help="Package contract: scaffold templates and verify completeness (machine-readable)")
     contract_sub = contract.add_subparsers(dest="contract_command", required=True)
+    contract_context = contract_sub.add_parser("context-assess", help="Validate a caller context claim without observing sources, interviewing, or granting authority")
+    contract_context.add_argument("--input", required=True, help="Bounded assessment JSON file, or - for stdin")
     contract_scaffold = contract_sub.add_parser("scaffold", help="Copy contract templates into a workspace (never overwrites)")
     contract_scaffold.add_argument("folder")
     contract_scaffold.add_argument("--mode", choices=["single", "team", "package"], default="single")
     contract_scaffold.add_argument("--id", default="", help="Package id/slug (default: folder name)")
     contract_scaffold.add_argument("--name", default="", help="Display name (default: package id)")
     contract_scaffold.add_argument("--command-slug", dest="command_slug", default="", help="Canonical slash command slug (default: package id)")
-    # 인터뷰 증거 없이는 파일을 만들지 않는다. 부탁이 아니라 관문이다.
+    # Require a Work Brief; a context claim is not an interview witness.
     contract_scaffold.add_argument(
         "--work-brief",
         dest="work_brief",
         default=None,
-        help="Path to the interview's work-brief JSON (goal + acceptance_criteria). Required unless --minimal-private-reason is given.",
+        help="Path to a work-brief JSON from supplied context or an interview (goal + acceptance_criteria). Required unless --minimal-private-reason is given.",
     )
     contract_scaffold.add_argument(
         "--minimal-private-reason",
@@ -1719,6 +1750,8 @@ def main(argv: list[str] | None = None) -> int:
     workforce_goal_ledger.add_argument("--reason", default=None)
 
     args = parser.parse_args(_normalize_upload_alias(sys.argv[1:] if argv is None else list(argv)))
+    if args.command == "contract" and args.contract_command == "context-assess":
+        return _build_context_assess_command(args)
     if args.command == "contract" and args.contract_command in {
         "workspace-prepare", "workspace-inspect", "workspace-verify", "workspace-restore", "experiment-check",
         "experiment-snapshot", "experiment-snapshot-verify",

@@ -10,8 +10,9 @@ boundary, or public/private release decision.
 
 For `/hep-build` creation or behavior-changing packaging, this is not a
 substitute for the Builder Interview and Research Gate in
-`contracts/builder-interview-research-gate.md`. Run that gate first: ask an 8-12
-question first batch, research similar agent repositories or comparables and
+`contracts/builder-interview-research-gate.md`. Run that gate first: assess the
+supplied context and ask only material gaps, including zero questions when
+sufficient (8-12 only if that many gaps remain); research similar agent repositories or comparables and
 academic/professional theory, then use this clarify loop only for the remaining
 narrow ambiguities.
 
@@ -39,10 +40,10 @@ narrow ambiguities.
 This loop shares the briefing interview engine's contract
 (`agentlas_cloud/interview/`): a question is only worth asking if the answer
 would change execution, not just its phrasing. Respect the surface budget
-(chat 3-5 in one batch, stormbreaker <= 8 across two batches, build 8-12 plus
-follow-ups). 'decide later' is always a valid answer — record it as deferred,
-never re-ask. When answers you auto-confirmed from code/memory reach three in a
-row, the next question must go to the human.
+(chat 3-5 in one batch, stormbreaker <= 8 across two batches; build asks only
+the material gaps). 'decide later' is always a valid answer — record it as
+deferred, never re-ask. Outside build, when answers you auto-confirmed from
+code/memory reach three in a row, the next question must go to the human.
 
 ## Default Questions
 

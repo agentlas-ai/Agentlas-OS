@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentlas.dev/schemas/build-context-assessment.schema.json",
+  "title": "Agentlas Build Context Assessment (caller claim)",
+  "description": "A caller's semantic assessment. It is not evidence that a source, model invocation, interview, or authorization was observed by the host. Hosts MUST also apply the cross-reference, identifier uniqueness, and non-blank checks documented in the reference validator; JSON Schema alone is not sufficient.",
+  "type": "object",
+  "required": ["schemaVersion", "status", "sourceCoverage", "evidenceRefs", "materialGaps"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {"const": "agentlas.build-context-assessment.v1"},
+    "status": {"enum": ["sufficient", "needs_input", "unverified"]},
+    "sourceCoverage": {
+      "type": "array", "maxItems": 4,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["dimension", "state", "evidenceRefs"],
+        "properties": {
+          "dimension": {"enum": ["goal", "constraints", "success", "context"]},
+          "state": {"enum": ["supported", "assumed", "unknown", "conflict", "not_applicable"]},
+          "evidenceRefs": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+          "note": {"type": "string", "minLength": 1, "maxLength": 300, "pattern": "\\S"}
+        },
+        "allOf": [
+          {"if": {"properties": {"state": {"const": "supported"}}}, "then": {"properties": {"evidenceRefs": {"minItems": 1}}}},
+          {"if": {"properties": {"state": {"enum": ["assumed", "not_applicable"]}}}, "then": {"required": ["note"]}}
+        ]
+      },
+      "allOf": [
+        {"contains": {"properties": {"dimension": {"const": "goal"}}}, "minContains": 0, "maxContains": 1},
+        {"contains": {"properties": {"dimension": {"const": "constraints"}}}, "minContains": 0, "maxContains": 1},
+        {"contains": {"properties": {"dimension": {"const": "success"}}}, "minContains": 0, "maxContains": 1},
+        {"contains": {"properties": {"dimension": {"const": "context"}}}, "minContains": 0, "maxContains": 1}
+      ]
+    },
+    "evidenceRefs": {
+      "type": "array", "maxItems": 64,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "kind"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "kind": {"enum": ["request", "conversation", "file", "existing_agent", "tool_result", "research", "memory"]}
+        }
+      }
+    },
+    "materialGaps": {
+      "type": "array", "maxItems": 12,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "question"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "question": {"type": "string", "minLength": 1, "maxLength": 500, "pattern": "\\S"}
+        }
+      }
+    },
+    "reasonCode": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"}
+  },
+  "$defs": {"id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"}},
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "needs_input"}}, "required": ["status"]}, "then": {"properties": {"materialGaps": {"minItems": 1}}}},
+    {"if": {"properties": {"status": {"const": "sufficient"}}, "required": ["status"]}, "then": {"properties": {"materialGaps": {"maxItems": 0}, "sourceCoverage": {"minItems": 4, "items": {"properties": {"state": {"enum": ["supported", "assumed", "not_applicable"]}}}, "allOf": [{"contains": {"properties": {"dimension": {"const": "goal"}, "state": {"const": "supported"}}}}, {"contains": {"properties": {"dimension": {"const": "success"}, "state": {"const": "supported"}}}}]}, "evidenceRefs": {"minItems": 1}}}},
+    {"if": {"properties": {"status": {"const": "unverified"}}, "required": ["status"]}, "then": {"required": ["reasonCode"]}}
+  ]
+}

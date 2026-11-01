@@ -32,11 +32,15 @@ adapter, and runtime artifacts remain required. Its receipt must report
 or marketplace build must require `public_marketplace_ready: true` and may not
 promote or reinterpret a minimal-private receipt.
 
-## Gate 1 — Interview before generation
+## Gate 1 — Assess existing context before generation
 
-Do not treat a rough opening prompt as a sufficient specification. Classify the
-mode, ask 8–12 high-leverage questions, and continue with focused follow-ups
-until these points are explicit:
+Do not treat a rough opening prompt as a sufficient specification. First use the
+actual request, existing conversation, authorized files, existing agents,
+available tool results and research to classify the mode and assess these points.
+If they already settle the material decisions, ask zero additional questions.
+Otherwise ask only questions about real material gaps; 8–12 questions are
+appropriate only when that many distinct material gaps actually remain. Label
+conservative assumptions, and do not imply they are confirmed by the user:
 
 - whether one agent owns the job or separate roles need independent context,
   permissions, memory, and outputs;
@@ -74,9 +78,10 @@ offer options that are concrete choices in THAT domain rather than abstract
 categories. Where the domain has known method families, ask which one applies;
 where it has known failure modes, ask which ones matter here.
 
-### Score, then let the score choose the next questions
+### Assess coverage; score only when actually measured
 
-After each round, score four dimensions from 0.0 to 1.0 and combine them:
+When the interview engine actually measures an ambiguity vector, its four
+dimensions and weights are:
 
 | dimension | weight | reaches 1.0 when |
 |---|---|---|
@@ -85,24 +90,31 @@ After each round, score four dimensions from 0.0 to 1.0 and combine them:
 | success criteria | 0.25 | acceptance is checkable by someone other than the author |
 | context clarity | 0.15 | existing material, audience, cadence, and environment are known |
 
-`ambiguity = 1 - Σ(clarity_i × weight_i)`. Score deterministically (a fixed low
-temperature) so the same answers reproduce the same number; report the vector,
-never a bare total. **The lowest-scoring dimension decides what the next batch
-asks about** — questions follow the gap, not a checklist order, and a dimension
-already at its floor gets no further questions.
+`ambiguity = 1 - Σ(clarity_i × weight_i)`. For an actual measured vector, report
+the vector and total, not a fabricated score. Use a real unresolved gap to
+choose any follow-up; do not create rounds or a coverage question merely to
+meet a count. A measured score above 0.2 is not ready. Record a genuine override
+and the measured ambiguity when one exists; do not invent either.
 
-Continue until overall ambiguity is at most 0.2, every dimension clears its
-floor, and both hold for two consecutive rounds. Every interim risk must become
-the next concrete question or a named deferral. Close with one coverage
-question, restate the goal in one sentence, and confirm that sentence is
-sufficient. Record the final vector and total in the Work Brief; a build that
-cannot show its dimension scores did not run this gate.
+For a context-based Work Brief set `metadata.inputBasis` to `context` and put
+the assessment under `metadata.contextAssessment`, matching
+`schemas/build-context-assessment.schema.json`. Goal, constraints, success and
+context must each have one coverage entry; link supported entries to real source
+IDs, mark assumptions, and list only material questions in `materialGaps`.
+Validate it with `contract context-assess --input <assessment.json>`: proceed
+only on a valid `sufficient` claim; `needs_input` asks its listed questions,
+and `unverified`, invalid output or cancellation is not sufficient. The host
+must match IDs and source kinds against the inputs actually supplied. This
+validator checks shape, not meaning or access: report `caller_claim`, source
+verification `unverified`, and host witness `not_checked` when they have not
+been independently observed. Do not invent a score, interview, user answer,
+receipt, model execution, or approval. This context route is standard, not a
+minimal-private opt-out; independent research, quality, permission, registration
+and publication gates still apply.
 
-Stop early only on an explicit user override, and record the override and the
-ambiguity it stopped at.
-
-If the user cannot answer, propose a conservative default, label it
-`assumption`, and ask for confirmation. Never hide an unknown in generated
+If the user cannot answer, propose a conservative default and label it
+`assumption`; ask for confirmation when the unresolved decision materially
+requires it. Never hide an unknown in generated
 instructions. For an underspecified team, ask in plain language whether one
 expert can own the work end-to-end or multiple experts must divide and combine
 it; do not begin generation until the shape is known.
@@ -142,8 +154,8 @@ written interview document, and their owner had never been asked a single
 question — the model that skipped the interview also wrote the record saying it
 had not.
 
-So the host writes `.agentlas/interview-receipt.json` from the exchange it
-actually transported:
+When an interview actually occurs, only the host may write
+`.agentlas/interview-receipt.json` from the exchange it actually transported:
 
 ```json
 {
@@ -158,19 +170,20 @@ actually transported:
 Never write, edit, or fabricate this file — a host that sees you author it must
 treat the build as unverified. A batch counts as asked only when the host parsed
 real questions out of your turn, and as answered only when a human turn followed
-it. `answersReceived: 0` means no interview happened, whatever the documents say,
-and a standard-profile build in that state is `blocked`, not `completed`. A
-`minimal-private` build carrying the complete user-confirmed opt-out receipt is
-the only exception.
-
-A host with no question transport cannot satisfy this gate by asking in prose:
-add the transport, or declare the build minimal-private and say so in the receipt.
+it. `answersReceived: 0` does not establish an answered interview. Missing host
+witness must remain explicitly unverified, but does not itself require repeating
+questions whose answers are already available. If a material question remains
+and no actual question transport can deliver it, return needs-input and stop.
+Never synthesize a receipt or minimal-private opt-out to continue.
 
 Write `docs/builder-interview.md` and `.agentlas/work-brief.json`
 (`schemaVersion: work-brief/1.0`). The Work Brief must contain the one-line
 goal, constraints, verifiable acceptance criteria, anti_scope, assumption
 ledger with `user|code|memory|research|default` source tags, deferrals,
-weighted evaluation principles, exit conditions, and final ambiguity score.
+weighted evaluation principles and exit conditions. Include the final ambiguity
+score only when actually measured, or the context assessment described above.
+The required interview document records source provenance and assumptions; it
+must not claim that unasked questions were asked or answered.
 
 ## Gate 2 — Research dossier
 

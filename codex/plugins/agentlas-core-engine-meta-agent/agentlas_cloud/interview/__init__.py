@@ -2,6 +2,7 @@
 freeze the answers into a Work Brief that builders, the pipeline planner,
 the stormbreaker runner and the router all consume."""
 
+from .context_assessment import ContextAssessmentError, assess_build_context, validate_context_assessment
 from .directive import interview_directive
 from .lenses import LENS_GROUPS, question_budget, render_lens_table, surface_profile
 from .schema import (
@@ -24,10 +25,12 @@ from .scorer import (
 
 __all__ = [
     "AMBIGUITY_THRESHOLD",
+    "ContextAssessmentError",
     "LENS_GROUPS",
     "WORK_BRIEF_RELPATH",
     "WORK_BRIEF_SCHEMA_VERSION",
     "WorkBriefResolution",
+    "assess_build_context",
     "brief_packet_context",
     "brief_scope_text",
     "build_scoring_prompt",
@@ -40,5 +43,6 @@ __all__ = [
     "render_lens_table",
     "resolve_work_brief",
     "surface_profile",
+    "validate_context_assessment",
     "work_brief_problem",
 ]

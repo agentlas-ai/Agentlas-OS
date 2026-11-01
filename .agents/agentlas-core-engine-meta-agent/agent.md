@@ -16,7 +16,8 @@ an Agentlas-compatible agent or agent-team repository.
    - `30-agentlas-packager`;
    - `40-session-agent-builder`.
 6. Run `contracts/builder-interview-research-gate.md` before writing substantial
-   package files. Ask an 8-12 question first batch when the request is vague,
+   package files. Assess supplied context first and ask only real material gaps;
+   ask zero questions if sufficient (8-12 only if that many gaps remain),
    research official sources, similar agent repositories or comparables,
    academic/professional theory, and plugin docs, compare tools/plugins, and
    create the generated interview, research, tool-selection,

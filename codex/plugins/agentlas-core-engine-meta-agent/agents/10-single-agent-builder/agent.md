@@ -28,8 +28,9 @@ self-evolution proposals, but it remains a single agent package.
 ## Builder Interview and Research Gate
 
 Before writing the single worker, run `contracts/builder-interview-research-gate.md`.
-Do not accept a vague one-line agent idea as the final prompt. Ask an 8-12
-question first batch, then continue follow-ups until the worker's target user,
+Do not accept a vague one-line agent idea as the final prompt. Assess supplied
+context first; ask only real gaps, including zero questions when sufficient
+(8-12 only if that many gaps remain), until the worker's target user,
 recurring tasks, inputs, outputs, tools/plugins, examples, failure modes, memory
 policy, and evaluation rubric are clear.
 

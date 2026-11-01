@@ -32,27 +32,49 @@ def interview_directive(
     )
     # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.interview.directive).
     # Fixed protocol first; per-surface budget, soft-stop and close rules follow it.
-    directive = (
-        "task: briefing interview BEFORE executing; output = frozen Work Brief\n"
-        f"clear_request: ambiguity <= {AMBIGUITY_THRESHOLD} -> ask nothing\n"
-        "waves: 1 goal/constraints/done-signal, 2 edges/conflicts, 3 contradictions/assumptions; "
-        "follow any contradiction/avoidance/unverified assumption first\n"
-        "ask: from lens table, ONE message, 2-4 options + recommended default each\n"
-        "auto_confirm: answerable from code/context/memory -> tag [from-code]/[from-memory], do not ask; "
-        "after 3 in a row the next question goes to the user\n"
-        "rich_context: state understanding as numbered falsifiable claims, ask which are wrong\n"
-        "defer: 'decide later' is valid -> record as deferred, never re-ask\n"
-        "risks: every interim-summary risk -> next-wave question or deferred with reason\n"
-        "scoring: score after each round (instructions in scoring_prompt), keep history; "
-        f"stop when ambiguity <= {AMBIGUITY_THRESHOLD}, every dimension above floor, "
-        f"stable {profile['streak_required']} consecutive round(s)\n"
-        f"BUDGET (hard): {budget['batch_max']} questions/batch, "
-        f"{budget['batches_max']} batch(es), {budget['total_max']} total\n"
-        + soft_rule
-        + "close: ask 'anything missed?', restate goal in ONE sentence and confirm, "
-        f"then emit Work Brief (schemaVersion {WORK_BRIEF_SCHEMA_VERSION}; builds: write to "
-        f"{WORK_BRIEF_RELPATH}); anti_scope = user's own words on what NOT to do (feeds routing-card anti_triggers verbatim)"
-    )
+    if surface == "hep-build":
+        directive = (
+            "task: assess the request and actually supplied context before building; output = frozen Work Brief\n"
+            "coverage: assess goal, constraints, success, and context using supplied conversation, "
+            "authorized files and real tool results; label assumptions and cite source IDs\n"
+            "questions: ask only real material gaps; ask zero when the context is already sufficient; "
+            "if a necessary question cannot be delivered, return needs_input\n"
+            "validation: validate the context assessment with the host's matching validator or "
+            "contract context-assess; sufficient is a caller claim, not a host witness or authorization\n"
+            "provenance: do not fabricate user answers, host receipts, model calls, scores, or approvals; "
+            "report unverified source and witness status when not independently observed\n"
+            "defer: 'decide later' is valid -> record as deferred, never re-ask\n"
+            "scoring: only report a score or vector that was actually measured; do not create extra "
+            "rounds or confirmation questions to meet a quota\n"
+            f"BUDGET (hard): {budget['batch_max']} questions/batch, "
+            f"{budget['batches_max']} batch(es), {budget['total_max']} total\n"
+            f"close: emit Work Brief (schemaVersion {WORK_BRIEF_SCHEMA_VERSION}; write to "
+            f"{WORK_BRIEF_RELPATH}); anti_scope = user's own words on what NOT to do "
+            "(feeds routing-card anti_triggers verbatim); retain research, quality, permission, "
+            "registration and publication gates"
+        )
+    else:
+        directive = (
+            "task: briefing interview BEFORE executing; output = frozen Work Brief\n"
+            f"clear_request: ambiguity <= {AMBIGUITY_THRESHOLD} -> ask nothing\n"
+            "waves: 1 goal/constraints/done-signal, 2 edges/conflicts, 3 contradictions/assumptions; "
+            "follow any contradiction/avoidance/unverified assumption first\n"
+            "ask: from lens table, ONE message, 2-4 options + recommended default each\n"
+            "auto_confirm: answerable from code/context/memory -> tag [from-code]/[from-memory], do not ask; "
+            "after 3 in a row the next question goes to the user\n"
+            "rich_context: state understanding as numbered falsifiable claims, ask which are wrong\n"
+            "defer: 'decide later' is valid -> record as deferred, never re-ask\n"
+            "risks: every interim-summary risk -> next-wave question or deferred with reason\n"
+            "scoring: score after each round (instructions in scoring_prompt), keep history; "
+            f"stop when ambiguity <= {AMBIGUITY_THRESHOLD}, every dimension above floor, "
+            f"stable {profile['streak_required']} consecutive round(s)\n"
+            f"BUDGET (hard): {budget['batch_max']} questions/batch, "
+            f"{budget['batches_max']} batch(es), {budget['total_max']} total\n"
+            + soft_rule
+            + "close: ask 'anything missed?', restate goal in ONE sentence and confirm, "
+            f"then emit Work Brief (schemaVersion {WORK_BRIEF_SCHEMA_VERSION}; builds: write to "
+            f"{WORK_BRIEF_RELPATH}); anti_scope = user's own words on what NOT to do (feeds routing-card anti_triggers verbatim)"
+        )
     return {
         "directive": directive,
         "scoring_prompt": build_scoring_prompt(surface, locale),

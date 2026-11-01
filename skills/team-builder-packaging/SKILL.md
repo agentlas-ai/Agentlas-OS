@@ -9,7 +9,8 @@ description: "Use when generating or auditing a multi-role agent team package wi
 
 1. Start with the orchestrator/HQ.
 2. Run `contracts/builder-interview-research-gate.md` before writing the roster:
-   ask an 8-12 question first batch, research official sources, similar agent
+   assess supplied context and ask only material gaps, including zero questions
+   when sufficient (8-12 only if that many gaps remain); research official sources, similar agent
    repositories or comparables, academic/professional theory, and plugin docs,
    compare tool/plugin choices, and write the domain-expert synthesis plus
    prompt-performance contract.

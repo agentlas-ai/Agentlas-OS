@@ -10,6 +10,10 @@
 
 ## Answers
 
+Record the source for each fact and distinguish existing context, assumptions,
+and actual answers. Mark a question as not asked when it was not asked; do not
+invent an interview or a host receipt.
+
 | Dimension | Answer | Status |
 | --- | --- | --- |
 | Single vs team ownership boundary | {{OWNERSHIP_BOUNDARY}} | {{OWNERSHIP_BOUNDARY_STATUS}} |

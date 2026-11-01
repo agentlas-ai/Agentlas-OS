@@ -45,8 +45,9 @@ portable Agentlas-compatible package.
 - Keep the canonical instructions in `AGENTS.md`.
 - Keep adapters thin.
 - Run mode classification before routing.
-- Run `contracts/builder-interview-research-gate.md` before generation. A rough user
-  prompt is not enough: ask an 8-12 question first batch, research official
+- Run `contracts/builder-interview-research-gate.md` before generation. Assess the
+  supplied context first; ask only material gaps, including zero questions when
+  already sufficient (8-12 only if that many gaps remain). Research official
   sources, similar agent repositories or comparables, academic/professional
   theory, and plugin docs, compare tool/plugin options, synthesize the domain
   expert behavior, and turn the results into a prompt-performance contract

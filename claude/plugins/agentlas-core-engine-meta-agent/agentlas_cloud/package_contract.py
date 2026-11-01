@@ -327,51 +327,61 @@ def resolve_package_target(target: str, *, base: str | Path | None = None) -> di
 from .interview.schema import WORK_BRIEF_SCHEMA_VERSION
 
 
-def _interview_evidence_problem(
+def _interview_evidence_check(
     work_brief: str | Path | None,
     minimal_private_reason: str,
-) -> dict[str, Any] | None:
-    """Refuse to lay down package files before the interview happened.
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Require a brief before scaffold, without treating a caller claim as a witness.
 
-    The interview was a request written in prose, and prose is optional: measured
-    2026-08-17, two packages built through the same command came out 0 and 30
-    blockers apart, and neither owner had been asked a question — one of them
-    shipped a fully written `docs/builder-interview.md` for an interview that never
-    took place. Blocking at `verify` is too late; by then the model has already
-    written a package around answers nobody gave.
-
-    Scaffold is the only sanctioned way to create the contract artifacts, so it is
-    the chokepoint. No brief, no files.
+    Legacy briefs remain supported. A context-based brief must carry a valid,
+    sufficient caller assessment; no receipt, interview, or permission is inferred.
     """
     if minimal_private_reason.strip():
-        return None
+        try:
+            optional_brief = json.loads(Path(work_brief).expanduser().read_text(encoding="utf-8")) if work_brief else None
+        except (OSError, ValueError):
+            optional_brief = None
+        return None, optional_brief if isinstance(optional_brief, dict) else None
     if not work_brief:
         return {
             "error": "interview_required",
             "message": (
-                "Scaffold needs the interview result. Run the Builder Interview and "
-                "Research Gate first, write the answers to a work-brief JSON, and pass "
+                "Scaffold needs a Work Brief based on the supplied context or an actual "
+                "interview. Run the Builder Interview and Research Gate first, and pass "
                 "--work-brief <path>. For an explicit user-confirmed minimal scaffold "
                 "pass --minimal-private-reason \"<the user's own words>\"."
             ),
-        }
+        }, None
     brief_path = Path(work_brief).expanduser()
     if not brief_path.is_file():
-        return {"error": "work_brief_missing", "message": f"work brief not found: {brief_path}"}
+        return {"error": "work_brief_missing", "message": f"work brief not found: {brief_path}"}, None
     try:
         brief = json.loads(brief_path.read_text(encoding="utf-8"))
     except Exception as exc:  # noqa: BLE001 - the caller needs the reason verbatim
-        return {"error": "work_brief_unreadable", "message": str(exc)}
+        return {"error": "work_brief_unreadable", "message": str(exc)}, None
     if not isinstance(brief, dict):
-        return {"error": "work_brief_invalid", "message": "work brief must be a JSON object"}
+        return {"error": "work_brief_invalid", "message": "work brief must be a JSON object"}, None
+    metadata = brief.get("metadata")
+    if ("inputBasis" in brief or "contextAssessment" in brief
+            or (isinstance(metadata, dict) and ("inputBasis" in metadata or "contextAssessment" in metadata))):
+        from .interview.schema import work_brief_problem
+
+        problem = work_brief_problem(brief)
+        if problem:
+            return {"error": "context_assessment_invalid", "message": problem}, None
     goal = str(brief.get("goal") or "").strip()
     acceptance = brief.get("acceptance_criteria") or brief.get("acceptanceCriteria") or []
     if not goal or not isinstance(acceptance, list) or len(acceptance) == 0:
         return {
             "error": "work_brief_incomplete",
             "message": "work brief needs a non-empty `goal` and at least one `acceptance_criteria` entry",
-        }
-    return None
+        }, None
+    return None, brief
+
+
+def _interview_evidence_problem(work_brief: str | Path | None, minimal_private_reason: str) -> dict[str, Any] | None:
+    """Compatibility wrapper for callers that need only the gate problem."""
+    return _interview_evidence_check(work_brief, minimal_private_reason)[0]
 
 
 def scaffold(
@@ -388,8 +398,8 @@ def scaffold(
     files) and substitute the identity placeholders we already know. Model
     placeholders ({{TRIGGER_KO_1}}...) stay for the fill step.
 
-    Refuses without interview evidence — see ``_interview_evidence_problem``."""
-    gate = _interview_evidence_problem(work_brief, minimal_private_reason)
+    Requires a Work Brief or an explicit minimal-private reason."""
+    gate, brief_doc = _interview_evidence_check(work_brief, minimal_private_reason)
     if gate:
         return {
             "workspace": str(Path(folder).expanduser()),
@@ -467,20 +477,16 @@ def scaffold(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
         created.append(artifact["path"])
-    # The work brief is both the evidence that an interview happened and a
-    # required artifact of the package. Scaffold used to read it only as
+    # The work brief is a required artifact, not proof of an interview.
+    # Scaffold used to read it only as
     # evidence and then throw it away, so a build that answered every question
     # still failed verify on `.agentlas/work-brief.json: missing` and the model
     # was asked to rewrite, from memory, the answers the host already had on
     # disk (measured 2026-08-17). Copy it in — it is never overwritten, so a
     # brief the builder has since improved always wins.
-    if work_brief:
+    if work_brief and brief_doc is not None:
         brief_target = workspace / ".agentlas" / "work-brief.json"
         if not brief_target.exists():
-            try:
-                brief_doc = json.loads(Path(work_brief).expanduser().read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                brief_doc = None
             if isinstance(brief_doc, dict):
                 # Stamp the version the *stored* artifact is contracted to. The
                 # gate above asks the author for exactly two fields, so a brief
@@ -1220,13 +1226,14 @@ def _work_brief_problems(doc: dict[str, Any]) -> list[str]:
     if metadata.get("surface") != "hep-build":
         problems.append("metadata.surface must be 'hep-build'")
     score = metadata.get("ambiguity_score")
-    try:
-        ambiguity = float(score)
-    except (TypeError, ValueError):
-        problems.append("metadata.ambiguity_score must be numeric")
-    else:
-        if ambiguity > 0.2:
-            problems.append(f"metadata.ambiguity_score must be <= 0.2 (found {ambiguity:g})")
+    if metadata.get("inputBasis") != "context" or score is not None:
+        try:
+            ambiguity = float(score)
+        except (TypeError, ValueError):
+            problems.append("metadata.ambiguity_score must be numeric")
+        else:
+            if ambiguity > 0.2:
+                problems.append(f"metadata.ambiguity_score must be <= 0.2 (found {ambiguity:g})")
     return problems
 
 
@@ -1346,9 +1353,11 @@ def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> d
 
     fmt = artifact.get("format")
     doc: Any = None
+    json_parsed = False
     if fmt == "json":
         try:
             doc = json.loads(text)
+            json_parsed = True
         except ValueError as err:
             problems.append(f"invalid JSON: {err}")
     elif fmt == "jsonl":
@@ -1383,8 +1392,22 @@ def _verify_artifact(workspace: Path, artifact: dict[str, Any], base: Path) -> d
     }.get(str(artifact.get("path") or ""))
     if lint_name in QUALITY_DOC_SECTIONS:
         problems.extend(_quality_doc_problems(text, str(lint_name)))
-    if lint_name == "work-brief" and isinstance(doc, dict):
-        problems.extend(_work_brief_problems(doc))
+    if lint_name == "work-brief":
+        if not isinstance(doc, dict):
+            if json_parsed:
+                problems.append("work brief must be a JSON object")
+            report["error_code"] = "work_brief_invalid_json_or_shape"
+        else:
+            problems.extend(_work_brief_problems(doc))
+            metadata = doc.get("metadata")
+            context_marker = ("inputBasis" in doc or "contextAssessment" in doc or
+                              (isinstance(metadata, dict) and ("inputBasis" in metadata or "contextAssessment" in metadata)))
+            if context_marker and problems:
+                report["error_code"] = "work_brief_invalid_context"
+            if isinstance(metadata, dict) and metadata.get("inputBasis") == "context":
+                report["input_evidence"] = {"basis": "context", "semanticProvenance": "caller_claim",
+                                            "sourceVerification": "unverified", "hostWitness": "not_checked",
+                                            "interview": "not_claimed", "authorizationGranted": False}
     if lint_name == "capability-eval-plan" and isinstance(doc, dict):
         problems.extend(_capability_eval_problems(doc))
     if lint_name == "global-command-adapters" and isinstance(doc, dict):
@@ -1663,6 +1686,12 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
     ]
     warnings.extend(cleanup)
     warnings.extend(_verify_skills_consistency(workspace))
+    input_evidence = next((report["input_evidence"] for report in reports if "input_evidence" in report), None)
+    unverified_context = bool(input_evidence and input_evidence.get("sourceVerification") == "unverified")
+    if unverified_context:
+        warnings.append(
+            "context sources and semantic assessment are caller claims; public or marketplace readiness is unverified"
+        )
     if build_profile == "minimal-private":
         warnings.append(
             "minimal-private opt-out is active; this package is private-only and is not public or marketplace ready"
@@ -1677,12 +1706,13 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
         "warnings": warnings,
         "cleanup": cleanup,
         "build_profile": build_profile,
+        "input_evidence": input_evidence,
         # "full" 은 스키마 검증이 실제로 돌았다는 뜻이고, "unavailable" 은 이
         # 환경에 검증기가 없어 축소 검증만 했다는 뜻이다. 발행 경로는 이 값이
         # unavailable 이면 차단한다.
         "schemaValidation": "unavailable" if schema_unavailable else "full",
         "public_marketplace_ready": bool(
-            not blockers and not schema_unavailable and build_profile == "standard"
+            not blockers and not schema_unavailable and build_profile == "standard" and not unverified_context
         ),
         # ★이 패키지가 어느 엔진으로 지어졌는지, 지금 엔진과 어긋나는지. 판정만 싣고
         #   자동으로 고치지 않는다 — 무엇을 고칠지는 위 blockers 가 이미 말한다.

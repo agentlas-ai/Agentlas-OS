@@ -215,8 +215,9 @@ authority model:
    - `40-session-agent-builder` for an explicitly exported session source.
 4. Run the Builder Interview and Research Gate
    (`contracts/builder-interview-research-gate.md`) before writing substantial
-   generated package files. Ask an 8-12 question first batch when the request is
-   vague, continue follow-ups until the functional brief is clear, research
+   generated package files. Assess the request and authorized context first;
+   ask only material gaps, including zero questions if already clear. An 8-12
+   question batch is justified only by that many real gaps. Research
    official sources, similar agent repositories or comparables,
    academic/professional theory, and plugin documentation, then select
    tools/plugins only after checking permissions, secrets, alternatives, and

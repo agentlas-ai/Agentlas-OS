@@ -28,6 +28,8 @@ def work_brief_problem(record: dict[str, Any]) -> str | None:
     """Validate a Work Brief dict. Returns a human-readable problem or None."""
     if not isinstance(record, dict):
         return "work brief must be an object"
+    if "inputBasis" in record or "contextAssessment" in record:
+        return "context markers must be inside metadata"
     if str(record.get("schemaVersion") or "") != WORK_BRIEF_SCHEMA_VERSION:
         return f"schemaVersion must be {WORK_BRIEF_SCHEMA_VERSION}"
     goal = record.get("goal")
@@ -66,6 +68,17 @@ def work_brief_problem(record: dict[str, Any]) -> str | None:
     surface = str(meta.get("surface") or "")
     if surface and surface not in _VALID_SURFACES:
         return f"metadata.surface must be one of {sorted(_VALID_SURFACES)}"
+    if "inputBasis" in meta or "contextAssessment" in meta:
+        if meta.get("inputBasis") != "context":
+            return "metadata.inputBasis must be 'context' when a context assessment is provided"
+        from .context_assessment import ContextAssessmentError, validate_context_assessment
+
+        try:
+            assessment = validate_context_assessment(meta.get("contextAssessment"))
+        except ContextAssessmentError as exc:
+            return f"metadata.contextAssessment invalid: {exc.code}"
+        if assessment["status"] != "sufficient":
+            return "metadata.contextAssessment status must be sufficient"
     score = meta.get("ambiguity_score")
     if score is not None:
         try:

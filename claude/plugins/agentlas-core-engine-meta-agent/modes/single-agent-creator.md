@@ -54,8 +54,9 @@ Self-evolving means proposal-first improvement:
 
 ## Builder Quality Rule
 
-Run `contracts/builder-interview-research-gate.md` before generation. Ask an 8-12
-question first batch and keep asking follow-ups until the worker's real job,
+Run `contracts/builder-interview-research-gate.md` before generation. Assess
+supplied context first and ask only real gaps, including zero questions when
+sufficient (8-12 only if that many gaps remain), until the worker's real job,
 inputs, outputs, examples, tools, memory policy, failure modes, and evaluation
 rubric are clear. Research official sources, similar agents or repositories,
 academic/professional theory, and plugin docs before writing the worker prompt.
