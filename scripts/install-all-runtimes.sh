@@ -1860,7 +1860,7 @@ install_claude() {
     return 1
   }
   register_claude_mcp || warn "Windows user-scope MCP registration failed; run the command printed above manually."
-  prune_claude_plugin_cache || warn "Old plugin cache versions were left in place."
+  preserve_claude_plugin_cache
   log "Bundled MCP: local hephaestus-network Core (Cloud/Hub upstream stays behind Core)."
   ok=$((ok + 1))
 }
@@ -1892,9 +1892,6 @@ register_claude_mcp() {
   log "Registered user-scope hephaestus-network MCP for native Windows."
 }
 
-# Plugin cache versions accumulate without bound (measured: seven releases in
-# one cache). Keep the active version and one rollback target; anything older is
-# an orphan that only confuses `claude plugin` output.
 # PRD §4.22 — 런타임 홈은 버전별 디렉터리에 설치하고 링크만 바꾼다. 옛 버전을 정리하는
 # 코드가 없어서 무한히 커졌다(실측 2026-08-23: 124개 버전 9.1GB, 버전당 162MB).
 # 현재 것과 되돌리기용 최근 몇 개만 남긴다. 살아 있는 호스트 설정은 전부 `current` 를 보므로
@@ -1924,31 +1921,12 @@ _prune_runtime_homes(Path(sys.argv[1]))
 PY_PRUNE
 }
 
-prune_claude_plugin_cache() {
+# Do not guess that a version is unused from its name or sort order: another
+# running host may still load it, and a cache can contain user changes.
+preserve_claude_plugin_cache() {
   local cache="$HOME/.claude/plugins/cache/$marketplace_name/$plugin_name"
   [[ -d "$cache" ]] || return 0
-  local keep="${version#v}"
-  local -a stale=()
-  local dir name
-  while IFS= read -r dir; do
-    name="$(basename "$dir")"
-    [[ "$name" == "$keep" ]] && continue
-    stale+=("$name")
-  done < <(find "$cache" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
-  # sort -V keeps the newest non-active version as the rollback target.
-  local -a ordered=()
-  while IFS= read -r name; do
-    [[ -n "$name" ]] && ordered+=("$name")
-  done < <(printf '%s\n' "${stale[@]+"${stale[@]}"}" | sort -t. -k1,1n -k2,2n -k3,3n)
-  local total="${#ordered[@]}"
-  [[ "$total" -gt 1 ]] || return 0
-  local index=0
-  local removed=0
-  while [[ "$index" -lt $((total - 1)) ]]; do
-    rm -rf "$cache/${ordered[$index]}" 2>/dev/null && removed=$((removed + 1))
-    index=$((index + 1))
-  done
-  [[ "$removed" -gt 0 ]] && log "Pruned $removed orphaned plugin cache version(s); kept $keep and ${ordered[$((total - 1))]}."
+  log "Preserved existing Claude plugin cache versions."
   return 0
 }
 
@@ -1968,10 +1946,6 @@ write_claude_commands() {
     installed+=" /${name%.md}"
   done < <(managed_command_files)
   [[ -n "$installed" ]] || { warn "No managed Claude commands were derived from the release."; return 1; }
-  rm -f "$HOME/.claude/commands/hephaestus.md" "$HOME/.claude/commands/hephaests-network.md" \
-        "$HOME/.claude/commands/hephaestus-build.md" "$HOME/.claude/commands/hephaestus-network.md" \
-        "$HOME/.claude/commands/hephaestus-cloud.md" "$HOME/.claude/commands/hephaestus-search.md" \
-        "$HOME/.claude/commands/hephaestus-call.md"
   # Report what was actually installed. A hardcoded sentence here would have
   # kept claiming a complete set while two commands were missing from it.
   log "Refreshed Claude commands:$installed"
@@ -1985,9 +1959,8 @@ remove_codex_existing() {
 }
 
 # Codex 0.117+ removed custom prompts in favor of plugin skills. Keep the
-# prompt copier only for older Codex releases and remove only our managed dead
-# prompt files on current releases so the installer does not advertise a
-# command the host rejects.
+# prompt copier only for older Codex releases. Existing custom prompts are
+# preserved on current releases unless ownership can be established.
 #
 # Feature detection, not version sniffing (PRD 2026-08-15 OS-9). Version
 # strings freeze, lie, or get reused; the capability itself can be asked for:
@@ -2026,10 +1999,19 @@ codex_custom_prompts_supported() {
 }
 
 prune_managed_codex_prompts() {
-  local name
+  # Historical name retained for installer callers; names alone do not prove
+  # ownership, so report existing files instead of removing them.
+  local root name
   while IFS= read -r name; do
-    [[ -n "$name" ]] && rm -f "$HOME/.codex/prompts/$name"
+    [[ -n "$name" ]] || continue
+    for root in "$HOME/.codex/prompts" "${CODEX_HOME:-$HOME/.codex}/prompts"; do
+      if [[ -e "$root/$name" || -L "$root/$name" ]]; then
+        warn "Existing Codex custom prompts were preserved; review obsolete commands before using or removing them."
+        return 0
+      fi
+    done
   done < <(managed_command_files)
+  return 0
 }
 
 write_codex_prompts() {
@@ -2039,21 +2021,17 @@ write_codex_prompts() {
     log 'Codex 0.117+ skill entrypoints: $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm, $hephaestus-graph'
     return 0
   fi
-  local prompts_src="$source_dir/codex/prompts"
+  local prompts_src="$source_dir/codex/prompts" codex_home="${CODEX_HOME:-$HOME/.codex}"
   [[ -d "$prompts_src" ]] || { warn "codex prompts not found: $prompts_src"; return 1; }
-  mkdir -p "$HOME/.codex/prompts"
+  mkdir -p "$codex_home/prompts"
   local name installed=""
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
-    rm -f "$HOME/.codex/prompts/$name"
-    cp "$prompts_src/$name" "$HOME/.codex/prompts/$name" || return 1
+    rm -f "$codex_home/prompts/$name"
+    cp "$prompts_src/$name" "$codex_home/prompts/$name" || return 1
     installed+=" /prompts:${name%.md}"
   done < <(runtime_command_files "$prompts_src")
   [[ -n "$installed" ]] || { warn "No managed commands matched $prompts_src; Codex prompts were not refreshed."; return 1; }
-  rm -f "$HOME/.codex/prompts/hephaestus.md" "$HOME/.codex/prompts/hephaests-network.md" \
-        "$HOME/.codex/prompts/hephaestus-build.md" "$HOME/.codex/prompts/hephaestus-network.md" \
-        "$HOME/.codex/prompts/hephaestus-cloud.md" "$HOME/.codex/prompts/hephaestus-search.md" \
-        "$HOME/.codex/prompts/hephaestus-call.md"
   log "Installed Codex custom prompts:$installed"
 }
 
@@ -2082,9 +2060,10 @@ install_codex() {
 # preserving every unrelated user table. The obsolete remote-MCP feature flag
 # is also removed because strict Codex versions reject it.
 register_codex_mcp() {
-  local cfg="$HOME/.codex/config.toml"
+  local codex_home="${CODEX_HOME:-$HOME/.codex}"
+  local cfg="$codex_home/config.toml"
   local preserved_env_table
-  mkdir -p "$HOME/.codex"
+  mkdir -p "$codex_home"
   touch "$cfg" || return 1
 
   if grep -q '^[[:space:]]*experimental_use_rmcp_client[[:space:]]*=' "$cfg"; then
@@ -2181,10 +2160,6 @@ install_antigravity() {
         workflows+=" /${name%.md}"
       done < <(runtime_command_files "$source_dir/antigravity/workflows")
       [[ -n "$workflows" ]] || { warn "No managed commands matched $source_dir/antigravity/workflows."; return 1; }
-      rm -f "$global_dir/hephaestus.md" "$global_dir/hephaests-network.md" \
-            "$global_dir/hephaestus-build.md" "$global_dir/hephaestus-network.md" \
-            "$global_dir/hephaestus-cloud.md" "$global_dir/hephaestus-search.md" \
-            "$global_dir/hephaestus-call.md"
       log "Installed Antigravity global workflows:$workflows"
       installed=$((installed + 1))
     fi
@@ -2328,10 +2303,6 @@ install_cursor() {
     cursor_commands+=" /${name%.md}"
   done < <(runtime_command_files "$source_dir/cursor/plugin/commands")
   [[ -n "$cursor_commands" ]] || { warn "No managed commands matched $source_dir/cursor/plugin/commands."; return 1; }
-  rm -f "$HOME/.cursor/commands/hephaestus.md" "$HOME/.cursor/commands/hephaests-network.md" \
-        "$HOME/.cursor/commands/hephaestus-build.md" "$HOME/.cursor/commands/hephaestus-network.md" \
-        "$HOME/.cursor/commands/hephaestus-cloud.md" "$HOME/.cursor/commands/hephaestus-search.md" \
-        "$HOME/.cursor/commands/hephaestus-call.md"
   for name in "${managed_skill_names[@]}"; do
     rm -rf "$HOME/.cursor/skills/$name"
     copy_tree_without_python_cache "$source_dir/skills/$name" "$HOME/.cursor/skills/$name" || return 1
@@ -2359,10 +2330,6 @@ install_opencode() {
     opencode_commands+=" /${name%.md}"
   done < <(runtime_command_files "$source_dir/opencode/commands")
   [[ -n "$opencode_commands" ]] || { warn "No managed commands matched $source_dir/opencode/commands."; return 1; }
-  rm -f "$HOME/.config/opencode/commands/hephaestus.md" "$HOME/.config/opencode/commands/hephaests-network.md" \
-        "$HOME/.config/opencode/commands/hephaestus-build.md" "$HOME/.config/opencode/commands/hephaestus-network.md" \
-        "$HOME/.config/opencode/commands/hephaestus-cloud.md" "$HOME/.config/opencode/commands/hephaestus-search.md" \
-        "$HOME/.config/opencode/commands/hephaestus-call.md"
   register_opencode_mcp || warn "OpenCode MCP registration failed; add local hephaestus-network to ~/.config/opencode/opencode.json manually."
   log "Installed OpenCode commands and canonical Workforce MCP:$opencode_commands"
   ok=$((ok + 1))
@@ -2604,6 +2571,11 @@ report_preserved_legacy_public_surfaces() {
   local stale_md=(
     hephaestus.md
     hephaests-network.md
+    hephaestus-build.md
+    hephaestus-network.md
+    hephaestus-cloud.md
+    hephaestus-search.md
+    hephaestus-call.md
     agentlas-auto-activation.md
     agentlas-core-engine-meta-agent.md
     agentlas-packaging.md
@@ -2631,6 +2603,10 @@ report_preserved_legacy_public_surfaces() {
   local root name path
   for root in "${roots[@]}"; do
     for name in "${stale_md[@]}"; do
+      case "$name" in
+        hep-graph.md|agentlas-graph.md|hep-connect.md|agentlas-connect.md)
+          [[ -n "${source_dir:-}" && -f "$source_dir/.claude/commands/$name" ]] && continue ;;
+      esac
       path="$root/$name"
       if [[ -e "$path" || -L "$path" ]]; then
         warn "Legacy host commands or plugin caches were preserved; review obsolete commands before using or removing them."
@@ -2639,6 +2615,10 @@ report_preserved_legacy_public_surfaces() {
     done
   done
   for name in "${stale_md[@]}"; do
+    case "$name" in
+      hep-graph.md|agentlas-graph.md|hep-connect.md|agentlas-connect.md)
+        [[ -n "${source_dir:-}" && -f "$source_dir/.claude/commands/$name" ]] && continue ;;
+    esac
     path="$HOME/.gemini/commands/${name%.md}.toml"
     if [[ -e "$path" || -L "$path" ]]; then
       warn "Legacy host commands or plugin caches were preserved; review obsolete commands before using or removing them."
@@ -2648,6 +2628,9 @@ report_preserved_legacy_public_surfaces() {
   for root in "$HOME/.agents/skills" "$HOME/.cursor/skills" \
               "$HOME/.hermes/skills" "$HOME/.gemini/config/plugins/agentlas-os/skills"; do
     for name in hephaestus-graph agentlas-graph agentlas-connect; do
+      if [[ -n "${source_dir:-}" && -f "$source_dir/skills/$name/SKILL.md" ]]; then
+        continue
+      fi
       if [[ -e "$root/$name" || -L "$root/$name" ]]; then
         warn "Legacy host commands or plugin caches were preserved; review obsolete commands before using or removing them."
         return 0
