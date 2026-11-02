@@ -434,6 +434,13 @@ class GoalLedgerStore:
                     """,
                     (goal_id, task_id, state, summary, timestamp, timestamp),
                 )
+                if result.rowcount == 0 and _bounded(entry.get("task_id"), 160):
+                    existing = conn.execute(
+                        "SELECT summary FROM goal_tasks WHERE goal_id = ? AND task_id = ?",
+                        (goal_id, task_id),
+                    ).fetchone()
+                    if existing is None or existing["summary"] != summary:
+                        raise GoalLedgerError("goal_ledger_task_id_conflict")
                 added += int(result.rowcount > 0)
             if added:
                 conn.execute(

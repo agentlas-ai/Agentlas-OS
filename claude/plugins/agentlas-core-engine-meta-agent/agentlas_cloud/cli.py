@@ -2714,7 +2714,16 @@ def main(argv: list[str] | None = None) -> int:
                         "openTasks": ledger.list_open_tasks(args.goal_id),
                     })
                 if action == "add-task":
-                    return emit(ledger.add_tasks(args.goal_id, list(args.task)))
+                    if args.task_id is None:
+                        return emit(ledger.add_tasks(args.goal_id, list(args.task)))
+                    task_id = args.task_id.strip()
+                    if not task_id or len(task_id) > 160:
+                        raise ValueError("goal_ledger_task_id_invalid")
+                    if len(args.task) != 1 or not args.task[0].strip():
+                        raise ValueError("goal_ledger_task_id_requires_one_task")
+                    summary = args.task[0].strip()[:500]
+                    result = ledger.add_tasks(args.goal_id, [{"task_id": task_id, "summary": summary}])
+                    return emit({**result, "taskId": task_id})
                 if action == "complete-task":
                     if not args.task_id:
                         raise ValueError("goal_ledger_task_id_required")

@@ -195,5 +195,12 @@ def apply_shift(plan: Mapping[str, Any], shift: Mapping[str, Any], trigger: Mapp
     if not open_tactics(new):
         # A re-plan that retires the current approach must leave work to do. Retiring without adding is a stop, not a pivot.
         raise PlanError("shift_leaves_no_open_tactic", "add a strategy with at least one tactic, or use decision=hold or escalate_owner")
+    if decision == "pivot":
+        added_ids = set(receipt["added"])
+        if not receipt["retired"] or not added_ids or not any(
+            t.get("strategy_id") in added_ids and t.get("status") == "active"
+            for t in new.get("tactics", [])
+        ):
+            raise PlanError("pivot_requires_replacement", "retire a strategy and add a new strategy with a tactic")
     _check_cap(new)
     return new, receipt
