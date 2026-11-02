@@ -2182,6 +2182,11 @@ def _record_auto_update_failure(code: str) -> None:
     # Never persist exception text: it can contain URLs, paths or credentials.
     marker_path = _runtime_base() / AUTO_UPDATE_MARKER
     marker = _read_json(marker_path)
+    marker.pop("updated_to", None)
+    try:
+        marker["current"] = current_release(_runtime_base() / "current")
+    except (OSError, ValueError):
+        marker["current"] = None
     previous = marker.get("failure_count", 0)
     count = min(previous + 1, len(UPDATE_RETRY_SECONDS)) if isinstance(previous, int) and previous >= 0 else 1
     _write_json(marker_path, {**marker, "status": "failed", "errorCode": code,
