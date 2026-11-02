@@ -2125,34 +2125,21 @@ register_codex_mcp() {
   log "Registered canonical local hephaestus-network MCP in $cfg"
 }
 
-# Gemini CLI is no longer a supported host (individual-tier service ended
-# 2026-06-18; Antigravity is the successor and keeps its own ~/.gemini paths).
-# Remove only what this installer itself put there: the `hephaestus` extension,
-# its stable source copy, and fallback command files whose content names
-# Hephaestus or points at a /hep-* command (the agentlas-* aliases do the
-# latter). Anything else in ~/.gemini, including Antigravity data and a
-# user's own commands, is left alone.
-remove_legacy_gemini_cli() {
-  local removed=0 file
-  if have gemini; then
-    try gemini extensions uninstall hephaestus >/dev/null 2>&1 || true
-  fi
-  for target in "$HOME/.gemini/extensions/hephaestus" "$HOME/.gemini/hephaestus-extension-source"; do
-    if [[ -e "$target" ]]; then
-      rm -rf "$target" && removed=$((removed + 1))
+# A recognizable name or a mention of Hephaestus does not prove that a file
+# or extension directory is still installer-owned. It may contain user changes,
+# or be in use by a running host. Preserve it until ownership is verified.
+report_preserved_gemini_cli() {
+  local path
+  for path in "$HOME/.gemini/extensions/hephaestus" \
+              "$HOME/.gemini/hephaestus-extension-source" \
+              "$HOME/.gemini/commands"/hep-*.toml \
+              "$HOME/.gemini/commands/agentlas.toml" \
+              "$HOME/.gemini/commands"/agentlas-*.toml; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      warn "Existing Gemini CLI files were preserved; review obsolete commands before using or removing them."
+      return 0
     fi
   done
-  if [[ -d "$HOME/.gemini/commands" ]]; then
-    for file in "$HOME/.gemini/commands"/hep-*.toml "$HOME/.gemini/commands"/agentlas.toml "$HOME/.gemini/commands"/agentlas-*.toml; do
-      [[ -f "$file" ]] || continue
-      if grep -qiE 'hephaestus|/hep-[a-z]' "$file" 2>/dev/null; then
-        rm -f "$file" && removed=$((removed + 1))
-      fi
-    done
-  fi
-  if [[ "$removed" -gt 0 ]]; then
-    log "Removed $removed legacy Gemini CLI file(s) installed by earlier Agentlas versions (Gemini CLI is no longer supported; use Antigravity)."
-  fi
   return 0
 }
 
@@ -2611,7 +2598,9 @@ bootstrap_networking() {
   log "Initialized ~/.agentlas/networking (cards, policies, ledgers, local memory map)."
 }
 
-prune_legacy_public_surfaces() {
+# Old command names and versioned plugin-cache paths can contain user changes
+# or still be loaded by a host. Do not delete them based only on their names.
+report_preserved_legacy_public_surfaces() {
   local stale_md=(
     hephaestus.md
     hephaests-network.md
@@ -2624,31 +2613,57 @@ prune_legacy_public_surfaces() {
     self-evolving-single-agent.md
     skill-lifecycle-promotion.md
     team-builder-packaging.md
+    hep-graph.md
+    agentlas-graph.md
+    hep-connect.md
+    agentlas-connect.md
   )
-  local name
-  for name in "${stale_md[@]}"; do
-    rm -f "$HOME/.claude/commands/$name"
-    rm -f "$HOME/.codex/prompts/$name"
-    rm -f "$HOME/.cursor/commands/$name"
-    rm -f "$HOME/.config/opencode/commands/$name"
-    rm -f "$HOME/.gemini/antigravity/global_workflows/$name"
-    rm -f "$HOME/.gemini/antigravity-ide/global_workflows/$name"
+  local roots=(
+    "$HOME/.claude/commands"
+    "$HOME/.codex/prompts"
+    "${CODEX_HOME:-$HOME/.codex}/prompts"
+    "$HOME/.cursor/commands"
+    "$HOME/.config/opencode/commands"
+    "$HOME/.zcode/commands"
+    "$HOME/.gemini/antigravity/global_workflows"
+    "$HOME/.gemini/antigravity-ide/global_workflows"
+  )
+  local root name path
+  for root in "${roots[@]}"; do
+    for name in "${stale_md[@]}"; do
+      path="$root/$name"
+      if [[ -e "$path" || -L "$path" ]]; then
+        warn "Legacy host commands or plugin caches were preserved; review obsolete commands before using or removing them."
+        return 0
+      fi
+    done
   done
-  rm -f "$HOME/.gemini/commands/hephaestus.toml" "$HOME/.gemini/commands/hephaests-network.toml"
-  rm -f "$HOME/.gemini/commands/agentlas-auto-activation.toml" \
-        "$HOME/.gemini/commands/agentlas-core-engine-meta-agent.toml" \
-        "$HOME/.gemini/commands/agentlas-packaging.toml" \
-        "$HOME/.gemini/commands/agentlas-security-scan.toml" \
-        "$HOME/.gemini/commands/clarify-question-loop.toml" \
-        "$HOME/.gemini/commands/mode-classification.toml" \
-        "$HOME/.gemini/commands/self-evolving-single-agent.toml" \
-        "$HOME/.gemini/commands/skill-lifecycle-promotion.toml" \
-        "$HOME/.gemini/commands/team-builder-packaging.toml"
-  find "$HOME/.claude/plugins/cache/$marketplace_name/$plugin_name" -maxdepth 1 -type d \
-    \( -name '0-7-4' -o -name '0.7.4' \) -exec rm -rf {} + 2>/dev/null || true
-  find "${CODEX_HOME:-$HOME/.codex}/plugins/cache/$marketplace_name/$plugin_name" -maxdepth 1 -type d \
-    \( -name '0-7-4' -o -name '0.7.4' \) -exec rm -rf {} + 2>/dev/null || true
-  log "Pruned legacy visible chat command files and stale 0.7.4 cache folders."
+  for name in "${stale_md[@]}"; do
+    path="$HOME/.gemini/commands/${name%.md}.toml"
+    if [[ -e "$path" || -L "$path" ]]; then
+      warn "Legacy host commands or plugin caches were preserved; review obsolete commands before using or removing them."
+      return 0
+    fi
+  done
+  for root in "$HOME/.agents/skills" "$HOME/.cursor/skills" \
+              "$HOME/.hermes/skills" "$HOME/.gemini/config/plugins/agentlas-os/skills"; do
+    for name in hephaestus-graph agentlas-graph agentlas-connect; do
+      if [[ -e "$root/$name" || -L "$root/$name" ]]; then
+        warn "Legacy host commands or plugin caches were preserved; review obsolete commands before using or removing them."
+        return 0
+      fi
+    done
+  done
+  for root in "$HOME/.claude/plugins/cache/$marketplace_name/$plugin_name" \
+              "${CODEX_HOME:-$HOME/.codex}/plugins/cache/$marketplace_name/$plugin_name"; do
+    for name in 0-7-4 0.7.4; do
+      if [[ -e "$root/$name" || -L "$root/$name" ]]; then
+        warn "Legacy host commands or plugin caches were preserved; review obsolete commands before using or removing them."
+        return 0
+      fi
+    done
+  done
+  return 0
 }
 
 main() {
@@ -2665,7 +2680,7 @@ main() {
   install_agents_skills || { warn "Universal ~/.agents/skills install failed."; failed=$((failed + 1)); }
   install_claude || { warn "Claude install failed."; failed=$((failed + 1)); }
   install_codex || { warn "Codex install failed."; failed=$((failed + 1)); }
-  remove_legacy_gemini_cli
+  report_preserved_gemini_cli
   install_antigravity || { warn "Antigravity install failed."; failed=$((failed + 1)); }
   install_cursor || { warn "Cursor install failed."; failed=$((failed + 1)); }
   install_opencode || { warn "OpenCode install failed."; failed=$((failed + 1)); }
@@ -2681,7 +2696,7 @@ main() {
 	  fi
 	  "$HOME/.agentlas/runtime/current/bin/hephaestus" hep-update --remove-service >/dev/null 2>&1 \
 	    || warn "Legacy periodic update service cleanup was deferred; the next /hep-* command will retry it."
-	  prune_legacy_public_surfaces
+	  report_preserved_legacy_public_surfaces
 
   log ""
   log "Installed/updated runtimes: $ok"
