@@ -3,6 +3,15 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.78 — 2026-11-03
+
+- Hub agents no longer have to read your project for every request. When the
+  request is about the open project, the hired agent reads the relevant files
+  first; for a self-contained request (a tagline, a general question) it leaves
+  the project alone. When no project is open (the home folder or a filesystem
+  root), the result carries no project path, listing command, or project
+  ontology query. The presence badge is unchanged.
+
 ## 1.2.77 — 2026-11-03
 
 - `host install grok` after an update replaces the earlier copy instead of

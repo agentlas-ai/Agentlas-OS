@@ -767,14 +767,36 @@ def _ontology_db_path(project_dir: Path) -> Path:
     return project_dir / ".agentlas" / "ontology-runtime.sqlite"
 
 
+def _attached_project(project_dir: Path | str) -> Path | None:
+    """A working project the invocation may attach to, or None.
+
+    The home folder and a filesystem root are where a host starts when no
+    project is open; they are never a project, so no path, ontology or listing
+    command for them is handed to the borrowed agent (E56).
+    """
+    try:
+        project = Path(project_dir).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+    if not project.is_dir() or project == Path(project.anchor):
+        return None
+    try:
+        if project == Path.home().resolve():
+            return None
+    except (OSError, RuntimeError):
+        pass
+    return project
+
+
 def _grounding_without_memory(*, agent_id: str, project_dir: Path) -> dict[str, Any]:
     """One structural OFF projection for initial opt-out and the final race guard."""
-    project = str(Path(project_dir).resolve())
+    project = _attached_project(project_dir)
     return {
-        "policy": "attach_codebase", "directive": hub_grounding_directive(memory_enabled=False),
-        "agent_id": agent_id, "project_dir": project, "memory_root": None,
+        "policy": "attach_codebase_when_relevant" if project else "no_project",
+        "directive": hub_grounding_directive(memory_enabled=False, project_attached=project is not None),
+        "agent_id": agent_id, "project_dir": str(project) if project else None, "memory_root": None,
         "ontology_db": None, "experience_db": None,
-        "commands": {"project_overview": f"ls -la {_shell_quote(project)}",
+        "commands": {"project_overview": f"ls -la {_shell_quote(str(project))}" if project else None,
                      "ontology_query": None, "experience_query": None, "memory_read": None,
                      "working_memory_read": None, "experience_record": None},
     }
@@ -789,17 +811,17 @@ def _grounding_directive(
 ) -> dict[str, Any]:
     """Tell the executing runtime HOW (and WHEN) to ground a borrowed agent.
 
-    Grounding has two tiers. The FIRST is unconditional: a borrowed agent must
-    attach to the live working project it was invoked in — the actual codebase at
-    ``project_dir`` — and operate on that, never as a context-less generic call.
-    The SECOND tier (the agent's own memory and the semantic ontology) is selective:
+    Grounding has two tiers. The FIRST is the live working project at
+    ``project_dir`` when one is attached: the borrowed agent reads it first when
+    the request concerns that project, and leaves it alone for a self-contained
+    request (E56). The SECOND tier (the agent's own memory and the semantic ontology) is selective:
     consult it ONLY when the task needs deeper grounding (brand facts, prior
     decisions, domain knowledge). Retrieval is relevance-gated, and this directive
     makes the host LLM the judge of whether to consult the second tier at all.
     """
 
-    project = Path(project_dir).resolve()
-    ontology_db = _ontology_db_path(project)
+    project = _attached_project(project_dir)
+    ontology_db = _ontology_db_path(project) if project else None
     experience_db = memory_root / "experience.sqlite"
     # The host can execute this directive from any project/CWD. Rely on the
     # versioned runtime installed by Agentlas OS, never an ambient PYTHONPATH or
@@ -811,19 +833,19 @@ def _grounding_directive(
         ontology_cli = _shell_quote(str(Path(__file__).resolve().parents[2] / "bin" / "ontology"))
     # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.hub.invocation.next-step-and-grounding).
     return {
-        "policy": "attach_codebase_then_selective_memory",
-        "directive": hub_grounding_directive(memory_enabled=True),
+        "policy": "attach_codebase_when_relevant_then_selective_memory" if project else "no_project_selective_memory",
+        "directive": hub_grounding_directive(memory_enabled=True, project_attached=project is not None),
         "agent_id": agent_id,
-        "project_dir": str(project),
+        "project_dir": str(project) if project else None,
         "memory_root": str(memory_root),
-        "ontology_db": str(ontology_db),
+        "ontology_db": str(ontology_db) if ontology_db else None,
         "experience_db": str(experience_db),
         "commands": {
-            "project_overview": f"ls -la {_shell_quote(str(project))}",
+            "project_overview": f"ls -la {_shell_quote(str(project))}" if project else None,
             "ontology_query": (
                 f"{ontology_cli} --db {_shell_quote(str(ontology_db))} "
                 f"query {_shell_quote(_compact(request, 160))}"
-            ),
+            ) if ontology_db else None,
             "experience_query": (
                 f"{ontology_cli} --db {_shell_quote(str(experience_db))} "
                 f"query {_shell_quote(_compact(request, 160))} --agent {agent_id}"
@@ -837,7 +859,7 @@ def _grounding_directive(
             "working_memory_read": (
                 f"{ontology_cli} --db {_shell_quote(str(ontology_db))} "
                 f"working-memory read --agent {agent_id}"
-            ),
+            ) if ontology_db else None,
             # The one WRITE in this contract. Everything above reads; without this
             # a borrowed agent could consult its drawer but never put anything in
             # it, so the drawer stayed empty by construction. Measured 2026-08-07
