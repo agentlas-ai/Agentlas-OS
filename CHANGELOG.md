@@ -3,6 +3,11 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.80 — 2026-11-04
+
+- Memory turns are attributed to the runtime that did the work (`host:claude`,
+  `host:codex`, …) instead of One, for both the Stop hook and `memory.record`.
+
 ## 1.2.79 — 2026-11-03
 
 - Memory: models can now search this machine's Agentlas memory themselves.

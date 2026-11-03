@@ -882,11 +882,26 @@ class MemoryRuntime:
             pass
 
 
+_HOST_ACTORS = (("claude", "claude"), ("codex", "codex"), ("antigravity", "antigravity"), ("agy", "antigravity"),
+                ("gemini", "antigravity"), ("grok", "grok"), ("cursor", "cursor"), ("copilot", "copilot"), ("kimi", "kimi"),
+                ("opencode", "opencode"))
+
+
+def host_actor_id(host: str | None) -> str:
+    """Memory is One-independent (owner decision 2026-11-03): attribute turns to the runtime."""
+    explicit = os.environ.get("AGENTLAS_MEMORY_ACTOR_ID")
+    if explicit:
+        return explicit
+    name = (host or "").lower()
+    return "host:" + next((actor for key, actor in _HOST_ACTORS if key in name),
+                          re.sub(r"[^a-z0-9-]", "-", name)[:40] or "unknown")
+
+
 def hook_identity(payload: dict[str, Any], host: str) -> tuple[str, str] | None:
     session = payload.get("session_id") or payload.get("sessionId") or payload.get("conversation_id")
     if not isinstance(session, str) or not session.strip():
         return None
-    actor = os.environ.get("AGENTLAS_MEMORY_ACTOR_ID") or ONE_ACTOR_ID
+    actor = host_actor_id(host)
     return _safe_id(actor), "core-session:" + _hash(_json([host, session]))
 
 

@@ -647,9 +647,9 @@ def record(arguments: dict[str, Any], *, host: str | None = None) -> dict[str, A
     if not isinstance(observations, list) or len(observations) > 8:
         raise RecallError("memory_observations_invalid")
     project_path, _ = _project(arguments.get("projectDir"))
-    runtime_name = re.sub(r"[^a-z0-9-]", "-", (host or "mcp").lower())[:40] or "mcp"
-    actor = os.environ.get("AGENTLAS_MEMORY_ACTOR_ID") or f"host:{runtime_name}"
-    context = "mcp-session:" + _sha(f"{runtime_name}:{os.getpid()}:{_PROCESS_STARTED}")[:32]
+    from .memory_runtime import host_actor_id
+    actor = host_actor_id(host or "mcp")
+    context = "mcp-session:" + _sha(f"{actor}:{os.getpid()}:{_PROCESS_STARTED}")[:32]
     owner = owner_binding(create=True)
     runtime = MemoryRuntime(owner)
     try:

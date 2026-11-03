@@ -69,8 +69,9 @@ def _recorded_recently(host: str, minutes: int = 10) -> bool:
         db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=0.5)
         try:
             cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - minutes * 60))
-            row = db.execute("SELECT 1 FROM memory_operations WHERE source_ref LIKE 'mcp-record:%' AND actor_id LIKE ? "
-                             "AND created_at >= ? LIMIT 1", ("host:%" + host.split("-")[0] + "%", cutoff)).fetchone()
+            from .memory_runtime import host_actor_id
+            row = db.execute("SELECT 1 FROM memory_operations WHERE source_ref LIKE 'mcp-record:%' AND actor_id=? "
+                             "AND created_at >= ? LIMIT 1", (host_actor_id(host), cutoff)).fetchone()
             return row is not None
         finally:
             db.close()
