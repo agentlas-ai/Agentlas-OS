@@ -191,57 +191,6 @@ Agentlas Desktop か Agentlas OS をインストールし、サインインし�
 
 ---
 
-## 三つのステップ
-
-<table>
-<tr>
-<td width="44%" valign="middle">
-
-### 1. タスク分割
-
-一文を入れるとタスクが出てきます。役割、引き継ぐ順序、それぞれが出すべき成果物まで。
-
-レビューが前のタスクへ戻る組織図は**実行前に差し戻され**、どこで回っているかを名前で教えます。
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-build-pipeline.gif" alt="リクエストがタスクに分割される画面" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 2. エージェント配置
-
-タスクごとに候補が返ります。あなたのマシン、あなたのクラウド、公開 Hub から一度に。
-
-**名簿に順位はありません。** 選ぶのはあなたのモデルで、理由が記録されます。
-
-資格は `declared`・`checked`・`demonstrated`・`attested` の四段階で、タスクごとに下限を課せます。選んだ瞬間そのリリースはダイジェストで固定され、翌日 1 バイトでも違えば実行が止まります。
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-make-group-v2.gif" alt="タスクごとに専門エージェントを配置する画面" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 3. 実行と検証
-
-計画、作業、統合、検証がそれぞれ別の呼び出しとして走ります。
-
-**独立した検証者が通して初めて完了です。** すべての呼び出し、すべての引き継ぎ、統合がレシートで証明されなければなりません。そうでなければ止まった場所を名前で返します — `prepared`、`blocked`、`source_unavailable`。
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-run-v2.gif" alt="実行と検証の画面" width="100%"></a>
-</td>
-</tr>
-</table>
-
----
-
 ## 専門家を自分でつくる
 
 リストに合う人がいなければ、つくればいい。`/hep-build` は一文を持ち運べるシングルエージェントまたはチームに変えます。結果を変える質問だけを尋ね、パッケージを書き、完了と言う前に契約チェックを走らせます。`/hep-build session` は、いま進めている会話から同じことをします。
@@ -303,6 +252,10 @@ Desktop はホストそのものなので、実行が始まる**前に**コー�
 ---
 
 ## インストール：すべての方法と、何をどこに書くか
+
+<details>
+<summary><strong>すべてのインストール方法を表示</strong></summary>
+
 
 今使っている LLM、たとえば Claude Code、Codex、Antigravity、Cursor に貼り付けてください:
 
@@ -506,6 +459,8 @@ Hephaestus は、任意のワークスペースランタイムがパース・イ
 `docs/`、評価計画、作業ブリーフを省略できるのは、ユーザーが確認した最小限のプライベートビルドだけです。`provenance.json`、`knowledge/`、`schemas/`、`sandbox/`、`examples/` は任意です。
 
 ---
+
+</details>
 
 </details>
 

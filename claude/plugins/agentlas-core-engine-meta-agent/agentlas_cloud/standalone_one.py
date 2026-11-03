@@ -95,8 +95,8 @@ def update(*, enabled: bool | None = None, name: str | None = None) -> dict[str,
 
 
 def session_context(host: str, event: str) -> dict[str, Any]:
-    """Read-only session injection of the existing registered One composition."""
-    if host not in {"claude", "codex"} or event not in {"SessionStart", "UserPromptSubmit"}:
+    """Read-only session injection of the registered One composition, once per session."""
+    if host not in {"claude", "codex"} or event != "SessionStart":
         return {}
     state = _snapshot(_root())
     if state["on"] is not True:
@@ -138,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     if command == "hook":
         parser = argparse.ArgumentParser()
         parser.add_argument("--host", choices=("claude", "codex"), required=True)
-        parser.add_argument("--event", choices=("SessionStart", "UserPromptSubmit"), required=True)
+        parser.add_argument("--event", choices=("SessionStart", "UserPromptSubmit"), required=True)  # UserPromptSubmit kept for already-installed hook files
         parsed = parser.parse_args(args)
         try:
             result = session_context(parsed.host, parsed.event)

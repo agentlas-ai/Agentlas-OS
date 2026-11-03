@@ -101,8 +101,9 @@ def _payloads(root,host,kind):
         import shlex
         vector=[sys.executable,*args]
         command=subprocess.list2cmdline(vector) if os.name=='nt' else shlex.join(vector)
-        events=[('SessionStart',15),('UserPromptSubmit',60)]
-        if kind=='memory':events.append(('Stop',10))
+        # One is injected once per session; the memory hook still refreshes project maps per prompt.
+        events=[('SessionStart',15)]
+        if kind=='memory':events+=[('UserPromptSubmit',60),('Stop',10)]
         hooks={event:[{'hooks':[{'type':'command','command':command+(' hook' if kind=='one' else '')+' --host '+host+' --event '+event+(' --memory-only' if kind=='memory' else ''),'timeout':timeout}]}] for event,timeout in events}
         outputs['hooks/hooks.json']=_json({'hooks':hooks})
     return outputs

@@ -209,62 +209,6 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 
 ---
 
-## 세 단계
-
-<table>
-<tr>
-<td width="44%" valign="middle">
-
-### 1. 태스크 분리
-
-문장을 넣으면 태스크가 나옵니다. 역할, 넘겨주는 순서, 각자 내놓아야 할 산출물까지.
-
-리뷰가 앞 태스크로 되돌아가는 조직도는 **실행 전에 반려**되고, 어디서 도는지
-이름으로 알려 줍니다.
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-build-pipeline.gif" alt="요청이 태스크로 나뉘는 화면" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 2. 에이전트 배치
-
-태스크마다 후보가 올라옵니다. 내 컴퓨터, 내 클라우드, 공개 허브에서 한꺼번에.
-
-**후보 목록에 순위는 없습니다.** 선택하는 건 당신의 모델이고, 이유가 기록됩니다.
-
-자격은 `declared` · `checked` · `demonstrated` · `attested` 네 단계이고, 태스크마다
-하한을 걸 수 있습니다. 선택하는 순간 그 릴리스가 다이제스트로 고정돼, 내일 한
-바이트라도 달라지면 실행이 멈춥니다.
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-make-group-v2.gif" alt="태스크마다 전문 에이전트를 배치하는 화면" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 3. 실행과 검증
-
-계획, 작업, 합치기, 검증이 각각 별개 호출로 돕니다.
-
-**독립 검증자가 통과시켜야 완료입니다.** 모든 호출, 모든 넘김, 합치기가 영수증으로
-증명돼야 합니다. 아니면 멈춘 자리를 이름으로 말합니다 — `prepared`, `blocked`,
-`source_unavailable`.
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-run-v2.gif" alt="실행과 검증 화면" width="100%"></a>
-</td>
-</tr>
-</table>
-
----
-
 ## 전문가를 직접 만들기
 
 명단에 맞는 사람이 없으면 만들면 됩니다. `/hep-build`는 한 문장을 이동 가능한
@@ -348,6 +292,10 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 ---
 
 ## 설치: 모든 방법과, 무엇을 어디에 쓰는지
+
+<details>
+<summary><strong>모든 설치 방법 보기</strong></summary>
+
 
 지금 쓰는 LLM, 예를 들어 Claude Code, Codex, Antigravity,
 Cursor에 아래 내용을 붙여넣으세요. 이 프롬프트는 (이걸 읽는 LLM인) 당신이
@@ -757,6 +705,8 @@ Hephaestus는 어떤 워크스페이스 런타임이든 파싱·설치·검증·
 운영 단위입니다.
 
 ---
+
+</details>
 
 </details>
 

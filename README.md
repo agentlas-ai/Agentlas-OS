@@ -213,65 +213,6 @@ three at once.
 
 ---
 
-## Three steps
-
-<table>
-<tr>
-<td width="44%" valign="middle">
-
-### 1. Task split
-
-A sentence goes in, tasks come out — roles, the order they hand off in, and the
-artifact each one owes.
-
-An org chart where a review points back to an earlier task is **rejected before
-anything runs**, and you get the name of the loop.
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-build-pipeline.gif" alt="A request being split into tasks" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 2. Agent staffing
-
-Candidates come back for each task — from your machine, your cloud, and the
-public Hub at once.
-
-**The list has no ranking.** Your model picks, and the reason is recorded.
-
-Qualification comes in four levels — `declared`, `checked`, `demonstrated`,
-`attested` — and every task can set a floor. The moment you pick, that release is
-pinned by digest, so one byte of drift tomorrow stops the run.
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-make-group-v2.gif" alt="Staffing a specialist agent onto each task" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 3. Run and verify
-
-Planning, work, synthesis and verification each run as separate invocations.
-
-**An independent verifier has to pass it before anything is called done.** Every
-invocation, every handoff and the synthesis have to be proven by receipt.
-Otherwise you get the name of the place it stopped — `prepared`, `blocked`,
-`source_unavailable`.
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-run-v2.gif" alt="Running and verifying the staffed roster" width="100%"></a>
-</td>
-</tr>
-</table>
-
----
-
 ## Build your own specialist
 
 When nobody on the list fits, build one. `/hep-build` turns a sentence into a
@@ -357,6 +298,10 @@ provider may charge for execution.
 ---
 
 ## Install: every method, and what it writes
+
+<details>
+<summary><strong>Show every install method</strong></summary>
+
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
@@ -924,6 +869,8 @@ prompt. It carries routing, memory, input/output contracts, permissions,
 runtime adapters and evaluation evidence together.
 
 ---
+
+</details>
 
 </details>
 

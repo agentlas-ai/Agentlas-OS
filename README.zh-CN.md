@@ -189,57 +189,6 @@ LLM、Runtime、Agent 三层相互分离。更换模型或编码工具时，智�
 
 ---
 
-## 三个步骤
-
-<table>
-<tr>
-<td width="44%" valign="middle">
-
-### 1. 任务拆分
-
-一句话进去，任务出来——角色、交接顺序，以及每个角色要交付的产物。
-
-一份让评审指回上游任务的组织图会**在任何东西运行之前被驳回**，并告诉你环在哪里。
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-build-pipeline.gif" alt="请求被拆分为任务的界面" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 2. 智能体编组
-
-每个任务都会返回候选——同时来自你的本机、你的云和公开 Hub。
-
-**名单没有排名。** 选择的是你的模型，理由会被记录。
-
-资质分四级：`declared`、`checked`、`demonstrated`、`attested`，每个任务都能设下限。选定的那一刻该版本即按摘要锁定，明天差一个字节就会停机。
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-make-group-v2.gif" alt="为每个任务编入专家智能体的界面" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 3. 执行与验证
-
-规划、干活、汇总、验证各自作为独立调用运行。
-
-**必须由独立验证者放行才算完成。** 每次调用、每次交接和汇总都要有回执证明。否则你拿到的是它停下的地方——`prepared`、`blocked`、`source_unavailable`。
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-run-v2.gif" alt="执行与验证界面" width="100%"></a>
-</td>
-</tr>
-</table>
-
----
-
 ## 自己打造专家
 
 名单里没有合适的人，就自己打造一个。`/hep-build` 把一句话变成可移植的单智能体或团队：只问会改变结果的问题，写出包，并在宣布完成之前跑完契约检查。`/hep-build session` 则用你正在进行的对话做同样的事。
@@ -301,6 +250,10 @@ Desktop 本身就是宿主，所以它在运行开始**之前**就用代码决�
 ---
 
 ## 安装：所有方式，以及它写了什么
+
+<details>
+<summary><strong>显示所有安装方式</strong></summary>
+
 
 把下面内容粘贴到你正在使用的 LLM，例如 Claude Code、Codex、Antigravity 或 Cursor：
 
@@ -503,6 +456,8 @@ Hephaestus 将智能体打包为标准目录布局，任何工作区运行时都
 `docs/`、评估计划和工作简报只有在用户确认的最小私有构建中才可以省略。`provenance.json`、`knowledge/`、`schemas/`、`sandbox/` 和 `examples/` 是可选的。
 
 ---
+
+</details>
 
 </details>
 

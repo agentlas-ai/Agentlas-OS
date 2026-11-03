@@ -3,6 +3,14 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.82 — 2026-11-04
+
+- One is now two lines (about 375 characters) instead of a 46-line block, and
+  it is added once when a session starts instead of with every prompt. The
+  capability table and the Memory Events output rule are gone: the MCP menu
+  already names the tools, and memory is recorded by `memory.record` or the
+  Stop hook without showing a ticket to the user.
+
 ## 1.2.81 — 2026-11-04
 
 - Standalone sessions get far less fixed text: the MCP server instructions are

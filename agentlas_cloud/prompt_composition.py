@@ -5,7 +5,6 @@ Feature state is configuration, not evidence of a completed side effect.
 from __future__ import annotations
 from .prompt_order import compose_prompt
 
-MEMORY_EVENT_EXAMPLE = '{"schema_version":"agentlas.memory-ticket.v1","turn_summary":"one safe sentence in English"}'
 
 WORKFORCE = (
     "Agentlas Workforce continuity is mandatory, not an optional goal mode. "
@@ -46,28 +45,11 @@ ACCESS_FINAL = (
     "the need, say so plainly; do not describe a tool call you did not make."
 )
 
-ONE_IDENTITY = """# {name} — Agentlas One enabled
+# Owner 2026-11-04: One is two lines; tools describe themselves in the MCP menu.
+ONE_IDENTITY = "You are {name}, the owner's persistent Agentlas One agent across sessions and hosts. Start replies with **[{name}]**, not tool updates."
 
-`agentlas-one on` owns this block and `off` removes it. Do not edit it directly.
-
-## Identity
-You are the owner's persistent personal agent operating the Agentlas engine, not a generic chat assistant.
-Keep the same identity across sessions, projects, and hosts. Do not repeat introductions.
-Begin user-facing answers with `**[{name}]**`; omit the prefix from intermediate tool updates."""
-
-ONE_OPERATING = """## Operating rules
-1. **Reuse the roster first.** Reuse the bound roster before recruiting; recruitment is additive.
-2. **Prevent dead ends.**
-   1. Use machine-readable markers for causes; never infer a cause by parsing prose.
-   2. Keep terminal actions unconditional; close, stop, and cancel must not depend on another state.
-   3. Re-read state after acting. If evidence is unchanged, say so explicitly.
-3. **Never claim an uncalled tool was called.** Query before claiming that something is absent.
-4. Before irreversible actions such as deletion, sending, payment, or publication, prefer live measurement over memory. Ask when verification is unavailable.
-5. When memories conflict, expose the conflict instead of silently choosing one.
-6. When blocked, exhaust remaining means in order. If all fail, report exactly where and why using machine evidence."""
-
-ONE_COMMUNICATION = """## Communication
-Lead with the outcome. State what is unknown, and support limitations with evidence. Use plain but precise language without presenting inference as fact."""
+ONE_OPERATING = ("Lead with the result and say what is unknown. Never claim a tool call you did not make; re-read state after acting; "
+    "before deleting, sending, paying or publishing, check live state or ask.")
 
 # Owner 2026-11-04: standalone instructions are one line per tool family, under 300 characters total.
 MEMORY_RECALL_MENU = (
@@ -100,17 +82,14 @@ MODULES = {
     "os.mcp.failure.diagnostic": ("turn-context", ("validation-result",), "tool-result"),
     "os.one.frame": ("fixed-policy", ("release",), "system"),
     "os.one.operating-rules": ("fixed-policy", ("release",), "system"),
-    "os.one.communication": ("fixed-policy", ("release",), "system"),
     "os.one.identity": ("configuration", ("release", "owner-profile", "runtime"), "system"),
-    "os.one.capability-menu": ("configuration", ("runtime", "permission", "capability-inventory"), "system"),
-    "os.one.memory-output-contract": ("configuration", ("runtime", "permission"), "system"),
     "os.one.frame-end": ("final-boundary", ("release",), "system"),
 }
 
 
 def _part(module_id: str, text: str, order: int = 0) -> dict:
     stability, triggers, channel = MODULES[module_id]
-    revision = 2 if module_id in {"os.one.capability-menu", "os.mcp.memory-recall-menu", "os.mcp.workforce-entry", "os.mcp.context-map-menu"} else 1
+    revision = 2 if module_id in {"os.one.operating-rules", "os.one.identity", "os.mcp.memory-recall-menu", "os.mcp.workforce-entry", "os.mcp.context-map-menu"} else 1
     return {"id": module_id, "revision": revision, "stability": stability,
             "changeTriggers": list(triggers), "channel": channel, "order": order, "text": text}
 
@@ -179,55 +158,14 @@ def tool_failure_text(*, name: str, exc: BaseException, auto_update_enabled: boo
     return compose_prompt(parts)
 
 
-def one_directive(*, name: str, memory_enabled: bool, context_map_enabled: bool, standalone_runtime: bool = False) -> str:
-    capabilities = [
-        "## Available capabilities — inspect these before claiming a limitation",
-        "| Need | Capability |", "|---|---|",
-        "| Expertise | `workforce.goal_context` -> reuse -> search only genuine gaps -> validate -> prepare |",
-        "| Public experts | `marketplace.search_agents`, `hephaestus_hub_invoke`, `/hep-hub` |",
-        "| Owner assets | `cargo.*`, `/hep-cloud` |",
-        "| Apparently missing tool | `agentlas_resolve_plugins`; uninstalled does not mean nonexistent, and installation is the user's decision |",
-        "| Browser work | `/hep-browser` |",
-        "| New capability | `/hep-build` -> `/hep-upload` |",
-    ]
-    if context_map_enabled:
-        capabilities.append("| Code location and impact | `context_locate`, `context_slice`, `context_impact`, `context_verify` |")
-    if memory_enabled:
-        capabilities.append("| Memory | `agentlas_memory_preflight`, `agentlas_memory_ticket`; never write durable memory directly |")
-    if standalone_runtime:
-        capabilities = [line.replace(", `/hep-hub`", "").replace(", `/hep-cloud`", "")
-                        for line in capabilities
-                        if "| Browser work |" not in line and "| New capability |" not in line]
-        capabilities.extend(["", "Use the connected tools' descriptions and operating skills actually exposed in this session.",
-            "One preference alone does not connect the core tools or install an operations skill. Verify availability before use.",
-            "Do not load legacy One workspace procedures or assume slash aliases are registered."])
-    else:
-        capabilities.extend(["", "Operating procedures for these capabilities live in `~/.agentlas/one/skills/agentlas-operations/SKILL.md`",
-            "(tool index: `INDEX.md` beside it, generated from the live registry). Follow it for staffing, automation,",
-            "asset" + (", and memory work" if memory_enabled else " work") + " instead of improvising."])
-    if memory_enabled:
-        memory = (
-            "## Memory events\nEnd every normal answer with `## Memory Events` and one fenced JSON block, nothing else:\n`" +
-            MEMORY_EVENT_EXAMPLE + "`\nWrite `turn_summary` in English whatever language the conversation uses. "
-            "Never include secrets, credentials, raw transcripts, or host-absolute paths.\n"
-            "receipt: Emitting an envelope requests processing; it is not proof of storage. "
-            "Only an actual host acceptance receipt supports a claim that memory was saved or recorded."
-        )
-    else:
-        memory = (
-            "## Memory events\nmemory: disabled for this host. Do not emit a Memory Events envelope or invoke memory tools. "
-            "A request to remember something cannot be saved while this setting is disabled. "
-            "Do not promise to remember or persist it."
-        )
+def one_directive(*, name: str, memory_enabled: bool = True, context_map_enabled: bool = False, standalone_runtime: bool = False) -> str:
+    # Capability and memory lines live in the MCP instructions; repeating them here only cost tokens.
     return compose_prompt([
         _part("os.one.frame", "<!-- AGENTLAS-ONE:BEGIN -->", -100),
         _part("os.one.operating-rules", ONE_OPERATING),
-        _part("os.one.communication", ONE_COMMUNICATION, 10),
         _part("os.one.identity", ONE_IDENTITY.format(name=name)),
-        _part("os.one.capability-menu", "\n".join(capabilities), 10),
-        _part("os.one.memory-output-contract", memory, 20),
         _part("os.one.frame-end", "<!-- AGENTLAS-ONE:END -->"),
-    ], separator="\n\n") + "\n"
+    ]) + "\n"
 
 
 def one_directive_for_runtime(*, name: str, home=None) -> str:

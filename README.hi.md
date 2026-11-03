@@ -191,57 +191,6 @@ Agentlas Desktop या Agentlas OS इंस्टॉल करें, सा�
 
 ---
 
-## तीन चरण
-
-<table>
-<tr>
-<td width="44%" valign="middle">
-
-### 1. Task विभाजन
-
-एक वाक्य जाता है, tasks निकलते हैं — भूमिकाएँ, handoff का क्रम, और हर एक को क्या देना है।
-
-जिस org chart में review पिछले task पर लौटता हो, वह **कुछ भी चलने से पहले अस्वीकार** हो जाता है, और loop का नाम बता दिया जाता है।
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-build-pipeline.gif" alt="request को tasks में बाँटने की स्क्रीन" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 2. Agent staffing
-
-हर task के लिए candidates लौटते हैं — आपकी मशीन, आपके cloud और सार्वजनिक Hub से एक साथ।
-
-**सूची में कोई ranking नहीं है।** चुनाव आपका model करता है, और कारण दर्ज होता है।
-
-योग्यता चार स्तरों में है: `declared`, `checked`, `demonstrated`, `attested` — और हर task पर न्यूनतम स्तर तय किया जा सकता है। चुनते ही वह release digest से pin हो जाता है, इसलिए कल एक byte भी बदला तो run रुक जाता है।
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-make-group-v2.gif" alt="हर task पर specialist agent लगाने की स्क्रीन" width="100%"></a>
-</td>
-</tr>
-<tr>
-<td width="44%" valign="middle">
-
-### 3. चलाना और सत्यापन
-
-योजना, काम, संश्लेषण और सत्यापन — हर एक अलग invocation के रूप में चलता है।
-
-**जब तक एक स्वतंत्र verifier पास न करे, कुछ भी पूरा नहीं कहलाता।** हर invocation, हर handoff और संश्लेषण receipt से सिद्ध होने चाहिए। वरना आपको वह जगह नाम से मिलती है जहाँ यह रुका — `prepared`, `blocked`, `source_unavailable`।
-
-</td>
-<td width="56%">
-  <a href="https://agentlas.cloud/desktop"><img src="assets/readme/feature-wall/workflow-run-v2.gif" alt="चलाने और सत्यापन की स्क्रीन" width="100%"></a>
-</td>
-</tr>
-</table>
-
----
-
 ## अपना specialist ख़ुद बनाइए
 
 सूची में कोई फ़िट न हो, तो एक बना लीजिए। `/hep-build` एक वाक्य को portable single agent या team में बदल देता है: सिर्फ़ वही सवाल पूछता है जो नतीजा बदलें, package लिखता है, और काम पूरा कहने से पहले contract checks चलाता है। `/hep-build session` यही काम उस बातचीत से करता है जिसमें आप अभी हैं।
@@ -303,6 +252,10 @@ Desktop खुद host है, इसलिए run शुरू होने स
 ---
 
 ## Install: सभी तरीक़े, और यह क्या लिखता है
+
+<details>
+<summary><strong>सभी install तरीक़े दिखाएँ</strong></summary>
+
 
 इसे उस LLM में paste करें जिसे आप अभी इस्तेमाल कर रहे हैं, जैसे Claude Code,
 Codex, Antigravity या Cursor:
@@ -507,6 +460,8 @@ Hephaestus agents को एक standard directory layout में package क�
 `docs/`, eval plan और work brief सिर्फ user-confirmed minimal private build में छोड़े जा सकते हैं। `provenance.json`, `knowledge/`, `schemas/`, `sandbox/` और `examples/` optional हैं।
 
 ---
+
+</details>
 
 </details>
 
