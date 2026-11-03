@@ -41,6 +41,31 @@ def _windows_run(vector, environment, *, popen=None):
         raise
 
 
+# Engine locator variables this launcher (and bin/hephaestus) set for its own
+# process. The host session must not inherit them: every child of the host CLI
+# (another installed Agentlas plugin, a hook, a shell command) would read them,
+# and a legacy engine then treats the standalone namespace as its own runtime
+# base and auto-updates over it. The standalone plugin pins its runtime in its
+# own MCP and command payloads instead.
+_ENGINE_LOCATOR_KEYS = frozenset({
+    'AGENTLAS_HOST_RUNTIME', 'HEPHAESTUS_RUNTIME_BASE', 'HEPHAESTUS_RUNTIME_ROOT', 'AGENTLAS_ONE_RUNTIME_BIN',
+})
+
+
+def _host_environment(source, root: Path) -> dict:
+    environment = {key: value for key, value in source.items() if key.upper() not in _ENGINE_LOCATOR_KEYS}
+    python_path = environment.get('PYTHONPATH')
+    if python_path:
+        owned = {os.path.normcase(os.path.realpath(str(root)))}
+        kept = [entry for entry in python_path.split(os.pathsep)
+                if entry and os.path.normcase(os.path.realpath(entry)) not in owned]
+        if kept:
+            environment['PYTHONPATH'] = os.pathsep.join(kept)
+        else:
+            environment.pop('PYTHONPATH', None)
+    return environment
+
+
 def launch(root: Path, home: Path, host: str, arguments=(), *, execute=None):
     from .host_core import Conflict, _identity, _namespace, session_plan
 
@@ -49,16 +74,8 @@ def launch(root: Path, home: Path, host: str, arguments=(), *, execute=None):
     command = plan.get('hostCommand')
     if not isinstance(command, list) or not command or command[0] != host:
         raise Conflict(plan.get('reason', 'session_command_unavailable'))
-    namespace = _namespace(home)
-    runtime_base = namespace if namespace == home / '.agentlas/os-runtime' else namespace.parent
-    environment = dict(os.environ)
-    environment.update({
-        'AGENTLAS_HOST_RUNTIME': 'standalone',
-        'HEPHAESTUS_RUNTIME_BASE': str(runtime_base),
-        'HEPHAESTUS_RUNTIME_ROOT': str(root),
-        'AGENTLAS_ONE_RUNTIME_BIN': str(root / 'bin/agentlas-one'),
-        'PYTHONDONTWRITEBYTECODE': '1',
-    })
+    _namespace(home)  # refuses an unowned or unsafe standalone namespace
+    environment = _host_environment(os.environ, root)
     # Argument vectors preserve spaces, Unicode and Windows paths. Never use a
     # shell, change the caller's environment, or copy authentication material.
     vector = [*command, *arguments]

@@ -3,6 +3,13 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.74 — 2026-11-03
+
+- `agentlas-os host session claude|codex` no longer passes the engine's own
+  location variables to the host app. Another Agentlas plugin installed in the
+  same Claude Code or Codex could pick them up and replace the standalone
+  runtime with an older release.
+
 ## 1.2.73 — 2026-11-03
 
 - Standalone OS installs into its own runtime namespace and preserves the legacy
