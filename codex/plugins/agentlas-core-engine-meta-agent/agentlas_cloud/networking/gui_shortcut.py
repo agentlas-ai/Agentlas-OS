@@ -240,11 +240,14 @@ def _open_hub_gui_shortcut(
     # invisible to /hep-local until the user hand-registered it (measured
     # 2026-08-12, wiring sweep: migrate_tree had exactly one caller, the CLI).
     # Fail-open — a registration problem must not block opening the GUI.
+    # Register into the networking home this call was given, never a second
+    # resolution of the default: a caller with its own home (a test, an
+    # isolated run) wrote a card into the user's real registry, and Desktop
+    # imported it (seen 2026-08-13 to 2026-11-03).
     try:
-        from .bootstrap import networking_home
         from .card_migrate import migrate_package
 
-        migrate_package(install_dir, tier="local", home=networking_home(), overwrite=False)
+        migrate_package(install_dir, tier="local", home=Path(home) if home else networking_home(), overwrite=False)
     except Exception:
         pass
 
