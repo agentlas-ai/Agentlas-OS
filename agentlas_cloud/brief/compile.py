@@ -5,11 +5,8 @@ verbatim off a file the package already ships, or computed from a schema's
 topology - and every field records which of those it was, so a later reader can
 tell an author's sentence from a derived fact from a gap.
 
-The gaps are the point. `provenance.from = "absent"` scores zero and stays
-absent; nothing here fills a hole with something plausible. The measured history
-of doing otherwise is a catalogue where `capabilities` was
-`snake_case(agent.md ## Responsibilities)` in 130 of 130 packages - a field that
-was always full and never carried information.
+The gaps are intentional. `provenance.from = "absent"` scores zero and stays
+absent; do not fill a missing field with a plausible inferred capability.
 
 What this module cannot do without a model is invent an intake or output schema
 for a package that never wrote one. Those come back `absent`, which is the
@@ -24,6 +21,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .shape import classify_shape
+from .prompt_composition import refusal_gap_reason
 
 __all__ = ["compile_offer", "BRIEF_VERSION"]
 
@@ -79,11 +77,8 @@ def _effect_of(sentence: str) -> str:
 def _schema_contents(schema: Mapping[str, Any], limit: int = 40) -> list[str]:
     """What is actually inside the deliverable, as readable sentences.
 
-    A schema's title is usually the package's own name again. What separates one
-    output from another is what it CONTAINS — measured: a request for a "contract
-    alignment log with a provision-level verdict" ranked the correct package 4th,
-    because that phrase names a PROPERTY inside its schema while the title said
-    only "DORA Compliance Control Room — output".
+    Schema properties describe the content of an output more precisely than
+    its title alone. Include those declared properties in the output description.
 
     Property names are split back into words so a reader sees `contractAlignmentLog`
     as "contract alignment log". That is de-camelCasing an identifier, not
@@ -260,13 +255,10 @@ def compile_offer(root: Path) -> dict[str, Any]:
     if gated:
         note("/authority/gated", "extracted", ".agentlas/routing-card.json")
 
-    # `anti_triggers` is deliberately NOT carried over. Measured across the live
-    # corpus, 29-37% of those sentences are neighbour routing ("that is X's job")
-    # rather than refusal, and tokenising them is what moved a correct agent from
-    # rank 2 to rank 24. A real refusal needs a stated reason, which no current
-    # generation records, so this comes back absent until the builder emits it.
+    # `anti_triggers` is deliberately not carried over as a refusal field.
+    # A refusal needs a stated reason; keep it absent until the builder emits one.
     note("/authority/refuses", "absent", None,
-         "anti_triggers are not refusals: 29-37% are neighbour routing, and they carry no reason")
+         refusal_gap_reason())
 
     performs = sorted({item["effect"] for item in gated} |
                       {item.get("effect", "other") for item in deliverables}) or []
@@ -282,13 +274,8 @@ def compile_offer(root: Path) -> dict[str, Any]:
         for item in requirements:
             if not isinstance(item, Mapping):
                 continue
-            # The live requirement schema (agentlas.mcp-requirement.v1) names
-            # its capability `requirementId`/`catalogId`; only older policies
-            # used `capability`. Reading `capability` alone made every current
-            # package compile to "declares no external tool requirement" while
-            # its own mcp-policy said required=true — the brief then routed the
-            # package to hosts that cannot run it. Measured 2026-08-12 on
-            # .builds/market-sentiment-digest (public-web-fetch, required).
+            # Read current requirementId/catalogId fields as well as the legacy capability
+            # field so declared external tool requirements remain visible to routing.
             capability = next(
                 (
                     str(item[key]).strip()

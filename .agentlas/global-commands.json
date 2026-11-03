@@ -788,106 +788,10 @@
       "scope": "terminal",
       "status": "shell-command",
       "notes": "Interactive upload gate. Shows the mandatory bilingual Cloud vs Agentlas Hub question before upload."
-    },
-    {
-      "runtime": "claude-code",
-      "command": "/hep-graph",
-      "adapterPath": ".claude/commands/hep-graph.md",
-      "globalInstallPath": "~/.claude/commands/hep-graph.md",
-      "scope": "global",
-      "status": "native-slash-command",
-      "notes": "Creates, inspects, and requests runs through the independent Agentlas CLI and Desktop queue."
-    },
-    {
-      "runtime": "codex",
-      "command": "$hephaestus-graph",
-      "adapterPath": "codex/plugins/agentlas-core-engine-meta-agent/skills/hephaestus-graph/SKILL.md",
-      "globalInstallPath": "codex plugin add hephaestus@agentlas-core-engine",
-      "scope": "plugin",
-      "status": "plugin-skill",
-      "discoverableByDefault": true,
-      "compatibility": {
-        "codex": {
-          "minVersion": "0.117.0"
-        }
-      },
-      "notes": "Current Codex graph skill; the legacy prompt remains only for Codex 0.116 and earlier."
-    },
-    {
-      "runtime": "codex",
-      "command": "/prompts:hep-graph",
-      "adapterPath": "codex/prompts/hep-graph.md",
-      "globalInstallPath": "~/.codex/prompts/hep-graph.md",
-      "scope": "global",
-      "status": "legacy-custom-prompt-slash-command",
-      "discoverableByDefault": false,
-      "compatibility": {
-        "codex": {
-          "maxVersionExclusive": "0.117.0"
-        }
-      },
-      "notes": "Legacy compatibility only for Codex 0.116 and earlier."
-    },
-    {
-      "runtime": "antigravity",
-      "command": "/hep-graph",
-      "adapterPath": "antigravity/workflows/hep-graph.md",
-      "globalInstallPath": "~/.gemini/antigravity/global_workflows/hep-graph.md",
-      "scope": "global",
-      "status": "workflow-slash-command",
-      "notes": "Primary Gemini-family IDE surface; installed independently of the optional Gemini CLI extension."
-    },
-    {
-      "runtime": "cursor",
-      "command": "/hep-graph",
-      "adapterPath": "cursor/plugin/commands/hep-graph.md",
-      "globalInstallPath": "~/.cursor/commands/hep-graph.md",
-      "scope": "global",
-      "status": "native-slash-command"
-    },
-    {
-      "runtime": "opencode",
-      "command": "/hep-graph",
-      "adapterPath": "opencode/commands/hep-graph.md",
-      "globalInstallPath": "~/.config/opencode/commands/hep-graph.md",
-      "scope": "global",
-      "status": "native-slash-command"
-    },
-    {
-      "runtime": "claude-code",
-      "command": "/hep-connect",
-      "adapterPath": ".claude/commands/hep-connect.md",
-      "globalInstallPath": "~/.claude/commands/hep-connect.md",
-      "scope": "global",
-      "status": "native-slash-command",
-      "notes": "Guided Telegram-first gateway setup. Prefer Agentlas Desktop /connect, pair a real chat, send a test message, and keep bot tokens out of normal chat."
-    },
-    {
-      "runtime": "codex",
-      "command": "/prompts:hep-connect",
-      "adapterPath": "codex/prompts/hep-connect.md",
-      "globalInstallPath": "~/.codex/prompts/hep-connect.md",
-      "scope": "global",
-      "status": "legacy-custom-prompt-slash-command",
-      "discoverableByDefault": false,
-      "compatibility": {
-        "codex": {
-          "maxVersionExclusive": "0.117.0"
-        }
-      },
-      "notes": "Legacy compatibility only for Codex 0.116 and earlier; uses the real Desktop Connect UI as source of truth."
-    },
-    {
-      "runtime": "agentlas-workflow",
-      "command": "/hep-connect",
-      "adapterPath": ".agents/workflows/hep-connect.md",
-      "scope": "project",
-      "status": "workflow-command",
-      "notes": "Project workflow for connecting a single agent, orchestrator, or team to Telegram through the Agentlas gateway."
     }
   ],
   "postCreationUserMessage": {
     "required": true,
-    "template": "global_commands: Agentlas terminal/app plain language through native Agentlas/Hephaestus tools; Claude Code /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph, /hep-connect; current Codex $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-storm, $hephaestus-graph and plain language for other MCP surfaces; Antigravity, Cursor, and OpenCode expose /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph. Antigravity is installed independently. Workforce scopes: network = registered Local + owner Cloud + public Hub; local = registered Local only; cloud = signed-in owner Cloud only; hub = public Hub only. All four use local MCP server hephaestus-network and the exact workforce.search_candidates -> workforce.validate_selection -> workforce.prepare_execution contract. On local-OS hosts it is the only Workforce MCP; Core performs Cloud/Hub upstream calls internally and direct agentlas MCP registration is removed to prevent duplicate tools from bypassing federation and privacy governance. Other meanings: build/create = /hep-build; automation = /hep-graph; search-only = /hep-search; browser-required = /hep-browser; explicit named call = /hep-call; upload gate = /hep-upload; Telegram setup = /hep-connect or plain-language Codex MCP request; force-robust completion = /hep-storm (Codex $hephaestus-storm)."
+    "template": "global_commands: Agentlas terminal/app plain language through native Agentlas/Hephaestus tools; Claude Code /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload; current Codex $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-storm and plain language for other MCP surfaces; Antigravity, Cursor, and OpenCode expose /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-search, /hep-browser, /hep-call, /hep-upload. Antigravity is installed independently. Workforce scopes: network = registered Local + owner Cloud + public Hub; local = registered Local only; cloud = signed-in owner Cloud only; hub = public Hub only. All four use local MCP server hephaestus-network and the exact workforce.search_candidates -> workforce.validate_selection -> workforce.prepare_execution contract. On local-OS hosts it is the only Workforce MCP; Core performs Cloud/Hub upstream calls internally and direct agentlas MCP registration is removed to prevent duplicate tools from bypassing federation and privacy governance. Other meanings: build/create = /hep-build; search-only = /hep-search; browser-required = /hep-browser; explicit named call = /hep-call; upload gate = /hep-upload; force-robust completion = /hep-storm (Codex $hephaestus-storm)."
   }
 }

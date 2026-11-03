@@ -1,3 +1,5 @@
+<!-- prompt-module: {"id":"os.builder.interview-research-contract","revision":2,"stability":"versioned-content","changeTriggers":["release"],"channel":"tool-result"} -->
+
 # Builder Interview and Research Gate
 
 This is the shipped public runtime contract for `/hep-build`. Read it before
@@ -148,11 +150,7 @@ the exchange, so a plugin-surface interview is not mistaken for a desktop one.
 ### The interview record is written by the host, not by you
 
 `docs/builder-interview.md` and the work brief's `source: user` tags are YOUR
-claim that an interview happened. They are not evidence of it. Measured
-2026-08-17: three packages carried `source: "user"` assumptions and a fully
-written interview document, and their owner had never been asked a single
-question — the model that skipped the interview also wrote the record saying it
-had not.
+claim that an interview happened. They are not independent evidence of it.
 
 When an interview actually occurs, only the host may write
 `.agentlas/interview-receipt.json` from the exchange it actually transported:
@@ -223,10 +221,7 @@ Some Hub plugins ship skills instead of a server. Their manifest says so:
 Bundle them as package skills and record them in `docs/tool-selection.md` with the
 same permission/fallback notes as any other capability. Never report them as a
 failed or unavailable connection, never invent an MCP server for them, and never
-drop the capability just because no server appeared — measured 2026-08-17:
-Documents, Presentations and Spreadsheets were approved by the user, had no server
-by design, and the build reported "Failed · 3", losing three approved capabilities
-and telling the user the product was broken.
+drop the capability just because no server appeared.
 
 Read `agents[].intent` and `capabilities` from the manifest for what the skill
 actually does; do not restate the marketing tagline as behavior.
@@ -252,14 +247,6 @@ must preserve source behavior while adding missing evidence and contracts.
 
 ### Length discipline for the generated worker's instructions
 
-Measured 2026-10-15 on one generated agent, 3 runs per variant on each of two
-production models, two machine-checked tasks: a 54-word instruction that points
-at rule sheets in the package scored 7.00 of 7 on both models, while 652 words
-scored 6.33 and 5.00 and 4,115 words with the sheets inlined scored 5.67 and
-6.00. Without the sheets the model cited 0 of 6 rule ids. The sample is small
-and the rules and checks were written by the same author, so treat it as a
-default, not a law.
-
 - Start with the smallest instruction that fully defines the behavior: identity
   and non-goals, judgment the data cannot carry, workflow, limits, output.
   Minimal is not short; do not cut context the agent needs.
@@ -270,8 +257,7 @@ default, not a law.
 - Add a line to the instruction only for a failure you observed, and record that
   failure as a case in `.agentlas/capability-eval-plan.json`.
 - Keep approval gates, refusals and destructive-action limits in the
-  instruction. The measurement did not test them, so they are not candidates for
-  removal.
+  instruction.
 - Remove or shorten an existing line only after a real-model comparison of the
   same tasks before and after.
 

@@ -5,15 +5,13 @@
     "build",
     "network",
     "storm",
-    "graph",
     "local",
     "cloud",
     "hub",
     "search",
     "browser",
     "call",
-    "upload",
-    "connect"
+    "upload"
   ],
   "note": "verbatimSkills holds the Codex Agent Skills family (codex/plugins/.../skills/agentlas-<verb>), which is hand-authored richer content (a mini workflow doc), not a mechanical hep-<verb> redirect. Regenerating writes back exactly this snapshot so --check still catches accidental drift, without the renderer inventing new prose. Edit the SKILL.md files directly, then re-run this script to refresh the snapshot (see scripts/refresh-command-alias-manifest.py).",
   "verbatimSkills": [
@@ -24,10 +22,6 @@
     {
       "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-cloud/SKILL.md",
       "content": "---\nname: agentlas-cloud\ndescription: \"Use when the user types /agentlas-cloud, /agentlas cloud, or /hep-cloud to staff only from the signed-in owner's private Cloud packages.\"\n---\n\n# Agentlas Cloud Workforce (/agentlas-cloud, /hep-cloud)\n\nStaff specialist roles specifically from the owner's private Agentlas Cloud repository.\nAlias for `hephaestus-cloud` and `/agentlas cloud`.\n\nSee [hephaestus-cloud](hephaestus-cloud/SKILL.md) for full execution protocol.\n"
-    },
-    {
-      "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-graph/SKILL.md",
-      "content": "---\nname: agentlas-graph\ndescription: \"Use when the user types /agentlas-graph, /agentlas graph, or /hep-graph to create, list, inspect, or run Agentlas automation graphs.\"\n---\n\n# Agentlas Graph Automations (/agentlas-graph, /hep-graph)\n\nCreate, inspect, schedule, and execute Agentlas DAG automation graphs.\nAlias for `hephaestus-graph` and `/agentlas graph`.\n\nSee [hephaestus-graph](hephaestus-graph/SKILL.md) for full execution protocol.\n"
     },
     {
       "path": "codex/plugins/agentlas-core-engine-meta-agent/skills/agentlas-network/SKILL.md",

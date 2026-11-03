@@ -1,10 +1,7 @@
 """Build the catalogue graph and the embedding texts from compiled briefs.
 
-The graph is not decoration. Two packages that produce the same kind of thing, or
-that need the same thing to start, are neighbours whether or not they share a
-single word - and word-sharing is exactly what failed: a Korean request and an
-English resume overlap on nothing, and 1186 of 1189 trigger sentences in the live
-catalogue were unique strings. Structure is what survives translation.
+Packages that produce the same kind of thing, or need the same thing to start,
+are neighbours even when their wording differs. Structure survives translation.
 
 Nodes:
   agent      one published package
@@ -18,8 +15,7 @@ Edges:
 
 The embedding text is assembled here too, so the graph and the vectors are built
 from the same sentences and can never drift into describing different things.
-Nothing is tokenised: each text stays a sentence, because cutting sentences into
-bare terms is what moved a correct agent from rank 2 to rank 24.
+Nothing is tokenised: preserve each text as a whole sentence.
 """
 
 from __future__ import annotations

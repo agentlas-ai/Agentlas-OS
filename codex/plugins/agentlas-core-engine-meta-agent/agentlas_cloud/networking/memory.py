@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .bootstrap import append_jsonl, atomic_write_json, networking_home, read_json, utc_now
+from .bootstrap import append_jsonl, atomic_write_json, memory_enabled, networking_home, read_json, utc_now
 
 SECRET_PATTERNS = [
     re.compile(r"sk-[a-z0-9]{8,}", re.IGNORECASE),
@@ -92,11 +92,17 @@ def unsafe_route_refusal(text: str) -> dict[str, Any] | None:
 
 
 def load_profile(home: Path | str | None = None) -> dict[str, Any]:
+    empty = {"boosts": {}, "suppressions": {}, "corrections": []}
+    if not memory_enabled():
+        return empty
     base = Path(home) if home else networking_home()
-    return read_json(base / "memory" / "routing-profile.json", default={"boosts": {}, "suppressions": {}, "corrections": []})
+    profile = read_json(base / "memory" / "routing-profile.json", default=empty)
+    return profile if memory_enabled() else empty
 
 
 def profile_adjustment(profile: dict[str, Any], card_id: str) -> float:
+    if not memory_enabled():
+        return 0.0
     boost = float((profile.get("boosts") or {}).get(card_id, 0.0))
     suppression = float((profile.get("suppressions") or {}).get(card_id, 0.0))
     return max(-BOOST_LIMIT, min(BOOST_LIMIT, boost - suppression))
@@ -109,13 +115,19 @@ def record_feedback(
     home: Path | str | None = None,
     note: str | None = None,
 ) -> dict[str, Any]:
+    if not memory_enabled():
+        return {"status": "disabled", "error": "feature_disabled", "feature": "memory-hooks", "writeAttempted": False}
     base = Path(home) if home else networking_home()
     tokens = redact_tokens(query_tokens)
     append_jsonl(
         base / "memory" / "feedback.jsonl",
         {"ts": utc_now(), "tokens": tokens, "chosen": chosen_card, "correct": correct_card, "note": note},
     )
+    if not memory_enabled():
+        return {"status": "partial", "error": "feature_disabled", "feature": "memory-hooks", "feedbackRecorded": True}
     profile = load_profile(base)
+    if not memory_enabled():
+        return {"status": "partial", "error": "feature_disabled", "feature": "memory-hooks", "feedbackRecorded": True}
     boosts = profile.setdefault("boosts", {})
     suppressions = profile.setdefault("suppressions", {})
     if correct_card:
@@ -125,5 +137,7 @@ def record_feedback(
     corrections = profile.setdefault("corrections", [])
     corrections.append({"ts": utc_now(), "tokens": tokens[:12], "correct": correct_card, "chosen": chosen_card})
     profile["corrections"] = corrections[-CORRECTIONS_LIMIT:]
+    if not memory_enabled():
+        return {"status": "partial", "error": "feature_disabled", "feature": "memory-hooks", "feedbackRecorded": True}
     atomic_write_json(Path(base) / "memory" / "routing-profile.json", profile)
     return {"status": "recorded", "boosts": boosts.get(correct_card) if correct_card else None}

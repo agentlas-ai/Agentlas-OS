@@ -1,8 +1,9 @@
 {
+  "$comment": "prompt-module: {\"id\":\"os.brief.schema\",\"revision\":2,\"stability\":\"versioned-content\",\"changeTriggers\":[\"release\"],\"channel\":\"output-schema\"}",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agentlas.ai/schemas/agentlas-brief.schema.json",
   "title": "Agentlas Brief",
-  "description": "One form, written from either side. side=offer is a package describing the method it carries; side=need is a requester describing the job. Matching compares the two directly, so a field that cannot be written from both sides may be displayed but never matched on. Sentences stay sentences: no field here is tokenised, because shredding anti-trigger sentences into the bare words 'tests' and 'ci' is what pushed a correct agent from rank 2 to rank 24 on a query that was literally its own job.",
+  "description": "One form, written from either side. side=offer is a package describing the method it carries; side=need is a requester describing the job. Matching compares the two directly, so a field that cannot be written from both sides may be displayed but never matched on. Sentences stay sentences: no field here is tokenised; preserve anti-trigger sentences as whole sentences.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -79,7 +80,7 @@
               "rendition",
               "other"
             ],
-            "description": "Computed from the OUTPUT SCHEMA'S TOPOLOGY, never authored. An array of uniform records with a per-row judgement is a ledger; a single judgement with reasons is a verdict, and so on. 38% of live output schemas already land on 'other', so the escape is load-bearing, not decorative."
+            "description": "Computed from the OUTPUT SCHEMA'S TOPOLOGY, never authored. An array of uniform records with a per-row judgement is a ledger; a single judgement with reasons is a verdict, and so on. Keep 'other' as an escape for shapes outside the declared categories."
           },
           "format": {
             "type": "array",
@@ -282,7 +283,7 @@
               }
             }
           },
-          "description": "Categorical refusals, as sentences. Replaces anti_triggers, of which 29-37% were not refusals at all but neighbour routing ('that is X's job') - and it was tokenising those that cost a correct agent 22 rank positions. A neighbour's name cannot be expressed in this shape."
+          "description": "Categorical refusals, as sentences. Keep each refusal whole and require an explicit reason; neighbour routing ('that is X's job') alone is not a refusal. A neighbour's name cannot be expressed in this shape."
         },
         "forbid": {
           "type": "array",
@@ -320,13 +321,13 @@
           "preferred": {
             "type": "string",
             "maxLength": 200,
-            "description": "The one place a product name may live (playwright, astryx, notion, slack). DISPLAY ONLY - it must never reach a matching input. Roughly 99.9% of machines have no MCP servers installed, so a package wired to its author's own tools has to remain usable by everyone else."
+            "description": "The one place a product name may live (playwright, astryx, notion, slack). DISPLAY ONLY - it must never reach a matching input. A package must remain usable when the host lacks its author's preferred tools."
           },
           "withoutIt": {
             "type": "string",
             "minLength": 1,
             "maxLength": 500,
-            "description": "Required sibling of `preferred`. What this method does on a machine that lacks the facility. A requirement with no stated degradation is how a package becomes unusable to the 99.9%."
+            "description": "Required sibling of `preferred`. What this method does on a machine that lacks the facility. State the degradation so the caller can assess usability without that facility."
           }
         }
       },

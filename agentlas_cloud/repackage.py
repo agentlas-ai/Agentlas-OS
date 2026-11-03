@@ -1,11 +1,7 @@
 """Fill what a package already knows about itself, without asking a model.
 
-Measured on the live corpus (2026-08-07): of 372 published definitions, 295 have
-a runtime artifact and 3 satisfy the package contract. Running `contract
-scaffold` over all 295 adds 8.2 files each and moves the pass count by zero —
-because scaffold writes stencils, and a stencil with `{{ROLE}}` in it is still a
-blocker. Repackaging is therefore not a mechanical migration, and treating it as
-one produces 295 packages that look complete and verify worse.
+Scaffolding writes placeholders; repackaging fills only facts that can be
+derived from the package and leaves authorship decisions to its author.
 
 The work splits in two, and only the first half belongs here:
 
@@ -95,13 +91,8 @@ def _has_placeholders(path: Path) -> bool:
         return False
 
 
-# The scaffolded AGENTS.md announces itself. Recognising a stencil by "does it
-# still contain {{...}}" is a proxy that fails the moment the last placeholder
-# in a file gets a legitimate answer — which is what happened when single-agent
-# packages stopped being asked to name a team roster: `{{TEAM_ROLES}}` was the
-# only placeholder left in single mode, so filling it made an untouched stencil
-# look like an authored document and the real `agent.md` was never promoted
-# into it (measured 2026-08-17).
+# Scaffold markers identify an untouched template even after its final
+# placeholder has been filled, allowing a real authored core to be promoted.
 #
 # These lines come from templates/AGENTS.md.tpl and are not something a person
 # writing about their own agent produces.
@@ -262,10 +253,7 @@ def derive(
 
 # ── infrastructure declarations the package can answer for itself ───────────
 # These are not the author's words; they are the shape of the runtime the
-# package sits in. Measured on the live corpus before this existed: 63 packages
-# were unpublishable for a missing `projectId` that is just the slug, and 61 for
-# a `packageId` that is the same slug again. Refusing an upload over a value the
-# server already knows is the failure mode, not the safeguard.
+# package sits in. Deterministic package identifiers derive from the slug.
 
 MEMORY_MAP_SCHEMA_VERSION = "1.1"
 GLOBAL_COMMANDS_SCHEMA_VERSION = "1.0"
@@ -342,8 +330,7 @@ def fill_memory_map(root: Path, slug: str) -> bool:
     # infrastructure roots are not the author's to know about: code map, context
     # map, recall index and experience are filled by the runtime, and a map that
     # omits them tells a reader the package's memory is smaller than it is.
-    # Measured: the old five-root template predates all four, so every published
-    # package understates where its own memory comes from.
+
     roots = payload.get("canonicalMemoryRoots")
     roots = dict(roots) if isinstance(roots, dict) else {}
     for key, value in CANONICAL_MEMORY_ROOTS.items():
@@ -445,8 +432,7 @@ def is_unfilled(value: Any) -> bool:
     list, so `if not payload.get(...)` and `setdefault` both read a stencil as an
     answer and decline to fill it. The file then keeps one `{{` token, the upload
     path withdraws the whole artifact for shipping placeholder text, and the
-    package blocks on a field the server could have derived. Measured 2026-08-07:
-    that single confusion held 65 of 178 published packages out of the corpus.
+    package blocks on a field the server could have derived.
     """
 
     if value is None:
@@ -465,9 +451,7 @@ def fill_company_blueprint(root: Path, slug: str, name: str) -> bool:
 
     topology/nodes/edges are read from `agents/*/agent.md` — the roster is the
     fact, the blueprint is its description, and a description that disagrees
-    with the folder is worse than none. Measured: 54 published teams had a
-    blueprint with no topology and no edges while carrying a complete roster,
-    so the shape gate refused a team that was structurally fine.
+    with the folder is worse than none.
     """
 
     members = sorted(
@@ -557,17 +541,14 @@ def coerce_contract_shapes(root: Path, slug: str) -> list[str]:
     missing content, and refusing an upload over one asks the author to retype
     what they already wrote.
 
-    Measured 2026-08-07 on the 178 published packages: 46 were held back and every
-    remaining blocker was one of the five below.
+
     """
 
     fixed: list[str] = []
 
     # ── company-blueprint: `topology` and `orchestrator` are strings ──────────
-    # 15 packages nest the whole graph under `topology` as an object, and others
-    # give `orchestrator` as `{id, role, job}`. The gate reads both with
-    # `isinstance(..., str)` and treats anything else as absent, so a fully
-    # described team reads as an empty one.
+    # Normalize nested graph objects and orchestrator objects to the
+    # topology and orchestrator identifiers required by the schema.
     blueprint_path = root / ".agentlas" / "company-blueprint.json"
     if blueprint_path.exists():
         payload = _read_json(blueprint_path)
@@ -645,8 +626,7 @@ def coerce_contract_shapes(root: Path, slug: str) -> list[str]:
 
     # ── routing card: shapes the corpus writes but the schema does not ───────
     # Each of these is the author's own answer in a form the schema refuses, so
-    # coercing is restating, not inventing. Measured 2026-08-07 on the 14
-    # packages the gate still held back.
+    # coercing is restating, not inventing.
     if card_path.exists():
         card = _read_json(card_path)
         before_card = json.dumps(card, sort_keys=True, ensure_ascii=False)
@@ -683,10 +663,7 @@ def coerce_contract_shapes(root: Path, slug: str) -> list[str]:
             declared = [c for c in (card.get("communities") or []) if isinstance(c, str) and c.strip()]
             if not declared:
                 # No declared community, so read the card's own capability verbs.
-                # The vocabulary is the one the corpus actually uses (measured
-                # 2026-08-07 over the published cards), not an invented list, and
-                # a résumé with no community is unroutable - which is exactly what
-                # made these packages unpublishable.
+                # Reuse supported vocabulary when deriving a missing community.
                 blob = " ".join([
                     str(card.get("summary") or ""),
                     " ".join(c for c in (card.get("capabilities") or []) if isinstance(c, str)),
@@ -737,10 +714,8 @@ def coerce_contract_shapes(root: Path, slug: str) -> list[str]:
 
     # ── global-commands: one HQ command, many adapters ───────────────────────
     # The contract is a single public HQ command exposed through per-runtime
-    # adapter rows. Measured: some rows carry `command: null` and some carry a
-    # drifted spelling, so the shape gate sees either no canonical command or
-    # several. `canonicalCommand` in the same file is the declared answer; the
-    # rows are adapters, not competing names.
+    # adapter rows. canonicalCommand is the declared source of truth;
+    # adapter rows do not define competing command names.
     commands_path = root / ".agentlas" / "global-commands.json"
     if commands_path.exists():
         payload = _read_json(commands_path)
@@ -783,7 +758,7 @@ def _card_texts(value: Any) -> list[str]:
 def reconcile_team_shape(root: Path, *, requested_mode: str = "") -> list[str]:
     """Make the declared entity kind and the roster on disk agree.
 
-    Two ways they disagree in the published corpus, both measured 2026-08-07:
+    Normalize these two representational disagreements:
 
     1. A flat roster. `agents/<name>.md` holds the members, but the runtime and
        the shape gate both read `agents/<name>/agent.md`, so the team looks
@@ -880,9 +855,8 @@ def fill_declared_artifacts(root: Path, slug: str) -> list[str]:
         # but cards migrate reads it through interview/schema.resolve_work_brief,
         # which only accepts "work-brief/1.0" with anti_scope/acceptance_criteria
         # — so every completer-derived brief was rejected ("no user-confirmed
-        # anti_triggers") and the card shipped without them. Measured 2026-08-12
-        # on .builds/legacy-invoice-agent. Map the routing-card facts onto the
-        # consumer's field names: anti-scope→anti_scope, produces→acceptance,
+        # anti_triggers"). Map routing-card facts onto the consumer's
+        # field names: anti-scope→anti_scope, produces→acceptance,
         # required inputs→constraints (informational; the consumer reads
         # acceptance_criteria/anti_scope, but constraints is a valid field).
         from .interview.schema import WORK_BRIEF_SCHEMA_VERSION
@@ -1124,12 +1098,8 @@ def prune_unrecognised_manifest_keys(root: Path) -> list[str]:
     """Drop manifest keys the schema does not admit, and name each one.
 
     `memoryPolicy` and `toolPermissions` are closed objects, so one extra key
-    refuses the whole upload. Measured 2026-08-07 across the 178 published
-    packages: `writeBack`/`publicCopy` and `network`/`shell`/`fileRead` appear in
-    all 178, while `assetPolicy`, `privateMetrics`, `sourceFreshness`,
-    `fileWrite` and `browser` appear in one or two. Those are not a producer
-    convention the schema failed to keep up with - they are one-off additions
-    that nothing reads, because a key outside the schema reaches no consumer.
+    refuses the whole upload. Keys outside the schema have no consumer and
+    are removed with an explicit repair record.
 
     Dropping beats blocking here, but only because the drop is announced: the
     caller gets one repair record per removed key, so an author who meant
@@ -1238,8 +1208,7 @@ RUNTIME_ADAPTER_FILES = ("CLAUDE.md", "GEMINI.md", "AGENTS.md")
 
 # The opening line every thin adapter carries. It is also the test for "this body only
 # points at AGENTS.md": promoting such a body INTO AGENTS.md makes the canonical core
-# point at itself (measured 2026-10-09: the second `contract complete` copied the thin
-# `agent.md` written by the first one over the scaffolded AGENTS.md).
+# point at itself, so thin adapters are excluded from core promotion.
 _THIN_ADAPTER_LEAD = "> Thin adapter. **Source of truth is [`AGENTS.md`](AGENTS.md)**"
 
 
@@ -1250,9 +1219,7 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
     `agent.md` is required by the contract and refused by the server when absent,
     but `contract scaffold` can only lay down a `{{ROLE}}` stencil for it, and the
     upload pass then withdraws that stencil rather than ship placeholder text to a
-    buyer. Net effect: the engine created the file, deleted it, and the server
-    rejected the upload for the file being missing - measured 2026-08-07 as an
-    HTTP 403 `security_blocked` on a package whose local gate said ready.
+    buyer. A required adapter must be derived from a real canonical core.
 
     Nothing is invented here. Every published package in this corpus already
     declares one canonical core (`AGENTS.md`) and treats `CLAUDE.md`/`GEMINI.md`
@@ -1263,29 +1230,15 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
 
     written: list[str] = []
     core = root / "AGENTS.md"
-    # A stencil AGENTS.md counts as missing. `contract scaffold` lays one down
-    # before this runs, so checking only `is_file()` made the promotion skip —
-    # and the upload pass then withdrew the stencil for carrying `{{`, leaving
-    # the package with no canonical core at all. Measured 2026-08-07: 15
-    # packages published locally as ready with no AGENTS.md in the bundle.
-    # A stencil AGENTS.md needs REPLACING with a real body, not DELETING. This
-    # used to unlink it unconditionally, but on the documented packager order
-    # (scaffold → complete → fill holes) `complete` runs while agent.md is still
-    # a stencil too, so nothing could be promoted — the unlink turned "AGENTS.md
-    # has holes to fill" into "AGENTS.md is missing", forcing a re-scaffold and
-    # a hard verify blocker. Measured 2026-08-12 on .builds/legacy-invoice-agent
-    # (repro'd twice). Fix: promote a real body over a missing OR stencil core;
-    # if no real body exists yet, LEAVE the stencil so its holes stay fillable.
-    # The upload pass still withdraws any stencil that survives to publish time —
-    # that guard is what the original 2026-08-07 measurement needed, and it is
-    # unaffected here.
+    # Promote an authored body over a missing or stencil core. If none exists,
+    # preserve the stencil so its remaining fields can be completed. The upload
+    # boundary still excludes any stencil that remains at publication time.
     core_is_stencil = core.is_file() and (_has_placeholders(core) or _is_untouched_scaffold(core))
     if (not core.is_file()) or core_is_stencil:
         # The canonical core is missing or still a stencil, but a real body may
         # exist under another name. AGENTS.md is the entry every runtime reads
         # first and the file the contract requires, so promote the body that IS
-        # there. Measured 2026-08-07: several published packages ship `agent.md`
-        # alone and were refused for the file the engine could have named.
+        # there.
         for candidate in ("agent.md", "README_FOR_HUMANS.md"):
             source = root / candidate
             if not source.is_file():
@@ -1361,13 +1314,8 @@ def fill_runtime_adapter_bodies(root: Path, slug: str) -> list[str]:
 def fill_thin_runtime_adapters(root: Path, slug: str) -> list[str]:
     """Write CLAUDE.md / GEMINI.md as thin adapters over AGENTS.md.
 
-    `RUNTIME_ADAPTER_FILES` named these two files as adapters since this
-    module's first version, but nothing ever called it — measured: zero other
-    references anywhere in this codebase. A package's `agent.md` prose already
-    promises "Follow the runtime adapter for your host if one is present:
-    CLAUDE.md, GEMINI.md", so a package with neither file broke its own
-    promise on every build. Same non-destructive rule as
-    `fill_runtime_adapter_bodies`: a stub (<12 non-empty lines) or an absent
+    Follow the non-destructive rule of `fill_runtime_adapter_bodies`:
+    a stub (<12 non-empty lines) or an absent
     file gets the thin adapter; anything a person actually wrote is left
     exactly as it is.
     """

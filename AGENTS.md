@@ -1,97 +1,37 @@
+<!-- prompt-module: {"id":"os.public.runtime-instructions","revision":2,"stability":"versioned-content","changeTriggers":["release"],"channel":"system"} -->
+
 # Agentlas Core Engine Meta-Agent Team
 
 <!-- AGENTLAS-INSTALL-ENTRY -->
-> **Asked to install this repo, not to work on it?** This file is the
-> contributor constitution and will not help you. Read the install block at the
-> top of [README.md](README.md): it points at
-> `scripts/install-all-runtimes.sh`, which writes only under `~/.agentlas`,
-> `~/.local/bin`, and this host's own plugin/command-adapter directories.
-
-
-## Repository Constitution: Local Main Only
-
-This repository uses one canonical development line: the local `main` branch
-in the canonical Agentlas OS checkout.
-
-- Make every source change and commit directly on local `main`.
-- Do not create feature, release, backup, agent-named, or temporary branches.
-- Do not create Git worktrees. Use an external recovery directory or a verified
-  Git bundle when a safety snapshot is required.
-- Before editing, confirm the canonical checkout is on `main`, inspect status,
-  fetch remote refs, and inspect `main...origin/main`. A GUI "Pull origin"
-  button is not permission to pull or merge blindly.
-- If local `main` is dirty, preserve it with a reviewed checkpoint commit before
-  reconciling remote changes on that same branch.
-- Push only `main` and intentional release tags. Do not publish side branches.
-
-## Public Release Allowlist (Hard Rule)
-
-Before any commit, push, tag, release, or upload to a public GitHub repository,
-construct and review an explicit allowlist. Public source and release artifacts
-may contain only files required for an end user to install and run the product,
-plus public-facing `README`, `LICENSE`, and `CHANGELOG` material.
-
-Never publish internal design or research documents, plans, benchmarks,
-benchmark prompts or results, tests, fixtures, test data, scores, logs,
-screenshots, signing material, certificates, credentials, environment files,
-operator notes, private paths, local memory, or recovery artifacts. Run tests
-and benchmarks only in local/private temporary storage or private CI; publish
-neither their inputs nor their artifacts. Existing unrelated local work must
-remain unstaged.
-
-For a public release, do not use a blanket `git add -A`. Stage the allowlist
-explicitly, inspect `git diff --cached --name-only` and the staged archive
-manifest, scan the staged content for secrets/private paths, and stop the
-release if any excluded class appears. A passing test does not authorize
-publishing the test.
+installation: Read the install block at the top of [README.md](README.md).
+`scripts/install-all-runtimes.sh` installs the runtime and this host's adapters.
 
 This repository is a portable four-agent meta-agent team. Use it to create or
 package Agentlas-compatible single agents and multi-agent teams for Codex,
 Claude Code, Antigravity, Cursor, OpenCode, OpenClaw, Hermes
-Agent, Ollama-served local models (Gemma, DeepSeek — see
-`docs/local-models.md`), and `AGENTS.md`-compatible runtimes.
+Agent, Ollama-served local models (Gemma, DeepSeek), and
+`AGENTS.md`-compatible runtimes.
 
 ## Source Of Truth
 
-Maintainer documentation and source-verification scripts in this reference
-index belong to the development checkout. Installed engines use the shipped
-contracts, schemas, skills, and runtime entrypoints; missing maintainer notes
-do not require downloading private source material.
+Use the shipped runtime contracts, schemas, skills, and entrypoints below.
+Runtime packages do not require internal maintainer documentation.
 
 - Canonical entry point: `AGENTS.md`.
-- Architecture ownership rule: `docs/source-of-truth.md`.
-- Runtime split and sync boundary: `docs/runtime-sync-boundaries.md`.
-- Third-party plugin contribution boundary: `CONTRIBUTING.md` and
-  `PLUGIN_CONTRIBUTIONS.md`.
-- Global command contract: `docs/global-command-contract.md`.
-- Production Ontology Runtime: `docs/ontology-runtime.md`, `ontology/`,
-  `bin/ontology`, and `scripts/verify-ontology-runtime.sh`.
-- Agentlas Cloud runtime contract: `docs/agentlas-cloud-runtime.md`,
-  `agentlas_cloud/`, `schemas/agentlas-manifest.schema.json`, and
-  `templates/agentlas.json.tpl`.
-- Hephaestus Network 2.0 contract: `docs/hephaestus-network-2.0.md`,
-  `docs/runtime-fallback-adapters.md`, `agentlas_cloud/networking/`,
-  `schemas/routing-card.schema.json`, `.agentlas/routing-card.json`, and
-  `scripts/verify-routing-cards.sh`.
-- Stormbreaker robust execution contract: `docs/robustness-protocol.md`,
-  `docs/robustness-eval.md`, and `schemas/robustness-eval-result.schema.json`.
-- Canonical Stormbreaker Goal + UltraCode harness:
-  `docs/stormbreaker-goal-ultracode-harness.md`,
-  `agentlas_cloud/networking/stormbreaker_harness.py`, and
-  `schemas/stormbreaker-goal-ultracode-harness.schema.json`.
+- Production Ontology Runtime: `ontology/` and `bin/ontology`.
+- Agentlas Cloud runtime: `agentlas_cloud/`,
+  `schemas/agentlas-manifest.schema.json`, and `templates/agentlas.json.tpl`.
+- Workforce execution: `agentlas_cloud/networking/`,
+  `schemas/routing-card.schema.json`, and `.agentlas/routing-card.json`.
+- Stormbreaker execution: `agentlas_cloud/networking/stormbreaker_harness.py`
+  and `schemas/stormbreaker-goal-ultracode-harness.schema.json`.
 - Builder quality gate: `contracts/builder-interview-research-gate.md`,
-  `docs/builder-quality-research-basis.md`,
   `templates/builder-interview.md.tpl`, `templates/research-sources.md.tpl`,
   `templates/tool-selection.md.tpl`, `templates/domain-expert-synthesis.md.tpl`,
   `templates/prompt-performance-contract.md.tpl`, and
   `templates/capability-eval-plan.json.tpl`.
-- Portable support contracts: `docs/mode-classifier.md`,
-  `docs/clarify-question-loop.md`, `docs/agentlas-auto-activation.md`,
-  `docs/local-credential-store.md`, and `docs/skill-lifecycle-promotion.md`.
-- Agent experience and MCP contracts: `docs/agent-experience-assets.md`,
-  `docs/mcp-build-resolution.md`, the matching `schemas/*.schema.json`
-  files, `.agentlas/mcp-policy.json`, and
-  `scripts/verify-experience-assets-contract.sh`.
+- Agent experience and MCP contracts: the shipped `schemas/*.schema.json`
+  and `.agentlas/mcp-policy.json`.
 - Team members: `agents/10-single-agent-builder/agent.md`,
   `agents/20-multi-agent-team-builder/agent.md`, and
   `agents/30-agentlas-packager/agent.md`, plus
@@ -154,22 +94,6 @@ Korean and other languages are allowed only for user-facing public copy,
 localized marketplace fields, trigger examples, and sample user inputs. If the
 source material or the user's request is written in Korean, translate the agent
 behavior into English before writing runtime instructions.
-
-## Source Code & Commit Language
-
-This is a public, open-source repository. Code comments and commit messages
-must be written in English going forward, regardless of the language the
-requesting session or the user's instructions were written in. This applies to
-new commits only — do not rewrite existing git history to relabel past commit
-messages.
-
-Exempt from this rule (leave as-is, do not force-translate): localized
-marketplace/product copy, Korean sample inputs used as routing or i18n test
-fixtures (e.g. `"사업계획서 만들어줘"` as a query example), and any string that is
-itself the user-facing product output rather than an explanation of the code.
-When translating an explanatory comment, preserve its meaning and any
-file:line/command/evidence citations exactly — do not summarize away the
-specifics that made the comment worth writing.
 
 ## Operating Loop
 
@@ -263,12 +187,9 @@ authority model:
 16. Also run `scripts/verify-generated-package.sh <generated-package-root>`.
     This is the gate that checks the package against `package-contract.json` —
     every required artifact present, parseable, schema-valid, and with no
-    `{{PLACEHOLDER}}` left unfilled. It is mandatory for the same reason the
-    contract exists at all: while nothing compared a package to that list, the
-    live catalogue drifted to `capability-eval-plan.json` on 4% of published
-    releases and `mcp-policy.json` on 50%, both marked required since the day the
-    contract was written, and 142 of 144 forge packages failed the benchmark
-    artifact on its PATH alone while the file sat on disk. Do not report
+    `{{PLACEHOLDER}}` left unfilled. Check required artifacts, including
+    `capability-eval-plan.json` and `mcp-policy.json`, at the canonical paths
+    declared by the contract. Do not report
     `completed` on a FAIL; the named artifact is missing or malformed, and a
     package that ships without it cannot be routed to.
 17. Before publishing a generated package, run the public safety gate from
@@ -288,9 +209,9 @@ app should accept plain language and dispatch through native Agentlas/
 Hephaestus tools without requiring a `/hep-*` command. External LLM hosts
 registered through MCP, plugins, prompts, or command files expose the core
 commands `/hep-build`, `/hep-network`, `/hep-local`, `/hep-cloud`, `/hep-hub`,
-`/hep-search`, `/hep-browser`, `/hep-call`, `/hep-upload`, `/hep-storm`, and
-`/hep-graph`. Current Codex exposes build, Network, Cloud, upload, Stormbreaker,
-and Graph as `$hephaestus-*` plugin skills; the remaining typed MCP surfaces are
+`/hep-search`, `/hep-browser`, `/hep-call`, `/hep-upload`, and `/hep-storm`.
+Current Codex exposes build, Network, Cloud, upload, and Stormbreaker as
+`$hephaestus-*` plugin skills; the remaining typed MCP surfaces are
 requested in plain language. Custom `/prompts:hep-*` commands are legacy only.
 Antigravity is an independent runtime target. Gemini CLI is no longer a
 supported host (its individual tier ended 2026-06-18; Antigravity is the

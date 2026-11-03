@@ -70,7 +70,7 @@ ROUTER_TARGETS: dict[str, _TargetSpec] = {
             "Request the exact named Cloud or Hub agents in plain language through typed MCP"
         ),
         host_surface_note="""
-- host: Codex 0.117+ uses installed `$hephaestus-build|network|cloud|upload|storm|graph` skills; Browser, Local, Hub, Search, Call = plain language via typed MCP; `/prompts:hep-*` is legacy (<0.117), do not offer it""",
+- host: Codex 0.117+ uses installed `$hephaestus-build|network|cloud|upload|storm` skills; Browser, Local, Hub, Search, Call = plain language via typed MCP; `/prompts:hep-*` is legacy (<0.117), do not offer it""",
     ),
     "claude": _TargetSpec(
         file=".claude/CLAUDE.md",
@@ -228,7 +228,7 @@ privacy: Hub receives redacted requirements, never raw prompts/local files/memor
 refusal: Hub is free with host model/API; insufficient_credits means stale server, no top-up advice. owner_only/no_cloud_package/agent_not_found remain exact. Report the boundary before any different surface. Named remote agent missing means it did not run; never claim a local fallback ran it.
 report: actual workers only, Korean 사용 에이전트 / English Agents used plus short reason; real local skill fallback uses 사용 스킬 / Skills used, never registered-worker claims.
 """},
-        {"id": "purpose.router.workflow.host", "revision": 1, "stability": "configuration", "changeTriggers": ["runtime", "profile"], "text": host_note},
+        {"id": "purpose.router.workflow.host", "revision": 2, "stability": "configuration", "changeTriggers": ["runtime", "profile"], "text": host_note},
     ]) + "\n"
 
 

@@ -502,11 +502,8 @@ def scaffold(
                     json.dumps(brief_doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
                 )
                 created.append(".agentlas/work-brief.json")
-    # ★어느 엔진으로 지었는지를 패키지에 남긴다. 이게 없으면 그 패키지는 나중에
-    #   자기가 낡았다고 말할 수 없다 — 실측 2026-08-19: 로컬 에이전트 7개 중 6개가
-    #   지금 계약에 떨어지는데, 어느 것도 언제 지어졌는지 몰라 리패징 대상인지
-    #   판단할 근거가 없었다. 엔진 버전을 모르면 찍지 않는다("unknown" 을 찍으면
-    #   그 값이 나중에 거짓 드리프트를 만든다).
+    # 패키지에 빌드 엔진 버전을 기록해 이후 드리프트를 판정한다. 버전을 모르면
+    # 기록하지 않는다. unknown 을 실제 버전으로 저장해 거짓 드리프트를 만들지 않는다.
     try:
         from .engine_stamp import STAMP_REL, write_stamp  # noqa: PLC0415
 
@@ -800,8 +797,7 @@ def project_memory_upgrade_hook(workspace: Path) -> str | None:
     lifecycle this package expects. Owner decision 2026-08-08 (#9): policy and
     judge logic belong only to the OS-resident system agents (the always-on
     curator, the host PreToolUse hook); a team/single package that authored its
-    own enforcement here would duplicate that layer — the exact mistake #9 was
-    written to stop (0/32 teams honoured the old verbatim-copy contract)."""
+    own enforcement here would duplicate that layer."""
     memory_map = _read_json(workspace / ".agentlas" / "memory-map.json")
     if memory_map is None or _unfilled(memory_map):
         return None
@@ -1714,9 +1710,7 @@ def verify(folder: str | Path, mode: str = "single", root: str | Path | None = N
         "public_marketplace_ready": bool(
             not blockers and not schema_unavailable and build_profile == "standard" and not unverified_context
         ),
-        # ★이 패키지가 어느 엔진으로 지어졌는지, 지금 엔진과 어긋나는지. 판정만 싣고
-        #   자동으로 고치지 않는다 — 무엇을 고칠지는 위 blockers 가 이미 말한다.
-        #   실측 2026-08-19: 로컬 에이전트 7개 중 6개가 계약에 떨어졌는데, 어느 것도
-        #   자기가 낡았다고 말할 수 없었다(패키지에 엔진 버전이 없었다).
+        # 빌드 엔진과 현재 엔진의 드리프트를 보고하되 자동으로 수리하지 않는다.
+        # 수리할 계약 위반은 blockers 에 별도로 기록한다.
         "engine_drift": _engine_drift(workspace),
     }

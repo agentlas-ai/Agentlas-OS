@@ -39,14 +39,8 @@ TEXT_FILE_ALLOW = {".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".toml", "
 # Paths that exist only to hold credentials, so the NAME is the verdict: shipping
 # one is wrong even when it is empty.
 #
-# The list deliberately stops there. It used to also carry `**/*token*` and
-# `**/*secret*`, which match on a filename substring — and "token" and "secret"
-# are ordinary vocabulary. Measured 2026-07-29 on the live `web-master` bundle,
-# that rule BLOCKed the package's own design system: `token-architecture.md`,
-# `layout-composition-tokens.md`, `reference-token-db.json`, and
-# `token-package.example.json` were all reported as `credential-path`, giving a
-# flagship paid package `securityVerdict: BLOCK` and hiding its entire token
-# contract from the runtime.
+# Do not classify credentials by broad token/secret filename substrings.
+# Those words are also used in ordinary authored documentation.
 #
 # Removing them costs no coverage, and that is provable here rather than a
 # judgement call: `collect_package_files` skips every suffix outside
@@ -507,15 +501,8 @@ def infer_skills(files: list[PackageFile]) -> list[str]:
 
 
 def build_manifest(files: list[PackageFile], name: str) -> AgentlasManifest:
-    # Hash the base-release material only. This value is written into
-    # `agentlas.json`, and `agentlas.json` was in the set being hashed - so
-    # writing the hash changed the file that produced it, and the next run got a
-    # different answer. Measured 2026-08-07: the only field differing between a
-    # first and second `package_agent` on the same folder was `packageHash`
-    # itself, which breaks the hash-preservation requirement for republishing.
-    # `package_hash_includes` already excludes `agentlas.json` along with the
-    # generated evidence files, so using it here is the canonical rule rather
-    # than a second one.
+    # Hash base-release material with package_hash_includes, excluding agentlas.json
+    # and generated evidence. Writing the resulting hash must not change its input.
     return AgentlasManifest(
         schemaVersion="1.0",
         name=name,
@@ -750,13 +737,9 @@ def run_setup_wizard(root: str | Path, name: str | None = None, write: bool = Tr
     # existing value - whatever generation minted it - is preserved verbatim:
     # rewriting it is the republish-mints-new-definition incident all over again.
     #
-    # A team carries the fact that it IS a team inside its id (owner decision):
-    # `agt_team_...`. That makes "is this a team?" a prefix check rather than a
-    # guess assembled from entity_kind, a role column and a parent pointer -- the
-    # same guess that, measured on this machine, would have swept away 87% of the
-    # user's experience chips because one column meant two different things.
-    # Experience chips and self-evolution accrue to everything WITHOUT that
-    # marker; a team itself holds only the organisation's shared memory.
+    # The agt_team_ prefix identifies a team. Experience chips and self-evolution
+    # belong to identities without that marker; the team holds shared organisation
+    # memory.
     existing_agent_id = (existing_manifest or {}).get("agentId")
     if isinstance(existing_agent_id, str) and existing_agent_id.strip():
         manifest_payload["agentId"] = existing_agent_id.strip()
@@ -932,13 +915,8 @@ def _read_existing_manifest(base: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-# Must equal the Hub emitter's ENTRY_CONTENT_LIMIT. It did not: the Hub allowed 16,000
-# and this side allowed 8,000, so the same published package ran with a different body
-# depending on which surface loaded it. Measured 2026-08-07 over the 170 published
-# packages carrying an entry file (character counts, which is what the limit measures):
-# the Hub truncated 0 of them, this side truncated 117. The tail of an AGENTS.md is
-# usually where the author's safety rules and done-criteria sit, so the local surface
-# was running two thirds of the corpus without them.
+# Keep this entry content limit equal to the Hub emitter ENTRY_CONTENT_LIMIT
+# so each runtime surface loads the same bounded body.
 #
 # The Hub's derivation still holds but its headroom is thinning. When 16,000 was chosen
 # the corpus was 159 files with a 13.3k maximum; today it is 170 files, median 9,095,
@@ -990,13 +968,8 @@ that agent's own experience drawer instead of the host's."""
 def _entry_payload(entry: Any) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """The entry body a borrower always loads, capped - but never silently.
 
-    The cap stays: a borrowing host's token budget is not ours to spend. What
-    changes is that the borrower is told. Measured 2026-08-07 across the 170
-    published packages that carry an entry file, 126 of them (74%) exceeded the
-    cap, so three quarters of the corpus was shipping a body that ended
-    mid-sentence with nothing in the bundle saying so. A model cannot compensate
-    for missing instructions it does not know are missing, and the bundle
-    already advertises `agentlas.read_agent_file` for exactly this.
+    Bound entry content to the borrowing host budget and report truncation.
+    The borrower can fetch the remaining content using agentlas.read_agent_file.
 
     Truncation now happens on a line boundary and appends a notice naming the
     tool and path, so the rest is recoverable rather than lost.
@@ -1268,63 +1241,6 @@ def read_agent_file(root: str | Path, requested_path: str) -> dict[str, Any]:
     return result
 
 
-class AgentlasMockStore:
-    def __init__(self) -> None:
-        self.records: dict[str, dict[str, Any]] = {}
-        self.invocation_ledger: list[dict[str, Any]] = []
-
-    def upload_private(self, record: dict[str, Any]) -> dict[str, Any]:
-        next_record = {**record, "visibility": "private", "sourceDownloadPolicy": "owner-only"}
-        self.records[next_record["agentId"]] = next_record
-        return next_record
-
-    def download(self, user_id: str, agent_id: str) -> dict[str, Any]:
-        record = self.records.get(agent_id)
-        if not record:
-            return {"status": "missing"}
-        if record["ownerId"] != user_id and record.get("sourceDownloadPolicy") != "allowed":
-            return {"status": "denied"}
-        return {"status": "allowed", "record": record}
-
-    def publish_clean_copy(self, owner_id: str, agent_id: str, public_agent_id: str) -> dict[str, Any]:
-        source = self.records[agent_id]
-        if source["ownerId"] != owner_id:
-            raise PermissionError("Only owners can publish clean copies.")
-        clean_files = [
-            {"path": file["path"], "content": re.sub(r"/Users/[^/\s]+/[^\s\"']+", "[REDACTED_LOCAL_PATH]", file["content"])}
-            for file in source["files"]
-            if not re.search(r"memory|credential|secret|token|\.env|local path", file["path"], re.I)
-        ]
-        clean = {
-            **source,
-            "agentId": public_agent_id,
-            "visibility": "public",
-            "memory": {"scope": "public", "summary": "Public clean copy starts empty.", "deltas": []},
-            "sourceDownloadPolicy": "owner-only",
-            "files": clean_files,
-        }
-        self.records[public_agent_id] = clean
-        return clean
-
-    def call_agent(self, caller_id: str, agent_id: str) -> dict[str, Any]:
-        record = self.records.get(agent_id)
-        if not record:
-            return {"status": "DENIED", "output": "Agent not found."}
-        is_owner = caller_id == record["ownerId"]
-        can_call = is_owner or record["visibility"] == "public"
-        status = "PASS" if can_call else "DENIED"
-        self.invocation_ledger.append(
-            {
-                "agentId": agent_id,
-                "callerId": caller_id,
-                "creatorId": record["creatorId"],
-                "version": record["version"],
-                "calledAt": now_iso(),
-                "status": status,
-                "mode": "owner-private" if is_owner else "public-call-only",
-            }
-        )
-        return {"status": status, "output": f"Called {record['manifest']['name']} via MCP context bundle." if can_call else "Call denied."}
 
 
 def summarize_memory(file: PackageFile) -> str:

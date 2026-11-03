@@ -497,9 +497,8 @@ def _prepare_results(
     # confirmed brief when there is one), not against the redacted fragments the
     # Hub was queried with. Tokenizing "다 고쳐라" down to "고쳐라" is fine for a
     # privacy-bound wire query, but scoring the answers with those same crumbs
-    # throws away the intent — memory recall reaches hit@10 0.964 precisely
-    # because it matches the full text. Meaning stays a gated tiebreaker below
-    # lexical, mirroring rankHybridLocal instead of overriding it.
+    # throws away intent. Meaning stays a gated tiebreaker below lexical
+    # matching, mirroring rankHybridLocal instead of overriding it.
     rank_tokens = query_tokens | (token_set(query_text) if query_text else set())
     semantic_scores = [_semantic_score(item, query_vector) for item in results]
     best_semantic = max(semantic_scores, default=0.0)

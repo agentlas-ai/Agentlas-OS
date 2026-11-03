@@ -17,14 +17,8 @@ from .domains import DOMAIN_IDS
 
 
 
-# One owner for how much a card must say. The repair pass fills to exactly these
-# numbers; before this constant existed the repairer topped up at "fewer than 5
-# triggers" and "fewer than 3 anti-triggers" while this check demanded 6 and 4,
-# so a card holding exactly 5 and 3 fell in the gap: the repair thought it was
-# done and the gate refused to publish. Measured on a live package
-# (webhook-idempotency-doctor): has 5 ko=2 en=3, has 3 ko=1 en=2 — blocked by two
-# sentences nobody was going to write. Blocking a user action that the repair
-# pass was supposed to handle is the failure mode, not the safeguard.
+# Use the same minimum declaration counts in lint and repair so a repaired
+# card satisfies the corresponding validation contract.
 TRIGGER_MINIMUM_TOTAL = 6
 TRIGGER_MINIMUM_PER_LOCALE = 3
 ANTI_TRIGGER_MINIMUM_TOTAL = 4
@@ -58,10 +52,8 @@ SKILL_MANIFEST_ROOTS = (
     ".agents/skills",
 )
 
-# Scaffolds ship `{{SKILL_ID_1}}` etc. Slugifying an unfilled placeholder
-# minted real-looking ids (`skill:skill-id-1`) that match nothing — measured
-# live 2026-08-26 on 2 of 1026 published workforce profiles, and on 4 of 4
-# concept fields of every freshly scaffolded package.
+# Do not slugify unfilled scaffold placeholders into capability identifiers.
+# An engine stencil is not an authored concept.
 _PLACEHOLDER_RE = re.compile(r"\{\{.*?\}\}")
 
 
@@ -111,10 +103,8 @@ def ensure_workforce_block(
     def semantic(values: Any, prefix: str, cap: int) -> list[str]:
         out: list[str] = []
         for value in values if isinstance(values, list) else []:
-            # Leveled entries ({"concept": "skill:x", "level": "declared"}) are
-            # the CURRENT card schema. str(dict) slugified the whole repr into
-            # ids like "skill:concept-skill-evidence-synthesis-level-declared"
-            # — measured live in workforce search results 2026-08-12.
+            # Read the concept field of leveled entries directly instead of slugifying
+            # the dictionary representation.
             if isinstance(value, dict):
                 value = value.get("concept") or value.get("id") or value.get("name") or ""
             raw = str(value).strip().lower()
@@ -305,13 +295,9 @@ def lint_card(card: dict[str, Any]) -> dict[str, Any]:
     if bench_cases < 10:
         ready_blockers.append(f"needs >=10 benchmark cases (has {bench_cases})")
 
-    # résumé (workforce) block — the hub standard résumé the Workforce search
-    # matches on. Measured over the live catalog (2026-07-27) sellers declared
-    # roles/modalities on 0 of 250 cards, so every WorkOrder using those fields
-    # excluded the whole catalog. Built packages must ship the block filled;
-    # roles may honestly be [] when no canonical role fits, but the block and
-    # its semantic fields must exist and use stable namespaced IDs. The
-    # ontology snapshot supplies aliases/relations, not a profession allowlist.
+    # The workforce block supplies semantic routing fields with stable namespaced
+    # IDs. Roles can be empty when no canonical role fits. The ontology supplies
+    # aliases and relations, not a profession allowlist.
     workforce = card.get("workforce")
     if not isinstance(workforce, dict):
         # An automated build pipeline (Stormbreaker workers, conversion

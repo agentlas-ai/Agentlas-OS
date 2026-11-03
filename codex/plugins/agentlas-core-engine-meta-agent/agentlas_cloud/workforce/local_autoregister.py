@@ -1,9 +1,7 @@
 """Register what the builder wrote, without asking the author to remember to.
 
-A package built into the global agent folder only reached the roster when
-someone ran ``cards migrate`` for it. Measured 2026-10-15 on this machine: 11 of
-the 17 packages in the agent folder were absent from the local roster, so
-``/hep-local`` could not staff them, and nothing said so.
+Register eligible packages from the configured builder output folder so they
+can appear in the local roster without a separate migration command.
 
 The agent folder is the builder's own output folder, not a scan of the user's
 disk, so registering from it keeps the rule the registry protects ("never widen

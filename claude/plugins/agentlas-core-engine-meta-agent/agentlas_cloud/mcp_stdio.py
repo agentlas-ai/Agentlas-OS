@@ -13,9 +13,11 @@ third-party dependencies.
 from __future__ import annotations
 
 import json
+from .public_prompt_composition import tool_schema_description
 import os
 import sqlite3
 import sys
+import threading
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
@@ -57,7 +59,7 @@ from .networking.lease_tools import LEASE_TOOLS, PURCHASE as LEASE_PURCHASE, QUO
 from .networking.takedown_tools import TAKEDOWN, TAKEDOWN_TOOLS, call_agent_takedown_tool
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.72"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.73"}
 
 # Roots this process has already seeded, so only the first tool call in a
 # session pays the bootstrap cost.
@@ -65,10 +67,8 @@ _FIRST_CONTACT_ROOTS: set[str] = set()
 
 # Only these legacy project-grounded tools read the caller's working tree or
 # Work Brief at the common MCP boundary.  Typed Workforce tools keep their
-# exact WorkOrder/candidate state in private Core stores; making every one of
-# them bootstrap and parse a project Context Map turned a sub-second local
-# preflight into a measured 23-second call.  Context tools own their explicit
-# projectDir lifecycle below and must not be bootstrapped a second time here.
+# exact WorkOrder/candidate state in private Core stores. Context tools own
+# their explicit projectDir lifecycle and must not bootstrap a second time here.
 _COMMON_PROJECT_BOOTSTRAP_TOOLS = frozenset(
     {
         "hephaestus_route",
@@ -82,12 +82,7 @@ _COMMON_PROJECT_BOOTSTRAP_TOOLS = frozenset(
 
 # Preparation serves the project's existing Context Map read-only; it never
 # builds one. Building belongs to context.slice / `agentlas context refresh`.
-# Measured 2026-09-24: prepare_execution rebuilt the map inline (refresh=True)
-# and, given a multi-repository umbrella folder that is not a Git work tree,
-# walked and realpath-checked every file for over 30 minutes at 100% CPU. The
-# host dropped the call at its 1800s tool limit and every later MCP call queued
-# behind it. The same preparation against a small project took 0.2s. A stale
-# or missing map is reported (localContextSliceCode), never produced here.
+# A stale or missing map is reported with localContextSliceCode, never built here.
 # The freshness bound is the read-only recall contract memory_hook already
 # uses (context_map.RECALL_FRESHNESS_BUDGET_SECONDS), passed at the call site.
 PREPARE_CONTEXT_SLICE_READ: dict[str, Any] = {
@@ -183,8 +178,7 @@ def _contract_echo_property(kind: str, description: str) -> dict[str, Any]:
     allowed to author: the value must be echoed byte-for-byte or the pinned
     candidate set stops matching. The schema is still enforced — the handler
     revalidates against the canonical contract — so publishing it a second and
-    third time only spends the host's context. Measured on the live surface:
-    the workOrder schema alone is 8,144 bytes and appeared three times.
+    third time only spends the host's context.
 
     Only the value the host actually authors (the first call's workOrder, and
     the selection it writes) keeps its full schema via _contract_property.
@@ -209,8 +203,7 @@ def _selection_property_with_ordinal(description: str) -> dict[str, Any]:
     Hub/Terminal contract). This relaxation is valid only for MCP tool input;
     the handler resolves the ordinal against the stored menu into the exact
     agentReleaseId, then passes the canonical shape on to deep validation.
-    Hand-copying a 48-hex ID is a measured error surface (2026-07-28: 1 of 12
-    qwen attempts truncated the ID).
+    Ordinals avoid requiring the caller to transcribe opaque release IDs.
     """
     schema = _contract_property("selection", description)
     try:
@@ -388,14 +381,8 @@ def _work_order_draft_schema() -> dict[str, Any]:
 
 _MENU_AUDIT_FIELDS = ("qualificationEvidence", "packageHash", "contentDigest")
 
-# Heavyweight fields inside semanticSnapshot. This is where a card stuffs a
-# whole sentence slugified into an artifact ID, so a single candidate can
-# carry dozens of them — and since candidates never overlap, comparing them is
-# not even possible in the first place (measured live, 1 slot with 10
-# candidates: 0% of 365 unique `produces` values shared by 2+ candidates, 0 of
-# 149 for `consumes`). The same content is already in the summaries as one
-# sentence, and actual matching is done by Core against the session store's
-# original data. So the menu keeps only the count.
+# The summary menu keeps artifact counts; matching uses the original data
+# retained in the Core session store, and expansion returns full artifacts.
 _MENU_SNAPSHOT_HEAVY_FIELDS = ("produces", "consumes")
 
 # fit:text:term:<단어> 노이즈 컷용 영어 불용어 — bio-research 전수(2026-08-19)에서
@@ -410,15 +397,8 @@ _FIT_TERM_STOPWORDS = frozenset({
 def _shortlist_projection(result: dict[str, Any]) -> dict[str, Any]:
     """menu.v3 — 훑기용 요약 카드. 결정은 여전히 풀카드로 내린다.
 
-    ★실측 2026-08-19 (로컬 1슬롯 20후보, menu.v2 39,095B):
-    카드 무게의 68%가 semanticSnapshot 이고 그 안이 skills 10.1KB + summaries
-    8.8KB 다. 신원 해시류는 10% 밖에 안 되므로 "의례 필드 빼기"로는 안 줄어든다.
-    같은 20장을 요약만 실으면 **8,508B (-78%)**.
-
-    이 투영은 **되돌릴 수 없는 절단이 아니다.** 세션 저장소가 원본을 그대로 갖고
-    있고, 호스트는 좁힌 뒤 `workforce.expand_candidates` 로 그 후보들의 풀카드를
-    받는다. 그래서 "메뉴에 정답이 있으면 LLM 이 100% 골랐다"(2026-07-26 ARB 실측)의
-    전제인 '풀카드를 보고 고른다'가 유지된다 — 다만 60장이 아니라 좁힌 N장에 대해서만.
+    세션 저장소는 원본을 보존한다. 호스트는 후보를 좁힌 뒤
+    `workforce.expand_candidates`로 풀카드를 받아 최종 판단한다.
 
     무엇을 남기는가는 "이 후보를 더 볼지 말지"를 가르는 최소 재료로 정했다:
     서수(참조), 이름, 종류, 소속, 소개 1벌, 지금 부를 수 있는지, 결격.
@@ -494,9 +474,7 @@ def _expand_candidates(
         }
     # ★expand 는 "좁힌 뒤 정확히 보는" 단계다 — 여기서까지 produces/consumes 를
     # 카운트로 치환하면 호스트는 어떤 표면에서도 엣지 호환을 판단할 재료가 없다.
-    # 무게 근거(후보 간 공유 0%)는 60장짜리 메뉴에서 나온 것이고, 좁힌 N장에는
-    # 해당하지 않는다. 실측 2026-08-21: 6장 3,748 tok → 카운트 유지 여부의 차이는
-    # 수백 tok 이고, 그 대가가 결정 불능이었다.
+
     projected = _menu_projection({"candidateSet": dict(candidate_set)}, keep_artifacts=True)
     expanded_slots = []
     missing: list[str] = []
@@ -529,9 +507,7 @@ def _expand_candidates(
 # Fields a per-turn continuity read does not need. The host decides
 # reuse/recruit from labels, slots, sources and state; the exact release
 # identity is resolved by Core from its own store at preparation time and is
-# never retyped by the model. ★실측 2026-08-21: goal_context 12,751B(약 5,647 tok)
-# 중 34%가 64자 digest 였고 토큰으로는 45%(2,530)였다. 이 응답은 SKILL.md 가
-# "매 턴 시작에 읽어라"로 규정한 것이라 그 무게가 모든 턴에 곱해진다.
+# never retyped by the model.
 _GOAL_ROSTER_AUDIT_FIELDS = (
     "agentDefinitionId",
     "agentReleaseId",
@@ -753,11 +729,7 @@ def _with_unmet_requirement_notice(wrapper: Any) -> Any:
     }
 
 
-# ★프로젝트 근거 압축기는 하나여야 한다 — 이 함수는 오랫동안 _call_tool 안의
-# 중첩 함수였고, 그래서 context.* 도구 경로에서만 돌았다. prepare_execution 도
-# 같은 slice 를 응답에 싣는데 그 경로는 압축기를 지나지 않아 실측 2026-08-21
-# 44,313 tok(응답의 77%)을 그대로 냈다 — 여기 걸린 16 KiB 예산의 몇 배다.
-# 실제 에이전트 지시문은 3,010 tok 이었다. 수리는 갈래마다가 아니라 sink 에서.
+# Context and preparation responses share one compactor at the output boundary.
 def compact_context_result(tool_name: str, result: Mapping[str, Any]) -> dict[str, Any]:
     """Bound relationship receipts at the host-visible MCP boundary.
 
@@ -941,10 +913,8 @@ def compact_context_result(tool_name: str, result: Mapping[str, Any]) -> dict[st
 def _compact_boundary(boundary: Mapping[str, Any]) -> dict[str, Any]:
     """Strip the already-declared contract catalog from a boundary refusal.
 
-    ★실측 2026-08-21: selection 거절 3,416B 중 2,765B(81%)가 `contract` 카탈로그
-    였다. 그 값은 도구 계약에 이미 한 번 선언돼 있어 거절마다 다시 실을 수리
-    정보가 0이고, 거절→재시도 루프에서 그대로 곱해진다. workOrder 거절에만
-    적용돼 있던 규율을 selection 에도 같게 적용한다.
+    Selection and WorkOrder refusals preserve repair details without repeating
+    the contract catalog already exposed by the tool schema.
     """
 
     compact = {
@@ -973,8 +943,7 @@ def _menu_projection(result: dict[str, Any], *, keep_artifacts: bool = False) ->
     field passes through automatically. Core's session store holds the full
     original text, and validation/preparation pin-matching is performed
     against that original data, so no control is lost.
-    Measured (1 slot, 10 candidates): 41,216B -> about 22KB, zero loss of
-    decision-relevant information.
+
 
     This projection is MCP-surface only. The Terminal runner asserts the
     semanticSnapshot key set at exactly 9 keys
@@ -1032,12 +1001,8 @@ def _menu_projection(result: dict[str, Any], *, keep_artifacts: bool = False) ->
                         if isinstance(value, list) and not keep_artifacts:
                             snapshot.pop(field)
                             snapshot[f"{field}Count"] = len(value)
-                    # ★skills 압축 — 실측(2026-08-19, 로컬 20후보 1슬롯): skills 가
-                    # 17,694B로 후보 무게의 최대 단일 항목이었는데, 전 항목이
-                    # {"concept": …, "level": "declared"} 반복이었다. "declared" 는
-                    # 정보가 0이므로 concept 문자열만 남기고, declared 가 아닌 수준만
-                    # skillLevels 로 따로 싣는다. 실매칭은 Core 가 세션 저장 원본으로
-                    # 하므로(위 produces/consumes 와 같은 근거) 결정력 손실이 없다.
+                    # Declared skills carry their concept strings. Elevated levels
+                    # travel separately; matching uses the complete stored profile.
                     skills = snapshot.get("skills")
                     if isinstance(skills, list):
                         concepts: list[str] = []
@@ -1053,10 +1018,8 @@ def _menu_projection(result: dict[str, Any], *, keep_artifacts: bool = False) ->
                         snapshot["skills"] = concepts
                         if elevated:
                             snapshot["skillLevels"] = elevated
-                    # ★summaries 캡 — 같은 실측에서 10,398B. 내용이 같은 문장의 언어·
-                    # 표현 변형 3~4벌이었다. 결정에는 두 벌이면 충분하다(첫 항목 +
-                    # 다른 언어 첫 항목). 잘랐다는 사실은 개수로 남긴다 — 조용한
-                    # 절단 금지(원문은 세션 저장소에 그대로 있다).
+                    # Keep the first summary and one in another language when
+                    # available; report the total and retain originals in the store.
                     summaries = snapshot.get("summaries")
                     if isinstance(summaries, list) and len(summaries) > 2:
                         def _is_hangul(text: Any) -> bool:
@@ -1073,10 +1036,7 @@ def _menu_projection(result: dict[str, Any], *, keep_artifacts: bool = False) ->
                 # 원본에서 계산되므로 메뉴에서 걷어도 reasonCodes 검증은 불변):
                 #  · fit-retrieval:* — "Core 가 어떤 검색기로 찾았나"이지 "왜 맞나"가
                 #    아니다. 전 후보 동일 부착 = 정보 0.
-                #  · fit:text:term:<불용어> — bio-research 60행 전수(2026-08-19):
-                #    240개 중 174개(72%)가 and/is/the 류였고, 심지어 **부호가
-                #    뒤집혔다** — 무관한 CLI 가 불용어 9개로 정답(도메인어 7개,
-                #    불용어 3개)보다 증거가 많아 보였다. 남는 도메인어만이 신호다.
+                #  · fit:text:term:<불용어> — 일반 불용어를 제거하고 도메인어를 남긴다.
                 fit = candidate.get("fitEvidence")
                 if isinstance(fit, list):
                     kept = []
@@ -1103,11 +1063,8 @@ def _menu_projection(result: dict[str, Any], *, keep_artifacts: bool = False) ->
 def _preparation_projection(result: dict[str, Any]) -> dict[str, Any]:
     """Projects a prepared execution response for the MCP surface.
 
-    ★로스터 중복 제거 — 실측 2026-08-19: 같은 에이전트가 두 슬롯에 배정된
-    prepare 응답 219KB에서 executionGraph(18.3KB)+directiveBundle(10KB)이
-    **바이트 동일하게 두 번** 실렸다(중복 28.3KB). 내용은 contentDigest 가 이미
-    지목하므로, 무거운 두 필드를 digest 당 한 번만 ``bundleContents`` 로 싣고
-    행에는 식별자·digest 만 남긴다.
+    Shared directive bundles and execution graphs are emitted once per
+    contentDigest in bundleContents; roster rows carry identifiers and digests.
 
     menu.v2 와 같은 규율이다: 이 투영은 MCP 표면 전용이고, goal binding 은
     투영 **이전의** 원본을 저장하며, bundleDigest 는 저장 원본에 대해 계산된
@@ -1170,13 +1127,8 @@ def _resolve_ordinal_assignments(
     ordinal and a release ID were given and they disagree, this refuses rather
     than silently picking one.
 
-    ★The detail object exists because a bare code is not repairable. Ordinals
-    restart at 1 **inside each slot**, so a host that read the menu as one flat
-    list picks numbers far past the end of a slot — measured 2026-08-19, a
-    3-slot Selection sent 13/14/17. Answering only "ordinal_out_of_range" tells
-    that host nothing it did not already know, and it guesses again. This is the
-    same disease the shape_issues block below was written for: name the thing
-    that is actually wrong, and say what would be right.
+    Ordinals restart at 1 inside each slot. Boundary details identify the
+    invalid selection and valid bounds so callers can repair it.
     """
     slots_by_id: dict[str, list[Mapping[str, Any]]] = {}
     for slot in candidate_set.get("slots", []) or []:
@@ -1766,13 +1718,7 @@ TOOLS: list[dict[str, Any]] = [
                 "shortlist": {
                     "type": "boolean",
                     "description": (
-                        "Default true: the response carries summary cards "
-                        "(ordinal, name, entityKind, communities, one summary, callable, missingMandatory) "
-                        "instead of full dossiers — measured 39,095B -> 8,508B for one 20-candidate slot. "
-                        "Narrow to the candidates worth a closer look, then call "
-                        "workforce.expand_candidates for their full cards and decide from those. "
-                        "Nothing is discarded: the session store keeps the complete menu. Ignored when "
-                        "fullDossier is true. Set false only when a legacy caller needs menu.v2."
+                        tool_schema_description('shortlist')
                     ),
                     "default": True,
                 },
@@ -1988,13 +1934,7 @@ TOOLS: list[dict[str, Any]] = [
                 "fullDossier": {
                     "type": "boolean",
                     "description": (
-                        "Host LLMs should pass false: executionRoster rows then carry identifiers and "
-                        "digests, with directiveBundle/executionGraph shipped once per contentDigest in "
-                        "bundleContents (projection prepare.v2 — a same-agent-two-slots roster otherwise "
-                        "repeats them byte-identically; measured 28.3KB duplicate). Omitted or true "
-                        "returns the legacy self-contained rows — the compatible default, because "
-                        "machine verifiers recompute bundleDigest over whole rows and update "
-                        "independently of this runtime."
+                        tool_schema_description('prepare-projection')
                     ),
                 },
             },
@@ -2397,6 +2337,25 @@ _REMOTE_MEMORY_TOOLS = [
 ]
 TOOLS.extend(_REMOTE_MEMORY_TOOLS)
 _REMOTE_MEMORY_TOOL_NAMES = frozenset(tool["name"] for tool in _REMOTE_MEMORY_TOOLS)
+_CONTEXT_MAP_TOOL_NAMES = frozenset({"context.refresh", "context.locate", "context.refs", "context.slice", "context.impact", "context.verify"})
+
+
+def _feature_on(name: str) -> bool:
+    try:
+        from .feature_preferences import feature_enabled
+        return feature_enabled(name, mcp=True)
+    except Exception:
+        return False
+
+
+def _inventory_state() -> tuple[bool, bool]:
+    return (_feature_on("context-map"), _feature_on("memory-hooks"))
+
+
+def _available_tools() -> list[dict[str, Any]]:
+    context_on, memory_on = _inventory_state()
+    return [tool for tool in TOOLS if (context_on or tool["name"] not in _CONTEXT_MAP_TOOL_NAMES)
+            and (memory_on or tool["name"] not in _REMOTE_MEMORY_TOOL_NAMES)]
 
 
 # MCP tool annotations (spec 2025-03-26, "Tool annotations"): every tool states
@@ -2629,6 +2588,10 @@ def _restore_prepared_selection_reference(arguments: dict[str, Any]) -> dict[str
 
 
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    if name in _CONTEXT_MAP_TOOL_NAMES and not _feature_on("context-map"):
+        return {"action": name, "status": "rejected", "error": "feature_disabled", "feature": "context-map", "writeAttempted": False}
+    if name in _REMOTE_MEMORY_TOOL_NAMES and not _feature_on("memory-hooks"):
+        return {"action": name, "status": "rejected", "error": "feature_disabled", "feature": "memory-hooks", "writeAttempted": False}
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
 
@@ -2867,15 +2830,33 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name in _COMMON_PROJECT_BOOTSTRAP_TOOLS
         else None
     )
-    if _bootstrap_target is not None and _claim_first_contact(_bootstrap_target):
+    if _bootstrap_target is not None:
         from .project_bootstrap import auto_bootstrap_enabled, maybe_ensure_project
 
-        bootstrap = maybe_ensure_project(
-            _bootstrap_target,
-            reason=f"mcp:{name}",
-            enabled=auto_bootstrap_enabled(mcp=True),
-            allow_unmarked_current_root=True,
-        )
+        # A disabled optional bootstrap must leave the core tool usable, and it
+        # must not consume this process's first-contact slot. If the owner turns
+        # it on later, the next tool call can still perform the one-time seed.
+        from .project_bootstrap import bootstrap_feature_dependencies
+
+        bootstrap_enabled = auto_bootstrap_enabled(mcp=True)
+        missing = bootstrap_feature_dependencies(mcp=True) if bootstrap_enabled else []
+        if bootstrap_enabled and not missing and _claim_first_contact(_bootstrap_target):
+            bootstrap = maybe_ensure_project(
+                _bootstrap_target,
+                reason=f"mcp:{name}",
+                enabled=True,
+                allow_unmarked_current_root=True,
+                enforce_feature_preferences=True,
+                mcp=True,
+            )
+            if bootstrap.get("error") == "feature_dependencies_disabled":
+                # Preferences can change after preflight; retry on a later call.
+                try:
+                    key = str(Path(_bootstrap_target).expanduser().resolve())
+                except (OSError, ValueError):
+                    key = _bootstrap_target
+                _FIRST_CONTACT_ROOTS.discard(key)
+                bootstrap = None
 
     if bootstrap is not None:
         status = bootstrap.get("status")
@@ -3007,7 +2988,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             render_context_slice,
             verify_impact,
         )
-        from .project_bootstrap import ensure_project, project_status
+        from .project_bootstrap import ensure_context_map, context_project_status
+        from .feature_preferences import feature_enabled
 
         project_dir = arguments.get("projectDir")
         if not isinstance(project_dir, str) or not project_dir.strip():
@@ -3016,6 +2998,17 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             project_root = Path(project_dir).expanduser().resolve(strict=True)
             if not project_root.is_dir() or project_root.is_symlink():
                 return {"action": name, "status": "error", "error": "context_project_invalid"}
+            context_map_enabled = feature_enabled("context-map")
+            automatic_refresh_requested = name != "context.refresh" and "refresh" not in arguments
+            explicit_refresh_requested = name == "context.refresh" or arguments.get("refresh") is True
+            if not context_map_enabled and (explicit_refresh_requested or (automatic_refresh_requested and not (project_root / ".agentlas").is_dir())):
+                return {
+                    "action": name,
+                    "status": "disabled",
+                    "error": "feature_disabled",
+                    "feature": "context-map",
+                    "writeAttempted": False,
+                }
             # context.refresh creates project state, so a model-named folder is
             # bootstrapped only inside the host-approved roots (the same
             # boundary as first-contact bootstrap) or when already initialized.
@@ -3039,17 +3032,18 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             # Omitted refresh means "automatic once if stale" at the MCP
             # adapter. Explicit false preserves the strict passive/no-write
             # contract used by audits and hooks; explicit true forces refresh.
-            auto_refresh = name != "context.refresh" and "refresh" not in arguments
+            # Omitted refresh normally allows one automatic rebuild on stale
+            # state. Standalone hosts keep that path passive unless the user or
+            # host explicitly enables Context Map generation.
+            auto_refresh = automatic_refresh_requested and context_map_enabled
             refresh = name == "context.refresh" or arguments.get("refresh") is True
             if refresh:
-                project_receipt = ensure_project(
-                    project_root,
-                    reason=f"mcp:{name}",
-                    force_code_map=name == "context.refresh" and arguments.get("force") is True,
-                )
+                project_receipt = ensure_context_map(project_root, force=name == "context.refresh" and arguments.get("force") is True, mcp=True)
+                if project_receipt.get("status") == "disabled":
+                    return {**project_receipt, "action": name}
             else:
                 project_receipt = {
-                    **project_status(project_root),
+                    **context_project_status(project_root),
                     "action": "project_status",
                     "reason": f"mcp:{name}",
                     "writeAttempted": False,
@@ -3122,27 +3116,37 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 }
             else:
                 try:
-                    result = run_context_operation(refresh)
+                    result = run_context_operation(False)
                     if auto_refresh:
                         result["autoRefreshed"] = False
                 except ContextMapError as exc:
+                    if (
+                        automatic_refresh_requested
+                        and not context_map_enabled
+                        and exc.code in {
+                            "context_map_stale",
+                            "context_freshness_incomplete",
+                            "context_verification_refresh_required",
+                        }
+                    ):
+                        return {
+                            "action": name,
+                            "status": "disabled",
+                            "error": "feature_disabled",
+                            "feature": "context-map",
+                            "writeAttempted": False,
+                        }
                     if not auto_refresh or exc.code not in {
                         "context_map_stale",
                         "context_freshness_incomplete",
                         "context_verification_refresh_required",
                     }:
                         raise
-                    # Exactly one retry, on the first related Context Map call
-                    # after a detected filesystem change. This is change-driven,
-                    # not tied to chat-turn count.
-                    result = run_context_operation(True)
+                    project_receipt = ensure_context_map(project_root, mcp=True)
+                    if project_receipt.get("status") not in {"active", "privacy_warning"}:
+                        return {**project_receipt, "action": name}
+                    result = run_context_operation(False)
                     result["autoRefreshed"] = True
-                    project_receipt = {
-                        **project_status(project_root),
-                        "action": "project_auto_refresh",
-                        "reason": f"mcp:{name}:stale",
-                        "writeAttempted": True,
-                    }
             result["project_bootstrap"] = compact_project_receipt(project_receipt)
             return compact_context_result(name, result)
         except ContextMapError as exc:
@@ -3193,6 +3197,57 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             return payload
         except (OSError, TimeoutError, ValueError):
             return {"action": name, "status": "error", "error": "context_operation_failed"}
+
+    # A standalone read of an uninitialized roster must not create auth,
+    # networking directories, or a SQLite store. Desktop keeps its existing
+    # initialization behavior. The status is explicit because another process
+    # may initialize the store after this observation.
+    if name in {"workforce.goal_context", "workforce.goal_runtime"}:
+        from .feature_preferences import _DESKTOP_HOSTS
+        host = str(os.environ.get("AGENTLAS_HOST_RUNTIME") or "").strip().lower()
+        if host not in _DESKTOP_HOSTS:
+            from .workforce.goal_binding import (
+                WORKFORCE_GOAL_CONTEXT_SCHEMA, WorkforceGoalBindingError,
+                _assert_goal_id, _project_identity, default_goal_store_path,
+            )
+            store_path = default_goal_store_path()
+            try:
+                store_path.lstat()
+            except FileNotFoundError:
+                try:
+                    project_dir = arguments.get("projectDir")
+                    if not isinstance(project_dir, str):
+                        raise WorkforceGoalBindingError("workforce_goal_project_unavailable")
+                    project_key, _ = _project_identity(project_dir)
+                    goal_id = arguments.get("goalId")
+                    if isinstance(goal_id, str):
+                        _assert_goal_id(goal_id)
+                except (OSError, ValueError, WorkforceGoalBindingError) as exc:
+                    return {"action": name, "status": "error",
+                            "error": getattr(exc, "code", "workforce_goal_binding_failed")}
+                if name == "workforce.goal_runtime":
+                    return {"schemaVersion": "agentlas.workforce-goal-runtime-context.v1",
+                            "status": "not-bound", "storageState": "not_initialized", "goals": []}
+                context = {
+                    "schemaVersion": WORKFORCE_GOAL_CONTEXT_SCHEMA,
+                    "accountPartition": None,
+                    "projectKey": project_key,
+                    "status": "not_initialized",
+                    "goals": [],
+                    "continuityPolicy": {
+                        "terminalOnlyOnExplicitCompletion": True,
+                        "leaseExpiryDoesNotCompleteGoal": True,
+                        "reuseRosterBeforeRecruitment": True,
+                        "recruitmentIsAdditive": True,
+                        "standbyMeansBoundNotContinuouslyExecuting": True,
+                    },
+                }
+                return context if arguments.get("fullDossier") is True else _goal_context_projection(
+                    context, known_revisions=arguments.get("knownRevisions"))
+            except OSError:
+                return {"action": name, "status": "error", "error": "workforce_goal_store_unavailable"}
+            if store_path.is_symlink():
+                return {"action": name, "status": "error", "error": "workforce_goal_store_unsafe"}
 
     init_networking(networking_home())
     if name in {
@@ -3659,18 +3714,8 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     }
             federation_result = arguments.get("federationResult")
             federated_selection = arguments.get("federatedSelection")
-            # This process issued the federation result and still holds it, keyed
-            # by the selectionSessionId printed on the menu. Requiring the caller
-            # to echo the whole thing back made the contract unusable at the size
-            # a good menu actually is: a live 80-candidate set is ~461KB, past
-            # what one tool call can carry, and the digest is over the exact
-            # bytes so it cannot be trimmed. The caller was left choosing between
-            # a menu wide enough to contain the right agent and a menu small
-            # enough to send back — measured on 2026-07-28, the intended pick
-            # ranked 4th, so a 3-candidate menu would have cut the answer out.
-            # Resolve it here instead; the store re-validates digest and expiry,
-            # so nothing about the pin is weakened. The Hub already accepts a
-            # session id this way (mcp/workforce.ts); Core simply had not.
+            # Resolve the federation result from its selectionSessionId. The
+            # store revalidates digest and expiry without requiring full echo.
             if not isinstance(federation_result, Mapping):
                 pinned_session = (
                     selection.get("selectionSessionId")
@@ -4327,6 +4372,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     raise UnknownToolError(name)
 
 
+from .prompt_composition import mcp_initialize_instructions_for_runtime
+
+
 def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
     method = message.get("method", "")
     msg_id = message.get("id")
@@ -4340,43 +4388,15 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
             msg_id,
             {
                 "protocolVersion": params.get("protocolVersion", PROTOCOL_VERSION),
-                "capabilities": {"tools": {}},
+                "capabilities": {"tools": {"listChanged": True}},
                 "serverInfo": SERVER_INFO,
-                "instructions": (
-                    "Agentlas Workforce continuity is mandatory, not an optional goal mode. "
-                    "At the start of every nontrivial project turn call workforce.goal_context "
-                    "for the current project. Reuse an active exact roster plus local skills "
-                    "when sufficient; recruit only a real gap. workforce.prepare_execution "
-                    "requires projectDir and automatically binds every successful preparation, "
-                    "even when the user never said goal. Keep the roster until explicit whole-goal "
-                    "completion/cancellation through workforce.complete_goal. Free Hub calls do not "
-                    "need a paid lease; expiry of a legacy lease never ends the binding. "
-                    "When a task changes source code, call context.slice once the task is "
-                    "resolved, context.impact before editing a source file, and context.verify "
-                    "before declaring completion, accounting for every affected file. Work that "
-                    "changes no source code (reports, posts, notes, data files, browsing, "
-                    "publishing) does not use the Context Map. Context Map source paths and "
-                    "contents stay project-local and must never be sent in Network or Cloud "
-                    "discovery requests. "
-                    # 도구 접근 고지 — Desktop shared/tool-access-notice.ts, 터미널
-                    # engine/tools/access-notice.cjs와 **같은 규칙**이다. 이 세 표면이 다른
-                    # 말을 하면 사용자는 어느 쪽이 맞는지 알 수 없다. 문구를 여기서만
-                    # 바꾸지 말 것 — 세 벌을 함께 옮긴다.
-                    "Before telling the user a capability is unavailable, call "
-                    "agentlas_resolve_plugins with the capability you need: the Agentlas Hub "
-                    "catalog covers integrations that are not installed on this machine yet, "
-                    "and a tool missing from this session is not the same as a tool that does "
-                    "not exist. Never install or enable a tool on your own — show the slug, "
-                    "what it will be allowed to do, and whether it needs credentials, then let "
-                    "the user decide. If nothing covers the need, say so plainly; do not "
-                    "describe a tool call you did not make."
-                ),
+                "instructions": mcp_initialize_instructions_for_runtime(),
             },
         )
     if method == "ping":
         return _result(msg_id, {})
     if method == "tools/list":
-        return _result(msg_id, {"tools": TOOLS})
+        return _result(msg_id, {"tools": _available_tools()})
     if method == "tools/call":
         name = params.get("name", "")
         arguments = params.get("arguments") or {}
@@ -4415,36 +4435,15 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _tool_failure_text(name: str, exc: BaseException) -> str:
-    """One tool's failure, said so the host does not write off the server.
+    """Compose failure facts from this host's effective configuration.
 
-    Name the exception type: a KeyError stringifies to the bare key
-    ("'request'"), which reads like nothing at all and used to be mislabeled as
-    an unknown tool. The tool exists and the call failed — say that.
-
-    An incomplete install gets one sentence more. When our own package is
-    missing one of its modules, exactly the tools that touch that module break
-    and every other tool on this server still answers. Without that sentence a
-    model reads one traceback as "Workforce MCP is unusable" and abandons the
-    roster for the whole session — measured 2026-09-18 on a user's Windows
-    install, where a missing `agentlas_cloud.context_map_authoring` sent the
-    rest of a research goal to local skills. The remedy is not the user's to
-    run: the updater the host already starts in the background replaces the
-    runtime tree wholesale.
+    Feature ON is not an updater receipt; no scheduling/completion is inferred.
     """
+    from .feature_preferences import feature_enabled
+    from .prompt_composition import tool_failure_text
 
-    text = f"hephaestus tool {name} failed: {type(exc).__name__}: {exc}"
-    missing = getattr(exc, "name", None) if isinstance(exc, ModuleNotFoundError) else None
-    if isinstance(missing, str) and (
-        missing == "agentlas_cloud" or missing.startswith("agentlas_cloud.")
-    ):
-        text += (
-            f"\nThis is an incomplete Agentlas runtime install, not a broken tool: the file set "
-            f"is missing its own module `{missing}`. Only tools that reach that module fail — "
-            f"every other hephaestus tool on this server still works, so keep using them instead "
-            f"of treating the Workforce MCP as unavailable. The background updater replaces the "
-            f"runtime tree on its next run; nothing is required from the user."
-        )
-    return text
+    return tool_failure_text(name=name, exc=exc,
+                             auto_update_enabled=feature_enabled("auto-update"))
 
 
 def _result(msg_id: Any, result: dict[str, Any]) -> dict[str, Any]:
@@ -4456,13 +4455,6 @@ def _error(msg_id: Any, code: int, message: str) -> dict[str, Any]:
 
 
 def serve(stdin=None, stdout=None) -> int:
-    # Starting the local Agentlas MCP server is the host's explicit plugin
-    # boundary. Default its project bootstrap gate on while preserving an
-    # operator's explicit 0/false override. maybe_ensure_project still confines
-    # writes to the MCP process workspace and refuses unsafe home/root targets.
-    from .project_bootstrap import MCP_AUTO_BOOTSTRAP_ENV
-
-    os.environ.setdefault(MCP_AUTO_BOOTSTRAP_ENV, "1")
     # Wire the resident judge to the host's connected model when the host opted
     # in via AGENTLAS_JUDGE_RUNTIME; otherwise judged sites stay honestly
     # unavailable rather than keyword-deciding.
@@ -4471,28 +4463,68 @@ def serve(stdin=None, stdout=None) -> int:
     install_judgment_from_env()
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
-    for line in stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            message = json.loads(line)
-        except ValueError:
-            response: dict[str, Any] | None = _error(None, -32700, "parse error")
-        else:
-            # One malformed line must not end the server: every hephaestus tool
-            # would be gone for the rest of the host session.
-            if isinstance(message, list):
-                response = _error(None, -32600, "batch requests are not supported")
-            elif not isinstance(message, dict):
-                response = _error(None, -32600, "invalid request")
-            else:
-                try:
-                    response = _handle(message)
-                except Exception as exc:
-                    print(f"hephaestus mcp: internal error: {type(exc).__name__}", file=sys.stderr, flush=True)
-                    response = _error(message["id"], -32603, "internal error") if message.get("id") is not None else None
-        if response is not None:
-            stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+    output_lock = threading.Lock()
+    stopped = threading.Event()
+    initialized = threading.Event()
+
+    def send(message: dict[str, Any]) -> None:
+        with output_lock:
+            stdout.write(json.dumps(message, ensure_ascii=False) + "\n")
             stdout.flush()
+
+    # Track the last advertised inventory, not merely the last poll. A quick
+    # ON/list/OFF between polls must still invalidate that advertised list.
+    advertised = [_inventory_state()]
+
+    def watch_inventory() -> None:
+        while not stopped.wait(0.5):
+            current = _inventory_state()
+            with output_lock:
+                if initialized.is_set() and current != advertised[0]:
+                    advertised[0] = current
+                    try:
+                        stdout.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}) + "\n")
+                        stdout.flush()
+                    except (OSError, ValueError):
+                        return
+
+    watcher = threading.Thread(target=watch_inventory, name="feature-inventory", daemon=True)
+    watcher.start()
+    try:
+        for line in stdin:
+            line = line.strip()
+            if not line:
+                continue
+            message = None
+            try:
+                message = json.loads(line)
+            except ValueError:
+                response: dict[str, Any] | None = _error(None, -32700, "parse error")
+            else:
+                # One malformed line must not end the server: every hephaestus tool
+                # would be gone for the rest of the host session.
+                if isinstance(message, list):
+                    response = _error(None, -32600, "batch requests are not supported")
+                elif not isinstance(message, dict):
+                    response = _error(None, -32600, "invalid request")
+                else:
+                    try:
+                        response = _handle(message)
+                    except Exception as exc:
+                        print(f"hephaestus mcp: internal error: {type(exc).__name__}", file=sys.stderr, flush=True)
+                        response = _error(message["id"], -32603, "internal error") if message.get("id") is not None else None
+            if response is not None:
+                if isinstance(message, dict) and message.get("method") == "tools/list" and isinstance(response.get("result"), dict):
+                    names = {tool.get("name") for tool in response["result"].get("tools", [])}
+                    with output_lock:
+                        stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+                        stdout.flush()
+                        advertised[0] = (bool(names & _CONTEXT_MAP_TOOL_NAMES), bool(names & _REMOTE_MEMORY_TOOL_NAMES))
+                else:
+                    send(response)
+            if isinstance(message, dict) and message.get("method") == "notifications/initialized":
+                initialized.set()
+    finally:
+        stopped.set()
+        watcher.join(timeout=1)
     return 0

@@ -109,15 +109,10 @@ UPLOAD_PRIVATE_PROJECT_STATE_PATHS = frozenset(
     }
 )
 UPLOAD_PRIVATE_PROJECT_STATE_DIRS = (".agentlas/code-map/",)
-# A RESULT IS NOT A CAPABILITY (owner decision 2026-08-18). What an agent
-# produces while it works -- the rendered page, the screenshot it took to check
-# itself, the deck it exported, the page dump its browser tool left behind -- is
-# the output of one run on one machine. What ships is the script/prompt/preset
-# that makes it again on the installer's machine. Measured across the published
-# teams: every folder over the 3 MB ceiling was over it because of outputs, and
-# not one of those files was read by the agent that carried it.
-# `.agentlas/work/` is the declared home for run outputs so authors have a
-# correct place to write. Mirrors Desktop's WORK_OUTPUT_DIRS file-for-file.
+# A package ships the scripts, prompts, and presets needed to reproduce its
+# capabilities. Generated screenshots, decks, and page dumps are run outputs.
+# `.agentlas/work/` is their declared home. Keep these exclusions aligned with
+# Desktop WORK_OUTPUT_DIRS.
 UPLOAD_WORK_OUTPUT_DIRS = (
     ".agentlas/work/",
     ".agentlas/chat-attachments/",
@@ -282,14 +277,9 @@ def referenced_file_names(files: list[UploadFile]) -> set[str]:
     and ``samples/x.jpg`` both count.
     """
 
-    # `[A-Za-z0-9._-]+\.[A-Za-z0-9]{1,8}` scanned over a whole file is
-    # quadratic on the lines real packages contain. On a run of identical
-    # characters — minified JS, a base64 data URI, a one-line JSON — the greedy
-    # class matches to the end at every start position, then backtracks looking
-    # for the dot that never comes. Measured: 256 KB in one line spent 29.6s
-    # here, 1 MB spent 483s, and the author saw an upload that simply never
-    # finished. Tokenizing first is linear: a run with no dot in it is skipped
-    # whole, and the name pattern only ever runs on a bounded candidate.
+    # Applying the filename pattern to an unbroken input can cause quadratic
+    # backtracking. Tokenize first and run it only on bounded candidates containing
+    # a dot; skip uninterrupted runs without a dot.
     token_re = re.compile(r"[A-Za-z0-9._-]+")
     name_re = re.compile(r"[A-Za-z0-9._-]+\.[A-Za-z0-9]{1,8}")
     names: set[str] = set()
@@ -470,13 +460,8 @@ def package_agent(
     if write_manifest:
         package_slug = _read_package_slug(base) or package_slug
 
-    # Lay the package contract down before anything reads the folder. The repair
-    # pass below fixes fields inside files that exist; it was never able to fix a
-    # file that was absent, and absence is what actually blocks: measured on this
-    # product's own published corpus, 13 of the 13 blockers on a real package were
-    # "<artifact>: missing", every one of them an artifact the engine ships a
-    # template for. Refusing an upload over a file the product can write itself is
-    # the failure this whole path exists to avoid.
+    # Lay down missing contract artifacts before repairing their fields. Derive
+    # only facts supported by the package and report unresolved requirements.
     #
     # `scaffold` never overwrites, and `derive` only answers questions the package
     # already answers — its slug, its own summary, its own capability list. What
@@ -490,19 +475,9 @@ def package_agent(
         if not isinstance(manifest_hint, dict):
             manifest_hint = {}
         slug_hint = str(manifest_hint.get("slug") or base.name)
-        # Ask the ROSTER what this package is, not the artifact we are here to
-        # create. Keying the mode off `company-blueprint.json` made the scaffold
-        # circular: a team missing its blueprint was scaffolded as a single, so no
-        # blueprint was ever written, while the contract verifier - which reads the
-        # roster - kept checking it against every TEAM requirement. Measured
-        # 2026-08-07 across the 178 published packages, that one line produced 262
-        # of the 264 standing blockers on 65 packages, every one of them a team
-        # whose `agents/*/agent.md` roster was complete.
-        # FIRST: make the roster on disk and the declared kind agree. Everything
-        # after this reads the package as the fact, so a flat roster or a card
-        # claiming `team` over an empty folder has to be settled before the
-        # scaffold decides what to lay down - otherwise the mode is derived from
-        # a shape that is about to change.
+        # Derive package kind from its roster before choosing the scaffold. Reconcile
+        # the roster with declared kind first so a missing blueprint does not cause a
+        # team to receive a single-agent scaffold.
         from .repackage import reconcile_team_shape
 
         reconciled = reconcile_team_shape(base)
@@ -570,25 +545,12 @@ def package_agent(
     except Exception as error:  # noqa: BLE001 - the line guard still runs
         contract_scaffold["hostPathRedaction"] = {"status": "skipped", "reason": str(error)[:200]}
 
-    # Whatever this pass laid down and could not fill is withdrawn again. A
-    # stencil that still reads `{{ROLE}}` is worse than the absence it replaced:
-    # it ships the word `{{ROLE}}` to a buyer, and it blocks the upload on a file
-    # the author never wrote. Upload does not block, and it does not publish
-    # placeholder text either — so the only correct move is to take back exactly
-    # what this pass added and could not answer.
-    # Withdraw what this pass created AND any canonical entry file that is still
-    # an ENGINE stencil. The created-only list misses a PRE-EXISTING stencil
-    # AGENTS.md: scaffold skips a file that already exists, so it is never in
-    # `created`, yet it ships `{{ROLE}}` to a buyer as the very file the runtime
-    # reads first (measured 2026-08-12).
+    # Withdraw stencils this pass could not fill and existing canonical entry
+    # files that are still unmodified engine stencils. Preserve authored content.
     #
-    # Match ONLY engine stencil tokens `{{UPPER_SNAKE}}` (repackage._PLACEHOLDER),
-    # never any `{{`. The bare-`{{` test deleted user-authored source in place —
-    # a README with `${{ secrets.TOKEN }}` (GitHub Actions), an agent.md with
-    # `{{input}}`/`{{target_lang}}` prompt placeholders — permanent silent data
-    # loss that could leave a package with no entry file (measured 2026-08-12
-    # adversarial set 2). Engine stencils are all UPPER_SNAKE; user templating
-    # (lowercase, dotted, spaced) never is.
+    # Match only engine stencil tokens `{{UPPER_SNAKE}}`, not arbitrary template
+    # braces. Preserve lowercase, dotted, and spaced user-authored templates,
+    # including GitHub Actions expressions.
     withdraw_paths: list[str] = list(contract_scaffold.get("created") or [])
     for name in AGENT_DEFINITION_FILES:
         if name not in withdraw_paths:
@@ -614,14 +576,8 @@ def package_agent(
 
     files, file_count, findings = collect_upload_files(base)
 
-    # Repair before judging. Upload does not reject: a refusal hands the author a
-    # list of field names and lets them guess the house format, and the measured
-    # result of that policy is `capability-eval-plan.json` present on 4% of live
-    # releases and `mcp-policy.json` on 50% — both marked required since the
-    # contract was written. Anything derivable from what the package already says
-    # gets written here; only a defect that cannot be fixed without inventing a
-    # fact or deleting the author's content still blocks. Every repair is recorded
-    # and surfaced, exactly like the lines the content guard strips.
+    # Repair derivable fields before validation. Do not invent facts or delete
+    # authored content to satisfy a requirement. Record and surface every repair.
     repairs = repair_package(base, findings + validate_routing_card_for_upload(base, visibility=visibility)["findings"]
                              + validate_public_profile_for_upload(base, visibility))
     if repairs:
@@ -630,32 +586,11 @@ def package_agent(
         # filter would leave a stale blocker that the package no longer has.
         files, file_count, findings = collect_upload_files(base)
 
-    # Compile the resume LAST, after every repair has run, so it describes what is
-    # actually about to ship rather than what arrived. Without this call the whole
-    # brief pipeline is dead code: an audit of the shipped tree found
-    # `.agentlas/brief.json` on 0 of 186 packages because nothing ever invoked the
-    # compiler. It is deterministic and reads only files already in the package, so
-    # it cannot fail the upload — a package that yields a thin brief gets a thin
-    # brief, and `provenance` says which fields were absent rather than guessing.
-    # LAST write before the hash. Every earlier pass - scaffold, derive, coerce,
-    # redact, repair, brief - can still change what ships, so recording the
-    # card's `source.package_hash` before them left it describing a package that
-    # no longer existed, and the first upload of a package the engine touched
-    # disagreed with every upload after it.
-    # Card first, wizard second. The card refresh WRITES the routing card, so a
-    # wizard that ran before it hashed a package whose card was about to change,
-    # and `agentlas.json` ended up describing a state that never shipped. The
-    # wizard is the last writer, so it must also be the last hasher.
-    # Same ordering rule as the comment above states for scaffold/derive/coerce/
-    # redact/repair: A2A/tools/permissions/hooks/provenance.json must be in
-    # their FINAL form before the routing card is refreshed, because the
-    # routing card embeds `source.package_hash` — a hash of the tree AT THAT
-    # MOMENT. Generating these afterward left that embedded hash (and, one
-    # level up, the wizard's real packageHash) describing a package that was
-    # about to grow five more files, so the bootstrap upload (those files
-    # created here for the first time) disagreed with every upload after it,
-    # once those files already existed. Measured via
-    # test_local_source_hash_and_cloud_artifact_hash_have_explicit_distinct_contracts.
+    # Compile the brief after all repairs, deriving only facts present in the
+    # package and recording absent fields in provenance. Finish scaffold, derive,
+    # coerce, redact, repair, A2A, tools, permissions, hooks, and provenance writes
+    # before refreshing the routing card and source.package_hash. Refresh the card
+    # before the wizard, whose packageHash must describe the final shipped tree.
     if write_manifest:
         refresh_generated_projections(base)
     routing_meta = refresh_routing_card_metadata(base)
@@ -678,9 +613,8 @@ def package_agent(
     # blockers rather than invented auto-fills.
     contract_mode = "team" if _infer_kind(base) == "team" else "single"
     contract_report = verify_package_contract(base, mode=contract_mode)
-    # 로컬 verify 는 스키마 검증기(jsonschema)가 없는 환경에서 '축소 검증' 경고로
-    # 지나가지만, 발행은 다르다 — 스키마 검증이 실제로 돌지 않은 패키지를 시장에
-    # 내보내지 않는다 (2026-08-24, 신품 맥 실측에서 강등을 넣으며 함께 고정).
+    # 발행은 실제 스키마 검증이 완료된 패키지만 허용한다. 로컬 검증기의
+    # 축소 검증 경고를 발행 성공으로 취급하지 않는다.
     if contract_report.get("schemaValidation") == "unavailable":
         findings.append(
             _finding(
@@ -874,9 +808,8 @@ def package_agent(
     remaining = [f for f in findings if f["severity"] == "blocker"]
     # A contract artifact the author has not finished writing is a gap in the
     # listing, not a reason to refuse the upload. The package still works; what
-    # is missing is copy a buyer would have liked to read. Refusing here is how
-    # `capability-eval-plan.json` ended up on 4% of live releases — the gate said
-    # no, and the packages shipped through whatever path did not check.
+    # is missing is descriptive listing material. Report the unfinished gap
+    # separately from unsupported or secret-bearing bytes.
     #
     # This first pass labels unfinished artifact gaps distinctly. Since
     # 2026-08-08, secrets are masked or withheld
@@ -2386,11 +2319,8 @@ def _registration_error_code(detail: str, fallback: str) -> str:
 def refresh_manifest_skills(base: Path) -> dict[str, Any]:
     """Make `agentlas.json` skills[] say what the package actually ships.
 
-    A skill's name IS its `<host>/skills/<name>/SKILL.md` folder name, so the
-    folders answer this without guessing. Measured 2026-08-26: a package with
-    six skill folders kept them in the manifest only because its build agent
-    typed them by hand — nothing derived or checked it, and a package that
-    shipped skills while declaring none advertised nothing at all.
+    Derive declared skills from `<host>/skills/<name>/SKILL.md` folders so
+    installed skill bodies and the published manifest describe the same package.
 
     Author intent is preserved: an explicit list is never reordered or trimmed
     here (upload_repair drops ids with no file); only genuinely missing entries
@@ -2446,14 +2376,8 @@ def refresh_routing_card_metadata(base: Path) -> dict[str, Any]:
     if isinstance(card.get("agent_card_ref"), dict) and agent_card_path.is_file():
         card["agent_card_ref"]["content_hash"] = _sha256_bytes(agent_card_path.read_bytes())
     source = card.get("source") if isinstance(card.get("source"), dict) else {}
-    # Use the canonical exclusion rule, not a second hand-written one. This
-    # filter listed only `agentlas.json` and the card itself, so the card's hash
-    # covered `.agentlas/security-scan.json` - a file that carries a fresh
-    # `scannedAt` on every run. The card therefore changed every time it was
-    # refreshed, which changed the package, which changed the upload hash.
-    # Measured 2026-08-07: `package_agent` returned a different packageHash on
-    # its first call and settled only from the second, which breaks the
-    # hash-preservation requirement for republishing the corpus.
+    # Use package_hash_includes to exclude generated evidence from the base hash.
+    # Fresh scan timestamps must not change the identity of unchanged package input.
     #
     # `package_hash_includes` already excludes security-scan.json, brief.json,
     # field-test-report.json, the LLM judgment, and the experience lineage,
@@ -2639,6 +2563,12 @@ def prepare_public_career_card_for_upload(base: Path) -> list[dict[str, Any]]:
     enabled only when the package already has Career Graph markers; otherwise
     the feature remains absent and upload behavior is unchanged.
     """
+    # Career Graph is part of optional project indexing; a stale package marker
+    # alone must not turn indexing on during a standalone upload.
+    from .feature_preferences import feature_enabled
+
+    if not feature_enabled("project-index"):
+        return []
     agentlas_dir = base / ".agentlas"
     public_card = agentlas_dir / "public-career-card.json"
     if public_card.is_file():
@@ -2852,13 +2782,9 @@ def sanitize_upload_text(file_path: str, text: str) -> tuple[str, list[dict[str,
     return "".join(kept), findings
 
 
-# Packaging reads the tree four times — once, then again after repair, after the
-# brief compiles, and after the public card is prepared — because each of those
-# rewrites files and every finding derived from them has to be recomputed rather
-# than filtered. What must NOT be recomputed is the scan of a file that did not
-# change: the content guard is 96% of packaging time (measured 7s per authored
-# MB), so the four passes cost four times that for three passes of identical
-# input. Keyed by exact content, so a repaired file is always rescanned.
+# Packaging must recompute findings after each writing pass. Cache content
+# scans by exact bytes so unchanged files reuse results and repaired files are
+# always rescanned.
 _SANITIZE_CACHE: dict[tuple[str, str], tuple[str, list[dict[str, Any]]]] = {}
 _SANITIZE_CACHE_MAX = 4096
 

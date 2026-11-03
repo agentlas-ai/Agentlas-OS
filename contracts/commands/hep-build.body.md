@@ -1,5 +1,7 @@
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
+<!-- prompt-module: {"id":"os.commands.build-body","revision":2,"stability":"versioned-content","changeTriggers":["release"],"channel":"user"} -->
+
 # /hep-build
 
 Use Hephaestus as the Agentlas builder surface:
@@ -19,9 +21,8 @@ and `/hep-cloud`. Do not advertise internal support skills as commands.
 
 Every path in steps 1, 2 and 4 belongs to Hephaestus, not to the user's project.
 Read relatively and in someone else's repository you find nothing — or worse,
-you find their `AGENTS.md` and follow it. Measured 2026-08-07: three packages
-built outside this engine's own repository shipped 5 of 18 required artifacts,
-because these reads silently returned nothing and the model improvised the rest.
+you find their `AGENTS.md` and follow it. Resolve the engine root before reading
+its instructions and templates; never invent missing artifact requirements.
 
 The marker is `AGENTS.md` **and** `package-contract.json` together. The installed
 runtime root carries the contract and the code but not the instructions — those
@@ -205,14 +206,13 @@ Route to the Agentlas Core Engine Meta-Agent team, using the `$ENGINE` and
    and never invents a fact - every value it writes is one the package already
    states somewhere else. Run it BEFORE `contract verify`, so what verify still
    reports is the genuinely authored half, not paperwork the engine could have
-   done. Measured 2026-08-07: the published corpus was missing these eight
-   artifacts almost universally, and every one of them was derivable.
+   done.
 
    This copies the engine's templates into place and never overwrites an
    existing file. It is the step that puts every required artifact on disk with
    named `{{PLACEHOLDER}}` holes, which is what turns "the model forgot a file"
-   into "the model has a hole to fill". Skipping it is how a build ends with 5
-   of 18 required artifacts and still reports success.
+   into "the model has a hole to fill". Verify every required artifact before
+   reporting success.
 
    Then fill the holes. `contract prompt --mode <mode>` prints the artifact list
    with what each one is for.

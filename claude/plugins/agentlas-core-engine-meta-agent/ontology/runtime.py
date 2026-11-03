@@ -96,15 +96,8 @@ MODEL2VEC_CJK_MIN_VECTOR_SCORE = 0.12
 VECTOR_RELATIVE_FLOOR = 0.72
 DEFAULT_EXPERIENCE_TOKEN_BUDGET = 800
 DEFAULT_EXPERIENCE_TOP_K = 8
-# Graph spread (Personalized PageRank, stage 4) defaults, chosen by measurement
-# (recall-repair plan §12, 2026-09-23). Multi-hop set: 21 questions whose answer
-# shares no content word with the question, 774-memory haystack from this repo's
-# commit history + real ledger/code map. Single-hop guard: LongMemEval-S, 100
-# questions, One path.
-#   seeds=5 d=0.85 w=2.0 admit=5: multi-hop hit@10 0/21 -> 21/21; single-hop
-#   recall@5 96% -> 96% (seed block is untouchable), recall@10 99% -> 98%.
-#   seeds=3 lifted multi-hop hit@5 (0 -> 10/21) but cost single-hop @5 (96 -> 93);
-#   damping 0.5 or weight 1.0 left most file/co-edit hops below rank 10.
+# Graph spread (Personalized PageRank, stage 4) defaults.
+# Preserve the direct-hit seed block and admit a bounded set of related memories.
 DEFAULT_PPR_DAMPING = 0.85
 DEFAULT_PPR_WEIGHT = 2.0
 PPR_SEED_COUNT = 5
@@ -1480,17 +1473,10 @@ class OntologyRuntime:
         subject) dominates common chatter, so the genuinely connected session ranks
         first among bridged candidates instead of drowning in noise.
 
-        DEFAULT OFF. Measured on LongMemEval (500) and LoCoMo (1,536 QA), a
-        deterministic co-occurrence graph gives NO retrieval-recall lift over the
-        existing lexical+vector RRF — flat-to-negative at every fusion weight,
-        because vector recall already captures the connectivity these benchmarks
-        reward. The graph is still *built* at write-time (it fixes the real
-        "half-graph" defect — conversational memory had entities but zero relations —
-        and is the substrate for the LLM-typed-relation channel, where the research
-        expects the actual multi-hop/explainability win). This retrieval fusion is
-        retained, opt-in via AGENTLAS_EXPERIENCE_GRAPH=1, for that typed-relation
-        follow-up; enabling it with today's untyped co-occurrence edges regresses
-        recall, so it stays off in production.
+        DEFAULT OFF. The graph is built at write-time to retain memory
+        relationships. Retrieval fusion is separately opt-in through
+        AGENTLAS_EXPERIENCE_GRAPH=1; existing lexical and vector retrieval
+        remain the default.
         """
         if os.environ.get("AGENTLAS_EXPERIENCE_GRAPH", "0") != "1":
             return {}
@@ -2056,11 +2042,8 @@ class OntologyRuntime:
         }
         # Channel order: the seed block first, in its own order, then the
         # strongest few tickets the walk reached. Seeds are the direct hits, so
-        # they keep the lead they earned — measured: ranking seeds by their PPR
-        # mass or leaving them out of the channel let their neighbors overtake
-        # them and single-hop recall@5 fell from 96% to 11-45% (LongMemEval-S,
-        # 100 questions). With the seed block kept intact, the walk can only
-        # fill the slots right after the direct hits, never displace them.
+        # they keep their original order. Related tickets fill the slots after
+        # the direct hits without displacing those seeds.
         # RRF is rank-based, so a long tail of weakly reached nodes would all get
         # near-equal credit; only the top few by mass (and at least a fraction of
         # the top seed's mass) enter.
@@ -3442,7 +3425,7 @@ class OntologyRuntime:
                 )
             if root is not None:
                 # The code map indexes identifiers, not string literals, so
-                # "which code reads AGENTLAS_X" had no edge (measured 1/3).
+                # Reads of a named environment variable need a matching edge.
                 scan_ref = f"code-scan:{code.snapshot_id}" if code.snapshot_id else "code-scan"
                 for name, files in sorted(entity_layer.scan_env_reads(root, code.mapped).items()):
                     env_id, _ = self._ensure_code_entity(conn, "env_var", name)
@@ -4476,10 +4459,8 @@ def extract_declared_relations(text: str) -> list[tuple[str, str, str, float]]:
     """Relations a record declares in fields (``name``/``team`` + ``owner`` /
     ``depends_on``): JSON, CSV and spreadsheet rows, YAML-ish frontmatter.
 
-    Prose sentence patterns ("A depends on B", "A owns B") were dropped on
-    2026-09-23: measured 4/15 precise on real project documents, and the
-    survivors were a truncated "Core owns Cloud" and a test fixture's
-    fictional company.
+    Relations come from explicit structured fields rather than prose sentence
+    patterns such as "A depends on B" or "A owns B".
     """
     relations: list[tuple[str, str, str, float]] = []
     fields = extract_fields(text)

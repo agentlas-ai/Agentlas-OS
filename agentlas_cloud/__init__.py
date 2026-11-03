@@ -2,7 +2,6 @@
 
 from .runtime import (
     AgentlasManifest,
-    AgentlasMockStore,
     compile_runtime_bundle,
     read_agent_file,
     run_setup_wizard,
@@ -11,7 +10,6 @@ from .runtime import (
 
 __all__ = [
     "AgentlasManifest",
-    "AgentlasMockStore",
     "compile_runtime_bundle",
     "read_agent_file",
     "run_setup_wizard",

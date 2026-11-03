@@ -187,10 +187,8 @@ SKIP_DIRS = {
     ".hg",
     ".svn",
     ".next",
-    # `.next` was listed but the renderer writes `.next-build`, so a live build
-    # was being indexed: measured 2026-08-19, the freshness scan died with
-    # FileNotFoundError on `.next-build/404.html` while a peer build replaced it.
-    # Indexing an output directory races with whatever is writing it.
+    # Exclude generated output directories to avoid indexing files while a build
+    # is replacing them.
     ".next-build",
     ".nuxt",
     ".pytest_cache",
@@ -201,15 +199,8 @@ SKIP_DIRS = {
     "coverage",
     "dist",
     "node_modules",
-    # Vendored interpreter payloads shipped inside a product tree (for example
-    # agentlas_desktop/build-resources/python-runtime with a full CPython
-    # stdlib). Indexing one poisons the symbol table with 164 stdlib modules
-    # and keyword-shaped symbols ("from"), and a prepare-time context slice
-    # then spends its weight on definitions nobody selected — measured
-    # 2026-08-19: symbols 20KB of a 113KB slice pointed into python-runtime.
-    # The directory NAME is the contract here, same as "vendor"/"target":
-    # build-resources itself stays indexed because its root holds maintained
-    # packaging hooks (after-pack-clean.cjs, embedded-core-contract.cjs).
+    # Exclude vendored interpreter payloads by directory name. Keep maintained
+    # build-resource hooks in the index; the parent directory is not itself excluded.
     "node-runtime",
     "python-runtime",
     "target",
@@ -296,12 +287,8 @@ _OS_ONLY_ROOT_NAMES = frozenset({
 def _system_scratch_roots() -> set[Path]:
     """Shared scratch directories that are never themselves a project.
 
-    ★실측 2026-08-21: `$TMPDIR` **루트 그 자체**에 `.agentlas/`(ontology-runtime.sqlite,
-    context-map.json, .project-bootstrap.lock)가 만들어져 있었다. 그러면 그 아래에
-    생기는 모든 임시 디렉터리가 위로 올라가다 그 마커를 만나 "이미 프로젝트 안"으로
-    보인다 — pytest 의 tmp_path 도 전부 여기 아래라 무관한 테스트 두 건이 그 오염으로
-    깨졌다. 아래에 **중첩된** 경로는 진짜 작업 디렉터리일 수 있으므로 그대로 두고,
-    home·파일시스템 루트와 같은 이유로 **정확히 그 루트만** 거절한다.
+    Reject the exact temporary root, as with home and filesystem roots.
+    Nested paths can be valid project directories and remain eligible.
     """
 
     roots: set[Path] = set()
@@ -462,21 +449,12 @@ def _content_snapshot(
     return "sha256:" + digest.hexdigest(), content_hashes, read_bytes
 
 
-def _truthy_env(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _opted_out_env(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"0", "false", "no", "off"}
-
-
 def auto_bootstrap_enabled(*, mcp: bool = False) -> bool:
-    """On by default: running an Agentlas command in a folder is the intent.
+    """Return the default-off project bootstrap preference and legacy override."""
 
-    Set AGENTLAS_PROJECT_BOOTSTRAP_AUTO=0 (or the MCP variant) to opt out.
-    """
+    from .feature_preferences import feature_enabled
 
-    return not _opted_out_env(MCP_AUTO_BOOTSTRAP_ENV if mcp else AUTO_BOOTSTRAP_ENV)
+    return feature_enabled("project-bootstrap", mcp=mcp)
 
 
 def _project_marker_present(root: Path) -> bool:
@@ -720,7 +698,7 @@ def _ensure_gitignore(root: Path) -> tuple[bool, str]:
     return True, ".gitignore"
 
 
-def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
+def _seed_project_files(root: Path, *, context_enabled: bool = True, memory_enabled: bool = True) -> tuple[list[str], list[str]]:
     created: list[str] = []
     warnings: list[str] = []
     project_id = re.sub(r"[^A-Za-z0-9._-]+", "-", root.name).strip("-") or "project"
@@ -843,6 +821,10 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
         ".agentlas/curator-decisions.jsonl": "",
     }
     for relative, content in builtins.items():
+        if not context_enabled and relative == ".agentlas/context-map.json":
+            continue
+        if not memory_enabled and relative in {".agentlas/memory-tickets.jsonl", ".agentlas/vault-references.json", ".agentlas/skill-trials.jsonl", ".agentlas/curator-decisions.jsonl"}:
+            continue
         _write_missing(root / relative, content, created, root)
 
     template_targets = {
@@ -867,6 +849,8 @@ def _seed_project_files(root: Path) -> tuple[list[str], list[str]]:
         # the user creates stays protected; existing files are never touched.
     }
     for template_name, relative in template_targets.items():
+        if not memory_enabled and relative in {".agentlas/memory-map.json", ".agentlas/project-soul-memory.md", ".agentlas/skill-registry.json", ".agentlas/local-credentials.map.json"}:
+            continue
         rendered = _render_template(template_name, replacements)
         if rendered is None:
             warnings.append(f"template_missing:{template_name}")
@@ -983,14 +967,9 @@ SITEMAP_PACKED_EDGES_SCHEMA = "agentlas.sitemap-packed-edges.v1"
 def _pack_sitemap_edges(edges: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Columnar encoding for machine-generated sitemap edges.
 
-    A generated edge repeated its full path-string endpoints in every row:
-    measured on the pilot, 683,729 edges cost 223.6MB of a 229MB sitemap at
-    ~327 bytes each, which pushed the file past its own maintainer's read
-    bound — the functional projection silently froze at its last write (the
-    merge returned `sitemap_context_merge_deferred` from 2026-08-15 onward).
-    Packing stores each endpoint id and edge type once and references them by
-    index. Human-authored edges are NOT packed: they stay as plain dicts in
-    `edges`, readable and mergeable by hand.
+    Store each endpoint identifier and edge type once, referencing them by
+    index. Human-authored edges remain plain dictionaries in ``edges`` so
+    they stay readable and mergeable by hand.
     """
 
     node_index: dict[str, int] = {}
@@ -1094,10 +1073,8 @@ def _merge_managed_sitemap_context(
 
     path = root / ".agentlas" / "sitemap.json"
     try:
-        # Local-only index: the project constraint forbids size caps here, and
-        # the old 32MB bound proved the point — the pilot sitemap outgrew it
-        # (219MB) and this function silently stopped refreshing the functional
-        # projection for three days. 1GB is a corruption guard, not a policy.
+        # The local index is not policy-limited by size. The 1GB read bound is a
+        # corruption guard.
         raw = _read_bounded_regular_text(path, 1024 * 1024 * 1024)
         payload = json.loads(raw)
     except (OSError, ValueError, json.JSONDecodeError):
@@ -1474,14 +1451,9 @@ def _harden_private_tree(root: Path) -> list[str]:
 def _safe_file(root: Path, path: Path) -> bool:
     """Regular file, inside `root`, reached without crossing a symlink.
 
-    Hot path: the passive freshness receipt calls this once per repository file
-    (measured 155,558 calls on the pilot). The original spelling built four
-    throwaway Path objects and issued three stat syscalls per file; pathlib's
-    `relative_to` alone accounted for 17.2s of a 30s recall hook. The checks
-    below are the same checks in the same order — string containment for the
-    two `relative_to` guards, one `lstat` for the symlink and regular-file
-    tests that previously cost two stats — so behaviour is unchanged and only
-    the cost moves.
+    Passive freshness calls this for each repository file. Preserve the
+    containment, symlink, and regular-file checks while avoiding redundant
+    Path objects and stat calls.
     """
 
     try:
@@ -1508,11 +1480,8 @@ def _should_skip_relative_parts(parts: Sequence[str]) -> bool:
         part == ".."
         or part in SKIP_DIRS
         or part.lower().endswith(".app")
-        # Scratch trees a build wrote and forgot: `.tmp-agentlas-build-qa.GUR70b/`,
-        # `.tmp-agentlas-current-build.RKVznm/`. They are byte-for-byte copies of
-        # real source, so they double every symbol and — because a dot sorts
-        # first — they led the selected-file list for every task measured
-        # 2026-08-19. A temporary copy is never the file someone means.
+        # Exclude temporary build copies so duplicated source does not affect
+        # symbols or task-selected file lists.
         or part.startswith(".tmp-")
         for part in parts
     ):
@@ -2641,16 +2610,10 @@ def _verification_graph(
 def multi_repository_root_children(project: Path) -> list[str]:
     """Child Git repositories when ``project`` is an umbrella, not a project.
 
-    A folder that is not itself a Git work tree but directly holds two or more
-    Git repositories is a workspace of projects. Mapping it duplicates every
-    child repository and walks their vendored and generated trees file by file.
-    Measured 2026-09-24 on a multi-repository umbrella: workforce preparation
-    ran this walk for over 30 minutes at 100% CPU and wrote a 3.46 GB
-    project-map.json, while each child repository maps in under a second from
-    its Git file list. The umbrella is therefore refused before any listing,
-    by structure rather than by a scan budget. A plain non-Git folder (a
-    Desktop project) and a folder holding a single cloned repository still map.
-    Only direct children are inspected, so the check costs one directory read.
+    A non-Git folder with multiple direct Git children is an umbrella workspace,
+    not a single project. Reject it before listing child contents. A plain
+    non-Git project and a folder with one Git child remain eligible. Inspect
+    only direct children to keep this check bounded.
     """
 
     if (project / ".git").exists():
@@ -2679,7 +2642,7 @@ def multi_repository_root_children(project: Path) -> list[str]:
     return children
 
 
-def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any]:
+def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: bool = True) -> dict[str, Any]:
     project = _project_root(root)
     child_repositories = multi_repository_root_children(project)
     if child_repositories:
@@ -3250,7 +3213,7 @@ def generate_code_map(root: str | Path, *, force: bool = False) -> dict[str, Any
         )
         + "\n",
     )
-    sitemap_warning = _merge_managed_sitemap_context(project, project_map)
+    sitemap_warning = _merge_managed_sitemap_context(project, project_map) if merge_sitemap else None
     return {
         "status": "refreshed" if json_path in existed else "generated",
         "path": ".agentlas/code-map/project-map.json",
@@ -3289,7 +3252,7 @@ def _tracked_sensitive_paths(root: Path) -> tuple[list[str], bool]:
     return sensitive[:MAX_TRACKED_PATHS], complete
 
 
-def project_status(project: str | Path) -> dict[str, Any]:
+def project_status(project: str | Path, *, optional_features: dict[str, bool] | None = None) -> dict[str, Any]:
     root = _project_root(project)
     agentlas = root / ".agentlas"
     required = (
@@ -3310,6 +3273,15 @@ def project_status(project: str | Path) -> dict[str, Any]:
         "career-graph.json",
         "career-graph.sqlite",
     )
+    if optional_features is not None:
+        omitted = set()
+        if not optional_features.get("memory-hooks", False):
+            omitted.update({"project-soul-memory.md", "memory-map.json", "memory-tickets.jsonl", "vault-references.json"})
+        if not optional_features.get("context-map", False):
+            omitted.update({"context-map.json", "code-map/project-map.json", "code-map/project-map.md", "code-map/project-seed.json", "code-map/.cache.json"})
+        if not optional_features.get("project-index", False):
+            omitted.update({"ontology-runtime.json", "ontology-runtime.sqlite", "career-graph.json", "career-graph.sqlite"})
+        required = tuple(item for item in required if item not in omitted)
     missing = [f".agentlas/{relative}" for relative in required if not (agentlas / relative).exists()]
     privacy_warnings: list[str] = []
     try:
@@ -3429,17 +3401,55 @@ def _refresh_materialized_ontology(root: Path) -> tuple[list[str], list[str]]:
     return [f".agentlas/{AGENT_ONTOLOGY_DIR}"], []
 
 
-def ensure_project(project: str | Path, *, reason: str = "host-first-contact", force_code_map: bool = False) -> dict[str, Any]:
+def bootstrap_feature_dependencies(*, mcp: bool = False, native_host: bool = False) -> list[str]:
+    """Features required by the current coupled bootstrap implementation."""
+    from .feature_preferences import feature_enabled
+
+    environment = {**os.environ, "AGENTLAS_HOST_RUNTIME": "desktop"} if native_host else None
+    return [name for name in ("project-bootstrap",)
+            if not feature_enabled(name, environ=environment, mcp=mcp)]
+
+
+def _bootstrap_feature_states(*, enforce: bool, mcp: bool, native_host: bool) -> dict[str, bool]:
+    """Keep unset legacy defaults while honoring every explicit opt-out."""
+    from .feature_preferences import feature_status
+
+    environment = {**os.environ, "AGENTLAS_HOST_RUNTIME": "desktop"} if native_host else None
+    status = feature_status(environ=environment)
+    states = dict(status["features"])
+    if mcp:
+        states["project-bootstrap"] = status["mcpProjectBootstrap"]
+    return {
+        name: bool(states[name]["enabled"]) or (not enforce and states[name]["source"] == "default")
+        for name in ("project-bootstrap", "memory-hooks", "context-map", "project-index")
+    }
+
+
+def ensure_project(project: str | Path, *, reason: str = "host-first-contact", force_code_map: bool = False,
+                   enforce_feature_preferences: bool = False, mcp: bool = False,
+                   native_host: bool = False) -> dict[str, Any]:
+    states = _bootstrap_feature_states(enforce=enforce_feature_preferences, mcp=mcp, native_host=native_host)
+    if not states["project-bootstrap"]:
+        return {"action": "project_bootstrap", "status": "blocked", "error": "feature_dependencies_disabled",
+                "missingFeatures": ["project-bootstrap"], "reason": reason, "writeAttempted": False}
     root = _project_root(project)
+    if enforce_feature_preferences and (root / ".agentlas").is_symlink():
+        return {"action": "project_bootstrap", "status": "blocked", "error": "project_state_unsafe", "writeAttempted": False}
     with _project_lock(root):
+        # Preferences can change while another process holds the project lock.
+        states = _bootstrap_feature_states(enforce=enforce_feature_preferences, mcp=mcp, native_host=native_host)
+        if not states["project-bootstrap"]:
+            return {"action": "project_bootstrap", "status": "blocked", "error": "feature_dependencies_disabled",
+                    "missingFeatures": ["project-bootstrap"], "reason": reason, "writeAttempted": True}
+        optional = {name: states[name] for name in ("memory-hooks", "context-map", "project-index")}
         gitignore_changed, gitignore_path = _ensure_gitignore(root)
-        seed_created, seed_warnings = _seed_project_files(root)
-        migrated, migration_warnings = _apply_additive_memory_migrations(root)
+        seed_created, seed_warnings = _seed_project_files(root, context_enabled=optional["context-map"], memory_enabled=optional["memory-hooks"])
+        migrated, migration_warnings = _apply_additive_memory_migrations(root) if optional["memory-hooks"] else ([], [])
         if migrated:
             seed_created.extend(f"migrated:{name}" for name in migrated)
         seed_warnings.extend(migration_warnings)
-        graph_created, graph_warnings = _ensure_graph_runtimes(root)
-        code_map = generate_code_map(root, force=force_code_map)
+        graph_created, graph_warnings = _ensure_graph_runtimes(root) if optional["project-index"] else ([], [])
+        code_map = generate_code_map(root, force=force_code_map) if optional["context-map"] else {"status": "disabled", "created": []}
         if code_map.get("warning"):
             seed_warnings.append(str(code_map["warning"]))
         # The seed above writes context-map.json with an empty node list and a
@@ -3447,35 +3457,31 @@ def ensure_project(project: str | Path, *, reason: str = "host-first-contact", f
         # the declared half of every context slice was boilerplate. Derive it
         # from the ledgers this project already keeps, right after the seed.
         #
-        # Guarded, because an install that is missing ONE of our own modules
-        # must not take the whole bootstrap down — and with it every MCP tool
-        # that bootstraps first. Measured on a user's Windows install
-        # (2026-09-18): `workforce.goal_context` came back as
-        # `ModuleNotFoundError: No module named 'agentlas_cloud.context_map_authoring'`,
-        # and the host read that single traceback as "Workforce MCP is
-        # unusable" and fell back to local skills for the rest of the session.
-        # Declared context is derived, not load-bearing: skip it, say so in
-        # warnings, and let the rest of the seed land. memory_hook.py already
-        # guards the same import; this was the one copy that did not.
-        try:
-            from .context_map_authoring import refresh_declared_context
-        except ImportError as exc:
-            declared_context = {
-                "action": "refresh_declared_context",
-                "status": "module_unavailable",
-                "detail": f"{type(exc).__name__}: {exc}",
-                "written": False,
-            }
-            seed_warnings.append("declared_context_skipped:module_unavailable")
+        # Declared context is derived state. A missing optional authoring module
+        # should produce a warning without preventing the remaining seed work.
+        if not optional["context-map"]:
+            declared_context = {"action": "refresh_declared_context", "status": "disabled", "written": False}
         else:
-            declared_context = refresh_declared_context(root)
+            try:
+                from .context_map_authoring import refresh_declared_context
+            except ImportError as exc:
+                declared_context = {
+                    "action": "refresh_declared_context",
+                    "status": "module_unavailable",
+                    "detail": f"{type(exc).__name__}: {exc}",
+                    "written": False,
+                }
+                seed_warnings.append("declared_context_skipped:module_unavailable")
+            else:
+                declared_context = refresh_declared_context(root)
         # The seed above may have rewritten a map source. Re-derive the map
         # before anyone routes against it.
-        ontology_created, ontology_warnings = _refresh_materialized_ontology(root)
+        ontology_created, ontology_warnings = _refresh_materialized_ontology(root) if optional["project-index"] else ([], [])
         seed_warnings.extend(ontology_warnings)
         graph_created.extend(ontology_created)
-        permission_warnings = _harden_private_tree(root)
-        status = project_status(root)
+        # Do not change modes of existing artifacts owned by disabled features.
+        permission_warnings = _harden_private_tree(root) if all(optional.values()) else []
+        status = project_status(root, optional_features=optional if enforce_feature_preferences or not all(optional.values()) else None)
     created = list(dict.fromkeys(seed_created + graph_created + list(code_map.get("created") or [])))
     return {
         **status,
@@ -3489,6 +3495,45 @@ def ensure_project(project: str | Path, *, reason: str = "host-first-contact", f
         "mergeOnly": True,
         "overwritten": [],
     }
+
+
+
+def ensure_optional_workspace(project: str | Path, feature: str, *, mcp: bool = False) -> dict[str, Any]:
+    """Create only the shared private workspace needed by an enabled optional feature."""
+    from .feature_preferences import feature_enabled
+
+    if feature not in {"context-map", "project-index"} or not feature_enabled(feature, mcp=mcp):
+        return {"action": "project_workspace", "status": "disabled", "error": "feature_disabled", "feature": feature, "writeAttempted": False}
+    root = _project_root(project)
+    if (root / ".agentlas").is_symlink():
+        return {"action": "project_workspace", "status": "blocked", "error": "project_state_unsafe", "writeAttempted": False}
+    with _project_lock(root):
+        if not feature_enabled(feature, mcp=mcp):
+            return {"action": "project_workspace", "status": "disabled", "error": "feature_disabled", "feature": feature, "writeAttempted": True}
+        changed, path = _ensure_gitignore(root)
+    return {"action": "project_workspace", "status": "active", "gitignore": {"path": path, "changed": changed}, "writeAttempted": True}
+
+
+def context_project_status(project: str | Path) -> dict[str, Any]:
+    """Report Context Map readiness without requiring unrelated project memory."""
+    status = project_status(project)
+    healthy = status.get("codeMapComplete") is True
+    private = status.get("privacyBlockInstalled") and status.get("privateModeCompliant") and status.get("trackedSensitiveScanComplete") and not status.get("trackedSensitivePaths")
+    return {**status, "status": ("active" if private else "privacy_warning") if healthy else "incomplete"}
+
+
+def ensure_context_map(project: str | Path, *, force: bool = False, mcp: bool = False) -> dict[str, Any]:
+    workspace = ensure_optional_workspace(project, "context-map", mcp=mcp)
+    if workspace.get("status") != "active":
+        return workspace
+    root = _project_root(project)
+    with _project_lock(root):
+        from .feature_preferences import feature_enabled
+        if not feature_enabled("context-map", mcp=mcp):
+            return {"action": "context_map", "status": "disabled", "error": "feature_disabled", "feature": "context-map", "writeAttempted": True}
+        code_map = generate_code_map(root, force=force, merge_sitemap=False)
+        status = context_project_status(root)
+    return {**status, "action": "context_map", "codeMap": code_map, "writeAttempted": True}
 
 
 def _redact_automatic_receipt(result: dict[str, Any]) -> dict[str, Any]:
@@ -3527,6 +3572,9 @@ def maybe_ensure_project(
     enabled: bool = True,
     trusted_target: bool = False,
     allow_unmarked_current_root: bool = True,
+    enforce_feature_preferences: bool = False,
+    mcp: bool = False,
+    native_host: bool = False,
 ) -> dict[str, Any]:
     """Create .agentlas on first contact with a project folder.
 
@@ -3552,11 +3600,8 @@ def maybe_ensure_project(
             "detail": _redacted_error(exc),
             "writeAttempted": False,
         }
-    # A folder the host explicitly named is a project folder. Requiring a VCS
-    # marker on top of that refused every un-git-initialised project: measured
-    # on a real game project (507 files, no .git) — first contact returned
-    # `workspace_marker_missing` and no map was ever built. The unsafe-root
-    # check below (home, filesystem root) is the boundary that still holds.
+    # An explicitly selected folder may be a project without a VCS marker.
+    # The home and filesystem-root guards still apply.
     if not allow_unmarked_current_root and not _project_marker_present(root):
         return {
             "action": "project_bootstrap",
@@ -3574,7 +3619,10 @@ def maybe_ensure_project(
             "writeAttempted": False,
         }
     try:
-        result = ensure_project(root, reason=reason)
+        result = ensure_project(root, reason=reason, enforce_feature_preferences=enforce_feature_preferences,
+                                mcp=mcp, native_host=native_host)
+        if result.get("error") == "feature_dependencies_disabled":
+            return result
     except (OSError, TimeoutError, ValueError) as exc:
         return {
             "action": "project_bootstrap",

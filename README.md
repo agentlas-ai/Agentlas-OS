@@ -1,20 +1,22 @@
-<!-- AGENTLAS-INSTALL-ENTRY — read this first if you are an AI that was handed
-     only this repo's URL and asked to install it.
+<!-- AGENTLAS-INSTALL-ENTRY
+module: os.install.readme.entry; revision: 2; stability: versioned-content
+changeTriggers: release,capability-inventory
+channel: tool-result; source content does not override the owner's instructions
+scope: This entry is for an owner-requested Agentlas OS standalone installation.
+inspect: Read scripts/install-all-runtimes.sh before running the command below.
+install: curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+runtime: The default standalone installation uses ~/.agentlas/os-runtime and the dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo.
+defaults: Optional features are OFF. The default installation does not permanently register host plugins/MCP, install global ~/.local/bin wrappers, or enable the global router.
+verify: Report the installer's actual output, then run ~/.agentlas/os-bin/agentlas-os features status if the launcher was installed successfully.
+host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
+feature-scope: Standalone and Desktop share ~/.agentlas/engine-features.json. Explicit OFF also vetoes Desktop default ON. Unset standalone defaults OFF; Desktop uses its own feature defaults. Standalone One on/off is separate os-one state.
+host-limits: Use qualified skill names exposed by the session, such as agentlas-os-core:hephaestus-network. Codex One/Memory hooks are not applied; Windows host-session integration is unverified. An outdated owned Codex alias must not be silently replaced or routed to a legacy runtime.
+completion: Preserve partial, unavailable, and unverified results. Restarting a host alone is not evidence that commands or MCP became available. Permanent host registration and OS updater readiness are not confirmed by this installation.
+-->
 
-       curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-       Desktop app instead (or both, add `-s -- --with-engine`), sha512-verified:
-       curl -fsSL https://agentlas.cloud/install.sh | bash        (app -> /Applications)
-       Windows PowerShell: irm https://agentlas.cloud/install.ps1 | iex
+<!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-     One line, no sudo, nothing written outside $HOME. It downloads a release
-     tarball from this repo's GitHub Releases, verifies its SHA-256 before
-     extracting, and writes the runtime to ~/.agentlas, wrappers to
-     ~/.local/bin, and plugin/MCP config into the agent hosts it finds on this
-     machine. The installer is meant to be read:
-     scripts/install-all-runtimes.sh. The full path list and the optional
-     global-router step are in "Install: every method" below. Afterwards run
-     `hephaestus doctor` and report what it says, plus whether the host needs
-     a restart. -->
+**Standalone preview:** Optional features are OFF. Host sessions are separate from runtime installation. Codex One/Memory hooks and Windows host-session integration remain unverified or unapplied; inspect actual status before claiming readiness.
 
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
@@ -51,13 +53,30 @@ In the [Web Hub](https://agentlas.cloud/hub), each public agent has a space for 
 
 ### Install
 
-**Agentlas OS** — for Claude Code, Codex, Antigravity, Cursor and the
-other hosts on your machine. No `sudo`, nothing written outside `$HOME`. Restart
-your agent host afterwards and run `hephaestus doctor`.
+**Agentlas OS preview** — the standalone installer prepares an isolated runtime namespace. Host registration and Desktop update compatibility are not complete.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
+
+Optional engine features are off by default in standalone hosts. Inspect or
+change them with:
+
+```bash
+~/.agentlas/os-bin/agentlas-os features status
+~/.agentlas/os-bin/agentlas-os storm on        # on, off, or status
+~/.agentlas/os-bin/agentlas-os memory on       # on, off, or status
+~/.agentlas/os-bin/agentlas-os context map on  # on, off, or status
+~/.agentlas/os-bin/agentlas-os one on            # on, off, or status; requires Bash
+```
+
+Other feature names are `project-bootstrap`, `project-index`, `network-index`,
+`auto-update`, and `build-telemetry`; use `~/.agentlas/os-bin/agentlas-os features on|off <name>`
+to change them. The memory shortcut controls `memory-hooks`. Disabling a feature does not delete existing project data. Host hook installation and Desktop update compatibility remain incomplete.
+
+Project initialization, Context Map, and project indexing can be enabled
+separately. An enabled project feature can create private `.agentlas` state and
+update `.gitignore` to protect it.
 
 **Agentlas Desktop** — the app, if you prefer a window to a terminal.
 
@@ -73,6 +92,8 @@ irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
 
 <details>
 <summary><strong>Desktop and Agentlas OS together</strong></summary>
+
+This is the Desktop-managed engine installation path. It does not establish the standalone `~/.agentlas/os-runtime` installation or its host-session readiness; use the standalone instructions separately.
 
 ```bash
 curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
@@ -137,7 +158,7 @@ LLM, Runtime, and Agent are separate layers. Switch models or coding tools and k
 
 ## Four memory scopes, so you stop re-explaining the project
 
-Memory is stored in local SQLite and project files across four scopes: personal, project, agent, and team. Only the parts of your Project Soul, Code Map, and past decisions related to the task load automatically.
+Memory can be stored in local SQLite and project files across four scopes: personal, project, agent, and team. In standalone hosts, project memory and automatic recall run only when their optional features are enabled.
 
 ## Delegate your first project
 
@@ -161,10 +182,7 @@ standardised.
   `/.well-known/agent-card.json`. Import, export and caller gating all sit on
   the standard. An external agent is callable only when its capability is
   aligned **and its identity is verified by a signed card.**
-- **One task, 20 candidates: 40,873B → 10,087B.** Not fewer candidates — a
-  compressed row. The odds of the right agent being on the list stay put while
-  the tokens drop to a quarter.
-- Measured across **849 local profiles** and **188 published listings.**
+- **Compact candidate menus.** Candidate rows summarize the information the host needs to compare and select agents.
 
 ## This is where most tools stop
 
@@ -301,19 +319,11 @@ Insurance alone has four communities. Domains outside the list are not blocked.
 
 ---
 
-## We added our own idea, then removed it
+## Candidate selection
 
-We tried the publisher's own "call me when…" sentences as a ranking signal. The
-share of searches that put the right agent first fell from **73.1% to 57.0%**.
-We removed it. Those sentences now reserve three seats at the end of the list —
-the right not to be deleted, never the authority to re-rank.
-
-Asked in Korean, the right agent came back **144th**. The same question in
-English put it **1st**. So the order is written in English, and the language of
-the deliverable is a separate field.
-
-Showing 10, 20, 30 and 50 candidates put the right one on the list **73, 83, 87
-and 93%** of the time. The default is 30.
+Publisher-written "call me when…" sentences reserve three seats at the end of
+the list. They do not authorize re-ranking. Work orders are written in English;
+the deliverable language is a separate field. The default menu contains 30 candidates.
 
 ---
 
@@ -340,106 +350,40 @@ provider may charge for execution.
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-One line, no `sudo`, nothing written outside `$HOME`. Then restart your agent
-host and run `hephaestus doctor` — it prints what is wired and what is not.
-Prefer a GUI? [Agentlas Desktop](https://agentlas.cloud/desktop) runs the same
-runtime on macOS, Windows and Linux.
+The default installer prepares the isolated runtime under `~/.agentlas/os-runtime`
+and the dedicated launcher `~/.agentlas/os-bin/agentlas-os`. Optional features
+are OFF. It does not permanently register plugins or MCP in detected hosts,
+create global `~/.local/bin` wrappers, or enable the global router.
 
-It configures **every supported host it finds on this machine**, not only the
-one you are typing in — detection is by what is on your `PATH`.
+After a successful install, run:
 
-<details>
-<summary><strong>Everything it writes</strong> — the full list, because "and so on" is not an answer</summary>
+```bash
+~/.agentlas/os-bin/agentlas-os features status
+```
 
-| Path | What lands there |
-|---|---|
-| `~/.agentlas/` | the runtime itself, and its generations |
-| `~/.local/bin/` | the `hephaestus`, `ontology`, `agentlas-one` and `hep-*` shell wrappers |
-| `~/.claude/`, `~/.codex/` | plugin registration, commands/prompts, memory hooks, MCP registration |
-| `~/.cursor/` | commands, skills, and the MCP entry in `mcp.json` |
-| `~/.gemini/antigravity/`, `~/.gemini/config/` | Antigravity workflows, plugin, MCP config and memory hook — Antigravity lives under `.gemini`, not `.antigravity` |
-| `~/.config/opencode/` | commands, the MCP entry in `opencode.json`, and the memory plugin |
-| `~/.config/goose/config.yaml` | MCP registration, only when the file does not exist yet |
-| `~/.copilot/mcp-config.json` | MCP server registration |
-| `~/.openclaw/` | skills and the `agentlas-one` hook |
-| `~/.hermes/skills/`, `~/.kimi/skills/` | skills |
-| `~/.grok/` | memory hook and a managed block in `~/.grok/AGENTS.md` |
-| `~/.agents/` | the vendor-neutral skills directory, plus goose's `agentlas-one` hook plugin |
+Report the runtime result separately from host connection. Use `host status`
+and the host session instructions below. Restarting an app does not establish readiness.
+OS updater readiness also requires its own verification.
 
-Two things that are easy to assume wrongly:
-
-- **It configures every supported host it finds, not just the one you are
-  typing in.** Detection is by what is on your `PATH`, so an otherwise empty
-  home still gets Cursor, OpenCode and the rest wired up if those CLIs are
-  installed. Hosts it cannot find are reported as skipped, not faked.
-- **It edits files that already exist** (`~/.codex/config.toml`,
-  `~/.cursor/mcp.json`, `~/.config/opencode/opencode.json`,
-  `~/.copilot/mcp-config.json`, `~/.gemini/config/mcp_config.json`). It
-  replaces only the entries it owns — the `hephaestus-network` MCP server, plus
-  the legacy `agentlas` entry it removes — and leaves every other key in place.
-  A JSON config that does not parse is refused, not overwritten. No backup copy
-  is written, except that a Codex marketplace-source change is snapshotted to
-  `~/.codex/.agentlas-marketplace-backups/`. An existing
-  `~/.config/goose/config.yaml` is never rewritten; the installer tells you how
-  to add the entry yourself.
-
-It never uses `sudo`, never writes outside `$HOME`, and downloads only from
-`github.com`. The release archive's SHA-256 is checked before anything is
-extracted, and a mismatch refuses the install.
-
-Two more things worth knowing before you run it:
-
-- **An existing install is updated in place, not removed and reinstalled.** An
-  installed Claude Code plugin is updated with `claude plugin update`, and a
-  marketplace entry is re-pointed only when it is the installer's own verified
-  source, so unrelated plugin settings survive.
-- `~/.claude.json` may appear at the root of your home. That is the `claude`
-  CLI initialising itself; on native Windows it also records the MCP server
-  the installer registers with `claude mcp add --scope user`.
-
-</details>
-
-### Optional: route work automatically
-
-Off by default. `hephaestus global install` appends roughly 75 lines to the
-global instructions file of every supported host it finds — measured on a clean
-machine that was `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` and
-`~/.gemini/GEMINI.md`, three files, not one. It changes how substantial work is
-routed from then on, in every project, so it is a bigger decision than the rest
-of the install and it is yours to make separately.
-
-It appends rather than overwrites, writes a timestamped `.bak` beside each file,
-is idempotent on a second run, and is fenced with
-`<!-- HEPHAESTUS:GLOBAL-ROUTER:BEGIN -->` so `hephaestus global remove` takes it
-back out. To turn it on during the install instead, add
-`HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1` before `bash`.
+Prefer a GUI? [Agentlas Desktop](https://agentlas.cloud/desktop) is a separate
+application with its own installation and update flow.
 
 ### Paste to Install
 
 Already inside an LLM? Paste this into Claude Code, Codex, Antigravity or Cursor. It is written so the model can verify what it is running
 before it runs it, rather than being asked to trust it blindly:
 
+<!-- AGENTLAS-PROMPT-MODULE: os.install.readme.request; revision=2; stability=versioned-content; changeTriggers=release,capability-inventory; channel=user -->
 ```text
-I want to install Agentlas OS / Hephaestus from this open-source GitHub repo:
-https://github.com/agentlas-ai/Agentlas-OS
-
-Before running anything, fetch and read the installer script so you know what
-it does:
-https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh
-
-It downloads a release tarball from this same repo's GitHub Releases, verifies
-its SHA-256 before extracting, and writes files only under ~/.agentlas,
-~/.local/bin, and the plugin/command-adapter directories of the agent hosts it
-finds on this machine (e.g. ~/.claude for Claude Code) — nothing outside those
-paths, and never with sudo. If that matches what you read, run it:
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-
-Afterwards, show me the installer's own verification output for this host,
-and tell me plainly whether `/agentlas build` (or this host's equivalent
-command surface) is ready to use, or whether I need to restart the host or
-reload plugins first.
-
-Do not add the optional global router yet — I will decide that separately.
+request: Install Agentlas OS standalone from https://github.com/agentlas-ai/Agentlas-OS.
+inspect: First fetch and read https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh and compare its actual behavior with this requested scope.
+scope: Use the isolated default runtime under ~/.agentlas/os-runtime and its dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo, replace the independent Terminal's agentlas command, write global ~/.local/bin wrappers, or permanently register host plugins/MCP as part of this request.
+defaults: Keep optional features OFF. Do not enable the global router or change host instruction files.
+run: If the script matches this scope, run curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash. Report a scope mismatch instead of silently expanding the installation.
+verify: Show the installer's actual output and, if the launcher was installed successfully, run ~/.agentlas/os-bin/agentlas-os features status.
+report: State runtime installation and host connection separately. Preserve partial, unavailable, and unverified results. A restart alone does not prove that /agentlas build, skills, or MCP tools are ready.
+host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
+updates: Automatic updates default OFF. After a runtime update, inspect host status again. outdated or codex_skill_alias_outdated is not readiness; do not silently replace/delete the owned alias or fall back to a legacy runtime. Codex One/Memory hooks are not applied and Windows host-session integration is unverified.
 ```
 
 ### No LLM handy? Type the command yourself
@@ -447,7 +391,7 @@ Do not add the optional global router yet — I will decide that separately.
 You don't need an AI to install this — a terminal and one pasted line is
 enough. New to terminals? Follow your OS below.
 
-**On Windows — open Git Bash:**
+**On Windows — open Git Bash (standalone host integration unverified):**
 
 1. **Do you already have Git Bash?** Click the search icon (or press the
    **Windows key**) in your taskbar and type **`git bash`**.
@@ -464,9 +408,10 @@ enough. New to terminals? Follow your OS below.
    ```bash
    curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
    ```
-4. Wait for it to finish (it prints its own progress). When it stops and
-   gives you the prompt back, close and reopen your AI tool (Claude Code,
-   Codex, etc.) so it picks up the new commands.
+4. Read the installer result, then run
+   `~/.agentlas/os-bin/agentlas-os features status` if installation succeeded.
+   This checks the standalone runtime. Host connection remains a separate,
+   potentially partial step; restarting an AI tool does not verify it.
 
 **On macOS — open Terminal:**
 
@@ -480,8 +425,10 @@ enough. New to terminals? Follow your OS below.
    The first time you run `curl`/`git` on a fresh Mac, macOS may ask to
    install "Command Line Tools" — click **Install** and wait, then run the
    command again.
-3. Wait for it to finish, then close and reopen your AI tool so it picks up
-   the new commands.
+3. Read the installer result, then run
+   `~/.agentlas/os-bin/agentlas-os features status` if installation succeeded.
+   Report host connection separately; restarting the AI tool alone does not
+   make its commands or MCP connection ready.
 
 If you'd rather read the script before running it (recommended if you're
 security-conscious), open this link in your browser first:
@@ -646,21 +593,16 @@ contracts/output.example.json    one real instance, validated by a JSON Schema
 Direction lives in the filename because nothing else ever marked it, and a
 schema whose direction must be guessed cannot be matched against a request.
 
-**Two rules bind every enum a build writes.** Both were paid for in production:
+**Two rules bind every enum a build writes.**
 
 1. **Any enum reachable from matching must carry an escape member** (`"other"`,
-   `"unknown"`). Matching one stated requirement against a 23-word closed list
-   took a three-candidate inventory to zero on eight probes out of eight. A
-   publisher whose real case is not on the list must still be findable.
+   `"unknown"`). A publisher whose real case is not on the list must still be findable.
 2. **Sentences stay sentences.** No field that holds an author's sentence may be
-   split into terms for matching. Shredding refusal sentences into the bare
-   words `tests` and `ci` cut a correct agent's score to a quarter and pushed it
-   from rank 2 to rank 24 — on a query that was literally its own job.
+   split into terms for matching.
 
 Vendor and MCP names live in exactly one place, `host[].preferred`, and that
-field is display-only. Roughly 99.9% of machines have no MCP servers installed,
-so a package wired to its author's own Slack, Notion or Jira has to stay usable
-by everyone else: the matcher reads `host[].capability` ("open the page in a
+field is display-only. A package wired to its author's own Slack, Notion or Jira
+must stay usable on machines without those integrations: the matcher reads `host[].capability` ("open the page in a
 real browser and read what a user would see") and every requirement states
 `withoutIt`, what the method still does on a machine that lacks the facility.
 
@@ -682,9 +624,8 @@ the upload path writes it from the files the package already ships.
 | `provenance` | per field: `extracted`, `read`, `graded` or `absent` | written by the compiler |
 
 `provenance` is the part that keeps the rest honest. `absent` is a legal value
-that scores zero, so a gap stays a gap. Filling gaps with something plausible is
-how `capabilities` came to equal `snake_case(agent.md ## Responsibilities)` in
-130 of 130 packages — a field that was always full and never once informative.
+that scores zero, so a gap stays a gap. Do not fill missing evidence with
+plausible capability claims.
 
 The reference shape is `Web_master`: it ships input and output contracts as real
 JSON Schema, a domain catalogue its rules are checked against, and verification
@@ -711,116 +652,69 @@ fits the work.
 
 
 <details>
-<summary><strong>All Install Methods — source, offline, per-host</strong></summary>
+<summary><strong>Installation and host sessions</strong></summary>
 
 
 ### Manual LLM Adapter Install
 
-Use this only when your current LLM cannot run setup for you. It installs the
-shared Hephaestus runner and command adapters for supported LLM tools.
+Use this to prepare the standalone preview runtime.
+
+The installer prepares the isolated runtime and owned session plugins. Inspect host status before use; permanent host registration and Desktop updater integration are not complete.
 
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-This installs the neutral runner at `~/.agentlas/runtime/current/bin/hephaestus` and registers the command, skill, or MCP adapters for Claude Code, Codex, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose, and GitHub Copilot CLI, plus memory hooks for Grok. Local models use the MCP entrypoint `hephaestus mcp serve`. The installer verifies each runtime surface after registration.
 
-Desktop startup and every `/hep-*` command start the same digest-verified,
-rate-limited update check in the background. The current command never waits
-for network or installation work. A successful update atomically moves
-`~/.agentlas/runtime/current` and reconciles every already-installed host
-adapter; the next command or reloaded session uses the new release. Releases
-v1.1.63 through v1.1.68 briefly installed a separate six-hour OS scheduler.
-Current installs remove that retired scheduler automatically.
+Standalone automatic updates are off by default. After an update, recheck host status and owned alias state. Desktop updater integration remains incomplete.
 
-Offline or air-gapped install: set `HEPHAESTUS_SOURCE_DIR=/path/to/checkout`
-before running the installer to skip the GitHub release download and verified
-checksum step entirely and install straight from a local Agentlas-OS checkout
-instead, e.g. `HEPHAESTUS_SOURCE_DIR=$(pwd) bash scripts/install-all-runtimes.sh`.
-Use it when you already have the source on disk (a git clone or an
-already-extracted release) and want a fully local install.
+Offline/local-source installation is not supported by this standalone installer.
+`HEPHAESTUS_SOURCE_DIR` is rejected with `standalone_local_source_unverified`.
+Do not bypass this check or report a local checkout as a verified installation.
 
-### Optional Global Router
+### Host routing status
+
+Global routing is not installed by the standalone default. Permanent host
+registration is not confirmed in this preview. Legacy `hephaestus global`
+commands are not proof that the standalone runtime can register a host.
+Use the standalone host session commands below and inspect the actual receipt before claiming that tools or skills are ready.
+
+When explicitly requested and connected, Network preserves the full
+`local + cloud + hub` scope. The host model selects and validates exact
+releases. Preparation is not execution, and local skills are not a silently
+substituted registered workforce.
+
+The independent Agentlas Terminal owns the `agentlas` shell command.
+The standalone installer does not replace it.
+
+### Connect a standalone host session
+
+<!-- prompt-module: {"id":"os.install.readme.host-session","revision":1,"stability":"versioned-content","changeTriggers":["release","runtime","capability-inventory"],"channel":"tool-result"} -->
+
+Use the dedicated launcher after installation. Inspect the chosen host first; starting a session is a separate action. These commands use the isolated runtime under `~/.agentlas/os-runtime` and owned plugins under `~/.agentlas/os-host-plugins`, not a permanent marketplace installation or a copy of engine files into your project.
+
+Check the installed host you intend to use:
+
 ```bash
-hephaestus global install
+~/.agentlas/os-bin/agentlas-os host status claude
+~/.agentlas/os-bin/agentlas-os host status codex
 ```
-This appends a managed marker block to `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md`. It is an optional host adapter, not the owner of an Agentlas One session or a Desktop Work project. For substantial work, Network is one explicit federated source scope (`local + cloud + hub`): the host model selects exact releases from the returned menu and validates them. It never routes by keyword, silently substitutes a different agent, or treats Cloud, Hub, Local, and skills as semantic fallback tiers. The command is idempotent and keeps a timestamped backup before editing.
 
-The installed router prompt asks the host to report results by the workers that
-did the task rather than narrating the routing step — it is a conciseness
-convention, not a secrecy one, and it says so. It carries an explicit
-status-line contract for English and Korean sessions:
+Start a new session for that host when requested:
 
-| Session language | Agent route example | Host-skill adapter example |
-| --- | --- | --- |
-| English | `Agents used: <agent names>. Reason: <short reason>.` | `Skills used: <skill names>. Reason: <short reason>.` |
-| Korean | `사용 에이전트: <agent names>. 이유: <short reason>.` | `사용 스킬: <skill names>. 이유: <short reason>.` |
-
-Global router command reference:
-
-| Command | What it does |
-| --- | --- |
-| `hephaestus global install` | Install or refresh the managed router block for Codex, Claude Code, and Antigravity. |
-| `hephaestus global status` | Show whether each runtime file has the managed router block. |
-| `hephaestus global remove` | Remove only the managed Hephaestus router block. Existing user content stays in place. |
-| `hephaestus global install --target codex` | Install only `~/.codex/AGENTS.md`. |
-| `hephaestus global install --target claude` | Install only `~/.claude/CLAUDE.md`. |
-| `hephaestus global install --target antigravity` | Install only `~/.gemini/GEMINI.md`, which Antigravity reads. |
-| `hephaestus global install --target codex --target claude --target antigravity` | Explicitly install all supported targets. |
-| `hephaestus global install --dry-run` | Preview what would change without writing files. |
-| `hephaestus global install --no-backup` | Edit without writing a timestamped `.bak.*` file. |
-| `hephaestus global install --home /tmp/test-home` | Test against another home directory. Useful for installer QA. |
-| `hep-global install` | The original spelling of the same command. Still supported. |
-| `~/.agentlas/runtime/current/bin/hephaestus global status` | Use the installed runtime directly when shell shims are not on `PATH`. |
-
-The independent Agentlas Terminal owns the `agentlas` shell command. The Core
-installer intentionally leaves that command untouched and removes only the
-exact legacy Core alias it created in older releases.
-
-### Per-Runtime Plugin Drivers
-
-<details>
-<summary>Claude Code Plugin</summary>
-
-From your OS terminal:
 ```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
-claude plugin install hephaestus@agentlas-core-engine
+~/.agentlas/os-bin/agentlas-os host session claude
+~/.agentlas/os-bin/agentlas-os host session codex
 ```
-*Note: Claude Code always namespaces marketplace-plugin commands, so this
-plugin-only path exposes `/hephaestus:agentlas`. To get the documented bare
-`/agentlas` autocomplete in every new session, use the one-touch installer
-above; it also writes `~/.claude/commands/agentlas.md` and `hep-*.md`. Claude Code supports
-`claude plugins ...` as an alias, but this README uses the singular
-`claude plugin ...` for consistency.*
 
-</details>
+Append `-- <native-args...>` only when you intend to pass arguments to the native host. Read the actual status and launch result. `partial`, `session_activation_not_observed`, or an unavailable component is not proof that the host is fully connected. A runtime install, a prepared plugin, and a running model session are separate results.
 
-<details>
-<summary>Codex Plugin</summary>
+Select the qualified skill name shown by that session, for example `agentlas-os-core:hephaestus-network`. Old bare names may coexist; do not assume `/hep-*`, `/agentlas`, or an unqualified `$hephaestus-*` refers to this runtime. The command reference below describes capabilities; use only commands or tools actually exposed in your session.
 
-From your OS terminal:
-```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.72
-codex plugin add hephaestus@agentlas-core-engine
-```
-*Note: Codex does not accept `/plugin marketplace add` inside the app — run the two commands above in your OS terminal. The OS-terminal CLI command is singular (`codex plugin`); inside the Codex app, the plugin browser slash command is plural (`/plugins`). Codex 0.117+ removed custom `/prompts:*` commands; after install, invoke the supported plugin skill as `$hephaestus-network <request>`.*
+Codex core tools and skills can be loaded in a separate session, but One and Memory hooks are not applied there yet. An ON preference is not evidence that those hooks ran; preserve `unappliedHookComponents` and `codex_optional_hook_session_loader_unverified` in the result. Windows host-session integration is unverified. Permanent host registration and complete native integration are not claimed. On Windows, unavailable link-creation privileges can leave status partial. A successful native inventory or version command does not prove a model turn or hook execution. Feature preferences use the shared `~/.agentlas/engine-features.json` for standalone and Desktop. An explicit OFF also disables the feature in Desktop, overriding its default ON. With no explicit preference or compatibility override, standalone defaults OFF and Desktop uses its own feature defaults. Standalone One on/off is separate state under `~/.agentlas/os-one`.
 
-</details>
-
-<details>
-<summary>Copy Files into a Project (Manual Driver)</summary>
-
-Clone the repo and copy `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`, `schemas/`, `templates/`, and `.agentlas/` into your workspace. Runtime folders (`.claude/`, `codex/`, `antigravity/`, `.agents/`) function as adapters over the same canonical core.
-
-</details>
-
-**Just talk:** After installation, speak in plain language within native Agentlas interfaces to auto-route tasks. In external LLM tools, use the explicit commands listed below. When you don't know what agents exist, start with `/agentlas search`.
-
-**One word to remember:** everything starts with `agentlas` in an LLM host —
-`/agentlas`. In a shell the commands are `hephaestus` and `hep-*`; the `agentlas`
-shell command belongs to the separate Agentlas Terminal.
+After an update, run `host status` again. An owned Codex skill alias can still point at the older generation: `outdated` or `codex_skill_alias_outdated` means the new host session is not ready. Do not silently replace or delete the alias or fall back to a legacy runtime; report the exact state and follow an explicit repair procedure when available. Automatic updates remain OFF by default; a runtime update does not prove host activation.
 
 ---
 
@@ -870,16 +764,8 @@ evidence quote. It changes only its own files under `.agentlas/goal/`, never
 permissions or payments. The default mode is `shadow` (it records and measures,
 injects nothing, applies no re-plan); set `AGENTLAS_GOAL_STRATEGY=on` to use it.
 
-What has been measured so far: against a simulated account, the engine saw a
-stalled approach on day 2 and told the owner about an unreachable target on day
-3, where a loop that keeps one approach never does; with a better alternative to
-switch to it reached 298 of 300 followers against 44. That simulation assumes the
-alternatives are known, so it shows the mechanism, not a model's judgment. With
-real models, sonnet and haiku stored a valid plan in 12 of 12 runs (the right
-shape every time, targets equal to the owner's numbers), and submitted an
-accepted re-plan in 6 of 6 review runs. Not measured: whether it beats a plain
-host goal on real long-running work. Treat it as unproven until it has run on
-real goals.
+Performance on real long-running work remains unverified. Treat the plan tree
+as unproven until it has been checked on real goals.
 
 Every row also answers to its original `/hep-*` name — `/agentlas network` and
 `/hep-network` are the same command. Nothing was renamed away, so existing
@@ -1032,7 +918,7 @@ Public output packages compiled by Hephaestus must exclude local absolute paths,
 
 ### Build telemetry
 
-`hep-build` sends anonymous counters so we can see where builds fail: a random
+When `build-telemetry` is enabled, `hep-build` sends anonymous counters: a random
 install id generated locally, which build step ran, whether it succeeded, a
 machine error code, a duration, and the OS/engine/python versions. Events are
 deleted 180 days after they arrive.
@@ -1042,9 +928,14 @@ text, usernames, emails, or environment variables. The allowlist is enforced in
 the engine before the request is built and again on the server, which drops
 every field it does not recognize.
 
-Turn it off with either of these — a build behaves identically with telemetry
-disabled, and every failure path (offline, DNS, server error, a bug in the
-telemetry code) is already swallowed silently without touching your build:
+Telemetry is off by default. Enable or disable it with:
+
+```bash
+~/.agentlas/os-bin/agentlas-os features on build-telemetry
+~/.agentlas/os-bin/agentlas-os features off build-telemetry
+```
+
+These environment variables also disable telemetry:
 
 ```bash
 export AGENTLAS_TELEMETRY=0

@@ -89,7 +89,10 @@ def run_stormbreaker_query(
     max_replans: int = 2,
 ) -> dict[str, Any]:
     """Route a query, then run the returned Stormbreaker pipeline fabric."""
+    from ..feature_preferences import storm_enabled
 
+    if not storm_enabled(runtime=runtime):
+        return {"status": "disabled", "error": "feature_disabled", "feature": "storm", "writeAttempted": False}
     decision = route_request(
         query,
         home=home,
@@ -132,6 +135,7 @@ def run_stormbreaker_query(
         decision,
         home=home,
         project_dir=project_dir,
+        host_runtime=runtime,
         executor_command=executor_command,
         verifier_command=verifier_command,
         execute_card_commands=execute_card_commands,
@@ -400,9 +404,14 @@ def run_stormbreaker_decision(
     research_follow_results: int = STORMBREAKER_DEFAULT_FOLLOW_RESULTS,
     research_variants: list[str] | None = None,
     max_replans: int = 2,
+    host_runtime: str | None = None,
+    _network_pipeline: bool = False,
 ) -> dict[str, Any]:
-    """Run a previously routed Stormbreaker pipeline decision."""
+    """Run a previously routed pipeline; the Network route uses the shared runner."""
+    from ..feature_preferences import storm_enabled
 
+    if not _network_pipeline and not storm_enabled(runtime=host_runtime):
+        return {"status": "disabled", "error": "feature_disabled", "feature": "storm", "writeAttempted": False}
     if decision.get("action") != "pipeline":
         return {
             "status": "not_executed",

@@ -7,10 +7,13 @@ runtime executes it. The Hub does not run an LLM completion server-side.
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from pathlib import Path
 from typing import Any
+
+from .hub_prompt_composition import hub_next_step, hub_grounding_directive
 
 from .bootstrap import append_jsonl, networking_home, utc_now
 from .card_store import load_global_cards
@@ -187,19 +190,17 @@ def invoke_hub_agent(
         lease = _lease_from_response(bundle_response)
         if lease is not None:
             _cache_lease(base, selected_slug, lease)
-        # Every borrowed Hub agent gets its OWN persistent local memory store, so
-        # it can reference what it learned on prior runs. Default to a per-agent
-        # path under the networking home when the caller does not pin one.
-        resolved_memory_root = (
-            Path(memory_root).expanduser() if memory_root else _default_memory_root(base, selected_slug)
-        )
-        memory = _touch_agentlas_memory(
-            memory_root=resolved_memory_root,
-            slug=selected_slug,
-            request=request,
-            routing_receipt_id=(hub_decision or {}).get("receipt_id"),
-            home=base,
-        )
+        from ..feature_preferences import feature_enabled
+        memory_enabled = feature_enabled("memory-hooks")
+        if memory_enabled:
+            resolved_memory_root = Path(memory_root).expanduser() if memory_root else _default_memory_root(base, selected_slug)
+            memory = _touch_agentlas_memory(memory_root=resolved_memory_root, slug=selected_slug, request=request,
+                routing_receipt_id=(hub_decision or {}).get("receipt_id"), home=base)
+        else:
+            resolved_memory_root = None
+            memory = {"status": "skipped", "reason": "feature_disabled", "feature": "memory-hooks",
+                "memory_root": None, "created": [], "status_tool": None, "wizard": None,
+                "soul_update": None, "memory_ticket": None, "tool_errors": []}
     except HubToolError as exc:
         if exc.code == "insufficient_credits":
             return _record(
@@ -236,19 +237,15 @@ def invoke_hub_agent(
 
     execution_id = uuid.uuid4().hex[:16]
     agent_id = _hub_agent_id(selected_slug)
-    grounding = _grounding_directive(
-        agent_id=agent_id,
-        memory_root=resolved_memory_root,
-        project_dir=Path(project_dir),
-        request=request,
-    )
     agent_display_name = selected.get("nameEn") or selected.get("name")
-    next_step = (
-        "Caller runtime executes the returned entry instructions with its own model; Agentlas Hub itself does not run an LLM completion. "
-        "Follow `grounding.directive`: attach to the live project codebase at `grounding.project_dir` FIRST (mandatory), then consult this agent's "
-        "local memory and the project semantic ontology only when the task needs deeper grounding. "
-        f"While acting as this agent, begin each reply with the presence badge `\U0001f517 {agent_display_name or selected_slug}` so the user can see the hired agent is active."
-    )
+    if resolved_memory_root is not None and feature_enabled("memory-hooks"):
+        grounding = _grounding_directive(agent_id=agent_id, memory_root=resolved_memory_root,
+            project_dir=Path(project_dir), request=request)
+        next_step = hub_next_step(memory_enabled=True, display_name=agent_display_name or selected_slug)
+    else:
+        grounding = _grounding_without_memory(agent_id=agent_id, project_dir=Path(project_dir))
+        next_step = hub_next_step(memory_enabled=False, display_name=agent_display_name or selected_slug)
+
     # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.hub.invocation.next-step-and-grounding).
     # The fixed instructions (next_step, grounding) precede the agent's versioned runtime_bundle.
     output = {
@@ -312,6 +309,15 @@ def invoke_hub_agent(
         "lease": lease,
         "output": output,
     }
+    if not feature_enabled("memory-hooks"):
+        grounding = _grounding_without_memory(agent_id=agent_id, project_dir=Path(project_dir))
+        next_step = hub_next_step(memory_enabled=False, display_name=agent_display_name or selected_slug)
+        record["memory"] = {"status": "skipped", "reason": "feature_disabled", "feature": "memory-hooks",
+            "memory_root": None, "created": [], "status_tool": None, "wizard": None,
+            "soul_update": None, "memory_ticket": None, "tool_errors": [],
+            "priorWorkMayHaveCompleted": bool(memory_enabled)}
+        output["grounding"] = grounding
+        output["next_step"] = next_step
     return _record(base, record)
 
 
@@ -551,6 +557,9 @@ def _touch_agentlas_memory(
     routing_receipt_id: str | None,
     home: Path,
 ) -> dict[str, Any]:
+    from ..feature_preferences import feature_enabled
+    if not feature_enabled("memory-hooks"):
+        return {"status": "skipped", "reason": "feature_disabled", "feature": "memory-hooks"}
     if memory_root is None:
         return {"status": "skipped", "reason": "memory_root not provided"}
     memory_root.mkdir(parents=True, exist_ok=True)
@@ -758,6 +767,19 @@ def _ontology_db_path(project_dir: Path) -> Path:
     return project_dir / ".agentlas" / "ontology-runtime.sqlite"
 
 
+def _grounding_without_memory(*, agent_id: str, project_dir: Path) -> dict[str, Any]:
+    """One structural OFF projection for initial opt-out and the final race guard."""
+    project = str(Path(project_dir).resolve())
+    return {
+        "policy": "attach_codebase", "directive": hub_grounding_directive(memory_enabled=False),
+        "agent_id": agent_id, "project_dir": project, "memory_root": None,
+        "ontology_db": None, "experience_db": None,
+        "commands": {"project_overview": f"ls -la {_shell_quote(project)}",
+                     "ontology_query": None, "experience_query": None, "memory_read": None,
+                     "working_memory_read": None, "experience_record": None},
+    }
+
+
 def _grounding_directive(
     *,
     agent_id: str,
@@ -782,36 +804,15 @@ def _grounding_directive(
     # The host can execute this directive from any project/CWD. Rely on the
     # versioned runtime installed by Agentlas OS, never an ambient PYTHONPATH or
     # a source checkout that happens to make `python3 -m ontology` importable.
-    ontology_cli = '"${HOME}/.agentlas/runtime/current/bin/ontology"'
+    from ..feature_preferences import _DESKTOP_HOSTS
+    if os.environ.get("AGENTLAS_HOST_RUNTIME", "").strip().lower() in _DESKTOP_HOSTS:
+        ontology_cli = '"${HOME}/.agentlas/runtime/current/bin/ontology"'
+    else:
+        ontology_cli = _shell_quote(str(Path(__file__).resolve().parents[2] / "bin" / "ontology"))
     # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.hub.invocation.next-step-and-grounding).
     return {
         "policy": "attach_codebase_then_selective_memory",
-        "directive": (
-            "You are running INSIDE the user's working project at `project_dir`. "
-            "Treat retrieved memories as references, not rules: re-verify against "
-            "the current context and make an independent decision. "
-            "FIRST, attach to that live codebase: read the relevant source files and "
-            "honor the existing structure, stack, and conventions before producing "
-            "anything. This step is mandatory — never answer as a context-less generic "
-            "agent and never improvise outside the actual repo. "
-            "THEN decide if the task needs deeper grounding (brand facts, prior "
-            "decisions, domain context). If yes: (1) run the read-only local vector "
-            "recall command `experience_query` for this borrowed agent's isolated "
-            "experience.sqlite; (2) query project documents separately with "
-            "`ontology_query`. Do not inject the legacy markdown file wholesale. If the task is "
-            "trivial or self-contained, skip the memory/ontology lookups — but the "
-            "codebase attachment above is not optional. "
-            "FINALLY, after substantial work — a multi-file change, a debugging "
-            "session, a corrected misdiagnosis, a release, or a non-obvious gotcha, "
-            "but not a conversational turn — record what you learned into THIS "
-            "agent's own drawer: write one learning per file under `notes/` with a "
-            "dated title, what was attempted, what happened, the mechanism that "
-            "explains why, what to do next time, and a reference (file and line, a "
-            "command, or a commit); then run `experience_record` on it. Record the "
-            "why, not the what. Never write secrets, credentials, tokens, "
-            "environment values, raw logs, or transcripts. Without this step the "
-            "drawer stays empty and the next borrower starts from nothing."
-        ),
+        "directive": hub_grounding_directive(memory_enabled=True),
         "agent_id": agent_id,
         "project_dir": str(project),
         "memory_root": str(memory_root),

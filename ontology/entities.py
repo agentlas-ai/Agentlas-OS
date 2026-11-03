@@ -1,14 +1,8 @@
 """Deterministic, code-aware entity layer for the project document ontology.
 
-Why this replaced the Title-Case extractor (2026-09-23 measurement, private
-bench ``docs/benchmark/ontology-entities``): project documents are written in
-Korean or English prose, but the *names* in them — functions, files, commands,
-environment variables, tool keys, error codes — are ASCII code spans in either
-language (94% of Agentlas-OS chunks carry a backtick span, 50% a file path).
-The old extractor only knew "Capitalised English phrase" and "A depends on B"
-sentences; after orphan pruning it left 5 relations for the whole project, two
-of them from a test fixture. Sentence verb patterns measured 4/15 precise
-(table cells read as sentences, negation, reversed direction) and are gone.
+Project documents can use different prose languages while their function, file,
+command, environment-variable, tool-key, and error-code names retain code syntax.
+The extractor uses those structural names instead of inferring prose relations.
 
 What this module does, with no model call:
 
@@ -20,8 +14,8 @@ What this module does, with no model call:
 * ``entity_keys`` — lookup keys for question linking: exact lower-case name,
   file basename and stem, and the word-split form (``graph_spread.py`` ->
   "graph spread") so a plain English question still reaches a code name.
-* ``cooccurrence_edges`` — NPMI co-occurrence over chunks with the hub and
-  enumeration filters that took precision from 6/15 to 12/15.
+* ``cooccurrence_edges`` — NPMI co-occurrence over chunks with hub and
+  enumeration filters.
 * ``question_tokens`` / ``question_word_ngrams`` — the query-side linker.
 
 Structural facts (definitions, imports, co-edits) come from the Context Map and

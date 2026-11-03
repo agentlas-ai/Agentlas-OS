@@ -293,12 +293,9 @@ def resolve_plugins(query: str, project_dir: Path | str = ".", use_hub: bool = T
 
 # ── Two-tier tool search over installed plugin routing cards ─────────────────
 #
-# Layer contract: docs 2026-08-25-workforce-routing-v2/TOOLSEARCH-SCHEMAS.md.
 # Tier 1 ranks plugin/server cards by stopword-filtered keyword overlap over
-# name, summary and trigger examples; tier 2 looks only at the winners'
-# capability entries. The response never carries an input schema — measured on
-# the 43-card corpus, a 4-candidate shortlist plus one loaded schema is ~2.4%
-# of shipping everything (244 vs 9,982 estimated tokens).
+# name, summary and trigger examples; tier 2 examines the winners' capabilities.
+# The shortlist omits input schemas; load the selected capability schema separately.
 
 _READ_PREFIXES = ("get_", "read_", "list_", "search_", "inspect_", "query_", "check_")
 _DESTRUCTIVE_PREFIXES = ("delete_", "remove_", "drop_", "wipe_")

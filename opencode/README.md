@@ -31,10 +31,8 @@ OpenCode reads three Hephaestus surfaces — all installed by
 installer removes an old direct `agentlas` entry to prevent duplicate tools
 from bypassing local federation and privacy governance.
 
-The installed `/hep-*` OpenCode commands include the app-host auto-update
-preflight. When OpenCode can run local shell commands, Hephaestus refreshes
-`~/.agentlas/runtime/current` and existing adapters from inside the app before
-resolving the runner.
+Automatic updates are off by default. Run `hephaestus features on auto-update`
+to enable them, or `hephaestus update` to update manually.
 
 Manual install without the one-touch script:
 
@@ -48,9 +46,9 @@ cp -R skills/hephaestus-cloud ~/.agents/skills/
 
 ## Agentlas One session checkpoint
 
-`plugins/agentlas-memory.js` does two jobs: it injects the bounded ontology
-capsule into the system prompt, and it runs the Agentlas One memory checkpoint
-when a session ends.
+When the optional memory hook is enabled, `plugins/agentlas-memory.js` can
+inject a bounded ontology capsule. It also supports the Agentlas One memory
+checkpoint when One is enabled.
 
 OpenCode never hands a plugin a transcript path, so the checkpoint passes the
 assistant text it already holds to the runtime as `assistant_texts` instead of

@@ -1,16 +1,18 @@
 # Codex Adapter
 
+**Preview limitation:** Standalone namespace host integration and updater are incomplete; automatic host registration and adapter updates are not yet available.
+
 Codex plugins expose skills, hooks, MCP, and app metadata. Codex 0.117+
 removed the separate custom-prompt slash surface, so Hephaestus exposes the
 current Codex product surface in two places:
 
 1. **Plugin skills**: explicitly invoke `$hephaestus-build`,
    `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload`,
-   `$hephaestus-storm`, or `$hephaestus-graph`.
+   `$hephaestus-storm`.
    Codex may also select them implicitly from plain language.
-2. **MCP**: the installer registers the local stdio server
-   (`hephaestus mcp serve`) as `mcp_servers.hephaestus-network` in
-   `~/.codex/config.toml`. It is the only host-visible Workforce MCP and
+2. **MCP**: a manually configured local stdio server
+   (`hephaestus mcp serve`) can be exposed as `mcp_servers.hephaestus-network` in
+   `~/.codex/config.toml`. It is the host-visible Workforce MCP and
    exposes `workforce.search_candidates`, `workforce.validate_selection`, and
    `workforce.prepare_execution`. Core performs authenticated Cloud/Hub calls
    internally; do not also register a direct remote `agentlas` MCP.
@@ -25,7 +27,7 @@ xcode-select --install
 git --version
 ```
 
-One-command install or update for every supported runtime:
+Prepare the standalone runtime preview:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
@@ -55,25 +57,17 @@ Codex global router commands:
 | `hep-global install --target codex --dry-run` | Preview the Codex edit without writing files. |
 | `hep-global install --target codex --no-backup` | Edit without writing a timestamped backup. |
 | `hephaestus global install --target codex` | Same command through the main runner. |
-| `~/.agentlas/runtime/current/bin/hephaestus global status --target codex` | Use the installed runtime directly when `hep-global` is not on `PATH`. |
+| `~/.agentlas/os-bin/agentlas-os global status --target codex` | Use the installed runtime directly when `hep-global` is not on `PATH`. |
 
-To enable this during one-command install:
+The preview installer does not enable this block automatically.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1 bash
-```
-
-The one-command installer registers the shared runtime and adapters. Desktop
-startup and Hephaestus commands start a digest-verified, rate-limited update in
-the background without delaying the current task. A successful update moves
-`~/.agentlas/runtime/current` atomically and reconciles the Codex plugin and
-installed skills. An open task keeps its loaded code until the next task or
-app restart.
+The standalone installer currently prepares an isolated runtime namespace.
+Automatic Codex adapter registration and reconciliation are not yet available.
 
 Codex-only manual install:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.72
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref os-v1.2.73
 codex plugin add hephaestus@agentlas-core-engine
 ```
 
@@ -96,9 +90,7 @@ args = ["mcp", "serve"]
 AGENTLAS_MODEL_ALLOCATION_POLICY_JSON = '{"orchestrator":{"pinnedProvider":"codex","pinnedModelId":"gpt-5.6-sol","maxTier":"frontier","maxEffort":"max"},"worker":{"pinnedProvider":"codex","pinnedModelId":"gpt-5.3-codex-spark","maxTier":"economy","maxEffort":"medium"}}'
 ```
 
-Start a fresh Codex session after changing the table. The installer refreshes
-the owned command and arguments but preserves this operator-owned `env`
-subtable across updates. Provider and model values are matched only against the
+Start a fresh Codex session after changing the table. Automatic config reconciliation is not available in the preview. Provider and model values are matched only against the
 host's advertised live inventory. To select an Ollama or other local worker,
 pin that inventory's exact provider/model pair instead; a pin does not install
 or launch a missing runtime.
@@ -116,14 +108,12 @@ $hephaestus-network use only public Hub agents for accessibility QA
 $hephaestus-storm finish and verify this release goal
 ```
 
-Use plain language for search-only, browser, exact-call, upload, and connect
+Use plain language for search-only, browser, exact-call, and upload
 requests; the installed MCP exposes those tools. `/plugins` shows whether the
 Hephaestus plugin is enabled. `/prompts:*` is a legacy Codex 0.116-and-earlier
 surface and is not installed on current Codex.
 
-If an older install still shows `agentlas-meta-agent`, `mode-classification`,
-`clarify-question-loop`, or other internal support names, rerun the one-touch
-installer above and restart Codex.
+Older host commands and plugin caches may remain; this preview installer does not migrate them automatically.
 
 After meta-agent generation, the final handoff must include `global_commands`
 for the created agent or team. For teams, that command routes to the

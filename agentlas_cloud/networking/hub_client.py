@@ -231,14 +231,9 @@ def _interactive_auth_allowed() -> bool:
 def interactive_auth_allowed() -> bool:
     """Public face of the sign-in-window gate.
 
-    `auth ensure` is the pre-step every hep command runs first, in every
-    runtime, with `--timeout 180`. It called `ensure_access_token` with a
-    hard-coded `interactive=True`, so the documented kill-switch
-    (HEPHAESTUS_AUTO_AUTH=0) had no effect there — measured by the independent
-    audit 2026-08-25: unset/0/1 all burned the full timeout and tried to open
-    a window. A signed-out machine's scheduled run would stall three minutes
-    per command and pop a browser at night. The gate existed; nothing on that
-    path consulted it.
+    `auth ensure` uses this gate to honor HEPHAESTUS_AUTO_AUTH=0 before
+    opening a sign-in window. Its --timeout 180 bound does not override the
+    explicit opt-out required for unattended execution.
     """
 
     return _interactive_auth_allowed()
@@ -255,6 +250,10 @@ def call_hub_tool(
 ) -> dict[str, Any]:
     """Call an Agentlas Hub MCP tool and return its parsed JSON payload."""
 
+    from .remote_memory_curation import MEMORY_TOOLS
+    from ..feature_preferences import feature_enabled
+    if (name in MEMORY_TOOLS or name in {"agentlas.memory.status", "agentlas.memory.ticket", "agentlas.soul.update"}) and not feature_enabled("memory-hooks"):
+        raise HubToolError("Memory feature is disabled.", code="feature_disabled")
     if name in _RETIRED_COMMERCE_TOOLS:
         raise HubToolError("Hub agent rentals are closed.", code="hub_commerce_closed")
     if endpoint_path not in {"/api/mcp/v1", "/api/mcp/hephaestus-network"}:
@@ -383,6 +382,9 @@ def _call_hub_tool_once(
     if endpoint_path not in {"/api/mcp/v1", "/api/mcp/hephaestus-network"}:
         raise ValueError("unsupported Hub MCP endpoint")
     from .remote_memory_curation import MEMORY_TOOLS
+    from ..feature_preferences import feature_enabled
+    if (name in MEMORY_TOOLS or name in {"agentlas.memory.status", "agentlas.memory.ticket", "agentlas.soul.update"}) and not feature_enabled("memory-hooks"):
+        raise HubToolError("Memory feature is disabled.", code="feature_disabled")
     binding = None
     if name in MEMORY_TOOLS:
         from .remote_memory_curation import assert_web_memory_binding

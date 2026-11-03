@@ -335,10 +335,8 @@ def mark_spawned(root: Path, reason: str) -> None:
 
 def _boundary_guarded(pattern: "re.Pattern[str]") -> "re.Pattern[str]":
     # SECRET_PATTERNS' provider-key shape is `sk-...` with no left boundary, so
-    # it fires inside ordinary hyphenated prose: measured on the desktop tree,
-    # "risk-estimation-…", "task-inheritance-…" and "desk-…" each dropped a
-    # whole document (8 of 10 secret skips were this). A key never starts in
-    # the middle of a word.
+    # it can match ordinary hyphenated prose. Require a left boundary so a
+    # candidate key cannot start in the middle of a word.
     source = pattern.pattern
     if source.startswith("sk-"):
         return re.compile(r"(?<![A-Za-z0-9_-])" + source, pattern.flags)
@@ -436,7 +434,7 @@ def _project_soul(root: Path) -> Path | None:
         return None
 
 
-def discover(root: Path, *, deadline: float | None = None) -> dict[str, Any]:
+def discover(root: Path, *, deadline: float | None = None, include_memory: bool = True) -> dict[str, Any]:
     """Walk the project once. Returns documents, code files and skip counts."""
 
     documents: list[tuple[str, Path]] = []
@@ -447,7 +445,7 @@ def discover(root: Path, *, deadline: float | None = None) -> dict[str, Any]:
     def skip(reason: str) -> None:
         skipped[reason] = skipped.get(reason, 0) + 1
 
-    soul = _project_soul(root)
+    soul = _project_soul(root) if include_memory else None
     if soul is not None:
         documents.append((PROJECT_SOUL_RELATIVE, soul))
 
@@ -516,7 +514,7 @@ def discover(root: Path, *, deadline: float | None = None) -> dict[str, Any]:
             break
 
     pm_root = _agentlas(root) / "pm"
-    if pm_root.is_dir() and not pm_root.is_symlink():
+    if include_memory and pm_root.is_dir() and not pm_root.is_symlink():
         stack: list[tuple[Path, int]] = [(pm_root, 0)]
         while stack:
             directory, depth = stack.pop()
@@ -775,7 +773,7 @@ def _plan_digests(root: Path, code_files: list[tuple[str, Path]], counters: dict
     return digests
 
 
-def run_full_ingest(project: str | Path, *, reason: str = "explicit") -> dict[str, Any]:
+def run_full_ingest(project: str | Path, *, reason: str = "explicit", include_memory: bool = True) -> dict[str, Any]:
     """Snapshot and ingest every eligible project document. Idempotent."""
 
     from .project_bootstrap import _project_root, _release_advisory_lock, _try_advisory_lock
@@ -806,7 +804,7 @@ def run_full_ingest(project: str | Path, *, reason: str = "explicit") -> dict[st
     }
     try:
         _write_state(root, state)
-        receipt = _ingest(root, started_monotonic)
+        receipt = _ingest(root, started_monotonic, include_memory=include_memory)
     except Exception as exc:  # recorded, never swallowed
         failure = f"{type(exc).__name__}: {exc}"
         state.update(
@@ -979,14 +977,14 @@ def _refresh_soul_locked(root: Path, soul: Path) -> dict[str, Any]:
     }
 
 
-def _ingest(root: Path, started_monotonic: float) -> dict[str, Any]:
+def _ingest(root: Path, started_monotonic: float, *, include_memory: bool = True) -> dict[str, Any]:
     deadline = started_monotonic + RUN_DEADLINE_SECONDS
     runtime = _open_runtime(root)
     snapshot_root = _agentlas(root) / SNAPSHOT_DIR
     snapshot_root.mkdir(mode=0o700, exist_ok=True)
     before = _source_counts(runtime, snapshot_root)
 
-    found = discover(root, deadline=deadline)
+    found = discover(root, deadline=deadline, include_memory=include_memory)
     skipped: dict[str, int] = dict(found["skipped"])
     secret_paths: list[str] = []
     errors: list[dict[str, str]] = []
@@ -1061,8 +1059,8 @@ def _ingest(root: Path, started_monotonic: float) -> dict[str, Any]:
                 count("ingest_error")
 
     removed = 0
-    if stop is None:
-        # Only a complete walk may decide what no longer exists.
+    if stop is None and include_memory:
+        # A filtered walk cannot safely decide what no longer exists.
         orphans: list[str] = []
         for entry in snapshot_root.iterdir():
             if entry.name.startswith(".") and ".tmp." in entry.name:

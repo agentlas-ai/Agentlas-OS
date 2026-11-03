@@ -311,6 +311,14 @@ def _default_playbook_registry() -> dict[str, Any]:
     return default_playbook_registry()
 
 
+def memory_enabled() -> bool:
+    try:
+        from ..feature_preferences import feature_enabled
+        return feature_enabled("memory-hooks")
+    except Exception:
+        return False
+
+
 def init_networking(home: Path | str | None = None) -> dict[str, Any]:
     base = Path(home) if home else networking_home()
     base.mkdir(parents=True, exist_ok=True)
@@ -321,6 +329,8 @@ def init_networking(home: Path | str | None = None) -> dict[str, Any]:
             created: list[str] = []
             existing: list[str] = []
             for sub in SUBDIRS:
+                if sub == "memory" and not memory_enabled():
+                    continue
                 (base / sub).mkdir(parents=True, exist_ok=True)
             defaults: dict[str, Any] = {
                 "config.json": default_config(),
@@ -334,6 +344,8 @@ def init_networking(home: Path | str | None = None) -> dict[str, Any]:
                 "cache/plugin-index.json": {"schemaVersion": SCHEMA_VERSION, "plugins": []},
             }
             for rel, payload in defaults.items():
+                if rel.startswith("memory/") and not memory_enabled():
+                    continue
                 target = base / rel
                 if target.exists():
                     existing.append(rel)
@@ -341,6 +353,8 @@ def init_networking(home: Path | str | None = None) -> dict[str, Any]:
                     atomic_write_json(target, payload)
                     created.append(rel)
             for rel in JSONL_FILES:
+                if rel.startswith("memory/") and not memory_enabled():
+                    continue
                 target = base / rel
                 if target.exists():
                     existing.append(rel)

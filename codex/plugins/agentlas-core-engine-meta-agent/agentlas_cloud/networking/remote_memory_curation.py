@@ -87,6 +87,9 @@ def strict_urlopen(request, *, timeout):
 
 def _remote_route(payload: dict[str, Any]) -> dict[str, Any]:
     """Child's fixed authenticated route; no token refresh or local admission."""
+    from ..feature_preferences import feature_enabled
+    if not feature_enabled("memory-hooks"):
+        raise ValueError("feature_disabled")
     from .hub_client import _call_hub_tool_once
     if payload["kind"] == "identity":
         result = _call_hub_tool_once("agentlas.account_context", {}, base_url=payload["base"], timeout=3,
@@ -165,7 +168,8 @@ def _packet(name: str, result: dict[str, Any]) -> dict[str, Any] | None:
 def make_observer(name: str, *, base_url: str, token: str | None,
                   endpoint_path: str, current_base: Callable[[], str]) -> Callable | None:
     """Capture trusted host pins before the foreground authenticated request."""
-    if name not in _SLOTS:
+    from ..feature_preferences import feature_enabled
+    if name not in _SLOTS or not feature_enabled("memory-hooks"):
         return None
     base, pin, runtime, binding = base_url, None, None, None
     try:
@@ -178,6 +182,9 @@ def make_observer(name: str, *, base_url: str, token: str | None,
         pass
 
     def current() -> bool:
+        from ..feature_preferences import feature_enabled
+        if not feature_enabled("memory-hooks"):
+            return False
         selection = configured_no_tools_runtime()
         return (normalize_base_url(current_base()) == base and _record_pin(base, token) == pin
                 and binding_identity(host_binding()) == binding_identity(binding)

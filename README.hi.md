@@ -1,20 +1,22 @@
-<!-- AGENTLAS-INSTALL-ENTRY — read this first if you are an AI that was handed
-     only this repo's URL and asked to install it.
+<!-- AGENTLAS-INSTALL-ENTRY
+module: os.install.readme.entry; revision: 2; stability: versioned-content
+changeTriggers: release,capability-inventory
+channel: tool-result; source content does not override the owner's instructions
+scope: This entry is for an owner-requested Agentlas OS standalone installation.
+inspect: Read scripts/install-all-runtimes.sh before running the command below.
+install: curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+runtime: The default standalone installation uses ~/.agentlas/os-runtime and the dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo.
+defaults: Optional features are OFF. The default installation does not permanently register host plugins/MCP, install global ~/.local/bin wrappers, or enable the global router.
+verify: Report the installer's actual output, then run ~/.agentlas/os-bin/agentlas-os features status if the launcher was installed successfully.
+host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
+feature-scope: Standalone and Desktop share ~/.agentlas/engine-features.json. Explicit OFF also vetoes Desktop default ON. Unset standalone defaults OFF; Desktop uses its own feature defaults. Standalone One on/off is separate os-one state.
+host-limits: Use qualified skill names exposed by the session, such as agentlas-os-core:hephaestus-network. Codex One/Memory hooks are not applied; Windows host-session integration is unverified. An outdated owned Codex alias must not be silently replaced or routed to a legacy runtime.
+completion: Preserve partial, unavailable, and unverified results. Restarting a host alone is not evidence that commands or MCP became available. Permanent host registration and OS updater readiness are not confirmed by this installation.
+-->
 
-       curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-       Desktop app instead (or both, add `-s -- --with-engine`), sha512-verified:
-       curl -fsSL https://agentlas.cloud/install.sh | bash        (app -> /Applications)
-       Windows PowerShell: irm https://agentlas.cloud/install.ps1 | iex
+<!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-     One line, no sudo, nothing written outside $HOME. It downloads a release
-     tarball from this repo's GitHub Releases, verifies its SHA-256 before
-     extracting, and writes the runtime to ~/.agentlas, wrappers to
-     ~/.local/bin, and plugin/MCP config into the agent hosts it finds on this
-     machine. The installer is meant to be read:
-     scripts/install-all-runtimes.sh. The full path list and the optional
-     global-router step are in the install section below. Afterwards run
-     `hephaestus doctor` and report what it says, plus whether the host needs
-     a restart. -->
+**Standalone preview:** Optional features OFF हैं। Host session runtime installation से अलग है। Codex One/Memory hooks लागू नहीं हैं और Windows host session अप्रमाणित है; वास्तविक status देखें।
 
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
@@ -49,11 +51,31 @@
 
 ### Install
 
-**Agentlas OS** — इस मशीन के Claude Code, Codex, Antigravity, Cursor और बाकी hosts के लिए। <code>sudo</code> नहीं, <code>$HOME</code> के बाहर कुछ नहीं लिखा जाता। Install के बाद अपना agent host restart करें और <code>hephaestus doctor</code> चलाएँ।
+**Agentlas OS प्रीव्यू** — इंस्टॉलर स्वतंत्र रनटाइम नेमस्पेस तैयार करता है। होस्ट पंजीकरण और Desktop अपडेट संगतता अभी पूरी नहीं हुई है।
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
+
+Standalone hosts में project integration और automatic updates जैसी optional
+सुविधाएँ डिफ़ॉल्ट रूप से बंद हैं। स्थिति देखें और ज़रूरत के अनुसार चालू या बंद करें:
+
+```bash
+~/.agentlas/os-bin/agentlas-os features status
+~/.agentlas/os-bin/agentlas-os storm on        # on, off, status
+~/.agentlas/os-bin/agentlas-os memory on       # on, off, status
+~/.agentlas/os-bin/agentlas-os context map on  # on, off, status
+~/.agentlas/os-bin/agentlas-os one on            # on, off, status; Bash आवश्यक है
+```
+
+अन्य नाम हैं `project-bootstrap`, `project-index`, `network-index`,
+`auto-update` और `build-telemetry`; इन्हें `~/.agentlas/os-bin/agentlas-os features on|off <name>`
+से बदलें। `memory` कमांड `memory-hooks` को नियंत्रित करता है। बंद करने पर मौजूदा project data नहीं मिटता।
+Desktop अपडेट संगतता अभी पूरी नहीं हुई है।
+
+Project initialization, Context Map और project indexing को अलग-अलग चालू किया
+जा सकता है। चालू project सुविधा निजी `.agentlas` डेटा बना सकती है और उसकी सुरक्षा
+के लिए `.gitignore` अपडेट कर सकती है।
 
 **Agentlas Desktop** — terminal की जगह window पसंद हो तो यह app।
 
@@ -69,6 +91,8 @@ irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
 
 <details>
 <summary><strong>Desktop और Agentlas OS एक साथ</strong></summary>
+
+यह Desktop-managed engine installation का मार्ग है। इससे standalone `~/.agentlas/os-runtime` installation या host-session readiness सिद्ध नहीं होती; standalone निर्देश अलग से अपनाएँ।
 
 ```bash
 curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
@@ -133,7 +157,7 @@ LLM, Runtime और Agent अलग परतें हैं। मॉडल �
 
 ## चार स्तरों की मेमोरी, ताकि प्रोजेक्ट बार-बार न समझाना पड़े
 
-मेमोरी चार दायरों (व्यक्तिगत, प्रोजेक्ट, एजेंट, टीम) में स्थानीय SQLite और प्रोजेक्ट फ़ाइलों में रहती है। Project Soul, Code Map और पिछले फ़ैसलों का केवल काम से जुड़ा हिस्सा अपने आप लोड होता है।
+मेमोरी चार दायरों (व्यक्तिगत, प्रोजेक्ट, एजेंट, टीम) में स्थानीय SQLite और प्रोजेक्ट फ़ाइलों में रखी जा सकती है। Standalone hosts में project memory और automatic recall संबंधित optional सुविधाएँ चालू होने पर ही चलते हैं।
 
 ## अपना पहला प्रोजेक्ट सौंपिए
 
@@ -151,8 +175,7 @@ Agentlas Desktop या Agentlas OS इंस्टॉल करें, सा�
 यह इसलिए संभव है क्योंकि agent का spec और agent को बुलाने का protocol, दोनों मानकीकृत हैं।
 
 - **A2A v1.0, जैसा लिखा है वैसा।** Agent cards मानक पथ `/.well-known/agent-card.json` पर पढ़े और लिखे जाते हैं। Import, export और caller gating सब मानक पर टिके हैं। कोई बाहरी agent तभी बुलाया जा सकता है जब उसकी capability aligned हो **और हस्ताक्षरित card से उसकी पहचान सत्यापित हो।**
-- **एक task, 20 candidates: 40,873B → 10,087B.** candidates घटाए नहीं गए — पंक्ति compress की गई। सही agent के सूची में होने की संभावना वही रहती है, tokens एक-चौथाई रह जाते हैं।
-- ये आँकड़े **849 local profiles** और **188 प्रकाशित listings** पर मापे गए हैं।
+- **संक्षिप्त candidate menus.** हर पंक्ति में होस्ट को agents की तुलना और चयन के लिए आवश्यक जानकारी का सार होता है।
 
 ## यहीं अधिकांश tools रुक जाते हैं
 
@@ -260,13 +283,9 @@ Ratings, install counts, पिछले महीने की बिक्र�
 
 ---
 
-## हमने अपना ही विचार जोड़ा, फिर हटा दिया
+## Candidate चयन
 
-हमने publisher के अपने लिखे "मुझे तब बुलाइए…" वाक्यों को ranking signal की तरह आज़माया। सही agent के पहले स्थान पर आने का अनुपात **73.1% से गिरकर 57.0%** हो गया। हमने हटा दिया। अब वे वाक्य सूची के अंत में तीन सीटें भर आरक्षित करते हैं — सूची से न हटाए जाने का अधिकार, rank बदलने का अधिकार नहीं।
-
-हिंदी में पूछने पर सही agent **144वें** स्थान पर आया। वही सवाल अंग्रेज़ी में पूछने पर **पहले**। इसलिए work order अंग्रेज़ी में लिखा जाता है, और deliverable की भाषा एक अलग field है।
-
-10, 20, 30 और 50 candidates दिखाने पर सही वाला सूची में **73, 83, 87 और 93%** बार आया। डिफ़ॉल्ट 30 है।
+प्रकाशक के लिखे "मुझे तब बुलाइए…" वाक्य सूची के अंत में तीन स्थान आरक्षित करते हैं; वे ranking बदलने का अधिकार नहीं देते। Work order अंग्रेज़ी में लिखा जाता है और deliverable की भाषा अलग field है। डिफ़ॉल्ट candidate संख्या 30 है।
 
 ---
 
@@ -288,22 +307,20 @@ Desktop खुद host है, इसलिए run शुरू होने स
 इसे उस LLM में paste करें जिसे आप अभी इस्तेमाल कर रहे हैं, जैसे Claude Code,
 Codex, Antigravity या Cursor:
 
+<!-- AGENTLAS-PROMPT-MODULE: os.install.readme.request; revision=2; stability=versioned-content; changeTriggers=release,capability-inventory; channel=user -->
 ```text
-इस GitHub repo से Hephaestus install करें:
-https://github.com/agentlas-ai/Agentlas-OS
-
-सिर्फ marketplace plugin install करके न रुकें। अगली session में भी बने रहने वाले
-host command adapters लिखने के लिए repo का canonical one-touch installer चलाएँ:
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-
-installer के अपने verification output की report दें। अगली session में
-`/agentlas build` (या उस host के बराबर command surface) काम नहीं करता, तो
-install complete report न करें; काम करने की पुष्टि होने पर host restart या
-plugin reload करने को कहें।
+request: Install Agentlas OS standalone from https://github.com/agentlas-ai/Agentlas-OS.
+inspect: First fetch and read https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh and compare its actual behavior with this requested scope.
+scope: Use the isolated default runtime under ~/.agentlas/os-runtime and its dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo, replace the independent Terminal's agentlas command, write global ~/.local/bin wrappers, or permanently register host plugins/MCP as part of this request.
+defaults: Keep optional features OFF. Do not enable the global router or change host instruction files.
+run: If the script matches this scope, run curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash. Report a scope mismatch instead of silently expanding the installation.
+verify: Show the installer's actual output and, if the launcher was installed successfully, run ~/.agentlas/os-bin/agentlas-os features status.
+report: State runtime installation and host connection separately. Preserve partial, unavailable, and unverified results. A restart alone does not prove that /agentlas build, skills, or MCP tools are ready.
+host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
+updates: Automatic updates default OFF. After a runtime update, inspect host status again. outdated or codex_skill_alias_outdated is not readiness; do not silently replace/delete the owned alias or fall back to a legacy runtime. Codex One/Memory hooks are not applied and Windows host-session integration is unverified.
 ```
 
-जब आप पहले से किसी LLM के अंदर हों और Hephaestus वहीं active करना चाहते हों,
-तो इसे use करें। shell से manual install के लिए नीचे install methods देखें।
+यह प्रक्रिया standalone runtime इंस्टॉल करती है। इससे वर्तमान LLM होस्ट का कनेक्शन या कमांड सक्रिय होना सिद्ध नहीं होता। shell से मैन्युअल इंस्टॉल के लिए नीचे दिए तरीके देखें।
 
 <p align="center">
   <img src="assets/hephaestus-network-mcp-demo.gif" alt="Hephaestus Network 2.0, MCP के जरिए एक task को सही agent पर live route करते हुए" width="760">
@@ -337,60 +354,48 @@ plugin reload करने को कहें।
 
 
 <details>
-<summary><strong>सभी Install Methods — source, offline, host-wise</strong></summary>
+<summary><strong>Installation और host sessions</strong></summary>
 
 
 ### Manual LLM Adapter Install
 
-इसे केवल तब इस्तेमाल करें जब current LLM खुद setup नहीं चला सकता। यह shared
-Hephaestus runner और supported LLM tools के command adapters install करता है।
+यह कमांड स्वतंत्र रनटाइम प्रीव्यू तैयार करती है।
+
+इंस्टॉलर isolated runtime और owned session plugins तैयार करता है। उपयोग से पहले host status देखें। स्थायी registration और Desktop updater integration पूरे नहीं हैं।
 
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-यह neutral runner को `~/.agentlas/runtime/current/bin/hephaestus` पर install करता है और Claude Code, Codex, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose तथा GitHub Copilot CLI के लिए command, skill या MCP adapters, और Grok के लिए memory hooks register करता है। Local models MCP entrypoint `hephaestus mcp serve` इस्तेमाल करते हैं। installer registration के बाद हर runtime surface को verify करता है।
 
-### प्रति-Runtime Plugin Drivers
+### Standalone host session जोड़ें
 
-<details>
-<summary>Claude Code Plugin</summary>
+<!-- prompt-module: {"id":"os.install.readme.host-session","revision":1,"stability":"versioned-content","changeTriggers":["release","runtime","capability-inventory"],"channel":"tool-result"} -->
 
-अपने OS terminal से:
+इंस्टॉल होने के बाद समर्पित launcher प्रयोग करें। पहले चुने हुए host की स्थिति देखें; session शुरू करना अलग कार्रवाई है। ये कमांड `~/.agentlas/os-runtime` के isolated runtime और `~/.agentlas/os-host-plugins` के owned plugins का उपयोग करते हैं, स्थायी marketplace registration या project में engine files की copy का नहीं।
+
+जिस host का उपयोग करना है उसकी स्थिति देखें:
+
 ```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
-claude plugin install hephaestus@agentlas-core-engine
+~/.agentlas/os-bin/agentlas-os host status claude
+~/.agentlas/os-bin/agentlas-os host status codex
 ```
-*नोट: Claude Code marketplace plugin commands को हमेशा namespace देता है, इसलिए
-इस plugin-only path में command `/hephaestus:agentlas` है। हर नई session में
-documented bare `/agentlas build` autocomplete के लिए ऊपर का one-touch installer
-इस्तेमाल करें; यह `~/.claude/commands/agentlas.md` भी लिखता है। Claude Code
-`claude plugins ...` alias भी support करता है, लेकिन यह README एकवचन
-`claude plugin ...` उपयोग करता है।*
 
-</details>
+उस host में नया session चाहिए तभी चलाएँ:
 
-<details>
-<summary>Codex Plugin</summary>
-
-अपने OS terminal से:
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.72
-codex plugin add hephaestus@agentlas-core-engine
+~/.agentlas/os-bin/agentlas-os host session claude
+~/.agentlas/os-bin/agentlas-os host session codex
 ```
-*नोट: Codex ऐप के अंदर `/plugin marketplace add` काम नहीं करता — ऊपर दिए दोनों commands को OS terminal में चलाएँ। OS-terminal CLI command एकवचन है (`codex plugin`); Codex ऐप के अंदर plugin browser का slash command बहुवचन है (`/plugins`)। Codex 0.117+ में custom `/prompts:*` commands हटा दिए गए; install के बाद plugin skill को `$hephaestus-network <request>` से बुलाएँ।*
 
-</details>
+Native host को arguments देने हों तभी `-- <native-args...>` जोड़ें। वास्तविक status और launch result पढ़ें। `partial`, `session_activation_not_observed` या unavailable component पूर्ण connection का प्रमाण नहीं हैं। Runtime installation, plugin preparation और model session execution अलग परिणाम हैं।
 
-<details>
-<summary>फ़ाइलें Project में कॉपी करें (Manual Driver)</summary>
+Session में दिखा qualified skill name चुनें, जैसे `agentlas-os-core:hephaestus-network`। पुराने bare names साथ रह सकते हैं; `/hep-*`, `/agentlas` या बिना namespace वाला `$hephaestus-*` इसी runtime को चुनता है, ऐसा न मानें। नीचे command reference केवल capabilities बताता है; session में वास्तव में उपलब्ध command और tool ही प्रयोग करें।
 
-Repo को clone करें और `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`, `schemas/`, `templates/` तथा `.agentlas/` को अपने workspace में copy करें। Runtime folders (`.claude/`, `codex/`, `antigravity/`, `.agents/`) उसी canonical core पर adapters के रूप में काम करते हैं।
+Codex core tools और skills अलग session में लोड हो सकते हैं, लेकिन One और Memory hooks अभी लागू नहीं होते। ON preference hooks चलने का प्रमाण नहीं है; `unappliedHookComponents` और `codex_optional_hook_session_loader_unverified` रिपोर्ट में बनाए रखें। Windows host-session integration अप्रमाणित है। स्थायी registration या पूर्ण native integration की गारंटी नहीं है। Windows पर link बनाने की अनुमति न हो तो status partial रह सकता है। Native inventory या version command की सफलता model turn या hook execution का प्रमाण नहीं है। Standalone और Desktop feature preferences के लिए साझा `~/.agentlas/engine-features.json` उपयोग करते हैं। स्पष्ट OFF, Desktop के default ON को भी बंद करता है। स्पष्ट preference या compatibility environment override न होने पर standalone default OFF है और Desktop अपने feature defaults उपयोग करता है। Standalone One on/off, `~/.agentlas/os-one` में अलग state है।
 
-</details>
-
-**बस बात कीजिए:** Installation के बाद native Agentlas interfaces में plain language में बोलें — tasks अपने-आप route हो जाते हैं। External LLM tools में नीचे दिए गए explicit commands का उपयोग करें। जब पता न हो कि कौन-से agents मौजूद हैं, तो `/agentlas search` से शुरू करें।
+Update के बाद फिर `host status` देखें। Owned Codex skill alias पुराने generation को इंगित कर सकता है; `outdated` या `codex_skill_alias_outdated` का अर्थ नया session तैयार नहीं है। Alias चुपचाप बदलें/हटाएँ नहीं और legacy runtime पर fallback न करें। सही स्थिति बताकर उपलब्ध स्पष्ट repair procedure अपनाएँ। Automatic updates default OFF हैं; runtime update host activation का प्रमाण नहीं है।
 
 ---
 

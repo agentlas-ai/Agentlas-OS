@@ -1037,7 +1037,10 @@ def _match_keyword(keyword):
 
 def _match_subschema_keywords(value):
     for keyword in _SUBSCHEMAS_KEYWORDS:
-        if keyword in value:
+        # Schema property maps may themselves contain a property named "$id"
+        # whose value is a schema object. Only string-valued identifiers and
+        # anchors are declarations; the object is not a URI to resolve.
+        if isinstance(value.get(keyword), str):
             yield keyword, value
 
 

@@ -8,6 +8,7 @@ metadata-check window so the user's command does not wait on network or install 
 
 from __future__ import annotations
 
+import ast
 import errno
 from functools import cmp_to_key
 import hashlib
@@ -109,7 +110,6 @@ HOST_ADAPTER_CONTRACT_PATH = Path("contracts") / "runtime-registry.json"
 COMMAND_REGISTRY_CONTRACT_PATH = Path("contracts") / "command-registry.v2.json"
 RELEASE_PROVENANCE_FILE = "release-provenance.json"
 RELEASE_PROVENANCE_REQUIRED_SINCE = "1.2.36"
-DESKTOP_NPM_BRIDGE_REQUIRED_SINCE = "1.2.47"
 _HOST_ADAPTER_NAME_RE = re.compile(r"^\.?[a-z0-9][a-z0-9._-]*$")
 _COMMAND_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -172,8 +172,6 @@ HEP_COMMANDS = (
     "agentlas-build",
     "agentlas-call",
     "agentlas-cloud",
-    "agentlas-connect",
-    "agentlas-graph",
     "agentlas-hub",
     "agentlas-local",
     "agentlas-login",
@@ -189,9 +187,7 @@ HEP_COMMANDS = (
     "hep-build",
     "hep-call",
     "hep-cloud",
-    "hep-connect",
     "hep-goal",
-    "hep-graph",
     "hep-hub",
     "hep-local",
     "hep-login",
@@ -267,7 +263,8 @@ def _managed_command_names(source: Path | None = None, home: Path | None = None)
         for entry in entries:
             if entry.stem and entry.stem not in PROJECT_ONLY_COMMANDS:
                 names.add(entry.stem)
-    return tuple(sorted(names))
+    retired = {"agentlas-connect", "agentlas-graph", "hep-connect", "hep-graph"}
+    return tuple(sorted(names - retired))
 # Every AgentSkills surface installed by the one-touch installer. Keep graph and
 # upload in the same updater-owned set as network/cloud/storm so an update can
 # never leave a first-install copy frozen indefinitely.
@@ -277,7 +274,6 @@ HEP_SKILLS = (
     "hephaestus-network",
     "hephaestus-cloud",
     "hephaestus-storm",
-    "hephaestus-graph",
     "hephaestus-upload",
 )
 
@@ -298,7 +294,7 @@ def _managed_skill_names(source: Path | None = None) -> tuple[str, ...]:
         if isinstance(skills, list) and skills and all(
             isinstance(name, str) and _COMMAND_NAME_RE.fullmatch(name) for name in skills
         ):
-            return tuple(dict.fromkeys(skills))
+            return tuple(name for name in dict.fromkeys(skills) if name != "hephaestus-graph")
     return HEP_SKILLS
 
 
@@ -618,7 +614,10 @@ def _canonical_update_marker(
         "global_router_sync",
         "activation",
     ):
-        if key in result:
+        if key in {"desktop_repair", "desktop_updater_cleanup", "desktop_npm_repair"} and key in previous:
+            # Historical receipts are evidence, not a request to repeat recovery.
+            canonical[key] = previous[key]
+        elif key in result:
             canonical[key] = result[key]
 
     current_link = _runtime_base() / "current"
@@ -633,24 +632,21 @@ def _canonical_update_marker(
             {
                 "current": observed_release,
                 "targetVersion": observed_release,
-                "updated_to": observed_release,
-                "last_applied_tag": observed_release,
                 "runtime_root": str(resolved_root),
                 "current_link": str(current_link),
             }
         )
         model_root = result.get("model_root") or resolved_root / RUNTIME_MODEL2VEC_PATH
         canonical["model_root"] = str(model_root)
-        if result.get("last_applied_tag") == observed_release and isinstance(
-            result.get("last_applied_epoch"), (int, float)
-        ):
-            canonical["last_applied_epoch"] = result["last_applied_epoch"]
-        elif previous.get("last_applied_tag") == observed_release and isinstance(
-            previous.get("last_applied_epoch"), (int, float)
-        ):
-            canonical["last_applied_epoch"] = previous["last_applied_epoch"]
-        else:
-            canonical["last_applied_epoch"] = checked_epoch
+        receipt = result if (result.get("status") == "updated" and result.get("appliedReceiptVersion") == "agentlas.runtime-applied.v1") else previous
+        if (receipt.get("appliedReceiptVersion") == "agentlas.runtime-applied.v1"
+                and receipt.get("last_applied_tag") == observed_release
+                and isinstance(receipt.get("last_applied_epoch"), (int, float))):
+            canonical["appliedReceiptVersion"] = receipt["appliedReceiptVersion"]
+            canonical["last_applied_tag"] = observed_release
+            canonical["last_applied_epoch"] = receipt["last_applied_epoch"]
+        if result.get("status") == "updated" and result.get("updated_to") == observed_release:
+            canonical["updated_to"] = observed_release
     else:
         canonical["current"] = result.get("current")
         if result.get("latest"):
@@ -673,6 +669,15 @@ def _canonical_update_marker(
     )
     if "latest" in result:
         canonical["latest"] = result["latest"]
+    # Only a successful standalone lookup produces a notice receipt.  The
+    # receipt and its timestamp are replaced together with the atomic marker.
+    channel_tag = result.get("channelTag")
+    if (result.get("status") in {"current", "updated"}
+            and isinstance(channel_tag, str)
+            and re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", channel_tag)
+            and result.get("latest") == channel_tag[3:]):
+        canonical["noticeSchema"] = "agentlas.standalone-notice.v1"
+        canonical["noticeTag"] = channel_tag
     return canonical
 
 
@@ -683,80 +688,167 @@ def _persist_update_marker(previous: dict[str, Any], result: dict[str, Any], run
     )
 
 
-def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, Any]:
-    runtime_root = root or Path(__file__).resolve().parent.parent
-    current = current_release(runtime_root)
-    try:
-        latest = fetch_latest_release(force=True)
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
-        # force=True deliberately bypasses the TTL cache, so there is no cached
-        # answer to fall back to and inventing one would be a silent fallback.
-        # Report the failure in words instead of raising into the CLI.
-        denied = _denied_write_path(exc)
-        if denied is not None:
-            # A permission denial is a local sandbox boundary, not connectivity;
-            # blaming the network here would misdirect the user.
-            where = f" to {denied}" if denied else ""
-            raise UpdateUnavailableError(
-                {
-                    "status": "check_blocked_sandboxed",
-                    "current": current,
-                    "error": "a sandbox denied a local write during the update check",
-                    "denied_path": denied,
-                    "detail": str(exc),
-                    "install_command": "hephaestus hep-update",
-                },
-                f"Could not finish the update check: this process was denied write access{where}. "
-                "A host sandbox (Claude Code, Codex, Cursor, ...) is blocking writes outside "
-                "the workspace — this is not a network problem. "
-                f"{_current_release_phrase(current)}; nothing was changed. "
-                "Run this from a regular unsandboxed terminal: hephaestus hep-update",
-            ) from exc
-        host = _release_source_host()
-        raise UpdateUnavailableError(
-            {
-                "status": "check_failed",
-                "current": current,
-                "error": f"could not reach {host} to check for a newer runtime",
-                "detail": str(exc),
-                "install_command": "hephaestus hep-update",
-            },
-            f"Could not reach {host} to check for a newer Hephaestus runtime. "
-            f"{_current_release_phrase(current)}; nothing was changed. "
-            "Check your network or proxy settings, then run: hephaestus hep-update",
-        ) from exc
-    status = _release_status(current, latest.get("tag_name"))
-    result: dict[str, Any] = {
-        "status": status,
-        "current": current,
-        "latest": latest.get("tag_name"),
-        "html_url": latest.get("html_url"),
-        "install_command": "hephaestus hep-update",
-    }
-    if not check_only:
-        reconciled = reconcile_adapters()
-        if reconciled["count"]:
-            result["adapters_sanitized"] = reconciled["sanitized"]
-    if check_only:
-        return result
-    if status not in {"update_available", "missing_release_marker"}:
-        reconciliation = reconcile_current_installation(runtime_root)
-        result["reconciliation"] = reconciliation
-        if _requires_current_release_rehydrate(current, latest.get("tag_name"), reconciliation):
-            installed = _install_or_report(latest, current)
-            _apply_observed_install_state(result, installed, current)
-            result["status"] = _installed_outcome_status("repaired_current", installed)
-        _persist_update_marker(_read_json(_runtime_base() / AUTO_UPDATE_MARKER), result, runtime_root)
-        return result
+def _standalone_json(url: str) -> tuple[Any, str]:
+    request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "agentlas-os-standalone"})
+    with urllib.request.urlopen(request, timeout=2) as response:
+        if response.geturl() != url:
+            raise ValueError("standalone_metadata_origin_mismatch")
+        link = response.headers.get("Link", "")
+        raw = response.read(2 * 1024 * 1024 + 1)
+    if len(raw) > 2 * 1024 * 1024:
+        raise ValueError("standalone_metadata_too_large")
+    return json.loads(raw.decode("utf-8")), link
 
-    installed = _install_or_report(latest, current)
-    _apply_observed_install_state(result, installed, current)
-    success_status = "updated" if status == "update_available" else "recovered_missing_release_marker"
-    result["status"] = _installed_outcome_status(success_status, installed)
-    result["last_applied_tag"] = latest.get("tag_name")
-    result["last_applied_epoch"] = int(time.time())
-    _persist_update_marker(_read_json(_runtime_base() / AUTO_UPDATE_MARKER), result, runtime_root)
-    return result
+
+def _standalone_tag_metadata(tag: str, release: dict[str, Any]) -> dict[str, Any]:
+    if not re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
+        raise ValueError("standalone_channel_tag_invalid")
+    if release.get("tag_name") != tag or release.get("draft") is not False:
+        raise ValueError("standalone_release_mismatch")
+    lines = [line for line in str(release.get("body") or "").splitlines() if line.startswith("agentlas-os-channel:")]
+    if lines != ["agentlas-os-channel: stable"]:
+        raise ValueError("standalone_channel_marker_invalid")
+    asset = _verified_runtime_archive_asset(release)
+    if asset["url"] != "https://github.com/agentlas-ai/Agentlas-OS/releases/download/" + tag + "/" + asset["name"]:
+        raise ValueError("standalone_asset_origin_mismatch")
+    url = "https://api.github.com/repos/agentlas-ai/Agentlas-OS/git/ref/tags/" + tag
+    ref, _ = _standalone_json(url)
+    obj = ref.get("object") if isinstance(ref, dict) else None
+    if not isinstance(ref, dict) or ref.get("ref") != "refs/tags/" + tag:
+        raise ValueError("standalone_tag_ref_mismatch")
+    if not isinstance(obj, dict) or obj.get("type") != "commit":
+        raise ValueError("standalone_tag_not_lightweight_commit")
+    commit = str(obj.get("sha") or "").lower()
+    if not _COMMIT_SHA_RE.fullmatch(commit):
+        raise ValueError("standalone_tag_commit_invalid")
+    return {**release, "standalone_source_commit": commit}
+
+
+def _standalone_next_page(link: str, page: int) -> bool:
+    """Validate pagination; only its page number is used, never its URL."""
+    if not link:
+        return False
+    relations: set[str] = set()
+    for entry in link.split(","):
+        match = re.fullmatch(r'\s*<([^<>]+)>\s*;\s*rel="(next|prev|first|last)"\s*', entry)
+        if match is None or match.group(2) in relations:
+            raise ValueError("standalone_channel_pagination_invalid")
+        relation = match.group(2)
+        relations.add(relation)
+        target = urllib.parse.urlsplit(match.group(1))
+        # GitHub emits the repository's numeric canonical URL in Link headers.
+        # This immutable repository ID was verified for agentlas-ai/Agentlas-OS.
+        if (target.scheme != "https" or target.netloc != "api.github.com"
+                or target.path not in {"/repos/agentlas-ai/Agentlas-OS/releases", "/repositories/1258962324/releases"}
+                or target.fragment):
+            raise ValueError("standalone_channel_pagination_origin_mismatch")
+        query = urllib.parse.parse_qs(target.query, keep_blank_values=True)
+        values = query.get("page", [])
+        if (set(query) != {"per_page", "page"} or query.get("per_page") != ["100"]
+                or len(values) != 1 or not re.fullmatch(r"[1-9][0-9]*", values[0])):
+            raise ValueError("standalone_channel_pagination_invalid")
+        number = int(values[0])
+        if relation == "next" and number != page + 1:
+            raise ValueError("standalone_channel_pagination_cycle")
+    return "next" in relations
+
+
+def fetch_standalone_latest() -> dict[str, Any]:
+    base_url = "https://api.github.com/repos/agentlas-ai/Agentlas-OS/releases?per_page=100"
+    releases: list[dict[str, Any]] = []
+    page_fingerprints: set[str] = set()
+    for page in range(1, 21):
+        url = base_url if page == 1 else f"{base_url}&page={page}"
+        rows, link = _standalone_json(url)
+        if not isinstance(rows, list) or len(rows) > 100:
+            raise ValueError("standalone_channel_invalid")
+        fingerprint = hashlib.sha256(json.dumps(rows, sort_keys=True).encode("utf-8")).hexdigest()
+        if fingerprint in page_fingerprints:
+            raise ValueError("standalone_channel_pagination_cycle")
+        page_fingerprints.add(fingerprint)
+        releases.extend(rows)
+        if not _standalone_next_page(link, page):
+            break
+    else:
+        raise ValueError("standalone_channel_incomplete")
+    candidates: dict[tuple[int, int, int], dict[str, Any]] = {}
+    for item in releases:
+        if not isinstance(item, dict) or item.get("draft") is not False:
+            continue
+        tag = str(item.get("tag_name") or "")
+        match = re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag)
+        if not match:
+            continue
+        lines = [line for line in str(item.get("body") or "").splitlines() if line.startswith("agentlas-os-channel:")]
+        if not lines or lines == ["agentlas-os-channel: preview"]:
+            continue  # preview or unclassified release; never automatically use it
+        if lines != ["agentlas-os-channel: stable"]:
+            raise ValueError("standalone_channel_marker_invalid")
+        key = tuple(int(v) for v in match.groups())
+        if key in candidates:
+            raise ValueError("standalone_channel_duplicate")
+        candidates[key] = item
+    if not candidates:
+        raise ValueError("standalone_channel_empty")
+    chosen = candidates[max(candidates)]
+    return _standalone_tag_metadata(chosen["tag_name"], chosen)
+
+
+def _desktop_host_requested() -> bool:
+    return str(os.environ.get("AGENTLAS_HOST_RUNTIME") or "").strip().lower() in {"desktop", "agentlas-desktop", "agentlas_desktop", "runtime:desktop"}
+
+
+def _allowed_update_root(runtime_root: Path, base: Path) -> bool:
+    try:
+        resolved = runtime_root.resolve()
+        if resolved.is_relative_to(base.resolve()):
+            return True
+        # A Desktop-bundled engine may seed the isolated generation. The host
+        # remains responsible for authenticating the bundled engine itself.
+        return (_desktop_host_requested()
+                and resolved == Path(__file__).resolve().parent.parent
+                and _is_comparable_release(current_release(resolved)))
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, Any]:
+    try:
+        base = _runtime_base()
+    except ValueError as exc:
+        return {"status": "blocked", "error": str(exc), "writeAttempted": False}
+    runtime_root = root or base / "current"
+    if not _allowed_update_root(runtime_root, base):
+        return {"status": "blocked", "error": "standalone_runtime_outside_base", "writeAttempted": False}
+    current = current_release(runtime_root)
+    selected = base / "current"
+    if _path_present(selected):
+        try:
+            if not selected.resolve().is_relative_to(base.resolve()):
+                return {"status": "blocked", "error": "standalone_current_outside_base", "writeAttempted": False}
+            selected_release = current_release(selected)
+            if not _is_comparable_release(selected_release):
+                return {"status": "blocked", "error": "standalone_current_unverified", "writeAttempted": False}
+            if not _is_comparable_release(current) or _release_status(current, selected_release) == "update_available":
+                current = selected_release
+        except (OSError, ValueError):
+            return {"status": "blocked", "error": "standalone_current_unverified", "writeAttempted": False}
+    write_attempted = False
+    try:
+        release = fetch_standalone_latest()
+        engine_tag = release["tag_name"][3:]
+        state = _release_status(current, engine_tag)
+        result = {"status": state, "current": current, "latest": engine_tag, "channelTag": release["tag_name"], "writeAttempted": False}
+        if check_only or state != "update_available":
+            return result
+        write_attempted = True
+        installed = install_latest_runtime(release)
+        return {**result, **installed, "status": "updated", "writeAttempted": True}
+    except (OSError, ValueError, RuntimeError, tarfile.TarError, urllib.error.URLError) as exc:
+        unreachable = isinstance(exc, urllib.error.URLError) and not isinstance(exc, urllib.error.HTTPError)
+        message = ("Could not reach api.github.com; check the network and retry. " if unreachable else "") + \
+            "Standalone update unavailable; the existing runtime was preserved."
+        raise UpdateUnavailableError({"status": "check_failed", "error": "standalone_update_unavailable", "current": current, "detail": str(exc)[:300], "writeAttempted": write_attempted}, message) from exc
 
 
 def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> None:
@@ -768,31 +860,15 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
     """
 
     try:
-        # v1.1.63 briefly installed an independent six-hour OS scheduler. The
-        # intended contract is command/Desktop-triggered, fail-silent updating,
-        # so retire any legacy scheduler before doing normal local maintenance.
-        try:
-            from .auto_update_service import retire_auto_update_service
-
-            retire_auto_update_service()
-        except Exception:
-            pass
-        # Always self-heal stale command adapters first. This is network free
-        # and must run even when version auto-update is disabled, because the
-        # legacy curl|bash preflight is blocked by host classifiers on every
-        # machine and would otherwise persist forever once the runtime is
-        # already current (version-gated adapter sync never re-fires).
-        try:
-            reconcile_adapters()
-        except Exception:
-            pass
         if _auto_update_disabled():
             return
         runtime_root = root or Path(__file__).resolve().parent.parent
+        base = _runtime_base()
+        if not _allowed_update_root(runtime_root, base):
+            return
         current = current_release(runtime_root)
         if current is not None and not _is_comparable_release(current):
             return
-        base = _runtime_base()
         # ★업데이트할 런타임이 없으면 아무것도 만들지 않는다.
         #
         #   설치본이 없는 호스트(플러그인만 쓰는 경우, 격리 실행)에서도 이 검사가
@@ -803,7 +879,9 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
         #
         #   검사 자체가 무의미하지도 않다 — 런타임이 없으면 올릴 것도 없다.
         if not base.is_dir():
-            return
+            if not _desktop_host_requested() or runtime_root.resolve() != Path(__file__).resolve().parent.parent:
+                return
+            _prepare_update_base(base)
         lock_path = base / ".update.lock"
         recovered_stale_lock = False
         if _path_present(lock_path):
@@ -841,23 +919,38 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
 
 
 def maybe_print_update_notice(root: Path | None = None) -> None:
-    if os.environ.get("HEPHAESTUS_UPDATE_CHECK", "1") == "0":
+    if _auto_update_disabled():
         return
     runtime_root = root or Path(__file__).resolve().parent.parent
-    current = current_release(runtime_root)
-    if not current:
-        return
     try:
-        latest = fetch_latest_release(force=False)
+        base = _runtime_base()
+        # Keep the pre-existing notice scope: a bundled Desktop engine is not
+        # itself the active standalone installation. Never follow current out
+        # of the standalone base or compare an inactive generation when an
+        # active one exists.
+        if not runtime_root.resolve().is_relative_to(base.resolve()):
+            return
+        active = base / "current"
+        if _path_present(active):
+            if not active.resolve().is_relative_to(base.resolve()):
+                return
+            runtime_root = active
+        current = current_release(runtime_root)
+        marker = _read_json(base / AUTO_UPDATE_MARKER)
+        tag = marker.get("noticeTag")
+        if (marker.get("markerSchemaVersion") != "agentlas.auto-update.v2"
+                or marker.get("noticeSchema") != "agentlas.standalone-notice.v1"
+                or marker.get("status") not in {"current", "updated"}
+                or not isinstance(tag, str)
+                or not re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag)
+                or marker.get("latest") != tag[3:]
+                or not _marker_recent(marker.get("last_checked_epoch"), METADATA_TTL_SECONDS)):
+            return
+        engine_tag = tag[3:]
     except Exception:
         return
-    latest_tag = latest.get("tag_name")
-    if _release_status(current, latest_tag) != "update_available":
-        return
-    print(
-        f"Hephaestus update available: {latest_tag} (current {current}). Run: hephaestus hep-update",
-        file=sys.stderr,
-    )
+    if current and _release_status(current, engine_tag) == "update_available":
+        print(f"Standalone update available: {engine_tag} (current {current}). Run: hephaestus hep-update", file=sys.stderr)
 
 
 def fetch_latest_release(force: bool = False, ttl_seconds: int = METADATA_TTL_SECONDS) -> dict[str, Any]:
@@ -959,16 +1052,25 @@ def _post_activation_state(
 
 
 def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
-    tag = str(release.get("tag_name") or "").strip()
-    if not tag:
-        raise ValueError("release tag_name is required")
+    channel_tag = str(release.get("tag_name") or "").strip()
+    if not re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", channel_tag):
+        raise ValueError("standalone_channel_tag_invalid")
+    tag = channel_tag[3:]  # os-v1.2.73 -> engine v1.2.73
+    source_commit = str(release.get("standalone_source_commit") or "").strip().lower()
+    if not _COMMIT_SHA_RE.fullmatch(source_commit):
+        raise ValueError("standalone_tag_commit_missing")
     archive_asset = _verified_runtime_archive_asset(release)
+    expected_url = "https://github.com/agentlas-ai/Agentlas-OS/releases/download/" + channel_tag + "/" + archive_asset["name"]
+    if archive_asset["url"] != expected_url:
+        raise ValueError("standalone_asset_origin_mismatch")
     tarball_url = archive_asset["url"]
     expected_sha256 = archive_asset["sha256"]
     expected_size = archive_asset["size"]
 
     base = _runtime_base()
     target = base / _runtime_version_dir_name(tag)
+    if target.exists() or target.is_symlink():
+        raise ValueError("standalone_target_already_exists")
     lock = base / ".update.lock"
     adapter_sync: dict[str, Any] = {
         "updated": [],
@@ -983,6 +1085,7 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     archive_sha256 = ""
     staged_target: Path | None = None
     installed_model_path: Path | None = None
+    _prepare_update_base(base)
     lock_token = _acquire_lock(lock)
     try:
         with tempfile.TemporaryDirectory(prefix="hephaestus-update-") as tmp:
@@ -1007,6 +1110,21 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             if len(source_dirs) != 1:
                 raise ValueError("downloaded release must contain exactly one source directory")
             source = source_dirs[0]
+            if source.name != "Agentlas-OS-" + tag[1:]:
+                raise ValueError("standalone_archive_root_mismatch")
+            if _source_release_tag(source) != tag:
+                raise ValueError("standalone_engine_version_mismatch")
+            try:
+                manifest_version = str(json.loads((source / "manifest.json").read_text(encoding="utf-8"))["version"])
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise ValueError("standalone_manifest_invalid") from exc
+            if manifest_version != tag[1:]:
+                raise ValueError("standalone_manifest_version_mismatch")
+            provenance_commit = _release_provenance_commit(source)
+            if not provenance_commit:
+                raise ValueError("standalone_provenance_missing")
+            if provenance_commit != source_commit:
+                raise ValueError("standalone_provenance_tag_mismatch")
             source_model = _validate_runtime_layout(source, release_source=True)
 
             staged_target = _unique_sibling(target, "staged")
@@ -1025,6 +1143,9 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             for relative_name in RUNTIME_BRIDGE_FILES:
                 src = source / relative_name
                 dest = staged_target / relative_name
+                # Preserve an older archive's optional host bridge when supplied.
+                if relative_name == "desktop-update-bridge-v1.json" and not src.is_file():
+                    continue
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
             adapter_bundle = staged_target / HOST_ADAPTER_BUNDLE_DIR
@@ -1054,17 +1175,14 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             write_windows_command_shims(staged_target / "bin")
             _healthcheck_runtime(staged_target)
             _activate_runtime(staged_target, target)
+            applied_epoch = int(time.time())
             staged_target = None
-            adapter_sync = sync_installed_runtime_adapters(source)
-            from .host_update import reconcile_host_plugins
-
-            host_plugin_sync = reconcile_host_plugins(target / HOST_ADAPTER_BUNDLE_DIR, tag)
-            plugin_cache_sync = _prune_installed_plugin_caches(
-                tag,
-                pending_hosts=host_plugin_sync.get("pendingHosts") or [],
-            )
-            memory_hook_sync = sync_installed_memory_hooks(source)
-            global_router_sync = _sync_installed_global_router(target)
+            # Standalone must not alter existing host registrations or One.
+            adapter_sync = {"status": "not_run", "reason": "isolated_namespace"}
+            host_plugin_sync = {"status": "not_run", "hosts": []}
+            plugin_cache_sync = {"status": "not_run", "preserved": []}
+            memory_hook_sync = {"status": "not_run", "reason": "isolated_namespace"}
+            global_router_sync = {"status": "not_run", "reason": "isolated_namespace"}
     finally:
         if staged_target is not None and _path_present(staged_target):
             _remove_path(staged_target)
@@ -1082,6 +1200,9 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
         "runtime_root": str(target),
         "current_link": str(base / "current"),
         "updated_to": tag,
+        "last_applied_tag": tag,
+        "last_applied_epoch": applied_epoch,
+        "appliedReceiptVersion": "agentlas.runtime-applied.v1",
         "archive_digest": f"sha256:{archive_sha256}",
         "digest_verified": True,
         "archive_asset": archive_asset["name"],
@@ -1561,6 +1682,11 @@ def sync_installed_memory_hooks(source: Path, home: Path | None = None) -> dict[
     roll back an otherwise healthy, digest-verified runtime update.
     """
 
+    from .feature_preferences import feature_enabled
+
+    if not feature_enabled("memory-hooks", home=home):
+        return {"status": "skipped", "reason": "feature_disabled", "installed": {}, "errors": {}}
+
     installer = source / "scripts" / "install-memory-hooks.py"
     home_dir = (home or Path.home()).expanduser().resolve()
     if not installer.is_file():
@@ -1636,52 +1762,16 @@ def sync_installed_memory_hooks(source: Path, home: Path | None = None) -> dict[
 
 
 def retry_installed_desktop_npm_repair(source: Path, home: Path | None = None) -> dict[str, Any]:
-    """Recover interrupted npm quarantines independently of the 24h maintenance gate."""
-    try:
-        from .desktop_npm_repair import repair_installed_desktop_npm_seal
-
-        return repair_installed_desktop_npm_seal(source, home)
-    except Exception:
-        # Recovery failure is observable but never invalidates the OS release.
-        return {"status": "blocked", "reason": "bridge_failed"}
+    """Retain the legacy receipt without operating on another product."""
+    return {"status": "not_applicable", "reason": "engine_independent"}
 
 
 def retry_installed_desktop_repair(source: Path, home: Path | None = None) -> dict[str, Any]:
-    marker = source / "desktop-update-bridge-v1.json"
-    installer = source / "scripts" / "install-memory-hooks.py"
-    if marker.is_file() and installer.is_file():
-        result = sync_installed_memory_hooks(source, home)
-        repair = result.get("desktop_repair")
-        return repair if isinstance(repair, dict) else {"status": "not_applicable", "reason": "not_reported"}
-
-    # Desktop v0.8.58/v0.8.59 ship the v1.1.50 updater. It copies the complete
-    # agentlas_cloud package but not newly added root bridge files. The embedded
-    # module and exact marker therefore remain available for every later app
-    # launch even if the freshly extracted one-shot repair did not finish.
-    try:
-        from agentlas_cloud.desktop_repair import repair_installed_desktop_python_cache_seal
-
-        return repair_installed_desktop_python_cache_seal(source, home)
-    except (ImportError, OSError):
-        return {"status": "not_applicable", "reason": "bridge_not_installed"}
+    return {"status": "not_applicable", "reason": "engine_independent"}
 
 
 def retry_installed_desktop_updater_cleanup(source: Path, home: Path | None = None) -> dict[str, Any]:
-    """Retry the v0.8.65/v0.8.66 stale updater cleanup from managed Core."""
-
-    marker = source / "agentlas_cloud" / "desktop-updater-cleanup-bridge-v1.json"
-    if not marker.is_file():
-        return {"status": "not_applicable", "reason": "bridge_not_installed"}
-    try:
-        from agentlas_cloud.desktop_updater_cleanup import repair_installed_desktop_updater_cache
-
-        return repair_installed_desktop_updater_cache(source, home)
-    except (ImportError, OSError):
-        return {"status": "not_applicable", "reason": "bridge_not_installed"}
-    except Exception:
-        # The runtime updater remains fail-silent and can try again later. Do
-        # not let a Desktop cache repair failure block a verified OS update.
-        return {"status": "blocked", "reason": "bridge_failed"}
+    return {"status": "not_applicable", "reason": "engine_independent"}
 
 
 def _selected_python_resources(executable: Path) -> Path | None:
@@ -2090,11 +2180,67 @@ def _is_comparable_release(value: str | None) -> bool:
 
 
 def _runtime_base() -> Path:
-    return Path(os.environ.get("HEPHAESTUS_RUNTIME_BASE") or Path.home() / ".agentlas" / "runtime")
+    home = Path.home().resolve()
+    state = home / ".agentlas"
+    override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
+    if override and not Path(override).is_absolute():
+        raise ValueError("standalone_runtime_base_not_absolute")
+    custom = Path(override) if override else None
+    if state.is_symlink() or (custom is not None and custom.is_symlink()):
+        raise ValueError("standalone_runtime_base_unsafe")
+    if custom is not None and custom.resolve() == (state / "os-runtime").resolve():
+        custom = None
+    parent = custom.resolve() if custom is not None else state
+    legacy = (state / "runtime").resolve()
+    if custom is not None and (parent == legacy or parent.is_relative_to(legacy) or legacy.is_relative_to(parent)):
+        raise ValueError("standalone_runtime_base_shared")
+    base = parent / "os-runtime"
+    if base.is_symlink():
+        raise ValueError("standalone_runtime_base_unsafe")
+    if custom is not None:
+        old_current = parent / "current"
+        if (old_current.exists() or old_current.is_symlink()) and old_current.resolve().is_relative_to(base.resolve()):
+            raise ValueError("standalone_custom_current_shared")
+    if base.exists():
+        marker = base / ".agentlas-os-namespace-v1"
+        if marker.is_symlink() or not marker.is_file() or marker.read_bytes() != b"agentlas-os-namespace-v1\n":
+            raise ValueError("standalone_namespace_ownership_unverified")
+        current = base / "current"
+        if current.exists() or current.is_symlink():
+            if not current.is_symlink() or not current.resolve().is_relative_to(base.resolve()):
+                raise ValueError("standalone_namespace_current_unsafe")
+    return base
+
+
+def _prepare_update_base(base: Path) -> None:
+    override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
+    default_base = Path.home().resolve() / ".agentlas" / "os-runtime"
+    use_default = not override or Path(override).expanduser().resolve() == default_base.resolve()
+    if not use_default:
+        parent = Path(override).expanduser()
+        if not parent.is_dir() or parent.is_symlink():
+            raise ValueError("standalone_custom_base_unavailable")
+    created = False
+    try:
+        base.mkdir(parents=use_default)
+        created = True
+    except FileExistsError:
+        pass
+    marker = base / ".agentlas-os-namespace-v1"
+    if created:
+        with marker.open("x", encoding="utf-8") as handle:
+            handle.write("agentlas-os-namespace-v1\n")
+    if (marker.is_symlink() or not marker.is_file()
+            or marker.read_bytes() != b"agentlas-os-namespace-v1\n"
+            or _runtime_base() != base):
+        raise ValueError("standalone_namespace_ownership_unverified")
+
+
 
 
 def _auto_update_disabled() -> bool:
-    return os.environ.get("HEPHAESTUS_AUTO_UPDATE", "1") == "0" or os.environ.get("HEPHAESTUS_UPDATE_CHECK", "1") == "0"
+    from .feature_preferences import feature_enabled
+    return not feature_enabled("auto-update")
 
 
 def _marker_recent(epoch: Any, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
@@ -2102,80 +2248,12 @@ def _marker_recent(epoch: Any, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
 
 
 def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
-    runtime_root = root or Path(__file__).resolve().parent.parent
-    current = current_release(runtime_root)
-    marker_path = _runtime_base() / AUTO_UPDATE_MARKER
-    marker = _read_json(marker_path)
-    # Metadata checks must not increase the cadence of legacy repair work.
-    maintenance_due = not _marker_recent(marker.get("last_maintenance_epoch"))
-    desktop_repair = marker.get("desktop_repair") or {"status": "deferred"}
-    desktop_updater_cleanup = marker.get("desktop_updater_cleanup") or {"status": "deferred"}
-    desktop_npm_repair = retry_installed_desktop_npm_repair(runtime_root)
-    # A later offline metadata check must not erase a completed local repair or
-    # hide a rollback conflict. This receipt is independent of OS version state.
-    marker["desktop_npm_repair"] = desktop_npm_repair
-    _write_json(marker_path, marker)
-    if maintenance_due:
-        marker["last_maintenance_epoch"] = int(time.time())
-        _write_json(marker_path, marker)
-        try:
-            from .auto_update_service import retire_auto_update_service
-
-            retire_auto_update_service()
-        except Exception:
-            pass
-        desktop_repair = retry_installed_desktop_repair(runtime_root)
-        desktop_updater_cleanup = retry_installed_desktop_updater_cleanup(runtime_root)
-    if current is not None and not _is_comparable_release(current):
-        result = {
-            "status": "skipped",
-            "reason": "uncomparable_release",
-            "current": current,
-            "desktop_repair": desktop_repair,
-            "desktop_updater_cleanup": desktop_updater_cleanup,
-            "desktop_npm_repair": desktop_npm_repair,
-        }
-        result["last_checked_epoch"] = int(time.time())
-        _persist_update_marker(marker, result, runtime_root)
-        return result
-
-    latest = fetch_latest_release(force=False)
-    latest_tag = latest.get("tag_name")
-    status = _release_status(current, latest_tag)
-    result: dict[str, Any] = {
-        "status": status,
-        "current": current,
-        "latest": latest_tag,
-        "last_checked_epoch": int(time.time()),
-        "desktop_repair": desktop_repair,
-        "desktop_updater_cleanup": desktop_updater_cleanup,
-        "desktop_npm_repair": desktop_npm_repair,
-    }
-    if status not in {"update_available", "missing_release_marker"}:
-        reconciliation = reconcile_current_installation(runtime_root) if maintenance_due else {}
-        result["reconciliation"] = reconciliation
-        if _requires_current_release_rehydrate(current, latest_tag, reconciliation):
-            installed = install_latest_runtime(latest)
-            _apply_observed_install_state(result, installed, current)
-            result["status"] = _installed_outcome_status("repaired_current", installed)
-            result["last_applied_tag"] = latest_tag
-            result["last_applied_epoch"] = int(time.time())
-        _persist_update_marker(marker, result, runtime_root)
-        return result
-    if marker.get("last_applied_tag") == latest_tag and _marker_recent(marker.get("last_applied_epoch")):
-        result["status"] = "skipped"
-        result["reason"] = "already_applied_recently"
-        _persist_update_marker(marker, result, runtime_root)
-        return result
-
-    installed = install_latest_runtime(latest)
-    _apply_observed_install_state(result, installed, current)
-    success_status = "updated" if status == "update_available" else "recovered_missing_release_marker"
-    result["status"] = _installed_outcome_status(success_status, installed)
-    result["last_applied_tag"] = latest_tag
-    result["last_applied_epoch"] = int(time.time())
-    _persist_update_marker(marker, result, runtime_root)
-    return result
+    if _auto_update_disabled():
+        return {"status": "skipped", "reason": "feature_disabled", "writeAttempted": False}
+    try:
+        return run_update(check_only=False, root=root)
+    except UpdateUnavailableError as exc:
+        return exc.payload
 
 
 def _record_auto_update_failure(code: str) -> None:
@@ -2195,7 +2273,14 @@ def _record_auto_update_failure(code: str) -> None:
 
 def _run_auto_update_guarded(runtime_root: Path) -> None:
     try:
-        _run_auto_update_once(runtime_root)
+        # The preference may have changed while this detached worker started.
+        if _auto_update_disabled():
+            return
+        result = _run_auto_update_once(runtime_root)
+        previous = _read_json(_runtime_base() / AUTO_UPDATE_MARKER)
+        _persist_update_marker(previous, result, runtime_root)
+        if result.get("status") in {"check_failed", "blocked", "failed"}:
+            _record_auto_update_failure("update_failed")
     except (urllib.error.URLError, TimeoutError):
         _record_auto_update_failure("network_unavailable")
     except Exception:
@@ -2800,7 +2885,9 @@ def _verified_runtime_archive_asset(release: dict[str, Any]) -> dict[str, Any]:
     tag = str(release.get("tag_name") or "").strip()
     if not tag:
         raise ValueError("release tag_name is required")
-    expected_name = f"hephaestus-runtime-{tag}.tar.gz"
+    if not re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
+        raise ValueError("standalone_channel_tag_invalid")
+    expected_name = f"agentlas-os-runtime-{tag[3:]}.tar.gz"
     assets = release.get("assets")
     if not isinstance(assets, list):
         raise ValueError(f"release is missing verified runtime asset: {expected_name}")
@@ -2872,6 +2959,44 @@ def _validate_host_adapter_bundle(bundle_root: Path, release_tag: str) -> None:
         raise ValueError(f"host adapter bundle does not match {release_tag}: {details}")
 
 
+def _requires_feature_preferences(runtime_root: Path) -> bool:
+    """Detect a source dependency without inferring it from a release version."""
+    package_root = runtime_root / "agentlas_cloud"
+    for path in package_root.rglob("*.py"):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("cannot inspect runtime feature dependencies") from exc
+        if "feature_preferences" not in text:
+            continue
+        try:
+            tree = ast.parse(text, filename=str(path))
+        except SyntaxError as exc:
+            raise ValueError("cannot inspect runtime feature dependencies") from exc
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                if any(alias.name == "agentlas_cloud.feature_preferences" for alias in node.names):
+                    return True
+            elif isinstance(node, ast.ImportFrom):
+                if node.module in {"feature_preferences", "agentlas_cloud.feature_preferences"}:
+                    return True
+                if node.module == "agentlas_cloud" and any(alias.name == "feature_preferences" for alias in node.names):
+                    return True
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if node.value in {"feature_preferences", "agentlas_cloud.feature_preferences"}:
+                    return True
+    # The source installer may embed a Python import inside a shell command.
+    installer = runtime_root / "scripts" / "install-all-runtimes.sh"
+    if installer.is_file():
+        try:
+            text = installer.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("cannot inspect runtime feature dependencies") from exc
+        if re.search(r"\b(?:from|import)\s+agentlas_cloud\.feature_preferences\b", text):
+            return True
+    return False
+
+
 def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False) -> Path:
     missing: list[str] = []
     for name in RUNTIME_DIRS:
@@ -2883,42 +3008,19 @@ def _validate_runtime_layout(runtime_root: Path, *, release_source: bool = False
         Path("agentlas_cloud") / "__main__.py",
         Path("agentlas_cloud") / "cli.py",
         Path("agentlas_cloud") / "update.py",
-        Path("agentlas_cloud") / "desktop_repair.py",
-        Path("agentlas_cloud") / "desktop-update-bridge-v1.json",
-        Path("agentlas_cloud") / "desktop_updater_cleanup.py",
-        Path("agentlas_cloud") / "desktop-updater-cleanup-bridge-v1.json",
         Path("career_graph") / "__init__.py",
         Path("career_graph") / "runtime.py",
         Path("ontology") / "__init__.py",
         Path("ontology") / "model_assets.py",
         Path("templates") / "agentlas.json.tpl",
         Path("contracts") / "builder-interview-research-gate.md",
-        Path("desktop-update-bridge-v1.json"),
         Path("scripts") / "install-memory-hooks.py",
     ):
         if not (runtime_root / relative).is_file():
             missing.append(str(relative))
-    # Legitimate older archives predate this bridge and remain eligible for
-    # rollback. New releases cannot opt out by omitting both files, and a
-    # backport that carries either part must carry the complete capability.
-    npm_bridge_files = (
-        Path("agentlas_cloud") / "desktop_npm_repair.py",
-        Path("agentlas_cloud") / "desktop-npm-repair-bridge-v1.json",
-    )
-    npm_bridge_floor = _compare_semver(
-        _source_release_tag(runtime_root), DESKTOP_NPM_BRIDGE_REQUIRED_SINCE
-    )
-    if (
-        npm_bridge_floor is None
-        or npm_bridge_floor >= 0
-        or any(
-            (runtime_root / relative).exists() or (runtime_root / relative).is_symlink()
-            for relative in npm_bridge_files
-        )
-    ):
-        for relative in npm_bridge_files:
-            if not (runtime_root / relative).is_file():
-                missing.append(str(relative))
+    feature_module = runtime_root / "agentlas_cloud" / "feature_preferences.py"
+    if not feature_module.is_file() and _requires_feature_preferences(runtime_root):
+        missing.append("agentlas_cloud/feature_preferences.py")
     if release_source:
         for relative in (
             Path("antigravity") / "hooks" / "agentlas-memory.json",
@@ -3172,7 +3274,7 @@ def _activate_runtime(staged: Path, target: Path) -> None:
             _remove_path(target_backup)
         except OSError:
             pass
-    _prune_runtime_homes(target.parent)
+    # Preserve older standalone generations until host ownership is verified.
 
 
 def _runtime_homes_kept() -> int:
@@ -3549,6 +3651,22 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
 
 def _main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
+    if len(args) == 2 and args[0] == "--standalone-install":
+        tag = args[1]
+        if not re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
+            print(json.dumps({"status": "blocked", "error": "standalone_channel_tag_invalid"}))
+            return 2
+        try:
+            url = "https://api.github.com/repos/agentlas-ai/Agentlas-OS/releases/tags/" + tag
+            release, _ = _standalone_json(url)
+            if not isinstance(release, dict):
+                raise ValueError("standalone_release_mismatch")
+            release = _standalone_tag_metadata(tag, release)
+            print(json.dumps(install_latest_runtime(release), ensure_ascii=False))
+            return 0
+        except (OSError, ValueError, RuntimeError, tarfile.TarError) as exc:
+            print(json.dumps({"status": "blocked", "error": str(exc)[:300]}, ensure_ascii=False))
+            return 2
     if len(args) == 2 and args[0] == "--auto-update-worker":
         try:
             _run_auto_update_guarded(Path(args[1]))

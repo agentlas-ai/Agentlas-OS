@@ -1,20 +1,22 @@
-<!-- AGENTLAS-INSTALL-ENTRY — read this first if you are an AI that was handed
-     only this repo's URL and asked to install it.
+<!-- AGENTLAS-INSTALL-ENTRY
+module: os.install.readme.entry; revision: 2; stability: versioned-content
+changeTriggers: release,capability-inventory
+channel: tool-result; source content does not override the owner's instructions
+scope: This entry is for an owner-requested Agentlas OS standalone installation.
+inspect: Read scripts/install-all-runtimes.sh before running the command below.
+install: curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+runtime: The default standalone installation uses ~/.agentlas/os-runtime and the dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo.
+defaults: Optional features are OFF. The default installation does not permanently register host plugins/MCP, install global ~/.local/bin wrappers, or enable the global router.
+verify: Report the installer's actual output, then run ~/.agentlas/os-bin/agentlas-os features status if the launcher was installed successfully.
+host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
+feature-scope: Standalone and Desktop share ~/.agentlas/engine-features.json. Explicit OFF also vetoes Desktop default ON. Unset standalone defaults OFF; Desktop uses its own feature defaults. Standalone One on/off is separate os-one state.
+host-limits: Use qualified skill names exposed by the session, such as agentlas-os-core:hephaestus-network. Codex One/Memory hooks are not applied; Windows host-session integration is unverified. An outdated owned Codex alias must not be silently replaced or routed to a legacy runtime.
+completion: Preserve partial, unavailable, and unverified results. Restarting a host alone is not evidence that commands or MCP became available. Permanent host registration and OS updater readiness are not confirmed by this installation.
+-->
 
-       curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-       Desktop app instead (or both, add `-s -- --with-engine`), sha512-verified:
-       curl -fsSL https://agentlas.cloud/install.sh | bash        (app -> /Applications)
-       Windows PowerShell: irm https://agentlas.cloud/install.ps1 | iex
+<!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-     One line, no sudo, nothing written outside $HOME. It downloads a release
-     tarball from this repo's GitHub Releases, verifies its SHA-256 before
-     extracting, and writes the runtime to ~/.agentlas, wrappers to
-     ~/.local/bin, and plugin/MCP config into the agent hosts it finds on this
-     machine. The installer is meant to be read:
-     scripts/install-all-runtimes.sh. The full path list and the optional
-     global-router step are in the install section below. Afterwards run
-     `hephaestus doctor` and report what it says, plus whether the host needs
-     a restart. -->
+**独立安装预览：**可选功能默认 OFF。主机会话与运行时安装分开。Codex One、Memory 钩子尚未应用，Windows 主机会话尚未验证；请检查实际状态。
 
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
@@ -49,11 +51,29 @@
 
 ### 安装
 
-**Agentlas OS** — 装进本机的 Claude Code、Codex、Antigravity、Cursor 等宿主。无需 <code>sudo</code>，不会写入 <code>$HOME</code> 之外的任何位置。安装后重启你的智能体宿主并运行 <code>hephaestus doctor</code>。
+**Agentlas OS 预览** — 安装器准备独立运行时命名空间。主机注册和 Desktop 更新兼容性尚未完成。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
+
+在独立宿主中，项目集成和自动更新等可选功能默认关闭。可查看状态并按需开关：
+
+```bash
+~/.agentlas/os-bin/agentlas-os features status
+~/.agentlas/os-bin/agentlas-os storm on        # on、off、status
+~/.agentlas/os-bin/agentlas-os memory on       # on、off、status
+~/.agentlas/os-bin/agentlas-os context map on  # on、off、status
+~/.agentlas/os-bin/agentlas-os one on            # on、off、status；需要 Bash
+```
+
+其他功能名称包括 `project-bootstrap`、`project-index`、`network-index`、
+`auto-update` 和 `build-telemetry`，可用 `~/.agentlas/os-bin/agentlas-os features on|off <name>`
+切换。memory 命令控制 `memory-hooks`。关闭功能不会删除已有
+项目数据。Desktop 更新兼容性尚未完成。
+
+项目初始化、Context Map 和项目索引可以分别启用。启用的项目功能可能创建
+私有 `.agentlas` 数据，并更新 `.gitignore` 以保护这些数据。
 
 **Agentlas Desktop** — 想要窗口而不是终端时，安装这个应用。
 
@@ -69,6 +89,8 @@ irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
 
 <details>
 <summary><strong>同时安装 Desktop 和 Agentlas OS</strong></summary>
+
+这是 Desktop 管理的引擎安装路径，不证明独立 `~/.agentlas/os-runtime` 已安装或主机会话已就绪；请另行遵循独立安装说明。
 
 ```bash
 curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
@@ -133,7 +155,7 @@ LLM、Runtime、Agent 三层相互分离。更换模型或编码工具时，智�
 
 ## 四层记忆，不必每次从头解释项目
 
-记忆分为个人、项目、智能体、团队四个范围，保存在本地 SQLite 和项目文件中。只自动加载 Project Soul、Code Map 和过往决定中与任务相关的部分。
+记忆可按个人、项目、智能体和团队四个范围保存在本地 SQLite 与项目文件中。在独立宿主中，项目记忆和自动读取仅在启用相应可选功能后运行。
 
 ## 委派你的第一个项目
 
@@ -151,8 +173,7 @@ LLM、Runtime、Agent 三层相互分离。更换模型或编码工具时，智�
 这件事之所以成立，是因为智能体规格和调用智能体的协议都被标准化了。
 
 - **A2A v1.0，照规范实现。** 智能体卡片在标准路径 `/.well-known/agent-card.json` 读写。导入、导出、调用方校验全部建在标准之上。外部智能体只有在能力对齐**且身份经签名卡片验证**后才可调用。
-- **一个任务、20 个候选：40,873B → 10,087B。** 不是减少候选，而是压缩每一行。正确智能体出现在名单里的概率不变，token 降到四分之一。
-- 这些数字测自 **849 个本地档案**与 **188 条已发布条目**。
+- **简洁的候选列表。** 每一行概括主机比较和选择智能体所需的信息。
 
 ## 大多数工具停在这里
 
@@ -260,13 +281,9 @@ LLM、Runtime、Agent 三层相互分离。更换模型或编码工具时，智�
 
 ---
 
-## 我们加过自己的点子，又把它删了
+## 候选选择
 
-我们试过把发布者自己写的「什么时候该叫我」句子当作排名信号。正确智能体排第一的比例从 **73.1% 掉到 57.0%**。我们删了。现在那些句子只在名单末尾预留三个位置——不被删掉的权利，而非改变排名的权力。
-
-用中文提问时，正确的智能体排在 **第 144 位**。同一个问题用英文问，排 **第 1 位**。所以工单用英文书写，交付物的语言是另一个字段。
-
-展示 10、20、30、50 个候选时，正确答案出现在名单里的比例分别是 **73、83、87、93%**。默认值是 30。
+发布者写的「什么时候该叫我」说明只在列表末尾预留三个位置，不具有改变排名的权限。工单使用英文，交付物语言由单独的字段指定。默认候选数量为 30。
 
 ---
 
@@ -287,21 +304,20 @@ Desktop 本身就是宿主，所以它在运行开始**之前**就用代码决�
 
 把下面内容粘贴到你正在使用的 LLM，例如 Claude Code、Codex、Antigravity 或 Cursor：
 
+<!-- AGENTLAS-PROMPT-MODULE: os.install.readme.request; revision=2; stability=versioned-content; changeTriggers=release,capability-inventory; channel=user -->
 ```text
-从这个 GitHub 仓库安装 Hephaestus:
-https://github.com/agentlas-ai/Agentlas-OS
-
-不要只安装 marketplace plugin 就停止。请运行仓库的标准一键安装器，
-同时写入可在下一次 session 中继续使用的 host command adapters：
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-
-请报告安装器自身的验证输出。如果下一次 session 中 `/agentlas build`
-（或该 host 对应的 command surface）无法使用，不要报告安装完成；确认可用后，
-提示我重启 host 或重新加载 plugin。
+request: Install Agentlas OS standalone from https://github.com/agentlas-ai/Agentlas-OS.
+inspect: First fetch and read https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh and compare its actual behavior with this requested scope.
+scope: Use the isolated default runtime under ~/.agentlas/os-runtime and its dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo, replace the independent Terminal's agentlas command, write global ~/.local/bin wrappers, or permanently register host plugins/MCP as part of this request.
+defaults: Keep optional features OFF. Do not enable the global router or change host instruction files.
+run: If the script matches this scope, run curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash. Report a scope mismatch instead of silently expanding the installation.
+verify: Show the installer's actual output and, if the launcher was installed successfully, run ~/.agentlas/os-bin/agentlas-os features status.
+report: State runtime installation and host connection separately. Preserve partial, unavailable, and unverified results. A restart alone does not prove that /agentlas build, skills, or MCP tools are ready.
+host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
+updates: Automatic updates default OFF. After a runtime update, inspect host status again. outdated or codex_skill_alias_outdated is not readiness; do not silently replace/delete the owned alias or fall back to a legacy runtime. Codex One/Memory hooks are not applied and Windows host-session integration is unverified.
 ```
 
-当你已经在某个 LLM 里，并希望直接启用 Hephaestus 时使用这段内容。
-如果要用 shell 手动安装，请查看下面的完整安装方法。
+此步骤安装独立运行时，并不表示当前 LLM 主机已连接或命令已启用。通过 shell 手动安装的方法见下文。
 
 <p align="center">
   <img src="assets/hephaestus-network-mcp-demo.gif" alt="Hephaestus Network 2.0 通过 MCP 实时将任务路由给正确的智能体" width="760">
@@ -335,60 +351,48 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 
 
 <details>
-<summary><strong>全部安装方式 — 源码·离线·分宿主</strong></summary>
+<summary><strong>安装与主机会话</strong></summary>
 
 
 ### 手动安装 LLM Adapter
 
-仅当当前 LLM 无法自行执行设置时使用。它会安装共享的 Hephaestus runner
-以及面向受支持 LLM tools 的 command adapters。
+此命令准备独立运行时预览版。
+
+安装器准备独立运行时命名空间。主机适配器和 Desktop 更新器集成尚不可用。
 
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-该命令会把中立运行器安装到 `~/.agentlas/runtime/current/bin/hephaestus`，并为 Claude Code、Codex、Antigravity、Cursor、OpenCode、OpenClaw、Hermes、Kimi Code CLI、goose 和 GitHub Copilot CLI 注册命令、技能或 MCP 适配器，并为 Grok 安装记忆钩子。本地模型使用 MCP 入口 `hephaestus mcp serve`。安装器会在注册后逐一验证每个运行时表面。
 
-### 各运行时的插件驱动
+### 连接独立主机会话
 
-<details>
-<summary>Claude Code 插件</summary>
+<!-- prompt-module: {"id":"os.install.readme.host-session","revision":1,"stability":"versioned-content","changeTriggers":["release","runtime","capability-inventory"],"channel":"tool-result"} -->
 
-在操作系统终端中运行：
+安装后使用专用 launcher。先检查所选主机状态，再单独启动会话。这些命令使用 `~/.agentlas/os-runtime` 中的独立运行时和 `~/.agentlas/os-host-plugins` 中的自有插件，不需要永久 marketplace 注册或把引擎文件复制到项目。
+
+检查准备使用的主机:
+
 ```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
-claude plugin install hephaestus@agentlas-core-engine
+~/.agentlas/os-bin/agentlas-os host status claude
+~/.agentlas/os-bin/agentlas-os host status codex
 ```
-*注：Claude Code 会始终为 marketplace plugin command 添加 namespace，
-因此仅使用此 plugin 安装路径时，命令是 `/hephaestus:agentlas`。若要在每个
-新 session 中使用文档里的 bare `/agentlas build` 自动补全，请使用上面的一键
-安装器；它还会写入 `~/.claude/commands/agentlas.md`。Claude Code 也支持
-`claude plugins ...` 别名，但本 README 统一使用单数形式的
-`claude plugin ...`。*
 
-</details>
+需要该主机的新会话时执行:
 
-<details>
-<summary>Codex 插件</summary>
-
-在操作系统终端中运行：
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.72
-codex plugin add hephaestus@agentlas-core-engine
+~/.agentlas/os-bin/agentlas-os host session claude
+~/.agentlas/os-bin/agentlas-os host session codex
 ```
-*注：Codex 应用内不支持 `/plugin marketplace add`，请在操作系统终端中运行上面两条命令。操作系统终端的 CLI 命令为单数形式（`codex plugin`）；在 Codex 应用内，插件浏览器的斜杠命令为复数形式（`/plugins`）。Codex 0.117+ 已移除自定义 `/prompts:*` 命令；安装后请用 `$hephaestus-network <request>` 调用插件技能。*
 
-</details>
+仅在需要向原生主机传递参数时附加 `-- <native-args...>`。读取实际状态与启动结果。`partial`、`session_activation_not_observed` 或不可用组件不表示已完全连接。运行时安装、插件准备、模型会话运行是不同结果。
 
-<details>
-<summary>将文件复制到项目中（手动驱动）</summary>
+选择会话中实际显示的限定名称，例如 `agentlas-os-core:hephaestus-network`。旧的无命名空间名称可能同时存在；不要假定 `/hep-*`、`/agentlas` 或未限定的 `$hephaestus-*` 指向此运行时。下方命令表仅供功能参考，只使用会话实际公开的命令和工具。
 
-克隆本仓库，并把 `AGENTS.md`、`agent.md`、`agents/`、`skills/`、`modes/`、`schemas/`、`templates/` 和 `.agentlas/` 复制到你的工作区。运行时目录（`.claude/`、`codex/`、`antigravity/`、`.agents/`）作为同一规范内核之上的适配器工作。
+Codex core 工具与技能可在独立会话中加载，但 One、Memory 钩子尚未应用。设置为 ON 不证明钩子已运行；保留 `unappliedHookComponents` 和 `codex_optional_hook_session_loader_unverified` 状态。Windows 主机会话集成尚未验证，不保证永久注册或完整原生集成。 Windows 缺少创建链接的权限时可能保持 partial。原生清单或版本命令成功不证明模型轮次或钩子已经执行。 standalone 与 Desktop 共用 `~/.agentlas/engine-features.json` 功能设置。明确的 OFF 也会关闭 Desktop 默认 ON 的功能。没有明确设置或兼容环境覆盖时，standalone 默认 OFF，Desktop 使用自己的功能默认值。独立 One 的 on/off 是 `~/.agentlas/os-one` 中的单独状态。
 
-</details>
-
-**直接开口即可：** 安装完成后，在原生 Agentlas 界面中用自然语言说话即可自动路由任务。在外部 LLM tools 中，使用下面列出的显式命令。不清楚有哪些智能体时，先从 `/agentlas search` 开始。
+更新后再次运行 `host status`。自有 Codex 技能 alias 可能仍指向旧版本；`outdated` 或 `codex_skill_alias_outdated` 表示新会话尚未准备好。不要静默替换、删除 alias，也不要退回 legacy 运行时；报告准确状态并遵循已提供的明确修复步骤。自动更新默认 OFF，运行时更新不证明主机已激活。
 
 ---
 

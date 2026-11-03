@@ -1,4 +1,5 @@
 {
+  "$comment": "prompt-module: {\"id\":\"os.package-contract.document\",\"revision\":2,\"stability\":\"versioned-content\",\"changeTriggers\":[\"release\"],\"channel\":\"tool-result\"}",
   "schemaVersion": "1.0",
   "kind": "agentlas-package-contract",
   "artifacts": [
@@ -231,7 +232,7 @@
       "template": null,
       "schema": null,
       "minLines": 10,
-      "description": ">=10 routing benchmark cases (route + reject, ko + en), generated from the package routing card instead of copied from an internal fixture. Canonical path is the plural `.agentlas/routing-benchmarks.jsonl`, which is what 140 of 144 forge packages and 183 live Hub releases actually ship. The contract previously said `benchmarks/`, which no generation ever wrote, so every package failed this required artifact on the path alone while the file sat on disk. The spelling carries no meaning; only agreement does."
+      "description": ">=10 routing benchmark cases (route + reject, ko + en), generated from the package routing card instead of copied from an internal fixture. Use the canonical plural path `.agentlas/routing-benchmarks.jsonl`."
     },
     {
       "path": "docs/builder-interview.md",

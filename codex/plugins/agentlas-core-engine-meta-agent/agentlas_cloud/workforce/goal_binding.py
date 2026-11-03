@@ -191,14 +191,8 @@ def resolve_continuity_goal_id(
 
     ★암묵 goal 은 WorkOrder 마다가 아니라 프로젝트 연속성마다 하나다.
 
-    implicit_goal_id 는 workOrderId 에서 파생되므로 새 작업마다 새 goal 이
-    생겼다. SKILL.md 4절은 "이후 준비는 incumbent goalId 로 새 릴리스만
-    덧붙인다"고 규정하는데, incumbent 를 **찾는** 단계가 어디에도 구현돼 있지
-    않아 호스트가 goalId 를 직접 넘겨야만 성립했다. 실측 2026-08-21: 프로젝트
-    하나에 활성 goal 3개·로스터 21행이 쌓였고 그중 19행(90%)은 한 번도 쓰인
-    적이 없다. 읽기 상한이 8이라 조회 비용도 함께 자란다. 명시 goalId 가
-    없으면 이 프로젝트의 현직 자동 goal 에 추가한다 — "recruitment is additive"
-    를 정책 문장이 아니라 코드로.
+    명시 goalId 가 없으면 프로젝트의 현직 자동 goal 에 새 릴리스만 추가한다.
+    새 workOrderId 마다 별도 goal 을 만들지 않아 기존 로스터를 재사용한다.
     """
 
     if isinstance(requested_goal_id, str) and requested_goal_id.strip():
@@ -762,13 +756,9 @@ class WorkforceGoalStore:
                         ],
                     }
                 )
-        # Signing in switches the partition, so rosters bound while signed out
-        # stop appearing here. Nothing was deleted — the reader is looking in a
-        # different drawer — but to the user "I signed in and my team vanished"
-        # is indistinguishable from data loss (measured 2026-08-25: 2 goals /
-        # 21 roster rows visible before login, `goals: []` after). Merging
-        # across partitions is a cross-account write and needs an owner
-        # decision; SAYING the other drawer is non-empty does not. Count only.
+        # Signing in changes the auth partition. Count other non-empty partitions
+        # so the user can distinguish an unavailable roster from deleted data.
+        # Do not merge across accounts without an owner decision.
         unsigned_leftovers = 0
         if self.account_partition != unsigned_local_partition():
             with self._connect() as conn:
@@ -1050,12 +1040,8 @@ def prepared_not_executed_notice(project_dir: str | Path) -> str:
 
     ★"내는 결과에는 유저가 볼 수 있는 사실이 있어야 한다" 의 실행판.
 
-    실행 단계(SKILL.md 6·7절)는 전부 모델에게 주는 지시였고, 그것을 관측하는
-    호스트 장치가 하나도 없었다. 그래서 "준비만 하고 종료"가 명백한 계약 위반인데
-    아무도 못 잡았다 — 실측 2026-08-21: 이 프로젝트 로스터 21행 중 19행(90%)이
-    lastUsedAt=null, 즉 실행됐다는 주장조차 없었다. 세션 종료는 모든 설치가
-    반드시 지나는 한 지점이므로, 새 훅 이벤트를 등록하지 않고 여기서 사실을
-    말한다. 막지는 않는다 — 판단은 사람이 하고, 침묵만 없앤다.
+    세션 종료 시 준비된 로스터의 사용 기록을 확인해 실행되지 않은 항목을 알린다.
+    종료를 차단하지 않으며, 후속 판단은 호스트와 사용자에게 맡긴다.
     """
 
     try:

@@ -369,7 +369,7 @@ def symbol_files(text: str, definitions: Mapping[str, set[str]]) -> set[str]:
         if "_" not in token.strip("_") and not re.search(r"[a-z][A-Z]", token):
             continue
         # defIndex keys are lower-case: looking up the original case missed
-        # every camelCase/PascalCase symbol (75% of the desktop's symbols).
+        # camelCase and PascalCase symbols.
         files = definitions.get(token) or definitions.get(token.lower())
         if files:
             found |= files

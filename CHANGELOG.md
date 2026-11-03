@@ -1,5 +1,27 @@
 # Changelog
 
+> Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
+
+
+## 1.2.73 — 2026-11-03
+
+- Standalone OS installs into its own runtime namespace and preserves the legacy
+  Desktop runtime. Automatic project bootstrap, indexing, Context Map, Memory,
+  Storm, telemetry, and update checks are off by default and can be enabled
+  explicitly. One has a separate on/off preference.
+- Core agent building, Network, Cloud, search, calls, goal planning, and session
+  builds remain available. Standalone Graph automation and Telegram/Connect
+  commands have been retired; existing user data is not deleted.
+- Standalone host integration prepares isolated, version-pinned sessions.
+  Check the reported host status for any unconnected or unsupported component.
+- Package and session builds work with the bundled schema validator when the
+  host has no separately installed JSON Schema package.
+- Agentlas Desktop and Agentlas Terminal keep their previous behavior: optional
+  features stay on for them unless the user turned a feature off.
+- A Storm run is no longer blocked when automatic project setup is skipped, a
+  project format upgrade starts once instead of on every prompt and waits after a
+  failure, and the memory-free project index keeps a single current copy.
+
 ## 1.2.72 — 2026-11-01
 
 - Context: in a folder with no project map, the hint now tells the model to call
@@ -384,46 +406,13 @@
   deterministic Core boundary. Internal package and plugin names remain
   unchanged, and session builds never upload or publish automatically.
 
-- **Tool search descends servers before tools, and never ships input schemas.**
-  Finding the tool for a concrete action was the plugin search wearing the wrong
-  hat: it answered "which plugin covers this topic" when the caller needed
-  "which callable does this". `agentlas_tool_search` (MCP, plus
-  `agentlas plugins tool-search "<need>"`) ranks servers first and looks only at
-  the winners' tools, so catalogue size never changes what the model reads.
-  Measured over the 43 shipped routing cards and their 207 capabilities: the
-  expected server was in a four-candidate shortlist 5/5 times, four of them at
-  rank 1, at ~209 tokens and ~3ms per search — against ~9,982 tokens to hand
-  over every tool definition up front. Schemas load for the tool actually
-  chosen. `forbid_destructive` keeps deleting tools out of a shortlist for work
-  that must not delete.
+- `agentlas_tool_search` and `agentlas plugins tool-search` rank servers before tools and load schemas only for the chosen tool. `forbid_destructive` excludes deleting tools when deletion is forbidden.
 
-- **The candidate menu defaults to four per slot, and a role can carry several
-  phrasings.** Measured on the 116 routing-eligible profiles with 389 English
-  queries: the right agent is inside the top four 97.4% of the time and inside
-  the top three 97.2%, so slots five through eight bought 0.2 points for roughly
-  2,900 characters a slot. And one request rarely matches a card in only one
-  wording — "our webhook double-charges", "duplicate effects under retry" and
-  "design an idempotency key" reach different cards while describing one job —
-  so a role may now list up to eight `queries`, joined into its task.
+- The candidate menu defaults to four candidates per slot. A role may supply up to eight `queries`, joined into its task.
 
-- **Plugin discovery stopped scoring function words.** Matching is substring
-  containment, so "it" hit "edit" and "the" hit "theme": on the live catalogue,
-  "book me a flight and pay with my card" put a positive score on 106 of 113
-  plugins and "read the file and send it" on 109, while the same shape of
-  request without the glue touched 17. One stopword list now serves this and the
-  agent catalogue, so the two cannot drift apart again.
+- Plugin and agent discovery share a stopword list so function words do not create irrelevant substring matches.
 
-- **The upload seam is closed end to end, and telemetry stops shouting at a
-  closed door.** With production's Agent Cloud write mode restored, a
-  throwaway package was published, the server was asked to describe that exact
-  record back (it returned the same package hash this machine had computed),
-  and the record was then removed and confirmed gone. Registration, storage,
-  read-back and deletion are one verified round trip, not four separate
-  claims. Alongside it, build telemetry now honours a 429 instead of
-  discarding it: a rate-limited install goes quiet for a bounded window
-  (measured: 0 requests across the next five commands) rather than sending at
-  the same rate into the wall that just rejected it, and an ordinary run still
-  reports normally.
+- Build telemetry respects HTTP 429 with a bounded quiet window and resumes ordinary reporting afterward.
 
 - **`hep-storm` with no arguments printed a bash internal error.** Under
   `set -u`, expanding an empty array crashed the launcher with
@@ -432,314 +421,80 @@
   It now answers `query or --decision-file is required` at exit 2, and
   arguments still reach the parser.
 
-- **Audit round 9 — first round graded on "does it work", and most of it
-  does.** Seven commands finished their success path with visible evidence: an
-  automation described in words got interviewed, saved, listed, shown, run, and
-  **wrote a real file**; a signed-out machine went through login to a verified
-  token and watched cloud flip from `unauthenticated` to `ok`; the staffing
-  chain reached `prepared` with an 18.5KB plan on disk; unrelated queries
-  returned genuinely different candidates; five runtimes each lost a command
-  file and got it back byte-identical in one update; an orchestration setting
-  changed and stuck; the browser took a real snapshot. Four defects that
-  round 1-8's refusal-shaped grading could never have surfaced:
-  - `contract scaffold` wrote a `canonicalCommand` its own schema rejects for
-    any folder name containing an underscore — scaffold emitting a file that
-    fails the verify it ships with. `command_slug`, the repair written when 16
-    published packages hit this, existed; scaffold was simply never routed
-    through it. Both scaffold and the repackage templates now are.
-  - `orch worker=<typo>` stored the typo as a pinned model id and exited 0, so
-    a mistyped tier became a pin nothing can resolve. A value that is neither
-    a tier nor shaped like a model id is now refused with both options named.
-  - `hephaestus graph list` fell through to the natural-language router and
-    answered with Hub candidates at exit 0 — a marketplace list that reads
-    exactly like the saved-automation list the user asked for. Words this
-    launcher does not own but the sibling `agentlas` CLI does now name the
-    right tool. Real phrases still route.
-  - `hep-browser` exited 0 on its research path even when no browser could be
-    opened and nothing was produced (honest in the body, success to a script).
-    The action and snapshot paths already exited nonzero; this one now does too.
+- Command handling fixes: scaffold and repackage normalize command slugs; orchestration refuses invalid tiers or model identifiers; unsupported launcher words direct callers to the owning command; browser research failures return a nonzero exit status.
 
-- **A concept whose meaning normalization would delete is refused, instead of
-  passing as its bare namespace.** The work-order normalizer refused an id only
-  when nothing ASCII survived, so `네트워크 효율` was rejected while
-  `role:성능-조사자` was not: it normalized to `role`, and `community:웹-개발` to
-  `community`. Both were accepted, pinned as mandatory slot requirements, and
-  then matched against nothing — measured, all 8 local candidates returned
-  `missing-community:community`, which no required slot can be staffed through.
-  The refusal now triggers whenever a non-ASCII letter or digit is present,
-  since the ASCII-only substitution can only delete it; this covers Japanese,
-  Chinese, Arabic and Hindi identically and leaves authored English phrases
-  untouched.
+- Work-order normalization refuses concepts whose non-ASCII letters or digits would be deleted, rather than admitting a bare namespace as a requirement. Authored English phrases remain supported.
 
-- **The last two refusals without a next move now have one.** Round 8 found
-  the neighbours the round-7 repair had not reached: a transient Hub error
-  (measured mid-audit as HTTP 502) reported what broke and nothing to do about
-  it, and the named server refusals (`agent_not_found`, `no_cloud_package`,
-  `owner_only`, `team_execution_graph_unavailable`) stated a fact with no next
-  step. The server's own sentence is preserved verbatim — hep-call's contract
-  is to relay the exact refusal, never substitute — and the remedy is added
-  beside it, which is where that contract and common rule 3 only appeared to
-  conflict.
+- Hub transient errors and named server refusals now include a next step. `hep-call` preserves the server refusal verbatim and adds the remedy beside it.
 
-- **The cloud scope's contract sentence is checked by structure, not by
-  counting (owner decision).** Round 7 marked "cloud sees everything you own"
-  unmeasurable for lack of a reference count. The owner pointed out the real
-  shape: cloud and hub are the same routing — one function, one code path,
-  differing only in which server tool it calls (network→marketplace,
-  cloud→cargo, bookmark→bookmarks). So the check is structural sameness: the
-  three scopes share the path, cloud alone attaches the owner-scope arguments,
-  and the runtime never re-filters the answer. Measured all three today. This
-  also fixes where such a defect belongs: scope is decided server-side, so
-  "something I own is missing from search" is a server defect, not this
-  command's — exactly what the 284 hidden public listings turned out to be.
-  The browser sentence stays as written, by owner decision.
+- Network, Cloud, and bookmarks share the discovery path. The server tool and owner-scope arguments select the scope; the runtime does not filter the returned scope again.
 
-- **Audit round 7 (first graded against the behaviour contract).**
-  - Exit codes tell the truth (contract, common rule 6): `search` exits 4 when
-    every section failed with zero rows — previously indistinguishable, to a
-    script, from "searched fine, nothing matched" — and `call` exits 4 on a
-    failed preparation. Partial results stay 0.
-  - A `bundle_unavailable` refusal carries its detail and its way out on the
-    call surface too, with the same wording every surface uses (common rule 3;
-    one live refusal was measured bare).
-  - A failed source receipt's way out rides beside the sealed receipt: the
-    menu projection decorates failures with per-source hints
-    ("sign in with `hephaestus auth login`, then retry") without touching the
-    digest-sealed receipt rows.
-  - Found while measuring: the sign-in-by-default gate can start a login
-    attempt inside a source call, and a network hiccup during that attempt
-    (measured: connection reset fetching OAuth metadata) crashed the entire
-    federated search with a traceback — RuntimeError lineage, no arm caught
-    it. One source's login trouble is now one failed receipt.
-  - Live server-side evidence recorded for the web repo: listing
-    `brand-introduction` refuses with `object_store_unreadable` ("re-save this
-    asset from a trusted machine") — the stored package itself is corrupt, the
-    exact artifact-health defect deferred in round 5, now with a named case.
+- `search` exits 4 when every section fails without rows, and `call` exits 4 on failed preparation; partial results retain exit 0. Source failures carry recovery hints beside sealed receipts. A login failure remains one failed source receipt instead of terminating the entire federated search.
 
-- **Every command now has a natural-language definition of "working", and the
-  definition is the audit rubric.** Owner directive: what matters is defining,
-  in plain sentences, what each command's normal behaviour is — and whether
-  that actually happens. `contracts/COMMAND-NORMAL-BEHAVIOR.md` states, for
-  all sixteen commands plus the shared rules, what a user must observe, what
-  must never happen, and how to check — each sentence grounded in something
-  measured this week. Audit rounds grade these sentences directly; a mismatch
-  is fixed in the product or, with owner approval, in the sentence — never
-  left silently divergent. A new command is incomplete until its definition
-  exists here. The file ships with the runtime.
+- Command behavior and failure guidance are documented for end users. Retired graph automation and Telegram connection commands are not available in the standalone engine; the current README lists supported commands.
 
-- **Package schema validation now actually runs on a machine without the
-  compiled stack (audit round 5 condition).** The previous entry said F7 was
-  closed; the auditor measured that only the receipt half was — package
-  contract validation still degraded, because the validator was built through
-  the 4.18-era referencing registry, which the vendored 4.17.3 deliberately
-  predates. The same local-only schema store now resolves through 4.17's
-  RefResolver when the registry path is unavailable. Measured with the
-  auditor's own teeth check: an invalid document yields 5 real schema errors
-  on stock 3.9 with user-site blocked (previously "schema validation
-  unavailable"), and a healthy interpreter still uses the genuine installed
-  jsonschema.
-- **A tombstoned goal names its way out (audit R5-1).** The implicit goal id
+- Package schema validation uses the local-only schema store with the vendored jsonschema 4.17.3 RefResolver when the newer referencing registry is unavailable, and prefers a healthy installed validator.
+
+- **A tombstoned goal names its way out.** The implicit goal id
   is a deterministic digest of the WorkOrder, so preparing the same request in
   the same project after its auto goal was completed failed forever with a
   bare `workforce_goal_already_terminal`. The refusal now says to pass a new
   explicit goalId (or reuse an active goal from goal_context), and both MCP
   goal handlers forward remediation sentences beside their codes.
 
-- **A remote prepare refusal names the roster row it refused.** Audit R4-1:
-  four consecutive menu candidates failed prepare with a bare
-  `release_artifact_unavailable` and the only way to find the culprit was to
-  bisect the selection by hand. The refusal now carries which source refused
-  which release for which slot, and for the unavailable-artifact case, the
-  move ("validate a different candidate for this slot, or retry later").
-  Surfacing an unpreparable listing in the menu itself needs server-side data
-  and stays on the web-side list.
-- **Schema validation works without a compiled dependency (audit F7 closed).**
-  `jsonschema` 4.18+ requires `rpds`, a native module — absent on a fresh Mac,
-  and measured broken on the dev Mac itself (x86_64 `rpds.so` under an arm64
-  interpreter), which left workforce execution-receipt verification entirely
-  unavailable. The runtime now vendors pure-Python jsonschema 4.17.3 (+attrs,
-  pyrsistent; licenses included, test/benchmark dirs stripped) behind a loader
-  that prefers a healthy installed copy and falls back only when the real
-  import fails. Measured on stock 3.9 with user-site blocked, and on the
-  broken-arch 3.12: both validate; the receipt validator loads.
-- Working-tree edits make the router block with `ao_graph_stale` until
-  `ao migrate --overwrite` re-materializes — today's recurring "flaky"
-  network-pipeline test failures were exactly this, three times. Not a code
-  change; recorded so the next person runs the remedy instead of re-diagnosing.
+- Remote preparation failures identify the source, release, and slot involved and give a recovery action for unavailable artifacts.
 
-- **Audit round 2 follow-ups.** The re-audit's one condition and both
-  non-blocking notes, plus two defects the parity tests caught in the freshly
-  restored login command:
-  - the `.zcode` dispatcher surface accepts `login|orch|update` (the last of
-    ten surfaces; the other nine were fixed in the previous commit);
-  - `auth ensure` exits 3 when it ends anything other than authenticated, so
-    `auth ensure && <cloud work>` can actually gate (deployed bodies run it
-    with `|| true` and are unaffected);
-  - the sign-in hint on an unauthenticated search section survives the CLI
-    projection instead of being dropped (`error` too);
-  - `hep-login`/`agentlas-login` join the updater's command floor — without
-    this, a machine that never received them never would, the exact delivery
-    defect fixed in v1.2.20;
-  - the login body carries the standard update-fallback first line, from the
-    canonical body, so every surface renders it identically.
+- A pure-Python jsonschema 4.17.3 fallback with attrs and pyrsistent keeps schema validation available when native dependencies cannot load. Dependency licenses are included.
 
-- **The automation kill-switch now kills.** Every hep staffing command runs
-  `auth ensure --timeout 180` first, in every runtime, and that path called
-  `ensure_access_token` with a hard-coded `interactive=True` — so
-  `HEPHAESTUS_AUTO_AUTH=0` had no effect there (independent audit, F1:
-  unset/0/1 all burned the full timeout and tried to open a window). A
-  signed-out machine's scheduled run would stall three minutes per command and
-  pop a browser at night. `auth ensure` now consults the same screen/kill-switch
-  gate as the hub client: silent refresh still happens, but with the switch off
-  (or no display) it returns `signed_out` immediately with a reason. Measured:
-  15s burn → 1s refusal.
+- The `.zcode` dispatcher accepts `login`, `orch`, and `update`. `auth ensure` exits 3 unless authenticated; CLI projection preserves sign-in hints. Login commands join the updater command floor and use the canonical update fallback.
+
+- `auth ensure` respects `HEPHAESTUS_AUTO_AUTH=0` and headless operation. Silent token refresh remains available, while signed-out runs return promptly without opening a browser.
+
 - **A signed-out owner-scope search stops answering "there is nothing".** The
   CLI `search` asked cloud/bookmarks anonymously and reported `status: ok` with
   zero rows — "could not ask" dressed as "none exist", while the MCP surface
-  answered `failed`/`partial` honestly (audit F2). It now refuses plainly with
+  answered `failed`/`partial` honestly. It now refuses plainly with
   `unauthenticated` and a sign-in hint.
 - **Search cache lines carry the account.** The hub-search cache key had no
   identity, so a signed-out session (or the next account) inherited the
-  previous account's cloud/bookmark rows for the whole TTL (audit F3,
-  reproduced across a logout). Owner-scoped lines are now keyed by an account
+  previous account's cloud/bookmark rows for the whole TTL. Owner-scoped lines are now keyed by an account
   digest, which makes a foreign hit impossible without any cross-module cache
   wipe on logout.
 - **`project status` in an unsafe directory names the guard and the way out.**
   The intentional home/system-folder guard was collapsed by a bare exception
   handler into `project_bootstrap_failed` with no cause and no next step
-  (audit F4). The refusal now carries the real code (`unsafe_project_root`,
+ . The refusal now carries the real code (`unsafe_project_root`,
   `project_directory_does_not_exist`, …) and a remedy line.
 - **`/agentlas login|orch|update` stop being refused.** The alias files said
   "identical to /hep-login" while the `/agentlas` dispatcher's accept list
-  did not contain them, on every runtime (audit F5) — the freshly restored
+  did not contain them, on every runtime — the freshly restored
   login command was unreachable through its most natural spelling. All eight
   dispatcher surfaces now accept the three verbs; resolution reuses the
   existing `hep-<cmd>.md` rule unchanged.
-- **`hep-connect` reaches cursor, gemini and opencode.** The renderer
-  deliberately leaves a command a host never shipped to a person; the audit
-  (F6) confirmed the gap was benign but real. Coverage completed from the
-  canonical body; both render gates green.
-- Known gap, deferred with reason: package schema validation needs `jsonschema`,
-  which the runtime does not bundle (audit F7). The failure is honest — it
-  reports "schema validation unavailable" and upload refuses to publish an
-  unvalidated package — and bundling a dependency into the release asset is a
-  build-pipeline change that should not be rushed into this tag.
+- Historical Telegram adapter coverage was extended across hosts. The command has since been retired from the standalone engine; see the current README.
+
+- Package upload refuses to publish when schema validation is unavailable.
+
 - The no-Python-anywhere hint no longer tells a Mac user about Windows.
 
-- **Signing in no longer makes pre-sign-in rosters look deleted.** Goal
-  bindings are partitioned by account, so rosters bound while signed out live
-  in the shared signed-out drawer and stop appearing after sign-in — nothing is
-  deleted, but "I signed in and my team vanished" is indistinguishable from
-  data loss (measured: 2 goals / 21 roster rows visible before login,
-  `goals: []` after). Merging across partitions is a cross-account write and
-  waits for an owner decision; saying the other drawer is non-empty does not.
-  `goal_context` now counts active signed-out bindings for the same project and
-  reports them as `signedOutGoalsForThisProject` with a plain-language notice.
+- Goal bindings remain partitioned by account. `goal_context` reports active signed-out bindings for the same project as `signedOutGoalsForThisProject`; it does not merge accounts automatically.
 
-- **The sign-in URL is printed whether or not the browser "opened".**
-  `webbrowser.open` returning True means a handler was invoked, not that the
-  person is looking at a sign-in window, and the URL was only printed when it
-  returned False. Measured on macOS: the call returned True, a Chrome process
-  started, and no browser anywhere held the authorization URL — the flow then
-  waited silently on its callback while the user had nowhere to go. Three
-  attempts in a row ended that way. The URL is now printed on both paths, with
-  wording that says a window should have opened and to use the URL if it did
-  not; printing the line costs nothing, and its absence makes signing in
-  impossible. This is the third separate break on the path to a login window,
-  after the one that never opened it and the missing login command.
+- Authentication always prints the sign-in URL, including when the browser handler reports success, so users can open the page manually.
 
-- **One oversized source stopped being able to fail every future ingest.**
-  `career-graph ingest` refuses a JSON source over the 64 MiB reader cap, and
-  refused the whole run with it, so a generated `project-map.json` that reached
-  69 MB left `career-graph status` answering `stale` with exit 1 on every run
-  afterwards and no command able to clear it. A malformed source still aborts —
-  its content cannot be trusted and keeping the previous projection is the
-  point, which its test defends — but a source that is merely too large is
-  valid content we decline to read, so it is skipped alone and the rest is
-  ingested. `status` reports such a file under `skippedSources` with its size,
-  the limit and the remedy, instead of counting it as staleness that will never
-  clear: a permanent condition dressed as a pending one is how a genuinely
-  stale source goes unnoticed. Measured on the stuck project: ingest went from
-  `career_ingest_failed` to 27,086 nodes / 27,089 edges, and `status` from
-  `stale` exit 1 to `active` exit 0 with one named exclusion.
+- Career Graph ingestion skips individually oversized sources and reports their limits under `skippedSources`; malformed sources still abort while preserving the previous projection.
 
-- **A new Mac could not run six commands at all.** `Path.stat(follow_symlinks=)`
-  exists only from Python 3.10, and the system Python a fresh macOS ships is
-  3.9, so `project ensure`, `route`, `hep-search`, `hep-call`, `hep-storm` and
-  `ao lint` all died with a `TypeError` on any machine without the desktop
-  app's bundled interpreter. A development machine never sees it. Found by
-  running the commands in an isolated new-machine environment rather than by a
-  gate, and fixed at every site. Re-measured on Python 3.9.6 after the fix: all
-  175 modules of `agentlas_cloud`, `career_graph` and `ontology` import cleanly,
-  and no `Path.stat(follow_symlinks=)` remains — the surviving
-  `os.stat(..., follow_symlinks=False)` calls have accepted that keyword since
-  3.3.
+- Replaced `Path.stat(follow_symlinks=)` with compatible filesystem calls so command paths support Python 3.9 as well as newer interpreters.
 
-- **A context error now carries a way out, on every surface.** The CLI kept its
-  own hint table covering four codes; the MCP surface — the one the `/hep-*`
-  commands go through — ended in a bare `{"error": "<code>"}` with nothing to
-  act on. Measured: `context.slice` answered `context_map_integrity_failed`
-  with no next step, and the code the documented remedy then produced,
-  `context_refresh_incomplete`, was in neither copy — so following the
-  instructions led to a second dead end. One table now lives beside the codes
-  in `context_map.py` and is read by both surfaces, covering every code a
-  caller can reach; the two refresh branches that bypass the error handler
-  carry it themselves. The incomplete-refresh remedy names the actual lever:
-  read `stats.budgetStop`, then narrow the mapped scope in
-  `agentlas-context-map.json`, or use allow_stale meanwhile.
+- CLI and MCP Context Map failures share recovery guidance. Incomplete refreshes identify `stats.budgetStop` and suggest narrowing `agentlas-context-map.json` scope or requesting stale data.
 
-- **A newly shipped command can now reach a machine that already has the
-  others.** The adapter sweep overwrote only destination paths that already
-  existed, so that a host surface the user never set up is never created. But
-  "did the user set this surface up" is a question about the directory, not
-  about each file in it: keyed per file the answer was always "no" for a command
-  that did not exist yet, and no update could ever add one. Measured on a live
-  machine — `hep-orch` and `hep-update` sat in the verified adapter bundle while
-  `~/.claude/commands/` held seventeen of their siblings, and two consecutive
-  updates reported success without adding them; completing the install floor did
-  not help either, because this loop never got as far as consulting it. The
-  question is now asked of the directory, by existence rather than contents: an
-  empty `~/.codex/prompts` is not evidence that the user declined our commands,
-  and a contents-based rule skipped all fourteen for a host the machine plainly
-  has. Verified by running it, not by the gate: 29 files added, 0 skipped, 0
-  failed, and codex went from 0 commands to 29. New arrivals are reported as
-  `added` rather than folded into the refresh count.
+- Updates add missing commands for already configured host directories, including empty configured directories, and report them as `added` without creating unconfigured host surfaces.
 
-- **A revoked sign-in is now noticed instead of replayed forever.** The stored
-  token's `expires_at` is the issuer's claim, not proof the server still honours
-  it, so a revoked credential kept a future expiry and `auth status` kept
-  answering `authenticated` while every owner-scoped call returned 401. The
-  retry in `call_hub_tool` asked for a token again and got the same dead one
-  back, which made both the refresh branch and the browser-login branch
-  unreachable: the "retry" replayed the identical credential. A 401 now
-  invalidates the access token (keeping the refresh grant), the retry forces
-  past it, and `auth status` reports `refreshable` with `server_rejected_at`
-  rather than claiming a live session. Measured: owner Cloud staffing failed
-  `source_unauthorized` on every attempt with the local status reading
-  "authenticated until 2026-09-13".
-- **A compiler fix now reaches releases whose import folder is gone.**
-  `register()` recompiles a stored release when the profile predates the current
-  compiler, but it is only reached for a package whose original source folder is
-  still on disk and still registered. Everything else kept serving whatever the
-  old compiler wrote. Measured: 849 of 849 stored profiles were still
-  `awo-compiler:1.1.0`, and 154 of them carried the doubled `skill:skill:`
-  prefix that makes a skill unmatchable by any requirement lookup — months after
-  the doubling itself was fixed. `workforce local-repair` recompiles in place
-  from the package the registry already owns, keeping definition, release and
-  package identity unchanged; `local-reconcile` now runs it first. Verified on a
-  copy of the live registry before applying: 849 repaired, 0 failed, pollution
-  154 -> 0, integrity 149/149, and a rerun finds nothing (idempotent).
-- **A requirement the ontology cannot enforce no longer brands every
-  candidate.** `_hard_eligibility` already demotes such a term so it excludes
-  nobody, but the candidate card kept enforcing the same term as a label, so a
-  candidate passed the gate and then arrived carrying `gap:required-skill:<term>`
-  beside a slot-level `gap:requirement-vocabulary-unsupported:skill` saying that
-  term was never applied — two answers to one question, and the louder one was
-  wrong. Measured: 16 of 16 candidates in both slots reported "missing" a skill
-  none of them could have declared; after the fix, 0 of 8 on the same query,
-  with the slot-level demotion still reported. Only the absence claim is
-  dropped: a demoted term still earns fit evidence, still feeds the structured
-  score, and still carries the minimum evidence-level check.
+- HTTP 401 invalidates the rejected access token while preserving its refresh grant. Retry obtains a new token, and local status reports `refreshable` with `server_rejected_at` instead of claiming an authenticated session.
+
+- Stored releases with an older compiler version are recompiled even when their original import folder is no longer present.
+
+- A vocabulary dimension demoted at slot level no longer generates contradictory candidate-level missing-skill labels. Fit evidence, structured ranking, and evidence-level checks are retained.
+
 - **A refused selection now names the vocabulary it wanted.**
   `selection_reason_code_not_public_finite` stated the rule and not the allowed
   values, so the caller had to read the source to repair a rejection. The issue
@@ -762,12 +517,8 @@
   nothing they do ever will. A build that ships no suites now says so, and says
   the host LLM makes the routing decision; a checkout that does ship them keeps
   the original blocker wording.
-- **Doctor names a host plugin ledger that drifted from its own files.** The
-  updater refreshes the plugin payload in place while the host's install ledger
-  keeps the number recorded at install time, so the host's update check compares
-  against a stale version. Measured: ledger and cache directory both said
-  1.2.4 while every file inside, manifest and bundled binary included, was
-  1.2.18. Doctor reports the drift and the one command that reconciles it.
+- Doctor compares a host plugin ledger with the installed payload and reports version drift with the host command that reconciles it.
+
 - **The MCP surface gate enforces the rule it documents.** The rule is "no
   second remote MCP that bypasses Core governance", but the assertion read
   "exactly one server, full stop". When a local companion launcher shipped, the
@@ -791,28 +542,12 @@
   together. 10 MB is what the store can hold: a package's bytes live inside one
   manifest record, that record is one MongoDB document capped at 16 MiB, and
   content is stored base64.
-- **Packaging a minified file no longer looks like a hang.** The filename
-  scanner ran a greedy pattern over whole files, which is quadratic on a long
-  run of identical characters — one megabyte on a single line (minified JS, a
-  base64 data URI, a one-line JSON) spent 483 seconds in it. Tokenizing first
-  makes it linear: the same file now packages in 2.0s, with identical extracted
-  names across 200 checked files. The content guard also scans a long line in
-  overlapping windows instead of whole.
-- **Repeated scans of unchanged files are cached.** Packaging reads the tree
-  four times, because repair, brief compilation and card generation each rewrite
-  files. The content guard is most of packaging time, so three of those passes
-  were re-scanning identical bytes: 6 MB authored went 41.3s -> 13.3s. Keyed by
-  exact content, so a repaired file is always rescanned.
+- Packaging tokenizes before filename scanning and screens long lines in overlapping windows to avoid quadratic scanning of minified content.
 
-- **Upload conforms the package instead of shipping a broken one.** The
-  importance-ranked trimmer (agent definitions, cards, `skills/`, `knowledge/`
-  are never dropped) existed but never ran: collection stopped walking at the
-  file that crossed the ceiling, so the trimmer only ever saw a list that
-  already fit. Whoever was left out was decided by the filesystem's walk order.
-  Measured on a package with a heavy `benchmarks/` folder: 13 benchmark files
-  shipped and all 3 `skills/` files were dropped — and it reported `ready`.
-  Collection now completes and the ranked trimmer chooses, each drop leaving a
-  receipt. Same package: every skill kept, one benchmark dropped.
+- Packaging caches content-guard scans by exact bytes; any repaired or otherwise changed content is rescanned.
+
+- Upload completes collection before applying importance-ranked trimming. Agent definitions, cards, skills, and knowledge are preserved; each omitted file carries a receipt.
+
 - **An oversized file is withheld, not a refusal.** A file over the per-file
   ceiling can never travel, so it is left out with a receipt and the rest of the
   package uploads. The only size case that still stops is arithmetic, not
@@ -829,13 +564,8 @@
   package-limit finding to a warning sat undetected for nine days. It and the
   new `verify-project-map-selfheal.sh` run on every push.
 
-- **Collaboration edges no longer disqualify every candidate.** An edge is a
-  declaration of handoff, not a qualification requirement. Compiling edges into
-  each slot's consumes/produces made discovery unusable: `artifact:worker-result`
-  is the default edge artifact and 0 of 849 local workforce profiles declare it,
-  so a measured 16 of 16 candidates in every slot came back with a mandatory
-  gap. Requirements are now exactly what the author wrote; the handoff stays in
-  `edges`. Same search, same menu: mandatory gaps went 100% -> 0%.
+- Collaboration edges describe handoff flow and stay in `edges`; they do not become mandatory qualification requirements for candidate discovery.
+
 - **Authored phrases become concept ids instead of a pattern refusal.** A host
   writes "network efficiency research"; Core normalizes it to
   `network-efficiency-research`, reports every rewrite as `normalizedConcepts`,
@@ -852,31 +582,16 @@
 - **Expansion shows the artifacts again.** `workforce.expand_candidates` is the
   narrow, exact look, so it no longer replaces produces/consumes with counts —
   the host could otherwise not judge edge compatibility on any surface.
-- **Continuity stopped growing without bound.** An implicit goal is per project,
-  not per WorkOrder: preparation joins the incumbent active auto goal instead of
-  opening a new one every task (measured: 3 active goals, 21 roster rows for one
-  project). The per-turn read is projected (`goal-context.v2`) and accepts
-  `knownRevisions` for a delta: 5,647 -> 3,894 tokens, and 1,161 on later turns.
-  Automatic binding also stores the agent's name, so a roster line is readable.
-- **Preparation is no longer silently mistaken for delivery.** 19 of 21 bound
-  roster rows had never been executed. `goal_context` now reports
-  `pendingExecution`, and the session-end checkpoint tells the user in their own
-  view — a warning, never a block.
-- **Stopwords stopped scoring.** The `fit:text:term` stopword filter moved from
-  the MCP projection to the ranking source; half of the lexical fit evidence on
-  an accepted receipt was "and"/"the". Requirement gaps also accept a concept
-  family match, so a spelling variant is no longer reported as a gap.
-- **Refusals stopped re-teaching the catalog.** Selection boundary refusals use
-  the same compaction as WorkOrder refusals (81% of a 3.4KB refusal was the
-  contract catalog already declared in the tool contract), and the tool surface
-  the model actually reads dropped from 9,762 to 8,881 tokens.
-- **Preparation stopped shipping a project dump.** `prepare_execution` attached
-  the raw Context Map slice because the compaction lived inside the Context tool
-  branch and nothing else could reach it. Measured: 44,313 of 57,311 response
-  tokens (77%) were that slice, against a 16 KiB budget the Context tools have
-  enforced all along, while the agent directives the host actually executes were
-  3,010. The compactor is now module-level and both preparation paths use it —
-  57,311 -> 13,680 tokens, with every dropped row declared in `omissions`.
+- Preparation reuses the active implicit goal for the project. `goal-context.v2` supports `knownRevisions` deltas, and automatic bindings retain agent names for readable rosters.
+
+- `goal_context` reports `pendingExecution`, and the session checkpoint warns when prepared work has not been executed without blocking the session.
+
+- Stopword filtering runs at the ranking source. Requirement gaps accept concept-family matches rather than treating spelling variants as missing capabilities.
+
+- Selection and WorkOrder boundary refusals use compact repair information instead of repeating the tool contract catalog.
+
+- Both preparation paths use the shared Context Map compactor, with dropped rows reported in `omissions`.
+
 - **`prepare_execution` takes the same compact `decision`.** Re-authoring the
   exact Selection to run a decision Core had just accepted was the last echo in
   the sequence.
@@ -909,12 +624,8 @@ inside Core.
   compatibility. An old runtime without this preflight boundary now produces
   `workforce_protocol_upgrade_required` instead of inviting another hand-built
   WorkOrder retry.
-- **Network no longer drags the project map through every protocol call.**
-  WorkOrder preflight, search, selection validation, roster continuity and
-  status/auth calls are project-content independent. Removing the accidental
-  common bootstrap reduced installed-runtime preflight from 23.5s to 0.78s;
-  only explicit Context operations and project-grounded legacy routes inspect
-  a working tree.
+- WorkOrder preflight, search, selection, roster continuity, and status/auth are project-content independent. Explicit Context operations and project-grounded routes retain working-tree access.
+
 - **Context Map refresh is change-driven and incremental.** Authored docs are
   indexable; generated evidence, binaries and build outputs remain narrowly
   excluded. A default Context call performs one automatic refresh after a
@@ -931,82 +642,31 @@ inside Core.
 Two things a package could not say about itself, and a gate that disagreed with
 the one it hands off to.
 
-- **A built agent now records the engine it was built with.** None of the seven
-  local agent packages on the test machine carried an engine version anywhere,
-  and six of them fail today's contract — five missing
-  `.agentlas/build-profile.json`, which became required after they were built,
-  and one carrying an absolute host path in a generated tool. Not one could say
-  it was old, so the person finds out at upload time. `verify` now reports
-  `engine_drift` (current / drifted / unstamped / unknown_engine) beside its
-  blockers. Unstamped stays distinct from drifted, and an engine we cannot
-  identify stamps nothing rather than writing "unknown" and manufacturing a
-  false drift later.
+- Built agents record the engine version. Verification reports `engine_drift` as current, drifted, unstamped, or unknown_engine without manufacturing a stamp when the engine cannot be identified.
+
 - **A package the build gate passes is one the upload gate accepts.** The build
   gate printed `public_marketplace_ready=true` whenever the profile was
   `standard`, reading neither the host-path scan nor the blocker list, while the
   function upload calls refused the same package. It now defers to that function
   instead of keeping a second copy of the rule, and fails when it cannot run it.
-- **One sweep over the installed agents.** Opening one package says "this one is
-  missing a file"; sweeping all of them says six of seven fail, five missing the
-  same file, three carrying a summary copied verbatim from another agent, and
-  one declaring three command adapters nobody wrote. The sweep judges and does
-  not repair — filling those in would hide the builder defect that produced them.
-- **A learning is attributed to the agent that made it, from what the host
-  observed.** Routing into a borrowed agent's drawer turned on `agent_slug`
-  being present in the model's envelope, and that field does not exist in the
-  contract the model reads. One's drawer held 1,278 tickets, 1,273 of them
-  stamped as One's own, while seven local agents had zero experience between
-  them. The invocation ledger already knows who ran; with exactly one borrowed
-  agent and a certain session window, its learnings go to it. Two or more and we
-  do not guess. `project` scope deliberately stays in the drawer — it is already
-  clustered by project and feeds the project map.
+- The installed-package sweep checks current contracts and records findings without automatically repairing packages.
 
+- Learning attribution uses the invocation ledger when exactly one borrowed agent has a certain session window. Ambiguous attribution is not guessed; project-scoped learnings retain their project association.
 
-Staffing stopped throwing away the publisher's own words, and the grounding a
-worker inherits stopped being the same 64 files for every task.
+- The candidate menu reserves its last three seats for matches to publisher-authored trigger sentences, while preserving the existing ranking arithmetic.
 
-- **The menu keeps three seats for the publisher's own trigger sentences.**
-  A routing card's `trigger_examples` are what the publisher wrote about when
-  to call them, and the marketplace path reaches hit@30 100% with them; the
-  workforce compiler never copied them into a profile, so staffing discarded
-  them. Adding them as a fourth ranking channel makes things worse — hit@1
-  73.1% -> 57.0%, and every significance threshold from 0.15 to 0.4 lost
-  ground — because weak matches dilute the agreement of the other three.
-  Reserving the last three menu seats instead touches no arithmetic and only
-  decides who cannot be cut: menu entry 60.1% -> 66.2% with first-place
-  accuracy unchanged. Measured over 1,306 publisher-written sentences against
-  the 149 locally registered agents.
-- **A search can hand back summary cards and be asked for the rest.**
-  `shortlist: true` returns ordinal, name, kind, communities, one summary,
-  callable and missing requirements — 40,873B to 10,087B for a 20-candidate
-  slot, since 68% of a card is the semantic snapshot rather than the
-  identifiers. `workforce.expand_candidates` returns the full cards for the
-  ordinals worth a closer look, so the decision is still made on full cards.
-  End to end with three expansions: 40,873B -> 16,124B.
-- **Prepared execution ships each worker's bundle once per digest.** A roster
-  with the same agent in two slots repeated its directive bundle and execution
-  graph byte for byte. Roster wire weight 95,673B -> 3,640B. Opt in with
-  `fullDossier: false`; machine verifiers that recompute a digest over whole
-  rows keep the self-contained shape by default.
-- **Project grounding answers the task it was given.** Three unrelated
-  requests used to receive 64 files of which 63 were identical, led by scratch
-  build trees, because the selection was sorted alphabetically before being
-  capped — so relevance was discarded at the last step and dot-paths won. The
-  three now share 10 of 64, and a task that names a file gets that file first.
-- **The verification map stopped repeating itself.** Each traversal round
-  re-scanned the graph and re-emitted edges it had already emitted: 256 edges,
-  181 distinct. The duplicates also consumed the cap and evicted real edges.
-- **A symbol row is a summary, not a listing.** It carried up to 64 referencing
-  paths — 4,768B for one symbol — while `files` already holds the paths worth
-  reading. Sampled to eight, with the sample size reported. 9,296B -> 1,498B.
-- **Skill ids stop doubling their own prefix.** `skill:skill:<slug>` appeared
-  in 143 of 149 local agents and in 974 of 2,167 distinct skill ids; the card
-  lint has stripped a leading prefix since 2026-08-12 and the compiler never
-  did. Fixing the compiler alone would have healed nobody: an unchanged
-  package resolves to the same release directory and registration replayed it
-  unconditionally. `COMPILER_VERSION` is now the migration trigger, so the
-  next reconcile recompiles a release whose stored profile predates the fix.
-  Verified on a copy of the live registry: polluted profiles 143 -> 0.
+- `shortlist: true` returns summary cards with ordinals, identity, requirements, and summaries. `workforce.expand_candidates` retrieves full cards for selected ordinals before a decision.
+
+- `fullDossier: false` emits each directive bundle once per content digest. Callers that verify whole-row digests keep the self-contained default representation.
+
+- Project grounding ranks files for the task before applying its cap, and gives an explicitly named file priority over unrelated or scratch paths.
+
+- Verification traversal deduplicates emitted edges so repeated graph visits do not consume the result cap.
+
+- Symbol rows use a bounded sample of referencing paths and report its size; the file section retains the paths selected for reading.
+
+- Workforce compilation strips an existing `skill:` prefix. `COMPILER_VERSION` triggers reconciliation of stored profiles produced by older compilers.
+
 - **Vendored interpreter payloads and scratch build trees are not indexed.**
   A desktop build tree carried a full CPython stdlib, and `.tmp-*` copies are
   byte-for-byte duplicates of real source that led every selection. Indexing a
@@ -1017,50 +677,30 @@ worker inherits stopped being the same 64 files for every task.
 The project map stopped being something the product built and started being
 something an agent works from.
 
-- **Recall reached the model again.** The freshness check walked the whole
-  repository on every prompt and outlived its own hook contract, so the host
-  discarded the entire capsule — measured on a 25,453-file project:
-  SessionStart 21.1s against 15s, UserPromptSubmit 22.9s against 20s,
-  PreToolUse 17.1s against 10s. Freshness now runs under a budget and serves
-  the last complete map labelled `unverified_served` when it runs out
-  (4.4s / 4.3s / 0.6s after). Desktop's slice went from an outright error to
-  1.9s.
+- Recall freshness checks run under a budget and can serve the last complete map as `unverified_served` when the check exceeds that budget.
+
 - **The capsule spends its budget on where the code is.** Three different
   coding questions used to produce byte-identical slices carrying zero file
   paths, because standing goals consumed the layer budget first. Definitions,
   related files and co-edit history now render before them.
-- **The edges the traversal already walked are rendered.** 680,119 declared
-  edges reached the model as 0 lines; they now reach it as 8 within the same
-  budget.
-- **"What breaks if I change this" answers.** Verification traversal discarded
-  every name-matched edge, which on a real repository is the majority
-  (advisory_by_name 1,497 vs verified_by_import 403), so the answer was always
-  an empty list. Advisory targets are reported with their confidence, and the
-  PreToolUse warning carries them.
+- Context capsules render the edges discovered during traversal within the existing response budget.
+
+- Impact verification includes advisory name-matched targets with confidence information, and the PreToolUse warning carries those targets.
+
 - **The graph opens without words.** Its only two entry points were a path or
   a symbol spelled in the task, so a question that describes rather than names
   fell through to conventional entry points. The contact ledger's edit history
   is now a third entry point, and one dependency hop follows every seeded file.
   A slice also states where things live, directory by directory.
-- **First contact seeds the project.** Recall only ever read maps; a user who
-  simply talked to their agent in a fresh folder never got one. Seeding is
-  detached (0.34s small, 33s large — far past any hook contract), and already
-  seeded projects are brought to the current formats through an idempotent
-  migration ledger.
+- Project seeding runs in a detached worker, and existing seeds use an idempotent format migration ledger.
+
 - **A subagent starts with the map.** SubagentStart wrote an observation and
   returned nothing, so every spawned explorer began by grepping for what the
   map already knew.
-- **The sitemap stopped blocking its own refresh.** Machine-generated edges
-  repeated full path strings per row: 223.6MB of a 229MB file, past the read
-  bound of the function that maintains it, so the functional projection had
-  been frozen since 2026-08-15. Packed into a column store: 219MB -> 11MB,
-  declared-graph load 0.8s -> 0.07s.
-- **Project learnings fold back in every turn.** Nothing re-derived the
-  declared map after bootstrap, while the personal One drawer held 1,199
-  tickets of which 917 were already project-scoped. Those cross over (scope and
-  workspace must both match; nothing is written back), the derivation now emits
-  edges as well as nodes, and it runs per turn. Measured: 111 -> 234 nodes,
-  9 -> 65 edges, 0 -> 56 decision-to-code links.
+- Machine-generated sitemap edges use a columnar representation with indexed endpoints and edge types, reducing repeated path strings while preserving human-authored edges.
+
+- Project-scoped learnings enter the declared map only when both scope and workspace match. Derivation emits relations as well as nodes without writing back to the personal drawer.
+
 - **`context.locate` answers with files, not only symbols.**
 - **`agentlas-one off` actually stops personal recall.** The switch was
   consulted by one unrelated branch while the layer that puts personal
@@ -1088,10 +728,8 @@ something an agent works from.
   the channel ladder — desktop sheet, host-native question tool, numbered
   markdown list, or `NEEDS-INPUT:` for unattended runs — so a plugin-surface
   interview degrades honestly instead of leaving a raw fence nothing renders.
-- **Context capsules now reach the host AND carry real relations.** The recall
-  freshness check runs under a budget (SessionStart 21.1s → 4.2s, PreToolUse
-  17.1s → 0.4s), and the slice renders the edges its traversal already walked
-  (capsule edge lines 0 → 8, measured) with the relation arrow kept legible.
+- Context freshness checks are bounded, and capsules include readable relations from the completed traversal.
+
 - **Five shipped contracts tell the truth again**: the package-contract schema
   accepts its own `text` kind, scaffolded packages can read all of their own
   required artifacts, generated-package verification honors minimal-private,
@@ -1100,21 +738,8 @@ something an agent works from.
 
 ## v1.2.7 - 2026-08-16
 
-- **Ordinary Korean writing is no longer thrown away as prompt injection.** The
-  curator decided injection from a list of seven Korean sentence endings, so
-  guidance written the way guidance is written got rejected: dosage instructions
-  ("이 약은 하루 3회 식후에 복용하세요"), care steps ("증상이 지속되면 의사와
-  상담하세요", "개봉 후에는 냉장 보관하세요") and app steps ("설치 후 앱을 다시
-  시작해줘"). Meanwhile "볶아주세요" and "복용하지 마십시오" passed — the split was
-  which ending happened to be on the list, not what the sentence meant. This is the
-  same failure the capability-widening screen was retired for in 1.2.3, and its
-  explanation sat directly below the line being changed. What remains is the
-  explicit English override phrasing ("ignore previous instructions", "disregard
-  the above", "forget everything"), which has no collision with ordinary writing.
-  Real defence stays at the PreToolUse broker; a stored string cannot widen a tool
-  permission by itself. Eleven cases measured: zero ordinary sentences blocked,
-  zero injections missed. The fixture that pinned the old behaviour now asserts the
-  new contract with two different endings, so the two cannot diverge again.
+- Memory curation no longer classifies ordinary Korean sentence endings as prompt injection. Explicit override phrasing remains screened; actual tool permissions remain enforced by the broker.
+
 - The A2A agent card version pin had been left at 1.2.4 through two releases; the
   bump script moves it with everything else now.
 
@@ -1132,7 +757,7 @@ something an agent works from.
   refused before the bootstrap lock; Unicode identifiers become symbols.
 - **Behaviour change:** `project_bootstrap.py` `auto_bootstrap` now defaults **on**
   — the three maps are seeded on a project's first contact from any tool, without
-  a consent prompt (owner decision 2026-08-15; opt out with
+  a consent prompt (opt out with
   `AGENTLAS_PROJECT_BOOTSTRAP_AUTO=0`). `project_bootstrap.py` and
   `memory_hook.py` join the runtime release asset.
 - **Phase B (2026-08-15 evening).**
@@ -1153,7 +778,7 @@ something an agent works from.
     blocks, the status line and state atomically; idempotent.
   - `agentlas-one status --runtimes [--json]`: per-runtime support matrix from the
     new declarative registry `contracts/runtime-registry.json` (grade A–E, install
-    level L0–L3, access path, ACP command), measured on this machine.
+    level L0–L3, access path, ACP command).
   - Stdlib-only ACP v1 client (`agentlas_cloud/networking/acp_client.py`):
     initialize → authenticate (menu, not priority) → session/new model list with
     zero text parsing; produces `transport=acp` capability descriptors.
@@ -1242,17 +867,9 @@ something an agent works from.
 
 ## v1.1.111 - 2026-08-12
 
-- **One's memory now searches by meaning, like every other layer.** The project,
-  borrowed-agent and Desktop memories were already served by the local ontology
-  runtime — the engine behind the published LoCoMo and LongMemEval numbers — but
-  the One drawer had been built later on its own store and searched by word
-  overlap. Durable soul blocks are now projected into that engine as a
-  rebuildable, incremental index; the soul file stays authoritative, and a host
-  without the engine recalls exactly as before. Measured on LongMemEval with
-  gold evidence labels and no reader model: 93.5% to 96.0% recall@10 over 200
-  questions.
-- **Recall got roughly 20x faster.** 490ms to 21ms, by reusing the runtime
-  instance instead of reconstructing it on every call.
+- One projects durable soul blocks into a rebuildable incremental semantic index. The soul file remains authoritative, and hosts without the index retain their previous recall behavior.
+
+- Recall reuses the runtime instance to avoid repeated initialization.
 
 ## v1.1.110 - 2026-08-12
 
@@ -1334,21 +951,8 @@ something an agent works from.
 
 ## v1.1.98 - 2026-08-05
 
-- **A tool description stops paying for a value the host cannot author.** The
-  local stdio surface advertised 91,897 bytes of tools/list for 22 tools, while
-  the same-named remote surface spent 28,488 for 11 — three times heavier with
-  half the tools, on a payload that rides every request. Two causes, both
-  measured. `workOrder` and the accepted `selection` are echoed back
-  unchanged from an earlier call, so a host cannot invent them and re-publishing
-  their 8,144-byte contract schema a second and third time only spends context;
-  those arguments now carry a description and nothing else, and the handler
-  still revalidates them against the canonical contract. Separately,
-  `x-agentlas-contracts` shipped 20,292 bytes that no code anywhere reads —
-  a repository-wide sweep found all six occurrences were producers. The values a
-  host actually writes keep their full schema, `_meta` stays because Desktop
-  reads it, and the surface is 49,125 bytes with the same 22 tools and identical
-  argument lists. Schema duplication fell from 51,831 to 3,280 bytes, so no
-  `$ref` rewrite was needed.
+- MCP parameters that echo a pinned WorkOrder or Selection use compact descriptions while handlers still validate the canonical schema. Authored parameters retain full schemas, and Desktop metadata remains present.
+
 - **The install pin catches up with the release.** `install-all-runtimes.sh`
   still pointed at v1.1.95 through two releases, so a fresh one-touch install
   landed two versions behind what the manifest advertised. The bump script moves
@@ -1570,29 +1174,10 @@ contract.
 
 The work-order form now describes what the catalogue can actually answer.
 
-- **Authority requirements demote instead of exclude.** The last dimension
-  exempt from the rank-and-report demotion ("authority is a security
-  contract") was measured inverted on the live network: capability attaches
-  to the executing runtime, not the BYOM bundle, so almost no card declares
-  authorities — a slot requiring `authority:file-read` staffed four
-  engineering slots with the same two domain-irrelevant auditors and
-  excluded every relevant engineer (2 → 6 candidates the moment the gate
-  lifted, all other hard fields bisected innocent). Real authority
-  enforcement lives in the prepare-time permission policy pins. Local
-  demotes by the same population rule as every other dimension; the Hub
-  relaxes only for callers that declare
-  `gap:requirement-vocabulary-unsupported:authority` (35th code), so
-  non-declaring runtimes keep their exact old behavior.
-- **An absent list-valued slot field IS the empty constraint.** Authoring a
-  slot no longer requires spelling out fifteen empty arrays: only slotId,
-  title, task, cardinality, criticality, and allowedEntityKinds stay
-  required, and every ingestion point normalizes absent → [] BEFORE
-  validation and BEFORE any canonical digest — so a lean-form author and a
-  full-form author produce byte-identical orders and the fail-closed digest
-  chain cannot fork. Full forms pass through by identity (live A/B across
-  fixed queries: zero change). Proven live end to end: a 775-byte lean order
-  ran search → ordinal validate accepted → prepare prepared with the digest
-  chain intact.
+- Authority requirements act as ranking signals when the inventory lacks that vocabulary; prepare-time permission pins enforce execution authority. Hub relaxation requires the declared `gap:requirement-vocabulary-unsupported:authority` capability.
+
+- Missing optional list constraints normalize to empty arrays before validation and canonical digest computation, so lean and full-form WorkOrders keep the same contract identity.
+
 - **Authoring guidance drops the dead fields.** The hep-network command (all
   host variants) now constrains a hire only through communities, skills,
   knowledge, runtimes, and languages, and never fills
@@ -1606,77 +1191,24 @@ The work-order form now describes what the catalogue can actually answer.
 Session learnings now feed every host's recall — the memory loop's supply side
 is closed.
 
-- **The recall capsule carries a standing emission contract.** Evidence first
-  (central DB + Desktop logs, 2026-07-29): the curation pipeline was alive
-  (468 episodes) but admission starved — most discards were CORRECT (episodes
-  were QA noise), and valid candidates were admitted by policy fallback even
-  with the semantic judge blocked by Codex CLI isolation limits. The real
-  defect was supply: the work worth remembering happens in Claude Code /
-  Codex / Cursor / Antigravity sessions, which had no path into the loop.
-  Judgment stays with the session LLM; delivery is now the system's job:
-  every capsule tells sessions that durable project learnings
-  (fact/decision/procedure with evidence; never secrets or transcripts)
-  belong in `.agentlas/pm/learnings/`.
-- **A learning written today is recallable at the next session start.** The
-  index backstop also regenerates when any pm document is newer than the
-  index (not only after the 7-day TTL), embeds pm documents learnings-first
-  and newest-first (measured live: name-ordered traversal let mid-July
-  handoff notes exhaust the 48K budget and a fresh learning never made it
-  in), and stamps every embedded document heading with its own last-written
-  date so a freshly regenerated index cannot launder an old note as current.
-  Verified end to end: one recorded learning → SessionStart → regenerated
-  index → ingest → rank-2 recall for a targeted query.
+- Recall capsules direct sessions to record evidence-backed project learnings through the memory workflow, without storing secrets or raw transcripts.
+
+- The index backstop refreshes when PM documents are newer than the index, prioritizes recent learnings, and includes each source document’s own modification date.
 
 ## v1.1.80 - 2026-07-29
 
 The recall corpus regenerates from any surface — Desktop is no longer its
 single point of failure.
 
-- **A stale project index is regenerated wherever the runtime runs.** The
-  index (`.agentlas/ontology-inbox/agentlas-project-index.md`) had a single
-  producer: Desktop's working-folder materializer. A machine driven only
-  through terminal or plugin sessions froze at its last Desktop visit —
-  measured 2026-07-29: 12 days — while every session's recall kept citing the
-  snapshot. v1.1.79 made that staleness visible; this release removes it. A
-  host-independent backstop rebuilds a bounded, secret-filtered index (sitemap
-  file map, fixed root documents, bounded `.agentlas/pm` documents — bounds
-  mirror Desktop's) whenever the index is missing or older than 7 days, then
-  starts a detached ontology ingest. It fires from both universal surfaces —
-  the memory hook on SessionStart and the CLI on every command — so any
-  project with `.agentlas` converges no matter which product the machine uses,
-  and the project workspace location keeps it working inside host sandboxes.
-  Desktop's richer materializer stays authoritative: its next visit overwrites
-  the file, and any fresh file disables the backstop for the TTL window.
-  Verified live on the real frozen corpus: one SessionStart regenerated the
-  Jul 17 index and the next capsule cited it with no staleness labels.
-- **MCP workforce staffing goes reference-first and menu-light.** Measured on
-  the live MCP host path (1 slot × 10 candidates), the search → validate →
-  prepare round trip cost ~360KB of host context, and reference-style prepare
-  could not finish because it still demanded full-echo attachments plus a hash
-  no LLM can compute. The search menu now also folds
-  `semanticSnapshot.produces/consumes` (unique-per-candidate slugs with zero
-  cross-candidate overlap, so they never supported comparison), attachments
-  are optional in reference mode, prepare accepts menu ordinals, and
-  `prepareAttempt` is server-derived.
+- A host-independent backstop regenerates missing or expired project indexes with bounded, secret-filtered content. A fresh Desktop materialization remains authoritative for the TTL window.
+
+- Reference-mode staffing keeps full candidate data in Core, permits optional echoed attachments, resolves menu ordinals, and derives `prepareAttempt` on the server.
 
 ## v1.1.79 - 2026-07-29
 
 A recalled memory now confesses its age instead of impersonating the present.
 
-- **Stale recall sources are labeled, and deleted ones are named.** Measured
-  2026-07-29: a recall capsule served 12-day-old project facts (a project
-  index frozen since Jul 17 — its only producer is Desktop's working-folder
-  ontology materialization) with no freshness signal, and a session asserted
-  them as current state. The consumer cannot infer a source's age, so the
-  producer must label it: each cited project chunk now resolves its source
-  document's mtime; sources older than 7 days carry an inline age tag
-  (`| stale 2026-07-17, 12d old`) and inject a staleness directive —
-  "historical snapshot, not current state; verify versions, statuses, and
-  paths against the live system before asserting". A deleted source is named
-  as missing outright. Fail-open: an unresolvable source stays unannotated
-  rather than risking a false warning. This guards every stalled-producer
-  case (frozen index, frozen PM documents, dead emission loops) at the one
-  place all of them converge: the capsule consumers actually read.
+- Recall labels source age from the source document and identifies deleted sources. Sources older than seven days carry a staleness notice; unresolvable metadata remains unannotated.
 
 ## v1.1.78 - 2026-07-29
 
@@ -1721,45 +1253,17 @@ permission denial is named as one.
 
 A credential is identified by where it lives, not by a word in its filename.
 
-- **Credential detection matches a path SEGMENT, never a filename substring.**
-  `**/*token*` and `**/*secret*` matched ordinary vocabulary: measured on the
-  live `web-master` bundle, they gave a flagship paid package
-  `securityVerdict: BLOCK` for shipping its own `token-architecture.md` and
-  `reference-token-db.json`, and the matching `denyRead` entry then hid those
-  files from the runtime, so a worker card could name them as Required Context
-  and never receive them. Dropping the substring rule costs no coverage —
-  `collect_package_files` skips every non-text suffix and every file that fails
-  to decode, so anything reaching the scan is text whose content is matched
-  against SECRET_PATTERNS, the check that actually looks at values. Matching by
-  segment also closes a hole the globs had: `matches` is fnmatch, so
-  `**/secrets/**` required a parent directory and a store at the package ROOT
-  matched nothing at all. Both the publish scan and the runtime read policy now
-  cover rooted and nested stores.
-- **Upload widens `allowRead` to the context its own agent cards demand.** A
-  worker card naming `webmaster_frontend/knowledge/stack-and-standards.md` as
-  Required Context is a promise the runtime has to keep. Measured across 143 live
-  packages, `allowRead` came in 15 different shapes, 128 of them a 5-entry list
-  written before `agents/**`, `docs/**` and `contracts/**` joined the default,
-  and 82 card-declared files were unreachable. Re-uploading now unions the
-  current default with every path the cards actually reference, minus credential
-  stores.
+- Upload scanning and runtime read policies match credential-store path segments instead of filename substrings, covering both rooted and nested stores while preserving ordinary files.
+
+- Upload combines the current read-policy defaults with files explicitly referenced by the package’s agent cards, excluding credential stores.
 
 ## v1.1.75 - 2026-07-29
 
 A package is priced and staffed as what it actually ships, and Codex can publish
 again.
 
-- **A contradicted entity type is corrected, not trusted.** Upload only derived
-  `agent` vs `team` when the routing card was silent, so an older package that
-  hardcoded `type: "agent"` stayed one no matter what it shipped — measured on
-  the live `analyst-team`, an HQ-routed roster listed as `entityKind: agent`
-  with `agentCount: 1` and billed 3 credits instead of the team's 10. Structure
-  is now the authority: a declaration the package's own files contradict is
-  overwritten and the correction is recorded, while a package whose structure is
-  silent keeps the author's declaration. `topology` is read in every shape the
-  live corpus actually uses — a bare string, a whole `{nodes, edges}` graph, or
-  absent — and a roster of `agents/*/agent.md` counts as the same evidence.
-  Plugins are never retyped.
+- Package structure determines agent versus team when it contradicts a declared type; corrections are recorded. Silent structure preserves the author declaration, and plugins are not retyped.
+
 - **Codex gets an upload entrypoint back.** Codex 0.117+ replaced custom prompts
   with plugin skills, and only build/network/cloud/storm ever had a skill, so the
   installer pruned the `hep-upload` prompt and advertised nothing in its place —
@@ -1774,39 +1278,18 @@ Staffing over MCP stops shipping the filing cabinet. A host LLM now reads a
 decision menu, answers with a number, and Core resolves both against the
 session it already holds.
 
-- **Network routing normalises the query to English.** `/hep-network` step 1
-  now has the host LLM author the work order's discovery-facing fields in
-  English, faithfully translating a non-English request rather than passing its
-  wording through: the candidate corpus is English and cross-lingual matching
-  silently buried the correct agent (measured: an identical query ranked its
-  target 1st in English and 144th in Korean). The `languages` slot stays the
-  required delivery language, and marketplace search stays multilingual — only
-  network routing normalises, because it is the LLM that authors the query.
+- Network discovery fields use faithful English translation of the requested work. The `languages` slot retains the required output language; marketplace search remains multilingual.
+
 - **The résumé is compiled and stored on upload.** The offer brief is generated
   from package files at publish time — it had been dead code with zero callers —
   the candidate menu is widened, and boundary failures are no longer misnamed.
 - **Uploads repair instead of refusing.** A package shipping fewer than ten
   benchmark cases has one synthesised from its trigger examples, and the card
   lint counts inline cases it can see.
-- **Search returns a decision menu, not a dossier.** Audit-weight fields
-  (`qualificationEvidence`, `packageHash`, `contentDigest`,
-  `candidateProvenance`) stay in Core's session store instead of crossing the
-  wire; each candidate carries a `candidateOrdinal`, and evidence is summarised
-  as `qualificationEvidenceCount`. Measured 2026-07-28 on a live 10-candidate
-  slot: 41,216 → 22,512 bytes with the candidate-set digest unchanged, because
-  the digest is computed over the stored original. Only the fields named above
-  are removed, so a résumé schema that gains or renames a field passes through
-  untouched. `fullDossier: true` returns the original shape for a caller that
-  still wants it.
-- **A selection may name its candidate by ordinal.** Copying a 48-hex
-  `agentReleaseId` by hand is a transcription surface, not a contract: measured
-  2026-07-28, a local 30B model truncated one to 34 characters in 1 of 12
-  attempts, while ordinals were never malformed across 19 answers from two
-  models. `assignments[].candidateOrdinal` is resolved against the pinned menu
-  before validation; an out-of-range ordinal, or an ordinal that disagrees with
-  an `agentReleaseId` sent alongside it, is refused rather than silently
-  resolved. The canonical selection schema is unchanged — only the MCP tool
-  input relaxes — so Hub and Terminal contracts are untouched.
+- Search keeps audit-weight fields in Core, returns candidate ordinals and evidence counts, and computes digests over the stored originals. `fullDossier: true` retains access to the original representation.
+
+- `assignments[].candidateOrdinal` resolves against the pinned menu. Out-of-range values and conflicts with an explicit release ID are refused. The canonical Selection schema remains unchanged.
+
 - **The resolve-by-session branch had never once run.** `_call_tool` binds
   `store` twice, making it a function-local that was unbound on that path, so
   every attempt raised `UnboundLocalError` — not a `FederationSessionError`, so
@@ -1814,24 +1297,11 @@ session it already holds.
   echoing a ~461KB candidate set therefore stayed theoretical from the day it
   was written. First live proof it works: validation accepted in 0.03s from a
   3.6KB request.
-- **Selection validates by session id.** `candidateSet` and `federationResult`
-  are optional; omitting them resolves the pinned session, whose digest,
-  expiry, and lineage are re-verified exactly as before. A menu wide enough to
-  contain the right agent does not fit in one tool call, and the digest covers
-  the exact bytes so it cannot be trimmed — in the measured run the intended
-  pick ranked 4th, so a 3-candidate menu would have cut the answer out.
-- **Eligibility stops deciding by string equality over words.** Both sides of a
-  match are model-written prose, yet exact equality ran against a 23-word skill
-  list and an 11-word tool list. Measured 2026-07-28: `"api design"` matched but
-  `"designing REST APIs"` did not, Korean input could never match, and stating
-  any single requirement took a 3-candidate inventory to 0 across all eight
-  probes. Eligibility now decides only on facts this system owns.
-- **A schema bound violation now reports the bound.** `schema_max_length` and
-  `schema_min_length` issues carried only a path, so a caller told its field
-  was too long knew neither the ceiling nor by how much it had overshot — its
-  one repair attempt then wrote something too long again. Both issues now
-  carry `limit` and `actual`. Measured 2026-07-27: a completed 20-agent run
-  was discarded whole by exactly this loop.
+- Validation may resolve omitted `candidateSet` and `federationResult` from the pinned session while rechecking its digest, expiry, and lineage.
+
+- Eligibility uses facts owned by the runtime instead of exact equality against small hand-written prose lists.
+
+- `schema_max_length` and `schema_min_length` include `limit` and `actual` so callers can repair the specific violation.
 
 ## v1.1.72 - 2026-07-27
 
@@ -1855,15 +1325,7 @@ session it already holds.
   submitter's own model can repair the card and resubmit; the hep-upload
   command adapters document the loop.
 
-- **Built packages must ship the workforce résumé block.** `card lint` now
-  requires `workforce: {roles, communities, modalities, languages}` on the
-  routing card, validated against the pinned Agent Workforce Ontology
-  (awo:2026-07-15.2); ids outside the pinned vocabulary are errors, a missing
-  block is a `routing_ready` blocker, and `roles: []` stays honest when no
-  canonical role fits. The packaging skill authors the block at build time.
-  Measured over the live catalog, sellers declared roles/modalities on 0 of
-  250 cards, which silently excluded the whole catalog from every WorkOrder
-  that used those fields.
+- Built routing cards include the workforce résumé block validated against the pinned ontology. Unknown IDs are errors, a missing block prevents routing readiness, and empty roles remain valid when no canonical role fits.
 
 ## v1.1.69 - 2026-07-27
 
@@ -1882,16 +1344,8 @@ session it already holds.
 
 ## v1.1.68 - 2026-07-26
 
-- **The router's semantic signal is actually semantic.** Card routing used a
-  token hashing adapter, which scored equivalent Korean and English requests
-  ("사업계획서 만들어줘" vs "business plan writer") at 0.0 — every value the code
-  called a semantic score was really lexical. It now uses the verified local
-  sentence model that the ontology and Hub rerank paths already use, with
-  hashing kept only as an explicitly degraded fallback. That pair now scores
-  0.383. Card vectors additionally embed trigger phrasing as meaning material
-  (anti-triggers stay out: they name work the card must refuse), and the
-  caller's sentence reaches the Hub rerank path so semantics can order
-  lexically tied candidates.
+- Card routing uses the local sentence model shared by ontology and Hub ranking, with token hashing only as an explicit degraded fallback. Trigger phrasing contributes to vectors; anti-triggers remain excluded.
+
 - **Locally registered teams can be prepared again.** Local team runtime
   bundles shipped without an execution graph, so `prepare_execution` rejected
   them with `team_execution_graph_missing` and an empty roster. A team package
@@ -2721,16 +2175,8 @@ session it already holds.
 
 ## v1.1.6 - 2026-07-07
 
-- **Enterprise upload content-safety gate (`hep-upload`).** Hardened the cloud
-  upload sanitizer against malicious agent packages. A new
-  `agentlas_cloud/content_guard.py` defeats modern prompt-injection obfuscation
-  — Cyrillic/Greek homoglyphs, leetspeak, zero-width and bidi characters,
-  Unicode Tag-block smuggling, separated-letter tricks, and injections split
-  across lines — by scanning a normalized detection shadow plus a multi-line
-  window. Detection is multilingual (English, Korean, Chinese/Japanese, and
-  major European languages) and now covers secret-exfiltration beacons and
-  high-value credential access. Verified against 139 adversarial attack vectors
-  across ~25 evasion families: 100% of malicious lines are stripped.
+- Upload content screening normalizes obfuscated text and checks multiline context for prompt overrides, credential access, and exfiltration patterns across supported languages.
+
 - **Quality preservation over blind deletion.** The gate is two-tier: only
   high-confidence attacker directives are removed line-by-line, while ambiguous,
   negated, quoted, or descriptive matches (security-training, prompt-engineering,
@@ -2892,10 +2338,7 @@ session it already holds.
   directive and injects the assembled `ROUTER_SYSTEM_AGENT` prompt before the
   normal auto-route preamble, so escalation context is no longer dropped at the
   desktop runtime boundary.
-- **Production proof.** The release was verified with Atlas vector index READY,
-  R2 marketplace index loading, 120 routed profiles backfilled with embeddings,
-  routing eval passing 10/10 plus 5/5 guards, production readiness passing 8/8,
-  Hephaestus pytest, and Desktop typecheck/smoke gates.
+- Routing and serving integrate the marketplace index, semantic profiles, host directive handoff, and preserved BYOC/BYOM execution boundary.
 
 ## v0.7.32 - 2026-06-27
 
@@ -3304,5 +2747,3 @@ session it already holds.
   v2 loop: scope lock, issue contract, failure memory, verifier-first plan,
   bounded evidence loop, adversarial review gate, outcome ledger, and final
   gate.
-- Kept public benchmark claims inside the verified local operational robustness
-  boundary.

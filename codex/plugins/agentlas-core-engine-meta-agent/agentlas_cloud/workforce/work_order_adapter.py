@@ -177,14 +177,9 @@ def compile_work_order_draft(
 
     Slot and WorkOrder IDs are deterministic opaque/ordinal identifiers.
 
-    ★Edges are a declaration of flow, never a qualification requirement.
-    Compiling them into each slot's consumes/produces looked like a consistency
-    win and was measured to be a discovery killer: `artifact:worker-result` is
-    the default edge artifact and 0 of 849 local workforce profiles declare it
-    (produces is declared by 5.9%, consumes by 2.9%), so every candidate of every
-    slot came back with a mandatory gap. A requirement axis that almost nobody
-    populates is not a filter, it is an extinction event. Requirements are now
-    exactly what the author asked for; the handoff stays in `edges`.
+    Edges declare handoff flow, not qualification requirements. Preserve the
+    authored requirements; keep handoff artifacts in `edges` instead of adding
+    them to each slot as mandatory consumes/produces filters.
     """
 
     if not isinstance(draft, Mapping):
@@ -461,11 +456,9 @@ def compile_selection_draft(
 ) -> dict[str, Any]:
     """Compile a compact staffing decision into the exact public v1 Selection.
 
-    ★WorkOrder 에서 없앤 의례가 Selection 에 그대로 남아 있었다 — 실측
-    2026-08-20: `alternativesConsidered` 와 `requestExpansionForSlots` 를
-    빠뜨리면 `schema_required` 로 거절되는데, 둘 다 거의 항상 빈 배열이다.
-    후보 서수는 이미 메뉴가 주고 candidateSetDigest 는 Core 가 핀해 두고 있다.
-    저자가 실제로 정하는 것은 "어느 자리에 몇 번 후보를, 왜" 세 가지뿐이다.
+    The author selects a candidate ordinal for each slot and states why.
+    The menu supplies ordinals and Core pins candidateSetDigest; optional empty
+    alternative/expansion arrays do not add a decision requirement.
     """
 
     if not isinstance(decision, Mapping):

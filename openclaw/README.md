@@ -25,16 +25,14 @@ The runner itself is installed by the one-touch installer to
 `~/.agentlas/runtime/current/bin/hephaestus`; the skill gates on `python3`
 being available on PATH.
 
-The OpenClaw skills include the app-host auto-update preflight. When OpenClaw's
-`exec` tool is available, the skill tries to refresh
-`~/.agentlas/runtime/current` from inside OpenClaw before resolving the runner,
-without asking the user to open a separate terminal.
+Automatic updates are off by default. Run `hephaestus features on auto-update`
+to enable them, or `hephaestus update` to update manually.
 
 ## Agentlas One session checkpoint
 
 `hooks/agentlas-one/` is a hook pack for the Agentlas One memory checkpoint.
-The installer registers it with `openclaw hooks install`, falling back to a copy
-into `~/.openclaw/hooks/agentlas-one` when the CLI is unavailable.
+`agentlas-one on` installs the pack, and the installer refreshes it when One is
+already enabled.
 
 OpenClaw has no session-end event. `/new` and `/reset` are the points where a
 session stops growing, so the pack listens on `command:new` and

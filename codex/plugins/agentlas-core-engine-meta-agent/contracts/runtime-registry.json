@@ -1,7 +1,8 @@
 {
+  "$comment": "prompt-module: {\"id\":\"os.runtime-registry.document\",\"revision\":2,\"stability\":\"versioned-content\",\"changeTriggers\":[\"release\"],\"channel\":\"tool-result\"}",
   "schemaVersion": "agentlas.runtime-registry.v1",
   "updatedAt": "2026-10-10",
-  "note": "Declarative seed of the runtime x model matrix (PRD 2026-08-15 §3.1). Rows are role-in-invocation, not tool names. `accessPath` answers ONE question only — does this runtime need runtime-specific code (subscription-cli) or the generic API/local path; exact capabilities come from live discovery (ACP session/new, models.dev, probes). `pin` values are what we last verified, not what a machine must have. Live rows are merged over this seed (Orca-style seed + live merge); the seed is never the whole universe.",
+  "note": "Declarative seed of the runtime x model matrix. Rows are invocation roles, not tool names. `accessPath` selects runtime-specific subscription CLI code or the generic API/local path; exact capabilities come from live discovery. `pin` values are reference versions, not machine requirements. Live rows are merged over this seed; the seed is not the complete inventory.",
   "grades": {
     "A": "hand-coded native stream driver kept (token accounting / latency)",
     "B": "hand-coded driver exists but weak; ACP is the target transport",
@@ -16,7 +17,7 @@
     "L3": "full code mirror + live event hooks"
   },
   "hostAdapters": {
-    "note": "The one list of host-adapter source directories, and the name of the bundle they are staged into. Three copies used to restate it by hand — scripts/install-all-runtimes.sh, scripts/build-runtime-release-asset.sh and agentlas_cloud/update.py — and when amp/warp/amazonq were dropped only the last one was updated: the release asset build then handed git archive three paths that no longer exist, and `kimi` was in the installer bundle but never in the release allowlist, so a runtime installed from the tarball had no Kimi adapter. All three now read this list; tests/test_installer_registry_parity.py fails when any of them stops agreeing. `.zcode` was added 2026-09-06: scripts/render-host-commands.py had rendered and kept `.zcode/commands/*.md` in sync with the canonical bodies since it was added, but this list never carried `.zcode`, so those 31 files were built, verified clean by --check, and never reached the release archive or a runtime home. scripts/render-host-commands.py and scripts/render-host-skills.py now check every host directory they render against this list before writing anything.",
+    "note": "Canonical host-adapter source directories and the bundle they are staged into. Installers, release packaging and runtime updates must use this list and include the declared adapters.",
     "bundleDir": "host_adapters",
     "dirs": [
       ".agents",
@@ -101,7 +102,7 @@
       "pin": {
         "registryVersion": "2.1.1"
       },
-      "notes": "ACP path measured stable (11-13s). Promotion candidate to B when token accounting loss is acceptable."
+      "notes": "Assess token-accounting compatibility when choosing ACP."
     },
     {
       "id": "antigravity",
@@ -129,7 +130,7 @@
       "pin": {
         "cliVersion": "1.1.13"
       },
-      "notes": "Multi-vendor proxy (measured: 11 google + 2 anthropic + 1 gpt-oss rows) with the weakest Agentlas integration. `agy models` is tab-separated 2 columns since 1.1.12; rc is 0 even on usage output."
+      "notes": "Multi-vendor proxy. `agy models` is tab-separated 2 columns since 1.1.12; rc is 0 even on usage output."
     },
     {
       "id": "cursor",

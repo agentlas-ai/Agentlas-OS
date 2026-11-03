@@ -138,13 +138,8 @@ def _infer_roles_and_communities(
 def _skill_id(value: str) -> str:
     """Build a skill concept id without doubling a prefix the input already has.
 
-    `stable_id` prefixes unconditionally, and the routing-card lint upstream
-    already emits `skill:<slug>` — so every card-declared skill was compiled as
-    `skill:skill:<slug>`. Measured 2026-08-19 across the 149 locally registered
-    agents: 143 of them (96%) carried doubled ids, 974 of 2,167 distinct skill
-    ids (44%) were the doubled spelling, and 1,024 of those sat next to their
-    correct twin in the same card. `card_lint.py` has carried the strip-first
-    guard for this since 2026-08-12; the compiler never got it.
+    Strip an existing skill prefix before constructing its stable identifier.
+    Routing-card lint and the compiler must produce the same canonical IDs.
 
     Only the skills axis was affected — roles, communities and knowledge are
     clean — because only this axis routes free-text values through stable_id.

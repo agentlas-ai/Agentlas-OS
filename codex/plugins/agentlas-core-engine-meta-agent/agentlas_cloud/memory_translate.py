@@ -694,6 +694,14 @@ def _english_block(block: dict[str, str], english: str) -> str:
     return ow._durable_block_text(candidate, block["ticket"], project_slug=block.get("project") or "")
 
 
+def _drawer_memory_enabled() -> bool:
+    try:
+        from .feature_preferences import feature_enabled
+        return feature_enabled("memory-hooks")
+    except Exception:
+        return False
+
+
 def run_drawer(
     root: Path,
     *,
@@ -702,6 +710,8 @@ def run_drawer(
     reindex: bool = True,
 ) -> dict[str, Any]:
     """The detached worker body for the One drawer. Never raises."""
+    if not _drawer_memory_enabled():
+        return {"surface": "one-drawer", "skipped": "memory_off"}
     cfg = config()
     paths = _drawer_paths(root)
     receipt: dict[str, Any] = {"surface": "one-drawer", "translated": 0, "keptNative": 0, "recovered": 0}
@@ -714,6 +724,8 @@ def run_drawer(
         try:
             return _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root)
         except Exception as exc:  # noqa: BLE001 — recorded, never raised
+            if not _drawer_memory_enabled():
+                return {**receipt, "skipped": "memory_off"}
             state = _read_json(paths["state"], {})
             state["lastError"] = f"{type(exc).__name__}:{str(exc)[:160]}"
             _write_json(paths["state"], state)
@@ -721,6 +733,8 @@ def run_drawer(
 
 
 def _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root) -> dict[str, Any]:
+    if not _drawer_memory_enabled():
+        return {**receipt, "skipped": "memory_off"}
     started = time.monotonic()
     state = _read_json(paths["state"], {})
     state.setdefault("kept", {})
@@ -752,6 +766,8 @@ def _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root) -
     queue_done: set[str] = set()
     work = todo[:budget]
     for start in range(0, len(work), batch_size):
+        if not _drawer_memory_enabled():
+            return {**receipt, "skipped": "memory_off"}
         chunk = work[start:start + batch_size]
         items: list[dict[str, str]] = []
         by_h: dict[str, dict[str, str]] = {}
@@ -768,7 +784,11 @@ def _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root) -
             continue
         fixed = glossary_for((item["text"] for item in items), glossary_terms, int(cfg.get("glossaryInject", 40)))
         call_started = time.monotonic()
+        if not _drawer_memory_enabled():
+            return {**receipt, "skipped": "memory_off"}
         results, runtime, error = translate_batch(ladder, items, fixed, timeout)
+        if not _drawer_memory_enabled():
+            return {**receipt, "skipped": "memory_off"}
         sent += len(items)
         state["dayCount"] = int(state.get("dayCount", 0)) + len(items)
         if not results:
@@ -822,6 +842,8 @@ def _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root) -
         ledger_rows = []
         save_glossary(paths["glossary"], glossary_terms)
         _write_json(paths["state"], state)
+    if not _drawer_memory_enabled():
+        return {**receipt, "skipped": "memory_off"}
     _append_ledger(paths["ledger"], ledger_rows)
     if queue_done:
         with ow._LedgerLock(paths["queue"]) as acquired:
@@ -835,6 +857,8 @@ def _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root) -
 
 
 def _finish_drawer(paths, state, receipt, root, started, reindex, complete) -> dict[str, Any]:
+    if not _drawer_memory_enabled():
+        return {**receipt, "skipped": "memory_off"}
     if complete and not state.get("completeAt"):
         state["completeAt"] = ow._now()
         try:
@@ -861,6 +885,8 @@ def _finish_drawer(paths, state, receipt, root, started, reindex, complete) -> d
 
 def queue_for_translation(root: Path, digests: list[str]) -> int:
     """D — an admitted non-English block is queued, never translated in a hook."""
+    if not _drawer_memory_enabled():
+        return 0
     if not digests:
         return 0
     path = _drawer_paths(root)["queue"]
@@ -908,6 +934,8 @@ def _spawn_due(state: dict[str, Any], cfg: dict[str, Any], directory: Path, cap_
 
 def schedule_drawer_translation(root: Path) -> dict[str, Any]:
     """Hook entry: decide in a few stats, spawn detached. Never raises, never waits."""
+    if not _drawer_memory_enabled():
+        return {"scheduled": "off"}
     try:
         cfg = config()
         if switched_off(cfg) or in_translate_worker():
@@ -932,6 +960,8 @@ def schedule_drawer_translation(root: Path) -> dict[str, Any]:
 
 
 def drawer_status(root: Path) -> dict[str, Any]:
+    if not _drawer_memory_enabled():
+        return {"status": "disabled", "error": "feature_disabled", "feature": "memory-hooks"}
     paths = _drawer_paths(root)
     state = _read_json(paths["state"], {})
     kept = state.get("kept") if isinstance(state.get("kept"), dict) else {}
@@ -950,6 +980,16 @@ def drawer_status(root: Path) -> dict[str, Any]:
 
 
 # ======================================================= project docs (E)
+
+def _project_translation_enabled() -> bool:
+    """Fail closed when either project translation prerequisite is off."""
+    try:
+        from .feature_preferences import feature_enabled
+
+        return feature_enabled("project-index") and feature_enabled("memory-hooks")
+    except Exception:
+        return False
+
 
 def _project_paths(project_root: Path) -> dict[str, Path]:
     agentlas = Path(project_root) / ".agentlas"
@@ -1012,6 +1052,8 @@ def run_project(project_root: Path, *, translators: list[Translator] | None = No
     root = Path(project_root).expanduser()
     paths = _project_paths(root)
     receipt: dict[str, Any] = {"surface": "project-docs", "translated": 0, "keptNative": 0, "removed": 0}
+    if not _project_translation_enabled():
+        return {**receipt, "skipped": "feature-disabled"}
     if switched_off(cfg):
         return {**receipt, "skipped": "off"}
     if not paths["db"].is_file() or paths["agentlas"].is_symlink():
@@ -1021,16 +1063,22 @@ def run_project(project_root: Path, *, translators: list[Translator] | None = No
         from .project_full_ingest import LOCK_FILE, _open_runtime, _purge_sources, _write_snapshot  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001
         return {**receipt, "skipped": f"import:{type(exc).__name__}"}
+    if not _project_translation_enabled():
+        return {**receipt, "skipped": "feature-disabled"}
     descriptor = os.open(paths["agentlas"] / LOCK_FILE, os.O_CREAT | os.O_RDWR | _O_BINARY, 0o600)
     try:
         if not _try_advisory_lock(descriptor):
             return {**receipt, "skipped": "ingest-busy"}
         try:
+            if not _project_translation_enabled():
+                return {**receipt, "skipped": "feature-disabled"}
             return _run_project_locked(root, paths, cfg, receipt, translators, limit,
                                        _open_runtime, _purge_sources, _write_snapshot)
         finally:
             _release_advisory_lock(descriptor)
     except Exception as exc:  # noqa: BLE001
+        if not _project_translation_enabled():
+            return {**receipt, "skipped": "feature-disabled"}
         state = _read_json(paths["state"], {})
         state["lastError"] = f"{type(exc).__name__}:{str(exc)[:160]}"
         _write_json(paths["state"], state)
@@ -1042,21 +1090,29 @@ def run_project(project_root: Path, *, translators: list[Translator] | None = No
 def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runtime, purge, write_snapshot):
     from .project_full_ingest import looks_secret  # noqa: PLC0415
 
+    if not _project_translation_enabled():
+        return {**receipt, "skipped": "feature-disabled"}
     state = _read_json(paths["state"], {})
     state.setdefault("kept", {})
     state["lastRunAt"] = ow._now()
     runtime = open_runtime(root)
     chunks = project_nonenglish_chunks(runtime, paths["docs"], cfg)
     current = {chunk["key"]: chunk for chunk in chunks}
+    if not _project_translation_enabled():
+        return {**receipt, "skipped": "feature-disabled"}
     paths["en"].mkdir(mode=0o700, exist_ok=True)
     existing = {entry.stem: entry for entry in paths["en"].glob("*.md") if entry.is_file() and not entry.is_symlink()}
     stale = [entry for key, entry in existing.items() if key not in current]
     uris = [entry.resolve().as_uri() for entry in stale]
     for entry in stale:
+        if not _project_translation_enabled():
+            return {**receipt, "skipped": "feature-disabled"}
         try:
             entry.unlink()
         except OSError:
             pass
+    if not _project_translation_enabled():
+        return {**receipt, "skipped": "feature-disabled"}
     receipt["removed"] = purge(runtime, uris) if uris else 0
     max_attempts = int(cfg.get("maxAttempts", 2))
     todo = []
@@ -1077,6 +1133,8 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
     batch_size = max(1, int(cfg.get("projectBatchSize", 8)))
     work = todo[:budget] if ladder else []
     for start in range(0, len(work), batch_size):
+        if not _project_translation_enabled():
+            return {**receipt, "skipped": "feature-disabled"}
         batch = []
         for chunk in work[start:start + batch_size]:
             if looks_secret(chunk["text"]) or _screen_secret(chunk["text"]):
@@ -1087,14 +1145,20 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
         if not batch:
             continue
         fixed = glossary_for((c["text"] for c in batch), glossary_terms, int(cfg.get("glossaryInject", 40)))
+        if not _project_translation_enabled():
+            return {**receipt, "skipped": "feature-disabled"}
         results, runtime_name, error = translate_batch(
             ladder, [{"h": c["key"], "text": c["text"]} for c in batch], fixed, float(cfg.get("callTimeoutSeconds", 240)))
+        if not _project_translation_enabled():
+            return {**receipt, "skipped": "feature-disabled"}
         state["dayCount"] = int(state.get("dayCount", 0)) + len(batch)
         if not results:
             state["lastError"] = error
             break
         state["runtime"] = runtime_name
         for chunk in batch:
+            if not _project_translation_enabled():
+                return {**receipt, "skipped": "feature-disabled"}
             item = results.get(chunk["key"]) or {}
             verdict = check_translation(chunk["text"], str(item.get("en") or ""), cfg, multiline=True)
             row = {"key": chunk["key"], "doc": chunk["name"], "reason": verdict["reason"],
@@ -1112,14 +1176,24 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
             body = (f"English index surface of project document {chunk['name']} (chunk {chunk['index']}); "
                     f"the original document is the authority.\n\n{verdict['en']}\n")
             target = paths["en"] / f"{chunk['key']}.md"
+            if not _project_translation_enabled():
+                return {**receipt, "skipped": "feature-disabled"}
             write_snapshot(target, body.encode("utf-8"), time.time())
+            if not _project_translation_enabled():
+                return {**receipt, "skipped": "feature-disabled"}
             runtime.ingest_path(target, refresh_graph=False)
             state["kept"].pop(chunk["key"], None)
             ledger_rows.append({**row, "decision": "translated"})
             receipt["translated"] += 1
+        if not _project_translation_enabled():
+            return {**receipt, "skipped": "feature-disabled"}
         _append_ledger(paths["ledger"], ledger_rows)
         ledger_rows = []
+        if not _project_translation_enabled():
+            return {**receipt, "skipped": "feature-disabled"}
         save_glossary(paths["glossary"], glossary_terms)
+        if not _project_translation_enabled():
+            return {**receipt, "skipped": "feature-disabled"}
         _write_json(paths["state"], state)
     remaining = [c for c in todo if not (paths["en"] / f"{c['key']}.md").exists()
                  and not (state["kept"].get(c["key"]) or {}).get("permanent")
@@ -1134,11 +1208,15 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
     # Complete only once the documents are actually in the index — before the
     # full ingest lands there is nothing to measure, not nothing to do.
     if not remaining and ingested:
+        if not _project_translation_enabled():
+            return {**receipt, "skipped": "feature-disabled"}
         state["completeAt"] = state.get("completeAt") or ow._now()
         _record_project_receipt(paths["agentlas"])
     if receipt["translated"]:
         state["lastError"] = None
     state["lastRun"] = {k: v for k, v in receipt.items() if k != "surface"}
+    if not _project_translation_enabled():
+        return {**receipt, "skipped": "feature-disabled"}
     _write_json(paths["state"], state)
     return receipt
 
@@ -1163,6 +1241,8 @@ def _record_project_receipt(agentlas: Path) -> None:
 def schedule_project_translation(project_root: Path) -> dict[str, Any]:
     """Hook entry for the project ladder. A few stats; spawns detached."""
     try:
+        if not _project_translation_enabled():
+            return {"scheduled": "off"}
         cfg = config()
         if switched_off(cfg) or in_translate_worker():
             return {"scheduled": "off"}
@@ -1175,8 +1255,12 @@ def schedule_project_translation(project_root: Path) -> dict[str, Any]:
             return {"scheduled": "complete"}
         if _spawn_due(state, cfg, paths["agentlas"], "projectDailyCap") is None:
             return {"scheduled": "not-due"}
+        if not _project_translation_enabled():
+            return {"scheduled": "off"}
         state["lastSpawnEpoch"] = time.time()
         _write_json(paths["state"], state)
+        if not _project_translation_enabled():
+            return {"scheduled": "off"}
         spawned = _spawn(["project", "--project", str(project_root)], Path(project_root))
         return {"scheduled": "detached" if spawned else "spawn-failed"}
     except Exception as exc:  # noqa: BLE001

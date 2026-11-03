@@ -16,7 +16,6 @@
     "hephaestus-network",
     "hephaestus-cloud",
     "hephaestus-storm",
-    "hephaestus-graph",
     "hephaestus-upload"
   ],
   "commands": [
@@ -71,18 +70,6 @@
       "installedEntrypoint": "hep-storm",
       "body": "contracts/commands/hep-storm.body.md",
       "routes": {"default": {"entrypoint": "hep-storm", "inputModes": ["host_request"]}}
-    },
-    {
-      "commandId": "agentlas.graph",
-      "publicCommand": "/hep-graph",
-      "terminalCommand": "hep-graph",
-      "aliases": ["/agentlas-graph", "/agentlas graph", "$hephaestus-graph", "/prompts:hep-graph", "hephaestus-graph"],
-      "engineEntrypoint": "hep-graph",
-      "surfaceStatus": "redirect",
-      "owningBinary": "agentlas",
-      "installedEntrypoint": "agentlas",
-      "body": "contracts/commands/hep-graph.body.md",
-      "routes": {"default": {"entrypoint": "hep-graph", "inputModes": ["host_request"]}}
     },
     {
       "commandId": "agentlas.local",
@@ -167,18 +154,6 @@
       "installedEntrypoint": "hep-upload",
       "body": "contracts/commands/hep-upload.body.md",
       "routes": {"default": {"entrypoint": "hep-upload", "inputModes": ["host_request"]}}
-    },
-    {
-      "commandId": "agentlas.connect",
-      "publicCommand": "/hep-connect",
-      "terminalCommand": "hep-connect",
-      "aliases": ["/agentlas-connect", "/agentlas connect", "$hephaestus-connect", "/prompts:hep-connect", "hephaestus-connect"],
-      "engineEntrypoint": "hep-connect",
-      "surfaceStatus": "identity_only",
-      "owningBinary": null,
-      "installedEntrypoint": null,
-      "body": "contracts/commands/hep-connect.body.md",
-      "routes": {"default": {"entrypoint": "hep-connect", "inputModes": ["host_request"]}}
     },
     {
       "commandId": "agentlas.login",

@@ -1,6 +1,6 @@
 ---
 name: agentlas-operations
-description: Agentlas 시스템 운용 절차 — hep-network 편성, hep-graph 자동화, cargo/Agent Cloud·marketplace 활용, workforce 로스터 재사용, 메모리 계약. One(개인 에이전트)이 Agentlas를 조작할 때 이 절차를 따른다.
+description: Agentlas 시스템 운용 절차 — hep-network 편성, cargo/Agent Cloud·marketplace 활용, workforce 로스터 재사용, 메모리 계약. One(개인 에이전트)이 Agentlas를 조작할 때 이 절차를 따른다.
 ---
 
 # Agentlas 시스템 운용 (One 운용 스킬)
@@ -19,13 +19,6 @@ description: Agentlas 시스템 운용 절차 — hep-network 편성, hep-graph 
 4. 준비 성공은 자동으로 로스터에 바인딩된다. 바인딩은 명시적 `workforce.complete_goal`까지 유지
    — 24시간 Hub 리스는 과금 단위지 바인딩 종료가 아니다.
 5. 소스 스코프는 정확하게: network=전체, local/cloud/hub는 제한 스코프이지 폴백 계층이 아니다.
-
-## 2. 자동화 (hep-graph)
-
-- 반복 작업은 대화로 그래프를 만들어 저장한다(`/hep-graph`). 실행 중 승인 게이트는 없다
-  (오너 결정 2026-08-09: 승인은 만들 때 한 번).
-- "항상 허용"을 그래프 digest에 걸지 않는다 — digest가 바뀌면 바로 그 실행의 재개가 거부된다.
-  사람의 결정은 실행 밖 기록에 둔다.
 
 ## 3. 자산 (cargo / Agent Cloud / marketplace)
 

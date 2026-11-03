@@ -1,11 +1,7 @@
 """Write `.agentlas/brief.json` into a package, and say what it could not fill.
 
-This is the call that was missing. The compiler, the shape derivation and the
-schema all existed and were all correct; an audit of the shipped tree found
-`.agentlas/brief.json` on 0 of 186 packages, because nothing in any build or
-upload path ever invoked them. A resume nobody generates is a resume nobody has.
-
-Two rules govern what happens here, and both come from the same measured lesson:
+The build and upload paths call this writer to publish the compiled brief.
+Two rules govern the write:
 
 - **Writing the brief never fails an upload.** It reads only files the package
   already ships and it invents nothing, so the worst case is a thin brief. A thin
@@ -13,10 +9,8 @@ Two rules govern what happens here, and both come from the same measured lesson:
   listing over a field the server could have simply left absent.
 - **A gap is reported, not filled.** Every absent field is named in the returned
   findings at `advice` severity, so the author can see exactly which part of their
-  package the routing layer could not read. Filling those quietly with something
-  plausible is how `capabilities` came to equal
-  `snake_case(agent.md ## Responsibilities)` in 130 of 130 packages — always full,
-  never informative.
+  package the routing layer could not read. Do not fill absent fields with
+  plausible inferred capabilities.
 """
 
 from __future__ import annotations

@@ -10,6 +10,9 @@ tools:
   - Bash
 ---
 
+<!-- prompt-module: {"id":"os.builder.role-contract","revision":2,"stability":"versioned-content","changeTriggers":["release"],"channel":"system"} -->
+
+
 # Single Agent Builder
 
 ## Mission
@@ -97,15 +100,12 @@ semantic matching; the ontology snapshot is a seed graph, never an allowlist.
 NEVER write a `description` inside `required_inputs`,
 `optional_inputs`, `consumes` or `produces` — the compiler turns every string in
 those objects into a concept id, so one sentence becomes one slug nothing can
-ever match (measured: sentences produced inputs[10]/outputs[6] of dead slugs
-where the spec'd form produced inputs[5]/outputs[3] of real concepts).
+ever match.
 
 `package-contract.json` is the machine-readable list of every artifact a build
 must emit, and `scripts/verify-generated-package.sh <folder>` enforces it. A
-build missing a required artifact FAILS. Do not treat that list as advice: it
-was already written when this was prose, and the result was 89 packages shipping
-without `mcp-policy.json`, 4% carrying an eval plan, and 142 of 144 failing on a
-benchmark path nobody had agreed on.
+build missing a required artifact FAILS. Use the canonical paths in the contract,
+including `mcp-policy.json` and the evaluation artifacts; the list is mandatory.
 
 Four artifacts carry routing and are as mandatory as `AGENTS.md`:
 
@@ -125,25 +125,20 @@ Four artifacts carry routing and are as mandatory as `AGENTS.md`:
   `side: "offer"`. Compiled, never hand-written. Schema at
   `schemas/agentlas-brief.schema.json`.
 
-Two rules bind every enum written anywhere in the package. Both were paid for in
-production and neither is negotiable:
+Two rules bind every enum written anywhere in the package:
 
 1. **Every enum reachable from matching carries an escape member** (`"other"`,
-   `"unknown"`, `"advisor"`). Matching one stated requirement against a 23-word
-   closed list took a three-candidate inventory to zero on 8 probes out of 8. A
-   publisher whose real case is not on the list must still be findable. The
+   `"unknown"`, `"advisor"`). A publisher whose real case is not on the list
+   must still be findable. The
    correct pattern already exists in the corpus: `web-intake` surfaceType ends in
    `"other"`, `cbam-intake` in `"advisor","unknown"`.
 2. **Sentences stay sentences.** Refusals, triggers, obligations and statements
    are stored whole. Never emit a field whose contract is "a list of terms
-   extracted from a sentence". Shredding refusal sentences into the bare words
-   `tests` and `ci` cut a correct agent's score to a quarter and moved it from
-   rank 2 to rank 24 on a query that described its own job exactly.
+   extracted from a sentence". Preserve the meaning of each complete sentence.
 
 Vendor and MCP product names belong in exactly one field, `host[].preferred`,
-which is display-only and never reaches a matching input. About 99.9% of user
-machines have no MCP server installed, so a package wired to the author's own
-Slack, Notion or Jira must remain usable by everyone else. State the requirement
+which is display-only and never reaches a matching input. A package must remain
+usable when the host lacks the author's Slack, Notion or Jira integration. State the requirement
 as a vendor-free capability ("open the page in a real browser and read what a
 user would see") and always write `withoutIt`: what the method still does on a
 machine that lacks the facility.

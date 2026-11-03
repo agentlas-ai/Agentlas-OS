@@ -33,9 +33,5 @@ The Cursor CLI (`agent`) reads the same rules, skills, AGENTS.md, and
 the host cannot bypass Core's federation/privacy boundary. See
 `docs/local-models.md`.
 
-When Cursor can run local commands, `/hep-build`, `/hep-network`, `/hep-local`,
-`/hep-cloud`, `/hep-hub`, `/hep-search`, `/hep-call`, and `/hep-upload` first follow the
-Hephaestus app-host auto-update preflight. It refreshes
-`~/.agentlas/runtime/current` and installed command/skill surfaces from inside
-Cursor before resolving the runner, so app-only users do not need a separate
-terminal for normal self-repair.
+Automatic updates are off by default. Run `hephaestus features on auto-update`
+to enable them, or `hephaestus update` to update manually.

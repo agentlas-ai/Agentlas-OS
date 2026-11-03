@@ -82,9 +82,8 @@ def loopback_aware_opener(url: str, *handlers: Any) -> urllib.request.OpenerDire
     """An opener that never sends a loopback model request through a proxy.
 
     urllib reads the system proxy (on Windows the registry Internet Settings) and its
-    ``<local>`` bypass only covers names without a dot, so 127.0.0.1 — the local model
-    every host configures — went to the company proxy and came back 502/403 while Ollama
-    itself was fine. A local endpoint has no business with any proxy on any OS, so
+    ``<local>`` bypass only covers names without a dot. Treat loopback IP addresses
+    as local endpoints on every OS, so
     loopback URLs get ``ProxyHandler({})`` (the research/policy.py pinned-opener pattern);
     every other URL keeps urllib's default proxy handling unchanged.
     """

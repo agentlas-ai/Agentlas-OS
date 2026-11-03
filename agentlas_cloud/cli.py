@@ -14,7 +14,6 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 from .runtime import (
-    AgentlasMockStore,
     RuntimeBundleValidationError,
     compile_runtime_bundle,
     read_agent_file,
@@ -306,9 +305,19 @@ def _project_bootstrap_receipt(
 ) -> dict[str, Any]:
     from .project_bootstrap import auto_bootstrap_enabled, ensure_project, maybe_ensure_project
 
+    if trusted_contact:
+        from .feature_preferences import feature_status
+
+        preference = feature_status()["features"]["project-bootstrap"]
+        if not preference["enabled"] and preference["source"] != "default":
+            return {"action": "project_bootstrap", "status": "disabled", "error": "feature_disabled",
+                    "feature": "project-bootstrap", "writeAttempted": False}
+    if requested and not trusted_contact and not auto_bootstrap_enabled():
+        return {"action": "project_bootstrap", "status": "disabled", "error": "feature_disabled",
+                "feature": "project-bootstrap", "writeAttempted": False}
     if requested or trusted_contact:
         try:
-            return ensure_project(project, reason=reason)
+            return ensure_project(project, reason=reason, enforce_feature_preferences=True, native_host=trusted_contact)
         except (OSError, TimeoutError, ValueError) as exc:
             return _project_bootstrap_error(str(exc), reason=reason, writeAttempted=True)
 
@@ -316,15 +325,23 @@ def _project_bootstrap_receipt(
         project,
         reason=reason,
         enabled=auto_bootstrap_enabled(),
+        enforce_feature_preferences=True,
     )
 
 
-def _plugin_contact_runtime(runtime: str | None) -> bool:
-    normalized = str(runtime or "").strip().lower()
-    return normalized not in {"", "terminal", "cli", "shell"}
+def _native_project_host(runtime: str | None) -> bool:
+    from .feature_preferences import _PRODUCT_HOSTS
+
+    return str(runtime or "").strip().lower() in _PRODUCT_HOSTS
 
 
-def _project_bootstrap_blocks_execution(receipt: Mapping[str, Any]) -> bool:
+def _project_bootstrap_blocks_execution(receipt: Mapping[str, Any], *, required: bool = False) -> bool:
+    # An optional bootstrap that is off, or that the automatic path chose not
+    # to run (e.g. outside the host-approved roots), leaves the core command
+    # usable; only an explicitly requested bootstrap must succeed.
+    if (receipt.get("status") in {"disabled", "skipped"}
+            or receipt.get("error") == "feature_dependencies_disabled"):
+        return required
     if receipt.get("status") == "active":
         return False
     if receipt.get("status") != "privacy_warning":
@@ -338,7 +355,7 @@ def _project_bootstrap_blocks_execution(receipt: Mapping[str, Any]) -> bool:
 
 
 def _emit_blocked_project_bootstrap(receipt: Mapping[str, Any]) -> int:
-    detail = receipt.get("detail") or "project_bootstrap_incomplete"
+    detail = receipt.get("detail") or receipt.get("error") or "project_bootstrap_incomplete"
     emit(
         {
             "action": "project_bootstrap",
@@ -788,6 +805,15 @@ def _normalize_upload_alias(argv: list[str]) -> list[str]:
     destination is ever assumed.
     """
 
+    if argv and argv[0] in {"storm", "hep-storm", "hephaestus-storm", "agentlas-storm", "stormbreaker"}:
+        if len(argv) == 2 and argv[1] in {"on", "off", "status"}:
+            return ["features", argv[1], "storm"]
+        if argv[0] in {"storm", "hephaestus-storm", "agentlas-storm"}:
+            return ["hep-storm", *argv[1:]]
+    if len(argv) == 2 and argv[0] == "memory" and argv[1] in {"on", "off", "status"}:
+        return ["features", argv[1], "memory-hooks"]
+    if len(argv) == 3 and argv[:2] == ["context", "map"] and argv[2] in {"on", "off", "status"}:
+        return ["features", argv[2], "context-map"]
     if argv and argv[0] in {"hep-goal", "hephaestus-goal", "agentlas-goal"}:
         return ["goal", *argv[1:]]
     if not argv or argv[0] not in {"hep-upload", "upload", "hephaestus-upload"}:
@@ -956,7 +982,6 @@ def main(argv: list[str] | None = None) -> int:
     read.add_argument("folder")
     read.add_argument("path")
 
-    sub.add_parser("field-test", help="Run local fixture field test")
     sub.add_parser("doctor", help="Diagnose and self-heal local Hephaestus runtime issues")
     update = sub.add_parser(
         "hep-update",
@@ -975,6 +1000,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Report whether a retired periodic update service is still installed",
     )
+
+    host = sub.add_parser("host", help="Inspect or start a standalone Claude or Codex session")
+    host.add_argument("host_action", choices=("status", "session"))
+    host.add_argument("host_name", choices=("claude", "codex"))
+    host.add_argument("host_arguments", nargs=argparse.REMAINDER, help="Arguments passed to a new native session after --")
+
+    features = sub.add_parser("features", help="Inspect or change optional engine features")
+    features.add_argument("feature_action", choices=("status", "on", "off"))
+    features.add_argument("feature_name", nargs="?", help="Feature name; status without a name shows all")
 
     from .global_router import ROUTER_TARGET_IDS
 
@@ -1113,7 +1147,7 @@ def main(argv: list[str] | None = None) -> int:
     network_remove.add_argument("path")
     network_sub.add_parser("reindex", help="Re-import cards from registered sources and rebuild registry.sqlite")
     network_bench = network_sub.add_parser("bench", help="Run the routing benchmark suites")
-    network_bench.add_argument("--suite", action="append", default=[], help="Path to a .jsonl suite (repeatable)")
+    network_bench.add_argument("--suite", action="append", required=True, help="Path to a user-provided .jsonl suite (repeatable)")
     network_grant = network_sub.add_parser("grant", help="Record a legacy capability grant")
     network_grant.add_argument("capability")
     network_grant.add_argument("--target", required=True)
@@ -1355,6 +1389,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Cross-platform shortcut for 'stormbreaker run'",
     )
     _configure_stormbreaker_run_parser(stormbreaker_shortcut)
+    network_pipeline = sub.add_parser("network-pipeline", help=argparse.SUPPRESS)
+    _configure_stormbreaker_run_parser(network_pipeline)
 
     stormbreaker_journal = stormbreaker_sub.add_parser(
         "journal", help="Inspect or repair a run journal so an interrupted run can resume"
@@ -1750,6 +1786,89 @@ def main(argv: list[str] | None = None) -> int:
     workforce_goal_ledger.add_argument("--reason", default=None)
 
     args = parser.parse_args(_normalize_upload_alias(sys.argv[1:] if argv is None else list(argv)))
+    if args.command in {"hep-update", "update"} and args.scheduled:
+        # Legacy timers must be inert before any startup work.
+        return emit({"status": "skipped", "reason": "legacy_periodic_update_retired", "writeAttempted": False})
+    if args.command == "host":
+        from .host_core import Conflict, session_plan, status
+
+        root = Path(__file__).resolve().parent.parent
+        home = Path.home()
+        if args.host_action == "status":
+            if args.host_arguments:
+                parser.error("host status accepts a host name only")
+            result = status(root, home, args.host_name)
+            emit(result)
+            return 1 if result.get("status") in {"conflict", "error"} else 0
+        plan = session_plan(root, home, args.host_name, prepare=False)
+        if not isinstance(plan.get("hostCommand"), list) and plan.get("reason") in {
+            "session_components_unprepared", "codex_skill_alias_unprepared"
+        }:
+            plan = session_plan(root, home, args.host_name, prepare=True)
+        if not isinstance(plan.get("hostCommand"), list):
+            emit(plan)
+            return 1
+        pending = plan.get("unappliedHookComponents") or []
+        if pending:
+            print(json.dumps({"status": "partial", "reason": plan.get("reason"),
+                              "unappliedHookComponents": pending}, ensure_ascii=False),
+                  file=sys.stderr, flush=True)
+        host_arguments = args.host_arguments[1:] if args.host_arguments[:1] == ["--"] else args.host_arguments
+        try:
+            from .host_session import launch
+            result = launch(root, home, args.host_name, host_arguments)
+            return result if isinstance(result, int) else 0
+        except (Conflict, OSError, ValueError, KeyError, TypeError) as exc:
+            emit({"status": "error", "reason": str(exc) if isinstance(exc, Conflict) else type(exc).__name__,
+                  "modelSessionObserved": False})
+            return 1
+        return 0
+    if args.command == "features":
+        from .feature_preferences import FEATURES, FeaturePreferenceError, feature_status, set_feature
+
+        if args.feature_action != "status" and not args.feature_name:
+            parser.error("features on/off requires a feature name")
+        if args.feature_name and args.feature_name not in FEATURES:
+            parser.error("unknown feature; choose one of: " + ", ".join(FEATURES))
+        try:
+            if args.feature_action == "status":
+                result = feature_status()
+                if args.feature_name:
+                    result["features"] = {args.feature_name: result["features"][args.feature_name]}
+                memory = result["features"].get("memory-hooks")
+                if memory:
+                    from .memory_activation import activation
+                    result["activation"] = activation()
+                return emit(result)
+            result = set_feature(args.feature_name, args.feature_action == "on")
+            outcome = result.get("writeOutcome")
+            if outcome:
+                result["status"] = "partial" if outcome.get("state") == "applied" else "uncertain"
+                if args.feature_name == "memory-hooks" and args.feature_action == "on":
+                    result["activation"] = {"status": "not_attempted", "reason": "preference_write_unconfirmed"}
+                emit(result)
+                return 1
+            if args.feature_name == "memory-hooks" and args.feature_action == "on":
+                from .memory_activation import activation
+                observed_activation = activation(install=True)
+                result = feature_status()
+                result["activation"] = observed_activation
+                if observed_activation.get("status") not in {"connected", "host_managed"}:
+                    result["status"] = "partial"
+                    emit(result)
+                    return 1
+            elif args.feature_name == "memory-hooks":
+                result["activation"] = {"status": "disabled", "reason": "feature_disabled", "writeAttempted": False}
+            return emit(result)
+        except (FeaturePreferenceError, OSError) as exc:
+            emit({"status": "error", "code": "feature_preference_error", "detail": str(exc)})
+            return 1
+    if args.command == "hep-storm" or (args.command == "stormbreaker" and args.stormbreaker_command == "run"):
+        from .feature_preferences import storm_enabled
+
+        if not storm_enabled(runtime=args.runtime):
+            emit({"action": "stormbreaker_run", "status": "disabled", "error": "feature_disabled", "feature": "storm", "writeAttempted": False})
+            return 2
     if args.command == "contract" and args.contract_command == "context-assess":
         return _build_context_assess_command(args)
     if args.command == "contract" and args.contract_command in {
@@ -1808,9 +1927,8 @@ def main(argv: list[str] | None = None) -> int:
             result = check_registry()
             return emit(result) or (1 if result.get("status") != "ok" else 0)
 
-    # Auto-update is the default: every command kicks off a fail-silent,
-    # rate-limited background runtime update check. hep-update runs its own
-    # synchronous check below, so skip the duplicate spawn for it.
+    # The updater and notice are inert unless the user enabled auto-update.
+    # hep-update runs its own synchronous check below.
     if args.command not in {"hep-update", "update", "session", "command"}:
         maybe_auto_update()
         # The background check above never prints anything (fail-silent by
@@ -1821,16 +1939,13 @@ def main(argv: list[str] | None = None) -> int:
         # stderr only when an update is actually pending, leaving stdout (JSON
         # payloads, hook output) untouched.
         maybe_print_update_notice()
-    # Same fail-silent pattern for the recall corpus: any command run inside a
-    # .agentlas project regenerates a stale project index, so recall freshness
-    # never depends on which product (Desktop, terminal, plugin host) the
-    # machine happens to use. Project .agentlas writes live in the workspace,
-    # so this also works inside host sandboxes.
-    if args.command not in {"session", "command"}:
+    # The project-index backstop is separately opt-in.
+    if args.command not in {"session", "command", "project", "context"}:
         try:
             from .project_index_backstop import maybe_refresh_project_index
 
-            maybe_refresh_project_index(Path.cwd())
+            target = getattr(args, "project", None)
+            maybe_refresh_project_index(Path(target) if target else Path.cwd())
         except Exception:
             pass
     if args.command == "session":
@@ -1924,37 +2039,24 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if result.get("status") == "blocked" else 0
     if args.command == "read-agent-file":
         return emit(read_agent_file(args.folder, args.path))
-    if args.command == "field-test":
-        return emit(run_field_test())
     if args.command == "doctor":
         return emit(run_doctor())
     if args.command in {"hep-update", "update"}:
-        from .auto_update_service import (
-            auto_update_service_status,
-            remove_auto_update_service,
-            retire_auto_update_service,
-        )
-
-        if args.remove_service:
-            return emit(remove_auto_update_service())
-        if args.service_status:
-            return emit(auto_update_service_status())
-        if args.scheduled:
-            # A scheduler created by v1.1.63-v1.1.68 may invoke the newer
-            # `current` runner. Its final action is to remove itself.
-            return emit(retire_auto_update_service())
-        retire_auto_update_service()
-        # An unreachable GitHub is the normal state of the machine this command
-        # gets run on. Print the actionable sentence on stderr (same channel as
-        # the update-available notice) and keep stdout the usual JSON payload,
-        # so neither a human nor a caller parsing stdout sees a traceback.
+        # Legacy scheduler cleanup is a shared-host operation. A standalone
+        # update must never retire or alter it without an ownership contract.
+        if args.remove_service or args.service_status:
+            emit({"status": "blocked", "error": "standalone_service_management_unavailable", "writeAttempted": False})
+            return 2
+        from .update import UpdateUnavailableError, run_update
         try:
-            update_result = run_update(check_only=args.check)
+            result = run_update(check_only=args.check)
         except UpdateUnavailableError as exc:
             configure_utf8_stdio()
             print(exc.message, file=sys.stderr)
-            return emit(exc.payload) or 1
-        return emit(update_result)
+            emit(exc.payload)
+            return 1
+        emit(result)
+        return 2 if result.get("status") == "blocked" else 0
     if args.command == "global":
         from .global_router import global_router_status, install_global_router, remove_global_router
 
@@ -2117,29 +2219,46 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
     if args.command == "project":
-        from .project_bootstrap import ensure_project, project_status
+        from .project_bootstrap import auto_bootstrap_enabled, ensure_project, project_status
 
         if args.project_command == "ingest":
             from .project_full_ingest import run_full_ingest, status as full_ingest_status
+            from .feature_preferences import feature_enabled
 
             try:
                 if args.status:
                     return emit(full_ingest_status(args.project))
-                receipt = run_full_ingest(args.project, reason=args.reason)
+                if not feature_enabled("project-index"):
+                    emit({"action": "project_ingest", "status": "disabled", "error": "feature_disabled",
+                          "feature": "project-index", "writeAttempted": False})
+                    return 2
+                from .project_bootstrap import ensure_optional_workspace
+                workspace = ensure_optional_workspace(args.project, "project-index")
+                if workspace.get("status") != "active":
+                    emit(workspace)
+                    return 2
+                receipt = run_full_ingest(args.project, reason=args.reason, include_memory=feature_enabled("memory-hooks"))
             except (OSError, ValueError) as exc:
                 return emit(_project_bootstrap_error(str(exc))) or 2
             emit(receipt)
             return 2 if receipt.get("status") == "failed" else 0
         try:
             if args.project_command == "ensure":
-                return emit(
-                    ensure_project(
-                        args.project,
-                        reason=args.reason,
-                        force_code_map=args.refresh_code_map,
-                    )
+                if not auto_bootstrap_enabled():
+                    emit({"action": "project_bootstrap", "status": "disabled", "error": "feature_disabled",
+                          "feature": "project-bootstrap", "writeAttempted": False})
+                    return 2
+                receipt = ensure_project(
+                    args.project,
+                    reason=args.reason,
+                    force_code_map=args.refresh_code_map,
+                    enforce_feature_preferences=True,
                 )
-            return emit(project_status(args.project))
+                emit(receipt)
+                return 2 if receipt.get("status") == "blocked" else 0
+            from .feature_preferences import feature_enabled
+            optional = {name: feature_enabled(name) for name in ("memory-hooks", "context-map", "project-index")}
+            return emit(project_status(args.project, optional_features=optional))
         except (OSError, TimeoutError, ValueError) as exc:
             return emit(_project_bootstrap_error(str(exc))) or 2
     if args.command == "context":
@@ -2153,7 +2272,8 @@ def main(argv: list[str] | None = None) -> int:
             render_context_slice,
             verify_impact,
         )
-        from .project_bootstrap import ensure_project
+        from .project_bootstrap import ensure_context_map
+        from .feature_preferences import feature_enabled
 
         try:
             # `agentlas help` states "project [status|init] — init is explicit", and a
@@ -2171,7 +2291,11 @@ def main(argv: list[str] | None = None) -> int:
                 (Path(args.project).expanduser().resolve() / ".agentlas").is_dir()
             )
             requested_bootstrap = args.context_command == "refresh"
-            if not already_initialized:
+            if requested_bootstrap and not feature_enabled("context-map"):
+                emit({"action": "context.refresh", "status": "disabled", "error": "feature_disabled",
+                      "feature": "context-map", "writeAttempted": False})
+                return 2
+            if not already_initialized and not requested_bootstrap:
                 return emit({
                     "action": "context",
                     "status": "error",
@@ -2181,11 +2305,10 @@ def main(argv: list[str] | None = None) -> int:
                 }) or 2
             should_bootstrap = requested_bootstrap
             if should_bootstrap:
-                project_receipt = ensure_project(
-                    args.project,
-                    reason=f"context:{args.context_command}",
-                    force_code_map=args.context_command == "refresh" and args.force,
-                )
+                project_receipt = ensure_context_map(args.project, force=args.context_command == "refresh" and args.force)
+                if project_receipt.get("error") == "feature_dependencies_disabled":
+                    emit({**project_receipt, "action": "context.refresh"})
+                    return 2
                 if project_receipt.get("status") not in {"active", "privacy_warning"}:
                     code_map_receipt = (
                         project_receipt.get("codeMap")
@@ -2336,10 +2459,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.network_command == "bench":
             from .networking.bench import run_bench
 
-            suites = args.suite or [
-                str(Path(__file__).resolve().parent.parent / "benchmarks" / "routing" / name)
-                for name in ("seed.jsonl", "privacy.jsonl", "edges.jsonl")
-            ]
+            suites = args.suite
             report = run_bench(suites)
             emit(report)
             return 0 if report["passed"] else 1
@@ -2351,7 +2471,9 @@ def main(argv: list[str] | None = None) -> int:
             from .networking.memory import record_feedback
             from .networking.tokenize import tokenize
 
-            return emit(record_feedback(tokenize(args.query), args.chosen, args.correct))
+            receipt = record_feedback(tokenize(args.query), args.chosen, args.correct)
+            emit(receipt)
+            return 2 if receipt.get("status") in {"disabled", "partial"} else 0
     if args.command == "contract":
         from .package_contract import (
             contract_prompt_lines,
@@ -3205,8 +3327,9 @@ def main(argv: list[str] | None = None) -> int:
             args.project,
             "hephaestus-search",
             requested=args.ensure_project,
+            trusted_contact=_native_project_host(args.runtime),
         )
-        if args.ensure_project and _project_bootstrap_blocks_execution(bootstrap):
+        if (args.ensure_project or _native_project_host(args.runtime)) and _project_bootstrap_blocks_execution(bootstrap, required=args.ensure_project):
             return _emit_blocked_project_bootstrap(bootstrap)
         result = search_agents(
             args.query,
@@ -3240,8 +3363,9 @@ def main(argv: list[str] | None = None) -> int:
             args.project,
             "hephaestus-call",
             requested=args.ensure_project,
+            trusted_contact=_native_project_host(args.runtime),
         )
-        if args.ensure_project and _project_bootstrap_blocks_execution(bootstrap):
+        if (args.ensure_project or _native_project_host(args.runtime)) and _project_bootstrap_blocks_execution(bootstrap, required=args.ensure_project):
             return _emit_blocked_project_bootstrap(bootstrap)
         result = call_agents(
             args.agents,
@@ -3262,18 +3386,14 @@ def main(argv: list[str] | None = None) -> int:
         from .networking.bootstrap import networking_home
         from .networking.stormbreaker_runner import run_stormbreaker_decision
 
-        trusted_project_contact = (
-            _plugin_contact_runtime(args.runtime)
-            or args.scope == "cloud"
-            or args.auto_run
-        )
+        trusted_project_contact = _native_project_host(args.runtime)
         bootstrap = _project_bootstrap_receipt(
             args.project,
             "hephaestus-route",
             requested=args.ensure_project,
             trusted_contact=trusted_project_contact,
         )
-        if (trusted_project_contact or args.ensure_project) and _project_bootstrap_blocks_execution(bootstrap):
+        if (trusted_project_contact or args.ensure_project) and _project_bootstrap_blocks_execution(bootstrap, required=args.ensure_project):
             return _emit_blocked_project_bootstrap(bootstrap)
         home = networking_home()
         init_networking(home)
@@ -3316,11 +3436,13 @@ def main(argv: list[str] | None = None) -> int:
                     if brief_warning:
                         background_result["work_brief_warning"] = brief_warning
                     background_result["project_bootstrap"] = bootstrap
-                    return emit(background_result)
+                    emit(background_result)
+                    return 2 if background_result.get("status") == "disabled" else 0
                 result = run_stormbreaker_decision(
                     decision,
                     home=home,
                     project_dir=args.project,
+                    _network_pipeline=True,
                     executor_command=args.executor_command,
                     verifier_command=args.verifier_command,
                     execute_card_commands=args.execute_card_commands,
@@ -3414,9 +3536,12 @@ def main(argv: list[str] | None = None) -> int:
             )
         parser.error("unhandled stormbreaker journal command")
         return 2
-    if args.command == "hep-storm" or (
+    if args.command in {"hep-storm", "network-pipeline"} or (
         args.command == "stormbreaker" and args.stormbreaker_command == "run"
     ):
+        if args.command == "network-pipeline" and not args.decision_file:
+            emit({"action": "network_pipeline", "status": "error", "error": "decision_file_required"})
+            return 2
         from .networking import init_networking
         from .networking.bootstrap import networking_home
         from .networking.stormbreaker_runner import run_stormbreaker_decision, run_stormbreaker_query
@@ -3425,9 +3550,9 @@ def main(argv: list[str] | None = None) -> int:
             args.project,
             "hephaestus-storm",
             requested=args.ensure_project,
-            trusted_contact=True,
+            trusted_contact=_native_project_host(args.runtime),
         )
-        if _project_bootstrap_blocks_execution(bootstrap):
+        if _project_bootstrap_blocks_execution(bootstrap, required=args.ensure_project):
             return _emit_blocked_project_bootstrap(bootstrap)
         home = networking_home()
         init_networking(home)
@@ -3478,7 +3603,8 @@ def main(argv: list[str] | None = None) -> int:
             if brief_warning:
                 background_result["work_brief_warning"] = brief_warning
             background_result["project_bootstrap"] = bootstrap
-            return emit(background_result)
+            emit(background_result)
+            return 2 if background_result.get("status") == "disabled" else 0
 
         if args.decision_file:
             try:
@@ -3493,6 +3619,8 @@ def main(argv: list[str] | None = None) -> int:
                 decision,
                 home=home,
                 project_dir=args.project,
+                host_runtime=args.runtime,
+                _network_pipeline=args.command == "network-pipeline",
                 executor_command=args.executor_command,
                 verifier_command=args.verifier_command,
                 execute_card_commands=args.execute_card_commands,
@@ -4079,9 +4207,12 @@ def _resolve_recommended_research_request(
 
 def _start_stormbreaker_background(args: argparse.Namespace, decision: dict[str, Any] | None = None) -> dict[str, Any]:
     import uuid
+    from .feature_preferences import storm_enabled
     from .networking.bootstrap import atomic_write_json
     from .networking.stormbreaker_harness import goal_ultracode_harness
 
+    if decision is None and not storm_enabled(runtime=args.runtime):
+        return {"action": "stormbreaker_run", "status": "disabled", "error": "feature_disabled", "feature": "storm", "writeAttempted": False}
     project = Path(args.project).expanduser().resolve()
     run_id = uuid.uuid4().hex[:12]
     run_dir = project / ".agentlas" / "stormbreaker" / "background" / run_id
@@ -4143,7 +4274,7 @@ def _stormbreaker_background_environment(base: Mapping[str, str] | None = None) 
 
 
 def _stormbreaker_child_argv(args: argparse.Namespace, result_file: Path, decision_file: Path | None = None) -> list[str]:
-    child = [sys.executable, "-m", "agentlas_cloud", "stormbreaker", "run"]
+    child = [sys.executable, "-m", "agentlas_cloud", "network-pipeline"] if decision_file is not None else [sys.executable, "-m", "agentlas_cloud", "stormbreaker", "run"]
     if decision_file is not None:
         child.extend(["--decision-file", str(decision_file)])
     elif args.query:
@@ -4339,54 +4470,6 @@ def _write_python_shims(bin_dir: Path, executable: str) -> None:
     write_python_shims(bin_dir, executable)
 
 
-def run_field_test() -> dict[str, Any]:
-    base = Path(".agentlas/field-test/hephaestus").resolve()
-    if base.exists():
-        shutil.rmtree(base)
-    agent = base / "mac_a" / "instagram-operator"
-    (agent / "skills" / "social-media-strategist").mkdir(parents=True, exist_ok=True)
-    (agent / ".agentlas").mkdir(parents=True, exist_ok=True)
-    (agent / "AGENTS.md").write_text("# Instagram Operator\n\nBuild weekly Instagram posts.\n", encoding="utf-8")
-    (agent / "skills" / "social-media-strategist" / "SKILL.md").write_text(
-        "---\nname: social-media-strategist\ndescription: Use for social content.\n---\n\nCreate social plans.\n",
-        encoding="utf-8",
-    )
-    (agent / ".agentlas" / "memory-map.json").write_text('{"project":"instagram-operator"}\n', encoding="utf-8")
-    wizard = run_setup_wizard(agent, "instagram-operator")
-    bundle = compile_runtime_bundle(agent)
-    allowed = read_agent_file(agent, "AGENTS.md")
-    denied = read_agent_file(agent, ".env")
-    store = AgentlasMockStore()
-    record = store.upload_private(
-        {
-            "agentId": "agent_private_instagram",
-            "ownerId": "owner",
-            "creatorId": "creator",
-            "version": "1.2.72",
-            "manifest": wizard["manifest"],
-            "files": [{"path": "AGENTS.md", "content": (agent / "AGENTS.md").read_text(encoding="utf-8")}],
-            "memory": {"scope": "private", "summary": "private campaign memory", "deltas": ["weekly cadence"]},
-        }
-    )
-    public = store.publish_clean_copy("owner", record["agentId"], "agent_public_instagram")
-    denied_download = store.download("other_user", public["agentId"])
-    public_call = store.call_agent("other_user", public["agentId"])
-    scenarios = [
-        ("E1", wizard["status"] == "Ready for MCP call", [str(agent / "agentlas.json"), str(agent / ".agentlas" / "security-scan.json")]),
-        ("E2", bundle["entry"]["path"] == "AGENTS.md" and allowed["status"] == "allowed" and denied["status"] == "denied", [str(agent / "agentlas.json")]),
-        ("E3", denied_download["status"] == "denied" and public_call["status"] == "PASS", ["in-memory-store", "invocation-ledger"]),
-    ]
-    report = {
-        "suite": "hephaestus-agentlas-cloud-field-test",
-        "status": "PASS" if all(item[1] for item in scenarios) else "FAIL",
-        "scenarios": [
-            {"id": item[0], "status": "PASS" if item[1] else "FAIL", "evidence": item[2], "blockers": [] if item[1] else ["scenario failed"]}
-            for item in scenarios
-        ],
-        "ledger": store.invocation_ledger,
-    }
-    Path(".agentlas/field-test-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return report
 
 
 if __name__ == "__main__":

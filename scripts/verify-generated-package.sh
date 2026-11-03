@@ -7,13 +7,8 @@
 # different job, and `verify-contract-templates.sh` compares templates to the
 # schemas they bind — also a different job. So "required" was a wish.
 #
-# Measured on the live catalogue when this was written: of 247 published
-# packages, `.agentlas/capability-eval-plan.json` was present in 4%,
-# `.agentlas/mcp-policy.json` in 50%, and a routing benchmark in 76% — all three
-# marked required since the contract was written. Builds also drifted on where
-# the benchmark lives (`benchmarks/`, `.agentlas/routing-benchmark.jsonl`,
-# `.agentlas/routing-benchmarks.jsonl`), so even a present file could not be
-# found by path. A contract nothing enforces produces exactly that spread.
+# Enforce the declared artifact paths and schemas consistently, including the
+# canonical routing benchmark path, so a generated package is verifiable.
 #
 # Usage:
 #   scripts/verify-generated-package.sh [folder]      # default: .

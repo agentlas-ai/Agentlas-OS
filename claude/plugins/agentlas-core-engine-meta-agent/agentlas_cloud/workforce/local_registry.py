@@ -620,15 +620,9 @@ class LocalWorkforceRegistry:
                     profile = read_json(final_dir / "profile.json", default=None)
                     if isinstance(registration, Mapping) and isinstance(profile, Mapping):
                         verify_profile_integrity(profile)
-                        # ★컴파일러 수리가 이미 가져온 릴리스에 도달하는 유일한 길.
-                        # release_id 는 definitionId+packageHash 에서 나오므로 패키지가
-                        # 그대로면 이 디렉터리도 그대로고, 여기서 replay 하면 프로필은
-                        # 영원히 옛 컴파일러의 산출물로 남는다 — 실측: skill:skill:
-                        # 오염이 149개 중 143개에 있는데 reconcile 을 몇 번 돌려도
-                        # 하나도 낫지 않았다. 저장된 compilerVersion 이 현재와 다르면
-                        # replay 하지 않고 아래로 떨어져 재컴파일한다. 패키지는 그대로이므로
-                        # packageHash·releaseId·경로는 불변이고, 바뀌는 것은 프로필 내용과
-                        # 그에 따른 contentDigest 뿐이다(registration.json 과 함께 원자적으로 교체).
+                        # 저장된 compilerVersion 이 현재와 다르면 프로필을 재컴파일한다. 패키지
+                        # 바이트가 같으면 packageHash·releaseId·경로를 보존하며, 프로필과 contentDigest 를
+                        # registration.json 과 함께 원자적으로 교체한다.
                         stored_compiler = str(
                             (profile.get("provenance") or {}).get("compilerVersion") or ""
                         )
@@ -777,13 +771,9 @@ class LocalWorkforceRegistry:
     def repair_stale_profiles(self, *, dry_run: bool = False) -> dict[str, Any]:
         """Recompile stored releases whose profile predates the current compiler.
 
-        `register()` already recompiles when the stored `compilerVersion` differs,
-        but it is only reached for a package whose *original source folder* is
-        still on disk and still registered. A release imported from a folder that
-        has since moved or been deleted keeps serving whatever the old compiler
-        wrote, forever — measured 154 of 850 stored profiles still carrying the
-        doubled `skill:skill:` prefix, which makes those skills unmatchable by
-        any requirement lookup, months after the compiler was fixed.
+        Refresh stored compiled profiles after compilerVersion changes, even
+        when the original source folder has moved or is no longer available.
+        Recompile from the stored release so obsolete identifiers do not persist.
 
         The materialized package lives inside the release directory itself, so
         the repair never needs the import source: it recompiles from the bytes
@@ -1264,8 +1254,8 @@ class LocalWorkforceRegistry:
 
         They deliberately never enter the profile. `contentDigest` is computed
         over `semantic` + `qualification` (compiler.py), so folding retrieval
-        hints into the profile would move 143 of 149 local digests and with them
-        the session id, the goal roster key, and every pin equality check.
+        hints into the profile would change its digest and the identities used
+        by sessions, goal rosters, and pin equality checks.
         A hint that changes nothing durable can be added, dropped, or corrected
         at any time; a profile field cannot.
         """

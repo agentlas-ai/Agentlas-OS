@@ -15,7 +15,10 @@ devnull, exactly like ``update._spawn_auto_update_worker``. The worker POSTs
 one JSON event with a 3 second timeout and swallows every outcome, so the
 parent never waits on the network.
 
-Opt-out (checked before anything is generated, persisted, or sent):
+Opt-in (checked before anything is generated, persisted, or sent):
+- enable the ``build-telemetry`` engine feature or set ``AGENTLAS_TELEMETRY=1``
+
+Opt-out takes precedence:
 - env  ``AGENTLAS_TELEMETRY`` in {"0", "false", "off", "no"}
 - env  ``DO_NOT_TRACK`` in {"1", "true", "yes", "on"}
 - file ``~/.agentlas/networking/config.json`` with ``"telemetry": false``
@@ -72,6 +75,10 @@ def telemetry_enabled() -> bool:
         if _env_flag_falsy("AGENTLAS_TELEMETRY"):
             return False
         if _env_flag_truthy("DO_NOT_TRACK"):
+            return False
+        from .feature_preferences import feature_enabled
+
+        if not feature_enabled("build-telemetry"):
             return False
         from .networking.bootstrap import telemetry_enabled_in_config
 
@@ -312,6 +319,8 @@ def build_event_tracker(event: str, mode: str | None = None) -> _BuildEventTrack
 def _send_once(raw: str) -> None:
     """Worker-side single POST. Swallows every outcome, prints nothing."""
     try:
+        if not telemetry_enabled():
+            return
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             return

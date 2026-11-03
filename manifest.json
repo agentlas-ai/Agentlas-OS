@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "package": "hephaestus",
-  "version": "1.2.72",
+  "version": "1.2.73",
   "workforceProtocolVersion": "2026-08-21.1",
   "description": "Portable four-agent meta-agent team with a local-first ontology runtime for source archive, GraphRAG, Memory Curator tickets, and Agent Working Memory.",
   "entrypoints": {
@@ -22,7 +22,6 @@
     "claudeHephaestusBrowserCommand": ".claude/commands/hep-browser.md",
     "claudeHephaestusCallCommand": ".claude/commands/hep-call.md",
     "claudeHephaestusUploadCommand": ".claude/commands/hep-upload.md",
-    "claudeHephaestusConnectCommand": ".claude/commands/hep-connect.md",
     "codexHephaestusBuildPrompt": "codex/prompts/hep-build.md",
     "codexHephaestusNetworkPrompt": "codex/prompts/hep-network.md",
     "codexHephaestusStormPrompt": "codex/prompts/hep-storm.md",
@@ -31,7 +30,6 @@
     "codexHephaestusBrowserPrompt": "codex/prompts/hep-browser.md",
     "codexHephaestusCallPrompt": "codex/prompts/hep-call.md",
     "codexHephaestusUploadPrompt": "codex/prompts/hep-upload.md",
-    "codexHephaestusConnectPrompt": "codex/prompts/hep-connect.md",
     "antigravityBuildWorkflow": "antigravity/workflows/hep-build.md",
     "antigravityNetworkWorkflow": "antigravity/workflows/hep-network.md",
     "antigravityStormWorkflow": "antigravity/workflows/hep-storm.md",
@@ -40,7 +38,6 @@
     "antigravityBrowserWorkflow": "antigravity/workflows/hep-browser.md",
     "antigravityCallWorkflow": "antigravity/workflows/hep-call.md",
     "antigravityUploadWorkflow": "antigravity/workflows/hep-upload.md",
-    "agentlasHephaestusConnectWorkflow": ".agents/workflows/hep-connect.md",
     "globalCommands": ".agentlas/global-commands.json",
     "antigravityInstructions": "GEMINI.md",
     "installer": "scripts/install.sh",

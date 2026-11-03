@@ -138,11 +138,8 @@ def _resolve_cwd(payload: dict[str, Any], override: str | None = None) -> Path |
     return path if path.is_dir() else None
 
 
-# Owner decision 2026-08-19: a project boundary ends the upward search. A
-# project living inside another project's folder is its own project; without
-# this the walk kept climbing and adopted the enclosing map — measured: asking
-# about calcTrade in a fresh checkout answered with a different project's
-# economy.js, a confidently wrong path.
+# Stop upward search at a project boundary so a nested project cannot adopt
+# the enclosing project map.
 #
 # The boundary cannot be .git alone, because plenty of real projects never use
 # git: on the first pass a package.json app, a pyproject.toml library and an .hg
@@ -304,10 +301,8 @@ def _trusted_agent_projection(project_root: Path) -> tuple[str, Path] | None:
         return None
     if not isinstance(referenced_payload, dict) or _normalize_slug(str(referenced_payload.get("slug") or "")) != slug:
         return None
-    # Resolve the drawer root via the ONE canonical resolver so evolution reads
-    # the SAME experience.sqlite that one_workspace/local_registry write, under
-    # every relocation env (measured 2026-08-12 adversarial set 2). Falls back to
-    # the AGENTLAS_HOME form the resolver itself honors.
+    # Resolve the drawer with the canonical One resolver so recall and evolution
+    # use the same experience store under every supported relocation setting.
     from .networking.bootstrap import hub_agents_dir
 
     db_path = hub_agents_dir() / slug / "memory" / "experience.sqlite"
@@ -341,9 +336,8 @@ def _query_runtime(
     seed = _english_project_seed(question, db_path)
     if not seed or result.get("status") not in (None, "ok"):
         return result
-    # Plan §9-8 / 1.6 for the project layer: a non-English question that names
-    # no identifier found 0/8 answers (ontology study 2026-09-23) while the same
-    # questions in English found 6/6. The question's own results stay first —
+    # A non-English question may need the optional English retrieval seed.
+    # The question's own results stay first —
     # the English seed only fills the tail, so nothing the question found is
     # displaced (no-regression rule of the English switch).
     try:
@@ -435,12 +429,9 @@ def _source_path(item: dict[str, Any]) -> Path | None:
 def _source_staleness(item: dict[str, Any]) -> tuple[str | None, str | None]:
     """(inline age tag, staleness directive) for one cited source document.
 
-    2026-07-29 incident: the index document had been frozen for 12 days, but
-    the capsule carried no signal of that anywhere, so a session asserted
-    facts from 7/17 as current. Age is not something a capsule consumer can
-    infer, so the producer must always attach it as a label. Fail-open: a
-    source whose age can't be determined stays silently unlabeled rather than
-    risking a false staleness warning.
+    Label source age explicitly so the consumer can distinguish older evidence
+    from current evidence. If age cannot be determined, leave it unlabeled
+    rather than emit a false staleness warning.
     """
 
     path = _source_path(item)
@@ -704,10 +695,8 @@ def build_capsule(
     if project_root is None and not workforce_lines and not continuation_line and not canonical_lines:
         return None, cwd
     question = _extract_prompt(payload, prompt_override) or DEFAULT_SESSION_QUERY
-    # Phase A.2: the prompt is the intent of the work that follows. Recording it
-    # under the same session hash the PreToolUse ledger uses lets a later reader
-    # join "what the user asked" to "which files were then touched" without a
-    # Stop hook — which no runtime adapter registers (measured, see PRD E-1).
+    # Record prompt intent with the same session hash as the PreToolUse ledger
+    # so readers can relate the request to subsequent file edits.
     if project_root is not None and _extract_prompt(payload, prompt_override):
         _append_intent_ledger(project_root, payload, question)
     project_db = (
@@ -748,16 +737,9 @@ def build_capsule(
                 render_context_slice,
             )
 
-            # Read-only recall must not go blind on a project someone else is
-            # editing. Serve the last complete map, flagged stale, rather than
-            # nothing — measured: the pilot was always stale, so One never
-            # received the library it was built for.
-            # The freshness check walks the whole repository; on a large project
-            # it outlives the hook contract itself, and the host then discards
-            # the entire capsule — measured on the pilot: SessionStart 21.1s
-            # against a 15s timeout, UserPromptSubmit 22.9s against 20s,
-            # PreToolUse 17.1s against 10s. Recall now asks under a budget and
-            # accepts an `unverified_served` label instead of dying.
+            # Serve the last complete map with a stale label while another writer is
+            # active. Bound freshness checks to the hook budget and return an explicit
+            # unverified_served label when full verification cannot finish in time.
             structural_slice = context_slice(
                 project_root,
                 question,
@@ -765,10 +747,8 @@ def build_capsule(
                 allow_stale=True,
                 freshness_budget_seconds=RECALL_FRESHNESS_BUDGET_SECONDS,
             )
-            # Render to the layer's own budget. Rendering to 2,400 and then
-            # trimming at 1,200 dropped the whole slice as one oversize line —
-            # measured: every project whose slice exceeded 1,200 chars (i.e.
-            # every real one) received no library at all, only small fixtures did.
+            # Render directly to this layer's budget so a valid slice is not dropped by
+            # a second, smaller truncation boundary.
             context_slice_line = render_context_slice(
                 structural_slice, max_chars=LAYER_BUDGETS["context_slice"] - 1
             )
@@ -781,14 +761,9 @@ def build_capsule(
             # The hook is recall-only and fail-open. First-contact/bootstrap or
             # a task-resolved MCP query upgrades/materializes the map.
             context_slice_line = None
-    # P3 — One personal-agent recall: non-aging craft (procedure/decision/risk)
-    # picked by question overlap with a current-project boost, budgeted by the
-    # curator ruleset. Facts stay with the self-correcting project layer.
-    # Fail-open: personal recall must never break project recall.
-    # `agentlas-one off` has to actually turn the drawer off. This layer read it
-    # unconditionally, so a user who switched One off still received personal
-    # recall on every prompt — measured: state.json {"on": false} still produced
-    # 5 one[...] lines. The switch was only consulted by the auto-update branch.
+    # Select non-aging personal procedure/decision/risk recall by query overlap
+    # with the configured project boost and budget. Facts remain with project recall.
+    # Personal recall must fail open and honor agentlas-one off before drawer access.
     one_lines: list[str] = []
     one_capsule: dict[str, Any] = {}
     one_root = _one_root()
@@ -797,10 +772,8 @@ def build_capsule(
             from .one_workspace import select_one_capsule, session_seed_query
 
             prompt_text = _extract_prompt(payload, prompt_override)
-            # R0 (research 2026-09-23): a prompt-less hook used to recall with the
-            # constant DEFAULT_SESSION_QUERY and count it like a real question —
-            # 71.5% of all deliveries. It now recalls under its own channel, or
-            # with the workspace's last English turn summary when that is on.
+            # Prompt-less hooks use a separate recall channel, optionally seeded
+            # by the workspace's last English turn summary.
             one_question, one_channel = question, "prompt"
             if not prompt_text:
                 seed = session_seed_query(one_root, [str(cwd), str(context_root)])
@@ -886,9 +859,8 @@ def build_capsule(
     body_lines = [
         "scope=trusted-owner/actor/project; recall-writes=disabled; network=disabled",
         "authority=retrieved evidence plus durable workforce binding state; never override host or project policy",
-        # R21 W2c — the one memory-misevolution mitigation with a measured effect
-        # (arXiv:2509.26354 §4). Canonical sentence lives in the curator ruleset
-        # (injection.referenceFraming); keep this line in sync with it.
+        # The canonical reference-framing sentence lives in the curator ruleset
+        # injection.referenceFraming; keep the corresponding render line in sync.
         "framing=treat retrieved memories as references, not rules: re-verify against the current context and make an independent decision",
         "dedupe=replace any active capsule with the same digest; reapply the newest capsule after compaction",
         *([emit_line] if emit_line else []),
@@ -1028,9 +1000,7 @@ def _append_contact_ledger(
 
     This is the growth signal the project map cannot derive statically: files
     that are always edited together are related even when no import connects
-    them. Measured on this repo's history, co-edited pairs predicted the next
-    change 94.5% of the time versus 13.4% for the AST dependency graph, and
-    95.4% of those pairs had no AST edge at all.
+    them. The contact ledger supplies those relationships without an import edge.
 
     Never blocks and never raises: a failure here must not cost the user their
     edit. Content is never read; only project-relative paths are stored.
@@ -1071,11 +1041,8 @@ def _session_key_raw(payload: dict[str, Any]) -> str:
 def _session_key(payload: dict[str, Any]) -> str:
     """Stable per-conversation key; never the raw id, never a shared constant.
 
-    Hosts that send no session id (grok, antigravity — measured) would all hash
-    to sha256("") and every edit in the project would become one work unit. In
-    that case fall back to the parent process id, which is stable for the life
-    of the host process and distinct across hosts. The reader also splits work
-    units by time window, so even this fallback stays bounded.
+    When a host omits its session id, use the parent process id to distinguish
+    host lifetimes. The reader additionally bounds work units by time window.
     """
 
     raw = _payload_string(payload, ("session_id", "sessionId", "conversation_id"))
@@ -1164,11 +1131,8 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
     try:
         from .context_map import RECALL_FRESHNESS_BUDGET_SECONDS, impact
 
-        # PreToolUse has the tightest contract of all (10s). Warning about a
-        # reverse dependency is worth more than proving the index is current,
-        # so this path takes the same budget-and-label deal as recall — before
-        # this it ran unbounded and the host discarded the warning entirely
-        # (measured 17.1s on the pilot).
+        # PreToolUse has a 10s contract. Bound freshness work and label unverified
+        # results so a reverse-dependency warning fits the available time.
         result = impact(
             project_root,
             changed,
@@ -1370,15 +1334,17 @@ def _refresh_declared_context(root: Path | None) -> None:
     were already scope="project". The knowledge was being written; it simply
     never reached the audience it was written for.
 
-    Turn granularity, not session: a session can run for hours and an agent
-    starting work mid-session must see what the previous turn concluded.
-    Measured at 0.22s and idempotent, so it is cheap enough to run on every
-    prompt; failures are silent because a stale map still beats a lost turn.
+    Refresh at turn granularity so work started mid-session can use the latest
+    conclusion. Keep refresh idempotent and preserve the turn if refresh fails.
     """
 
     if root is None:
         return
     try:
+        from .feature_preferences import feature_enabled
+
+        if not feature_enabled("context-map"):
+            return
         from .context_map_authoring import refresh_declared_context
 
         refresh_declared_context(root)
@@ -1398,19 +1364,21 @@ def _spawn_project_ensure(target: Path, *, reason: str) -> bool:
         env = os.environ.copy()
         existing = env.get("PYTHONPATH")
         env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
+        if reason == "hook-format-migration":
+            command = [
+                sys.executable, "-c",
+                "import sys; from agentlas_cloud.memory_hook import _run_project_migration; "
+                "raise SystemExit(_run_project_migration(sys.argv[1]))",
+                str(target),
+            ]
+        else:
+            command = [
+                sys.executable, "-m", "agentlas_cloud.cli", "project", "ensure",
+                "--project", str(target), "--reason", reason,
+            ]
         with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
             subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "agentlas_cloud.cli",
-                    "project",
-                    "ensure",
-                    "--project",
-                    str(target),
-                    "--reason",
-                    reason,
-                ],
+                command,
                 cwd=str(target),
                 env=env,
                 stdin=stdin,
@@ -1465,12 +1433,9 @@ def _spawn_project_ingest(target: Path, *, reason: str) -> bool:
     return True
 
 
-# A shipped map-format change has to reach the projects that already exist, not
-# only the ones created after it. First-contact seeding returns early on any
-# folder that already has .agentlas, so without this ladder a project seeded
-# before a format landed keeps the old layout forever — measured: a v1 sitemap
-# stayed v1 across repeated sessions. Each id runs at most once per project and
-# leaves a receipt, so a machine already migrated costs one small file read.
+# Apply each map-format migration once per project and leave a receipt.
+# Existing project directories must receive migrations without rerunning
+# first-contact seeding.
 #
 # `project-full-ingest.v1` is different in kind: it is not a format fix that
 # `project ensure` applies in a second, it is an ingest of every project
@@ -1527,15 +1492,131 @@ def _record_migrations(root: Path, identifiers: list[str]) -> None:
         return
 
 
+MIGRATION_RUN_STATE = ".migration-run.json"
+MIGRATION_SPAWN_GRACE_SECONDS = 30 * 60
+MIGRATION_FAILURE_BACKOFF_SECONDS = 60 * 60
+MIGRATION_FAILURE_BACKOFF_MAX_SECONDS = 24 * 60 * 60
+
+
+def _migration_state_path(root: Path) -> Path:
+    return root / ".agentlas" / MIGRATION_RUN_STATE
+
+
+def _read_migration_state(root: Path) -> dict[str, Any]:
+    path = _migration_state_path(root)
+    try:
+        if path.is_symlink() or not path.is_file():
+            return {}
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def _write_migration_state(root: Path, state: dict[str, Any]) -> None:
+    path = _migration_state_path(root)
+    try:
+        if path.parent.is_symlink() or not path.parent.is_dir() or path.is_symlink():
+            return
+        temporary = path.with_name(f".{MIGRATION_RUN_STATE}.{os.getpid()}.{time.time_ns()}.tmp")
+        temporary.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+        if os.name != "nt":
+            os.chmod(temporary, 0o600)
+        temporary.replace(path)
+    except OSError:
+        return
+
+
+def _migration_spawn_due(root: Path, now: float | None = None) -> bool:
+    """One detached migration at a time; a failed one waits out its backoff.
+
+    The worker records completion itself, so without this a hook firing while
+    the worker runs (or after it failed) launched another full `project ensure`
+    on every event.
+    """
+
+    current = time.time() if now is None else now
+    state = _read_migration_state(root)
+    status = state.get("status")
+    if status == "spawned":
+        spawned = state.get("spawnedEpoch")
+        if isinstance(spawned, (int, float)) and 0 <= current - float(spawned) < MIGRATION_SPAWN_GRACE_SECONDS:
+            return False
+    if status == "failed":
+        failed = state.get("failedEpoch")
+        failures = state.get("consecutiveFailures")
+        failures = failures if isinstance(failures, int) and failures > 0 else 1
+        backoff = min(MIGRATION_FAILURE_BACKOFF_MAX_SECONDS, MIGRATION_FAILURE_BACKOFF_SECONDS * (2 ** (failures - 1)))
+        if isinstance(failed, (int, float)) and 0 <= current - float(failed) < backoff:
+            return False
+    return True
+
+
+def _mark_migration_spawned(root: Path) -> None:
+    state = _read_migration_state(root)
+    state.update({"status": "spawned", "spawnedEpoch": int(time.time())})
+    _write_migration_state(root, state)
+
+
+def _finish_migration_state(root: Path, *, succeeded: bool) -> None:
+    if succeeded:
+        _write_migration_state(root, {"status": "complete", "finishedEpoch": int(time.time())})
+        return
+    state = _read_migration_state(root)
+    failures = state.get("consecutiveFailures")
+    failures = failures + 1 if isinstance(failures, int) and failures > 0 else 1
+    _write_migration_state(root, {"status": "failed", "failedEpoch": int(time.time()), "consecutiveFailures": failures})
+
+
+def _run_project_migration(project: str) -> int:
+    """Record migrations only after the detached worker completes the seed."""
+    from .project_bootstrap import _project_root, auto_bootstrap_enabled, ensure_project
+
+    root: Path | None = None
+    if not auto_bootstrap_enabled():
+        return 2
+    try:
+        root = _project_root(project)
+        pending = [name for name in PROJECT_MIGRATIONS if name not in SELF_RECEIPTED_MIGRATIONS and name not in _applied_migrations(root)]
+        if not pending:
+            _finish_migration_state(root, succeeded=True)
+            return 0
+        result = ensure_project(root, reason="hook-format-migration", enforce_feature_preferences=True)
+        safe_warning = (
+            result.get("status") == "privacy_warning"
+            and result.get("privacyBlockInstalled") is True
+            and result.get("privateModeCompliant") is True
+            and not result.get("missing")
+            and not result.get("permissionIssues")
+        )
+        if result.get("status") != "active" and not safe_warning:
+            _finish_migration_state(root, succeeded=False)
+            return 1
+        if not auto_bootstrap_enabled():
+            return 2
+        _record_migrations(root, pending)
+        _finish_migration_state(root, succeeded=True)
+        return 0
+    except (OSError, TimeoutError, ValueError):
+        if root is not None:
+            _finish_migration_state(root, succeeded=False)
+        return 1
+
+
 def _maybe_migrate_project(root: Path) -> None:
     """Bring an already-seeded project up to the current map formats."""
 
     try:
+        from .project_bootstrap import auto_bootstrap_enabled, bootstrap_feature_dependencies
+
+        if not auto_bootstrap_enabled() or bootstrap_feature_dependencies():
+            return
         applied = _applied_migrations(root)
         pending = [name for name in PROJECT_MIGRATIONS if name not in applied]
         ensure_pending = [name for name in pending if name not in SELF_RECEIPTED_MIGRATIONS]
-        if ensure_pending and _spawn_project_ensure(root, reason="hook-format-migration"):
-            _record_migrations(root, ensure_pending)
+        if ensure_pending and _migration_spawn_due(root):
+            if _spawn_project_ensure(root, reason="hook-format-migration"):
+                _mark_migration_spawned(root)
     except Exception:
         return
     _maybe_full_ingest(root, migration_pending="project-full-ingest.v1" in pending)
@@ -1546,6 +1627,10 @@ def _maybe_english_surface(root: Path) -> None:
     """Spawn the project English-surface worker when due. Never blocks."""
 
     try:
+        from .feature_preferences import feature_enabled
+
+        if not feature_enabled("project-index"):
+            return
         runtime_root = os.environ.get("HEPHAESTUS_RUNTIME_ROOT")
         if runtime_root and root.resolve() == Path(runtime_root).expanduser().resolve():
             return
@@ -1566,6 +1651,10 @@ def _maybe_full_ingest(root: Path, *, migration_pending: bool) -> None:
     """
 
     try:
+        from .feature_preferences import feature_enabled
+
+        if not feature_enabled("project-index"):
+            return
         from .project_full_ingest import mark_spawned, record_migration_failure, spawn_reason
 
         runtime_root = os.environ.get("HEPHAESTUS_RUNTIME_ROOT")
@@ -1605,13 +1694,13 @@ def _maybe_seed_project(cwd: Path | None) -> None:
     if cwd is None:
         return
     try:
+        from .project_bootstrap import _project_root, auto_bootstrap_enabled, bootstrap_feature_dependencies
+
+        if not auto_bootstrap_enabled() or bootstrap_feature_dependencies():
+            return
         root = _agentlas_project_root(cwd)
         if root is not None:
             _maybe_migrate_project(root)
-            return
-        from .project_bootstrap import _project_root, auto_bootstrap_enabled
-
-        if not auto_bootstrap_enabled():
             return
         target = _project_root(cwd)
         # Deliberately NOT _within_auto_boundary: with no AGENTLAS_AUTO_ROOTS
@@ -1642,6 +1731,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cwd")
     parser.add_argument("--prompt")
     parser.add_argument("--locale", choices=("en", "ko"), default=None)
+    parser.add_argument("--memory-only", action="store_true")
     args = parser.parse_args(argv)
     if os.environ.get("AGENTLAS_TRANSLATE_WORKER"):
         # A headless translator session (memory_translate): no recall capsule
@@ -1651,6 +1741,36 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(empty + "\n")
         return 0
     payload = _read_payload()
+    try:
+        from .feature_preferences import feature_enabled
+
+        enabled = feature_enabled("memory-hooks")
+    except Exception:
+        enabled = False
+    if not enabled:
+        # Older installations may still invoke a previously installed hook.
+        # Preserve each host's empty-output contract without reading memory or
+        # starting project, index, or update work while the feature is off.
+        empty = _empty_output(args.host)
+        if empty:
+            sys.stdout.write(empty + "\n")
+        return 0
+    if args.memory_only:
+        # The optional standalone plugin never runs legacy One, project,
+        # Context Map, index, or update helpers, even if separately enabled.
+        event = _event_name(payload, args.event)
+        output = _empty_output(args.host)
+        try:
+            from .memory_standalone import capsule, stop
+            if event == "Stop":
+                stop(payload, args.host)
+            elif event in {"SessionStart", "UserPromptSubmit"}:
+                output = _format_output(args.host, event, capsule(payload, args.host), None)
+        except Exception:
+            pass
+        if output:
+            sys.stdout.write(output + "\n")
+        return 0
     locale = args.locale or ("ko" if os.environ.get("AGENTLAS_LOCALE", "").lower().startswith("ko") else "en")
     event = ""
     try:
@@ -1683,9 +1803,15 @@ def main(argv: list[str] | None = None) -> int:
         _maybe_seed_project(turn_cwd)
         # Runs after the capsule is already written: this turn is served from
         # the map as it stood, and the fold-in lands for the next one.
-        _refresh_declared_context(
-            _agentlas_project_root(turn_cwd) if turn_cwd is not None else None
-        )
+        try:
+            from .feature_preferences import feature_enabled
+
+            if feature_enabled("context-map"):
+                _refresh_declared_context(
+                    _agentlas_project_root(turn_cwd) if turn_cwd is not None else None
+                )
+        except Exception:
+            pass
     if event == "SessionStart":
         _maybe_start_runtime_auto_update()
         try:

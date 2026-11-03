@@ -1,18 +1,7 @@
 """One owner for the words a routing card is allowed to use.
 
-Measured on the live corpus (399 published routing cards, 2026-08-07):
-
-    supported_runtimes    codex-cli 102, agentlas-hub 5   — not in the schema enum
-    capabilities_at_risk  shell_execution 22, shell_exec 19, network_access 19,
-                          network_fetch 8                  — same concepts, two spellings each
-    required_inputs       object 255, string 110           — schema allowed object only
-    produces              string 91, object 30             — schema allowed object only
-
-None of those packages is wrong. They were published, they work, and they are
-what the generators actually write. What was wrong is a closed enum that had
-never been reconciled with the corpus it judges: 295 published packages were
-measured against the package contract and 3 passed, and the top blockers were
-these four rules rejecting real data.
+Routing vocabulary normalizes accepted legacy spellings and equivalent field
+shapes without invalidating existing packages.
 
 So the vocabulary lives here, in one place, with three rules:
 
@@ -116,12 +105,7 @@ def is_wellformed_risk_capability(value: object) -> bool:
 
 
 # ── what a card says it reads and writes ────────────────────────────────────
-# Measured across 709 published cards: reads = project 523, "task input only" 12,
-# none 10, package 4; writes = project 517, none 22, redacted_preferences_only 5,
-# local_ledger_only 4, project_with_approval 1. The schema admitted `project` and
-# `none` only, so 26 published cards failed a rule they were published under —
-# and a card that says "task input only" is stating something narrower and safer
-# than either allowed value, which is the opposite of a defect.
+# Preserve narrower memory declarations as aliases of their canonical scope.
 CANONICAL_MEMORY_READS: tuple[str, ...] = ("project", "package", "task", "none")
 MEMORY_READS_ALIASES: dict[str, str] = {
     "task_input_only": "task",

@@ -3,6 +3,8 @@ description: Staff a task from registered Local, owner Cloud, and public Hub age
 ---
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
+<!-- prompt-module: {"id":"os.commands.network-body","revision":2,"stability":"versioned-content","changeTriggers":["release"],"channel":"user"} -->
+
 # /hep-network
 
 <!-- prompt-module: {"id":"command.hep-network.host-execution","revision":2,"stability":"fixed-policy","changeTriggers":["release"],"order":0} -->
@@ -70,18 +72,13 @@ done
    execution proof. Hand-off
    edges must be acyclic: a review or feedback edge that points back to an
    earlier slot is rejected as `task_force_cycle:<the loop path>` — model review
-   as a forward hand-off to the reviewer, not a back-edge (measured 2026-08-19:
-   a researcher→research→quality-engineer order with a `reviews` back-edge was
-   refused, and because edges live inside the WorkOrder the repair changed
-   `workOrderDigest` and forced the whole three-source federation to run again).
+   as a forward hand-off to the reviewer, not a back-edge. Changing an edge
+   changes `workOrderDigest` and requires a fresh federation for that WorkOrder.
    Keep the default `selectionPolicy.maximumCandidatesPerSlot` at 30 unless a
    measured recall need justifies widening it (the schema allows up to 100),
    and never shrink it yourself to save tokens. The Hub and Cloud sources
    already shrink safely: they order each slot by fit with a decision model
-   and, for a default-sized menu, send only their best 8. Measured 2026-09-24
-   on 40 live work orders: fit order put the right agent first 40/40, while in
-   the unranked order it sat in the first 8 only 11/38 times — the menu bytes
-   per slot fell 73%. Core still presents the merged menu in
+   and, for a default-sized menu, send only their best 8. Core still presents the merged menu in
    `canonical_identity_no_rerank` order and Local candidates are not
    fit-ranked, so a smaller cap you set would cut rows arbitrarily, not
    worst-first. When a slot needs more rows, set the maximum above 30: the
@@ -92,9 +89,7 @@ done
    Write every discovery-facing natural-language field (statement, role
    descriptions, required skills/knowledge) in English, faithfully translating a
    non-English request rather than passing its original wording through: the
-   candidate corpus is English and cross-lingual matching silently buries the
-   correct agent (measured: an identical query ranked its target 1st in English
-   and 144th in Korean). Keep an untranslatable proper term alongside a short
+   candidate corpus uses English for discovery. Keep an untranslatable proper term alongside a short
    English gloss, e.g. `종합소득세 (Korean comprehensive income tax)`. The
    `languages` slot is the delivery requirement, not the search language — set
    it to the language the work product must be produced in (e.g. `ko`) even
@@ -109,7 +104,7 @@ done
    carries summary cards (ordinal, name, entityKind, communities, one summary,
    `callable`, `missingMandatory`, and `publisherTriggerMatch` when the
    publisher's own trigger sentences match this request) instead of full
-   dossiers — measured 40,873B -> 10,087B for one 20-candidate slot. Narrow to
+   dossiers. Narrow to
    the candidates worth a closer look, then call `workforce.expand_candidates`
    with `{selectionSessionId, candidates:[{slotId, candidateOrdinal}]}` and
    **decide from those full cards**, never from the summary alone. Keep the

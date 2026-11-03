@@ -36,6 +36,8 @@ from .windows_console import no_console_window
 STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
 INBOX_DIR = "ontology-inbox"
 INDEX_FILE = "agentlas-project-index.md"
+PRIVATE_INDEX_PREFIX = "agentlas-project-index-nomemory-"
+PRIVATE_INDEX_LIMIT = 1024
 ONTOLOGY_DB_FILE = "ontology-runtime.sqlite"
 
 # Mirrors Desktop electron/ontology/project-runtime.ts:61-76 and the PM read
@@ -80,7 +82,7 @@ def _index_is_fresh(index_path: Path) -> bool:
         return False
 
 
-def _database_lags_index(project_root: Path, index_path: Path) -> bool:
+def _database_lags_index(project_root: Path, index_path: Path, *, missing_source_is_lag: bool = False) -> bool:
     """True when the index file on disk is not what the ontology last ingested.
 
     The query engine fails closed on a changed source (stale_index), so a fresh
@@ -95,8 +97,10 @@ def _database_lags_index(project_root: Path, index_path: Path) -> bool:
     import sqlite3
 
     db_path = project_root / ".agentlas" / ONTOLOGY_DB_FILE
-    if not db_path.exists() or not index_path.exists():
+    if not index_path.exists():
         return False
+    if not db_path.exists():
+        return missing_source_is_lag
     try:
         digest = hashlib.sha256(index_path.read_bytes()).hexdigest()
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.2)
@@ -108,7 +112,7 @@ def _database_lags_index(project_root: Path, index_path: Path) -> bool:
             conn.close()
     except Exception:
         return False
-    return row is not None and str(row[0] or "") != digest
+    return missing_source_is_lag if row is None else str(row[0] or "") != digest
 
 
 def _pm_layer_newer_than_index(project_root: Path, index_path: Path) -> bool:
@@ -245,7 +249,8 @@ def _inbox_fingerprint(inbox_path: Path) -> str:
     except OSError:
         entries = []
     for entry in entries:
-        if entry.name == INDEX_FILE or entry.is_symlink() or not entry.is_file():
+        if (entry.name == INDEX_FILE or entry.name.startswith(PRIVATE_INDEX_PREFIX)
+                or entry.is_symlink() or not entry.is_file()):
             continue
         try:
             digest.update(f"{entry.name}:{entry.stat().st_size}\n".encode("utf-8"))
@@ -254,14 +259,15 @@ def _inbox_fingerprint(inbox_path: Path) -> str:
     return digest.hexdigest()
 
 
-def build_project_index(project_root: Path) -> str:
+def build_project_index(project_root: Path, *, include_memory: bool = True) -> str:
     inbox_path = project_root / ".agentlas" / INBOX_DIR
     lines = [
         "# Agentlas project ontology index",
         "",
         f"Project: {_safe_markdown_path(project_root.name or 'Project')}",
         "Scope: local project only",
-        "Source policy: deterministic sitemap, fixed root documents, and bounded .agentlas/pm documents",
+        ("Source policy: deterministic sitemap, fixed root documents, and bounded .agentlas/pm documents"
+         if include_memory else "Source policy: deterministic sitemap and fixed root documents; project memory excluded"),
         f"Inbox fingerprint: sha256:{_inbox_fingerprint(inbox_path)}",
         "Producer: core-backstop (Desktop materializer supersedes on its next visit)",
         "",
@@ -297,20 +303,96 @@ def build_project_index(project_root: Path) -> str:
         if content and not _looks_secret(content):
             append_document(relative, content, source_path)
     pm_root = project_root / ".agentlas" / PM_DIR
-    for relative, content in _discover_pm_files(project_root):
+    for relative, content in (_discover_pm_files(project_root) if include_memory else []):
         append_document(f".agentlas/{PM_DIR}/{relative}", content[:PM_DOC_SLICE_CHARS], pm_root / relative)
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _spawn_detached_ingest(project_root: Path) -> None:
-    runtime_root = Path(__file__).resolve().parent.parent
+def _private_index_matches(project_root: Path, index_path: Path, expected_digest: str) -> bool:
+    """Verify the content-addressed memory-excluding index and its current inputs."""
+    try:
+        if index_path.is_symlink() or not index_path.is_file():
+            return False
+        expected = build_project_index(project_root, include_memory=False).encode("utf-8")
+        if hashlib.sha256(expected).hexdigest() != expected_digest:
+            return False
+        if index_path.stat().st_size != len(expected):
+            return False
+        return index_path.read_bytes() == expected
+    except (OSError, UnicodeError, ValueError):
+        return False
+
+
+def _guarded_private_ingest(project_root: Path, digest: str) -> int:
+    """Recheck preferences and index content in the worker before ingestion."""
+    from .feature_preferences import feature_enabled
+
+    if (len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest)
+            or not feature_enabled("project-index") or feature_enabled("memory-hooks")):
+        return 2
+    agentlas_dir = project_root / ".agentlas"
+    inbox_path = agentlas_dir / INBOX_DIR
+    if agentlas_dir.is_symlink() or inbox_path.is_symlink():
+        return 2
+    index_path = inbox_path / f"{PRIVATE_INDEX_PREFIX}{digest}.md"
+    if not _private_index_matches(project_root, index_path, digest):
+        return 2
+    if not feature_enabled("project-index") or feature_enabled("memory-hooks"):
+        return 2
+    from ontology.cli import main as ontology_main
+
     db_path = project_root / ".agentlas" / ONTOLOGY_DB_FILE
+    if (not feature_enabled("project-index") or feature_enabled("memory-hooks")
+            or not _private_index_matches(project_root, index_path, digest)):
+        return 2
+    return ontology_main(["--db", str(db_path), "ingest", str(index_path)])
+
+
+def _file_digest(path: Path) -> str | None:
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _guarded_auto_ingest(project_root: Path, digest: str) -> int:
+    """Preserve legacy auto-ingest only while its options and index match."""
+    from .feature_preferences import feature_enabled
+
+    inbox = project_root / ".agentlas" / INBOX_DIR
+    index_path = inbox / INDEX_FILE
+    if (len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest)
+            or (project_root / ".agentlas").is_symlink() or inbox.is_symlink()
+            or not feature_enabled("project-index") or not feature_enabled("memory-hooks")
+            or _file_digest(index_path) != digest):
+        return 2
+    from ontology.cli import main as ontology_main
+
+    if (not feature_enabled("project-index") or not feature_enabled("memory-hooks")
+            or _file_digest(index_path) != digest):
+        return 2
+    db_path = project_root / ".agentlas" / ONTOLOGY_DB_FILE
+    return ontology_main(["--db", str(db_path), "auto", str(project_root)])
+
+
+def _spawn_detached_ingest(project_root: Path, *, include_memory: bool = True,
+                           private_digest: str | None = None) -> None:
+    runtime_root = Path(__file__).resolve().parent.parent
     env = os.environ.copy()
     existing = env.get("PYTHONPATH")
     env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
     with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
+        digest = (_file_digest(project_root / ".agentlas" / INBOX_DIR / INDEX_FILE)
+                  if include_memory else private_digest)
+        if not digest:
+            return
+        operation = "--guarded-auto-ingest" if include_memory else "--guarded-private-ingest"
+        command = [sys.executable, "-m", "agentlas_cloud.project_index_backstop",
+                   operation, str(project_root), digest]
         subprocess.Popen(
-            [sys.executable, "-m", "ontology", "--db", str(db_path), "auto", str(project_root)],
+            command,
             cwd=str(project_root),
             env=env,
             stdin=stdin,
@@ -322,6 +404,29 @@ def _spawn_detached_ingest(project_root: Path) -> None:
         )
 
 
+def _remove_private_indexes(inbox_path: Path, keep: str | None = None) -> None:
+    """Drop memory-excluding index generations other than ``keep``.
+
+    Each content change writes a new content-addressed file. Without this the
+    inbox kept every generation (each one an ingest source) until the
+    PRIVATE_INDEX_LIMIT stopped refreshes altogether.
+    """
+
+    try:
+        entries = list(inbox_path.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        if not entry.name.startswith(PRIVATE_INDEX_PREFIX) or entry.name == keep:
+            continue
+        try:
+            if entry.is_symlink() or not entry.is_file():
+                continue
+            entry.unlink()
+        except OSError:
+            continue
+
+
 def maybe_refresh_project_index(cwd: Path | str | None) -> bool:
     """Regenerate a missing/stale project index for ``cwd``'s project, fail-silent.
 
@@ -330,6 +435,10 @@ def maybe_refresh_project_index(cwd: Path | str | None) -> bool:
     """
 
     try:
+        from .feature_preferences import feature_enabled
+
+        if not feature_enabled("project-index"):
+            return False
         if cwd is None:
             return False
         project_root = find_project_root(Path(cwd).resolve())
@@ -342,18 +451,62 @@ def maybe_refresh_project_index(cwd: Path | str | None) -> bool:
             # Never generate project memory inside an installed/signed runtime.
             return False
         inbox_path = project_root / ".agentlas" / INBOX_DIR
-        index_path = inbox_path / INDEX_FILE
-        if _index_is_fresh(index_path) and not _pm_layer_newer_than_index(project_root, index_path):
-            if _database_lags_index(project_root, index_path):
-                _spawn_detached_ingest(project_root)
+        if inbox_path.is_symlink():
             return False
-        content = build_project_index(project_root)
+        index_path = inbox_path / INDEX_FILE
+        include_memory = feature_enabled("memory-hooks")
+        if not include_memory:
+            content = build_project_index(project_root, include_memory=False).encode("utf-8")
+            digest = hashlib.sha256(content).hexdigest()
+            private_path = inbox_path / f"{PRIVATE_INDEX_PREFIX}{digest}.md"
+            if not feature_enabled("project-index") or feature_enabled("memory-hooks"):
+                return False
+            inbox_path.mkdir(parents=True, exist_ok=True)
+            created = False
+            if not private_path.exists() and sum(
+                1 for entry in inbox_path.iterdir() if entry.name.startswith(PRIVATE_INDEX_PREFIX)
+            ) >= PRIVATE_INDEX_LIMIT:
+                return False
+            try:
+                fd = os.open(private_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+            except FileExistsError:
+                pass
+            else:
+                created = True
+                with os.fdopen(fd, "wb") as output:
+                    output.write(content)
+            if not _private_index_matches(project_root, private_path, digest):
+                return False
+            _remove_private_indexes(inbox_path, keep=private_path.name)
+            if (feature_enabled("project-index") and not feature_enabled("memory-hooks")
+                    and (created or _database_lags_index(project_root, private_path, missing_source_is_lag=True))):
+                _spawn_detached_ingest(project_root, include_memory=False, private_digest=digest)
+            return created
+        _remove_private_indexes(inbox_path)
+        if _index_is_fresh(index_path) and not _pm_layer_newer_than_index(project_root, index_path):
+            if (feature_enabled("project-index") and feature_enabled("memory-hooks")
+                    and _database_lags_index(project_root, index_path)
+                    and feature_enabled("project-index") and feature_enabled("memory-hooks")):
+                _spawn_detached_ingest(project_root, include_memory=True)
+            return False
+        content = build_project_index(project_root, include_memory=include_memory)
+        if not feature_enabled("project-index") or feature_enabled("memory-hooks") != include_memory:
+            return False
         inbox_path.mkdir(parents=True, exist_ok=True)
         temporary = index_path.with_name(f".{INDEX_FILE}.tmp.{os.getpid()}.{time.time_ns()}")
         temporary.write_text(content, encoding="utf-8")
         os.chmod(temporary, 0o600)
         temporary.replace(index_path)
-        _spawn_detached_ingest(project_root)
+        if feature_enabled("project-index") and feature_enabled("memory-hooks") == include_memory:
+            _spawn_detached_ingest(project_root, include_memory=include_memory)
         return True
     except Exception:
         return False
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 4 and sys.argv[1] == "--guarded-private-ingest":
+        raise SystemExit(_guarded_private_ingest(Path(sys.argv[2]), sys.argv[3]))
+    if len(sys.argv) == 4 and sys.argv[1] == "--guarded-auto-ingest":
+        raise SystemExit(_guarded_auto_ingest(Path(sys.argv[2]), sys.argv[3]))
+    raise SystemExit(2)

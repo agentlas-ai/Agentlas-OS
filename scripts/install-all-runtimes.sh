@@ -35,7 +35,8 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-version="${HEPHAESTUS_REF:-v1.2.72}"
+release_ref="${HEPHAESTUS_REF:-os-v1.2.73}"
+version="${release_ref#os-}"
 repo_was_explicit="${HEPHAESTUS_REPO:-}"
 github_url_was_explicit="${HEPHAESTUS_GITHUB_URL:-}"
 repo="${HEPHAESTUS_REPO:-agentlas-ai/Agentlas-OS}"
@@ -132,6 +133,8 @@ have() {
 }
 
 resolve_install_source_identity() {
+  [[ "$release_ref" =~ ^os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { warn "standalone_channel_tag_invalid"; return 1; }
+  [[ -z "$requested_source_dir" ]] || { warn "standalone_local_source_unverified"; return 1; }
   # Validate before download, CLI registration, removal or cache maintenance.
   # Local sources have no remote repo/URL identity to reconcile.
   if [[ -n "$requested_source_dir" ]]; then
@@ -378,7 +381,6 @@ managed_skill_fallback=(
   "hephaestus-network"
   "hephaestus-cloud"
   "hephaestus-storm"
-  "hephaestus-graph"
   "hephaestus-upload"
 )
 
@@ -399,7 +401,7 @@ if not isinstance(skills, list) or not skills:
 safe = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 if any(not isinstance(name, str) or not safe.fullmatch(name) for name in skills):
     raise SystemExit("universalSkills contains an unsafe name")
-print("\n".join(skills))
+print("\n".join(name for name in skills if name != "hephaestus-graph"))
 PY
   )" || {
     warn "could not read universalSkills from $registry; using the legacy universal skill fallback."
@@ -412,6 +414,31 @@ PY
   done <<< "$rendered"
   [[ "${#managed_skill_names[@]}" -gt 0 ]] || managed_skill_names=("${managed_skill_fallback[@]}")
   log "Command registry selected universal skills: ${managed_skill_names[*]}"
+}
+
+feature_is_enabled() {
+  local feature="$1" py=""
+  py="$(resolve_python_cmd || true)"
+  [[ -n "$py" ]] || return 1
+  [[ -n "${source_dir:-}" && -d "$source_dir" ]] || return 1
+  PYTHONPATH="$(installer_pythonpath "$source_dir")" run_resolved_python "$py" -c \
+    'import sys; from agentlas_cloud.feature_preferences import feature_enabled; raise SystemExit(0 if feature_enabled(sys.argv[1]) else 1)' \
+    "$feature" >/dev/null 2>&1
+}
+
+one_mode_enabled() {
+  local py=""
+  py="$(resolve_python_cmd || true)"
+  [[ -n "$py" ]] || return 1
+  run_resolved_python "$py" - "$HOME/.agentlas/one/state.json" <<'PY' >/dev/null 2>&1
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as stream:
+        state = json.load(stream)
+    raise SystemExit(0 if isinstance(state, dict) and state.get("on") is True else 1)
+except (OSError, ValueError):
+    raise SystemExit(1)
+PY
 }
 
 # The managed command set is DERIVED from the release, never typed out again.
@@ -428,6 +455,7 @@ managed_command_files() {
   for path in "$dir"/*.md; do
     [[ -e "$path" ]] || continue
     name="$(basename "$path")"
+    case "$name" in hep-graph.md|agentlas-graph.md|hep-connect.md|agentlas-connect.md) continue ;; esac
     skip=0
     for excluded in "${project_only_commands[@]}"; do
       [[ "$name" == "$excluded" ]] && skip=1
@@ -481,10 +509,11 @@ resolve_archive_python_cmd() {
 
 prepare_release_source() {
   local destination="$1" py="$2"
-  local asset="hephaestus-runtime-$version.tar.gz"
-  local archive_url="https://github.com/$repo/releases/download/$version/$asset"
-  run_resolved_python "$py" - "$destination" "$archive_url" <<'PY_RELEASE'
-import gzip, hashlib, os, re, signal, subprocess, sys, tarfile, time
+  [[ "$repo" == "agentlas-ai/agentlas-os" ]] || { warn "standalone_repository_invalid"; return 1; }
+  local asset="agentlas-os-runtime-$version.tar.gz"
+  local archive_url="https://github.com/$repo/releases/download/$release_ref/$asset"
+  run_resolved_python "$py" - "$destination" "$archive_url" "$version" "$release_ref" <<'PY_RELEASE'
+import gzip, hashlib, json, os, re, signal, subprocess, sys, tarfile, time
 from pathlib import Path, PurePosixPath
 
 # Match the updater's compressed archive ceiling; bound work before extraction
@@ -496,6 +525,9 @@ MAX_METADATA = 64 * 1024
 CHUNK = 1024 * 1024
 root = Path(sys.argv[1])
 url = sys.argv[2]
+engine_version = sys.argv[3]
+release_ref = sys.argv[4]
+expected_root = "Agentlas-OS-" + engine_version[1:]
 
 def interrupted(signum, frame):
     raise InterruptedError("release_preparation_cancelled")
@@ -591,7 +623,7 @@ try:
                 if relative.is_absolute() or ".." in relative.parts:
                     raise ValueError("release_path_rejected")
                 parts = relative.parts
-                if not parts or not re.fullmatch(r"(?:Agentlas-OS|Hephaestus)-[A-Za-z0-9._-]+", parts[0]):
+                if not parts or parts[0] != expected_root:
                     raise ValueError("release_root_rejected")
                 # Also reject Windows drive/ADS/device aliases and normalized
                 # path collisions on case-insensitive host filesystems.
@@ -632,7 +664,22 @@ try:
                 target.chmod(0o755 if member.mode & 0o111 else 0o644)
     if len(roots) != 1:
         raise ValueError("release_root_missing")
-    os.replace(destination / next(iter(roots)), root / "source")
+    unpacked = destination / next(iter(roots))
+    ref_info = root / "release-ref.json"
+    download("https://api.github.com/repos/agentlas-ai/Agentlas-OS/git/ref/tags/" + release_ref, ref_info, MAX_METADATA, 30)
+    ref = json.loads(ref_info.read_text(encoding="utf-8"))
+    obj = ref.get("object") if isinstance(ref, dict) else None
+    if not isinstance(ref, dict) or ref.get("ref") != "refs/tags/" + release_ref:
+        raise ValueError("release_tag_ref_mismatch")
+    if not isinstance(obj, dict) or obj.get("type") != "commit" or not re.fullmatch(r"[0-9a-f]{40}", str(obj.get("sha") or "")):
+        raise ValueError("release_tag_commit_invalid")
+    provenance = json.loads((unpacked / "release-provenance.json").read_text(encoding="utf-8"))
+    manifest = json.loads((unpacked / "manifest.json").read_text(encoding="utf-8"))
+    if provenance.get("commit") != obj["sha"]:
+        raise ValueError("release_tag_commit_mismatch")
+    if manifest.get("version") != engine_version[1:]:
+        raise ValueError("release_manifest_version_mismatch")
+    os.replace(unpacked, root / "source")
     (root / ".source-ready").write_text(digest.hexdigest(), encoding="ascii")
 except (Exception, KeyboardInterrupt) as exc:
     # Finite local errors only: never echo archive-controlled paths or URLs.
@@ -665,7 +712,7 @@ ensure_downloaded_source() {
   have curl || { warn "curl is required for runtime install from a remote release."; return 1; }
   local py=""
   py="$(resolve_archive_python_cmd)" || { warn "Python 3.9+ is required to safely verify the runtime archive."; return 1; }
-  tmp_source_dir="$(mktemp -d)" || return 1
+  tmp_source_dir="$(mktemp -d "${TMPDIR:-/tmp}/agentlas-os-source.XXXXXXXX")" || return 1
   if ! prepare_release_source "$tmp_source_dir" "$py"; then
     rm -rf "$tmp_source_dir"
     tmp_source_dir=""
@@ -687,10 +734,42 @@ install_runtime_home() {
     warn "Runtime ref cannot be used as a local version directory: $version"
     return 1
   fi
-  local runtime_root="$HOME/.agentlas/runtime"
+  local map_py="" runtime_root=""
+  map_py="$(resolve_archive_python_cmd)" || { warn "Python required for namespace validation"; return 1; }
+  runtime_root="$(run_resolved_python "$map_py" - <<'PY_NAMESPACE'
+import os
+from pathlib import Path
+home = Path.home().resolve(); state = home / '.agentlas'; legacy = (state / 'runtime').resolve()
+override = os.environ.get('HEPHAESTUS_RUNTIME_BASE')
+if override and not Path(override).is_absolute(): raise SystemExit('standalone_runtime_base_not_absolute')
+custom = Path(override) if override else None
+if state.is_symlink() or (custom is not None and custom.is_symlink()): raise SystemExit('unsafe base')
+if custom is not None and custom.resolve() == (state / 'os-runtime').resolve(): custom = None
+if custom is not None and not custom.is_dir(): raise SystemExit('unsafe base')
+parent = custom.resolve() if custom is not None else state
+if custom is not None and (parent == legacy or parent.is_relative_to(legacy) or legacy.is_relative_to(parent)): raise SystemExit('shared base')
+base = parent / 'os-runtime'
+if base.is_symlink(): raise SystemExit('unsafe namespace')
+if custom is not None:
+    old_current = parent / 'current'
+    if (old_current.exists() or old_current.is_symlink()) and old_current.resolve().is_relative_to(base.resolve()): raise SystemExit('shared custom current')
+created = False
+try:
+    base.mkdir(parents=custom is None)
+    created = True
+except FileExistsError:
+    pass
+marker = base / '.agentlas-os-namespace-v1'
+if created:
+    with marker.open('x') as out: out.write('agentlas-os-namespace-v1\n')
+if marker.is_symlink() or not marker.is_file() or marker.read_bytes() != b'agentlas-os-namespace-v1\n': raise SystemExit('namespace ownership unverified')
+current = base / 'current'
+if (current.exists() or current.is_symlink()) and (not current.is_symlink() or not current.resolve().is_relative_to(base.resolve())): raise SystemExit('unsafe namespace current')
+print(base)
+PY_NAMESPACE
+  )" || { warn "standalone_namespace_unavailable"; return 1; }
   local home_dir="$runtime_root/$plain"
   local current_link="$runtime_root/current"
-  mkdir -p "$runtime_root" || return 1
   runtime_stage_dir="$(mktemp -d "$runtime_root/.${plain}.staging.XXXXXX")" || return 1
   local stage_dir="$runtime_stage_dir"
   local model_source="$source_dir/assets/model2vec/potion-multilingual-128M-int8"
@@ -817,12 +896,49 @@ install_runtime_home() {
         "$stage_dir/bin/hephaestus-search" "$stage_dir/bin/hephaestus-call" \
         "$stage_dir/bin/hephaestus-storm" 2>/dev/null || true
 
-  # Commit only after the staged runtime is complete. Python's os.replace is a
-  # same-filesystem atomic rename on both macOS and Linux and, unlike `mv -f`,
-  # does not follow an existing `current` symlink as a destination directory.
+  # EXPERIMENT: do not install global legacy shims or host adapters. The unique
+  # launcher belongs to the isolated namespace; preserve any preexisting file.
+  local os_bin="$HOME/.agentlas/os-bin" launcher="$HOME/.agentlas/os-bin/agentlas-os" shim_stage=""
+  mkdir -p "$os_bin" || return 1
+  [[ ! -L "$os_bin" ]] || { warn "standalone_shim_parent_unsafe"; return 1; }
+  shim_stage="$(mktemp "$os_bin/.agentlas-os.XXXXXXXX")" || return 1
+  if ! printf '%s\n' '#!/usr/bin/env bash' \
+      'configured="${HEPHAESTUS_RUNTIME_BASE:-}"; if [[ -n "$configured" ]]; then [[ "$configured" == /* ]] || { echo standalone_runtime_base_not_absolute >&2; exit 2; }; [[ ! -L "$configured" ]] || exit 2; configured="$(cd -- "$configured" && pwd -P)" || exit 2; fi' \
+      'default="$(cd -- "$HOME/.agentlas/os-runtime" 2>/dev/null && pwd -P)" || default=""' \
+      'if [[ -n "$configured" && "$configured" != "$default" ]]; then' \
+      '  parent="$configured"' \
+      '  state="$HOME/.agentlas"; [[ ! -L "$state" ]] || exit 2' \
+      '  state="$(cd -- "$state" && pwd -P)" || exit 2; legacy="$state/runtime"' \
+      '  if [[ -d "$legacy" ]]; then legacy="$(cd -- "$legacy" && pwd -P)" || exit 2; fi' \
+      '  case "$parent/" in "$legacy/"*) exit 2 ;; esac' \
+      '  case "$legacy/" in "$parent/"*) exit 2 ;; esac' \
+      '  base="$parent/os-runtime"' \
+      'else base="$HOME/.agentlas/os-runtime"; fi' \
+      '[[ -d "$HOME/.agentlas" && ! -L "$HOME/.agentlas" && -d "$base" && ! -L "$base" ]] || exit 2' \
+      '[[ -f "$base/.agentlas-os-namespace-v1" && ! -L "$base/.agentlas-os-namespace-v1" ]] || exit 2' \
+      'printf "agentlas-os-namespace-v1\\n" | cmp -s "$base/.agentlas-os-namespace-v1" - || exit 2' \
+      'base="$(cd -- "$base" && pwd -P)" || exit 2' \
+      '[[ -L "$base/current" ]] || exit 2; target="$(cd -- "$base/current" && pwd -P)" || exit 2' \
+      '[[ "$target" != "$base" ]] || exit 2; case "$target/" in "$base/"*) ;; *) exit 2 ;; esac' \
+      'export AGENTLAS_HOST_RUNTIME=standalone' \
+      'exec "$target/bin/hephaestus" "$@"' > "$shim_stage"; then
+    rm -f "$shim_stage"; warn "standalone_shim_create_failed"; return 1
+  fi
+  chmod 700 "$shim_stage" || { rm -f "$shim_stage"; return 1; }
+  if [[ -e "$launcher" || -L "$launcher" ]]; then
+    if [[ -L "$launcher" || ! -f "$launcher" || ! -x "$launcher" ]] || ! cmp -s "$launcher" "$shim_stage"; then
+      rm -f "$shim_stage"; warn "standalone_shim_exists: preserved; manual review required"; return 1
+    fi
+  elif ! ln "$shim_stage" "$launcher"; then
+    rm -f "$shim_stage"; warn "standalone_shim_create_failed"; return 1
+  fi
+  rm -f "$shim_stage" || return 1
+  # Launcher is secured before moving the namespace pointer. A conflict or
+  # write failure cannot change an already-working os-runtime/current.
   promote_runtime_home "$runtime_root" "$home_dir" "$stage_dir" "$version" "$py" record-adapters \
-    || return 1
-  log "Installed runner: $HOME/.agentlas/runtime/current/bin/hephaestus"
+    || { warn "standalone_activation_failed: prior pointer preserved; launcher may remain"; return 1; }
+  log "Standalone runner prepared; host adapters and automatic updates require explicit integration."
+  return 0
   prune_runtime_homes "$py" || warn "Old runtime home versions were left in place."
 
   local user_bin="$HOME/.local/bin"
@@ -2018,7 +2134,7 @@ write_codex_prompts() {
   ensure_downloaded_source || return 1
   if ! codex_custom_prompts_supported; then
     prune_managed_codex_prompts
-    log 'Codex 0.117+ skill entrypoints: $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm, $hephaestus-graph'
+    log 'Codex 0.117+ skill entrypoints: $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm'
     return 0
   fi
   local prompts_src="$source_dir/codex/prompts" codex_home="${CODEX_HOME:-$HOME/.codex}"
@@ -2383,7 +2499,9 @@ install_openclaw() {
     fi
   done
   log "Installed available OpenClaw skills from the managed AgentSkills set"
-  install_openclaw_hook || warn "OpenClaw memory hook install failed; skills remain installed."
+  if one_mode_enabled; then
+    install_openclaw_hook || warn "OpenClaw memory hook install failed; skills remain installed."
+  fi
   ok=$((ok + 1))
 }
 
@@ -2482,7 +2600,9 @@ EOF
     log "Registered canonical local hephaestus-network MCP in $cfg"
   fi
   log "goose reads the project AGENTS.md natively; no goose-specific instruction copy is installed."
-  install_goose_hook || warn "goose SessionEnd hook install failed; MCP registration remains."
+  if one_mode_enabled; then
+    install_goose_hook || warn "goose SessionEnd hook install failed; MCP registration remains."
+  fi
   ok=$((ok + 1))
 }
 
@@ -2658,7 +2778,14 @@ main() {
 
   preflight_git || exit 1
 
-  install_runtime_home || { warn "Runtime home install failed."; failed=$((failed + 1)); }
+  install_runtime_home || { warn "Runtime home install failed."; return 1; }
+  local core_py
+  core_py="$(resolve_python_cmd || true)"
+  if [[ -z "$core_py" ]] || ! PYTHONPATH="$(installer_pythonpath "$installed_runtime_generation")" run_resolved_python "$core_py" -m agentlas_cloud.host_core; then
+    warn "Standalone runtime installed. Host registration remains partial; use the reported Claude session command when available."
+    return 1
+  fi
+  return 0
   load_managed_skill_names || { warn "Command registry skill selection failed; using fallback skills."; }
   install_agents_skills || { warn "Universal ~/.agents/skills install failed."; failed=$((failed + 1)); }
   install_claude || { warn "Claude install failed."; failed=$((failed + 1)); }
@@ -2667,13 +2794,21 @@ main() {
   install_antigravity || { warn "Antigravity install failed."; failed=$((failed + 1)); }
   install_cursor || { warn "Cursor install failed."; failed=$((failed + 1)); }
   install_opencode || { warn "OpenCode install failed."; failed=$((failed + 1)); }
-  install_memory_hooks || { warn "Local ontology memory hook install failed."; failed=$((failed + 1)); }
+  if feature_is_enabled memory-hooks; then
+    install_memory_hooks || { warn "Local ontology memory hook install failed."; failed=$((failed + 1)); }
+  else
+    log "Optional memory hooks are off; enable with 'hephaestus features on memory-hooks'."
+  fi
   install_openclaw || { warn "OpenClaw install failed."; failed=$((failed + 1)); }
 	  install_hermes || { warn "Hermes install failed."; failed=$((failed + 1)); }
 	  install_kimi || { warn "Kimi install failed."; failed=$((failed + 1)); }
 	  install_goose || { warn "goose install failed."; failed=$((failed + 1)); }
 	  install_copilot_cli || { warn "Copilot CLI install failed."; failed=$((failed + 1)); }
-	  bootstrap_networking || warn "Hephaestus Network init failed; run 'hephaestus network init' manually."
+	  if feature_is_enabled network-index; then
+	    bootstrap_networking || warn "Hephaestus Network init failed; run 'hephaestus network init' manually."
+	  else
+	    log "Automatic network indexing is off; enable with 'hephaestus features on network-index'."
+	  fi
 	  if [[ "${HEPHAESTUS_INSTALL_GLOBAL_ROUTER:-0}" == "1" ]]; then
 	    "$HOME/.agentlas/runtime/current/bin/hephaestus" global install || warn "Global router prompt install failed; run 'hep-global install' manually."
 	  fi
@@ -2685,19 +2820,18 @@ main() {
   log "Installed/updated runtimes: $ok"
   log "Failed runtimes: $failed"
   log ""
-  log "Public chat surface: core external commands are installed or refreshed; Claude/Codex also get the Telegram connect helper; Agentlas native surfaces use plain language."
-  log "Local memory recall: Claude/Codex hooks, Antigravity PreInvocation, and OpenCode system injection are dynamic; Grok uses passive cache refresh plus its static AGENTS.md pointer."
-  log "Automatic updates: Desktop startup and /hep-* commands launch a verified, rate-limited background update without delaying the current task."
+  log "Public chat surface: core external commands are installed or refreshed; Agentlas native surfaces use plain language."
+  log "Optional features are off by default; inspect and change them with 'hephaestus features status|on|off'."
   log "Restart open Claude Code, Codex, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, goose, Kimi, and Copilot CLI apps."
   log "Then use:"
   log "  Agentlas:    describe the task in plain language; native tools choose the path"
-	  log "  Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph, /hep-connect"
-	  log '  Codex:       $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm, $hephaestus-graph; use plain language for local/hub/search/browser/call/connect'
-	  log "  Antigravity: reopen the workspace, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
-	  log "  Cursor:      /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
-	  log "  OpenCode:    /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload, /hep-graph"
+	  log "  Claude Code: /reload-plugins, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
+	  log '  Codex:       $hephaestus-build, $hephaestus-network, $hephaestus-cloud, $hephaestus-upload, $hephaestus-storm; use plain language for local/hub/search/browser/call'
+	  log "  Antigravity: reopen the workspace, then /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
+	  log "  Cursor:      /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
+	  log "  OpenCode:    /hep-build, /hep-network, /hep-local, /hep-cloud, /hep-hub, /hep-storm, /hep-search, /hep-browser, /hep-call, /hep-upload"
 	  log "  OpenClaw:    /skill hephaestus-upload <agent-folder> or /skill hephaestus-network <request>"
-	  log "  Hermes:      hephaestus-upload/hephaestus-network/hephaestus-graph skills (+ MCP, see hermes/README.md)"
+	  log "  Hermes:      hephaestus-upload/hephaestus-network skills (+ MCP, see hermes/README.md)"
 	  log "  goose/Copilot CLI: project AGENTS.md is read natively; use the hephaestus-network MCP tools"
 	  log "  Shell/debug: ontology <command>, hep-build \"<request>\", hep-network \"<request>\", hep-local \"<request>\", hep-cloud \"<request>\", hep-hub \"<request>\", hep-search \"<request>\", hep-browser <url-or-query>, hep-call \"agent-a,agent-b\" \"<context>\", hep-upload <agent-folder>, hep-global install, or hep-storm \"<request>\" --background"
   log "  Ollama/Gemma/DeepSeek local models: use the local MCP entrypoint 'hephaestus mcp serve'"

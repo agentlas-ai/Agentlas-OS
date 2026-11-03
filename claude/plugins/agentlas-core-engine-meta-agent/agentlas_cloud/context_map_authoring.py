@@ -1,19 +1,14 @@
 """Derive the declared context graph from what the project already records.
 
-`.agentlas/context-map.json` was created empty by project bootstrap and never
-written again: the only two things that touched it were the bootstrap that made
-it and `context_map._load_declared_graph` that read it. Its note asked a human
-to "add explicit goals, requirements, decisions" but no surface offered that
-action, so on every machine it stayed at nodes=[] edges=[] — measured 0 nodes in
-both projects on a host that had been running for months.
+Derive context-map nodes from existing project records while preserving
+independently authored nodes.
 
 What the reader does with it is narrow and worth stating, because it bounds what
 this module must get right: `_load_declared_graph` merges this file with
 `.agentlas/sitemap.json`, and the result becomes `context.slice`'s
 `goalsAndConstraints`, `relatedContextNodes` and `contextEdges`. With this file
-empty, 100% of that came from the sitemap, whose only declarable entries are the
-four canned seed sentences bootstrap writes. Every agent asking for the
-project's goals got the same boilerplate.
+empty, only the sitemap supplies those fields. Derived context provides the
+project-specific records needed beyond bootstrap seed sentences.
 
 The honest source is the ledger the project already keeps. `.agentlas/pm/`
 `learnings/*.md` is the durable learnings layer, written after substantial work
@@ -65,17 +60,14 @@ _SECTION_TYPES = {
 _SECTION_HEADER = re.compile(r"^##\s+([A-Za-z가-힣]+)\s*(?:[—–-]\s*(.*))?$")
 _TITLE_HEADER = re.compile(r"^#\s+(.+)$")
 
-# Every bound below is measured against a real heavily-used project (this repo,
-# 2026-08-07: 28 learning files, largest 14.7KB, median 4.3KB, 145 section headers,
-# longest title 80 chars). They exist to stop a pathological file from stalling
-# project activation, not to shape output - so each is set well clear of observed
-# use, and anything they DO drop is reported in the receipt rather than vanishing.
-# A cap that silently truncates reads downstream as "that is all there was".
-MAX_DERIVED_NODES = 2_000        # observed 40 derived from 145 sections
-MAX_TITLE_CHARS = 200            # observed longest 80
+# Bound parsing work so malformed or unusually large input cannot stall project
+# activation. Report every truncation in the receipt so partial results do not
+# appear complete.
+MAX_DERIVED_NODES = 2_000
+MAX_TITLE_CHARS = 200
 MAX_SUMMARY_CHARS = 600          # display clip only; the source file stays authoritative
-MAX_LEARNING_FILES = 2_000       # observed 28
-MAX_LEARNING_BYTES = 4 * 1024 * 1024  # observed largest 14.7KB
+MAX_LEARNING_FILES = 2_000
+MAX_LEARNING_BYTES = 4 * 1024 * 1024
 
 
 def _clip(value: str, limit: int) -> str:
@@ -134,12 +126,8 @@ def _learning_nodes(root: Path) -> list[dict[str, Any]]:
                 summary = _clip(" ".join(line for line in body if line.strip()), MAX_SUMMARY_CHARS)
                 if summary:
                     current["summary"] = summary
-                # `evidence` names the document this claim came from; the body
-                # names the code it was recorded against. Keeping only the
-                # former left every learning node unconnected to the codebase —
-                # 101 derived nodes and 9 edges on the pilot. Both are needed:
-                # the document proves provenance, the cited paths are what
-                # derive_context_edges verifies against the code map.
+                # The evidence document proves provenance; code paths in the body identify
+                # relationships that derive_context_edges verifies against the code map.
                 cited = " ".join(body)
                 if cited.strip():
                     current["citedPaths"] = _clip(cited, MAX_SUMMARY_CHARS * 2)
@@ -274,13 +262,9 @@ MAX_ONE_PROJECT_NODES = 120
 def _one_drawer_project_nodes(root: Path) -> list[dict[str, Any]]:
     """Project-scoped learnings the personal drawer already holds for THIS project.
 
-    One and the project map are the same machine pointed at two audiences: One
-    remembers for the person across every project, the project map hints to
-    whichever agent works here next. A turn that produces a project learning
-    belongs in both — measured on this machine, the drawer held 1,199 tickets
-    of which 917 (76%) were already scope="project", and none of them had ever
-    reached a project map. The knowledge existed; only the second audience was
-    missing.
+    Project-scoped learnings can serve both personal recall and project-local
+    context. Project the durable project learning to the context map so the
+    next agent can use it without importing personal-only memory.
 
     The boundary is strict and one-way: only tickets whose scope is exactly
     "project" AND whose workspace is this project cross over. Personal identity,

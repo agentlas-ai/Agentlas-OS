@@ -1,11 +1,7 @@
 """Compute a deliverable's shape from an output schema's topology.
 
-Nothing here reads a name, a description, or any word the author chose. Names are
-what failed: `capabilities` turned out to be `snake_case(agent.md ## Responsibilities)`
-in 130 of 130 packages, and `trigger_examples` were 1186 unique strings across 1189
-slots. A field derived from an author's vocabulary inherits that author's vocabulary,
-so this one is derived from structure instead - the arity and the value space of the
-schema, which the author cannot phrase differently.
+Derive shape from schema structure: its arity and value space. Do not use
+authored names or descriptions, whose wording may vary for the same structure.
 
 The shapes answer one question: what does the requester end up holding?
 
@@ -17,9 +13,7 @@ The shapes answer one question: what does the requester end up holding?
   rendition    a produced file the schema only points at
   other        none of the above, and that is a legal answer
 
-`other` is not a failure mode. Measured across the live corpus, 38% of output
-schemas land there, so anything that treats `other` as a penalty would quietly
-demote a third of the catalogue.
+`other` is not a failure mode and must not be treated as a ranking penalty.
 """
 
 from __future__ import annotations

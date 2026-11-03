@@ -99,7 +99,6 @@ Use the same slash command for builder work:
 /hep-search find agents for market report research
 /hep-browser https://example.com
 /hep-call market-researcher, report-writer {draft a market report brief}
-/hep-connect Telegram for Marketing Agent Team
 ```
 
 The plugin registers one Workforce MCP, `hephaestus-network`, backed by local

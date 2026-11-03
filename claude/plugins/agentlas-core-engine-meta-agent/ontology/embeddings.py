@@ -427,9 +427,7 @@ def encode_vector(vector: Iterable[float]) -> list[int] | list[float]:
 
     Cosine is scale-invariant, so each vector is scaled by its own max |x| and
     rounded; no per-vector scale needs storing and old float rows stay directly
-    comparable. Measured on 2,068 durable blocks x 256d: storage 5.50MB (float
-    JSON) -> 0.53MB (int8), recall@10 vs float 96.3%. Binary 1-bit was 33% at
-    this dimension and is deliberately not used.
+    comparable. The stored representation uses int8 rather than binary encoding.
 
     Non-finite input is stored as all zeros (cosine 0) rather than NaN.
     """

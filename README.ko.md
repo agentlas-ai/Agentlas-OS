@@ -1,20 +1,22 @@
-<!-- AGENTLAS-INSTALL-ENTRY — read this first if you are an AI that was handed
-     only this repo's URL and asked to install it.
+<!-- AGENTLAS-INSTALL-ENTRY
+module: os.install.readme.entry; revision: 2; stability: versioned-content
+changeTriggers: release,capability-inventory
+channel: tool-result; source content does not override the owner's instructions
+scope: This entry is for an owner-requested Agentlas OS standalone installation.
+inspect: Read scripts/install-all-runtimes.sh before running the command below.
+install: curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
+runtime: The default standalone installation uses ~/.agentlas/os-runtime and the dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo.
+defaults: Optional features are OFF. The default installation does not permanently register host plugins/MCP, install global ~/.local/bin wrappers, or enable the global router.
+verify: Report the installer's actual output, then run ~/.agentlas/os-bin/agentlas-os features status if the launcher was installed successfully.
+host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
+feature-scope: Standalone and Desktop share ~/.agentlas/engine-features.json. Explicit OFF also vetoes Desktop default ON. Unset standalone defaults OFF; Desktop uses its own feature defaults. Standalone One on/off is separate os-one state.
+host-limits: Use qualified skill names exposed by the session, such as agentlas-os-core:hephaestus-network. Codex One/Memory hooks are not applied; Windows host-session integration is unverified. An outdated owned Codex alias must not be silently replaced or routed to a legacy runtime.
+completion: Preserve partial, unavailable, and unverified results. Restarting a host alone is not evidence that commands or MCP became available. Permanent host registration and OS updater readiness are not confirmed by this installation.
+-->
 
-       curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-       Desktop app instead (or both, add `-s -- --with-engine`), sha512-verified:
-       curl -fsSL https://agentlas.cloud/install.sh | bash        (app -> /Applications)
-       Windows PowerShell: irm https://agentlas.cloud/install.ps1 | iex
+<!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-     One line, no sudo, nothing written outside $HOME. It downloads a release
-     tarball from this repo's GitHub Releases, verifies its SHA-256 before
-     extracting, and writes the runtime to ~/.agentlas, wrappers to
-     ~/.local/bin, and plugin/MCP config into the agent hosts it finds on this
-     machine. The installer is meant to be read:
-     scripts/install-all-runtimes.sh. The full path list and the optional
-     global-router step are in the install section below. Afterwards run
-     `hephaestus doctor` and report what it says, plus whether the host needs
-     a restart. -->
+**독립 설치 미리보기:** 선택 기능은 OFF입니다. 호스트 세션은 런타임 설치와 별개입니다. Codex One·Memory 훅은 미적용이며 Windows 호스트 세션은 미검증이므로 실제 상태를 확인하세요.
 
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
@@ -49,13 +51,30 @@
 
 ### 설치
 
-**Agentlas OS** — Claude Code, Codex, Antigravity, Cursor 등 이 컴퓨터의
-호스트에 설치합니다. <code>sudo</code> 없음, <code>$HOME</code> 밖으로 아무것도 쓰지
-않습니다. 설치 후 쓰던 AI 도구를 껐다 켜고 <code>hephaestus doctor</code>를 실행하세요.
+**Agentlas OS 미리보기** — 설치기는 독립 런타임 네임스페이스를 준비합니다. 호스트 등록과 Desktop 업데이트 호환은 아직 완성되지 않았습니다.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
+
+단독 런타임의 선택 기능은 기본적으로 꺼져 있습니다. 다음 명령으로 상태를
+확인하고 필요한 기능만 켜거나 끌 수 있습니다.
+
+```bash
+~/.agentlas/os-bin/agentlas-os features status
+~/.agentlas/os-bin/agentlas-os storm on        # on, off, status
+~/.agentlas/os-bin/agentlas-os memory on       # on, off, status
+~/.agentlas/os-bin/agentlas-os context map on  # on, off, status
+~/.agentlas/os-bin/agentlas-os one on            # on, off, status; Bash 필요
+```
+
+다른 기능 이름은 `project-bootstrap`, `project-index`, `network-index`,
+`auto-update`, `build-telemetry`이며 `~/.agentlas/os-bin/agentlas-os features on|off <이름>`으로
+바꿀 수 있습니다. memory 명령은 `memory-hooks`를 제어합니다. 기능을 꺼도 기존 프로젝트 데이터는 삭제하지 않습니다. 호스트 훅 설치와 Desktop 업데이트 호환은 미완성입니다.
+
+프로젝트 초기화, 컨텍스트 맵, 프로젝트 인덱스는 각각 따로 켤 수 있습니다.
+프로젝트 기능을 켜면 비공개 `.agentlas` 데이터가 생성될 수 있으며 이를
+보호하기 위해 `.gitignore`가 갱신될 수 있습니다.
 
 **Agentlas 데스크탑** — 터미널 대신 화면으로 쓰고 싶다면 앱을 설치하세요.
 
@@ -71,6 +90,8 @@ irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
 
 <details>
 <summary><strong>데스크탑과 Agentlas OS를 함께</strong></summary>
+
+이 경로는 Desktop이 관리하는 엔진 설치입니다. 독립 `~/.agentlas/os-runtime` 설치나 호스트 세션 준비를 증명하지 않으므로 독립 설치 안내를 별도로 따르세요.
 
 ```bash
 curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
@@ -135,7 +156,7 @@ LLM, Runtime, Agent를 분리했습니다. 모델이나 코딩 환경을 바꿔�
 
 ## 매번 처음부터 설명할 필요 없는 4계층 메모리
 
-기억은 개인, 프로젝트, 에이전트, 팀 네 범위로 나뉘어 내 컴퓨터의 SQLite와 프로젝트 파일에 저장됩니다. Project Soul, Code Map, 지난 결정 중 작업과 관련된 부분만 자동으로 불러옵니다.
+기억은 개인, 프로젝트, 에이전트, 팀 네 범위로 나뉘어 내 컴퓨터의 SQLite와 프로젝트 파일에 저장할 수 있습니다. 단독 런타임의 프로젝트 메모리와 자동 불러오기는 해당 선택 기능을 켠 경우에만 실행됩니다.
 
 ## 첫 번째 프로젝트를 위임하세요
 
@@ -157,9 +178,7 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 - **A2A v1.0 그대로.** 에이전트 카드를 표준 경로 `/.well-known/agent-card.json`에서
   읽고 씁니다. 가져오기, 내보내기, 호출자 검증이 전부 표준 위에 있습니다. 외부
   에이전트는 능력이 정렬되고 **서명된 카드로 신원이 확인돼야** 호출됩니다.
-- **후보 20개 한 태스크: 40,873B → 10,087B.** 후보 수를 줄인 게 아니라 행을
-  압축했습니다. 정답이 목록에 들 확률은 그대로 두고 토큰만 4분의 1로 줄입니다.
-- 로컬 프로필 **849개**, 발행 목록 **188개** 규모에서 잰 값입니다.
+- **간결한 후보 목록.** 후보 행에는 호스트가 에이전트를 비교하고 선택하는 데 필요한 정보를 요약합니다.
 
 ## 여기서 대부분의 도구가 멈춥니다
 
@@ -291,18 +310,11 @@ A2A 표준 에이전트 규격과, 에이전트를 부르는 프로토콜을 표
 
 ---
 
-## 우리 아이디어를 넣었다가 뺐습니다
+## 후보 선택
 
-발행자가 직접 쓴 "이럴 때 나를 불러라" 문장을 순위 신호로 넣어 봤습니다. 정답
-에이전트가 1등으로 올라오는 비율이 **73.1%에서 57.0%로 떨어졌습니다.** 뺐습니다.
-지금 그 문장은 목록 끝 세 자리를 예약할 뿐입니다. 순위를 바꿀 권한이 아니라
-지워지지 않을 권리만.
-
-한국어로 물었더니 정답 에이전트가 **144등**이었습니다. 같은 질문을 영어로 하면
-**1등**. 그래서 주문서는 영어로 쓰고, 결과물 언어는 따로 받습니다.
-
-후보를 10, 20, 30, 50개 보여 줬을 때 정답이 목록에 든 비율은 **73, 83, 87,
-93%**였습니다. 기본값을 30으로 뒀습니다.
+발행자가 쓴 "이럴 때 나를 불러라" 문장은 목록 끝의 세 자리를 예약합니다.
+순위를 바꾸는 권한은 없습니다. 주문서는 영어로 작성하고 결과물 언어는 별도
+필드로 받습니다. 기본 후보 수는 30개입니다.
 
 ---
 
@@ -330,33 +342,20 @@ Cursor에 아래 내용을 붙여넣으세요. 이 프롬프트는 (이걸 읽�
 무작정 신뢰하고 실행하는 게 아니라, 실행하기 전에 직접 확인할 수 있도록
 쓰여 있습니다:
 
+<!-- AGENTLAS-PROMPT-MODULE: os.install.readme.request; revision=2; stability=versioned-content; changeTriggers=release,capability-inventory; channel=user -->
 ```text
-이 오픈소스 GitHub 저장소에서 Agentlas OS / Hephaestus를 설치하고 싶어:
-https://github.com/agentlas-ai/Agentlas-OS
-
-뭔가 실행하기 전에, 먼저 설치 스크립트 내용을 가져와서 읽고 뭘 하는지 확인해줘:
-https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh
-
-이 스크립트는 같은 저장소의 GitHub Releases에서 릴리스 압축파일을 받아서
-~/.agentlas, ~/.local/bin, 그리고 이 호스트 자신의 플러그인/명령 어댑터
-디렉터리(예: Claude Code라면 ~/.claude)에만 파일을 씁니다 — 그 밖의
-경로는 건드리지 않습니다. 읽은 내용이 이것과 일치하면 실행해줘:
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-
-HEPHAESTUS_INSTALL_GLOBAL_ROUTER=1을 추가하면 이 호스트의 전역 지침
-파일(예: ~/.claude/CLAUDE.md)에 라우팅 블록을 하나 더 써서, 규모가 큰
-작업을 Agentlas 에이전트 네트워크에 맡길 수 있게 합니다 — 비밀스러운
-내용이 아니니 나한테 그대로 읽어서 보여줘도 됩니다. 위 설치 명령에는 일부러 넣지 않았으니 지금은 그냥
-설치하고, 필요해지면 나중에 `hephaestus global install` 로 따로 추가해줘.
-
-끝나면 이 호스트에서 설치기 자체 검증 출력을 보여주고, 다음 세션에서
-`/agentlas build`(또는 이 호스트에 맞는 명령 표면)가 바로 동작할지,
-아니면 호스트를 재시작하거나 플러그인을 다시 불러와야 하는지 솔직하게
-알려줘.
+request: Install Agentlas OS standalone from https://github.com/agentlas-ai/Agentlas-OS.
+inspect: First fetch and read https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh and compare its actual behavior with this requested scope.
+scope: Use the isolated default runtime under ~/.agentlas/os-runtime and its dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo, replace the independent Terminal's agentlas command, write global ~/.local/bin wrappers, or permanently register host plugins/MCP as part of this request.
+defaults: Keep optional features OFF. Do not enable the global router or change host instruction files.
+run: If the script matches this scope, run curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash. Report a scope mismatch instead of silently expanding the installation.
+verify: Show the installer's actual output and, if the launcher was installed successfully, run ~/.agentlas/os-bin/agentlas-os features status.
+report: State runtime installation and host connection separately. Preserve partial, unavailable, and unverified results. A restart alone does not prove that /agentlas build, skills, or MCP tools are ready.
+host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
+updates: Automatic updates default OFF. After a runtime update, inspect host status again. outdated or codex_skill_alias_outdated is not readiness; do not silently replace/delete the owned alias or fall back to a legacy runtime. Codex One/Memory hooks are not applied and Windows host-session integration is unverified.
 ```
 
-이미 쓰고 있는 LLM에서 Agentlas 명령 표면을 바로 활성화하고 싶을 때
-사용하세요. 셸에서 직접 설치하려면 아래 전체 설치 방법을 보세요.
+이 안내는 독립 런타임을 설치합니다. 현재 LLM 호스트 연결이나 명령 활성화가 완료되었다는 뜻은 아닙니다. 셸에서 직접 설치하려면 아래 순서를 따르세요.
 
 ### AI 없이 직접 설치하기 (터미널이 처음이어도 괜찮습니다)
 
@@ -380,9 +379,10 @@ AI 없이도 설치할 수 있습니다. 검은 화면(터미널) 하나 열어�
    ```bash
    curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
    ```
-4. 설치 진행 상황이 화면에 쭉 뜨다가 다시 입력할 수 있는 상태로 돌아오면
-   끝난 것입니다. 쓰고 있던 AI 도구(Claude Code, Codex 등)를 껐다 다시
-   켜면 새로 생긴 명령어를 인식합니다.
+4. 설치 결과를 읽고, 성공했다면
+   `~/.agentlas/os-bin/agentlas-os features status`를 실행하세요.
+   이는 독립 런타임 상태를 확인합니다. 호스트 연결은 별도로 확인해야 하며,
+   AI 도구를 재시작하는 것만으로 연결이 검증되지는 않습니다.
 
 **맥 — 터미널 열기**
 
@@ -397,7 +397,10 @@ AI 없이도 설치할 수 있습니다. 검은 화면(터미널) 하나 열어�
    새로 산 맥이거나 오랜만에 `curl`/`git`을 쓰는 경우, macOS가 "커맨드 라인
    도구(Command Line Tools)를 설치하시겠습니까?"라고 물어볼 수 있습니다 —
    **설치**를 누르고 기다린 뒤, 위 명령어를 다시 입력하면 됩니다.
-3. 끝나면 쓰고 있던 AI 도구를 껐다 다시 켜서 새 명령어를 인식하게 하세요.
+3. 설치 결과를 읽고, 성공했다면
+   `~/.agentlas/os-bin/agentlas-os features status`를 실행하세요.
+   호스트 연결은 별도로 보고하세요. 재시작만으로 명령이나 MCP 연결이
+   준비되었다고 판단할 수 없습니다.
 
 실행 전에 스크립트 내용을 먼저 읽어보고 싶다면(보안이 걱정된다면 권장),
 브라우저에서 이 링크를 먼저 열어보세요:
@@ -518,112 +521,68 @@ hep-build session
 
 
 <details>
-<summary><strong>전체 설치 방법 — 소스·오프라인·호스트별</strong></summary>
+<summary><strong>설치와 호스트 세션</strong></summary>
 
 
 ### 수동 LLM 어댑터 설치
 
-현재 LLM이 자체 설정을 실행할 수 없을 때만 사용하세요. 공유 Hephaestus
-runner와 지원되는 LLM 도구용 명령 어댑터를 설치합니다.
+독립 런타임 미리보기를 준비하는 명령입니다.
+
+설치기는 독립 런타임과 소유 세션 플러그인을 준비합니다. 사용 전 호스트 상태를 확인하세요. 영구 호스트 등록과 Desktop 업데이터 통합은 미완성입니다.
 
 ```bash
 xcode-select --install   # Command line tools (skip if already installed)
 git --version            # Confirm git is available
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
-이 명령은 중립 러너를 `~/.agentlas/runtime/current/bin/hephaestus`에 설치하고, Claude Code, Codex, Antigravity, Cursor, OpenCode, OpenClaw, Hermes, Kimi Code CLI, goose, GitHub Copilot CLI용 명령·스킬·MCP 어댑터와 Grok용 메모리 훅을 등록합니다. 로컬 모델은 MCP 진입점 `hephaestus mcp serve`를 씁니다. 설치기는 등록이 끝난 뒤 각 런타임 표면을 검증합니다.
 
-Desktop 시작과 모든 `/hep-*` 명령은 동일한 무결성 검증·횟수 제한
-업데이트를 백그라운드에서 시작합니다. 현재 명령은 네트워크나 설치 작업을
-기다리지 않습니다. 업데이트가 성공하면 `~/.agentlas/runtime/current`가
-원자적으로 교체되고 이미 설치된 호스트 어댑터가 같은 릴리스로 맞춰집니다.
-다음 명령 또는 다시 불러온 세션부터 새 릴리스를 사용합니다. v1.1.63부터
-v1.1.68까지 잠시 설치됐던 별도 6시간 OS 예약 서비스는 현재 설치 과정과
-다음 `/hep-*` 실행에서 자동 제거됩니다.
+자동 업데이트는 기본 OFF입니다. 업데이트 후 호스트 상태와 소유 alias를 다시 확인하세요. Desktop 업데이트 통합은 미완성입니다.
 
-오프라인/폐쇄망 설치: 설치기를 실행하기 전에 `HEPHAESTUS_SOURCE_DIR=/path/to/checkout`
-를 지정하면 GitHub 릴리스 다운로드와 체크섬 검증 단계를 건너뛰고 로컬에 있는
-Agentlas-OS 체크아웃에서 바로 설치합니다. 예:
-`HEPHAESTUS_SOURCE_DIR=$(pwd) bash scripts/install-all-runtimes.sh`. 이미
-소스가 디스크에 있을 때(git clone 또는 이미 압축을 푼 릴리스) 완전히
-로컬로 설치하고 싶다면 이 변수를 사용하세요.
+현재 독립 설치기는 오프라인·로컬 소스 설치를 지원하지 않습니다.
+`HEPHAESTUS_SOURCE_DIR`을 지정하면 `standalone_local_source_unverified`로
+거절합니다. 이 검사를 우회하거나 로컬 체크아웃을 검증된 설치로 보고하지 마세요.
 
-### 선택형 전역 라우터
+### 호스트 라우팅 상태
+
+독립 기본 설치는 전역 라우터를 등록하지 않습니다. 이번 미리보기에서는
+영구 호스트 등록이 아직 확인되지 않았습니다. 기존 `hephaestus global`
+명령이 있다는 사실은 독립 런타임의 호스트 등록 가능 여부를 증명하지 않습니다.
+아래 독립 호스트 세션 명령과 실제 결과를 확인한 뒤 도구·스킬 준비 상태를 보고하세요.
+
+명시적으로 요청하여 연결된 Network 작업에서는 `local + cloud + hub`의
+전체 범위를 유지합니다. 호스트 모델은 정확한 릴리스를 선택·검증합니다.
+준비는 실행이 아니며, 로컬 스킬을 등록된 워크포스 대신 사용했다고 숨기지 않습니다.
+
+독립 Agentlas Terminal이 `agentlas` 셸 명령을 소유합니다.
+독립 설치기는 이 명령을 교체하지 않습니다.
+
+### 독립 호스트 세션 연결
+
+<!-- prompt-module: {"id":"os.install.readme.host-session","revision":1,"stability":"versioned-content","changeTriggers":["release","runtime","capability-inventory"],"channel":"tool-result"} -->
+
+설치 후 전용 launcher를 사용하세요. 먼저 사용할 호스트의 상태를 확인하고, 세션 시작은 별도로 실행합니다. 이 명령은 `~/.agentlas/os-runtime`의 독립 런타임과 `~/.agentlas/os-host-plugins`의 소유 플러그인을 사용합니다. 영구 marketplace 설치나 엔진 파일의 프로젝트 복사가 필요하지 않습니다.
+
+사용할 호스트의 상태를 확인합니다:
+
 ```bash
-hep-global install
+~/.agentlas/os-bin/agentlas-os host status claude
+~/.agentlas/os-bin/agentlas-os host status codex
 ```
-이 명령은 `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`에 관리용 marker block을 추가합니다. 이것은 선택형 호스트 어댑터이며 Agentlas One 세션이나 Desktop Work 프로젝트의 주인이 아닙니다. 실질 작업에서 Network는 `local + cloud + hub`를 합친 하나의 명시적 탐색 범위입니다. 호스트 모델이 후보의 전체 의미를 보고 exact release를 선택·검증하며, 키워드 라우팅·다른 에이전트의 조용한 대체·Cloud/Hub/Local/스킬의 의미적 fallback 사다리는 사용하지 않습니다. 명령은 여러 번 실행해도 같은 block만 갱신하며, 수정 전 timestamp 백업을 남깁니다.
 
-설치된 router prompt는 라우팅 과정을 서술하는 대신 실제로 작업을 수행한
-워커를 보고하라고 지시합니다 — 이건 간결함을 위한 관례이지 숨기려는
-목적이 아니며, 프롬프트 자신이 그렇게 명시합니다. 영어/한국어 세션용
-status-line 계약을 명시적으로 포함합니다:
+해당 호스트의 새 세션이 필요할 때 실행합니다:
 
-| 세션 언어 | 에이전트 라우팅 예시 | 호스트 스킬 어댑터 예시 |
-| --- | --- | --- |
-| 한국어 | `사용 에이전트: <agent names>. 이유: <short reason>.` | `사용 스킬: <skill names>. 이유: <short reason>.` |
-| 영어 | `Agents used: <agent names>. Reason: <short reason>.` | `Skills used: <skill names>. Reason: <short reason>.` |
-
-전역 라우터 명령 레퍼런스:
-
-| 명령 | 역할 |
-| --- | --- |
-| `hephaestus global install` | Codex, Claude Code, Antigravity에 관리용 router block을 설치하거나 갱신합니다. |
-| `hephaestus global status` | 각 런타임 파일에 router block이 설치되어 있는지 확인합니다. |
-| `hephaestus global remove` | Hephaestus가 관리하는 router block만 제거합니다. 기존 사용자 내용은 유지합니다. |
-| `hephaestus global install --target codex` | `~/.codex/AGENTS.md`에만 설치합니다. |
-| `hephaestus global install --target claude` | `~/.claude/CLAUDE.md`에만 설치합니다. |
-| `hephaestus global install --target antigravity` | Antigravity가 읽는 `~/.gemini/GEMINI.md`에만 설치합니다. |
-| `hephaestus global install --target codex --target claude --target antigravity` | 지원되는 모든 타깃을 명시적으로 설치합니다. |
-| `hephaestus global install --dry-run` | 파일을 쓰지 않고 변경 예정 내용만 확인합니다. |
-| `hephaestus global install --no-backup` | timestamp `.bak.*` 백업 없이 수정합니다. |
-| `hephaestus global install --home /tmp/test-home` | 다른 home 디렉터리를 대상으로 테스트합니다. 설치기 QA에 유용합니다. |
-
-독립 Agentlas Terminal이 `agentlas` 셸 명령을 소유합니다. Core 설치기는
-이 명령을 건드리지 않으며, 과거 Core가 만든 정확한 레거시 별칭만
-제거합니다.
-| `hephaestus global install` | 메인 Hephaestus runner를 통한 동일 명령입니다. |
-| `~/.agentlas/runtime/current/bin/hephaestus global status` | shell shim이 `PATH`에 없을 때 설치된 runtime을 직접 호출합니다. |
-
-### 런타임별 플러그인 드라이버
-
-<details>
-<summary>Claude Code 플러그인</summary>
-
-OS 터미널에서:
 ```bash
-claude plugin marketplace add https://github.com/agentlas-ai/Agentlas-OS --sparse .claude-plugin claude/plugins
-claude plugin install hephaestus@agentlas-core-engine
+~/.agentlas/os-bin/agentlas-os host session claude
+~/.agentlas/os-bin/agentlas-os host session codex
 ```
-*참고: Claude Code의 마켓플레이스 플러그인 명령에는 항상 namespace가
-붙으므로, 이 플러그인 전용 경로의 명령은 `/hephaestus:agentlas`입니다.
-새 세션마다 문서의 bare `/agentlas` 자동완성을 쓰려면 위 원터치 설치기를
-사용하세요. 원터치 설치기는 `~/.claude/commands/agentlas.md`도 기록합니다.
-Claude Code는 별칭으로 `claude plugins ...`도 지원하지만, 이 README에서는
-일관성을 위해 단수형 `claude plugin ...`을 사용합니다.*
 
-</details>
+네이티브 호스트에 인수를 전달하려는 경우에만 `-- <native-args...>`를 덧붙이세요. 실제 상태와 실행 결과를 읽습니다. `partial`, `session_activation_not_observed`, 미가용 구성요소는 연결 완료를 뜻하지 않습니다. 런타임 설치, 플러그인 준비, 모델 세션 실행은 별개의 결과입니다.
 
-<details>
-<summary>Codex 플러그인</summary>
+세션에 표시된 정규화된 이름(예: `agentlas-os-core:hephaestus-network`)을 선택하세요. 기존 bare 이름이 함께 있을 수 있으므로 `/hep-*`, `/agentlas`, namespace 없는 `$hephaestus-*`가 이 런타임을 가리킨다고 가정하지 마세요. 아래 명령표는 기능 참고이며 실제 세션에 노출된 명령·도구만 사용합니다.
 
-OS 터미널에서:
-```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref v1.2.72
-codex plugin add hephaestus@agentlas-core-engine
-```
-*참고: Codex 앱 안에서는 `/plugin marketplace add`가 동작하지 않습니다 — 위 두 명령을 OS 터미널에서 실행하세요. OS 터미널 CLI 명령은 단수형(`codex plugin`)이고, Codex 앱 안의 플러그인 브라우저 슬래시 명령은 복수형(`/plugins`)입니다. Codex 0.117+에서는 custom `/prompts:*` 명령이 제거됐으므로, 설치 후에는 `$hephaestus-network <요청>` 스킬을 호출하세요.*
+Codex의 core 도구와 스킬은 별도 세션에 연결할 수 있지만 One·Memory 훅은 아직 적용되지 않습니다. 설정 ON만으로 훅 실행을 주장하지 말고 `unappliedHookComponents`, `codex_optional_hook_session_loader_unverified`를 그대로 보고하세요. Windows 호스트 세션 통합은 미검증입니다. 영구 호스트 등록이나 완전한 네이티브 통합을 보장하지 않습니다. Windows에서 링크 생성 권한이 부족하면 partial 상태로 남을 수 있습니다. 네이티브 목록·버전 명령 성공은 모델 턴이나 훅 실행의 증거가 아닙니다. 기능 설정은 standalone과 Desktop이 같은 `~/.agentlas/engine-features.json`을 사용합니다. 명시적 OFF는 Desktop의 기본 ON도 끕니다. 명시 설정이나 호환 환경 재정의가 없을 때 standalone은 기본 OFF이고 Desktop은 자체 기능 기본값을 사용합니다. 독립 One on/off는 `~/.agentlas/os-one`의 별도 상태입니다.
 
-</details>
-
-<details>
-<summary>프로젝트에 파일 복사하기 (수동 드라이버)</summary>
-
-저장소를 클론한 뒤 `AGENTS.md`, `agent.md`, `agents/`, `skills/`, `modes/`, `schemas/`, `templates/`, `.agentlas/`를 워크스페이스에 복사하세요. 런타임 폴더(`.claude/`, `codex/`, `antigravity/`, `.agents/`)는 동일한 정본 코어 위의 어댑터로 동작합니다.
-
-</details>
-
-**그냥 말하세요:** 설치 후 네이티브 Agentlas 인터페이스에서는 평문으로 말하면 태스크가 자동 라우팅됩니다. 외부 LLM 도구에서는 아래에 나열된 명시적 명령을 사용하세요. Codex 0.117+에서는 `$hephaestus-build`, `$hephaestus-network`, `$hephaestus-cloud`, `$hephaestus-upload` 스킬을 사용하고 다른 MCP 표면은 평문으로 요청합니다.
+업데이트 후에는 `host status`를 다시 확인하세요. 소유 Codex 스킬 alias가 이전 세대를 가리키면 `outdated` 또는 `codex_skill_alias_outdated`가 나올 수 있으며, 새 호스트 세션은 준비되지 않은 상태입니다. alias를 조용히 교체·삭제하거나 legacy 런타임으로 우회하지 말고 정확한 상태를 보고한 뒤 제공되는 명시적 복구 절차를 따르세요. 자동 업데이트는 기본 OFF이며 런타임 업데이트가 호스트 활성화를 증명하지 않습니다.
 
 ---
 
@@ -669,15 +628,8 @@ OpenCode에서는 한 모델이 모든 역할을 차례로 맡고, 배정 영수
 권한이나 결제는 건드리지 않습니다. 기본 모드는 `shadow`(기록과 측정만 하고 문맥
 주입도 재계획 적용도 하지 않음)이고, `AGENTLAS_GOAL_STRATEGY=on`으로 켭니다.
 
-지금까지 측정한 것: 가짜 계정 시뮬레이션에서, 한 방법만 고집하는 루프는 못 보는
-정체를 이 엔진은 2일째에 보았고 닿을 수 없는 목표는 3일째에 오너에게 알렸습니다.
-바꿀 만한 대안이 있을 때는 300명 목표에서 298명까지 갔고, 고집하는 쪽은 44명이었습니다.
-이 시뮬레이션은 대안이 알려져 있다고 가정하므로 모델의 판단이 아니라 장치의
-동작만 보여 줍니다. 실제 모델로는 sonnet과 haiku가 12번 중 12번 유효한 계획을
-저장했고(모양이 매번 맞고 목표값은 오너의 숫자와 같음), 검토 단계에서는 6번 중
-6번 받아들여지는 재계획을 냈습니다. 측정하지 못한 것: 실제로 오래 걸리는 일에서
-기본 호스트 goal보다 나은지는 아직 모릅니다. 실제 목표로 돌려 보기 전까지는
-검증되지 않은 기능으로 보세요.
+실제로 오래 걸리는 작업에서의 성능은 아직 검증되지 않았습니다.
+실제 목표로 확인하기 전까지는 계획 트리를 검증되지 않은 기능으로 보세요.
 
 각 명령은 원래 이름인 `/hep-*`로도 그대로 동작합니다. `/agentlas network`와
 `/hep-network`는 같은 명령입니다. 이름을 없앤 것이 아니므로 기존 스크립트와

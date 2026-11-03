@@ -92,13 +92,9 @@ def _covers(subset: list[str], superset: list[str]) -> bool:
 def concept_family_matches(left: str, right: str) -> bool:
     """Does one concept id name the same thing as another, as actually spelled?
 
-    Measured across 188 live listings: the authority vocabulary contains
-    ``authority:shell-execution`` (13 listings) and ``authority:shell-exec`` (8)
-    while the public catalogue advertises ``authority:shell``; the runtime list
-    has 186 listings declaring ``claude-code`` and none declaring the advertised
-    ``claude``. Compared as opaque strings, a slot forbidding
-    ``authority:shell`` excludes none of them — the host LLM asks for no shell
-    access and is handed an agent that declares it.
+    Normalize supported aliases before comparing authority and runtime terms.
+    A forbidden shell authority must match its equivalent declared spellings,
+    and runtime aliases must resolve to the canonical vocabulary.
 
     This is morphology, not a synonym list: tokens compare by prefix so ``exec``
     covers ``execution``, and one id matches when its token set is contained in
@@ -362,10 +358,8 @@ def _slot_search_text(slot: Mapping[str, Any]) -> str:
     )
 
 
-# ★불용어는 표시가 아니라 점수에서 걸러야 한다 — 실측 2026-08-21: 수락된 검증
-# 영수증의 fit:text:term 6개 중 3개가 "and"/"the" 였고, lexical_score 가
-# len(overlap) 이라 그 3개가 순위에 그대로 들어갔다. MCP 표면에만 필터가 있으면
-# 화면은 깨끗해지고 순위는 계속 오염된다.
+# 불용어는 표시뿐 아니라 점수 계산에서도 제외한다. MCP 표면과 실제
+# lexical ranking 이 같은 단어 집합을 사용해야 한다.
 _FIT_TERM_STOPWORDS = frozenset({
     "a", "an", "and", "are", "as", "at", "be", "between", "by", "can", "each",
     "for", "from", "in", "into", "is", "it", "its", "of", "on", "one", "or",
@@ -384,13 +378,9 @@ def _fit_evidence(
 ) -> tuple[list[str], list[str], list[str], float, float]:
     req = _slot_requirements(slot)
     have = _profile_sets(profile)
-    # `_hard_eligibility` demotes a requirement term the ontology cannot enforce,
-    # so such a term never excludes anyone. This function kept enforcing the same
-    # term as a *label*, so a candidate passed the gate and then arrived carrying
-    # `gap:required-skill:<term>`. Measured: all 16 candidates in both slots came
-    # back "missing" a skill, beside a slot-level
-    # `gap:requirement-vocabulary-unsupported:skill` saying that very term was
-    # not enforced — two answers to one question, and the louder one was wrong.
+    # If the ontology cannot enforce a requirement term, do not emit a candidate
+    # missing-skill gap for that term. Preserve the slot-level unsupported-vocabulary
+    # receipt so the host sees one consistent enforcement result.
     #
     # Only the *absence* claim is dropped. A demoted term still earns fit
     # evidence, still feeds the structured score, and still carries the minimum
@@ -565,19 +555,8 @@ def _diverse_window(rows: list[tuple[dict[str, Any], float]], limit: int) -> lis
     return result
 
 
-# ★발행자 신호 구조석 — 실측 2026-08-19 (발행자가 쓴 trigger 1,306질의 / 후보 149).
-#
-# 라우팅 카드의 `trigger_examples` 는 발행자가 직접 쓴 "이럴 때 나를 불러라" 문장이고,
-# 마켓플레이스 회수를 hit@30 100% 로 만든 신호다. 워크포스 컴파일러는 이 문장을
-# 프로필로 옮기지 않으므로 편성 회수에서는 통째로 버려지고 있었다.
-#
-# 되살리는 방법이 결과를 가른다 — 둘 다 측정했다:
-#   · 4번째 RRF 점수 채널로 추가  → hit@1 73.1% -> 57.0% (약한 매치가 3채널 합의를
-#     희석한다). 문턱 0.15~0.4 스윕도 전부 hit@1 손실. **기각.**
-#   · 메뉴 끝 R석 예약(아래)      → hit@1 73.1% 그대로, hit@20 95.6% -> 96.4%,
-#     기존 실패 58건 중 12건 구제 / 신규 실패 1건. **채택.**
-#
-# 즉 이 신호는 "순위를 바꿀 권한"이 아니라 "명단에서 지워지지 않을 권리"만 갖는다.
+# 발행자의 trigger_examples는 기존 점수 계산과 별개로 구조석 후보를 찾는 힌트다.
+# 기존 순서를 바꾸지 않고 메뉴 끝에 후보가 남을 자리를 예약한다.
 # 점수 계산에 손대지 않으므로 기존 순위는 정의상 불변이고, 되돌리기는 R=0 이다.
 _TRIGGER_RESCUE_SEATS = 3
 # 자카드 하한. 이 값 미만은 우연한 낱말 겹침이라 구조석을 낭비한다.
@@ -687,9 +666,8 @@ class WorkforceIndex:
         vector_adapter: Any | None = None,
         retrieval_hints: Mapping[str, Mapping[str, Any]] | None = None,
     ):
-        # 발행자 문장(trigger_examples)은 프로필 밖의 회수 힌트다. 프로필에 넣으면
-        # contentDigest 가 움직여 핀·세션·roster 전체가 흔들리므로(실측: 143/149
-        # 다이제스트 변경) 인덱스 옆에 둔다. 없으면 구조석이 그냥 안 도는 것뿐이다.
+        # 발행자 trigger_examples 는 프로필 밖의 회수 힌트로 둔다. 프로필의
+        # contentDigest 나 기존 핀·세션·roster 식별자를 변경하지 않는다.
         self.retrieval_hints: dict[str, dict[str, Any]] = {
             str(key): {
                 "triggerTokens": [
@@ -759,20 +737,10 @@ class WorkforceIndex:
             raise ValueError("group entity kind is discovery-only and not executable")
         policy = work_order.get("selectionPolicy") if isinstance(work_order.get("selectionPolicy"), Mapping) else {}
         minimum = max(2, min(30, int(policy.get("minimumCandidatesPerSlot") or 5)))
-        # Default window 30, not 20. The host LLM makes the final choice, so the
-        # only thing this number decides is whether the right agent is in the room
-        # at all — and a candidate that never appears cannot be recovered by any
-        # amount of downstream cleverness, while a badly ordered menu can be, which
-        # is why hit@1 equals hit@menu-size once an LLM adjudicates.
+        # The default window is 30. Core supplies candidates and the host LLM
+        # makes the final selection from that bounded menu.
         #
-        # Measured 2026-07-28 over 552 requests rewritten blind by a second model
-        # (so no publisher is matching their own wording), against the 247-package
-        # live catalogue:
-        #     10 candidates -> 73%    20 -> 83%    30 -> 87%    50 -> 93%
-        # A menu row compiled from the brief costs a median 133 tokens, so 20 -> 30
-        # buys +4 points of recall for about 1,330 tokens, against the ~52,880 that
-        # one slot of full dossiers used to cost. Returns keep rising past 30, but
-        # per token they halve there, and the caller can still ask for more.
+        # Callers may request a larger window within the enforced bounds.
         maximum = max(minimum, min(100, int(policy.get("maximumCandidatesPerSlot") or 30)))
         expanded = {str(item) for item in (expand_slot_ids or [])}
         active_digest = canonical_digest(

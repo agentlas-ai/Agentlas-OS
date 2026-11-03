@@ -137,9 +137,17 @@ def configured_runner() -> Callable[[dict[str, Any]], dict[str, Any]] | None:
     return bind_model_runner(decide, runtime["fingerprint"], current)
 
 
+def _memory_enabled() -> bool:
+    try:
+        from .feature_preferences import feature_enabled
+        return feature_enabled("memory-hooks")
+    except Exception:
+        return False
+
+
 def schedule_worker(operation_id: str, owner_namespace: str) -> bool:
     """Local detached work has no provider call or SQLite lock in the hook."""
-    if configured_runner() is None:
+    if not _memory_enabled() or configured_runner() is None:
         return False
     env = dict(os.environ)
     env["AGENTLAS_MEMORY_OWNER_NAMESPACE"] = _safe_id(owner_namespace)
@@ -702,6 +710,8 @@ class MemoryRuntime:
 
     def process(self, operation_id: str, runner: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                 writer: Callable[[sqlite3.Connection, dict[str, Any], dict[str, Any]], str | dict[str, Any]] | None = None) -> dict[str, Any]:
+        if not _memory_enabled():
+            return {"operation_id": operation_id, "action": "defer", "reason": "feature_disabled", "written": 0}
         from .memory_curation_decisions import POLICY,PENDING_SCHEMA,pending,reusable,validate,validate_pending,model_binding
         row=self.db.execute('SELECT * FROM memory_operations WHERE operation_id=? AND owner_namespace=?',(_safe_id(operation_id),self.owner)).fetchone()
         if not row:
@@ -711,6 +721,8 @@ class MemoryRuntime:
         lease=uuid.uuid4().hex;now=datetime.now(timezone.utc);saved=None
         self.db.execute('BEGIN IMMEDIATE')
         try:
+            if not _memory_enabled():
+                self.db.rollback();return {"operation_id": operation_id, "action": "defer", "reason": "feature_disabled", "written": 0}
             fresh=self.db.execute('SELECT state,receipt_json,updated_at FROM memory_operations WHERE operation_id=?',(operation_id,)).fetchone()
             if fresh[0] in {'completed','revoked'}:
                 self.db.commit();self._process_views();return json.loads(fresh[1])
@@ -729,6 +741,8 @@ class MemoryRuntime:
             self._register_operation_source(operation_id);self.db.commit()
         except BaseException:
             self.db.rollback();raise
+        if not _memory_enabled():
+            return {"operation_id": operation_id, "action": "defer", "reason": "feature_disabled", "written": 0}
         payload=json.loads(row['payload_json']);snapshot=None;reused=False
         try:
             payload=self._read_operation_source(operation_id,lease,row['revocation_epoch'])
@@ -738,6 +752,8 @@ class MemoryRuntime:
                 # host snapshot, not treated as another model invocation.
                 decision=validate_pending(saved,snapshot,_safe_summary);reused=True
             else:
+                if not _memory_enabled():
+                    return {"operation_id": operation_id, "action": "defer", "reason": "feature_disabled", "written": 0}
                 output=runner(packet) if runner else {'action':'defer','reason':'model_unavailable'}
                 model_binding(runner)
                 decision=validate(output,snapshot,_safe_summary)
@@ -746,10 +762,14 @@ class MemoryRuntime:
             if reason in {'memory_runtime_changed','memory_source_changed','memory_source_operation_missing'}:
                 snapshot=None
             decision={'action':'defer','reason':reason if re.fullmatch(r'memory_[a-z0-9_]{1,72}',reason) else 'model_output_invalid'}
+        if not _memory_enabled():
+            return {"operation_id": operation_id, "action": "defer", "reason": "feature_disabled", "written": 0}
         # A committed pending result precedes the canonical write. A crash
         # before this commit can repeat inference; it is never exactly-once.
         self.db.execute('BEGIN IMMEDIATE')
         try:
+            if not _memory_enabled():
+                self.db.rollback();return {"operation_id": operation_id, "action": "defer", "reason": "feature_disabled", "written": 0}
             fresh=self.db.execute('SELECT state,receipt_json FROM memory_operations WHERE operation_id=?',(operation_id,)).fetchone()
             if fresh[0] in {'completed','revoked'}:
                 self.db.commit();self._process_views();return json.loads(fresh[1])
@@ -918,6 +938,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("command", choices=["queue", "process", "capsule"])
     parser.add_argument("--operation-id", default="")
     args = parser.parse_args(argv)
+    if not _memory_enabled():
+        print(_json({"state": "disabled", "reason": "feature_disabled", "feature": "memory-hooks"}))
+        return 0
     raw = sys.stdin.read(64 * 1024 + 1)
     if len(raw) > 64 * 1024:
         raise ValueError("memory_input_size")

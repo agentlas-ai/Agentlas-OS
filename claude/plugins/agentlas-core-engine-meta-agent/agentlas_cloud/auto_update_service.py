@@ -1,10 +1,7 @@
-"""Retire the former per-user periodic Agentlas OS update scheduler.
+"""Preserve legacy scheduler state until ownership is verified.
 
-Agentlas updates are command-triggered and non-blocking: supported host commands
-and Agentlas Desktop start the verified updater in the background. Releases
-v1.1.63 through v1.1.68 also installed a six-hour OS scheduler. That scheduler
-was not part of the intended command-triggered contract, so this module now
-exists only to detect and remove already-installed scheduler state.
+Current runtimes ignore legacy scheduled update requests. Existing scheduler
+registrations remain untouched because a public label is not proof of ownership.
 """
 
 from __future__ import annotations
@@ -144,57 +141,9 @@ def remove_auto_update_service(
     platform_name: str | None = None,
     execute: bool = True,
 ) -> dict[str, Any]:
-    """Remove every known legacy scheduler artifact for the current user."""
-
-    home_dir = (home or Path.home()).expanduser().resolve()
-    platform_value = (platform_name or sys.platform).lower()
-    removed: list[str] = []
-    actions: list[dict[str, Any]] = []
-
-    if platform_value.startswith("darwin"):
-        path = home_dir / "Library" / "LaunchAgents" / f"{SERVICE_ID}.plist"
-        if execute:
-            # Remove by service label first. This also retires a loaded job whose
-            # plist came from an obsolete or temporary path.
-            actions.append(_run(["launchctl", "bootout", f"gui/{os.getuid()}/{SERVICE_ID}"]))
-            actions.append(_run(["launchctl", "bootout", f"gui/{os.getuid()}", str(path)]))
-        if path.exists():
-            path.unlink()
-            removed.append(str(path))
-    elif platform_value.startswith("linux"):
-        if execute and shutil.which("systemctl"):
-            actions.append(
-                _run(["systemctl", "--user", "disable", "--now", "agentlas-hephaestus-update.timer"])
-            )
-        unit_dir = home_dir / ".config" / "systemd" / "user"
-        for name in ("agentlas-hephaestus-update.service", "agentlas-hephaestus-update.timer"):
-            path = unit_dir / name
-            if path.exists():
-                path.unlink()
-                removed.append(str(path))
-        if execute and shutil.which("systemctl"):
-            actions.append(_run(["systemctl", "--user", "daemon-reload"]))
-    elif platform_value.startswith(("win", "cygwin", "msys")):
-        if execute:
-            actions.append(_run(["schtasks", "/Delete", "/F", "/TN", WINDOWS_TASK_NAME]))
-        state = _runtime_base(home_dir) / "auto-update-service.json"
-        if state.exists():
-            state.unlink()
-            removed.append(str(state))
-    else:
-        return {"status": "blocked", "reason": "unsupported_platform", "platform": platform_value}
-
-    remaining = auto_update_service_status(home=home_dir, platform_name=platform_value)
-    result = {
-        "status": "retired" if not remaining.get("installed") else "blocked",
-        "platform": remaining.get("platform", platform_value),
-        "removed": removed,
-        "actions": actions,
-        "remainingInstalled": bool(remaining.get("installed")),
-    }
-    if not result["remainingInstalled"]:
-        _write_retirement_marker(home_dir, result)
-    return result
+    """Preserve scheduler state until ownership can be proven."""
+    del home, platform_name, execute
+    return {"status": "preserved", "reason": "service_ownership_unverified", "managerInvoked": False}
 
 
 def install_auto_update_service(
@@ -205,12 +154,7 @@ def install_auto_update_service(
     execute: bool = True,
     **_: Any,
 ) -> dict[str, Any]:
-    """Compatibility shim that retires the scheduler instead of installing it.
-
-    Older host adapters may still import this Python symbol while the shared
-    runtime is being reconciled. Keeping the import valid prevents a mixed-
-    version crash, but the retired service can never be recreated.
-    """
+    """Compatibility shim; neither creates nor removes a scheduler."""
 
     del runtime_root
     result = remove_auto_update_service(
@@ -227,24 +171,6 @@ def retire_auto_update_service(
     home: Path | None = None,
     platform_name: str | None = None,
 ) -> dict[str, Any]:
-    """Idempotently retire the scheduler while keeping command updates silent."""
-
-    home_dir = (home or Path.home()).expanduser().resolve()
-    status = auto_update_service_status(home=home_dir, platform_name=platform_name)
-    if not status.get("installed"):
-        if not status.get("retired"):
-            result = {
-                "status": "retired",
-                "platform": status.get("platform"),
-                "removed": [],
-                "remainingInstalled": False,
-            }
-            _write_retirement_marker(home_dir, result)
-            return result
-        return {
-            "status": "already_retired",
-            "platform": status.get("platform"),
-            "removed": [],
-            "remainingInstalled": False,
-        }
-    return remove_auto_update_service(home=home_dir, platform_name=platform_name)
+    """Do not mutate a scheduler based only on its public name."""
+    del home, platform_name
+    return {"status": "preserved", "reason": "service_ownership_unverified", "managerInvoked": False}

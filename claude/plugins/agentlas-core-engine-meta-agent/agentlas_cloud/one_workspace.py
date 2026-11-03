@@ -26,6 +26,27 @@ import time
 from pathlib import Path
 from typing import Any
 
+# The launcher supports both direct script and package execution.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    __package__ = "agentlas_cloud"
+
+
+def _memory_enabled() -> bool:
+    try:
+        from .feature_preferences import feature_enabled
+        return feature_enabled("memory-hooks")
+    except Exception:
+        return False
+
+
+def _one_is_on(root: Path) -> bool:
+    try:
+        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        return isinstance(state, dict) and state.get("on") is True
+    except (OSError, ValueError):
+        return False
+
 _O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
 
 try:
@@ -326,6 +347,7 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
     root = Path(root).expanduser()
     one_id = read_one_id(root)
     meta = root / META_DIR
+    memory_enabled = _memory_enabled()
     created: list[str] = []
 
     def mark(path: Path, made: bool) -> None:
@@ -338,7 +360,7 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
         root / "skills",
         root / "knowledge",
         root / "tools",
-        meta / NOTES_DIR,
+        *((meta / NOTES_DIR,) if memory_enabled else ()),
     ):
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -353,7 +375,7 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
     # on disk still matches that digest, the user never touched it and we may
     # bring it forward. If it differs, the user owns it and we keep their copy.
     from .memory_package_sources import capture_owner, observe_shipped_operations
-    declaration_owner = capture_owner()
+    declaration_owner = capture_owner() if memory_enabled else None
     ops_src = Path(__file__).resolve().parent.parent / "skills" / "agentlas-operations"
     ops_dst = root / "skills" / "agentlas-operations"
     if ops_src.is_dir():
@@ -374,7 +396,7 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
                 continue
             # A shipped declaration source is distinct from the mutable user
             # copy and learned memory; retain only its original metadata.
-            if source.name in {"SKILL.md", "INDEX.md"}:
+            if memory_enabled and _memory_enabled() and source.name in {"SKILL.md", "INDEX.md"}:
                 observe_shipped_operations(source, body, declaration_owner)
             digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
             if target.exists():
@@ -424,49 +446,50 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
         "note": "Local routing only. This non-uploadable agent is not visible in Hub search.",
     }))
 
-    # --- Memory ownership map ----------------------------------------------
-    mark(meta / MEMORY_MAP_FILE, _write_json_if_absent(meta / MEMORY_MAP_FILE, {
-        "contractVersion": CONTRACT_VERSION,
-        "schemaVersion": SCHEMA_VERSION,
-        "agentId": one_id,
-        "canonicalMemoryRoots": {
-            "raw": f"{META_DIR}/",
-            "memoryEvolutionCandidates": f"{META_DIR}/memory-evolution-candidates.json",
-        },
-        "writeOwners": {
-            "durable": "agentlas-memory-curator",
-            "tickets": "runtime",
-            "soul": "agentlas-pm-soul",
-        },
-        "promotionPath": [
-            "observation", "memory-event", "memory-ticket",
-            "curator", "policy-gate", "durable",
-        ],
-        "trustLabels": ["verified", "memory_derived", "inferred", "stale_check_needed"],
-        "runtimeOwned": [MEMORY_TICKETS_FILE, CURATOR_DECISIONS_FILE, INVOCATION_LEDGER_FILE],
-        "neverUpload": [
-            MEMORY_TICKETS_FILE, CURATOR_DECISIONS_FILE, PROJECT_SOUL_FILE,
-            INVOCATION_LEDGER_FILE, VAULT_REFERENCES_FILE, EXPERIENCE_DB_FILE,
-        ],
-    }))
+    if memory_enabled and _memory_enabled():
+        # --- Memory ownership map ----------------------------------------------
+        mark(meta / MEMORY_MAP_FILE, _write_json_if_absent(meta / MEMORY_MAP_FILE, {
+            "contractVersion": CONTRACT_VERSION,
+            "schemaVersion": SCHEMA_VERSION,
+            "agentId": one_id,
+            "canonicalMemoryRoots": {
+                "raw": f"{META_DIR}/",
+                "memoryEvolutionCandidates": f"{META_DIR}/memory-evolution-candidates.json",
+            },
+            "writeOwners": {
+                "durable": "agentlas-memory-curator",
+                "tickets": "runtime",
+                "soul": "agentlas-pm-soul",
+            },
+            "promotionPath": [
+                "observation", "memory-event", "memory-ticket",
+                "curator", "policy-gate", "durable",
+            ],
+            "trustLabels": ["verified", "memory_derived", "inferred", "stale_check_needed"],
+            "runtimeOwned": [MEMORY_TICKETS_FILE, CURATOR_DECISIONS_FILE, INVOCATION_LEDGER_FILE],
+            "neverUpload": [
+                MEMORY_TICKETS_FILE, CURATOR_DECISIONS_FILE, PROJECT_SOUL_FILE,
+                INVOCATION_LEDGER_FILE, VAULT_REFERENCES_FILE, EXPERIENCE_DB_FILE,
+            ],
+        }))
 
-    # --- Raw memory ledgers -------------------------------------------------
-    mark(meta / MEMORY_TICKETS_FILE, _touch_if_absent(meta / MEMORY_TICKETS_FILE))
-    mark(meta / CURATOR_DECISIONS_FILE, _touch_if_absent(meta / CURATOR_DECISIONS_FILE))
-    mark(meta / INVOCATION_LEDGER_FILE, _touch_if_absent(meta / INVOCATION_LEDGER_FILE))
-    mark(meta / EVOLUTION_LOG_FILE, _touch_if_absent(meta / EVOLUTION_LOG_FILE))
+        # --- Raw memory ledgers -------------------------------------------------
+        mark(meta / MEMORY_TICKETS_FILE, _touch_if_absent(meta / MEMORY_TICKETS_FILE))
+        mark(meta / CURATOR_DECISIONS_FILE, _touch_if_absent(meta / CURATOR_DECISIONS_FILE))
+        mark(meta / INVOCATION_LEDGER_FILE, _touch_if_absent(meta / INVOCATION_LEDGER_FILE))
+        mark(meta / EVOLUTION_LOG_FILE, _touch_if_absent(meta / EVOLUTION_LOG_FILE))
 
-    mark(meta / PROJECT_SOUL_FILE, _touch_if_absent(meta / PROJECT_SOUL_FILE, (
-        f"# {name} — Soul Memory\n\n"
-        "Owned by PM Soul. Keep intent, decisions, open loops, and acceptance criteria; never raw transcripts.\n\n"
-        "## Intent\n\n## Decisions\n\n## Open Loops\n\n## Acceptance Criteria\n"
-    )))
+        mark(meta / PROJECT_SOUL_FILE, _touch_if_absent(meta / PROJECT_SOUL_FILE, (
+            f"# {name} — Soul Memory\n\n"
+            "Owned by PM Soul. Keep intent, decisions, open loops, and acceptance criteria; never raw transcripts.\n\n"
+            "## Intent\n\n## Decisions\n\n## Open Loops\n\n## Acceptance Criteria\n"
+        )))
 
-    mark(meta / VAULT_REFERENCES_FILE, _write_json_if_absent(meta / VAULT_REFERENCES_FILE, {
-        "contractVersion": CONTRACT_VERSION,
-        "references": [],
-        "note": "Never store credential values. Store reference names only.",
-    }))
+        mark(meta / VAULT_REFERENCES_FILE, _write_json_if_absent(meta / VAULT_REFERENCES_FILE, {
+            "contractVersion": CONTRACT_VERSION,
+            "references": [],
+            "note": "Never store credential values. Store reference names only.",
+        }))
 
     mark(meta / WORK_BRIEF_FILE, _write_json_if_absent(meta / WORK_BRIEF_FILE, {
         "contractVersion": CONTRACT_VERSION,
@@ -479,27 +502,28 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
     # Legacy chip stores are read-only archives; new learning stays in memory.
 
     # --- Hooks --------------------------------------------------------------
-    mark(root / HOOKS_DIR / MEMORY_UPGRADE_HOOK, _touch_if_absent(
-        root / HOOKS_DIR / MEMORY_UPGRADE_HOOK,
-        "# Memory-ticket and owner-reviewed file evolution\n"
-        f"schemaVersion: {SCHEMA_VERSION}\n"
-        "when:\n"
-        "  - event: turn_end\n"
-        "    require: memory_events_scanned\n"
-        "  - event: session_stop\n"
-        "    require: ticket_or_reason\n"
-        "rules:\n"
-        "  # Never write durable memory directly. Use ticket -> curator -> policy gate.\n"
-        "  - id: no-direct-durable-write\n"
-        "    enforce: deny\n"
-        "  # Downgrade unsupported facts, decisions, and procedures to hypotheses.\n"
-        "  - id: evidence-required\n"
-        "    kinds: [fact, decision, procedure]\n"
-        "    on_missing_evidence: downgrade_to_hypothesis\n"
-        "  # A component may not promote content it harvested itself.\n"
-        "  - id: no-self-confirmation\n"
-        "    enforce: deny\n"
-    ))
+    if memory_enabled and _memory_enabled():
+        mark(root / HOOKS_DIR / MEMORY_UPGRADE_HOOK, _touch_if_absent(
+            root / HOOKS_DIR / MEMORY_UPGRADE_HOOK,
+            "# Memory-ticket and owner-reviewed file evolution\n"
+            f"schemaVersion: {SCHEMA_VERSION}\n"
+            "when:\n"
+            "  - event: turn_end\n"
+            "    require: memory_events_scanned\n"
+            "  - event: session_stop\n"
+            "    require: ticket_or_reason\n"
+            "rules:\n"
+            "  # Never write durable memory directly. Use ticket -> curator -> policy gate.\n"
+            "  - id: no-direct-durable-write\n"
+            "    enforce: deny\n"
+            "  # Downgrade unsupported facts, decisions, and procedures to hypotheses.\n"
+            "  - id: evidence-required\n"
+            "    kinds: [fact, decision, procedure]\n"
+            "    on_missing_evidence: downgrade_to_hypothesis\n"
+            "  # A component may not promote content it harvested itself.\n"
+            "  - id: no-self-confirmation\n"
+            "    enforce: deny\n"
+        ))
 
     mark(root / HOOKS_DIR / ON_STOP_HOOK, _touch_if_absent(
         root / HOOKS_DIR / ON_STOP_HOOK,
@@ -728,6 +752,8 @@ def emit_ticket(
     G7: every ticket names its emitter so the curator can refuse writers that
     are not One's own pipeline.
     """
+    if not _memory_enabled():
+        return None
     root = Path(root).expanduser()
     meta = root / META_DIR
     meta.mkdir(parents=True, exist_ok=True)
@@ -853,10 +879,8 @@ def _edited_file_names(path: str, limit: int = 6) -> list[str]:
 def host_turn_seed(transcript: str, workspace: str) -> str:
     """English query seed written by the host when the model sent no envelope.
 
-    Research 2026-09-23 §P6: 41% of turns carry no Memory Events envelope, so
-    stage 1.6's summary seed was missing exactly there and those turns fell
-    back to the native-language path (median rank 1,476 against English
-    memory). File names are English identifiers already; no model is needed.
+    Use edited filenames as English identifiers when a host summary is absent;
+    generating this seed requires no model call.
     """
     names = _edited_file_names(transcript) if transcript else []
     if not names:
@@ -1124,6 +1148,8 @@ def _workspace_key(workspace: str) -> str:
 
 
 def record_turn_summary(root: Path, workspace: str, summary: str) -> None:
+    if not _memory_enabled():
+        return
     if not summary:
         return
     path = Path(root).expanduser() / META_DIR / TURN_SUMMARY_FILE
@@ -1165,6 +1191,8 @@ def english_recall_query(root: Path, question: str, workspace: str = "") -> tupl
     against English memory ranks the answer at median 1,476 / 2,077, an English
     one at 2 — so a non-English question must never be the semantic query alone.
     """
+    if not _memory_enabled():
+        return question, "disabled"
     question = question or ""
     if _latin_ratio(question) >= 0.6:
         return question, "english"
@@ -1778,8 +1806,23 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         # curate or schedule anything — that would be memory about translating
         # memory, and it would ask for more translation.
         return {"skipped": "translate-worker"}
-    enabled = (root / "state.json").exists()
-    _record_state_transition(root, enabled)
+    try:
+        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        enabled = isinstance(state, dict) and state.get("on") is True
+    except (OSError, ValueError):
+        enabled = False
+    # This module is also invoked directly by bin/agentlas-one.
+    if not __package__:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    try:
+        from agentlas_cloud.feature_preferences import feature_enabled
+        memory_enabled = feature_enabled("memory-hooks")
+    except Exception:
+        memory_enabled = False
+    if not memory_enabled:
+        return {"skipped": "memory_off"}
+    if enabled:
+        _record_state_transition(root, True)
 
     # Transcript parsing and per-agent drawer accumulation are One-INDEPENDENT.
     # They used to sit AFTER the `if not enabled: return` gate, so a user who
@@ -1819,24 +1862,25 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         # The historical drawer belongs to device custody, not an arbitrary
         # trusted account namespace supplied to the canonical store.
         historical_custody = not os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE") or os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE", "").startswith("device-local:")
-        if historical_custody:
+        if enabled and historical_custody:
             record_turn_summary(root, workspace, summary)
         # Stop performs bounded local intake only. Model consolidation is a
         # separate host-injected worker; it never blocks this hook or infers
         # another installed agent's owner from transcript prose.
-        try:
-            from .memory_runtime import owner_binding, queue_hook_summary, schedule_worker
-            # The installed Claude Stop entry omits --host; its prompt entry
-            # explicitly uses claude, so both must name the same partition.
-            if not summary and current_observations:
-                summary = "The host observed unapproved memory candidates from a completed turn."
-            queued = queue_hook_summary(payload, host or "claude", summary, max(1, len(summary_texts)), current_observations)
-            canonical_receipt = {"canonicalMemory": queued}
-            if queued.get("state") in {"queued", "deferred"}:
-                schedule_worker(queued["operation_id"], owner_binding() or "")
-        except Exception:  # intake failure must not suppress existing use receipts
-            pass
-        if transcripts and historical_custody:
+        if memory_enabled:
+            try:
+                from agentlas_cloud.memory_runtime import owner_binding, queue_hook_summary, schedule_worker
+                # The installed Claude Stop entry omits --host; its prompt entry
+                # explicitly uses claude, so both must name the same partition.
+                if not summary and current_observations:
+                    summary = "The host observed unapproved memory candidates from a completed turn."
+                queued = queue_hook_summary(payload, host or "claude", summary, max(1, len(summary_texts)), current_observations)
+                canonical_receipt = {"canonicalMemory": queued}
+                if queued.get("state") in {"queued", "deferred"} and feature_enabled("memory-hooks"):
+                    schedule_worker(queued["operation_id"], owner_binding() or "")
+            except Exception:  # intake failure must not suppress existing use receipts
+                pass
+        if enabled and transcripts and historical_custody:
             record_block_use(root, hook_session_key(payload), transcripts[0])
     except Exception:  # noqa: BLE001 — a query seed must never cost a session end
         pass
@@ -2476,6 +2520,8 @@ def list_chips(root: Path, status: str = "", limit: int = 20) -> list[dict[str, 
 
 def curate(root: Path, *, project_root: Path | None = None, project_slug: str = "") -> dict[str, Any]:
     """Queue legacy source observations; never admit directly into learned files."""
+    if not _memory_enabled():
+        return {"status": "disabled", "error": "feature_disabled", "feature": "memory-hooks"}
     from .memory_runtime import MemoryRuntime, owner_binding, schedule_worker, _hash, _safe_id
     owner = owner_binding(create=True)
     if not owner:
@@ -2545,6 +2591,8 @@ def _curate_pending(
 
 def _schedule_english_migration(root: Path) -> dict[str, Any]:
     """Hook-side trigger for memory_translate (lazy import, never raises)."""
+    if not _memory_enabled():
+        return {"status": "disabled", "error": "feature_disabled", "feature": "memory-hooks"}
     try:
         from .memory_translate import schedule_drawer_translation  # noqa: PLC0415
 
@@ -2757,11 +2805,7 @@ _ONE_RUNTIME_CACHE: dict[str, Any] = {}
 def _one_runtime(root: Path, create: bool = False):
     """Open the One drawer's semantic index, or return None when unavailable.
 
-    Every other memory layer — project, borrowed agent, Desktop — is served by
-    this engine, which is what the public LoCoMo/LongMemEval numbers measured.
-    The One drawer was built later on a hand-rolled three-table schema and was
-    the only layer left outside it, so its recall stayed lexical while the rest
-    of the product searched semantically.
+    Project, borrowed-agent, Desktop, and One memory share this semantic engine.
 
     Imported lazily and fail-open: a host without the ontology package keeps the
     lexical path rather than losing recall entirely.
@@ -2855,6 +2899,8 @@ def _spawn_detached_index(root: Path) -> bool:
 
 def schedule_durable_index(root: Path) -> dict[str, Any]:
     """Keep the semantic index current without ever blowing a hook budget."""
+    if not _memory_enabled():
+        return {"status": "disabled", "error": "feature_disabled", "feature": "memory-hooks"}
     root = Path(root).expanduser()
     meta = root / META_DIR
     try:
@@ -2885,6 +2931,8 @@ def index_durable_blocks(
     killed run keeps what it finished. `budget_seconds` stops early and reports
     `partial` instead of being killed by a hook timeout.
     """
+    if not _memory_enabled():
+        return {"status": "disabled", "error": "feature_disabled", "feature": "memory-hooks"}
     root = Path(root).expanduser()
     meta = root / META_DIR
     soul = meta / PROJECT_SOUL_FILE
@@ -3067,8 +3115,7 @@ def _record_exposure(
     explore: dict[str, Any] | None = None,
 ) -> None:
     """Exposure ledger: what recall SHOWED in this session. Kept apart from use —
-    research 2026-09-23 §0: counting delivery as use makes brightness feed itself
-    (top block 16.9% of 127,184 deliveries, top four 55%).
+    delivery and actual use are distinct signals.
 
     Placeholder deliveries (no prompt, constant fallback query) go to their own
     list and never into `hashes`, so the use ledger cannot credit them and any
@@ -3141,6 +3188,8 @@ def record_block_use(root: Path, session_key: str, transcript: str) -> dict[str,
     and not used get nothing — that absence is the signal the delivery counter
     could never give.
     """
+    if not _memory_enabled():
+        return {"shown": 0, "used": 0}
     root = Path(root).expanduser()
     meta = root / META_DIR
     exposure = _read_json_dict(meta / EXPOSURE_FILE)
@@ -3196,14 +3245,15 @@ def record_recall_receipt(
 
     `count` is the prompt channel only. Deliveries made for the prompt-less
     placeholder query (and the session seed, and tripwire fires) land in
-    `ch.<channel>` instead: 71.5% of the historical counter was the placeholder
-    string, and a count that measures a constant must not steer anything
-    (research 2026-09-23 R0). Tripwire blocks inside a prompt capsule are
-    counted in `ch.tripwire`, not `count`, for the same reason.
+    `ch.<channel>` instead, so a constant query does not influence prompt counts.
+    Tripwire blocks inside a prompt capsule are counted in `ch.tripwire`,
+    not `count`, for the same reason.
 
     Recall itself stays pure — the caller decides to record, so read-only
     measurement never mutates the drawer.
     """
+    if not _memory_enabled():
+        return
     if not block_hashes:
         return
     channel = channel if channel in RECALL_CHANNELS else "prompt"
@@ -3260,6 +3310,8 @@ def recall_coverage(root: Path) -> dict[str, Any]:
     Without this number a ranking change cannot be evaluated: the drawer grows
     while the per-session budget stays fixed, so reach is the thing to watch.
     """
+    if not _memory_enabled():
+        return {"status": "disabled", "error": "feature_disabled", "feature": "memory-hooks"}
     root = Path(root).expanduser()
     meta = root / META_DIR
     try:
@@ -3305,10 +3357,8 @@ def rank_one_blocks(
 ) -> list[tuple[float, int, dict[str, str]]]:
     """Order eligible blocks for a question. The single ranking implementation.
 
-    When the index answers, its order wins: measured on LongMemEval (200 items,
-    recall@10) the engine reached 96.5% while a local score reached 93.5%, so
-    re-ranking the better ranker only loses ground. The local score still decides
-    among blocks the engine did not return, so lexical matches are never dropped.
+    When the index answers, its order wins. The local score orders blocks
+    the index did not return, so lexical matches are never dropped.
 
     Kept separate from `select_one_recall` because recall@k has to see the whole
     ranking while a session sees only what fits the capsule budget — and because
@@ -3349,10 +3399,8 @@ def rank_one_blocks(
 
 
 # ---------------------------------------------------------------- capsule v2
-# Research 2026-09-23 "memory prioritization" §8-§9. Relevance owns the order,
-# importance gets its own slot (the tripwire), frequency never ranks: delivery
-# counts were measured to be 71.5% produced by the prompt-less placeholder
-# query, and brightness built on them lost 1.7-9.0 points of capsule hit.
+# Relevance owns the order, importance gets its own tripwire slot, and
+# delivery frequency does not rank memories.
 # Every piece sits behind recallBudgets.one.capsuleV2.<key> so a failed gate
 # turns it off in the ruleset, without a code change. All deterministic; the
 # explore slot draws from a seeded generator and records its propensity.
@@ -3383,19 +3431,14 @@ _CAPSULE_V2_DEFAULTS: dict[str, Any] = {
     "tripwireMaxBlocks": 2,
     "tripwireMaxChars": 600,
     "tripwireMaxFiresPerSession": 1,
-    # R4 — one Thompson exploration slot over relevant ranks 6..20, taking only
-    # room relevance left. OFF: gated by research §9 on reach (+5 pts); replayed
-    # on 1,560 sessions it added +3.8 alone but +0.1 on top of R1-R3 (the skip
-    # packer leaves it room in ~11% of capsules). Flip to start the online trial;
-    # its propensity is recorded in the exposure ledger for IPS.
+    # An optional Thompson exploration slot uses relevant ranks 6..20 and
+    # only the room left by relevance. Propensity is recorded for analysis.
     "explore": False,
     "exploreFrom": 5,
     "exploreTo": 20,
     "propensityDraws": 256,
-    # R0 — prompt-less hooks seed recall with the workspace's last English turn
-    # summary instead of the constant placeholder query. Replayed on 353
-    # sessions: needed-hit 0.0% (constant) -> 9.8% (seed; own query 14.0%),
-    # top-1% share of those capsules 100% -> 17.4%.
+    # Prompt-less hooks may seed recall from the workspace turn summary
+    # instead of using the constant placeholder query.
     "sessionStartSeed": True,
 }
 
@@ -3497,9 +3540,8 @@ def pack_one_capsule(
 ) -> list[dict[str, str]]:
     """Fill the relevance part of the capsule in order.
 
-    skip=False is the pre-v2 rule (stop at the first block that does not fit —
-    one long block ended the capsule at ~4 of 6 slots); skip=True keeps trying
-    the next block (first-fit, R2).
+    skip=False stops at the first block that does not fit. skip=True keeps
+    trying the next block using first-fit packing.
     """
     out: list[dict[str, str]] = []
     if max_blocks <= 0 or max_chars <= 0:
@@ -3926,9 +3968,11 @@ def select_one_capsule(
     explore slot records its propensity, and neither widens the budget.
     Read-only — the caller records what was delivered (record_recall_receipt).
     """
+    if not _memory_enabled():
+        return {"lines": [], "hashes": [], "channels": [], "tripwire": [], "explore": None}
     empty: dict[str, Any] = {"lines": [], "hashes": [], "channels": [], "tripwire": [], "explore": None}
     root = (root or Path("~/.agentlas/one")).expanduser()
-    if not (root / "state.json").exists():
+    if not _one_is_on(root):
         return empty
     meta = root / META_DIR
     eligible, l1_kinds = _one_eligible_blocks(root)
@@ -4049,6 +4093,8 @@ def tripwire_for_tool(
 
 def status(root: Path) -> dict[str, Any]:
     """Measure the One workspace directly, reporting absence instead of inventing counts."""
+    if not _memory_enabled():
+        return {"status": "disabled", "error": "feature_disabled", "feature": "memory-hooks"}
     root = Path(root).expanduser()
     meta = root / META_DIR
 
@@ -4137,6 +4183,9 @@ def _main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     root = Path(args.root)
+    if args.command in {"emit", "curate", "recall-coverage", "index"} and not _memory_enabled():
+        print(json.dumps({"status": "disabled", "error": "feature_disabled", "feature": "memory-hooks"}), flush=True)
+        return 2
     if args.command == "seed":
         out = seed(root, args.name)
     elif args.command == "status":

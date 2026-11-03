@@ -11,15 +11,11 @@ Two properties are load-bearing and everything else is tuning:
    offer's positively declared `authority.performs`, and only when everything the
    method does is forbidden. An offer that declared no `performs` can never be
    excluded, so a publisher who wrote nothing is never punished for it. This is
-   the exact inverse of the failure that took a three-candidate inventory to zero
-   on 8 probes out of 8 — there, a vocabulary miss deleted the candidate; here,
-   only the requester's own stated refusal does.
+   the requester's own stated refusal that controls exclusion.
 
 2. **Sentences are compared as sentences.** Nothing below tokenises a statement, a
-   deliverable label or an obligation. Cutting the refusal sentence "Fix the CI
-   runner out-of-memory" into the bare words `ci` and `runner` is what cut a
-   correct agent's score to a quarter and moved it from rank 2 to rank 24 on a
-   query describing its own job.
+   deliverable label or an obligation. Preserving the whole sentence keeps
+   refusal meaning attached to the work it describes.
 
 Unstated is not inferred. An offer that never declared a shape scores zero on
 shape rather than borrowing one from its neighbours.
@@ -35,14 +31,8 @@ __all__ = ["match_briefs", "MatchResult"]
 
 # SHAPE AND EFFECT CONFIRM A MATCH; THEY NEVER CREATE ONE.
 #
-# A first version of this file gave `shape` the top weight and scored it on its
-# own. Measured immediately on the real catalogue: 89 of 113 compiled
-# deliverables are `ledger` and almost every one is `describe`, so a wedding
-# planner and a flaky-test surgeon both scored 37 on "ledger + describe" and the
-# correct agent — which had no contract yet, hence no shape — scored 0. That is
-# the same mistake as `runtimes`, filled by 246 of 246 profiles and worth
-# nothing: a field where four out of five rows share a value cannot carry the
-# ranking, however principled it looks.
+# Common topology alone is insufficient evidence that two briefs describe
+# the same work.
 #
 # So the topology fields are MULTIPLIERS on evidence that the two sides are
 # talking about the same work, not independent points. Agreement on what the

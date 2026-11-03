@@ -16,7 +16,7 @@ everything after it as REQUEST, verbatim.
 
 COMMAND is one of:
 `network`, `build`, `storm`, `call`, `search`, `hub`, `local`, `cloud`,
-`browser`, `connect`, `upload`, `graph`, `one`, `login`, `orch`, `update`.
+`browser`, `upload`, `goal`, `one`, `login`, `orch`, `update`.
 
 If COMMAND is missing, or is not in that list, print the list, ask which one the
 user meant, and stop. Never guess a command, and never improvise a workflow from
@@ -28,12 +28,12 @@ Otherwise resolve the canonical workflow file for that command:
 cmd="$COMMAND"
 if [[ "$cmd" == "one" || "$cmd" == "agentlas-one" ]]; then
   target="agentlas-one.md"
-elif [[ "$cmd" == "graph" ]]; then
-  target="hep-graph.md"
 else
   target="hep-${cmd}.md"
 fi
-ls "$HOME/.agentlas/runtime/current/host_adapters"/*/prompts/"$target"    "$HOME/.agentlas/runtime/current/host_adapters"/*/plugins/*/commands/"$target"    2>/dev/null | head -1
+find "$HOME/.agentlas/runtime/current/host_adapters" -type f \
+  \( -path "*/prompts/$target" -o -path "*/plugins/*/commands/$target" \) \
+  -print 2>/dev/null | head -1
 ```
 
 Read the file that resolves and follow its instructions exactly, using REQUEST

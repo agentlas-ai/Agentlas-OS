@@ -52,8 +52,13 @@ run_python_module() {
     echo "$self: Python 3.9+ not found. On macOS/Linux install python3 (python.org or your package manager); on Windows install it from python.org or run 'py -3' once. Then rerun hephaestus doctor." >&2
     exit 127
   fi
-  # shellcheck disable=SC2086
-  HEPHAESTUS_RUNTIME_ROOT="$root_native" PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" $HEPHAESTUS_PY -c 'import os, runpy, sys; cwd=os.getcwd(); root=os.environ["HEPHAESTUS_RUNTIME_ROOT"]; sys.path=[p for p in sys.path if p not in ("", cwd, root)]; sys.path.insert(0, root); sys.argv=sys.argv[1:]; runpy.run_module(sys.argv[0], run_name="__main__", alter_sys=True)' "$@"
+  local -a python_command=("$HEPHAESTUS_PY")
+  if [[ "$HEPHAESTUS_PY" == "py -3" ]]; then python_command=(py -3); fi
+  local -a invocation=("${python_command[@]}" -c 'import os, runpy, sys; cwd=os.getcwd(); root=os.environ["HEPHAESTUS_RUNTIME_ROOT"]; sys.path=[p for p in sys.path if p not in ("", cwd, root)]; sys.path.insert(0, root); sys.argv=sys.argv[1:]; runpy.run_module(sys.argv[0], run_name="__main__", alter_sys=True)' "$@")
+  if [[ "${1:-}" == "agentlas_cloud" && "${2:-}" == "host" && "${3:-}" == "session" ]]; then
+    HEPHAESTUS_RUNTIME_ROOT="$root_native" PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" exec "${invocation[@]}"
+  fi
+  HEPHAESTUS_RUNTIME_ROOT="$root_native" PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" "${invocation[@]}"
 }
 
 upload_question() {
@@ -228,6 +233,11 @@ usage() {
   cat <<'EOF' | sed "s|bin/hephaestus|$self|g"
 Usage:
   bin/hephaestus --version
+  bin/hephaestus features status|on|off [feature]
+  bin/hephaestus storm on|off|status
+  bin/hephaestus memory on|off|status
+  bin/hephaestus context map on|off|status
+  bin/hephaestus one on|off|status
   bin/hephaestus career-graph status|ingest|verify|trace|public-card [--project <dir>]
   bin/hephaestus career-graph query "<question>" [--project <dir>]
   bin/hephaestus ontology [--gui] [--no-open] [project-dir]
@@ -243,7 +253,6 @@ Usage:
   bin/hephaestus session [inspect|normalize|validate|preview|merge|ir|compile|promote] [--input <session.jsonl>] [--global-agent]
   bin/hephaestus package <agent-folder> [--visibility marketplace|private-link]
   bin/hephaestus publish <agent-folder> --visibility marketplace|private-link [--dry-run] [--expected-package-hash <sha256>] [--expected-upload-receipt <sha256>] [--overwrite-cloud-id <id>] [--secret-review <file>]
-  bin/hephaestus field-test
 	  bin/hephaestus auth status|login|ensure|logout [--base-url <url>]
   bin/hephaestus doctor
   bin/hephaestus hep-update [--check]
@@ -251,6 +260,7 @@ Usage:
   bin/hephaestus plugins list [--project <dir>]
   bin/hephaestus plugins resolve "<need>" [--project <dir>] [--no-hub]
   bin/hephaestus project ensure|status [--project <dir>]
+  bin/hephaestus goal [--project <dir>] schema|start|plan-op|kpi-define|kpi-sample|review|owner-answer|refresh|status|context [options]
   bin/hephaestus meta-agent "<request>"
   bin/hephaestus hep-build "<request>"             # build/create/package surface
   bin/hephaestus build "<request>"                 # shorthand for hep-build
@@ -280,6 +290,7 @@ Usage:
   bin/hephaestus hep-call "agent-a,agent-b" "<context>"  # prepare named Hub/cloud agents
   bin/hephaestus hep-upload <agent-folder>          # ask Cloud vs Hub before upload
   bin/hephaestus hep-global install                 # install Codex/Claude/Antigravity global router prompt blocks
+  bin/hephaestus host status|session claude|codex  # inspect or start a standalone host session
   bin/hephaestus mcp serve              # stdio MCP server (hephaestus_route tool)
 
 Examples:
@@ -367,9 +378,6 @@ case "$command" in
         ;;
     esac
     ;;
-	  field-test)
-	    run_python_module agentlas_cloud field-test
-	    ;;
 	  auth)
 	    run_python_module agentlas_cloud auth "$@"
 	    ;;
@@ -381,6 +389,16 @@ case "$command" in
 	    ;;
 	  global|hep-global|hephaestus-global)
 	    run_python_module agentlas_cloud global "$@"
+	    ;;
+	  memory)
+	    run_python_module agentlas_cloud memory "$@"
+	    ;;
+	  one|hep-one|agentlas-one)
+	    exec "$(dirname "${BASH_SOURCE[0]}")/agentlas-one" "$@"
+	    ;;
+	  network-pipeline)
+	    # Internal: the background route worker re-enters the decided pipeline.
+	    run_python_module agentlas_cloud network-pipeline "$@"
 	    ;;
 	  goal|hep-goal|hephaestus-goal|agentlas-goal)
 	    # Goal plan tree with KPI states; /goal plus a plan, nothing more.
@@ -414,7 +432,7 @@ case "$command" in
 	  session)
 	    run_python_module agentlas_cloud session "$@"
 	    ;;
-	  command|network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract|feature-map|revision)
+	  command|network|cards|ao|route|mcp|workforce|local-gui|package|publish|project|context|contract|feature-map|features|revision|host)
 	    # `contract` was the one subcommand the Python CLI exposed that this
 	    # dispatcher never listed. It fell through to the natural-language
 	    # router, which read the package path as a private path and refused
@@ -453,13 +471,9 @@ case "$command" in
 	    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"network","sources":["local","cloud","hub"],"decisionOwner":"host_llm","legacyRouter":"disabled","detail":"Run /hep-network or @Hephaestus inside an MCP-capable host. Core federates source menus; the host LLM selects the team."}'
 	    exit 3
 	    ;;
-	  connect|hep-connect|hephaestus-connect|agentlas-connect)
-	    # Telegram Connect is a guided Desktop flow (registry: agentlas.connect is
-	    # identity_only, no installed entrypoint). Until 2026-09-05 this verb fell
-	    # through to the generic router and printed a route menu — a dead end for
-	    # the person who typed it. A raised stop must carry its way out.
-	    printf '%s\n' '{"action":"desktop_connect_required","status":"host_llm_required","command":"hep-connect","surface":"desktop","detail":"Telegram Connect runs in Agentlas Desktop → Connect (choose the agent, team, or group; connect the bot; pair a chat; send a test message). From Claude Code or Codex type /hep-connect for the guided flow. This shell form only points the way."}' >&2
-	    exit 3
+	  field-test|graph|hep-graph|hephaestus-graph|agentlas-graph|automation|automations|connect|hep-connect|hephaestus-connect|agentlas-connect)
+	    printf '%s\n' '{"status":"error","code":"command_removed","detail":"This command is not available in the engine."}' >&2
+	    exit 2
 	    ;;
 	  hep-local|hephaestus-local)
 	    printf '%s\n' '{"action":"workforce_orchestration_required","status":"host_llm_required","sourceScope":"local","sources":["local"],"decisionOwner":"host_llm","legacyRouter":"disabled","detail":"Run /hep-local inside an MCP-capable host (Claude Code, Codex, Cursor, Antigravity, ...). Core federates the registered Local menu; the host LLM does the staffing, so this shell form has nothing to select with."}'
@@ -472,7 +486,12 @@ case "$command" in
 		  stormbreaker)
 		    run_python_module agentlas_cloud stormbreaker "$@"
 		    ;;
-		  hep-storm|hephaestus-storm|storm)
+		  hep-storm|hephaestus-storm|agentlas-storm|storm)
+		    if [[ "${1:-}" == on || "${1:-}" == off || "${1:-}" == status ]]; then
+		      if [[ "$#" -ne 1 ]]; then echo "$self: storm on|off|status takes no extra arguments" >&2; exit 2; fi
+		      run_python_module agentlas_cloud features "$1" storm
+		      exit $?
+		    fi
 		    # The user-facing Storm shortcut follows the same Hub-first contract as
 		    # hep-network. Operators who intentionally want local-card debug routing
 		    # can still use the lower-level `stormbreaker run` command directly.
@@ -541,19 +560,6 @@ case "$command" in
 	      echo "See: $self --help  ·  to route it as a request: $self \"$command …\"" >&2
 	      exit 2
 	    fi
-	    # A word this launcher does not own, but the sibling CLI does, is a
-	    # wrong-tool mistake — not a request. The single-word guard above never
-	    # sees it because these are typed with a subcommand (`graph list`),
-	    # and the router then answered with Hub candidates at exit 0: a list of
-	    # marketplace agents that reads exactly like the list of saved
-	    # automations the user asked for (audit F9-4). Name the right tool.
-	    case "$command" in
-	      graph|automation|automations)
-	        echo "$self: '$command' belongs to the agentlas CLI, not hephaestus." >&2
-	        echo "Try: agentlas $command $*" >&2
-	        exit 2
-	        ;;
-	    esac
 	    # Whitespace-only input is not a request either.
 	    if [[ -z "${command// /}" && $# -eq 0 ]]; then
 	      echo "$self: no command given." >&2

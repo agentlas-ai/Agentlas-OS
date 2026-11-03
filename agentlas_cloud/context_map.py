@@ -63,22 +63,12 @@ MAX_IMPACT_FILES = 2_048
 MAX_CONTEXT_NODES = 48
 MAX_CONTEXT_EDGES = 128
 MAX_DECLARED_NODES = 2_000
-# Default recall budget. Chosen against the tightest shipped hook contract
-# (PreToolUse 10s) minus what the rest of the capsule costs (measured 2.2s for
-# ontology + One + workforce), and against Desktop's 4s slice kill. Small
-# projects finish the real check well inside it and stay fully verified; only
-# large ones fall back to the labelled path.
+# Default recall budget accommodates the PreToolUse 10s contract and the
+# Desktop 4s slice timeout; large projects use the labelled fallback.
 MAX_RENDERED_CONTEXT_EDGES = 12
 RECALL_FRESHNESS_BUDGET_SECONDS = 1.5
-# Recall runs inside a host hook whose contract is measured in seconds: the
-# tightest shipped budget is PreToolUse at 10s (host_adapters/hooks/*/hooks.json),
-# and Desktop kills its slice subprocess at 4s. The passive freshness receipt
-# walks the whole repository, so on a large project it cannot fit — measured on
-# the pilot: 29.6s before the _safe_file repair, 11.0s after. Recall therefore
-# asks for freshness under a budget and, when the budget runs out, serves the
-# last complete map labelled `unverified` instead of returning nothing. An
-# unverified map with an honest label beats an empty capsule; the same trade
-# already exists for `stale_served`.
+# Passive recall checks freshness within a budget. When it expires, the last
+# complete map is returned with an explicit unverified label, as with stale data.
 MAX_DECLARED_EDGES = 8_000
 # Per-node edge budget for closure. Keeps one hub node from filling the slice.
 MAX_EDGES_PER_NODE = 64
@@ -98,12 +88,8 @@ _NODE_TYPE_RANK = {
 _DEFAULT_TYPE_RANK = 11
 MAX_RENDER_CHARS = 9_000
 
-# ASCII identifiers (3+) OR any run of non-ASCII letters (2+). The ASCII-only
-# form silently discarded every Korean/Japanese/Chinese word: measured on four
-# real projects, "API 라우트 추가" tokenised to ['api'] alone and the slice
-# returned files 0 / symbols 0 while the English "add API route" found 13/5.
-# Non-ASCII terms cannot match code symbols, but they DO match declared titles
-# in sitemap/context-map, which is where a non-English author's intent lives.
+# Accept ASCII identifiers (3+) and non-ASCII letter runs (2+). Non-ASCII
+# terms can match declared sitemap/context-map titles even without code symbols.
 _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}|[^\W\d_]{2,}", re.UNICODE)
 _PATH_HINT_RE = re.compile(
     r"(?<![A-Za-z0-9_.-])"
@@ -263,14 +249,7 @@ def _bounded_by_relevance(values: Iterable[str], limit: int) -> list[str]:
     the alphabet, not on the ranking, so whatever the caller worked out about
     relevance is thrown away at the last step.
 
-    Measured 2026-08-19 on this repository: three unrelated tasks — "research
-    published sources", "fix the workforce ranking in
-    agentlas_cloud/workforce/index.py", "write marketing copy for a landing
-    page" — each received 64 files and **63 of the 64 were identical**, headed
-    by `.codex-memory-bench.cjs` and two `.tmp-agentlas-build-qa.*` scratch
-    trees, because dot-paths sort first. Every prepared worker inherited ~100KB
-    of grounding that had almost nothing to do with its task, and `fileMatch`
-    still reported "matched".
+    Files are selected for the current task before applying the response budget.
 
     Same disease as the declared-graph cap recorded earlier: select first,
     truncate second — never truncate on a key that has no relation to the task.
@@ -330,12 +309,8 @@ def _symbol_terms(task: str, code_map: Mapping[str, Any] | None = None) -> list[
         normalized = raw.lower()
         shaped = "_" in raw or re.search(r"[a-z][A-Z]", raw) or len(raw) >= 12
         if not shaped:
-            # Rarity does not rescue a function word. "from published sources"
-            # matched a helper literally named `from` (one definition site, so
-            # the rarity gate passed) and dragged its 3,998 references into the
-            # slice — measured 2026-08-19. A prose stopword names nothing,
-            # however rarely someone defined it; shaped identifiers
-            # (`from_wire`) remain eligible above.
+            # Prose stopwords are not identifier evidence. Shaped identifiers such as
+            # from_wire remain eligible.
             if normalized in _STOP_TERMS:
                 continue
             sites = definitions.get(raw) or definitions.get(normalized)
@@ -456,12 +431,8 @@ def _passive_code_map_fingerprint(
             "size": metadata.st_size,
         }
     _check_budget()
-    # Passive freshness is metadata-addressed. mtime+ctime+size and the complete
-    # relative path set catch ordinary writes, replacements, deletes, policy
-    # edits and renames without re-reading the repository. generate_code_map
-    # still creates the content-addressed snapshot once after this proves stale.
-    # Measured on the owner workspace: the old passive check read 7.74 GB on
-    # every Context Map call.
+    # Passive freshness uses mtime, ctime, size, and relative paths to detect
+    # changes. The content-addressed snapshot is regenerated only when stale.
     return _fingerprint_hash(fingerprints), "", len(code_files), len(fingerprints), source
 
 
@@ -503,13 +474,9 @@ def load_code_map(
     slice to the very sessions doing the work. A stale map with a stale flag
     beats no map.
 
-    ``freshness_budget_seconds`` caps that metadata-only passive check. Exhausting it is not
-    an error for a caller that already accepts stale data: the map is served
-    with ``refresh: "unverified_served"``, which says "this map may be current,
-    we did not have time to prove it" — distinct from ``stale_served``, which
-    says "we proved it is behind". Before the metadata fast path, the pilot
-    repository check cost 11.0s against a 10s PreToolUse contract and a 4s Desktop kill, so
-    without a budget every recall on a large project silently produced nothing.
+    ``freshness_budget_seconds`` bounds the metadata-only passive check.
+    Exhausting the budget can return ``refresh: "unverified_served"`` when stale
+    data is allowed; ``stale_served`` means the map was verified to be behind.
     """
 
     root = _project_root(project)
@@ -773,11 +740,8 @@ def _load_declared_graph(
                 per_node[source] = per_node.get(source, 0) + 1
                 per_node[target] = per_node.get(target, 0) + 1
                 edges.append(dict(candidate))
-    # Truncation happens AFTER selection, not here. Cutting the list before the
-    # task is known meant a relevant edge sitting past the cap could never be
-    # reached: measured on a workspace with 683,729 declared edges, exactly one
-    # survived into the slice. `_select_declared_context` applies the real
-    # budgets to what the task actually selected.
+    # Apply truncation after task selection so relevant edges remain reachable.
+    # _select_declared_context owns the response budgets.
     report = {
         "sources": loaded_sources,
         "skippedSources": skipped_sources,
@@ -870,9 +834,8 @@ def _select_declared_context(
         if any(term in searchable for term in needles):
             selected.add(node_id)
 
-    # Adjacency index instead of rescanning every edge per hop. A single hub
-    # node must not be able to dominate the slice, so each node contributes a
-    # bounded number of edges (measured: one `invoked_by` hub held 672,357).
+    # Use an adjacency index and bound the contribution of each node so a hub
+    # cannot dominate the selected edges.
     adjacency: dict[str, list[dict[str, Any]]] = {}
     for edge in edges:
         source, target, _relation = _edge_parts(edge)
@@ -980,10 +943,8 @@ def _project_layout(code_map: Mapping[str, Any]) -> list[str]:
     save-manager.js side by side, and any reader who sees those names knows
     which one "무역" means. The map simply never showed them.
 
-    So the slice states the shape of the project and lets the agent choose.
-    Directories are ranked by how much of the codebase depends on what they
-    define, so the load-bearing ones survive the budget. Measured on a 629-file
-    game project: 11 code directories in 1,007 characters.
+    The slice states the project shape and ranks directories by their
+    dependents so important code locations survive the response budget.
     """
 
     files = [value for value in code_map.get("mappedFiles") or [] if isinstance(value, str)]
@@ -1072,12 +1033,8 @@ def _recently_touched_files(root: Path, limit: int) -> list[str]:
 def _co_edited_files(root: Path, selected: Sequence[str]) -> list[dict[str, Any]]:
     """Files historically edited alongside `selected`, ranked by how often.
 
-    This is the one relation the static map cannot derive. Copies of the same
-    file across plugin mirrors import nothing from each other, so the dependency
-    graph rates them unrelated — yet changing one without the others is the most
-    repeated defect in this repo. Measured over 489 commits: 95.4% of frequently
-    co-edited code pairs had no AST edge, and co-edit history predicted the next
-    change 94.5% of the time against 13.4% for the dependency graph.
+    Co-edit history supplies relationships the static dependency map cannot
+    infer, such as corresponding files in separate plugin mirrors.
 
     Observed history only: no inference, no model. Returns `[]` when the ledger
     is absent, which is the normal state of a project on its first day.
@@ -1093,10 +1050,8 @@ def _co_edited_files(root: Path, selected: Sequence[str]) -> list[dict[str, Any]
         if size <= MAX_LEDGER_BYTES:
             raw = path.read_text(encoding="utf-8")
         else:
-            # Append-only and chronological, so the tail is the recent history —
-            # the part that predicts the next edit. Reading only the tail keeps
-            # a years-old ledger from silently disabling co-edit forever
-            # (measured: a 115 MB ledger returned [] with no explanation).
+            # The chronological append-only ledger is read from its tail to bound the
+            # work while retaining recent co-edit history.
             with path.open("rb") as handle:
                 handle.seek(size - MAX_LEDGER_BYTES)
                 chunk = handle.read()
@@ -1140,10 +1095,8 @@ def _co_edited_files(root: Path, selected: Sequence[str]) -> list[dict[str, Any]
     for files in units.values():
         if not (files & wanted):
             continue
-        # A wide work unit says less about any single pair than a narrow one,
-        # but dropping it outright discarded whole days of real signal (measured:
-        # 30 files over 3 hours in one IDE session → 0 co-edit results). Weight
-        # by breadth instead: a 2-file unit counts 1.0, a 40-file unit ~0.6.
+        # Weight co-edit units by breadth instead of discarding wide units.
+        # A 2-file unit counts 1.0 and a 40-file unit about 0.6.
         weight = 1.0 if len(files) <= MAX_SESSION_FILES else MAX_SESSION_FILES / len(files)
         for other in files - wanted:
             counts[other] += weight
@@ -1183,8 +1136,8 @@ def _fallback_symbols(
 
     # Non-ASCII terms (Korean etc.) never match code symbols; only ASCII terms
     # participate here. Short ASCII terms are admitted when they are selective:
-    # "api" hitting 9 of 1,578 symbols is a real query, "get" hitting 400 is
-    # noise. Length was the wrong proxy — it discarded "api", "db", "ui".
+    # a rare short term can discriminate symbols even when a common long term
+    # cannot. Do not use term length as the only selectivity measure.
     ascii_terms = [term for term in fallback_terms if term.isascii()]
     long_terms = [term for term in ascii_terms if len(term) >= _MIN_FALLBACK_TERM]
     short_terms = [term for term in ascii_terms if 0 < len(term) < _MIN_FALLBACK_TERM]
@@ -1285,14 +1238,8 @@ def context_slice(
         reference_files = [str(item) for item in (refs or []) if isinstance(item, str)][:64]
         related_files.extend(str(item.get("f") or "") for item in definition_rows)
         related_files.extend(reference_files)
-        # A symbol row exists to say "here is the thing, here is where it lives,
-        # and here is how widely it is used". The definition sites and the count
-        # answer all three; listing 64 referencing paths per symbol does not add
-        # a fourth answer, and it was the single widest row in the slice
-        # (4,768B for one symbol, measured 2026-08-19). The paths worth reading
-        # are already in `files`, chosen by relevance — this list repeated them
-        # and then some. Keep a short sample so the shape stays legible, and say
-        # how many were left out rather than truncating in silence.
+        # Symbol rows retain definition sites, a count, and a bounded path sample.
+        # Report omitted references; the files section holds task-selected paths.
         reference_sample = reference_files[:8]
         symbol_rows.append(
             {
@@ -1351,12 +1298,8 @@ def context_slice(
             if hub_files:
                 selected_files = _bounded_strings(hub_files, 8)
                 file_match = "most_referenced"
-    # Expansion used to run through symbols only: a file-seeded slice (a task
-    # that named a path, or the recent-work door below) stopped at its seed
-    # while `impact` on the very same file reached its dependents. Measured on
-    # a real game project: seed sim/web/app.js -> slice showed 1 file, impact
-    # showed sim/harness/web-runtime.mjs as well. Whatever door was used, the
-    # graph is the point — walk one dependency hop from every seeded file.
+    # Walk one dependency hop from every seeded file, whether the seed came
+    # from a path, a symbol, or recent-work history.
     if selected_files:
         seeds = set(selected_files)
         neighbours: list[str] = []
@@ -1404,11 +1347,8 @@ def context_slice(
     )
     selected_verification_edges: list[dict[str, Any]] = []
     selected_verification_ids: set[str] = set()
-    # Each round re-scans the whole graph, so an edge whose source was already
-    # reachable matched again and was appended again — measured 2026-08-19:
-    # 256 emitted edges, 181 distinct, 75 duplicates. The duplicates are not
-    # merely 31% of wasted bytes; they consume the 256 cap below and evict real
-    # edges, so the map both repeats itself and goes short.
+    # Deduplicate emitted edges across traversal rounds so repeated visits do
+    # not consume the result cap or displace distinct edges.
     emitted_edges: set[tuple[str, str, str]] = set()
     for _ in range(4):
         next_entities: set[str] = set()
@@ -1566,13 +1506,8 @@ def locate(
     definitions = code_map.get("defIndex", {})
     references = code_map.get("refIndex", {})
     matches: list[dict[str, Any]] = []
-    # An agent asking this tool has already read the request and decided what to
-    # look for; the answer it needs is a place, and a place is as often a file
-    # as a function. Symbols-only made the tool useless for exactly the terms an
-    # agent derives from a domain request — measured on a game project, the
-    # queries "economy", "contracts" and "goods" each returned 0 matches while
-    # sim/src/economy.js, contracts.js and goods.js sat in the map. Files are
-    # matched on their stem so a caller need not know the extension or path.
+    # Match file stems as well as symbols so a caller can locate code without
+    # knowing its full path or extension.
     files = [value for value in code_map.get("mappedFiles") or [] if isinstance(value, str)]
     lowered_terms = [term for term in terms if term]
     file_hits: list[dict[str, Any]] = []
@@ -2359,16 +2294,8 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         lines.append("map: served stale, predates recent edits; re-verify paths")
     elif refresh_status == "unverified_served":
         lines.append("map: freshness was not verified in budget; re-verify paths")
-    # Order is a budget decision, not a style one. The capsule layer gives this
-    # slice ~1,200 chars; measured on a real "fix context_slice" turn the
-    # sections cost: edges 852, goals 1,036, definitions 737, related files 649.
-    # Background-first spent the whole budget before saying WHERE anything is,
-    # so three different coding questions produced byte-identical slices with
-    # zero file paths — the map knew `context_slice` was at context_map.py:1012
-    # and had 13 backlinks, and the reader never saw it. What the agent needs to
-    # start working (where the symbol lives, what calls it, what moves with it)
-    # goes first; the project's standing goals and their edges follow and take
-    # what is left. Both still render in full when no budget is applied.
+    # Render code locations, references, and co-edit context before standing
+    # goals. Goals use the remaining capsule budget; unbounded output keeps both.
     symbols = value.get("symbols")
     if isinstance(symbols, list) and symbols:
         # Say how these were found. An exact match and a substring guess must not
@@ -2409,22 +2336,11 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
     if isinstance(layout, list) and layout:
         lines.append("Layout (by dependents):")
         lines.extend(f"- {item}" for item in layout)
-    # An edge line names both of its endpoints, so a node that appears in one is
-    # already stated — listing it again as a bare bullet spends the capsule
-    # budget twice on the same fact. Measured: at the 1,200-char context_slice
-    # layer budget the bullet list consumed everything and zero edges survived,
-    # which is how a 680,119-edge graph reached the model as a flat list. Edges
-    # are rendered first and their endpoints are dropped from the list below.
+    # Render relations before isolated nodes. An endpoint already named by an
+    # edge does not need a repeated node bullet.
     edge_endpoint_ids = _rendered_edge_endpoints(value)
-    # The selection stage walks two hops out from the task and returns both the
-    # nodes it reached and the edges it walked — and until now the renderer
-    # printed neither, so the whole traversal ended in a field nobody read.
-    # Measured on the pilot: 680,119 declared edges in the sitemap, 32,048
-    # loaded, up to 128 selected for a task, and 0 rendered. The edges are the
-    # only part that says HOW two pieces of context relate; goals alone read as
-    # an unordered list. Kept compact and placed after the defining nodes, so a
-    # tight capsule budget still spends its first characters on what the
-    # project IS.
+    # Render the selected nodes and traversed edges compactly, retaining the
+    # relationships that explain how the returned context is connected.
     related = value.get("relatedContextNodes")
     context_edges = value.get("contextEdges")
     if isinstance(context_edges, list) and context_edges:

@@ -31,6 +31,6 @@ grok marketplace update agentlas-core-engine
 ```
 
 `/hep-build`, `/hep-network`, `/hep-storm`, `/hep-cloud`, `/hep-search`,
-`/hep-browser`, `/hep-call`, `/hep-upload`, `/hep-connect`, `/agentlas`, and
+`/hep-browser`, `/hep-call`, `/hep-upload`, `/agentlas`, and
 the `/agentlas-<verb>` aliases all come from the same plugin source Claude
 Code uses — no Grok-only build step is required.

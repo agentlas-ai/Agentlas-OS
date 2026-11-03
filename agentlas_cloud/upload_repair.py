@@ -1,10 +1,8 @@
 """Repair a package instead of refusing it.
 
-Upload does not reject. A refusal hands the author a list of field names and
-makes them guess the house format, and the measured result of that policy is a
-catalogue where the required `capability-eval-plan.json` is present on 4% of
-live releases and `mcp-policy.json` on 50% — the gate said no, and the packages
-shipped anyway through whatever path did not check.
+Repair fields derivable from package content before validation. Preserve
+authored facts and report any remaining requirements explicitly.
+
 
 So the contract is inverted here: anything the server can derive from what the
 package already says, the server writes. What it cannot derive it reports, and
@@ -44,10 +42,8 @@ from .networking.card_lint import (
 )
 
 from .runtime import DEFAULT_ALLOW_READ, is_credential_store_path
-# One definition of "is this actually answered", shared with the derive pass.
-# A scaffold stencil is truthy and non-empty, so every plain `if not x` below
-# reads `{{CAPABILITY_VERB_OBJECT_1}}` as a real capability and declines to fill
-# it. Measured 2026-08-07: a freshly built package failed upload on exactly that.
+# Share the definition of an answered field with the derive pass.
+# A non-empty engine stencil is still unanswered and must be filled.
 from .repackage import is_unfilled
 
 __all__ = ["REPAIRABLE_BLOCKERS", "repair_package", "classify_findings"]
@@ -110,11 +106,8 @@ def _read_json(path: Path) -> Any:
 def _derived_entity_type(base: Path) -> tuple[str | None, str]:
     """What the package's own files say it is: "team", "agent", or None if silent.
 
-    The declaration is not trusted over the structure. A package that ships a
-    multi-node roster while its card says `agent` is sold at the single-agent
-    price (3 credits instead of 10) and loses its execution graph downstream —
-    measured 2026-07-29 on the live `analyst-team`, an HQ-routed roster listed
-    as `entityKind: agent` with `agentCount: 1`.
+    Derive package kind from its on-disk roster, then reconcile declarations
+    so multi-agent packages retain their team execution graph.
 
     `topology` is not one shape across the corpus. Measured on live packages it
     is a bare string ("hub-and-spoke", "single-agent"), a whole {nodes, edges}
@@ -148,13 +141,8 @@ def _derived_entity_type(base: Path) -> tuple[str | None, str]:
 def _widen_allow_read_to_declared_context(base: Path, manifest: dict[str, Any]) -> list[str]:
     """Let the runtime read the files the package's own agent cards require.
 
-    A worker card that says "Required Context: webmaster_frontend/knowledge/
-    stack-and-standards.md" is making a promise the runtime has to be able to
-    keep. Nothing tied the two together, and the drift is not theoretical:
-    measured 2026-07-29 across 143 live packages, `allowRead` came in 15
-    different shapes, 128 of them a 5-entry list narrower than the current
-    default, and 82 files that cards named as required were unreachable — the
-    live `web-master` bundle could not open its own token architecture.
+    Required-context declarations must name files the runtime can read.
+    Reconcile allowed paths with the current contract and the package content.
 
     So the reference is the authority, the same way package structure is the
     authority for entity type. Only paths that (a) a card actually names,
@@ -182,11 +170,8 @@ def _widen_allow_read_to_declared_context(base: Path, manifest: dict[str, Any]) 
             referenced.add(match.group(1))
 
     additions: list[str] = []
-    # The house default moved and published packages did not follow it: 128 of
-    # the 143 measured still carry a 5-entry list written before `agents/**`,
-    # `docs/**`, `contracts/**` and `benchmarks/**` were part of it. Re-uploading
-    # brings a package up to the current floor rather than freezing whichever
-    # default happened to exist the day it was first built.
+    # Bring previous generated defaults up to the current declared read floor.
+    # Preserve explicit authored configuration.
     for pattern in DEFAULT_ALLOW_READ:
         if pattern not in allow and pattern not in additions:
             additions.append(pattern)
@@ -584,11 +569,8 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
                 carried, TRIGGER_MINIMUM_TOTAL, TRIGGER_MINIMUM_PER_LOCALE, base
             )
 
-        # Anti-triggers are the work this method turns down. The package states
-        # them in prose - "You do not delete tests" - and the card wants them as
-        # sentences, so they are carried whole. They are never tokenised: cutting
-        # such a sentence into the bare words `tests` and `ci` is what cut a
-        # correct agent's score to a quarter and moved it from rank 2 to rank 24.
+        # Anti-triggers state the work this method turns down. Carry each
+        # sentence whole; tokenizing its words loses the refusal's meaning.
         if _needs_locale_topup(
             card, "anti_triggers", ANTI_TRIGGER_MINIMUM_TOTAL, ANTI_TRIGGER_MINIMUM_PER_LOCALE
         ):
@@ -618,13 +600,8 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
             # Absent is not "safe". The conservative reading of an unstated risk
             # tier is the one that makes a host ask before acting.
             card["risk_profile"] = {"tier": "medium", "capabilities_at_risk": []}
-        # A declared skill with no body is an advertisement for nothing. The Hub
-        # wizard used to stamp the literal id `agentlas-package` on any package
-        # that shipped no skills; measured on the live corpus, 88 packages
-        # declare it and 0 carry `skills/agentlas-package/SKILL.md`, and no such
-        # skill exists in the engine either. The Workforce index matched work
-        # against a capability nobody has. The producer is fixed; this clears the
-        # packages that already carry it.
+        # A declared skill requires a corresponding body. Remove the obsolete generated
+        # agentlas-package declaration when the package contains no such skill.
         #
         # Only ids with no file on disk are dropped, and only from the manifest —
         # a skill the package really ships is never touched.
@@ -667,14 +644,9 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
             if fixed != dict(mb):
                 card["memory_behavior"] = fixed
         card.setdefault("required_inputs", [])
-        # Point the card at whichever benchmark file is on disk (three spellings
-        # shipped), or, when none has >=10 cases, synthesise one from the trigger
-        # sentences the card already carries. A benchmark case is "a request that
-        # should route here", and a route trigger is exactly that — so this is
-        # carrying the author's own sentences into a second shape, not inventing
-        # test data. A package with real triggers but no benchmark file (measured:
-        # ai-engineering-team, 12 triggers, 0 cases) was blocked for a file it
-        # could always have generated.
+        # Use the routing benchmark file on disk, or derive cases from the author's
+        # trigger sentences when no existing file has >=10 cases. Preserve the existing
+        # canonical path and do not invent capability claims.
         bench_path: Path | None = None
         for name in ("routing-benchmarks.jsonl", "routing-benchmark.jsonl", "benchmarks.jsonl"):
             candidate = base / ".agentlas" / name
@@ -785,9 +757,7 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
         if is_unfilled(profile.get("titleEn")):
             profile["titleEn"] = _first_real(card.get("name"), manifest.get("name"), base.name)
         if is_unfilled(profile.get("titleKo")):
-            # The card's own Korean name is already on disk; falling straight
-            # back to English shipped English titleKo on every package that had
-            # a perfectly good name_ko (measured 2026-08-12 on both .builds).
+            # Use the card's Korean name when present before falling back to English.
             profile["titleKo"] = _first_real(card.get("name_ko"), profile.get("titleEn"))
         if is_unfilled(profile.get("descriptionEn")):
             profile["descriptionEn"] = _first_real(card.get("summary"), summary, _agent_summary(base), profile["titleEn"])
@@ -831,11 +801,8 @@ def repair_package(base: Path, findings: list[dict[str, Any]]) -> list[dict[str,
                 if examples:
                     derived["best-for"] = "Requests like: " + " / ".join(examples[:3])
             if "prerequisites" not in derived:
-                # An explicit "nothing required" is a concrete answer and a useful
-                # one — but only when it is TRUE. This branch used to write it
-                # unconditionally, telling marketplace users "no required inputs"
-                # for packages whose routing card requires them (measured
-                # 2026-08-12: market-sentiment-digest requires `ticker`).
+                # An explicit no-input declaration is valid only when the package actually
+                # requires no inputs.
                 required = [
                     str(item.get("name", "")).strip()
                     for item in (card.get("required_inputs") or [])
