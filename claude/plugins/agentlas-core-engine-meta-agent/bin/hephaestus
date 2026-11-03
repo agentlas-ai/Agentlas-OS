@@ -397,6 +397,10 @@ case "$command" in
 	  one|hep-one|agentlas-one)
 	    exec "$(dirname "${BASH_SOURCE[0]}")/agentlas-one" "$@"
 	    ;;
+	  memory-recall)
+	    # memory index|search|timeline rewrite to this (agentlas_cloud/cli.py).
+	    run_python_module agentlas_cloud memory-recall "$@"
+	    ;;
 	  network-pipeline)
 	    # Internal: the background route worker re-enters the decided pipeline.
 	    run_python_module agentlas_cloud network-pipeline "$@"

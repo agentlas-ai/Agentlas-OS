@@ -2,7 +2,8 @@
 
 Availability and installation are separate from activation. Features are off
 unless an explicit preference, a documented compatibility environment
-override, or a supported desktop host default enables them. This module never
+override, or a supported desktop host default enables them. Memory is the
+exception: it is on by default everywhere (owner decision 2026-11-03). This module never
 imports host adapters or project code.
 """
 
@@ -40,6 +41,11 @@ _PRODUCT_HOSTS = _DESKTOP_HOSTS | frozenset({"agentlas-terminal"})
 _DESKTOP_DEFAULT_FEATURES = frozenset(
     {"project-bootstrap", "project-index", "memory-hooks", "context-map", "storm", "auto-update"}
 )
+# Owner decision 2026-11-03: memory is on by default on every host, independent
+# of One. An OFF saved before that decision is ignored once; a choice saved
+# afterwards carries this marker and is honored.
+_DEFAULT_ON_FEATURES = frozenset({"memory-hooks"})
+MEMORY_DEFAULT_ON_MARKER = "memoryDefaultOn20261103"
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
 _LOCK_WAIT_SECONDS = 10.0
@@ -279,6 +285,8 @@ def _effective(
     )
     # OFF is a veto: a saved opt-out or any explicit environment opt-out wins
     # over every ON source. Report the veto that actually determined the state.
+    if configured is False and name in _DEFAULT_ON_FEATURES and not (document or {}).get(MEMORY_DEFAULT_ON_MARKER):
+        configured = None
     if configured is False:
         return {"enabled": False, "configured": False, "source": "config"}
     if override is False:
@@ -290,6 +298,8 @@ def _effective(
     host_default = _host_default(name, environ)
     if host_default:
         return {"enabled": True, "configured": None, "source": "host-default"}
+    if name in _DEFAULT_ON_FEATURES:
+        return {"enabled": True, "configured": None, "source": "default-on"}
     return {"enabled": False, "configured": None, "source": "default"}
 
 
@@ -378,6 +388,8 @@ def set_feature(
             features = dict(document["features"])
             features[name] = enabled
             updated["features"] = features
+            if name in _DEFAULT_ON_FEATURES:
+                updated[MEMORY_DEFAULT_ON_MARKER] = True
             write_attempted = True
             _write_config(_config_path(home), updated)
             write_completed = True

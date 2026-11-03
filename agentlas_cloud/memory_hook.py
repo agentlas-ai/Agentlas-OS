@@ -1764,8 +1764,8 @@ def main(argv: list[str] | None = None) -> int:
             from .memory_standalone import capsule, stop
             if event == "Stop":
                 stop(payload, args.host)
-            elif event in {"SessionStart", "UserPromptSubmit"}:
-                output = _format_output(args.host, event, capsule(payload, args.host), None)
+            elif event == "SessionStart":
+                output = _format_output(args.host, event, capsule(payload, args.host, event), None)
         except Exception:
             pass
         if output:

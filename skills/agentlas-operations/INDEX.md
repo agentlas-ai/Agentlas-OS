@@ -1,6 +1,6 @@
 # Agentlas 도구 색인 (자동 생성 — 손으로 편집 금지)
 
-생성원: `agentlas_cloud/mcp_stdio.py` TOOLS (36개). 재생성: `python3 scripts/generate-ops-skill-index.py`.
+생성원: `agentlas_cloud/mcp_stdio.py` TOOLS (41개). 재생성: `python3 scripts/generate-ops-skill-index.py`.
 
 | 도구 | 요지 |
 |---|---|
@@ -40,3 +40,8 @@
 | `agentlas.memory_curation_request` | Resume a server-owned automatic memory job using the host's configured no-tools background adapter. |
 | `agentlas.memory_session_open` | Bind package turn summaries and continuation to an authenticated logical host session. |
 | `agentlas.memory_session_recap` | Read the source-bound package checkpoint and memory context using the owner session capability. |
+| `memory.search` | Search this machine's Agentlas memory (curated memories and dated turn summaries from every runtime) by meaning and keywords. |
+| `memory.timeline` | List what happened on this machine in a time range, oldest first, from Agentlas memory and turn summaries. |
+| `memory.get` | Show one Agentlas memory or turn summary with its origin turn, replacements and similar memories. |
+| `memory.crosscheck` | Find Agentlas memories related to statements from your own runtime memory, with dates, so you can judge agreement or conflict. |
+| `memory.record` | Record a one-sentence summary of this turn's work, and optional observations, into Agentlas memory. |

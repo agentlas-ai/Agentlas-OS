@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from .public_prompt_composition import tool_schema_description
 import os
+import re
 import sqlite3
 import sys
 import threading
@@ -59,7 +60,7 @@ from .networking.lease_tools import LEASE_TOOLS, PURCHASE as LEASE_PURCHASE, QUO
 from .networking.takedown_tools import TAKEDOWN, TAKEDOWN_TOOLS, call_agent_takedown_tool
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.78"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.79"}
 
 # Roots this process has already seeded, so only the first tool call in a
 # session pays the bootstrap cost.
@@ -2337,6 +2338,69 @@ _REMOTE_MEMORY_TOOLS = [
 ]
 TOOLS.extend(_REMOTE_MEMORY_TOOLS)
 _REMOTE_MEMORY_TOOL_NAMES = frozenset(tool["name"] for tool in _REMOTE_MEMORY_TOOLS)
+_SCOPE_ARG = {"type": "string", "enum": ["default", "owner_all"],
+              "description": "default: this project, the owner and this agent. owner_all: every project on this machine."}
+_PROJECT_ARG = {"type": "string", "maxLength": 4096, "description": "Project folder; defaults to the current working directory."}
+_TIME_ARG = {"type": "string", "maxLength": 40, "description": "ISO 8601 time, e.g. 2026-08-30T05:00:00Z."}
+_LOCAL_MEMORY_TOOLS = [
+    {
+        "name": "memory.search",
+        "description": ("Search this machine's Agentlas memory (curated memories and dated turn summaries from every runtime) "
+                        "by meaning and keywords. Each result carries its date, source and match strength."),
+        "inputSchema": {"type": "object", "additionalProperties": False, "properties": {
+            "query": {"type": "string", "minLength": 1, "maxLength": 2000,
+                      "description": "Keywords or a short phrase in any language work best."},
+            "since": _TIME_ARG, "until": _TIME_ARG,
+            "types": {"type": "array", "items": {"type": "string", "enum": ["memory", "episode"]}, "uniqueItems": True},
+            "kinds": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 40}},
+            "scope": _SCOPE_ARG, "projectDir": _PROJECT_ARG,
+            "include_confidential": {"type": "boolean"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 30}}, "required": ["query"]},
+    },
+    {
+        "name": "memory.timeline",
+        "description": "List what happened on this machine in a time range, oldest first, from Agentlas memory and turn summaries.",
+        "inputSchema": {"type": "object", "additionalProperties": False, "properties": {
+            "since": _TIME_ARG, "until": _TIME_ARG,
+            "types": {"type": "array", "items": {"type": "string", "enum": ["memory", "episode"]}, "uniqueItems": True},
+            "scope": _SCOPE_ARG, "projectDir": _PROJECT_ARG,
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            "cursor": {"type": "integer", "minimum": 0}}, "required": ["since"]},
+    },
+    {
+        "name": "memory.get",
+        "description": "Show one Agentlas memory or turn summary with its origin turn, replacements and similar memories.",
+        "inputSchema": {"type": "object", "additionalProperties": False, "properties": {
+            "id": {"type": "string", "minLength": 3, "maxLength": 520},
+            "scope": _SCOPE_ARG, "projectDir": _PROJECT_ARG}, "required": ["id"]},
+    },
+    {
+        "name": "memory.crosscheck",
+        "description": ("Find Agentlas memories related to statements from your own runtime memory, with dates, "
+                        "so you can judge agreement or conflict. Returns candidates only, no verdict."),
+        "inputSchema": {"type": "object", "additionalProperties": False, "properties": {
+            "claims": {"type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+            "scope": _SCOPE_ARG, "projectDir": _PROJECT_ARG}, "required": ["claims"]},
+    },
+    {
+        "name": "memory.record",
+        "description": ("Record a one-sentence summary of this turn's work, and optional observations, into Agentlas memory. "
+                        "Never include secrets, credentials or transcripts."),
+        "inputSchema": {"type": "object", "additionalProperties": False, "properties": {
+            "turn_summary": {"type": "string", "minLength": 1, "maxLength": 300},
+            "observations": {"type": "array", "maxItems": 8, "items": {"type": "object", "additionalProperties": False, "properties": {
+                "content": {"type": "string", "minLength": 1, "maxLength": 500},
+                "kind": {"type": "string", "enum": ["fact", "decision", "preference", "risk", "procedure"]},
+                "scope": {"type": "string", "enum": ["project", "agent_repo", "user_identity"]},
+                "evidence": {"type": "string", "maxLength": 300},
+                "confidence": {"type": "string", "enum": ["high", "medium", "low"]}}, "required": ["content", "kind"]}},
+            "projectDir": _PROJECT_ARG}, "required": ["turn_summary"]},
+    },
+]
+TOOLS.extend(_LOCAL_MEMORY_TOOLS)
+_LOCAL_MEMORY_TOOL_NAMES = frozenset(tool["name"] for tool in _LOCAL_MEMORY_TOOLS)
+_MEMORY_GATED_TOOL_NAMES = _REMOTE_MEMORY_TOOL_NAMES | _LOCAL_MEMORY_TOOL_NAMES
+_CLIENT_NAME: list[str] = [""]
 _CONTEXT_MAP_TOOL_NAMES = frozenset({"context.refresh", "context.locate", "context.refs", "context.slice", "context.impact", "context.verify"})
 
 
@@ -2355,7 +2419,7 @@ def _inventory_state() -> tuple[bool, bool]:
 def _available_tools() -> list[dict[str, Any]]:
     context_on, memory_on = _inventory_state()
     return [tool for tool in TOOLS if (context_on or tool["name"] not in _CONTEXT_MAP_TOOL_NAMES)
-            and (memory_on or tool["name"] not in _REMOTE_MEMORY_TOOL_NAMES)]
+            and (memory_on or tool["name"] not in _MEMORY_GATED_TOOL_NAMES)]
 
 
 # MCP tool annotations (spec 2025-03-26, "Tool annotations"): every tool states
@@ -2394,6 +2458,12 @@ _TOOL_ANNOTATIONS: dict[str, dict[str, bool]] = {
     "context.slice": {**_READ, "openWorldHint": False},
     "context.impact": {**_READ, "openWorldHint": False},
     "context.verify": {**_READ, "openWorldHint": False},
+    "memory.search": {**_READ, "openWorldHint": False},
+    "memory.timeline": {**_READ, "openWorldHint": False},
+    "memory.get": {**_READ, "openWorldHint": False},
+    "memory.crosscheck": {**_READ, "openWorldHint": False},
+    # Queues one ticket per call through the existing owner memory queue.
+    "memory.record": {**_WRITE, "idempotentHint": False, "openWorldHint": False},
     # First contact bootstraps .agentlas into the caller's project.
     "hephaestus_route": {**_WRITE, "openWorldHint": True},
     "hephaestus_cloud_search": {**_WRITE, "openWorldHint": True},
@@ -2590,7 +2660,7 @@ def _restore_prepared_selection_reference(arguments: dict[str, Any]) -> dict[str
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if name in _CONTEXT_MAP_TOOL_NAMES and not _feature_on("context-map"):
         return {"action": name, "status": "rejected", "error": "feature_disabled", "feature": "context-map", "writeAttempted": False}
-    if name in _REMOTE_MEMORY_TOOL_NAMES and not _feature_on("memory-hooks"):
+    if name in _MEMORY_GATED_TOOL_NAMES and not _feature_on("memory-hooks"):
         return {"action": name, "status": "rejected", "error": "feature_disabled", "feature": "memory-hooks", "writeAttempted": False}
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
@@ -2612,6 +2682,20 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             ),
             "repairable": True,
         }
+
+    if name in _LOCAL_MEMORY_TOOL_NAMES:
+        from . import memory_recall
+        try:
+            if name == "memory.record":
+                return {"action": name, **memory_recall.record(arguments, host=_CLIENT_NAME[0])}
+            handler = {"memory.search": memory_recall.search, "memory.timeline": memory_recall.timeline,
+                       "memory.get": memory_recall.get, "memory.crosscheck": memory_recall.crosscheck}[name]
+            return {"action": name, **handler(arguments)}
+        except memory_recall.RecallError as error:
+            return {"action": name, "status": "rejected", "error": error.code, "writeAttempted": False}
+        except ValueError as error:
+            code = str(error) if re.fullmatch(r"memory_[a-z_]+", str(error)) else "memory_unavailable"
+            return {"action": name, "status": "rejected", "error": code, "writeAttempted": name == "memory.record"}
 
     if name == "agentlas.read_agent_file":
         from .runtime import read_agent_file
@@ -4384,6 +4468,8 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
         return None  # notification (e.g. notifications/initialized) — no response
 
     if method == "initialize":
+        client = params.get("clientInfo") if isinstance(params.get("clientInfo"), dict) else {}
+        _CLIENT_NAME[0] = str(client.get("name") or "")[:60]
         return _result(
             msg_id,
             {
@@ -4519,7 +4605,7 @@ def serve(stdin=None, stdout=None) -> int:
                     with output_lock:
                         stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
                         stdout.flush()
-                        advertised[0] = (bool(names & _CONTEXT_MAP_TOOL_NAMES), bool(names & _REMOTE_MEMORY_TOOL_NAMES))
+                        advertised[0] = (bool(names & _CONTEXT_MAP_TOOL_NAMES), bool(names & _MEMORY_GATED_TOOL_NAMES))
                 else:
                     send(response)
             if isinstance(message, dict) and message.get("method") == "notifications/initialized":

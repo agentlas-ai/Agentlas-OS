@@ -6,17 +6,17 @@ scope: This entry is for an owner-requested Agentlas OS standalone installation.
 inspect: Read scripts/install-all-runtimes.sh before running the command below.
 install: curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 runtime: The default standalone installation uses ~/.agentlas/os-runtime and the dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo.
-defaults: Optional features are OFF. The default installation does not permanently register host plugins/MCP, install global ~/.local/bin wrappers, or enable the global router.
+defaults: Optional features are OFF except memory, which is ON. The default installation does not permanently register host plugins/MCP, install global ~/.local/bin wrappers, or enable the global router.
 verify: Report the installer's actual output, then run ~/.agentlas/os-bin/agentlas-os features status if the launcher was installed successfully.
 host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
-feature-scope: Standalone and Desktop share ~/.agentlas/engine-features.json. Explicit OFF also vetoes Desktop default ON. Unset standalone defaults OFF; Desktop uses its own feature defaults. Standalone One on/off is separate os-one state.
+feature-scope: Standalone and Desktop share ~/.agentlas/engine-features.json. Explicit OFF also vetoes Desktop default ON. Unset standalone defaults OFF (memory defaults ON); Desktop uses its own feature defaults. Standalone One on/off is separate os-one state.
 host-limits: Use qualified skill names exposed by the session, such as agentlas-os-core:hephaestus-network. Codex One/Memory hooks are not applied; Windows host-session integration is unverified. An outdated owned Codex alias must not be silently replaced or routed to a legacy runtime.
 completion: Preserve partial, unavailable, and unverified results. Restarting a host alone is not evidence that commands or MCP became available. Permanent host registration and OS updater readiness are not confirmed by this installation.
 -->
 
 <!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-**독립 설치 미리보기:** 선택 기능은 OFF입니다. 호스트 세션은 런타임 설치와 별개입니다. Codex One·Memory 훅은 미적용이며 Windows 호스트 세션은 미검증이므로 실제 상태를 확인하세요.
+**독립 설치 미리보기:** 선택 기능은 OFF입니다(기억은 기본 ON). 호스트 세션은 런타임 설치와 별개입니다. Codex One·Memory 훅은 미적용이며 Windows 호스트 세션은 미검증이므로 실제 상태를 확인하세요.
 
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
@@ -57,13 +57,13 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-단독 런타임의 선택 기능은 기본적으로 꺼져 있습니다. 다음 명령으로 상태를
+단독 런타임의 선택 기능은 기억을 빼고 기본적으로 꺼져 있습니다(기억은 기본 ON). 다음 명령으로 상태를
 확인하고 필요한 기능만 켜거나 끌 수 있습니다.
 
 ```bash
 ~/.agentlas/os-bin/agentlas-os features status
 ~/.agentlas/os-bin/agentlas-os storm on        # on, off, status
-~/.agentlas/os-bin/agentlas-os memory on       # on, off, status
+~/.agentlas/os-bin/agentlas-os memory off      # on, off, status
 ~/.agentlas/os-bin/agentlas-os context map on  # on, off, status
 ~/.agentlas/os-bin/agentlas-os one on            # on, off, status; Bash 필요
 ```
@@ -156,7 +156,19 @@ LLM, Runtime, Agent를 분리했습니다. 모델이나 코딩 환경을 바꿔�
 
 ## 매번 처음부터 설명할 필요 없는 4계층 메모리
 
-기억은 개인, 프로젝트, 에이전트, 팀 네 범위로 나뉘어 내 컴퓨터의 SQLite와 프로젝트 파일에 저장할 수 있습니다. 단독 런타임의 프로젝트 메모리와 자동 불러오기는 해당 선택 기능을 켠 경우에만 실행됩니다.
+기억은 개인, 프로젝트, 에이전트, 팀 네 범위로 나뉘어 내 컴퓨터의 SQLite와 프로젝트 파일에 저장할 수 있습니다. 기억은 로그인한 계정이 아니라 이 컴퓨터에 속하며, Agentlas Desktop과 독립 엔진이 `~/.agentlas/memory` 아래 같은 저장소를 씁니다.
+
+기억을 매 질문에 끼워 넣지 않습니다. 세션이 시작될 때 모델에게 아래 MCP 도구가 있다고 알려 주고, 모델은 자기 런타임의 기억에서 못 찾을 때 이 도구를 부릅니다.
+
+| 도구 | 하는 일 |
+|---|---|
+| `memory.search` | 기억과 날짜가 붙은 턴 요약을 뜻과 낱말로 찾습니다. 어느 언어로 물어도 되고, 일치 강도가 함께 나옵니다. |
+| `memory.timeline` | 기간 안에 있었던 일을 오래된 순서로 보여 줍니다. |
+| `memory.get` | 기억 하나가 어느 턴에서 생겼고 무엇으로 바뀌었는지 보여 줍니다. |
+| `memory.crosscheck` | 런타임 자체 기억의 문장과 관련된 Agentlas 기억을 날짜와 함께 찾아, 모델이 일치·충돌을 판단하게 합니다. |
+| `memory.record` | 이번 턴을 한 문장으로 기록합니다. 답변에는 아무것도 붙지 않습니다. |
+
+검색 색인은 저장소 옆의 별도 파일(`recall-index.sqlite`)이며 언제 지워도 됩니다. 결과는 내보내기 전에 저장소와 다시 맞춰 보므로, 잊었거나 바뀐 기억은 다시 나오지 않습니다. `~/.agentlas/os-bin/agentlas-os memory index`로 색인을 미리 만들 수 있고, 터미널에서 `memory search "<낱말>"`로 찾을 수도 있습니다.
 
 ## 첫 번째 프로젝트를 위임하세요
 

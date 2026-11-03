@@ -137,6 +137,46 @@ def configured_runner() -> Callable[[dict[str, Any]], dict[str, Any]] | None:
     return bind_model_runner(decide, runtime["fingerprint"], current)
 
 
+_RULE_KINDS = frozenset({"fact", "decision", "preference", "risk", "procedure"})
+_EVIDENCE_KINDS = frozenset({"fact", "decision", "procedure"})
+
+
+def deterministic_runner() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """Rule admission used when no curator model is configured (owner decision 2026-11-03).
+
+    Same gates as Desktop's default path, without a model: only typed
+    observations, high or medium confidence, evidence for facts, decisions and
+    procedures, and a narrowed scope. One observation is added per turn;
+    duplicates are dropped by the canonical writer's content hash.
+    """
+    from .memory_curation_decisions import bind_model_runner
+
+    def decide(packet: dict[str, Any]) -> dict[str, Any]:
+        data = packet.get("data") or {}
+        has_project = bool(data.get("project_ref") or data.get("project_path_hash"))
+        for item in data.get("observations") or []:
+            kind = item.get("suggested_kind")
+            confidence = item.get("suggested_confidence")
+            if kind not in _RULE_KINDS or confidence not in {"high", "medium"}:
+                continue
+            if kind in _EVIDENCE_KINDS and not item.get("has_evidence"):
+                continue
+            scope = item.get("suggested_scope") or "agent_repo"
+            if scope == "project" and not has_project:
+                scope = "agent_repo"
+            if scope == "user_identity" and not (kind == "preference" and confidence == "high"):
+                scope = "agent_repo"
+            if scope not in {"project", "agent_repo", "user_identity"}:
+                scope = "agent_repo"
+            decision = {"action": "add", "reason": "rule_admission", "content": item["content"], "scope": scope, "kind": kind}
+            if item.get("content_native"):
+                decision["content_native"] = item["content_native"]
+            return decision
+        return {"action": "noop", "reason": "no_admissible_observation"}
+
+    return bind_model_runner(decide, hashlib.sha256(b"agentlas-rule-curator-v1").hexdigest(), lambda: None)
+
+
 def _memory_enabled() -> bool:
     try:
         from .feature_preferences import feature_enabled
@@ -146,8 +186,8 @@ def _memory_enabled() -> bool:
 
 
 def schedule_worker(operation_id: str, owner_namespace: str) -> bool:
-    """Local detached work has no provider call or SQLite lock in the hook."""
-    if not _memory_enabled() or configured_runner() is None:
+    """Local detached work has no SQLite lock in the hook; without a configured model the rule curator runs."""
+    if not _memory_enabled():
         return False
     env = dict(os.environ)
     env["AGENTLAS_MEMORY_OWNER_NAMESPACE"] = _safe_id(owner_namespace)
@@ -212,15 +252,16 @@ def memory_root() -> Path:
 def owner_binding(*, create: bool = False) -> str | None:
     # This env is injected by a trusted host, never read from model output or
     # hook JSON. Standalone installations have a persisted device-only identity.
-    from .memory_owner_binding import host_binding, has_account_credential
+    from .memory_owner_binding import host_binding
     binding = host_binding()
     if binding:
         return _safe_id(binding["owner_namespace"])
     explicit = os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE", "").strip()
     if explicit:
         return _safe_id(explicit)
-    if has_account_credential():
-        raise ValueError("memory_account_binding_unavailable")
+    # Owner decision 2026-11-03: memory belongs to this machine, not to a
+    # signed-in account. A saved Agentlas credential no longer blocks the
+    # device store; Desktop's default profile already uses the same identity.
     root = memory_root()
     registry = root / "registry.json"
     if registry.is_symlink():
@@ -426,7 +467,9 @@ class MemoryRuntime:
                 if not text:
                     continue
                 observation = {"content": text, "suggested_kind": str(item.get("kind") or "")[:40],
-                               "suggested_scope": str(item.get("scope") or "")[:40], "representation": "unapproved_host_observation"}
+                               "suggested_scope": str(item.get("scope") or item.get("suggested_scope") or "")[:40],
+                               "suggested_confidence": str(item.get("confidence") or "")[:10],
+                               "has_evidence": bool(item.get("evidence")), "representation": "unapproved_host_observation"}
                 native = item.get("content_native") or item.get("contentNative")
                 if native:
                     observation["content_native"] = _safe_summary(str(native)[:500])
@@ -954,7 +997,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "queue":
             result = runtime.enqueue(**data)
         elif args.command == "process":
-            result = runtime.process(args.operation_id, configured_runner())
+            result = runtime.process(args.operation_id, configured_runner() or deterministic_runner())
         else:
             result = runtime.capsule(data["actor_id"], data["context_key"])
         print(_json(result))

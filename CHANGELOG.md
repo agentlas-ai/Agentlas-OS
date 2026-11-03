@@ -3,6 +3,24 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.79 — 2026-11-03
+
+- Memory: models can now search this machine's Agentlas memory themselves.
+  New MCP tools `memory.search`, `memory.timeline`, `memory.get`,
+  `memory.crosscheck` and `memory.record`. Search works by meaning and
+  keywords in any language, shows the date and match strength, and re-checks
+  every result against the store so a forgotten memory never returns.
+- Memory is on by default in standalone hosts too (One stays off), and it
+  belongs to this machine: a signed-in Agentlas account no longer blocks the
+  local store, which Desktop already uses.
+- Memory is no longer injected into every prompt. Sessions start with a short
+  note about the memory tools, and the model records its turn with
+  `memory.record` instead of printing a memory ticket. Without one, the host
+  keeps the first paragraph of the final reply as the turn summary.
+- Without a configured curator model, typed observations are admitted by rule
+  (confidence, evidence and scope checks) instead of waiting.
+- `agentlas-os memory index`, `memory search` and `memory timeline` for a terminal.
+
 ## 1.2.78 — 2026-11-03
 
 - Hub agents no longer have to read your project for every request. When the

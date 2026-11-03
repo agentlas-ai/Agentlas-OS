@@ -812,6 +812,8 @@ def _normalize_upload_alias(argv: list[str]) -> list[str]:
             return ["hep-storm", *argv[1:]]
     if len(argv) == 2 and argv[0] == "memory" and argv[1] in {"on", "off", "status"}:
         return ["features", argv[1], "memory-hooks"]
+    if len(argv) >= 2 and argv[0] == "memory" and argv[1] in {"index", "search", "timeline"}:
+        return ["memory-recall", *argv[1:]]
     if len(argv) == 3 and argv[:2] == ["context", "map"] and argv[2] in {"on", "off", "status"}:
         return ["features", argv[2], "context-map"]
     if argv and argv[0] in {"hep-goal", "hephaestus-goal", "agentlas-goal"}:
@@ -1005,6 +1007,13 @@ def main(argv: list[str] | None = None) -> int:
     host.add_argument("host_action", choices=("status", "session", "install", "remove"))
     host.add_argument("host_name", choices=("claude", "codex", "antigravity", "grok"))
     host.add_argument("host_arguments", nargs=argparse.REMAINDER, help="Arguments passed to a new native session after --")
+
+    recall_cmd = sub.add_parser("memory-recall", help="Build the memory search index, or search and list this machine's Agentlas memory")
+    recall_cmd.add_argument("recall_action", choices=("index", "search", "timeline"))
+    recall_cmd.add_argument("recall_text", nargs="?", help="search: query; timeline: since (ISO time)")
+    recall_cmd.add_argument("--until")
+    recall_cmd.add_argument("--all-projects", action="store_true")
+    recall_cmd.add_argument("--limit", type=int)
 
     features = sub.add_parser("features", help="Inspect or change optional engine features")
     features.add_argument("feature_action", choices=("status", "on", "off"))
@@ -1789,6 +1798,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in {"hep-update", "update"} and args.scheduled:
         # Legacy timers must be inert before any startup work.
         return emit({"status": "skipped", "reason": "legacy_periodic_update_retired", "writeAttempted": False})
+    if args.command == "memory-recall":
+        from . import memory_recall
+
+        try:
+            if args.recall_action == "index":
+                session = memory_recall._Session(budget_seconds=3600)
+                try:
+                    result = {"status": "ok", "coverage": session.coverage}
+                finally:
+                    session.close()
+            elif args.recall_action == "search":
+                if not args.recall_text:
+                    parser.error("memory search needs a query")
+                result = memory_recall.search({"query": args.recall_text, "limit": args.limit or 8,
+                                               "scope": "owner_all" if args.all_projects else "default"})
+            else:
+                if not args.recall_text:
+                    parser.error("memory timeline needs a since time, e.g. 2026-08-30T05:00:00Z")
+                result = memory_recall.timeline({"since": args.recall_text, "until": args.until, "limit": args.limit or 40,
+                                                 "scope": "owner_all" if args.all_projects else "default"})
+        except memory_recall.RecallError as error:
+            result = {"status": "rejected", "error": error.code}
+        emit(result)
+        return 1 if result.get("status") == "rejected" else 0
     if args.command == "host":
         from .host_core import Conflict, session_plan, status
 

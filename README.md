@@ -6,17 +6,17 @@ scope: This entry is for an owner-requested Agentlas OS standalone installation.
 inspect: Read scripts/install-all-runtimes.sh before running the command below.
 install: curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 runtime: The default standalone installation uses ~/.agentlas/os-runtime and the dedicated ~/.agentlas/os-bin/agentlas-os launcher. Do not use sudo.
-defaults: Optional features are OFF. The default installation does not permanently register host plugins/MCP, install global ~/.local/bin wrappers, or enable the global router.
+defaults: Optional features are OFF except memory, which is ON. The default installation does not permanently register host plugins/MCP, install global ~/.local/bin wrappers, or enable the global router.
 verify: Report the installer's actual output, then run ~/.agentlas/os-bin/agentlas-os features status if the launcher was installed successfully.
 host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
-feature-scope: Standalone and Desktop share ~/.agentlas/engine-features.json. Explicit OFF also vetoes Desktop default ON. Unset standalone defaults OFF; Desktop uses its own feature defaults. Standalone One on/off is separate os-one state.
+feature-scope: Standalone and Desktop share ~/.agentlas/engine-features.json. Explicit OFF also vetoes Desktop default ON. Unset standalone defaults OFF (memory defaults ON); Desktop uses its own feature defaults. Standalone One on/off is separate os-one state.
 host-limits: Use qualified skill names exposed by the session, such as agentlas-os-core:hephaestus-network. Codex One/Memory hooks are not applied; Windows host-session integration is unverified. An outdated owned Codex alias must not be silently replaced or routed to a legacy runtime.
 completion: Preserve partial, unavailable, and unverified results. Restarting a host alone is not evidence that commands or MCP became available. Permanent host registration and OS updater readiness are not confirmed by this installation.
 -->
 
 <!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-**Standalone preview:** Optional features are OFF. Host sessions are separate from runtime installation. Codex One/Memory hooks and Windows host-session integration remain unverified or unapplied; inspect actual status before claiming readiness.
+**Standalone preview:** Optional features are OFF except memory, which is on by default. Host sessions are separate from runtime installation. Codex One/Memory hooks and Windows host-session integration remain unverified or unapplied; inspect actual status before claiming readiness.
 
 <p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
 <p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
@@ -59,13 +59,13 @@ In the [Web Hub](https://agentlas.cloud/hub), each public agent has a space for 
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
 ```
 
-Optional engine features are off by default in standalone hosts. Inspect or
-change them with:
+Optional engine features are off by default in standalone hosts, except memory,
+which is on by default. Inspect or change them with:
 
 ```bash
 ~/.agentlas/os-bin/agentlas-os features status
 ~/.agentlas/os-bin/agentlas-os storm on        # on, off, or status
-~/.agentlas/os-bin/agentlas-os memory on       # on, off, or status
+~/.agentlas/os-bin/agentlas-os memory off      # on, off, or status
 ~/.agentlas/os-bin/agentlas-os context map on  # on, off, or status
 ~/.agentlas/os-bin/agentlas-os one on            # on, off, or status; requires Bash
 ```
@@ -158,7 +158,19 @@ LLM, Runtime, and Agent are separate layers. Switch models or coding tools and k
 
 ## Four memory scopes, so you stop re-explaining the project
 
-Memory can be stored in local SQLite and project files across four scopes: personal, project, agent, and team. In standalone hosts, project memory and automatic recall run only when their optional features are enabled.
+Memory can be stored in local SQLite and project files across four scopes: personal, project, agent, and team. Memory belongs to this machine, not to a signed-in account, and Agentlas Desktop and the standalone engine share the same store under `~/.agentlas/memory`.
+
+Memory is not injected into every prompt. At session start the model is told that these MCP tools exist, and it calls them when its own runtime memory has nothing:
+
+| Tool | What it does |
+|---|---|
+| `memory.search` | Finds memories and dated turn summaries by meaning and keywords, in any language, with a match strength. |
+| `memory.timeline` | Lists what happened in a time range, oldest first. |
+| `memory.get` | Shows one memory with the turn it came from and what replaced it. |
+| `memory.crosscheck` | Finds Agentlas memories related to a statement from the runtime's own memory, with dates, so the model can judge agreement or conflict. |
+| `memory.record` | Records a one-sentence summary of the turn. Nothing is printed in the reply. |
+
+The search index is a separate file next to the store (`recall-index.sqlite`) and can be deleted at any time. Every result is checked against the store before it is returned, so a forgotten or replaced memory never comes back. Build the index ahead of time with `~/.agentlas/os-bin/agentlas-os memory index`, or search from a terminal with `memory search "<words>"`.
 
 ## Delegate your first project
 
@@ -732,7 +744,7 @@ Append `-- <native-args...>` only when you intend to pass arguments to the nativ
 
 Select the qualified skill name shown by that session, for example `agentlas-os-core:hephaestus-network`. Old bare names may coexist; do not assume `/hep-*`, `/agentlas`, or an unqualified `$hephaestus-*` refers to this runtime. The command reference below describes capabilities; use only commands or tools actually exposed in your session.
 
-Codex core tools and skills can be loaded in a separate session, but One and Memory hooks are not applied there yet. An ON preference is not evidence that those hooks ran; preserve `unappliedHookComponents` and `codex_optional_hook_session_loader_unverified` in the result. Windows host-session integration is unverified. Permanent host registration and complete native integration are not claimed. On Windows, unavailable link-creation privileges can leave status partial. A successful native inventory or version command does not prove a model turn or hook execution. Feature preferences use the shared `~/.agentlas/engine-features.json` for standalone and Desktop. An explicit OFF also disables the feature in Desktop, overriding its default ON. With no explicit preference or compatibility override, standalone defaults OFF and Desktop uses its own feature defaults. Standalone One on/off is separate state under `~/.agentlas/os-one`.
+Codex core tools and skills can be loaded in a separate session, but One and Memory hooks are not applied there yet. An ON preference is not evidence that those hooks ran; preserve `unappliedHookComponents` and `codex_optional_hook_session_loader_unverified` in the result. Windows host-session integration is unverified. Permanent host registration and complete native integration are not claimed. On Windows, unavailable link-creation privileges can leave status partial. A successful native inventory or version command does not prove a model turn or hook execution. Feature preferences use the shared `~/.agentlas/engine-features.json` for standalone and Desktop. An explicit OFF also disables the feature in Desktop, overriding its default ON. With no explicit preference or compatibility override, standalone defaults OFF (memory defaults ON) and Desktop uses its own feature defaults. Standalone One on/off is separate state under `~/.agentlas/os-one`.
 
 After an update, run `host status` again. An owned Codex skill alias can still point at the older generation: `outdated` or `codex_skill_alias_outdated` means the new host session is not ready. Do not silently replace or delete the alias or fall back to a legacy runtime; report the exact state and follow an explicit repair procedure when available. Running `host session codex` again moves the launcher's own verified alias to the current generation. Automatic updates remain OFF by default; a runtime update does not prove host activation.
 
