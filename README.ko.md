@@ -352,7 +352,7 @@ run: If the script matches this scope, run curl -fsSL https://raw.githubusercont
 verify: Show the installer's actual output and, if the launcher was installed successfully, run ~/.agentlas/os-bin/agentlas-os features status.
 report: State runtime installation and host connection separately. Preserve partial, unavailable, and unverified results. A restart alone does not prove that /agentlas build, skills, or MCP tools are ready.
 host-status: Runtime installation and host activation are separate. For the chosen installed host use ~/.agentlas/os-bin/agentlas-os host status claude or host status codex. Start a requested new host session with the same launcher and host session claude or host session codex; native arguments follow --. Preserve partial/conflict/unavailable states.
-updates: Automatic updates default OFF. After a runtime update, inspect host status again. outdated or codex_skill_alias_outdated is not readiness; do not silently replace/delete the owned alias or fall back to a legacy runtime. Codex One/Memory hooks are not applied and Windows host-session integration is unverified.
+updates: Automatic updates default OFF. After a runtime update, inspect host status again. outdated or codex_skill_alias_outdated is not readiness; do not silently replace/delete the owned alias or fall back to a legacy runtime. Codex One/Memory hooks are not applied and Windows host-session integration is unverified. Running host session codex again lets the launcher move its own verified alias to the current generation.
 ```
 
 이 안내는 독립 런타임을 설치합니다. 현재 LLM 호스트 연결이나 명령 활성화가 완료되었다는 뜻은 아닙니다. 셸에서 직접 설치하려면 아래 순서를 따르세요.
@@ -584,7 +584,7 @@ Antigravity는 세션 한정 로더가 없어서, 요청할 때만 Antigravity �
 ~/.agentlas/os-bin/agentlas-os host remove antigravity
 ```
 
-설치한 뒤 Antigravity 세션을 새로 시작하세요. 런타임을 업데이트하면 `host status antigravity`가 `outdated`를 보고하니 `host install antigravity`를 다시 실행합니다.
+설치한 뒤 Antigravity 세션을 새로 시작하세요. 런타임을 업데이트하면 `host status antigravity`가 `outdated`를 보고하니 `host install antigravity`를 다시 실행합니다. 헤드리스 `agy -p` 실행에는 `permissions.allow`에 MCP 권한 규칙 `mcp(agentlas-os-core_agentlas-os/*)`가 필요하고, 대화형 세션은 직접 묻습니다.
 
 네이티브 호스트에 인수를 전달하려는 경우에만 `-- <native-args...>`를 덧붙이세요. 실제 상태와 실행 결과를 읽습니다. `partial`, `session_activation_not_observed`, 미가용 구성요소는 연결 완료를 뜻하지 않습니다. 런타임 설치, 플러그인 준비, 모델 세션 실행은 별개의 결과입니다.
 
@@ -592,7 +592,7 @@ Antigravity는 세션 한정 로더가 없어서, 요청할 때만 Antigravity �
 
 Codex의 core 도구와 스킬은 별도 세션에 연결할 수 있지만 One·Memory 훅은 아직 적용되지 않습니다. 설정 ON만으로 훅 실행을 주장하지 말고 `unappliedHookComponents`, `codex_optional_hook_session_loader_unverified`를 그대로 보고하세요. Windows 호스트 세션 통합은 미검증입니다. 영구 호스트 등록이나 완전한 네이티브 통합을 보장하지 않습니다. Windows에서 링크 생성 권한이 부족하면 partial 상태로 남을 수 있습니다. 네이티브 목록·버전 명령 성공은 모델 턴이나 훅 실행의 증거가 아닙니다. 기능 설정은 standalone과 Desktop이 같은 `~/.agentlas/engine-features.json`을 사용합니다. 명시적 OFF는 Desktop의 기본 ON도 끕니다. 명시 설정이나 호환 환경 재정의가 없을 때 standalone은 기본 OFF이고 Desktop은 자체 기능 기본값을 사용합니다. 독립 One on/off는 `~/.agentlas/os-one`의 별도 상태입니다.
 
-업데이트 후에는 `host status`를 다시 확인하세요. 소유 Codex 스킬 alias가 이전 세대를 가리키면 `outdated` 또는 `codex_skill_alias_outdated`가 나올 수 있으며, 새 호스트 세션은 준비되지 않은 상태입니다. alias를 조용히 교체·삭제하거나 legacy 런타임으로 우회하지 말고 정확한 상태를 보고한 뒤 제공되는 명시적 복구 절차를 따르세요. 자동 업데이트는 기본 OFF이며 런타임 업데이트가 호스트 활성화를 증명하지 않습니다.
+업데이트 후에는 `host status`를 다시 확인하세요. 소유 Codex 스킬 alias가 이전 세대를 가리키면 `outdated` 또는 `codex_skill_alias_outdated`가 나올 수 있으며, 새 호스트 세션은 준비되지 않은 상태입니다. alias를 조용히 교체·삭제하거나 legacy 런타임으로 우회하지 말고 정확한 상태를 보고한 뒤 제공되는 명시적 복구 절차를 따르세요. `host session codex`를 다시 실행하면 실행기가 자기 소유로 확인된 alias를 현재 세대로 옮깁니다. 자동 업데이트는 기본 OFF이며 런타임 업데이트가 호스트 활성화를 증명하지 않습니다.
 
 ---
 

@@ -1811,7 +1811,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if result.get("status") in {"conflict", "error"} else 0
         plan = session_plan(root, home, args.host_name, prepare=False)
         if not isinstance(plan.get("hostCommand"), list) and plan.get("reason") in {
-            "session_components_unprepared", "codex_skill_alias_unprepared"
+            "session_components_unprepared", "codex_skill_alias_unprepared", "codex_skill_alias_outdated"
         }:
             plan = session_plan(root, home, args.host_name, prepare=True)
         if not isinstance(plan.get("hostCommand"), list):

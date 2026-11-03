@@ -151,7 +151,19 @@ def _alias(home, target, *, create):
                 from .host_core import _verify_generation
                 record=_verify_generation(previous.parent.parent)
                 if record.get('host')=='codex' and record.get('kind')=='core':
-                    raise Conflict('codex_skill_alias_outdated')
+                    if not create or os.name=='nt':
+                        raise Conflict('codex_skill_alias_outdated')
+                    # Our own verified older generation: swap the link atomically
+                    # (rename over it), never touching anything we do not own.
+                    staged=parent/f'.agentlas-os-core.{os.getpid()}.tmp'
+                    if staged.is_symlink() or staged.exists():
+                        raise Conflict('codex_skill_alias_concurrent_collision')
+                    os.symlink(str(target), staged, target_is_directory=True)
+                    os.replace(staged, alias)
+                    _plain(parent)
+                    if not alias.is_symlink() or alias.resolve(strict=True) != target:
+                        raise Conflict('codex_skill_alias_changed')
+                    return alias
             raise Conflict('codex_skill_alias_conflict')
         return alias
     if alias.exists():

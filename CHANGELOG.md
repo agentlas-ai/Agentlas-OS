@@ -3,6 +3,14 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.75 — 2026-11-03
+
+- After an update, `agentlas-os host session codex` moves its own verified
+  Codex skill alias to the current runtime instead of refusing every session
+  with `codex_skill_alias_outdated`. An alias it does not own is never replaced.
+- `host status antigravity` reports the MCP permission rule headless `agy -p`
+  runs need.
+
 ## 1.2.74 — 2026-11-03
 
 - `agentlas-os host session claude|codex` no longer passes the engine's own

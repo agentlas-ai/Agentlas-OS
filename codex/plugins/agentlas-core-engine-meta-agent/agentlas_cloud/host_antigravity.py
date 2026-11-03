@@ -20,6 +20,8 @@ from .windows_console import no_console_window
 
 PLUGIN = 'agentlas-os-core'
 SERVER = 'agentlas-os'
+# agy namespaces a plugin's MCP server as <plugin>_<server> (measured agy 1.4.12).
+PERMISSION_RULE = f'mcp({PLUGIN}_{SERVER}/*)'
 LEGACY_SERVER = 'hephaestus-network'
 _TIMEOUT = 120
 
@@ -89,7 +91,8 @@ def status(root, home) -> dict:
         state = 'connected' if pinned == str(root) and entry.get('enabled') is not False else 'outdated'
         return {'host': 'antigravity', 'status': state, 'plugin': PLUGIN, 'mcpServer': SERVER,
                 'version': entry.get('version'), 'enabled': entry.get('enabled'), 'runtime': pinned,
-                'skills': entry.get('skills', []), 'sessionReloadRequired': state == 'connected'}
+                'skills': entry.get('skills', []), 'sessionReloadRequired': state == 'connected',
+                'headlessPermissionRule': PERMISSION_RULE}
     except (Conflict, OSError, ValueError, subprocess.SubprocessError) as exc:
         return {'host': 'antigravity', 'status': 'conflict' if isinstance(exc, Conflict) else 'error',
                 'reason': str(exc) if isinstance(exc, Conflict) else type(exc).__name__}
