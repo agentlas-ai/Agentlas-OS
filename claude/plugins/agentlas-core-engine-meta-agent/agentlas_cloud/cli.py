@@ -1001,9 +1001,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Report whether a retired periodic update service is still installed",
     )
 
-    host = sub.add_parser("host", help="Inspect or start a standalone Claude or Codex session, or register Antigravity")
+    host = sub.add_parser("host", help="Inspect or start a standalone Claude or Codex session, or register Antigravity or Grok")
     host.add_argument("host_action", choices=("status", "session", "install", "remove"))
-    host.add_argument("host_name", choices=("claude", "codex", "antigravity"))
+    host.add_argument("host_name", choices=("claude", "codex", "antigravity", "grok"))
     host.add_argument("host_arguments", nargs=argparse.REMAINDER, help="Arguments passed to a new native session after --")
 
     features = sub.add_parser("features", help="Inspect or change optional engine features")
@@ -1794,13 +1794,13 @@ def main(argv: list[str] | None = None) -> int:
 
         root = Path(__file__).resolve().parent.parent
         home = Path.home()
-        if args.host_name == "antigravity" or args.host_action in {"install", "remove"}:
-            if args.host_name != "antigravity" or args.host_action == "session" or args.host_arguments:
-                parser.error("Antigravity has no session loader: use host install|status|remove antigravity; "
-                             "Claude and Codex use host status|session")
-            from . import host_antigravity
+        if args.host_name in {"antigravity", "grok"} or args.host_action in {"install", "remove"}:
+            if args.host_name not in {"antigravity", "grok"} or args.host_action == "session" or args.host_arguments:
+                parser.error("Antigravity and Grok have no session loader: use host install|status|remove "
+                             "antigravity|grok; Claude and Codex use host status|session")
+            from . import host_plugin_cli
 
-            result = getattr(host_antigravity, args.host_action)(root, home)
+            result = getattr(host_plugin_cli, args.host_action)(args.host_name, root, home)
             emit(result)
             return 1 if result.get("status") in {"conflict", "error"} else 0
         if args.host_action == "status":

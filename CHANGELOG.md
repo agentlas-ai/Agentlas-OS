@@ -3,6 +3,12 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.76 — 2026-11-03
+
+- Grok: `agentlas-os host install|status|remove grok` registers the standalone
+  plugin through Grok's own plugin manager, only when you run it. Antigravity
+  and Grok now share one registration module.
+
 ## 1.2.75 — 2026-11-03
 
 - After an update, `agentlas-os host session codex` moves its own verified

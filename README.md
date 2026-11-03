@@ -718,6 +718,16 @@ Antigravity has no session-only loader, so it is registered only when you ask, t
 
 Start a new Antigravity session after installing. After a runtime update `host status antigravity` reports `outdated`; run `host install antigravity` again. Headless `agy -p` runs need the MCP permission rule `mcp(agentlas-os-core_agentlas-os/*)` in `permissions.allow`; interactive sessions ask.
 
+Grok registers the same way through its own plugin manager (`grok plugin install --trust`):
+
+```bash
+~/.agentlas/os-bin/agentlas-os host install grok
+~/.agentlas/os-bin/agentlas-os host status grok
+~/.agentlas/os-bin/agentlas-os host remove grok
+```
+
+Start a new Grok session after installing; the tools appear as `agentlas-os__<tool>`. After a runtime update run `host install grok` again. Agentlas Desktop reaches Grok over ACP and does not use this registration.
+
 Append `-- <native-args...>` only when you intend to pass arguments to the native host. Read the actual status and launch result. `partial`, `session_activation_not_observed`, or an unavailable component is not proof that the host is fully connected. A runtime install, a prepared plugin, and a running model session are separate results.
 
 Select the qualified skill name shown by that session, for example `agentlas-os-core:hephaestus-network`. Old bare names may coexist; do not assume `/hep-*`, `/agentlas`, or an unqualified `$hephaestus-*` refers to this runtime. The command reference below describes capabilities; use only commands or tools actually exposed in your session.
