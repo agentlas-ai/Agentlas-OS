@@ -576,6 +576,16 @@ curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/script
 ~/.agentlas/os-bin/agentlas-os host session codex
 ```
 
+Antigravity는 세션 한정 로더가 없어서, 요청할 때만 Antigravity 자체 플러그인 관리자로 등록합니다. 플러그인 이름은 `agentlas-os-core`, MCP 서버 이름은 `agentlas-os`라서 예전 Agentlas 등록과 섞이지 않습니다.
+
+```bash
+~/.agentlas/os-bin/agentlas-os host install antigravity
+~/.agentlas/os-bin/agentlas-os host status antigravity
+~/.agentlas/os-bin/agentlas-os host remove antigravity
+```
+
+설치한 뒤 Antigravity 세션을 새로 시작하세요. 런타임을 업데이트하면 `host status antigravity`가 `outdated`를 보고하니 `host install antigravity`를 다시 실행합니다.
+
 네이티브 호스트에 인수를 전달하려는 경우에만 `-- <native-args...>`를 덧붙이세요. 실제 상태와 실행 결과를 읽습니다. `partial`, `session_activation_not_observed`, 미가용 구성요소는 연결 완료를 뜻하지 않습니다. 런타임 설치, 플러그인 준비, 모델 세션 실행은 별개의 결과입니다.
 
 세션에 표시된 정규화된 이름(예: `agentlas-os-core:hephaestus-network`)을 선택하세요. 기존 bare 이름이 함께 있을 수 있으므로 `/hep-*`, `/agentlas`, namespace 없는 `$hephaestus-*`가 이 런타임을 가리킨다고 가정하지 마세요. 아래 명령표는 기능 참고이며 실제 세션에 노출된 명령·도구만 사용합니다.

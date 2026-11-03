@@ -708,6 +708,16 @@ Start a new session for that host when requested:
 ~/.agentlas/os-bin/agentlas-os host session codex
 ```
 
+Antigravity has no session-only loader, so it is registered only when you ask, through Antigravity's own plugin manager. The plugin is `agentlas-os-core` and its MCP server is `agentlas-os`, so an older Agentlas registration stays separate:
+
+```bash
+~/.agentlas/os-bin/agentlas-os host install antigravity
+~/.agentlas/os-bin/agentlas-os host status antigravity
+~/.agentlas/os-bin/agentlas-os host remove antigravity
+```
+
+Start a new Antigravity session after installing. After a runtime update `host status antigravity` reports `outdated`; run `host install antigravity` again.
+
 Append `-- <native-args...>` only when you intend to pass arguments to the native host. Read the actual status and launch result. `partial`, `session_activation_not_observed`, or an unavailable component is not proof that the host is fully connected. A runtime install, a prepared plugin, and a running model session are separate results.
 
 Select the qualified skill name shown by that session, for example `agentlas-os-core:hephaestus-network`. Old bare names may coexist; do not assume `/hep-*`, `/agentlas`, or an unqualified `$hephaestus-*` refers to this runtime. The command reference below describes capabilities; use only commands or tools actually exposed in your session.

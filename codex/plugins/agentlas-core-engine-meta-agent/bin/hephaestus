@@ -291,6 +291,7 @@ Usage:
   bin/hephaestus hep-upload <agent-folder>          # ask Cloud vs Hub before upload
   bin/hephaestus hep-global install                 # install Codex/Claude/Antigravity global router prompt blocks
   bin/hephaestus host status|session claude|codex  # inspect or start a standalone host session
+  bin/hephaestus host install|status|remove antigravity  # register the standalone plugin with Antigravity (agy)
   bin/hephaestus mcp serve              # stdio MCP server (hephaestus_route tool)
 
 Examples:

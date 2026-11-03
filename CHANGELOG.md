@@ -9,6 +9,9 @@
   location variables to the host app. Another Agentlas plugin installed in the
   same Claude Code or Codex could pick them up and replace the standalone
   runtime with an older release.
+- Antigravity: `agentlas-os host install|status|remove antigravity` registers
+  the standalone plugin (`agentlas-os-core`, MCP server `agentlas-os`) through
+  Antigravity's own plugin manager, only when you run it.
 
 ## 1.2.73 — 2026-11-03
 
