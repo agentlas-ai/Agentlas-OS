@@ -3,6 +3,13 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.81 — 2026-11-04
+
+- Standalone sessions get far less fixed text: the MCP server instructions are
+  now two lines (266 characters) instead of ten lines plus a session-start
+  memory notice. One line names the memory tools, one names Workforce
+  continuation; a third appears only when the Context Map is on.
+
 ## 1.2.80 — 2026-11-04
 
 - Memory turns are attributed to the runtime that did the work (`host:claude`,

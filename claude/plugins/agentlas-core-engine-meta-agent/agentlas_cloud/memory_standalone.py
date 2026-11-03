@@ -24,8 +24,9 @@ def capsule(payload: dict[str, Any], host: str, event: str = "SessionStart") -> 
     and the model records its turn through memory.record instead of printing a
     memory ticket in the reply.
     """
-    if event != "SessionStart" or not feature_enabled("memory-hooks"):
-        return None
+    # Owner 2026-11-04: the MCP server instructions already carry the one-line
+    # memory menu to every runtime that loads the tools, so no hook text is added.
+    return None
     from .prompt_composition import MEMORY_RECALL_MENU
     notice = compose_prompt([{
         "id": "os.memory-standalone.session-notice", "revision": 2,
