@@ -23,6 +23,7 @@ PLUGIN = 'agentlas-os-core'
 SERVER = 'agentlas-os'
 LEGACY_SERVER = 'hephaestus-network'
 _TIMEOUT = 120
+_MAX_COPIES = 8
 
 # Measured: agy 1.4.12, grok 1.0.70.
 HOSTS = {
@@ -64,7 +65,8 @@ def _run(host: str, args) -> subprocess.CompletedProcess:
                           stdin=subprocess.DEVNULL, **no_console_window())
 
 
-def _installed(host: str) -> dict | None:
+def _installed(host: str) -> list[dict]:
+    """Every installed copy of our plugin; grok keys copies by source path, so several can coexist."""
     listed = _run(host, _spec(host)['list'])
     if listed.returncode != 0:
         raise Conflict(f'{host}_plugin_list_failed')
@@ -73,7 +75,20 @@ def _installed(host: str) -> dict | None:
         plugins = json.loads(text[text.index('['):text.rindex(']') + 1]) if '[' in text else []
     except ValueError as exc:
         raise Conflict(f'{host}_plugin_list_unreadable') from exc
-    return next((p for p in plugins if isinstance(p, dict) and p.get('name') == PLUGIN), None)
+    return [p for p in plugins if isinstance(p, dict) and p.get('name') == PLUGIN]
+
+
+def _uninstall_all(host: str) -> subprocess.CompletedProcess | None:
+    """Uninstall removes one copy per call (measured grok 1.0.70); repeat until none is left."""
+    for _ in range(_MAX_COPIES):
+        if not _installed(host):
+            return None
+        done = _run(host, _spec(host)['uninstall'])
+        if done.returncode != 0:
+            return done
+    if _installed(host):
+        raise Conflict(f'{host}_plugin_copies_remain')
+    return None
 
 
 def _pinned_runtime(host: str, entry: dict) -> str | None:
@@ -116,14 +131,20 @@ def status(host: str, root, home) -> dict:
         spec = _spec(host)
         root, home, _ = _identity(root, home, 'claude', 'core')
         _namespace(home)
-        entry = _installed(host)
-        if entry is None:
+        entries = _installed(host)
+        if not entries:
             return {'host': host, 'status': 'missing', 'hostConfigurationChanged': False,
                     'next': f'agentlas-os host install {host}'}
+        entry = entries[-1]
         pinned = _pinned_runtime(host, entry)
-        state = 'connected' if pinned == str(root) and entry.get('enabled') is not False else 'outdated'
+        # A second copy would expose a second, older tool set: only one current copy is connected.
+        state = ('connected' if len(entries) == 1 and pinned == str(root) and entry.get('enabled') is not False
+                 else 'outdated')
         result = {'host': host, 'status': state, 'plugin': PLUGIN, 'mcpServer': SERVER,
-                  'version': entry.get('version'), 'runtime': pinned, 'sessionReloadRequired': state == 'connected'}
+                  'version': entry.get('version'), 'runtime': pinned, 'installedCopies': len(entries),
+                  'sessionReloadRequired': state == 'connected'}
+        if state == 'outdated':
+            result['next'] = f'agentlas-os host install {host}'
         if spec['permissionRule']:
             result['headlessPermissionRule'] = spec['permissionRule']
         return result
@@ -136,6 +157,10 @@ def install(host: str, root, home) -> dict:
         spec = _spec(host)
         root, home, _ = _identity(root, home, 'claude', 'core')
         staged, version = _stage(host, root, home)
+        failed = _uninstall_all(host)
+        if failed is not None:
+            return {'host': host, 'status': 'error', 'reason': f'{host}_plugin_uninstall_failed',
+                    'detail': (failed.stderr or failed.stdout).strip()[-400:], 'hostConfigurationChanged': None}
         done = _run(host, [part.format(path=staged) for part in spec['install']])
         if done.returncode != 0:
             return {'host': host, 'status': 'error', 'reason': f'{host}_plugin_install_failed',
@@ -149,14 +174,14 @@ def install(host: str, root, home) -> dict:
 
 def remove(host: str, root, home) -> dict:
     try:
-        spec = _spec(host)
+        _spec(host)
         root, home, _ = _identity(root, home, 'claude', 'core')
-        if _installed(host) is None:
+        if not _installed(host):
             return {'host': host, 'status': 'missing', 'hostConfigurationChanged': False}
-        done = _run(host, spec['uninstall'])
-        if done.returncode != 0:
+        failed = _uninstall_all(host)
+        if failed is not None:
             return {'host': host, 'status': 'error', 'reason': f'{host}_plugin_uninstall_failed',
-                    'detail': (done.stderr or done.stdout).strip()[-400:]}
+                    'detail': (failed.stderr or failed.stdout).strip()[-400:]}
         return {**status(host, root, home), 'hostConfigurationChanged': True}
     except (Conflict, OSError, ValueError, subprocess.SubprocessError) as exc:
         return _error(host, exc)

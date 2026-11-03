@@ -3,6 +3,14 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.77 — 2026-11-03
+
+- `host install grok` after an update replaces the earlier copy instead of
+  installing a second one beside it (Grok keeps copies from different folders
+  under the same name). Running it twice in a row also succeeds, and
+  `host remove grok` removes every copy. `host status` reports
+  `installedCopies` and calls a host with more than one copy `outdated`.
+
 ## 1.2.76 — 2026-11-03
 
 - Grok: `agentlas-os host install|status|remove grok` registers the standalone
