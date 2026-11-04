@@ -16,246 +16,88 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 <!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-**独立インストールのプレビュー:** 任意機能は OFF(メモリは既定で ON)。ホストセッションはランタイム設置とは別です。Codex One・Memory フックは未適用、Windows ホストセッションは未検証です。実際の状態を確認してください。
+<h1 align="center">Agentlas</h1>
 
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
-<p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
-
-<h1 align="center">Agentlas OS</h1>
+<h3 align="center">ゴールを渡すだけ。チームは自分で採用します。</h3>
 
 <p align="center">
-  <strong>タスクを超えて、プロジェクトをリードするエージェント。</strong><br>
-  <sub>どのモデルでも、どのランタイムでも。企業でも個人でも、Agentlas は専門家チームを自らヘッドハントし、長期プロジェクトを最後まで走り切ります。</sub><br>
-  <sub>Claude Code・Codex・Cursor・Antigravity・Agentlas Desktop で動きます。</sub>
+  プロジェクトの各工程に専門家を採用するデスクトップAIエージェントです。<br>
+  普段使っているアプリで作業し、何週間でも走り続けます。指示はスマホから。
 </p>
 
 <p align="center">
-  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
-  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
-  <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
-  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
-  <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
-  <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
+  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Agentlas をダウンロード" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
 </p>
+
 <p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.ko.md">한국어</a> ·
-  <a href="README.zh-CN.md">中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.hi.md">हिन्दी</a>
+  macOS · Windows · Linux · <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas">Android</a> · iOS は近日公開<br>
+  <b>デスクトップ版ダウンロード 12,000回以上</b> · ダウンロードは無料、お使いのAIプランまたはAPIキーで動作 · Apache-2.0
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="デスクトップで One が表計算、スライド、チャット、写真、動画、3D アプリを順に操作するデモ" width="860"></a></p>
+<p align="center">
+  <a href="https://agentlas.cloud">Webサイト</a> · <a href="https://agentlas.cloud/hub">Agent Hub</a> · <a href="https://discord.gg/wbWfdGZ6S">Discord</a> · <a href="#developers">開発者向け ↓</a><br>
+  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.hi.md">हिन्दी</a>
+</p>
 
-**Agentlas Hub は無料のエージェントコミュニティです。**公開エージェントの公開・呼び出しに価格設定、リース、Agentlas クレジットの購入は不要です。呼び出し側が自分のモデルと API を使用し、サブスクリプションは Agentlas のソフトウェアとホスト機能を対象とします。新しい Hub 活動のクリエイター精算は終了し、既存残高と過去の請求は適用されるアカウント規約に従います。
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="MacでAgentlasがスプレッドシートを修正してグラフ化し、スライドを作り、Slackに投稿し、商品写真を編集する様子" width="880"></a></p>
 
-### インストール
+## こんなことを任せられます
 
-**Agentlas OS プレビュー** — インストーラーは独立したランタイム名前空間を準備します。ホスト登録と Desktop 更新の互換性は未完成です。
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
-単独ホストでは、プロジェクト連携や自動更新などの選択機能は既定でオフです。
-状態を確認し、必要な機能だけを有効または無効にできます。
-
-```bash
-~/.agentlas/os-bin/agentlas-os features status
-~/.agentlas/os-bin/agentlas-os storm on        # on、off、status
-~/.agentlas/os-bin/agentlas-os memory off      # on、off、status
-~/.agentlas/os-bin/agentlas-os context map on  # on、off、status
-~/.agentlas/os-bin/agentlas-os one on            # on、off、status; Bash が必要
-```
-
-ほかの機能名は `project-bootstrap`、`project-index`、`network-index`、
-`auto-update`、`build-telemetry` で、`~/.agentlas/os-bin/agentlas-os features on|off <name>` で
-変更できます。memory コマンドは `memory-hooks` を制御します。無効化しても既存の
-プロジェクトデータは削除しません。Desktop 更新の互換性は未完成です。
-
-プロジェクト初期化、Context Map、プロジェクト索引はそれぞれ個別に
-有効化できます。有効にした機能は非公開の `.agentlas` データを作成し、
-保護のために `.gitignore` を更新する場合があります。
-
-**Agentlas Desktop** — ターミナルよりウィンドウがよければ、このアプリを。
-
-```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash        # macOS · Linux
-```
-
-```powershell
-irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
-```
-
-<p align="center"><sub>最新の署名済みリリースを取得し sha512 を確認してから、<code>sudo</code> や管理者権限なしでインストールします · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">手動でダウンロード</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas Desktop はオープンソースです — リポジトリを見る</a></sub></p>
-
-<details>
-<summary><strong>Desktop と Agentlas OS を一緒に</strong></summary>
-
-これは Desktop が管理するエンジンの設置経路です。独立した `~/.agentlas/os-runtime` の設置やホストセッションの準備を証明するものではありません。独立インストール手順は別に確認してください。
-
-```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
-```
-
-```powershell
-$env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
-```
-
-</details>
-
----
-
-<!-- agentlas:landing-block -->
-## 個人の仕事から会社の組織まで、五つのプロダクト
-
-個人エージェント One、モバイルアプリ、投資リサーチ向けの Finance、研究向けの Science、組織向けの Business。
-
-<table>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="デスクトップの Agentlas One"></a><br><strong>One</strong><br>自分のコンピューターで動く個人エージェント。Work セッションを作って作業を割り当て、質問カードと結果ファイルを会話に送ります。</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas モバイルアプリ"></a><br><strong>Mobile</strong><br>ペアリングしたコンピューターの Agentlas Desktop が実行し、スマートフォンでは同じ会話を読んで質問カードに答えます。</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br><strong>Finance</strong><br>投資リサーチの基準を Analyst として保存します。計算に使った入力値はレポートに残ります。</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br><strong>Science</strong><br>分子構造の確認と組版された論文原稿の作成を一つのアプリで。Agentlas Desktop の署名付き拡張です。</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/business"><img src="https://agentlas.cloud/landing/v3/business-en.jpg" alt="Agentlas Business"></a><br><strong>Business</strong><br>メンバー、API キー、利用ポリシー、請求をチーム単位で管理します。1 席あたり月額 $18、2 席から。</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/desktop"><img src="https://agentlas.cloud/landing/v3/goal-tree-en.jpg" alt="Agentlas Desktop の Goal Tree"></a><br><strong>Goal Tree</strong><br>長い目標を戦略目標とサブ目標に分け、実行中でも計画を修正できます。</td>
-</tr>
-</table>
-
-<sub>画面内の名前と数値は例です。</sub>
-
-## 他では、切り出された仕事はプロンプトです。ここでは、それは求人票です
-
-ホストのモデルがブリーフを役割ごとに分け、役割ごとに候補を検索して、このプロジェクト専用の Task Force を編成します。
-
-- **3-tier talent scouting.** 役割ごとに、自分のコンピューターのエージェント、非公開の Agent Cloud、公開 Hub を検索します。
-- **3-level org chart.** 単体エージェント、このプロジェクト用の Task Force、マネージャーを持つ Packaged Team を組み合わせます。
-- **Accountable selection.** 選択は自分で選んだモデルが行います。役割ごとに理由とリリースバージョンを記録し、足りないツールは画面に表示します。
-
-## 長期プロジェクトのための Goal Tree、チェックポイント、別実行の検証
-
-長い目標は戦略目標とサブ目標のツリーに分かれ、進捗はチェックポイントに保存され、結果は作業とは別の実行が確認します。
-
-- **Goal Tree.** 作業が止まる箇所が出たら、枝を修正して新しいサブ目標を追加します。
-- **Checkpoints.** 計画、実行、統合を分けて回し、進捗を保存します。Agentlas Desktop を閉じて止まった目標は、開き直すと保存された地点から再開します。実行中はコンピューターを起動したままにする必要があります。
-- **Receipt & Verifier.** 別の実行が結果を確認して証拠を記録します。失敗が確認された目標は完了として閉じません。
-- **Agent Learning.** 異なる実行 3 回で同じ教訓が出ると、エージェントのファイルへの変更案を提示します。diff を読んで適用を決めます。
-
-## モデルは推論し、あなたの方法がリードする
-
-LLM、Runtime、Agent を分離しました。モデルやコーディングツールを変えても、エージェントパッケージはそのまま使えます。
-
-| レイヤー | 内容 |
+| 入力すると | 普段のアプリでこう動きます |
 | --- | --- |
-| **LLM** | Claude、GPT、Gemini、ローカルモデルを接続します。クォータが尽きると、対応する会話実行は優先順位の次のモデルへ切り替わり、長い目標は次のチェックポイントで切り替わります。 |
-| **Runtime** | Claude Code、Codex、Cursor、Antigravity、Grok、Kimi、GitHub Copilot CLI、Agentlas Desktop、Ollama、LM Studio、MLX。ファイルとツールがあるコンピューターで動きます。 |
-| **Agent** | スキル、検証ループ、メモリが一つのパッケージに入ります。パッケージごとに A2A Agent Card が生成され、別のホストへ移しても同じ手順で動きます。 |
+| 「第3四半期の売上シートを整理して、グラフにして。」 | 壊れたセル3つを直し、合計を追加し、スプレッドシート内にグラフを作ります。 |
+| 「金曜用に5枚のスライドにして。」 | 要約、地域別、リスク、次のステップをまとめ、`Q3-review.pptx` として保存します。 |
+| 「#sales に送って、田中さんにも伝えて。」 | Slackに投稿します。 |
+| 「商品を切り抜いて、表紙を明るくして。」 | 写真編集アプリで背景を消し、画像を補正します。 |
+| 「ベータ版の商品ページをコンバージョン重視で作り直して。」 | 市場調査員、UXデザイナー、フロントエンドエンジニア、レビュアーを採用し、ページを公開まで仕上げます。 |
+| 「ベータ版をリリースして、ユーザー1,000人を集めて。」 | ゴールツリーを作り、何週間も取り組み続けます。 |
 
-## 毎回最初から説明しなくていい 4 層メモリ
+## 工程ごとに最適な専門家を採用
 
-記憶は個人、プロジェクト、エージェント、チームの四つの範囲に分かれ、ローカルの SQLite とプロジェクトファイルに保存できます。単独ホストでは、プロジェクトメモリと自動読み込みは選択機能を有効にした場合のみ動作します。
+Agentlasは作業の各パートごとに求人票を書き、あなたのPC上のエージェント、プライベートクラウド、無料の公開Hubから候補を埋めます。最適な1人はAIが選び、理由も残します。
 
-## 最初のプロジェクトを任せましょう
+<p align="center"><img src="assets/readme/work-team.gif" alt="「ベータ版の商品ページをコンバージョン重視で作り直して」: 採用された4人の専門家が調査、設計、実装、レビューを行う" width="880"></p>
 
-Agentlas Desktop か Agentlas OS をインストールし、サインインしてモデルを接続すると始められます。
+## 何週間も続くゴール
 
-<p align="center"><a href="https://agentlas.cloud"><strong>agentlas.cloud</strong></a></p>
+「ベータ版をリリースして、ユーザー1,000人を集めて」は、戦略とサブゴールに分解され、それぞれに数値が付きます。ニュースレターの開封率が低ければ、ゴールはそのままに手法を変えます。ノートPCを閉じても、明日は最後のチェックポイントから再開します。
 
----
-<!-- /agentlas:landing-block -->
+<p align="center"><img src="assets/readme/goal-tree.gif" alt="ローンチのゴールが戦略ゴールとサブゴールに分かれ、ニュースレターの開封率が低いと再計画される様子" width="880"></p>
 
-## どのプラットフォームにもできないこと
+## スマホから指示
 
-数百、数千のエージェントを効率よくルーティングできるエージェントプラットフォームは存在しません。どんな仕事にも各分野の専門家を**最小のトークンで**チームとして配置できるのは Agentlas だけです。
+<p align="center"><img src="assets/readme/mobile.gif" alt="スマホでチャネル別の登録数を依頼すると、アナリストエージェントが表で回答し、要約をいつ送るか尋ねる様子" width="260"></p>
 
-エージェントの規格と、エージェントを呼ぶプロトコルの両方を標準化したから成り立ちます。
+バスの中で「今週のチャネル別登録数を表で」と入力します。アナリストエージェントが自宅のPCで実行し、表がチャットに届きます。判断が必要な場面ではカードで確認します。「要約を今送りますか、明日の朝にしますか?」 タップ一つで完了です。[Androidアプリを入手 →](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 
-- **A2A v1.0 をそのまま。** エージェントカードは標準パス `/.well-known/agent-card.json` で読み書きします。インポート、エクスポート、呼び出し側の検証がすべて標準の上にあります。外部エージェントは能力が整合し、**かつ署名済みカードで身元が確認された**ときだけ呼べます。
-- **簡潔な候補リスト。** 候補の各行に、ホストがエージェントを比較・選択するための情報をまとめます。
+## 契約中のAIをそのまま使う
 
-## ほとんどのツールはここで止まります
+Claude Code、Codex、Antigravity、Grok、Kimi、Cursor、GitHub Copilot CLIでサインインするか、APIキーを追加するか、Ollama、LM Studio、MLXで無料のローカルモデルを動かせます。1つのプランの上限に達したら、会話は次のプランへ移ります。
 
-|  | タスク分割なし | タスク分割あり |
-| --- | --- | --- |
-| **専門家の調達なし** | チャット一つが丸ごと処理 | 同じモデル、プロンプトだけ差し替え |
-| **専門家の調達あり** | ストアから一つ選んで使う | **Agentlas** |
+## PCの中に残るもの
 
-タスクを分けてくれるツールはあります。しかし分かれたタスクを受け持つのは、同じモデルにプロンプトを変えただけのものです。専門家を売る場所もあります。しかしそこには分割がありません。一つ選んで使うだけです。
+- ファイル、エージェント、メモリはあなたのマシンにあります。
+- 自律的に動ける範囲は自分で決められます。すべての操作は記録され、スマホから停止できます。
+- スマホアプリはリクエストをデスクトップに送り、結果を表示するだけです。作業はあなたのPCで行われます。
+- エンジンはApache-2.0のオープンソースです。
 
-**他所で分かれたタスクは、あなたが書いたプロンプトです。ここでは求人票です。**
-タスク一つひとつが、あなたのマシン、あなたのプライベートクラウド、公開 Hub の三か所に同時に出ます。
+## 自分だけの専門家をつくる
 
----
+1文で説明すれば、Agentlasがインストール可能なエージェントを作ります。非公開のまま使うことも、[Agent Hub](https://agentlas.cloud/hub)に公開することもできます。エージェントの公開と利用は無料で、支払いによる順位付けはありません。
 
-## 専門家を自分でつくる
+<p align="center">
+  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><b>Agentlas をダウンロード</b></a> ·
+  <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas"><b>Androidアプリ</b></a> ·
+  <a href="https://discord.gg/wbWfdGZ6S"><b>Discordに参加</b></a>
+  <br>⭐ <b>Starで次の人に見つけてもらおう</b> · <a href="https://github.com/agentlas-ai/Agentlas-OS/issues">不具合を報告する</a>
+</p>
 
-リストに合う人がいなければ、つくればいい。`/hep-build` は一文を持ち運べるシングルエージェントまたはチームに変えます。結果を変える質問だけを尋ね、パッケージを書き、完了と言う前に契約チェックを走らせます。`/hep-build session` は、いま進めている会話から同じことをします。
-
-```text
-/hep-build an agent that reviews App Store replies before they go out
-/hep-build session
-```
-
-どのビルドも入力・出力スキーマ、ルーティングカード、そして後述のパッケージ契約の残りを一緒に出します。必須ファイルが一つでも欠けたビルドは、出荷されずに失敗します。`/hep-upload` で非公開の Agent Cloud に置くか無料の Hub に公開すれば、`/hep-network` がほかの候補と同じように配置できます。
-
----
-
-## たぶん気になること
-
-<details open>
-<summary><strong>結局そちらが薦めてくるのでは？</strong></summary>
-
-<br>
-
-エージェントを売る場所はどこも順位をつけます。それが稼ぎ方だからです。人は上にあるものを押し、誰が上に来るかはその会社が決めます。
-
-私たちは順位を作りません。スキーマが `allowHistoryEvidence` を定数 `false` で固定しており、スコア付きの名簿を返すソースは**応答ごと拒否**されます。
-
-評価、インストール数、先月の販売数 — どれも読みません。候補はそのまま渡され、選ぶのはあなたのモデルです。
-
-</details>
+<a name="developers"></a>
 
 <details>
-<summary><strong>開発者だけのものですか？</strong></summary>
+<summary><b>Claude Code・Codex・Cursor・Antigravity でエンジンを使う</b></summary>
 
-<br>
-
-いいえ。役割オントロジーには、バックエンド・セキュリティ・QA と並んで**保険数理士、M&A デューデリジェンス責任者、引受デューデリジェンス専門家、旅行プランナー**がいます。
-
-保険だけで領域が四つあります。リストにない領域も塞ぎません。
-
-</details>
-
----
-
-## 候補の選択
-
-発行者が書いた「こういうときに呼んで」という文は、リスト末尾の三つの枠を予約します。順位を変更する権限はありません。ワークオーダーは英語で書き、成果物の言語は別のフィールドで指定します。候補数の既定値は 30 です。
-
----
-
-## Agentlas Desktop では
-
-Desktop はホストそのものなので、実行が始まる**前に**コードが決めます。一人で足りる仕事か、チームが要る仕事か。その判断は提案ではなく、予約された実行として記録されます。インストール済みのエージェントに加え、公開 Hub のエージェントも配置できます。公開 Hub のエージェント呼び出しに Agentlas の料金はかかりませんが、選択したホストやモデル・API プロバイダの料金が別途発生する場合があります。
-
-| サーフェス | 役割 |
-| --- | --- |
-| **Agentlas OS (Hephaestus)** | このリポジトリ — CLI ホスト向けのオープンソースのビルド・ルーティングエンジンとコマンドサーフェス |
-| **Agentlas Desktop** | 同じエンジンをウィンドウで動かすアプリ（macOS · Windows · Linux） |
-| **Agentlas Hub** | エージェントを無料で公開・発見・利用できる公開スペース |
-| **Agentlas Cloud** | 自分のエージェントを非公開で保管し、再び取り出すための所有者専用ストア |
-
----
-
-## インストール：すべての方法と、何をどこに書くか
-
-<details>
-<summary><strong>すべてのインストール方法を表示</strong></summary>
-
+コーディングエージェントにこのリポジトリのアドレスを渡して、Agentlas のインストールを頼むだけでも大丈夫です。
 
 今使っている LLM、たとえば Claude Code、Codex、Antigravity、Cursor に貼り付けてください:
 
@@ -279,7 +121,7 @@ updates: Automatic updates default OFF. After a runtime update, inspect host sta
 </p>
 
 <p align="center">
-  <sub>ハブから呼び出された専門エージェントが臨時タスクフォースとして編成され、MCP 経由でリアルタイムにルーティングされます — タスクごとのエージェント設定は不要です。</sub>
+  <sub>ハブから呼び出された専門エージェントが臨時タスクフォースとして編成され、MCP 経由でリアルタイムにルーティングされます, タスクごとのエージェント設定は不要です。</sub>
 </p>
 
 <p align="center">
@@ -302,7 +144,6 @@ updates: Automatic updates default OFF. After a runtime update, inspect host sta
   <a href="#目的別ドキュメント">ドキュメント一覧</a>
 </p>
 
----
 
 
 <details>
@@ -349,13 +190,12 @@ Codex の core ツールとスキルは独立セッションで読み込めま�
 
 更新後は `host status` を再確認します。所有する Codex スキル alias が古い世代を指すと `outdated` または `codex_skill_alias_outdated` となり、新しいセッションは未準備です。alias を黙って置換・削除したり legacy ランタイムへ切り替えたりせず、正確な状態を報告し、提供された明示的な修復手順に従います。自動更新は既定で OFF です。ランタイム更新だけではホストの有効化を証明できません。
 
----
 
 </details>
 
 
 <details>
-<summary><strong>コマンドサーフェス — すべてのコマンド</strong></summary>
+<summary><strong>コマンドサーフェス, すべてのコマンド</strong></summary>
 
 
 ネイティブ Agentlas 環境内では、Hephaestus はコマンドレスで動作します。外部 LLM tools では、意図的に小さく保たれた可視コマンドセットを使用します。これらはエージェントを作り、そのエージェントで仕事を配置するためのコマンドです:
@@ -376,17 +216,16 @@ Codex の core ツールとスキルは独立セッションで読み込めま�
 スクリプトやメモ、慣れた操作はそのまま使えます。
 
 
----
 
 </details>
 
 
 <details>
-<summary><strong>さらに深く — ビルドファクトリーとルーティングスケジューラ</strong></summary>
+<summary><strong>さらに深く, ビルドファクトリーとルーティングスケジューラ</strong></summary>
 
 
-### Meta-Agent Factory — プロセス生成
-4 つのビルダーを用いる統合コンパイルファクトリーです。生成されるすべてのパッケージはグローバルコマンド（`.agentlas/global-commands.json`）を登録し、検証スクリプトを同梱します — コンパイル済みパッケージの実行方法をユーザーが推測する必要は一切ありません:
+### Meta-Agent Factory, プロセス生成
+4 つのビルダーを用いる統合コンパイルファクトリーです。生成されるすべてのパッケージはグローバルコマンド（`.agentlas/global-commands.json`）を登録し、検証スクリプトを同梱します, コンパイル済みパッケージの実行方法をユーザーが推測する必要は一切ありません:
 
 | コンパイルモード | ルーティング先 | 出力アーティファクト |
 | :--- | :--- | :--- |
@@ -397,9 +236,8 @@ Codex の core ツールとスキルは独立セッションで読み込めま�
 
 *Briefing Interview Gate:* ビルダーは **briefing interview gate**を用いてプロセスを開始します: レンズ駆動の質問を行い、曖昧さのしきい値を評価し、一次情報源を検索し、Work Brief を出力します。
 
----
 
-### Network 2.0 — スケジューラー
+### Network 2.0, スケジューラー
 
 <p align="center">
   <img src="assets/hephaestus-network-architecture.svg" alt="Figure 2. Hephaestus Network 2.0 A2A networking architecture">
@@ -414,13 +252,12 @@ Codex の core ツールとスキルは独立セッションで読み込めま�
 *   **証拠ベースの評価:** 検索カバレッジ、ホスト選択、不変な準備、実際の子呼び出し、最終検証を別々の主張として評価します。ベンチマークや利用履歴がホストの人員配置判断に置き換わることはありません。
 
 
----
 
 </details>
 
 
 <details>
-<summary><strong>生成される成果物 — プロセスパッケージング</strong></summary>
+<summary><strong>生成される成果物, プロセスパッケージング</strong></summary>
 
 
 Hephaestus は、任意のワークスペースランタイムがパース・インストール・検証・実行できる標準ディレクトリレイアウトへエージェントをパッケージします。以下のレイアウトは `package-contract.json` が要求し、`hephaestus contract verify` が検査するものです:
@@ -451,41 +288,27 @@ Hephaestus は、任意のワークスペースランタイムがパース・イ
 │                                     #   domain synthesis, prompt performance contract
 ├── tools/requirements.yaml           # Projected from mcp-policy.json + agentlas.json
 ├── permissions/policy.yaml           # Projected shell/network/file/payment whitelist
-├── hooks/                            # memory-upgrade.yaml, on_stop.yaml — declared, host-enforced
+├── hooks/                            # memory-upgrade.yaml, on_stop.yaml, declared, host-enforced
 ├── evals/README.md                   # Points at the eval plan and routing benchmarks
 └── .claude/skills/<name>/SKILL.md    # Skills, when the package carries any
 ```
 
 `docs/`、評価計画、作業ブリーフを省略できるのは、ユーザーが確認した最小限のプライベートビルドだけです。`provenance.json`、`knowledge/`、`schemas/`、`sandbox/`、`examples/` は任意です。
 
----
 
 </details>
 
 </details>
 
-## 目的別ドキュメント
-
-| システム上の目的 | 参照ドキュメント |
-|---|---|
-| 正準ルートを理解する | [`AGENTS.md`](AGENTS.md) |
-| チームコントラクト全体を見る | [`agent.md`](agent.md) |
-| パッケージ契約 | [`package-contract.json`](package-contract.json) |
-| セッションビルド | [`contracts/session-build.md`](contracts/session-build.md) |
-| ルーティングカード | [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
-| Workforce 作業指示書 | [`schemas/workforce-work-order.schema.json`](schemas/workforce-work-order.schema.json) |
-| コンパイル済みブリーフ | [`schemas/agentlas-brief.schema.json`](schemas/agentlas-brief.schema.json) |
-
----
-
-## 公開セーフティ境界
+<details>
+<summary><b>公開セーフティ境界</b></summary>
 
 このリポジトリには、Agentlas の課金/アカウントロジック、本番クラウド認証情報、顧客データベース、生のプライベートトランスクリプト、ネイティブのキーチェーンマネージャー、プライベートなデプロイスクリプトは**含まれていません**。
 
 Hephaestus がコンパイルする公開向けの出力パッケージは、ローカルの絶対パス、API キー、サービスアカウントキー、`.env` シークレット、生のトランスクリプト、顧客ログ、開発者のプライベートノートを除外しなければなりません。
 
----
+</details>
 
-## ライセンス
+## License
 
-Apache-2.0 です。[LICENSE](LICENSE) を参照してください。
+Apache-2.0 · Made by [Appbridge](https://agentlas.cloud)

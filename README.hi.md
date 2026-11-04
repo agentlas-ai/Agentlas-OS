@@ -16,246 +16,88 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 <!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-**Standalone preview:** Optional features OFF हैं (memory डिफ़ॉल्ट रूप से ON है)। Host session runtime installation से अलग है। Codex One/Memory hooks लागू नहीं हैं और Windows host session अप्रमाणित है; वास्तविक status देखें।
+<h1 align="center">Agentlas</h1>
 
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
-<p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
-
-<h1 align="center">Agentlas OS</h1>
+<h3 align="center">बस goal दीजिए। टीम यह खुद hire करता है।</h3>
 
 <p align="center">
-  <strong>टास्क से आगे। प्रोजेक्ट का नेतृत्व करने वाले एजेंट।</strong><br>
-  <sub>कोई भी मॉडल, कोई भी रनटाइम। कंपनी हो या व्यक्ति, Agentlas खुद specialist टीम चुनता है और लंबे प्रोजेक्ट को पूरा होने तक आगे बढ़ाता है।</sub><br>
-  <sub>Claude Code, Codex, Cursor, Antigravity और Agentlas Desktop में चलता है।</sub>
+  एक desktop AI agent जो आपके project के हर हिस्से के लिए specialist hire करता है,<br>
+  आपके असली apps में काम करता है, और हफ़्तों तक चलता रहता है। फ़ोन से उसे चलाइए।
 </p>
 
 <p align="center">
-  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
-  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
-  <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
-  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
-  <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
-  <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
+  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Agentlas डाउनलोड करें" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
 </p>
+
 <p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.ko.md">한국어</a> ·
-  <a href="README.zh-CN.md">中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.hi.md">हिन्दी</a>
+  macOS · Windows · Linux · <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas">Android</a> · iOS जल्द आ रहा है<br>
+  <b>12,000+ desktop downloads</b> · डाउनलोड मुफ़्त, आपके अपने AI plan या key पर चलता है · Apache-2.0
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="डेस्कटॉप पर One का spreadsheet, slide, chat, photo, video और 3D ऐप्स में काम करने का डेमो" width="860"></a></p>
+<p align="center">
+  <a href="https://agentlas.cloud">वेबसाइट</a> · <a href="https://agentlas.cloud/hub">Agent Hub</a> · <a href="https://discord.gg/wbWfdGZ6S">Discord</a> · <a href="#developers">Developers ↓</a><br>
+  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a>
+</p>
 
-**Agentlas Hub एक निःशुल्क एजेंट समुदाय है।** सार्वजनिक एजेंट प्रकाशित या कॉल करने के लिए कीमत, लीज़ या Agentlas क्रेडिट खरीदना आवश्यक नहीं है। कॉल करने वाला अपना मॉडल और API उपयोग करता है; सदस्यता Agentlas सॉफ़्टवेयर और होस्टेड सुविधाओं के लिए है। नई Hub गतिविधि पर क्रिएटर सेटलमेंट बंद है; मौजूदा बैलेंस और पुराने दावे लागू खाता शर्तों के अनुसार संभाले जाते हैं।
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="Mac पर Agentlas एक spreadsheet ठीक कर रहा है, उसका chart बना रहा है, deck तैयार कर रहा है, Slack पर पोस्ट कर रहा है और product photo edit कर रहा है" width="880"></a></p>
 
-### Install
+## लोग इसे क्या-क्या सौंपते हैं
 
-**Agentlas OS प्रीव्यू** — इंस्टॉलर स्वतंत्र रनटाइम नेमस्पेस तैयार करता है। होस्ट पंजीकरण और Desktop अपडेट संगतता अभी पूरी नहीं हुई है।
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
-Standalone hosts में project integration और automatic updates जैसी optional
-सुविधाएँ डिफ़ॉल्ट रूप से बंद हैं। स्थिति देखें और ज़रूरत के अनुसार चालू या बंद करें:
-
-```bash
-~/.agentlas/os-bin/agentlas-os features status
-~/.agentlas/os-bin/agentlas-os storm on        # on, off, status
-~/.agentlas/os-bin/agentlas-os memory off      # on, off, status
-~/.agentlas/os-bin/agentlas-os context map on  # on, off, status
-~/.agentlas/os-bin/agentlas-os one on            # on, off, status; Bash आवश्यक है
-```
-
-अन्य नाम हैं `project-bootstrap`, `project-index`, `network-index`,
-`auto-update` और `build-telemetry`; इन्हें `~/.agentlas/os-bin/agentlas-os features on|off <name>`
-से बदलें। `memory` कमांड `memory-hooks` को नियंत्रित करता है। बंद करने पर मौजूदा project data नहीं मिटता।
-Desktop अपडेट संगतता अभी पूरी नहीं हुई है।
-
-Project initialization, Context Map और project indexing को अलग-अलग चालू किया
-जा सकता है। चालू project सुविधा निजी `.agentlas` डेटा बना सकती है और उसकी सुरक्षा
-के लिए `.gitignore` अपडेट कर सकती है।
-
-**Agentlas Desktop** — terminal की जगह window पसंद हो तो यह app।
-
-```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash        # macOS · Linux
-```
-
-```powershell
-irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
-```
-
-<p align="center"><sub>नवीनतम हस्ताक्षरित रिलीज़ डाउनलोड करता है, उसका sha512 जाँचता है, और बिना <code>sudo</code> या एडमिन अनुमति के इंस्टॉल करता है · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">मैन्युअल रूप से डाउनलोड करें</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas Desktop ओपन सोर्स है — रिपॉज़िटरी देखें</a></sub></p>
-
-<details>
-<summary><strong>Desktop और Agentlas OS एक साथ</strong></summary>
-
-यह Desktop-managed engine installation का मार्ग है। इससे standalone `~/.agentlas/os-runtime` installation या host-session readiness सिद्ध नहीं होती; standalone निर्देश अलग से अपनाएँ।
-
-```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
-```
-
-```powershell
-$env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
-```
-
-</details>
-
----
-
-<!-- agentlas:landing-block -->
-## व्यक्तिगत काम से कंपनी की टीम तक, पाँच उत्पाद
-
-व्यक्तिगत एजेंट One, मोबाइल ऐप, निवेश रिसर्च के लिए Finance, शोध के लिए Science और संगठनों के लिए Business।
-
-<table>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="डेस्कटॉप पर Agentlas One"></a><br><strong>One</strong><br>आपके कंप्यूटर पर चलने वाला व्यक्तिगत एजेंट। यह Work session बनाकर काम बाँटता है और question card व result files चैट में भेजता है।</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas मोबाइल ऐप"></a><br><strong>Mobile</strong><br>paired कंप्यूटर पर Agentlas Desktop काम चलाता है। फ़ोन पर आप वही बातचीत पढ़ते हैं और question cards का जवाब देते हैं।</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br><strong>Finance</strong><br>निवेश रिसर्च के मानदंड Analyst के रूप में सहेजें। गणना के इनपुट रिपोर्ट में रहते हैं।</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br><strong>Science</strong><br>अणु संरचना और typeset पांडुलिपि एक ही ऐप में। यह Agentlas Desktop का signed extension है।</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/business"><img src="https://agentlas.cloud/landing/v3/business-en.jpg" alt="Agentlas Business"></a><br><strong>Business</strong><br>सदस्य, API keys, उपयोग नीतियाँ और बिलिंग टीम स्तर पर। प्रति सीट $18 प्रति माह, 2 सीटों से।</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/desktop"><img src="https://agentlas.cloud/landing/v3/goal-tree-en.jpg" alt="Agentlas Desktop पर Goal Tree"></a><br><strong>Goal Tree</strong><br>लंबे लक्ष्य रणनीतिक लक्ष्यों और उप-लक्ष्यों में बँटते हैं, और चलते समय भी योजना बदली जा सकती है।</td>
-</tr>
-</table>
-
-<sub>स्क्रीन पर दिखे नाम और आँकड़े केवल उदाहरण हैं।</sub>
-
-## बाकी जगह अलग किया गया काम एक prompt होता है। यहाँ वह एक job opening है
-
-host मॉडल ब्रीफ़ को भूमिकाओं में बाँटता है, हर भूमिका के लिए उम्मीदवार खोजता है और इस प्रोजेक्ट के लिए Task Force बनाता है।
-
-- **3-tier talent scouting.** हर भूमिका के लिए आपकी मशीन, निजी Agent Cloud और सार्वजनिक Hub में खोज होती है।
-- **3-level org chart.** एकल एजेंट, इस प्रोजेक्ट का Task Force और अपने manager वाली Packaged Team मिलाकर इस्तेमाल होते हैं।
-- **Accountable selection.** चयन आपका चुना मॉडल करता है। हर भूमिका का कारण और release version दर्ज होता है, और कम पड़े tools स्क्रीन पर दिखते हैं।
-
-## लंबे प्रोजेक्ट के लिए Goal Tree, checkpoints और अलग सत्यापन
-
-लंबे लक्ष्य रणनीतिक लक्ष्यों और उप-लक्ष्यों के tree में बँटते हैं, प्रगति checkpoints पर सहेजी जाती है, और काम से अलग run नतीजे की जाँच करता है।
-
-- **Goal Tree.** काम रुकने पर शाखाएँ बदली जाती हैं और नए उप-लक्ष्य जोड़े जाते हैं।
-- **Checkpoints.** योजना, निष्पादन और संश्लेषण अलग चलते हैं और प्रगति सहेजी जाती है। Agentlas Desktop बंद करने से रुका लक्ष्य दोबारा खोलने पर सहेजे गए बिंदु से चलता है। चलते समय कंप्यूटर चालू रहना ज़रूरी है।
-- **Receipt & Verifier.** अलग run नतीजे की जाँच करके प्रमाण दर्ज करता है। पुष्ट विफलता वाला लक्ष्य पूरा मानकर बंद नहीं होता।
-- **Agent Learning.** तीन अलग runs से एक ही सबक मिलने पर एजेंट की फ़ाइलों में बदलाव का प्रस्ताव बनता है। diff पढ़कर फ़ैसला आप करते हैं।
-
-## मॉडल सोचता है। नेतृत्व आपका तरीका करता है
-
-LLM, Runtime और Agent अलग परतें हैं। मॉडल या coding tool बदलने पर भी वही agent package चलता है।
-
-| परत | विवरण |
+| आप लिखते हैं | यह आपके apps में करता है |
 | --- | --- |
-| **LLM** | Claude, GPT, Gemini या local मॉडल जोड़ें। quota खत्म होने पर समर्थित chat runs प्राथमिकता सूची के अगले मॉडल पर जाते हैं, और लंबे लक्ष्य अगले checkpoint पर बदलते हैं। |
-| **Runtime** | Claude Code, Codex, Cursor, Antigravity, Grok, Kimi, GitHub Copilot CLI, Agentlas Desktop, Ollama, LM Studio और MLX। यह उसी कंप्यूटर पर चलता है जहाँ आपकी फ़ाइलें और tools हैं। |
-| **Agent** | Skills, verification loops और memory एक package में रहते हैं। हर package का A2A Agent Card बनता है, और दूसरे host पर भी वही प्रक्रिया चलती है। |
+| "Q3 की sales sheet साफ़ करो और उसका chart बनाओ।" | 3 टूटे cells ठीक करता है, totals जोड़ता है, और spreadsheet में ही chart बना देता है। |
+| "इसे शुक्रवार के लिए 5 slides के deck में बदलो।" | Summary, regions, risks और next steps के साथ `Q3-review.pptx` के रूप में सेव करता है। |
+| "इसे #sales में भेजो और Dana को बताओ।" | Slack में पोस्ट कर देता है। |
+| "Product को cut out करो और cover को brighten करो।" | Photo editor में background हटाता है और image edit करता है। |
+| "Beta product page को conversion के हिसाब से दोबारा बनाओ।" | Market researcher, UX designer, frontend engineer और reviewer hire करता है, फिर page ship करता है। |
+| "Beta ship करो और 1,000 users तक पहुँचो।" | Goal tree खोलता है और हफ़्तों तक उस पर काम करता है। |
 
-## चार स्तरों की मेमोरी, ताकि प्रोजेक्ट बार-बार न समझाना पड़े
+## हर हिस्से के लिए सही specialist hire करता है
 
-मेमोरी चार दायरों (व्यक्तिगत, प्रोजेक्ट, एजेंट, टीम) में स्थानीय SQLite और प्रोजेक्ट फ़ाइलों में रखी जा सकती है। Standalone hosts में project memory और automatic recall संबंधित optional सुविधाएँ चालू होने पर ही चलते हैं।
+Agentlas काम के हर हिस्से के लिए एक job opening लिखता है और उसे आपके computer के agents, आपके private cloud और मुफ़्त public Hub से भरता है। आपका AI सबसे सही fit चुनता है और वजह भी लिखता है।
 
-## अपना पहला प्रोजेक्ट सौंपिए
+<p align="center"><img src="assets/readme/work-team.gif" alt="'Beta product page को conversion के हिसाब से दोबारा बनाओ': चार hire किए गए specialists page की research, design, build और review करते हैं" width="880"></p>
 
-Agentlas Desktop या Agentlas OS इंस्टॉल करें, साइन इन करें और मॉडल जोड़कर शुरू करें।
+## हफ़्तों चलने वाले goals
 
-<p align="center"><a href="https://agentlas.cloud"><strong>agentlas.cloud</strong></a></p>
+"Beta ship करो और 1,000 users तक पहुँचो" strategies और sub-goals में बँट जाता है, और हर एक के साथ एक संख्या जुड़ी होती है। Newsletter की open rate कम आए तो तरीक़ा बदल जाता है, goal वही रहता है। Laptop बंद कर दीजिए; कल यह पिछले checkpoint से आगे बढ़ता है।
 
----
-<!-- /agentlas:landing-block -->
+<p align="center"><img src="assets/readme/goal-tree.gif" alt="एक launch goal strategic goals और sub-goals में बँटा हुआ, newsletter की open rate कम होने पर दोबारा plan किया गया" width="880"></p>
 
-## जो कोई platform नहीं कर पाता
+## फ़ोन से चलाइए
 
-कोई भी agent platform सैकड़ों-हज़ारों agents को कुशलता से route नहीं कर पाता। किसी भी काम पर हर क्षेत्र के specialists को **सबसे कम tokens में** एक टीम के रूप में लगाने वाली जगह सिर्फ़ Agentlas है।
+<p align="center"><img src="assets/readme/mobile.gif" alt="फ़ोन से channel के हिसाब से sign-ups माँगना; Analyst agent table के साथ जवाब देता है और पूछता है कि summary कब भेजनी है" width="260"></p>
 
-यह इसलिए संभव है क्योंकि agent का spec और agent को बुलाने का protocol, दोनों मानकीकृत हैं।
+बस में बैठे हुए लिखिए "इस हफ़्ते के sign-ups, channel के हिसाब से, table में"। Analyst agent इसे घर के आपके computer पर चलाता है और table chat में आ जाती है। जब फ़ैसला आपका हो, तो एक card पूछता है: "Summary अभी भेजूँ या कल सुबह?" बस एक tap। [Android app पाइए →](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 
-- **A2A v1.0, जैसा लिखा है वैसा।** Agent cards मानक पथ `/.well-known/agent-card.json` पर पढ़े और लिखे जाते हैं। Import, export और caller gating सब मानक पर टिके हैं। कोई बाहरी agent तभी बुलाया जा सकता है जब उसकी capability aligned हो **और हस्ताक्षरित card से उसकी पहचान सत्यापित हो।**
-- **संक्षिप्त candidate menus.** हर पंक्ति में होस्ट को agents की तुलना और चयन के लिए आवश्यक जानकारी का सार होता है।
+## जिस AI के पैसे आप पहले से देते हैं, वही इस्तेमाल कीजिए
 
-## यहीं अधिकांश tools रुक जाते हैं
+Claude Code, Codex, Antigravity, Grok, Kimi, Cursor या GitHub Copilot CLI से sign in कीजिए, API key जोड़िए, या Ollama, LM Studio या MLX पर मुफ़्त local model चलाइए। जब एक plan का quota ख़त्म हो जाता है, chats अगले plan पर चली जाती हैं।
 
-|  | task विभाजन नहीं | task विभाजन है |
-| --- | --- | --- |
-| **specialist sourcing नहीं** | एक chat पूरा हिस्सा संभालता है | वही model, अलग prompt |
-| **specialist sourcing है** | store से एक चुनकर इस्तेमाल | **Agentlas** |
+## आपके computer पर क्या रहता है
 
-कुछ tools काम बाँटते ज़रूर हैं। पर हर task जो संभालता है वह वही model होता है, बस prompt बदला हुआ। कुछ जगहें specialists बेचती भी हैं। पर वहाँ विभाजन नहीं है — आप एक चुनते हैं और इस्तेमाल करते हैं।
+- आपकी files, agents और memory आपकी अपनी machine पर रहती हैं।
+- वह अपने आप कितना कर सकता है, यह आप तय करते हैं। हर step log होता है, और आप उसे फ़ोन से रोक सकते हैं।
+- Phone app आपके desktop को requests भेजता है और results दिखाता है; काम आपके computer पर होता है।
+- Engine Apache-2.0 के तहत open source है।
 
-**कहीं और बँटा हुआ task वह prompt है जो आपने लिखा। यहाँ वह एक नौकरी का विज्ञापन है।**
-हर task एक साथ आपकी मशीन, आपके private cloud और सार्वजनिक Hub तक जाता है।
+## अपना specialist बनाइए
 
----
+एक वाक्य में बताइए और Agentlas एक installable agent बना देता है। उसे private रखिए, या [Agent Hub](https://agentlas.cloud/hub) पर publish कीजिए, जहाँ agents publish करना और इस्तेमाल करना मुफ़्त है और किसी भी चीज़ की ranking पैसे से तय नहीं होती।
 
-## अपना specialist ख़ुद बनाइए
+<p align="center">
+  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><b>Agentlas डाउनलोड करें</b></a> ·
+  <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas"><b>Android app</b></a> ·
+  <a href="https://discord.gg/wbWfdGZ6S"><b>Discord से जुड़िए</b></a>
+  <br>⭐ <b>Star कीजिए ताकि अगला व्यक्ति इसे ढूँढ सके</b> · <a href="https://github.com/agentlas-ai/Agentlas-OS/issues">क्या टूटा, हमें बताइए</a>
+</p>
 
-सूची में कोई फ़िट न हो, तो एक बना लीजिए। `/hep-build` एक वाक्य को portable single agent या team में बदल देता है: सिर्फ़ वही सवाल पूछता है जो नतीजा बदलें, package लिखता है, और काम पूरा कहने से पहले contract checks चलाता है। `/hep-build session` यही काम उस बातचीत से करता है जिसमें आप अभी हैं।
-
-```text
-/hep-build an agent that reviews App Store replies before they go out
-/hep-build session
-```
-
-हर build input और output schemas, routing card और नीचे दिए package contract की बाकी फ़ाइलें साथ देता है; कोई ज़रूरी फ़ाइल छूटे तो build ship होने की जगह fail होता है। `/hep-upload` से इसे अपने private Agent Cloud में रखें या free Hub पर publish करें, फिर `/hep-network` इसे किसी भी दूसरे candidate की तरह staff कर सकता है।
-
----
-
-## जो सवाल शायद आपके मन में हैं
-
-<details open>
-<summary><strong>आख़िर में आप ही एक की सिफ़ारिश कर देते हैं, है ना?</strong></summary>
-
-<br>
-
-agents बेचने वाली हर जगह उन्हें rank करती है। कमाई का तरीका यही है। लोग ऊपर वाले पर click करते हैं, और ऊपर कौन आएगा यह वह कंपनी तय करती है।
-
-हम ranking बनाते ही नहीं। schema `allowHistoryEvidence` को स्थिरांक `false` पर pin करता है, और जो source scored सूची लौटाए उसका **पूरा उत्तर अस्वीकार** कर दिया जाता है।
-
-Ratings, install counts, पिछले महीने की बिक्री — हम इनमें से कुछ नहीं पढ़ते। candidates जैसे हैं वैसे मिलते हैं, और चुनाव आपका model करता है।
-
-</details>
+<a name="developers"></a>
 
 <details>
-<summary><strong>क्या यह सिर्फ़ developers के लिए है?</strong></summary>
+<summary><b>Claude Code, Codex, Cursor या Antigravity में engine इस्तेमाल करें</b></summary>
 
-<br>
-
-नहीं। role ontology में backend, security और QA के साथ-साथ **insurance actuary, M&A diligence lead, underwriting diligence specialist और travel planner** भी हैं।
-
-अकेले insurance के चार क्षेत्र हैं। सूची से बाहर के क्षेत्र भी रोके नहीं जाते।
-
-</details>
-
----
-
-## Candidate चयन
-
-प्रकाशक के लिखे "मुझे तब बुलाइए…" वाक्य सूची के अंत में तीन स्थान आरक्षित करते हैं; वे ranking बदलने का अधिकार नहीं देते। Work order अंग्रेज़ी में लिखा जाता है और deliverable की भाषा अलग field है। डिफ़ॉल्ट candidate संख्या 30 है।
-
----
-
-## Agentlas Desktop पर
-
-Desktop खुद host है, इसलिए run शुरू होने से **पहले** ही code तय कर लेता है कि काम एक agent से बनेगा या टीम चाहिए। वह निर्णय सुझाव नहीं, एक आरक्षित run के रूप में दर्ज होता है। यह इंस्टॉल किए हुए agents के साथ सार्वजनिक Hub agents को भी काम में लगा सकता है। सार्वजनिक Hub agents को बुलाने पर Agentlas शुल्क नहीं लगता; चुने हुए host या model/API provider के शुल्क अलग से लग सकते हैं।
-
-| Surface | भूमिका |
-| --- | --- |
-| **Agentlas OS (Hephaestus)** | यह repo — CLI hosts के लिए open-source build और routing engine तथा command surface |
-| **Agentlas Desktop** | वही engine window के साथ चलाने वाला app (macOS · Windows · Linux) |
-| **Agentlas Hub** | agents को मुफ़्त में publish, discover और use करने की public जगह |
-| **Agentlas Cloud** | अपने agents को private रूप से रखने और फिर निकालने के लिए owner-scoped store |
-
----
-
-## Install: सभी तरीक़े, और यह क्या लिखता है
-
-<details>
-<summary><strong>सभी install तरीक़े दिखाएँ</strong></summary>
-
+या अपने coding agent को इस repository का पता दें और उससे Agentlas install करने को कहें।
 
 इसे उस LLM में paste करें जिसे आप अभी इस्तेमाल कर रहे हैं, जैसे Claude Code,
 Codex, Antigravity या Cursor:
@@ -280,7 +122,7 @@ updates: Automatic updates default OFF. After a runtime update, inspect host sta
 </p>
 
 <p align="center">
-  <sub>Hub से लाए गए specialist agents एक temporary task force में जुड़ते हैं और MCP के जरिए live route होते हैं — हर task के लिए अलग agent setup की जरूरत नहीं।</sub>
+  <sub>Hub से लाए गए specialist agents एक temporary task force में जुड़ते हैं और MCP के जरिए live route होते हैं, हर task के लिए अलग agent setup की जरूरत नहीं।</sub>
 </p>
 
 <p align="center">
@@ -303,7 +145,6 @@ updates: Automatic updates default OFF. After a runtime update, inspect host sta
   <a href="#लक्ष्य-के-अनुसार-docs">Docs रजिस्ट्री</a>
 </p>
 
----
 
 
 <details>
@@ -350,13 +191,12 @@ Codex core tools और skills अलग session में लोड हो स�
 
 Update के बाद फिर `host status` देखें। Owned Codex skill alias पुराने generation को इंगित कर सकता है; `outdated` या `codex_skill_alias_outdated` का अर्थ नया session तैयार नहीं है। Alias चुपचाप बदलें/हटाएँ नहीं और legacy runtime पर fallback न करें। सही स्थिति बताकर उपलब्ध स्पष्ट repair procedure अपनाएँ। Automatic updates default OFF हैं; runtime update host activation का प्रमाण नहीं है।
 
----
 
 </details>
 
 
 <details>
-<summary><strong>कमांड सरफेस — सभी commands</strong></summary>
+<summary><strong>कमांड सरफेस, सभी commands</strong></summary>
 
 
 Native Agentlas environments के अंदर Hephaestus commandless चलता है। External LLM tools जान-बूझकर छोटा रखा गया visible command set उपयोग करते हैं। ये commands agents बनाने और उन्हीं से काम staff करने के लिए हैं:
@@ -377,17 +217,16 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 स्क्रिप्ट, नोट्स और आपकी आदत सब वैसे ही चलते रहेंगे।
 
 
----
 
 </details>
 
 
 <details>
-<summary><strong>और गहराई में — build factory और routing scheduler</strong></summary>
+<summary><strong>और गहराई में, build factory और routing scheduler</strong></summary>
 
 
-### Meta-Agent Factory — Process निर्माण
-चार builders का उपयोग करने वाली एक unified compilation factory। हर generated package अपना global command (`.agentlas/global-commands.json`) register करता है और verification scripts के साथ ship होता है — user को कभी अनुमान नहीं लगाना पड़ता कि compiled package कैसे चलाना है:
+### Meta-Agent Factory, Process निर्माण
+चार builders का उपयोग करने वाली एक unified compilation factory। हर generated package अपना global command (`.agentlas/global-commands.json`) register करता है और verification scripts के साथ ship होता है, user को कभी अनुमान नहीं लगाना पड़ता कि compiled package कैसे चलाना है:
 
 | Compilation Mode | Routing Target | Output Artifact |
 | :--- | :--- | :--- |
@@ -398,9 +237,8 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 
 *Briefing Interview Gate:* Builders प्रक्रिया की शुरुआत **briefing interview gate** से करते हैं: lens-driven प्रश्न पूछना, ambiguity threshold का मूल्यांकन करना, primary sources खोजना, और work brief output करना।
 
----
 
-### Network 2.0 — Scheduler
+### Network 2.0, Scheduler
 
 <p align="center">
   <img src="assets/hephaestus-network-architecture.svg" alt="Figure 2. Hephaestus Network 2.0 A2A networking architecture">
@@ -415,13 +253,12 @@ Native Agentlas environments के अंदर Hephaestus commandless चल�
 *   **Evidence-Scored Evaluation:** Retrieval coverage, host selection, immutable preparation, real child invocations और final verification अलग claims के रूप में score होते हैं। Benchmark या usage history host staffing decision की जगह नहीं लेते।
 
 
----
 
 </details>
 
 
 <details>
-<summary><strong>यह क्या बनाता है — process packaging</strong></summary>
+<summary><strong>यह क्या बनाता है, process packaging</strong></summary>
 
 
 Hephaestus agents को एक standard directory layout में package करता है, जिसे कोई भी workspace runtime parse, install, verify और run कर सकता है। नीचे का layout वही है जो `package-contract.json` माँगता है और `hephaestus contract verify` जाँचता है:
@@ -452,41 +289,27 @@ Hephaestus agents को एक standard directory layout में package क�
 │                                     #   domain synthesis, prompt performance contract
 ├── tools/requirements.yaml           # Projected from mcp-policy.json + agentlas.json
 ├── permissions/policy.yaml           # Projected shell/network/file/payment whitelist
-├── hooks/                            # memory-upgrade.yaml, on_stop.yaml — declared, host-enforced
+├── hooks/                            # memory-upgrade.yaml, on_stop.yaml, declared, host-enforced
 ├── evals/README.md                   # Points at the eval plan and routing benchmarks
 └── .claude/skills/<name>/SKILL.md    # Skills, when the package carries any
 ```
 
 `docs/`, eval plan और work brief सिर्फ user-confirmed minimal private build में छोड़े जा सकते हैं। `provenance.json`, `knowledge/`, `schemas/`, `sandbox/` और `examples/` optional हैं।
 
----
 
 </details>
 
 </details>
 
-## लक्ष्य के अनुसार Docs
-
-| सिस्टम लक्ष्य | संदर्भ दस्तावेज़ |
-|---|---|
-| Canonical route को समझें | [`AGENTS.md`](AGENTS.md) |
-| पूरा team contract देखें | [`agent.md`](agent.md) |
-| Package contract | [`package-contract.json`](package-contract.json) |
-| Session build | [`contracts/session-build.md`](contracts/session-build.md) |
-| Routing card | [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
-| Workforce work order | [`schemas/workforce-work-order.schema.json`](schemas/workforce-work-order.schema.json) |
-| Compiled brief | [`schemas/agentlas-brief.schema.json`](schemas/agentlas-brief.schema.json) |
-
----
-
-## सार्वजनिक सुरक्षा सीमा
+<details>
+<summary><b>सार्वजनिक सुरक्षा सीमा</b></summary>
 
 इस repository में Agentlas billing/account logic, production cloud credentials, customer databases, raw private transcripts, native keychain managers या private deployment scripts **शामिल नहीं** हैं।
 
 Hephaestus द्वारा compile किए गए public output packages में local absolute paths, API keys, service-account keys, `.env` secrets, raw transcripts, customer logs या private developer notes शामिल नहीं होने चाहिए।
 
----
+</details>
 
-## लाइसेंस
+## License
 
-Apache-2.0। देखें: [LICENSE](LICENSE)।
+Apache-2.0 · Made by [Appbridge](https://agentlas.cloud)

@@ -16,292 +16,88 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 <!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-**Standalone preview:** Optional features are OFF except memory, which is on by default. Host sessions are separate from runtime installation. Codex One/Memory hooks and Windows host-session integration remain unverified or unapplied; inspect actual status before claiming readiness.
+<h1 align="center">Agentlas</h1>
 
-<p align="center"><a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for macOS" src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Windows" src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a> <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas Desktop for Linux" src="https://img.shields.io/badge/Download-Linux-333333?style=for-the-badge&logo=linux&logoColor=white"></a></p>
-<p align="center"><sub><strong>Agentlas Desktop</strong> · <a href="https://agentlas.cloud/desktop">agentlas.cloud/desktop</a></sub></p>
-
-<h1 align="center">Agentlas OS</h1>
+<h3 align="center">Give it a goal. It hires the team.</h3>
 
 <p align="center">
-  <strong>Beyond tasks. Agents built to lead projects.</strong><br>
-  <sub>Any model. Any runtime. For companies and individuals alike, Agentlas headhunts specialist teams and drives long-horizon projects through every checkpoint to completion.</sub><br>
-  <sub>Runs in Claude Code, Codex, Cursor, Antigravity, and Agentlas Desktop.</sub>
+  A desktop AI agent that hires a specialist for every part of your project,<br>
+  does the work in your real apps, and keeps going for weeks. Steer it from your phone.
 </p>
 
 <p align="center">
-  <a href="https://github.com/agentlas-ai/Agentlas-OS/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/agentlas-ai/Agentlas-OS?label=release"></a>
-  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
-  <img alt="platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-black">
-  <img alt="hosts" src="https://img.shields.io/badge/Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Local-black">
-  <img alt="ranking" src="https://img.shields.io/badge/ranking-none%20by%20design-blue">
-  <a href="https://discord.gg/wbWfdGZ6S"><img alt="Join the Agentlas Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
+  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
 </p>
+
 <p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.ko.md">한국어</a> ·
-  <a href="README.zh-CN.md">中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.hi.md">हिन्दी</a>
+  macOS · Windows · Linux · <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas">Android</a> · iOS coming soon<br>
+  <b>12,000+ desktop downloads</b> · Free to download, runs on your own AI plan or key · Apache-2.0
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="One working through spreadsheet, slide, chat, photo, video, and 3D apps on a desktop" width="860"></a></p>
+<p align="center">
+  <a href="https://agentlas.cloud">Website</a> · <a href="https://agentlas.cloud/hub">Agent Hub</a> · <a href="https://discord.gg/wbWfdGZ6S">Discord</a> · <a href="#developers">Developers ↓</a><br>
+  <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.hi.md">हिन्दी</a>
+</p>
 
-**Agentlas Hub is a free agent community.** Publishing and calling public agents requires no agent price, lease, or Agentlas credit purchase. The caller supplies their own model and API access; subscription plans cover Agentlas software and hosted features. Creator settlement for new Hub activity is closed. Existing account balances and historical claims remain subject to the applicable account terms.
+<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="Agentlas fixing a spreadsheet, charting it, building a deck, posting to Slack and editing a product photo on a Mac" width="880"></a></p>
 
-In the [Web Hub](https://agentlas.cloud/hub), each public agent has a space for browsing its release files when the author permits source access, discussing the agent, and reviewing its agent files and versions.
+## Things people hand it
 
-### Install
-
-**Agentlas OS preview** — the standalone installer prepares an isolated runtime namespace. Host registration and Desktop update compatibility are not complete.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
-```
-
-Optional engine features are off by default in standalone hosts, except memory,
-which is on by default. Inspect or change them with:
-
-```bash
-~/.agentlas/os-bin/agentlas-os features status
-~/.agentlas/os-bin/agentlas-os storm on        # on, off, or status
-~/.agentlas/os-bin/agentlas-os memory off      # on, off, or status
-~/.agentlas/os-bin/agentlas-os context map on  # on, off, or status
-~/.agentlas/os-bin/agentlas-os one on            # on, off, or status; requires Bash
-```
-
-Other feature names are `project-bootstrap`, `project-index`, `network-index`,
-`auto-update`, and `build-telemetry`; use `~/.agentlas/os-bin/agentlas-os features on|off <name>`
-to change them. The memory shortcut controls `memory-hooks`. Disabling a feature does not delete existing project data. Host hook installation and Desktop update compatibility remain incomplete.
-
-Project initialization, Context Map, and project indexing can be enabled
-separately. An enabled project feature can create private `.agentlas` state and
-update `.gitignore` to protect it.
-
-**Agentlas Desktop** — the app, if you prefer a window to a terminal.
-
-```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash        # macOS · Linux
-```
-
-```powershell
-irm https://agentlas.cloud/install.ps1 | iex               # Windows PowerShell
-```
-
-<p align="center"><sub>Downloads the latest signed release, checks its sha512, and installs without <code>sudo</code> or an admin prompt · <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">download manually</a> · <a href="https://github.com/agentlas-ai/agentlas-desktop">Agentlas Desktop is open source — view the repo</a></sub></p>
-
-<details>
-<summary><strong>Desktop and Agentlas OS together</strong></summary>
-
-This is the Desktop-managed engine installation path. It does not establish the standalone `~/.agentlas/os-runtime` installation or its host-session readiness; use the standalone instructions separately.
-
-```bash
-curl -fsSL https://agentlas.cloud/install.sh | bash -s -- --with-engine
-```
-
-```powershell
-$env:AGENTLAS_WITH_ENGINE="1"; irm https://agentlas.cloud/install.ps1 | iex
-```
-
-</details>
-
----
-
-<!-- agentlas:landing-block -->
-## Five products, from personal work to company teams
-
-One, the personal agent. Mobile for your phone. Finance for investment research. Science for research. Business for organizations.
-
-<table>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="Agentlas One on the Desktop"></a><br><strong>One</strong><br>A personal agent that runs on your computer. It opens a Work session, assigns agents, sends question cards, and attaches results as files.</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/readme-mobile-en.jpg" alt="Agentlas Mobile"></a><br><strong>Mobile</strong><br>Agentlas Desktop runs the work on your paired computer. The phone reads the same conversation and answers question cards.</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br><strong>Finance</strong><br>Save research criteria as an Analyst. Reports keep the inputs behind each calculation.</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br><strong>Science</strong><br>Molecular views and typeset manuscripts in one app, as a signed Agentlas Desktop extension.</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/business"><img src="https://agentlas.cloud/landing/v3/business-en.jpg" alt="Agentlas Business"></a><br><strong>Business</strong><br>Members, API keys, usage policies, and billing for a team. $18 per seat per month, from 2 seats.</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/desktop"><img src="https://agentlas.cloud/landing/v3/goal-tree-en.jpg" alt="Goal Tree on Agentlas Desktop"></a><br><strong>Goal Tree</strong><br>Long goals split into strategic goals and sub-goals, and the plan can change mid-run.</td>
-</tr>
-</table>
-
-<sub>Names and figures on screen are examples.</sub>
-
-## Elsewhere, a split-out task is a prompt. Here, it is a job opening
-
-Your host model splits the brief into roles, searches for candidates for each role, and assembles a Task Force for this project.
-
-- **3-tier talent scouting.** Searches your machine, your private Agent Cloud, and the public Hub for each role.
-- **3-level org chart.** Mixes single agents, a Task Force built for this project, and Packaged Teams with their own manager.
-- **Accountable selection.** The model you chose makes the selection. Each role records the reason and the release version, and missing tools are shown on screen.
-
-## Goal Trees, checkpoints, and separate verification for long projects
-
-Long goals split into a tree of strategic goals and sub-goals, progress is saved at checkpoints, and a run separate from the work checks the result.
-
-- **Goal Tree.** When something blocks the work, branches change and new sub-goals are added.
-- **Checkpoints.** Planning, execution, and synthesis run separately and progress is saved. A goal paused by closing Agentlas Desktop resumes from the saved point. Your computer must stay on while it runs.
-- **Receipt & Verifier.** A separate run checks the result and records the evidence. A goal with a confirmed failure does not close as complete.
-- **Agent Learning.** When three different runs produce the same lesson, it is proposed as a change to the agent's files. You read the diff and decide.
-
-## The model reasons. Your method leads
-
-LLM, Runtime, and Agent are separate layers. Switch models or coding tools and keep the same agent package.
-
-| Layer | What you get |
+| You type | It does, in your apps |
 | --- | --- |
-| **LLM** | Connect Claude, GPT, Gemini, or local models. When a quota runs out, supported chat runs switch to the next model in your priority list, and long goals switch at the next checkpoint. |
-| **Runtime** | Claude Code, Codex, Cursor, Antigravity, Grok, Kimi, GitHub Copilot CLI, Agentlas Desktop, Ollama, LM Studio, and MLX. It runs on the computer that has your files and tools. |
-| **Agent** | Skills, verification loops, and memory live in one package. Every package gets an A2A Agent Card and moves between hosts with the same procedures. |
+| "Clean up the Q3 sales sheet and chart it." | Fixes 3 broken cells, adds totals, builds the chart in the spreadsheet. |
+| "Turn it into a 5-slide deck for Friday." | Summary, regions, risks and next steps, saved as `Q3-review.pptx`. |
+| "Send it to #sales and tell Dana." | Posts it in Slack. |
+| "Cut out the product and brighten the cover." | Removes the background and edits the image in the photo editor. |
+| "Rebuild the beta product page around conversion." | Hires a market researcher, UX designer, frontend engineer and reviewer, then ships the page. |
+| "Ship the beta and reach 1,000 users." | Opens a goal tree and works on it for weeks. |
 
-## Four memory scopes, so you stop re-explaining the project
+## It hires the right specialist for each part
 
-Memory can be stored in local SQLite and project files across four scopes: personal, project, agent, and team. Memory belongs to this machine, not to a signed-in account, and Agentlas Desktop and the standalone engine share the same store under `~/.agentlas/memory`.
+Agentlas writes a job opening for each part of the work and fills it from the agents on your computer, your private cloud and the free public Hub. Your AI picks the best fit and notes why.
 
-Memory is not injected into every prompt. At session start the model is told that these MCP tools exist, and it calls them when its own runtime memory has nothing:
+<p align="center"><img src="assets/readme/work-team.gif" alt="'Rebuild the beta product page around conversion': four hired specialists research, design, build and review the page" width="880"></p>
 
-| Tool | What it does |
-|---|---|
-| `memory.search` | Finds memories and dated turn summaries by meaning and keywords, in any language, with a match strength. |
-| `memory.timeline` | Lists what happened in a time range, oldest first. |
-| `memory.get` | Shows one memory with the turn it came from and what replaced it. |
-| `memory.crosscheck` | Finds Agentlas memories related to a statement from the runtime's own memory, with dates, so the model can judge agreement or conflict. |
-| `memory.record` | Records a one-sentence summary of the turn. Nothing is printed in the reply. |
+## Goals that run for weeks
 
-The search index is a separate file next to the store (`recall-index.sqlite`) and can be deleted at any time. Every result is checked against the store before it is returned, so a forgotten or replaced memory never comes back. Build the index ahead of time with `~/.agentlas/os-bin/agentlas-os memory index`, or search from a terminal with `memory search "<words>"`.
+"Ship the beta and reach 1,000 users" becomes strategies and sub-goals, each with a number. When newsletter opens come in low, it changes the method and keeps the goal. Close the laptop; tomorrow it picks up from the last checkpoint.
 
-## Delegate your first project
+<p align="center"><img src="assets/readme/goal-tree.gif" alt="A launch goal split into strategic goals and sub-goals, re-planned when newsletter opens are low" width="880"></p>
 
-Install Agentlas Desktop or Agentlas OS, sign in, and connect a model to start.
+## Steer it from your phone
 
-<p align="center"><a href="https://agentlas.cloud"><strong>agentlas.cloud</strong></a></p>
+<p align="center"><img src="assets/readme/mobile.gif" alt="Asking for sign-ups by channel from a phone; an Analyst agent answers with a table and asks when to send the summary" width="260"></p>
 
----
-<!-- /agentlas:landing-block -->
+Type "Sign-ups by channel this week, as a table" on the bus. The Analyst agent runs it on your computer at home and the table lands in the chat. When a decision is yours, a card asks: "Send the summary now, or tomorrow morning?" One tap. [Get the Android app →](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 
-## What no platform can do
+## Bring the AI you already pay for
 
-No agent platform routes hundreds or thousands of agents efficiently. Agentlas
-is the only place that staffs a team of domain specialists onto any job **for
-the fewest tokens.**
+Sign in with Claude Code, Codex, Antigravity, Grok, Kimi, Cursor or GitHub Copilot CLI, add an API key, or run a free local model with Ollama, LM Studio or MLX. When one plan runs out of quota, chats move to the next.
 
-It works because the agent spec and the protocol for calling an agent are both
-standardised.
+## What stays on your computer
 
-- **A2A v1.0, as written.** Agent cards are read and written at the standard
-  `/.well-known/agent-card.json`. Import, export and caller gating all sit on
-  the standard. An external agent is callable only when its capability is
-  aligned **and its identity is verified by a signed card.**
-- **Compact candidate menus.** Candidate rows summarize the information the host needs to compare and select agents.
+- Your files, agents and memory live on your machine.
+- You choose how much it may do on its own. Every step is logged, and you can stop it from your phone.
+- The phone app sends requests to your desktop and shows the results; the work happens on your computer.
+- The engine is open source under Apache-2.0.
 
-## This is where most tools stop
+## Make your own specialist
 
-|  | No task split | Task split |
-| --- | --- | --- |
-| **No specialist sourcing** | one chat handles the lump | same model, different prompt |
-| **Specialist sourcing** | pick one from a store | **Agentlas** |
+Describe one in a sentence and Agentlas builds an installable agent. Keep it private, or publish it to the [Agent Hub](https://agentlas.cloud/hub), where publishing and using agents is free and nothing is ranked by payment.
 
-Some tools do split the work. But what takes each task is the same model with a
-different prompt. Some places do sell specialists. But there is no split there —
-you pick one and use it.
+<p align="center">
+  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><b>Download Agentlas</b></a> ·
+  <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas"><b>Android app</b></a> ·
+  <a href="https://discord.gg/wbWfdGZ6S"><b>Join the Discord</b></a>
+  <br>⭐ <b>Star it so the next person finds it</b> · <a href="https://github.com/agentlas-ai/Agentlas-OS/issues">Tell us what broke</a>
+</p>
 
-**Elsewhere, a split-out task is a prompt you wrote. Here it is a job opening.**
-Every task goes to your machine, your private cloud, and the public Hub — all
-three at once.
-
----
-
-## Build your own specialist
-
-When nobody on the list fits, build one. `/hep-build` turns a sentence into a
-portable single agent or team: it asks only the questions that would change the
-result, writes the package, and runs the contract checks before calling it done.
-`/hep-build session` does the same from the conversation you are already in.
-
-```text
-/hep-build an agent that reviews App Store replies before they go out
-/hep-build session
-```
-
-Every build ships input and output schemas, a routing card, and the rest of the
-package contract below; a build that misses a required file fails instead of
-shipping. Keep it in your private Agent Cloud or publish it to the free Hub with
-`/hep-upload`, and `/hep-network` can staff it like any other candidate.
-
----
-
-## Questions you probably have
-
-
-
-<details open>
-<summary><strong>So you recommend one to me in the end, right?</strong></summary>
-
-<br>
-
-Every place that sells agents ranks them. That is how they make money. People
-click what is near the top, and the company decides what is near the top.
-
-We don't build a ranking. The schema pins `allowHistoryEvidence` to a constant
-`false`, and a source that returns a scored list has **its whole answer
-refused**.
-
-Ratings, install counts, last month's sales — we read none of them. You get the
-candidates as they are, and your model picks.
-
-</details>
-
-
-
-
+<a name="developers"></a>
 
 <details>
-<summary><strong>Is this only for developers?</strong></summary>
+<summary><b>Use the engine inside Claude Code, Codex, Cursor or Antigravity</b></summary>
 
-<br>
-
-No. Alongside backend, security and QA, the role ontology carries an **insurance
-actuary, an M&A diligence lead, an underwriting diligence specialist and a
-travel planner**.
-
-Insurance alone has four communities. Domains outside the list are not blocked.
-
-</details>
-
----
-
-## Candidate selection
-
-Publisher-written "call me when…" sentences reserve three seats at the end of
-the list. They do not authorize re-ranking. Work orders are written in English;
-the deliverable language is a separate field. The default menu contains 30 candidates.
-
----
-
-## On Agentlas Desktop
-
-Desktop is the host itself, so it decides in code — **before** a run starts —
-whether the work needs one agent or a team. That decision is recorded as a
-reserved run, not a suggestion. It can staff installed agents and public Hub
-agents. Public Hub agent calls have no Agentlas fee; your chosen host or model/API
-provider may charge for execution.
-
-| Surface | Role |
-| --- | --- |
-| **Agentlas OS (Hephaestus)** | This repo — the open-source build and routing engine and command surface for your CLI hosts |
-| **Agentlas Desktop** | The app that runs the same engine with a window, on macOS, Windows and Linux |
-| **Agentlas Hub** | Public space for publishing, discovering, and using agents for free |
-| **Agentlas Cloud** | Owner-scoped store for privately saving and retrieving your own agents |
-
----
-
-## Install: every method, and what it writes
-
-<details>
-<summary><strong>Show every install method</strong></summary>
-
+Or just give your coding agent this repository's address and ask it to install Agentlas.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
@@ -345,21 +141,21 @@ updates: Automatic updates default OFF. After a runtime update, inspect host sta
 
 ### No LLM handy? Type the command yourself
 
-You don't need an AI to install this — a terminal and one pasted line is
+You don't need an AI to install this, a terminal and one pasted line is
 enough. New to terminals? Follow your OS below.
 
-**On Windows — open Git Bash (standalone host integration unverified):**
+**On Windows, open Git Bash (standalone host integration unverified):**
 
 1. **Do you already have Git Bash?** Click the search icon (or press the
    **Windows key**) in your taskbar and type **`git bash`**.
    - If **"Git Bash"** shows up in the results, click it and skip to step 3.
    - If nothing shows up, you need to install Git for Windows first: go to
      **[git-scm.com/download/win](https://git-scm.com/download/win)**,
-     download it, and run the installer (default options are fine — keep
+     download it, and run the installer (default options are fine, keep
      clicking **Next**, then **Install**).
 2. After installing, search **`git bash`** again (same as step 1) and click
    the **"Git Bash"** result.
-3. A black window opens — this is Git Bash. Click inside it, **paste** the
+3. A black window opens, this is Git Bash. Click inside it, **paste** the
    command below (right-click → Paste, or `Shift+Insert`), then press
    **Enter**:
    ```bash
@@ -370,17 +166,17 @@ enough. New to terminals? Follow your OS below.
    This checks the standalone runtime. Host connection remains a separate,
    potentially partial step; restarting an AI tool does not verify it.
 
-**On macOS — open Terminal:**
+**On macOS, open Terminal:**
 
 1. Press **`Cmd + Space`** to open Spotlight search, type **`terminal`**,
    and press **Enter**.
-2. A window opens (Terminal, built into macOS — nothing to install). Click
+2. A window opens (Terminal, built into macOS, nothing to install). Click
    inside it, **paste** the command below (`Cmd + V`), then press **Enter**:
    ```bash
    curl -fsSL https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh | bash
    ```
    The first time you run `curl`/`git` on a fresh Mac, macOS may ask to
-   install "Command Line Tools" — click **Install** and wait, then run the
+   install "Command Line Tools", click **Install** and wait, then run the
    command again.
 3. Read the installer result, then run
    `~/.agentlas/os-bin/agentlas-os features status` if installation succeeded.
@@ -392,9 +188,9 @@ security-conscious), open this link in your browser first:
 [install-all-runtimes.sh](https://raw.githubusercontent.com/agentlas-ai/Agentlas-OS/main/scripts/install-all-runtimes.sh).
 
 <details>
-<summary><strong>Installing Agentlas Desktop (the GUI app) from an AI</strong> — per-OS one-liners</summary>
+<summary><strong>Installing Agentlas Desktop (the GUI app) from an AI</strong>, per-OS one-liners</summary>
 
-**You are an AI and your user said "install Agentlas Desktop"** — the
+**You are an AI and your user said "install Agentlas Desktop"**, the
 visual GUI app below, not the CLI runtime installed above. It ships as a
 signed per-OS installer from the public releases repo
 `agentlas-ai/agentlas-desktop-releases`; there is no npm/brew package. Fetch
@@ -412,7 +208,7 @@ curl -fL "$url" -o Agentlas.dmg && open Agentlas.dmg
 <details>
 <summary>Linux and Windows one-liners</summary>
 
-**Linux (.deb — Debian/Ubuntu):**
+**Linux (.deb, Debian/Ubuntu):**
 
 ```bash
 url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
@@ -420,7 +216,7 @@ url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-relea
 curl -fL "$url" -o agentlas.deb && sudo dpkg -i agentlas.deb
 ```
 
-**Linux (AppImage — any distro):**
+**Linux (AppImage, any distro):**
 
 ```bash
 url=$(curl -fsSL https://api.github.com/repos/agentlas-ai/agentlas-desktop-releases/releases/latest \
@@ -439,7 +235,7 @@ Invoke-WebRequest $u -OutFile "$env:TEMP\AgentlasSetup.exe"; Start-Process "$env
 </details>
 
 This is a separate product from the CLI runtime installed via
-[Paste to Install](#paste-to-install) above — the two don't conflict and can
+[Paste to Install](#paste-to-install) above, the two don't conflict and can
 both be present. If your user only wants the CLI/router (no GUI app), use
 that installer instead. No prebuilt asset for your OS/arch? Point your user
 at [agentlas.cloud/desktop](https://agentlas.cloud/desktop) or the
@@ -449,7 +245,7 @@ at [agentlas.cloud/desktop](https://agentlas.cloud/desktop) or the
 
 
 <details>
-<summary><strong>Build, Use, Own — the full model</strong></summary>
+<summary><strong>Build, Use, Own, the full model</strong></summary>
 
 
 An agent you create should remain an asset you can move, rather than a
@@ -457,7 +253,7 @@ setting trapped in one chat, one model-vendor workspace, or one computer.
 Agentlas separates three jobs that ordinary agent builders blur together:
 
 This is the public Agent Trust contract: a
-portable, owner-scoped, inspectable, and restorable package contract—not a
+portable, owner-scoped, inspectable, and restorable package contract, not a
 claim of regulated financial or legal trust services.
 
 | Value | What Agentlas does | Entry point in an external LLM host |
@@ -481,7 +277,7 @@ Agent Cloud stores and retrieves the owner's package; it is not a hosted LLM
 that completes the work on the server. When you call a package, your selected
 model and current host runtime execute it under that host's permission and
 safety model. Credentials, local files, and machine-specific permissions do not
-travel with the package—you configure those separately on each computer.
+travel with the package, you configure those separately on each computer.
 
 ### Turn a working session into an owned agent
 
@@ -518,7 +314,7 @@ current conversation
   -> local registration and verification
 ```
 
-### The package contract — what every build must emit
+### The package contract, what every build must emit
 
 An agent package is not a worker with capabilities. It is a **method document**.
 Three layers, and conflating them is the single most expensive mistake this
@@ -543,7 +339,7 @@ those artifacts carry the routing contract:
 contracts/intake.schema.json     what a requester must hand over before work starts
 contracts/output.schema.json     what the requester ends up holding
 contracts/output.example.json    one real instance, validated by a JSON Schema
-                                 validator at publish time — never by a model
+                                 validator at publish time, never by a model
 .agentlas/brief.json             the compiled resume, schemaVersion agentlas.brief/1
 ```
 
@@ -563,7 +359,7 @@ must stay usable on machines without those integrations: the matcher reads `host
 real browser and read what a user would see") and every requirement states
 `withoutIt`, what the method still does on a machine that lacks the facility.
 
-`agentlas.brief/1` is written from either side — `side: "offer"` is the
+`agentlas.brief/1` is written from either side, `side: "offer"` is the
 package's resume, `side: "need"` is the requester's work order. The same form,
 so the two can be compared without a translation step. Its schema is
 `schemas/agentlas-brief.schema.json`, and it is **compiled, never hand-written**:
@@ -572,8 +368,8 @@ the upload path writes it from the files the package already ships.
 | field | what it holds | where it comes from |
 |---|---|---|
 | `statement` | the author's own sentence about the work | the routing card, carried whole |
-| `deliverables[].label` / `.contains` | what the requester ends up holding, and what is inside it | `contracts/output.schema.json` — the title and its property names |
-| `deliverables[].shape` | `ledger` / `verdict` / `dossier` / `computation` / `blueprint` / `rendition` / `other` | computed from the output schema's **topology** — arity and value spaces, never a title or a filename |
+| `deliverables[].label` / `.contains` | what the requester ends up holding, and what is inside it | `contracts/output.schema.json`, the title and its property names |
+| `deliverables[].shape` | `ledger` / `verdict` / `dossier` / `computation` / `blueprint` / `rendition` / `other` | computed from the output schema's **topology**, arity and value spaces, never a title or a filename |
 | `deliverables[].rowVerdict` / `.verdictValues` | the per-record judgement and its allowed values | copied verbatim from the publisher's own enum; there is nothing to match them against, so no value is ever rejected |
 | `obligations[].about` / `.stage` | a fact the requester must supply, and *when* it comes to exist | `contracts/intake.schema.json` and the card's stated inputs |
 | `authority.performs` / `.gated` | what this method does to the requester's world, and what it stops to ask about first | derived from the approval requirements, not from what the package calls itself |
@@ -591,7 +387,7 @@ way that package already is.
 
 Deliberately absent: there is no field for what an agent is *good at*, and none
 for its permissions. Quality cannot be read off a package that has never run, and
-permissions are granted by the host after the fact — an employer hands you a
+permissions are granted by the host after the fact, an employer hands you a
 computer once you are hired, so neither says anything about whether this method
 fits the work.
 
@@ -603,7 +399,6 @@ fits the work.
 | **My Agent Cloud** | Only the signed-in owner's Cloud packages | Privately store, restore, and call packages you own with the `/agentlas upload` Cloud choice and `/agentlas cloud`. |
 | **Current host** | The installed runtime, chosen model, local project, credentials, and granted permissions | Execute the selected local, Cloud, or Hub package. |
 
----
 
 </details>
 
@@ -693,13 +488,12 @@ Codex core tools and skills can be loaded in a separate session, but One and Mem
 
 After an update, run `host status` again. An owned Codex skill alias can still point at the older generation: `outdated` or `codex_skill_alias_outdated` means the new host session is not ready. Do not silently replace or delete the alias or fall back to a legacy runtime; report the exact state and follow an explicit repair procedure when available. Running `host session codex` again moves the launcher's own verified alias to the current generation. Automatic updates remain OFF by default; a runtime update does not prove host activation.
 
----
 
 </details>
 
 
 <details>
-<summary><strong>The Command Surface — every command</strong></summary>
+<summary><strong>The Command Surface, every command</strong></summary>
 
 
 Inside native Agentlas environments, Hephaestus operates commandless. External LLM tools use a deliberately small visible command set for building agents and staffing work with them:
@@ -726,7 +520,7 @@ puts two models to work on Claude Code**, which is the one host that spawns a
 real subagent and takes a model per subagent. Codex, Antigravity, Cursor,
 and OpenCode have no subagent of their own: one model plays every role in
 sequence there, the allocation receipt is still written, and the ceiling still
-bounds what that model may request — but no second, cheaper model appears.
+bounds what that model may request, but no second, cheaper model appears.
 
 `/hep-goal` adds a plan tree to your host's own `/goal`. It first decides the
 shape of the goal. Short work with one clear check stays a single tactic and
@@ -744,7 +538,7 @@ injects nothing, applies no re-plan); set `AGENTLAS_GOAL_STRATEGY=on` to use it.
 Performance on real long-running work remains unverified. Treat the plan tree
 as unproven until it has been checked on real goals.
 
-Every row also answers to its original `/hep-*` name — `/agentlas network` and
+Every row also answers to its original `/hep-*` name, `/agentlas network` and
 `/hep-network` are the same command. Nothing was renamed away, so existing
 scripts, notes, and muscle memory keep working. Current Codex uses explicit
 plugin skills `$hephaestus-build`, `$hephaestus-network`,
@@ -752,17 +546,16 @@ plugin skills `$hephaestus-build`, `$hephaestus-network`,
 requested in plain language.
 Custom `/prompts:*` commands were removed from Codex 0.117+.
 
----
 
 </details>
 
 
 <details>
-<summary><strong>Deeper — the build factory and the routing scheduler</strong></summary>
+<summary><strong>Deeper, the build factory and the routing scheduler</strong></summary>
 
 
-### Meta-Agent Factory — Process Creation
-A unified compilation factory using four builders. Every generated package registers its global command (`.agentlas/global-commands.json`) and ships verification scripts—the user never has to infer how to run the compiled package:
+### Meta-Agent Factory, Process Creation
+A unified compilation factory using four builders. Every generated package registers its global command (`.agentlas/global-commands.json`) and ships verification scripts, the user never has to infer how to run the compiled package:
 
 | Compilation Mode | Routing Target | Output Artifact |
 | :--- | :--- | :--- |
@@ -773,9 +566,8 @@ A unified compilation factory using four builders. Every generated package regis
 
 *Briefing Interview Gate:* Builders initiate the process using the **briefing interview gate** : conducting lens-driven questions, evaluating the ambiguity threshold, searching primary sources, and outputting the work brief.
 
----
 
-### Network 2.0 — The Scheduler
+### Network 2.0, The Scheduler
 
 <p align="center">
   <img src="assets/hephaestus-network-architecture.svg" alt="Figure 2. Hephaestus Network 2.0 A2A networking architecture">
@@ -818,13 +610,12 @@ receipt to use that same enforcement path; neither label grants authority to a
 package that did not select the host permission policy.
 
 
----
 
 </details>
 
 
 <details>
-<summary><strong>What It Builds — process packaging</strong></summary>
+<summary><strong>What It Builds, process packaging</strong></summary>
 
 
 Hephaestus packages agents into a standard directory layout that any workspace runtime can parse, install, verify, and run. The important part is not just `agent.md`; it is the operating contract around it. The layout below is what `package-contract.json` requires and `hephaestus contract verify` checks:
@@ -855,7 +646,7 @@ Hephaestus packages agents into a standard directory layout that any workspace r
 │                                     #   domain synthesis, prompt performance contract
 ├── tools/requirements.yaml           # Projected from mcp-policy.json + agentlas.json
 ├── permissions/policy.yaml           # Projected shell/network/file/payment whitelist
-├── hooks/                            # memory-upgrade.yaml, on_stop.yaml — declared, host-enforced
+├── hooks/                            # memory-upgrade.yaml, on_stop.yaml, declared, host-enforced
 ├── evals/README.md                   # Points at the eval plan and routing benchmarks
 └── .claude/skills/<name>/SKILL.md    # Skills, when the package carries any
 ```
@@ -868,34 +659,19 @@ That package shape is why an Agentlas agent is more than an LLM-written role
 prompt. It carries routing, memory, input/output contracts, permissions,
 runtime adapters and evaluation evidence together.
 
----
 
 </details>
 
 </details>
 
-## Docs By Goal
-
-| System Goal | Reference Documentation |
-|---|---|
-| Understand the canonical route | [`AGENTS.md`](AGENTS.md) |
-| See the full team contract | [`agent.md`](agent.md) |
-| Package contract | [`package-contract.json`](package-contract.json) |
-| Session build | [`contracts/session-build.md`](contracts/session-build.md) |
-| Routing card | [`schemas/routing-card.schema.json`](schemas/routing-card.schema.json) |
-| Workforce work order | [`schemas/workforce-work-order.schema.json`](schemas/workforce-work-order.schema.json) |
-| Compiled brief | [`schemas/agentlas-brief.schema.json`](schemas/agentlas-brief.schema.json) |
-| Mode map | [`modes/README.md`](modes/README.md) |
-
----
-
-## Public Safety Boundary
+<details>
+<summary><b>Public safety boundary</b></summary>
 
 This repository does **not** include Agentlas billing/account logic, production cloud credentials, customer databases, raw private transcripts, native keychain managers, or private deployment scripts.
 
 Public output packages compiled by Hephaestus must exclude local absolute paths, API keys, service-account keys, `.env` secrets, raw transcripts, customer logs, or private developer notes.
 
-### Build telemetry
+#### Build telemetry
 
 When `build-telemetry` is enabled, `hep-build` sends anonymous counters: a random
 install id generated locally, which build step ran, whether it succeeded, a
@@ -929,11 +705,11 @@ Or permanently, in `~/.agentlas/networking/config.json`:
 
 The `telemetrySetBy` marker is what separates a choice you made from the
 `"telemetry": false` that `default_config()` wrote into every install created
-before the key was ever read — that value never represented anyone's decision,
+before the key was ever read, that value never represented anyone's decision,
 so it is not treated as one.
 
----
+</details>
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0 · Made by [Appbridge](https://agentlas.cloud)
