@@ -258,6 +258,26 @@ def _request_id(execution_id: str, phase: str, ordinal: int) -> str:
     return f"request:{execution_id.split(':', 1)[1]}:{phase}:{ordinal}"
 
 
+_STDERR_TAIL_BYTES = 2048
+
+
+def _adapter_failure_detail(returncode: int, stderr_file: Any) -> str:
+    """Exit status plus the last 2KB of adapter stderr, secrets masked."""
+
+    detail = f"adapter exited with status {returncode}"
+    try:
+        size = stderr_file.seek(0, os.SEEK_END)
+        stderr_file.seek(max(0, size - _STDERR_TAIL_BYTES))
+        tail = stderr_file.read(_STDERR_TAIL_BYTES).decode("utf-8", errors="replace").strip()
+    except (OSError, ValueError):
+        return detail
+    if not tail:
+        return detail
+    from ..research.redaction import redact_secret_values
+
+    return f"{detail}; stderr tail: {redact_secret_values(tail)}"
+
+
 def _call_adapter(
     adapter_argv: Sequence[str],
     request: Mapping[str, Any],
@@ -271,12 +291,12 @@ def _call_adapter(
         request, ensure_ascii=False, separators=(",", ":")
     ).encode("utf-8")
     try:
-        with tempfile.TemporaryFile() as stdout_file:
+        with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
             process = subprocess.Popen(
                 list(adapter_argv),
                 stdin=subprocess.PIPE,
                 stdout=stdout_file,
-                stderr=subprocess.DEVNULL,
+                stderr=stderr_file,
                 cwd=project_dir,
                 start_new_session=os.name == "posix",
                 **no_console_window(),
@@ -296,7 +316,7 @@ def _call_adapter(
             if process.returncode != 0:
                 raise WorkforceHostExecutorError(
                     "workforce_adapter_failed",
-                    detail=f"adapter exited with status {process.returncode}",
+                    detail=_adapter_failure_detail(process.returncode, stderr_file),
                 )
             stdout_file.seek(0)
             response_bytes = stdout_file.read(16 * 1024 * 1024 + 1)
@@ -992,11 +1012,22 @@ def execute_preparation(
         bindings=binding_plan,
         inputs=list(results),
     )
-    if verifier["invocation"].get("verdict") != "pass":
-        raise WorkforceHostExecutorError("workforce_adapter_verifier_failed")
+    verifier_passed = verifier["invocation"].get("verdict") == "pass"
     results.append(handoff(verifier))
 
     _assert_artifacts_unchanged(results)
+
+    if not verifier_passed:
+        # The work was done; only the verdict failed. Keep the artifacts the
+        # caller already paid for instead of discarding them with an exception.
+        return {
+            "schemaVersion": HOST_EXECUTION_RESULT_SCHEMA,
+            "status": "rejected",
+            "toolInventory": tool_inventory,
+            "artifactManifest": results,
+            "outputRoot": str(private_root),
+            "error": "workforce_adapter_verifier_failed",
+        }
 
     if before_finalize is not None:
         before_finalize()
