@@ -205,7 +205,53 @@ def _has_symlink_component(value: str | Path) -> bool:
     return False
 
 
-def _safe_source_path(value: str | Path) -> tuple[Path, bytes]:
+_JSONL_PROBE_BYTES = 512 * 1024
+TAIL_WINDOW_FINDING = "source_tail_window"
+
+
+def _jsonl_tail_window(requested: Path, size: int) -> bytes | None:
+    """Return the newest whole-line window of an oversized JSONL file, or None.
+
+    Only a file whose first record is a complete JSON object on its own line is
+    treated as JSONL; a single large JSON document cannot be cut without breaking
+    it, so those keep the size refusal. At most MAX_SOURCE_BYTES are read.
+    """
+
+    try:
+        with requested.open("rb") as handle:
+            head = handle.read(_JSONL_PROBE_BYTES)
+            first = next((line.strip() for line in head.split(b"\n")[:-1] if line.strip()), None)
+            if first is None:
+                return None
+            try:
+                if not isinstance(_load_json(first.decode("utf-8")), Mapping):
+                    return None
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return None
+            # Start one byte early so a window that already begins on a line
+            # boundary keeps its first line instead of dropping it.
+            handle.seek(size - MAX_SOURCE_BYTES - 1)
+            window = handle.read(MAX_SOURCE_BYTES + 1)
+    except OSError as exc:
+        raise SessionBuildError("source_unreadable", "session input could not be read") from exc
+    if window[:1] == b"\n":
+        window = window[1:]
+    else:
+        newline = window.find(b"\n")
+        if newline < 0:
+            return None
+        window = window[newline + 1:]
+    # A session that is still being written may end in a partial record.
+    if not window.endswith(b"\n"):
+        tail_start = window.rfind(b"\n") + 1
+        try:
+            _load_json(window[tail_start:].decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            window = window[:tail_start]
+    return window if window.strip() else None
+
+
+def _read_source(value: str | Path) -> tuple[Path, bytes, bool]:
     requested = Path(value).expanduser()
     if requested.is_symlink():
         raise SessionBuildError("source_symlink_forbidden", "a session source may not be a symbolic link")
@@ -215,22 +261,32 @@ def _safe_source_path(value: str | Path) -> tuple[Path, bytes]:
         stat = requested.stat()
     except OSError as exc:
         raise SessionBuildError("source_unreadable", "session input could not be inspected") from exc
+    windowed = False
     if stat.st_size > MAX_SOURCE_BYTES:
-        raise SessionBuildError(
-            "source_too_large",
-            f"session input exceeds the {MAX_SOURCE_BYTES} byte safety limit",
-            details={"maxBytes": MAX_SOURCE_BYTES},
-        )
-    try:
-        raw = requested.read_bytes()
-    except OSError as exc:
-        raise SessionBuildError("source_unreadable", "session input could not be read") from exc
+        raw = _jsonl_tail_window(requested, stat.st_size)
+        if raw is None:
+            raise SessionBuildError(
+                "source_too_large",
+                f"session input exceeds the {MAX_SOURCE_BYTES} byte safety limit",
+                details={"maxBytes": MAX_SOURCE_BYTES},
+            )
+        windowed = True
+    else:
+        try:
+            raw = requested.read_bytes()
+        except OSError as exc:
+            raise SessionBuildError("source_unreadable", "session input could not be read") from exc
     if b"\x00" in raw:
         raise SessionBuildError("source_binary", "binary session inputs are not accepted")
     try:
         raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise SessionBuildError("source_not_utf8", "session input must be UTF-8") from exc
+    return requested, raw, windowed
+
+
+def _safe_source_path(value: str | Path) -> tuple[Path, bytes]:
+    requested, raw, _ = _read_source(value)
     return requested, raw
 
 
@@ -438,17 +494,15 @@ def _guess_host(path: Path, records: Sequence[Any], explicit: str | None) -> str
 def normalize_session(path: str | Path, *, host: str | None = None) -> dict[str, Any]:
     """Read one explicit export and return only bounded, sanitised evidence."""
 
-    requested, raw = _safe_source_path(path)
+    requested, raw, windowed = _read_source(path)
     records = _parse_records(raw)
     if len(records) > MAX_RECORD_COUNT:
-        raise SessionBuildError(
-            "source_too_many_records",
-            f"session input contains more than {MAX_RECORD_COUNT} records",
-            details={"maxRecords": MAX_RECORD_COUNT},
-        )
+        # The newest records are the evidence; the cap is a memory/token bound, not a refusal.
+        records = records[-MAX_RECORD_COUNT:]
+        windowed = True
     chosen_host = _guess_host(requested, records, host)
     events: list[dict[str, Any]] = []
-    findings: list[str] = []
+    findings: list[str] = [TAIL_WINDOW_FINDING] if windowed else []
     untrusted: list[str] = []
     redacted_fields: set[str] = set()
     for index, record in enumerate(records, 1):
