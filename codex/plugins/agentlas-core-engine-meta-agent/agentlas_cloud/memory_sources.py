@@ -72,7 +72,7 @@ def register_source(db: sqlite3.Connection, owner: str, producer_id: str, *, act
         identity, revision = str(uuid.uuid4()), 1
         db.execute("INSERT INTO memory_source_catalogue VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (identity, producer_id, owner, actor_id, visibility_domain, logical_key, source_kind, reader_contract, writer_contract, schema_version, source_revision, encoded, range_unit, range_start, range_end, content_digest, revision, now, now))
-    db.execute("INSERT INTO memory_source_versions VALUES(?,?,?,?,?,?,?,?,?)", (identity, revision, source_revision, encoded, range_unit, range_start, range_end, content_digest, now))
+    # No version history is written: nothing reads one (the desktop writer stopped too), and a journal source moves on every append.
     return {"sourceId": identity, "metadataRevision": revision, "sourceRevision": source_revision}
 
 def read_source(db: sqlite3.Connection, owner: str, source_id: str, *, actor_id: str | None,
