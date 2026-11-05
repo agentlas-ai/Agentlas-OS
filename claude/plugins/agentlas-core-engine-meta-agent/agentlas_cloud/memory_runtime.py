@@ -26,6 +26,11 @@ from .prompt_order import compose_prompt
 from .windows_console import no_console_window
 
 SCHEMA = "agentlas.core-memory-runtime.v1"
+# memory_session_checkpoints rows kept per namespace: the head and the one it replaced. Only the head is ever read (capsule() and
+# the frontier check join the heads table); every save used to leave its snapshot behind. Same rule as the Desktop writer
+# (electron/memory/session-checkpoints.ts, SESSION_CHECKPOINTS_KEPT in storage/db-retention-policy.ts). The trim runs in the
+# insert's transaction and only touches this writer's own namespace, so a Desktop writer's rows are never read or removed here.
+SESSION_CHECKPOINTS_KEPT = 2
 ONE_ACTOR_ID = CORE_ONE_ACTOR_ID
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._/-]{0,511}$")
 _KINDS = {"fact", "decision", "preference", "risk", "procedure", "hypothesis"}
@@ -534,6 +539,8 @@ class MemoryRuntime:
                 self.db.execute("INSERT INTO memory_session_checkpoints VALUES(?,?,?,?,?,?)",
                                 (cp_id, namespace, _json(cp), source_revision, source_revision, now))
                 self.db.execute("INSERT OR REPLACE INTO memory_session_checkpoint_heads VALUES(?,?,?)", (namespace, cp_id, revision))
+                self.db.execute("DELETE FROM memory_session_checkpoints WHERE rowid IN (SELECT rowid FROM memory_session_checkpoints WHERE namespace=? AND checkpoint_id<>? ORDER BY through_seq DESC,rowid DESC LIMIT -1 OFFSET ?)",
+                                (namespace, cp_id, SESSION_CHECKPOINTS_KEPT - 1))
             self._register_operation_source(operation)
             self.db.commit()
             return {"operation_id": operation, "state": "queued", "checkpoint_ref": cp_id, "replayed": False}
