@@ -384,19 +384,31 @@ function withClickEffectSchema(tool) {
 function readApprovalInfo() {
   try { const p = path.join(os.homedir(), '.agentlas', 'browser-approval.json'); if (!fs.existsSync(p)) return null; return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; }
 }
+// Resolves one of: 'approved' | 'denied' (the user declined) | 'no_approver' (no desktop app
+// to ask) | 'timeout' (asked, no answer in time) | 'invalid' (answer not understood).
 function requestApproval(site, actionType, summary) {
   return new Promise((resolve) => {
     const autonomy = process.env.AGENTLAS_BROWSER_AUTONOMY || 'gated';
+    const unreachable = () => resolve(autonomy === 'trust' ? 'approved' : 'no_approver');
     const info = readApprovalInfo();
-    if (!info || !info.port) { log('no approver (app not running); autonomy=' + autonomy + ' action=' + actionType); return resolve(autonomy === 'trust' ? 'approved' : 'denied'); }
+    if (!info || !info.port) { log('no approver (app not running); autonomy=' + autonomy + ' action=' + actionType); return unreachable(); }
     const payload = JSON.stringify({ site, actionType, summary });
     const req = http.request({ host: '127.0.0.1', port: info.port, path: '/approve', method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload), 'authorization': 'Bearer ' + info.token }, timeout: 125000 }, (res) => {
-      let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b).decision === 'approved' ? 'approved' : 'denied'); } catch (e) { resolve('denied'); } });
+      let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b).decision === 'approved' ? 'approved' : 'denied'); } catch (e) { resolve('invalid'); } });
     });
-    req.on('error', () => resolve(autonomy === 'trust' ? 'approved' : 'denied'));
-    req.on('timeout', () => { req.destroy(); resolve('denied'); });
+    req.on('error', unreachable);
+    req.on('timeout', () => { req.destroy(); resolve('timeout'); });
     req.write(payload); req.end();
   });
+}
+// What the model (and through it the user) is told when the action did not run. Each
+// sentence states only what happened; "the user did not approve" is reserved for a real refusal.
+function refusalText(actionType, reason) {
+  const what = 'this ' + actionType + ' browser action';
+  if (reason === 'no_approver') return 'BLOCKED: No desktop app is connected to ask for approval, so ' + what + ' was not run.';
+  if (reason === 'timeout') return 'BLOCKED: The approval request got no response in time, so ' + what + ' was not run.';
+  if (reason === 'invalid') return 'BLOCKED: The approval response could not be read, so ' + what + ' was not run.';
+  return 'BLOCKED: The user declined ' + what + '.';
 }
 
 // ── learn-and-replay skill layer ─────────────────────────────────
@@ -936,7 +948,7 @@ async function main() {
       ? 'sensitive-action (unclassified commit-like action; deterministic fallback gate): '
       : actionType + ': ';
     const decision = await requestApproval(site, actionType, summaryPrefix + (args.element || args.url || name));
-    return decision === 'approved' ? null : actionType;
+    return decision === 'approved' ? null : { actionType, reason: decision };
   };
 
   // Typed DOM facts of the action's target for the classifier (form method, card autofill); never its text.
@@ -967,7 +979,7 @@ async function main() {
     const results = [];
     for (const step of (skill.steps || [])) {
       const denied = await gate(step.name, step.arguments || {});
-      if (denied) { results.push(step.name + ': BLOCKED(' + denied + ')'); writeClient({ jsonrpc: '2.0', id: replyId, result: { content: [{ type: 'text', text: 'Replay stopped — ' + denied + ' action needs approval (set AGENTLAS_BROWSER_AUTONOMY=trust for unattended replay).' }], isError: true } }); return; }
+      if (denied) { results.push(step.name + ': BLOCKED(' + denied.actionType + ')'); writeClient({ jsonrpc: '2.0', id: replyId, result: { content: [{ type: 'text', text: 'Replay stopped. ' + refusalText(denied.actionType, denied.reason) + ' (set AGENTLAS_BROWSER_AUTONOMY=trust for unattended replay)' }], isError: true } }); return; }
       if (step.name === 'browser_navigate' && step.arguments && step.arguments.url) currentUrl = String(step.arguments.url);
       const resp = await callChild(step.name, step.arguments || {});
       const isErr = resp && resp.result && resp.result.isError;
@@ -1005,7 +1017,7 @@ async function main() {
           if (closing) return;
           if (classifyAction(name, args, preJudgedKind, structure)) {
             gate(name, args, preJudgedKind, structure).then((denied) => {
-              if (denied) { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'BLOCKED: The user did not approve this ' + denied + ' browser action.' }], isError: true } }); return; }
+              if (denied) { writeClient({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refusalText(denied.actionType, denied.reason) }], isError: true } }); return; }
               if (RECORDABLE.has(name)) pending.set(msg.id, { name, arguments: args });
               forwardRaw(childLine);
             });
@@ -1110,4 +1122,4 @@ function structureFromReply(reply) {
   try { const value = JSON.parse(body); return value && typeof value === 'object' && value.found === true ? value : null; } catch (e) { return null; }
 }
 
-export { classifyAction, normalizeActionKindOverride, stripClickEffect, withClickEffectSchema, actionStructureTargets, mergeActionStructure, structureFromReply, ACTION_STRUCTURE_PROBE, siteLearningValidate, siteLearningMatch, siteLearningNormalizeDomain, siteLearningParseObservedUrl, siteLearningDomainMatches, siteLearningCanonicalJson, siteLearningContentJson, siteLearningResultPageUrl, siteLearningLoadActive, siteLearningRenderNotes, siteLearningRenderInjection, siteLearningAnnotateResult };
+export { requestApproval, refusalText, classifyAction, normalizeActionKindOverride, stripClickEffect, withClickEffectSchema, actionStructureTargets, mergeActionStructure, structureFromReply, ACTION_STRUCTURE_PROBE, siteLearningValidate, siteLearningMatch, siteLearningNormalizeDomain, siteLearningParseObservedUrl, siteLearningDomainMatches, siteLearningCanonicalJson, siteLearningContentJson, siteLearningResultPageUrl, siteLearningLoadActive, siteLearningRenderNotes, siteLearningRenderInjection, siteLearningAnnotateResult };
