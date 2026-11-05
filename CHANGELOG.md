@@ -3,6 +3,12 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.84 — 2026-11-06
+
+- The memory source catalogue no longer writes a version row every time a
+  source moves. That table was insert-only and nothing reads it, so it only
+  grew. The catalogue row that readers use is still updated in place.
+
 ## 1.2.83 — 2026-11-05
 
 - The memory database no longer grows without bound: the session checkpoint
