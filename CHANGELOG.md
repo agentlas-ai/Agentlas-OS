@@ -3,6 +3,13 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.83 — 2026-11-05
+
+- The memory database no longer grows without bound: the session checkpoint
+  writer keeps the newest checkpoint and the one before it for each namespace
+  and removes older ones in the same transaction. Only the newest checkpoint is
+  ever read, and other namespaces are untouched.
+
 ## 1.2.82 — 2026-11-04
 
 - One is now two lines (about 375 characters) instead of a 46-line block, and
