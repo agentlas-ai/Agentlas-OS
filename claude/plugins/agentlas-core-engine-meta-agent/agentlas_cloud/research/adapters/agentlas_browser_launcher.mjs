@@ -405,7 +405,9 @@ function requestApproval(site, actionType, summary) {
 // sentence states only what happened; "the user did not approve" is reserved for a real refusal.
 function refusalText(actionType, reason) {
   const what = 'this ' + actionType + ' browser action';
-  if (reason === 'no_approver') return 'BLOCKED: No desktop app is connected to ask for approval, so ' + what + ' was not run.';
+  // This launcher reads ~/.agentlas/browser-approval.json, which the desktop does not write (it keeps its own approval
+  // channel), so a gated action here is never approvable: the line says so instead of sending the user to open the app.
+  if (reason === 'no_approver') return 'BLOCKED: This browser session is not connected to Agentlas approvals, so ' + what + ' was not run; retrying will not change that, so do not repeat it and tell the user to do it themselves or to start this task from the Agentlas app chat.';
   if (reason === 'timeout') return 'BLOCKED: The approval request got no response in time, so ' + what + ' was not run.';
   if (reason === 'invalid') return 'BLOCKED: The approval response could not be read, so ' + what + ' was not run.';
   return 'BLOCKED: The user declined ' + what + '.';
