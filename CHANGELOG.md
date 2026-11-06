@@ -3,6 +3,13 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.86 — 2026-11-06
+
+- In a plugin host session (Claude Code, Codex), a browser action that needs approval and is blocked
+  now says that this browser session is not connected to Agentlas approvals, that retrying will
+  not change it, and that the user should do it themselves or start the task from the Agentlas app
+  chat. It no longer tells the model to send the user to open the app, which could not help.
+
 ## 1.2.85 — 2026-11-06
 
 - A workforce run whose verifier step does not pass now returns the artifacts of
