@@ -252,7 +252,12 @@ def _subagent_slice(payload: Mapping[str, Any], root: Path | None) -> str | None
             refresh=False,
             allow_stale=True,
             freshness_budget_seconds=SUBAGENT_SLICE_BUDGET_SECONDS,
+            # SubagentStart additionalContext is injected automatically, like the
+            # per-turn prompt slice, so it takes the same exact-match gate.
+            per_turn=True,
         )
+        if not (result.get("symbols") or result.get("files")):
+            return None
         rendered = render_context_slice(result, max_chars=SUBAGENT_SLICE_CHARS)
     except Exception:
         # Same fail-open contract as the observation itself: a subagent must

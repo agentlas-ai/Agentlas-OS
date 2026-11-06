@@ -932,7 +932,7 @@ MAX_LAYOUT_DIRECTORIES = 14
 MAX_LAYOUT_NAMES_PER_DIRECTORY = 14
 
 
-def _project_layout(code_map: Mapping[str, Any]) -> list[str]:
+def _project_layout(code_map: Mapping[str, Any], *, per_turn: bool = False) -> list[str]:
     """Where things live, by directory, most load-bearing first.
 
     A request usually names a domain, not an identifier: "무역 로직 고쳐줘",
@@ -948,6 +948,9 @@ def _project_layout(code_map: Mapping[str, Any]) -> list[str]:
     """
 
     files = [value for value in code_map.get("mappedFiles") or [] if isinstance(value, str)]
+    if per_turn:
+        # Same predicate as the per-turn rows: no vendored dirs, no plugin mirrors.
+        files = [value for value in files if not _per_turn_excluded(value)]
     if not files:
         return []
     reference_count = code_map.get("refCount") if isinstance(code_map.get("refCount"), Mapping) else {}
@@ -959,6 +962,8 @@ def _project_layout(code_map: Mapping[str, Any]) -> list[str]:
             continue
         for site in sites or []:
             if isinstance(site, Mapping) and site.get("f"):
+                if per_turn and _per_turn_excluded(str(site["f"])):
+                    continue
                 weight[str(Path(str(site["f"])).parent)] += incoming
     grouped: dict[str, set[str]] = {}
     for relative in files:
@@ -1155,6 +1160,115 @@ def _fallback_symbols(
     return hits
 
 
+# --- Per-turn slice gate (hook path only; explicit MCP tools are unchanged) ---
+# The per-turn slice is injected into every prompt, so it must earn its place:
+# it is produced only when the prompt names an identifier that the index knows
+# exactly, and it never lists vendored copies or plugin mirrors of that code.
+# Measured 2026-11-06 (8 tasks x 3 arms, claude sonnet + codex): prose-word
+# matches and mirror/_vendor rows caused wrong-file detours; the gated slice had
+# none. This predicate is deliberately not part of the index SKIP_DIRS, because
+# the MCP tools must keep returning mirrors to callers that ask for them.
+_PER_TURN_MIN_TOKEN = 4
+_PER_TURN_TOKEN_RE = re.compile(r"[A-Za-z0-9_.]+")
+_PER_TURN_IDENT_RE = re.compile(
+    r"^(?:"
+    r"[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+"  # snake_case
+    r"|_[A-Za-z][A-Za-z0-9_]{2,}"  # _private
+    r"|_?[a-z]+(?:[A-Z][a-z0-9]*)+"  # camelCase
+    r"|[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+"  # PascalCase
+    r"|[A-Z]{2,}[a-z][A-Za-z0-9]*"  # acronym-led: XMLParser, HTTPClient
+    r"|[A-Za-z]+[0-9][A-Za-z0-9]*"  # contains a digit
+    r"|[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+"  # dotted.path
+    r")$"
+)
+_PER_TURN_FILENAME_RE = re.compile(r"(?<![A-Za-z0-9_./-])[A-Za-z0-9_-]+\.[A-Za-z][A-Za-z0-9]{0,5}(?![A-Za-z0-9_/])")
+_MIRROR_PATH_RE = re.compile(r"^(?:claude|codex)/plugins/[^/]+/(.+)$")
+
+
+def _per_turn_identifiers(task: str) -> list[str]:
+    """Identifier-shaped, non-stop-word tokens of the prompt, lowercased.
+
+    Single-word lowercase names (``charge``, ``recall``) are unmatched by design:
+    on the per-turn path they cannot be told from English words. Explicit
+    ``context.slice`` calls still resolve them by rarity. The scan covers the
+    first ``MAX_TASK_CHARS`` characters (the hook already caps the prompt at the
+    same 12,000), which bounds regex cost on pasted logs; there is no separate
+    candidate-count cap, because the exact-index lookup afterwards is the gate.
+    """
+
+    found: list[str] = []
+    for match in _PER_TURN_TOKEN_RE.finditer(task[:MAX_TASK_CHARS]):
+        raw = match.group(0).strip(".")
+        pieces = [raw, *raw.split(".")] if "." in raw else [raw]
+        for piece in pieces:
+            lowered = piece.lower()
+            if (
+                len(piece) >= _PER_TURN_MIN_TOKEN
+                and lowered not in _STOP_TERMS
+                and _PER_TURN_IDENT_RE.match(piece)
+                and lowered not in found
+            ):
+                found.append(lowered)
+    return found
+
+
+def _per_turn_excluded(path: str) -> bool:
+    """Vendored code and plugin mirrors never appear in per-turn text."""
+
+    parts = path.split("/")
+    return (
+        "_vendor" in parts
+        or "node_modules" in parts
+        or path.startswith("opencode/plugins/")
+        or _MIRROR_PATH_RE.match(path) is not None
+    )
+
+
+def _per_turn_path(
+    path: str,
+    known_files: frozenset[str],
+    defined_in: frozenset[str] = frozenset(),
+) -> str | None:
+    """Canonical path for a per-turn row, or None when the row must not appear.
+
+    A plugin-mirror path is rewritten to its canonical path only when
+    ``defined_in`` (the files that really define / reference the symbol) already
+    contains that canonical file. Existence of the canonical file alone proves
+    nothing: in an ordinary Claude plugin repo ``claude/plugins/x/src/a.py`` and
+    ``src/a.py`` are unrelated files.
+    """
+
+    parts = path.split("/")
+    if "_vendor" in parts or "node_modules" in parts or path.startswith("opencode/plugins/"):
+        return None
+    mirror = _MIRROR_PATH_RE.match(path)
+    if mirror:
+        canonical = mirror.group(1)
+        return canonical if canonical in known_files and canonical in defined_in else None
+    # A prompt token shaped like a path ("+121/-10.", "A/B") is not a file: only indexed files are rows.
+    return path if path in known_files else None
+
+
+def _per_turn_named_files(
+    root: Path, task: str, targets: Sequence[str], known_files: frozenset[str]
+) -> list[str]:
+    """Indexed, non-mirror files the prompt names by path or by unique file name."""
+
+    named: list[str] = []
+    for path in _task_path_hints(root, task, targets):
+        if path in known_files and not _per_turn_excluded(path):
+            named.append(path)
+    by_name: dict[str, list[str]] = {}
+    for path in known_files:
+        if not _per_turn_excluded(path):
+            by_name.setdefault(path.rsplit("/", 1)[-1], []).append(path)
+    for match in _PER_TURN_FILENAME_RE.finditer(task[:MAX_TASK_CHARS]):
+        candidates = by_name.get(match.group(0))
+        if candidates and len(candidates) == 1:
+            named.append(candidates[0])
+    return list(dict.fromkeys(named))[:MAX_SELECTED_FILES]
+
+
 def _selected_symbols(
     code_map: Mapping[str, Any],
     *,
@@ -1207,7 +1321,16 @@ def context_slice(
     refresh: bool = True,
     allow_stale: bool = False,
     freshness_budget_seconds: float | None = None,
+    per_turn: bool = False,
 ) -> dict[str, Any]:
+    """Build the task slice.
+
+    ``per_turn=True`` is the hook path: exact identifier matches only (no
+    substring fallback, no file-derived symbols), vendored/mirror rows removed,
+    and an empty ``symbols`` list when nothing matched so the caller can send
+    nothing. Explicit MCP calls leave it False and are unchanged.
+    """
+
     root, code_map, refresh_receipt = load_code_map(
         project,
         refresh=refresh,
@@ -1215,17 +1338,48 @@ def context_slice(
         freshness_budget_seconds=freshness_budget_seconds,
     )
     terms = _query_terms(task)
-    selected_files = _task_path_hints(root, task, targets)
+    known_files: frozenset[str] = frozenset()
+    if per_turn:
+        known_files = frozenset(
+            value for value in code_map.get("mappedFiles") or [] if isinstance(value, str)
+        )
+        definitions_index = code_map.get("defIndex")
+        exact_terms = (
+            [t for t in _per_turn_identifiers(task) if t in definitions_index]
+            if isinstance(definitions_index, dict)
+            else []
+        )
+        named_files = _per_turn_named_files(root, task, targets, known_files)
+
+        def _clean_paths(values: Iterable[str]) -> list[str]:
+            cleaned = (_per_turn_path(str(v), known_files) for v in values if v)
+            return list(dict.fromkeys(v for v in cleaned if v))
+
+        # Exact identifiers and files the prompt really names are the only doors.
+        # No substring fallback, no recent-work / entry-point fallback.
+        symbols, symbol_match = _selected_symbols(
+            code_map, terms=exact_terms, files=named_files, fallback_terms=()
+        )
+        if not symbols and not named_files:
+            return {"schemaVersion": CONTEXT_SLICE_SCHEMA, "status": "ok", "symbols": [], "files": []}
+        selected_files = list(named_files)
+    else:
+
+        def _clean_paths(values: Iterable[str]) -> list[str]:
+            return list(values)
+
+        selected_files = _task_path_hints(root, task, targets)
     # `selected_files` is reassigned below to the dependency-expanded set. Co-edit
     # history must anchor on what the task actually named, not on the expansion,
     # or every co-edit partner is already inside the set and nothing is reported.
     task_named_files = list(selected_files)
-    symbols, symbol_match = _selected_symbols(
-        code_map,
-        terms=_symbol_terms(task, code_map),
-        files=selected_files,
-        fallback_terms=terms,
-    )
+    if not per_turn:
+        symbols, symbol_match = _selected_symbols(
+            code_map,
+            terms=_symbol_terms(task, code_map),
+            files=selected_files,
+            fallback_terms=terms,
+        )
     definitions = code_map.get("defIndex", {})
     references = code_map.get("refIndex", {})
 
@@ -1234,8 +1388,34 @@ def context_slice(
     for key in symbols:
         defs = definitions.get(key) if isinstance(definitions, dict) else None
         refs = references.get(key) if isinstance(references, dict) else None
-        definition_rows = [item for item in (defs or []) if isinstance(item, dict)][:8]
-        reference_files = [str(item) for item in (refs or []) if isinstance(item, str)][:64]
+        definition_rows = [item for item in (defs or []) if isinstance(item, dict)]
+        reference_files = [str(item) for item in (refs or []) if isinstance(item, str)]
+        if per_turn:
+            # A mirror row survives only when its canonical file is itself a
+            # definition (resp. reference) site of this symbol.
+            def_files = frozenset(
+                str(i.get("f")) for i in definition_rows if not _per_turn_excluded(str(i.get("f") or ""))
+            )
+            canonical_rows: list[dict[str, Any]] = []
+            seen_files: set[str] = set()
+            for item in sorted(definition_rows, key=lambda i: _per_turn_excluded(str(i.get("f") or ""))):
+                canonical = _per_turn_path(str(item.get("f") or ""), known_files, def_files)
+                if canonical and canonical not in seen_files:
+                    seen_files.add(canonical)
+                    canonical_rows.append({**item, "f": canonical})
+            definition_rows = canonical_rows
+            ref_set = frozenset(r for r in reference_files if not _per_turn_excluded(r))
+            reference_files = list(
+                dict.fromkeys(
+                    v
+                    for v in (_per_turn_path(r, known_files, ref_set) for r in reference_files)
+                    if v
+                )
+            )
+            if not definition_rows:
+                continue
+        definition_rows = definition_rows[:8]
+        reference_files = reference_files[:64]
         related_files.extend(str(item.get("f") or "") for item in definition_rows)
         related_files.extend(reference_files)
         # Symbol rows retain definition sites, a count, and a bounded path sample.
@@ -1264,6 +1444,8 @@ def context_slice(
     # The library must still open a door: the project's conventional entry
     # points are what any newcomer reads first, and the map already knows them.
     file_match = "matched"
+    if per_turn and not selected_files:
+        return {"schemaVersion": CONTEXT_SLICE_SCHEMA, "status": "ok", "symbols": [], "files": []}
     if not selected_files:
         # Third door: what this project was actually being worked on. Tried
         # before the conventional entry points, because "where the work is"
@@ -1326,7 +1508,7 @@ def context_slice(
             # Seeds keep their places; neighbours fill what is left. An
             # alphabetical cap here evicted the seeds themselves.
             selected_files = _bounded_by_relevance(
-                [*selected_files, *neighbours], MAX_SELECTED_FILES
+                _clean_paths([*selected_files, *neighbours]), MAX_SELECTED_FILES
             )
     selected_modules = _bounded_strings((_module_of(value) for value in selected_files), 24)
     verification_graph = (
@@ -1384,6 +1566,8 @@ def context_slice(
         legacy = str(edge.get("edge") or "")
         if legacy and " → " in legacy:
             source, target = legacy.split(" → ", 1)
+        if per_turn and (_per_turn_excluded(source) or _per_turn_excluded(target)):
+            continue
         if source in selected_modules or target in selected_modules:
             module_edges.append(
                 {
@@ -1461,7 +1645,7 @@ def context_slice(
         "symbolAuthority": {"exact": "A2", "file": "A2", "substring": "A3"}.get(symbol_match, "unknown"),
         # Observed co-edit history. Carries the relations the dependency graph
         # structurally cannot see (mirrored copies, code↔install script, …).
-        "projectLayout": _project_layout(code_map),
+        "projectLayout": _project_layout(code_map, per_turn=per_turn),
         "coEditedFiles": _co_edited_files(root, task_named_files),
         "symbols": symbol_rows,
         "files": selected_files,
@@ -2280,6 +2464,15 @@ def _rendered_edge_endpoints(value: Mapping[str, Any]) -> set[str]:
     return endpoints
 
 
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+
+
+def _printable(value: Any) -> str:
+    """File names may legally contain newlines/control bytes; never print them raw."""
+
+    return _CONTROL_CHARS_RE.sub("?", str(value))
+
+
 def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDER_CHARS) -> str:
     """Compact prompt representation; source paths only, never source contents."""
 
@@ -2308,12 +2501,12 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
             if not isinstance(item, Mapping):
                 continue
             definitions = ", ".join(
-                f"{row.get('f')}:{row.get('l')}"
+                f"{_printable(row.get('f'))}:{row.get('l')}"
                 for row in item.get("definitions", [])[:4]
                 if isinstance(row, Mapping)
             )
-            refs = ", ".join(str(path) for path in item.get("referencedBy", [])[:12])
-            lines.append(f"- {item.get('symbol')}: defs={definitions or '-'}; refs={refs or '-'}")
+            refs = ", ".join(_printable(path) for path in item.get("referencedBy", [])[:12])
+            lines.append(f"- {_printable(item.get('symbol'))}: defs={definitions or '-'}; refs={refs or '-'}")
     files = value.get("files")
     if isinstance(files, list) and files:
         file_match = str(value.get("fileMatch") or "matched")
@@ -2322,7 +2515,7 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
             "most_referenced": "No match; most-referenced definitions:",
         }.get(file_match, "Related files:")
         lines.append(heading)
-        lines.extend(f"- {path}" for path in files[:40])
+        lines.extend(f"- {_printable(path)}" for path in files[:40])
     co_edited = value.get("coEditedFiles")
     if isinstance(co_edited, list) and co_edited:
         # Observed history, not inference: files repeatedly changed together
@@ -2331,11 +2524,11 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         lines.append("Co-edited with named files (observed, A0):")
         for item in co_edited[:8]:
             if isinstance(item, Mapping) and item.get("file"):
-                lines.append(f"- {item['file']} ({item.get('sessions', '?')} work units)")
+                lines.append(f"- {_printable(item['file'])} ({item.get('sessions', '?')} work units)")
     layout = value.get("projectLayout")
     if isinstance(layout, list) and layout:
         lines.append("Layout (by dependents):")
-        lines.extend(f"- {item}" for item in layout)
+        lines.extend(f"- {_printable(item)}" for item in layout)
     # Render relations before isolated nodes. An endpoint already named by an
     # edge does not need a repeated node bullet.
     edge_endpoint_ids = _rendered_edge_endpoints(value)
@@ -2368,7 +2561,7 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
             # A plain `->` is HTML-escaped into `-&gt;` by the capsule builder,
             # which is what the reader would actually receive. Use the arrow
             # character so the relation stays legible in the prompt.
-            rendered_edges.append(f"{_label(source)} —{relation or 'relates_to'}→ {_label(target)}")
+            rendered_edges.append(_printable(f"{_label(source)} —{relation or 'relates_to'}→ {_label(target)}"))
         if rendered_edges:
             lines.append("Context edges (observed, 2-hop):")
             lines.extend(f"- {item}" for item in rendered_edges)
@@ -2386,7 +2579,7 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
     if isinstance(module_edges, list) and module_edges:
         lines.append("Module dependencies:")
         lines.extend(
-            f"- {edge.get('from')} -> {edge.get('to')} (weight {edge.get('weight', 0)})"
+            f"- {_printable(edge.get('from'))} -> {_printable(edge.get('to'))} (weight {edge.get('weight', 0)})"
             for edge in module_edges[:20]
             if isinstance(edge, Mapping)
         )
@@ -2396,14 +2589,14 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         for node in list(verification.get("nodes") or [])[:30]:
             if isinstance(node, Mapping):
                 lines.append(
-                    f"- {node.get('kind', 'verification')}: {node.get('path', '-')}"
+                    f"- {node.get('kind', 'verification')}: {_printable(node.get('path', '-'))}"
                 )
     if isinstance(verification, Mapping) and verification.get("issues"):
         lines.append("Verification issues:")
         for issue in list(verification.get("issues") or [])[:20]:
             if isinstance(issue, Mapping):
                 lines.append(
-                    f"- {issue.get('code', 'issue')}: {issue.get('source', '-')} -> {issue.get('missingPath', '-')}"
+                    f"- {issue.get('code', 'issue')}: {_printable(issue.get('source', '-'))} -> {_printable(issue.get('missingPath', '-'))}"
                 )
     lines.extend(
         [

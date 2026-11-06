@@ -729,6 +729,10 @@ def build_capsule(
         else None
     )
     context_slice_line: str | None = None
+    # True once the map answered, even with "nothing to send". The rest of the
+    # capsule (emit/framing/policy lines) is independent of the slice and was
+    # always sent when the map was readable, so an empty slice must not drop it.
+    slice_map_readable = False
     if project_root is not None:
         try:
             from .context_map import (
@@ -746,21 +750,28 @@ def build_capsule(
                 refresh=False,
                 allow_stale=True,
                 freshness_budget_seconds=RECALL_FRESHNESS_BUDGET_SECONDS,
+                per_turn=True,
             )
-            # Render directly to this layer's budget so a valid slice is not dropped by
-            # a second, smaller truncation boundary.
-            context_slice_line = render_context_slice(
-                structural_slice, max_chars=LAYER_BUDGETS["context_slice"] - 1
-            )
-            _record_context_markers(
-                project_db,
-                [("code_map", max(1, len(context_slice_line) // 4))],
-                host,
-            )
+            slice_map_readable = True
+            # Per-turn gate: no exact identifier / named-file match means no slice
+            # section (not even receipt/stale/before_* lines); only that section is
+            # omitted. Explicit context.slice is unaffected.
+            if structural_slice.get("symbols") or structural_slice.get("files"):
+                # Render directly to this layer's budget so a valid slice is not
+                # dropped by a second, smaller truncation boundary.
+                context_slice_line = render_context_slice(
+                    structural_slice, max_chars=LAYER_BUDGETS["context_slice"] - 1
+                )
+                _record_context_markers(
+                    project_db,
+                    [("code_map", max(1, len(context_slice_line) // 4))],
+                    host,
+                )
         except Exception:
             # The hook is recall-only and fail-open. First-contact/bootstrap or
             # a task-resolved MCP query upgrades/materializes the map.
             context_slice_line = None
+            slice_map_readable = False
     # Select non-aging personal procedure/decision/risk recall by query overlap
     # with the configured project boost and budget. Facts remain with project recall.
     # Personal recall must fail open and honor agentlas-one off before drawer access.
@@ -835,6 +846,7 @@ def build_capsule(
         and not evolution_line
         and not workforce_lines
         and not context_slice_line
+        and not slice_map_readable
         and not one_lines
     ):
         return None, context_root
