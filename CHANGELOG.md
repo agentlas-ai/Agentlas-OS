@@ -3,6 +3,25 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.87 — 2026-11-06
+
+- After an update the engine removes old engine versions it left under the per-user
+  runtime directory, including old generations. It keeps the current version, the
+  version a host configuration points at, a version a running process uses, anything
+  placed in the last 15 minutes, the one previous release kept for rollback (chosen
+  by release number) and, after a manual rollback, the highest newer complete
+  release. It deletes nothing when it cannot tell what is in use (and says why in one
+  line on stderr), removes at most five versions per run, never lets a failed cleanup
+  change the update result, and writes one line when it removed something. The
+  installer cleans the base path it installed to the same way.
+- The per-turn code map excerpt is attached to a prompt only when the prompt names a
+  real indexed code identifier or file; vendored, dependency and mirrored plugin
+  paths are left out, a mirrored row is shown only under its original path when the
+  original defines the symbol, and control characters in file names are replaced.
+  When there is no excerpt the rest of the memory capsule is sent exactly as before.
+  The excerpt that starts a subagent follows the same rule. The context tools a
+  model calls itself behave as before.
+
 ## 1.2.86 — 2026-11-06
 
 - In a plugin host session (Claude Code, Codex), a browser action that needs approval and is blocked
