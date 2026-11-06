@@ -1188,6 +1188,13 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             _remove_path(staged_target)
         _release_lock(lock, lock_token)
 
+    # 활성화가 끝나고 잠금을 놓은 뒤에만 옛 세대를 거둔다. 정리는 어떤 이유로든
+    # 업데이트 결과를 바꾸지 못한다(항목별 OSError 는 안에서 삼키고, 나머지도 여기서 막는다).
+    try:
+        _prune_runtime_homes(base)
+    except Exception:
+        pass
+
     model_path = installed_model_path or target / RUNTIME_MODEL2VEC_PATH
     activation = _post_activation_state(
         target,
@@ -3274,7 +3281,8 @@ def _activate_runtime(staged: Path, target: Path) -> None:
             _remove_path(target_backup)
         except OSError:
             pass
-    # Preserve older standalone generations until host ownership is verified.
+    # 옛 세대는 여기서 지우지 않는다 — install_latest_runtime 이 잠금을 놓은 뒤
+    # _prune_runtime_homes 로 거둔다(호스트 설정·실행 중 프로세스가 쓰는 세대는 그쪽이 지킨다).
 
 
 def _runtime_homes_kept() -> int:
@@ -3308,27 +3316,45 @@ def _runtime_reference_text() -> str:
     return "\n".join(chunks)
 
 
+_holder_skip_reason = ""
+
+
 def _runtime_holder_text() -> str | None:
     """실행 중인 프로세스의 명령줄·작업 폴더·열린 파일 경로. 알 수 없으면 None.
 
     파이썬 서버는 모듈을 읽고 파일을 닫으므로 열린 파일만으로는 부족하다 — 명령줄과
     환경 인자에 세대 경로가 남는다(실측 2026-10-16: 옛 세대 1.2.59 를 명령줄 10개가 가리킴).
     """
+    global _holder_skip_reason
+    _holder_skip_reason = ""
     if os.name == "nt":
         return None
     texts = []
     try:
         texts.append(subprocess.run(["ps", "-axww", "-o", "command="], capture_output=True, text=True,
                                     errors="replace", timeout=20, check=True, **no_console_window()).stdout)
-    except (OSError, subprocess.SubprocessError):
+    except subprocess.CalledProcessError as exc:
+        _holder_skip_reason = f"ps exit {exc.returncode}"
         return None
+    except (OSError, subprocess.SubprocessError):
+        _holder_skip_reason = "ps failed"
+        return None
+    # lsof 가 없거나 비정상 종료하면 열린 파일·작업 폴더를 알 수 없다 — ps 의 명령줄만으로는
+    # 작업 폴더로만 세대를 쓰는 프로세스를 못 본다(재현: 그런 세대가 지워짐). 모르면 None.
     lsof = shutil.which("lsof")
-    if lsof:
-        try:
-            texts.append(subprocess.run([lsof, "-w", "-u", str(os.getuid()), "-Fn"], capture_output=True,
-                                        text=True, errors="replace", timeout=60, **no_console_window()).stdout)
-        except (OSError, subprocess.SubprocessError):
-            return None
+    if not lsof:
+        _holder_skip_reason = "lsof missing"
+        return None
+    try:
+        done = subprocess.run([lsof, "-w", "-u", str(os.getuid()), "-Fn"], capture_output=True,
+                              text=True, errors="replace", timeout=60, **no_console_window())
+    except (OSError, subprocess.SubprocessError):
+        _holder_skip_reason = "lsof failed"
+        return None
+    if done.returncode != 0:
+        _holder_skip_reason = f"lsof exit {done.returncode}"
+        return None
+    texts.append(done.stdout)
     return "\n".join(texts)
 
 
@@ -3336,8 +3362,10 @@ def _mentions(text: str, path: Path) -> bool:
     # 호스트 설정은 경로를 이스케이프해 적는다 — JSON·TOML 기본 문자열은 `C:\\Users\\…`(비ASCII는
     # \uXXXX 일 수도 있다), 일부는 `C:/Users/…`. Windows 에서는 이것만이 세대를 지키므로(holders 가
     # 늘 None) 원형만 찾으면 아직 쓰는 세대를 지운다. Windows 경로는 대소문자를 가리지 않는다.
-    raw = str(path)
-    forms = {raw, raw.replace("\\", "/"), json.dumps(raw)[1:-1], json.dumps(raw, ensure_ascii=False)[1:-1]}
+    # 상위 폴더가 심볼릭 링크일 때(macOS /var → /private/var 등) ps·lsof 는 실경로를 적을 수 있다.
+    forms: set[str] = set()
+    for raw in {str(path), os.path.realpath(path)}:
+        forms |= {raw, raw.replace("\\", "/"), json.dumps(raw)[1:-1], json.dumps(raw, ensure_ascii=False)[1:-1]}
     needle = "|".join(re.escape(form) for form in sorted(forms, key=len, reverse=True))
     flags = re.MULTILINE | (re.IGNORECASE if os.name == "nt" else 0)
     return re.search(f"(?:{needle})" + r"(?=[/\\\s\"',;:)]|$)", text, flags) is not None
@@ -3352,8 +3380,42 @@ def _runtime_release(entry: Path) -> str:
     return release.lstrip("v") or name
 
 
-def _remove_unheld_on_windows(entry: Path) -> None:
-    # Windows 는 열린 파일이 있는 폴더의 이름을 바꿀 수 없다. 이름이 바뀌면 아무도 쓰지 않는 것이다.
+# 방금 만들어졌거나 만들어지는 중인 세대를 건드리지 않는 시간. 셸 설치기는 .update.lock 을
+# 잡지 않으므로(같은 버전 재설치는 .generations 에 새 세대를 놓고 current 를 나중에 바꾼다)
+# 정리가 그 사이에 끼어들면 새 세대를 지우고 current 가 사라진 폴더를 가리킨다.
+_PRUNE_RECENT_SECONDS = 15 * 60
+# 한 번에 지우는 세대 수 상한. 세대가 많이 쌓인 머신의 첫 실행이 업데이트를 오래 붙잡지 않게
+# 하고, 나머지는 다음 갱신에서 거둔다.
+_PRUNE_MAX_PER_RUN = 5
+_PRUNE_TRASH_RE = re.compile(r"^\..+\.prune\.\d+\.\d+$")
+
+
+def _release_key(release: str) -> tuple[int, ...]:
+    """`v1.2.85`·`1.2.85-rc1` → (1, 2, 85). 읽을 수 없으면 ()(가장 낮음)."""
+    head = re.split(r"[-+]", release.lstrip("v"), maxsplit=1)[0]
+    return tuple(int(part) for part in re.findall(r"\d+", head))
+
+
+def _entry_is_recent(entry: Path, now: float) -> bool:
+    """세대가 최근 15분 안에 만들어졌거나 바뀌었는가. 시각을 읽지 못하면 최근으로 본다."""
+    stamps = []
+    try:
+        stamps.append(entry.lstat().st_mtime)
+        try:  # 설치기가 포인터를 바꾸기 직전에 만드는 `<세대>.current` 링크
+            stamps.append(entry.with_name(entry.name + ".current").lstat().st_mtime)
+        except FileNotFoundError:
+            pass
+    except OSError:
+        return True
+    return any(abs(now - stamp) < _PRUNE_RECENT_SECONDS for stamp in stamps)
+
+
+def _discard_generation(entry: Path) -> None:
+    """이름을 점으로 시작하는 형제로 먼저 바꾼 뒤 지운다.
+
+    지우는 도중 끊겨도 반쯤 지워진 폴더가 RELEASE 를 가진 채 유효한 세대로 보이지 않는다.
+    Windows 는 열린 파일이 있으면 이름을 바꿀 수 없다 — 바뀌면 아무도 쓰지 않는 것이다.
+    """
     moved = _unique_sibling(entry, "prune")
     os.rename(entry, moved)
     _remove_path(moved)
@@ -3373,42 +3435,88 @@ def _prune_runtime_homes(runtime_root: Path) -> None:
     한쪽에만 두면 다른 경로로 갱신한 머신은 계속 쌓인다.
     """
     try:
+        if (runtime_root / ".update.lock").exists():
+            return  # 다른 업데이트가 설치 중이다 — 다음 갱신에서 거둔다.
         current = runtime_root / "current"
         active = Path(os.path.realpath(current)) if _is_link(current) else None
-        candidates = [
-            entry for entry in runtime_root.iterdir()
-            if entry.is_dir() and not entry.is_symlink()
-            and not entry.name.startswith(".") and entry.name != "current"
-        ]
         generations = runtime_root / ".generations"
-        if generations.is_dir() and not generations.is_symlink():
-            candidates += [entry for entry in generations.iterdir() if entry.is_dir() and not entry.is_symlink()]
+
+        def real_dirs(parent: Path) -> list[Path]:
+            return [entry for entry in parent.iterdir() if entry.is_dir() and not entry.is_symlink()]
+
+        top = real_dirs(runtime_root)
+        gens = real_dirs(generations) if generations.is_dir() and not generations.is_symlink() else []
+        # 지우다 끊긴 찌꺼기(`.이름.prune.PID.NS`). 유효한 세대가 아니므로 슬롯 없이 지운다.
+        trash = [entry for entry in top + gens if _PRUNE_TRASH_RE.match(entry.name)]
+        candidates = [entry for entry in top + gens if not entry.name.startswith(".") and entry.name != "current"]
         candidates = [entry for entry in candidates if active is None or Path(os.path.realpath(entry)) != active]
-        candidates.sort(key=lambda entry: entry.stat().st_mtime, reverse=True)
+        mtimes = {entry: entry.stat().st_mtime for entry in candidates}
     except OSError:
         return
-    if not candidates:
+    if not candidates and not trash:
         return
     references = _runtime_reference_text()
     holders = _runtime_holder_text()
-    kept_releases = {_runtime_release(active)} if active is not None else set()
+    if os.name != "nt" and holders is None:
+        # 실행 중인 프로세스를 확인할 수 없다(ps·lsof 없음/실패) — 이번에는 아무것도 지우지 않는다.
+        print(f"agentlas: runtime prune skipped: {_holder_skip_reason or 'process list unavailable'}", file=sys.stderr)
+        return
+    current_release = _runtime_release(active) if active is not None else ""
+    current_key = _release_key(current_release) if active is not None else None
+    # 되돌리기 후보는 디렉터리 mtime 이 아니라 릴리스 번호 순이다(파일 하나 만진 옛 세대가 이기면 안 된다).
+    candidates.sort(key=lambda entry: (_release_key(_runtime_release(entry)), mtimes[entry]), reverse=True)
+    kept_releases = {current_release} if active is not None else set()
     rollbacks = max(0, _runtime_homes_kept() - 1)  # current 를 포함해 AGENTLAS_RUNTIME_KEEP 개
-    for entry in candidates:
+    # 수동 롤백으로 current 가 최고 릴리스가 아닐 때, 방금 되돌아온 원본(current 보다 높은 것 중 최고)은 남긴다.
+    keep_newer = active is not None
+    removed = 0
+
+    def safe_to_delete(entry: Path, check_recent: bool) -> bool:
+        # current 가 링크인지 여부는 처음 읽었을 때와 같아야 한다(다르면 누가 바꾸는 중이다).
+        # 삭제 직전에 다시 읽는다: 그 사이 current 가 이 세대로 바뀌었거나(셸 설치기는 잠금이 없다)
+        # 방금 만들어진 세대일 수 있다.
+        if (active is None) == _is_link(current):
+            return False
+        if active is not None and Path(os.path.realpath(entry)) == Path(os.path.realpath(current)):
+            return False
+        return not (check_recent and _entry_is_recent(entry, time.time()))
+
+    for entry in [*trash, *candidates]:
+        is_trash = entry in trash
+        if removed >= _PRUNE_MAX_PER_RUN:
+            continue
         if _mentions(references, entry) or (holders is not None and _mentions(holders, entry)):
             continue
-        release = _runtime_release(entry)
-        if rollbacks > 0 and release not in kept_releases:
-            kept_releases.add(release)
-            rollbacks -= 1
+        if not is_trash:
+            release = _runtime_release(entry)
+            # RELEASE 가 없는 세대는 설치가 끝나지 않은 것이다 — 되돌릴 수 없으니 슬롯을 차지하지 못한다.
+            complete = (entry / "RELEASE").is_file()
+            key = _release_key(release)
+            if complete and keep_newer and current_key is not None and key > current_key and release not in kept_releases:
+                keep_newer = False  # 후보는 릴리스 번호 내림차순이라 첫 번째가 가장 높다
+                kept_releases.add(release)
+                continue
+            below_current = current_key is None or key < current_key
+            if complete and below_current and rollbacks > 0 and release not in kept_releases:
+                kept_releases.add(release)
+                rollbacks -= 1
+                continue
+        if not safe_to_delete(entry, check_recent=not is_trash):
             continue
         try:
-            if os.name == "nt":
-                _remove_unheld_on_windows(entry)
-            elif holders is not None:
-                _remove_path(entry)
+            _discard_generation(entry)
         except OSError:
             # 지우지 못한 것은 다음 갱신에서 다시 시도한다 — 실패가 업데이트를 막지 않는다.
             continue
+        removed += 1
+        sibling = entry.with_name(entry.name + ".current")
+        if sibling.is_symlink() and not sibling.exists():
+            try:
+                sibling.unlink()  # 지운 세대를 가리키던 설치기의 포인터 링크
+            except OSError:
+                pass
+    if removed:
+        print(f"agentlas: pruned {removed} old runtime generation(s) from {runtime_root}", file=sys.stderr)
 
 
 def _point_current_at(target: Path) -> dict[str, str]:

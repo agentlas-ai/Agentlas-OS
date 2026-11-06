@@ -251,6 +251,9 @@ promote_runtime_home() {
   rmdir "$generation" || return 1
   mv "$stage_dir" "$generation" || return 1
   runtime_stage_dir=""
+  # The installer does not hold .update.lock, so a concurrent prune must be able to
+  # see this generation as brand new (it skips anything touched in the last 15 minutes).
+  touch "$generation" 2>/dev/null || true
   if [[ "${6:-}" == record-adapters ]]; then
     # Normalize only our own newly minted path (for example a symlinked home).
     # Registry-provided paths must still be literal canonical strings.
@@ -937,9 +940,9 @@ PY_NAMESPACE
   # write failure cannot change an already-working os-runtime/current.
   promote_runtime_home "$runtime_root" "$home_dir" "$stage_dir" "$version" "$py" record-adapters \
     || { warn "standalone_activation_failed: prior pointer preserved; launcher may remain"; return 1; }
+  prune_runtime_homes "$py" "$runtime_root" || warn "Old os-runtime versions were left in place."
   log "Standalone runner prepared; host adapters and automatic updates require explicit integration."
   return 0
-  prune_runtime_homes "$py" || warn "Old runtime home versions were left in place."
 
   local user_bin="$HOME/.local/bin"
   if mkdir -p "$user_bin" 2>/dev/null; then
@@ -2022,8 +2025,11 @@ ONE_RUNTIME_KEEP="${AGENTLAS_RUNTIME_KEEP:-2}"
 # left another 160 MB generation behind (10 on one Mac, 2026-10-16). It keeps
 # current, anything a host config or a running process still names, and one
 # rollback of a different release; see that docstring for the full rule.
+# $2 is the runtime base to prune. The standalone installer passes its resolved
+# os-runtime base (custom HEPHAESTUS_RUNTIME_BASE included); with no $2 the old
+# ~/.agentlas/runtime namespace is pruned.
 prune_runtime_homes() {
-  local py="$1" runtime_root="$HOME/.agentlas/runtime"
+  local py="$1" runtime_root="${2:-$HOME/.agentlas/runtime}"
   [[ -d "$runtime_root" && -L "$runtime_root/current" ]] || return 0
   [[ -f "$runtime_root/current/agentlas_cloud/update.py" ]] || return 1
   AGENTLAS_RUNTIME_KEEP="$ONE_RUNTIME_KEEP" PYTHONPATH="$(installer_pythonpath "$runtime_root/current")" \
