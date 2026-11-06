@@ -3,6 +3,20 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.85 — 2026-11-06
+
+- A workforce run whose verifier step does not pass now returns the artifacts of
+  the steps that finished (status "rejected") instead of raising and losing them,
+  and a failing adapter keeps the last 2 KB of its stderr with secret values
+  masked.
+- A blocked browser action now says why: no desktop app was connected to ask,
+  the approval request got no answer in time, the user declined, or the answer
+  could not be read. It no longer reports every case as "the user did not
+  approve".
+- Building an agent from a long working session reads the last 8 MB and the last
+  4000 records of a JSONL source instead of refusing it, and says so with the
+  finding `source_tail_window`. Shorter sources produce the same bytes as before.
+
 ## 1.2.84 — 2026-11-06
 
 - The memory source catalogue no longer writes a version row every time a
