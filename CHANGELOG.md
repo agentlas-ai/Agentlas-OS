@@ -3,6 +3,15 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.88 — 2026-11-07
+
+- The background English translation of memory drawers and project documents no longer
+  counts a batch that returned nothing against the daily cap. A translator that is
+  briefly unavailable (timeout, quota, an answer that cannot be read) used to use up
+  the day's allowance without translating anything. Only batches the translator
+  answered are counted now, and a translator that keeps failing is tried at most six
+  times a day and then rests until the next day.
+
 ## 1.2.87 — 2026-11-06
 
 - After an update the engine removes old engine versions it left under the per-user
