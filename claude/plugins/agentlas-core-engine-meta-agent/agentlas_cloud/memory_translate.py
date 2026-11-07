@@ -51,6 +51,8 @@ TRANSLATE_SWITCH_ENV = "AGENTLAS_TRANSLATE"  # "off" disables every spawn and ru
 
 MIGRATION_ID = "english-memory-backfill.v1"
 PROJECT_MIGRATION_ID = "project-english-surface.v1"
+# Failed batches no longer spend dayCount, so this is the only daily bound on retrying a translator that keeps failing.
+MAX_FAILED_BATCHES_PER_DAY = 6
 STATE_FILE = "translation-state.json"
 LEDGER_FILE = "translation-ledger.jsonl"
 GLOSSARY_FILE = "translation-glossary.json"
@@ -601,7 +603,7 @@ class _WorkerLock:
 
 def _budget_left(state: dict[str, Any], cap: int) -> int:
     if state.get("day") != _today():
-        state["day"], state["dayCount"] = _today(), 0
+        state["day"], state["dayCount"], state["failToday"] = _today(), 0, 0
     return max(0, int(cap) - int(state.get("dayCount", 0)))
 
 
@@ -790,11 +792,12 @@ def _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root) -
         if not _drawer_memory_enabled():
             return {**receipt, "skipped": "memory_off"}
         sent += len(items)
-        state["dayCount"] = int(state.get("dayCount", 0)) + len(items)
         if not results:
             state["lastError"] = error
             ledger_rows.append({"batch": len(items), "decision": "failed", "reason": error, "at": ow._now()})
-            break  # every rung failed; try again after the spawn interval
+            state["failToday"] = int(state.get("failToday", 0)) + 1
+            break  # every rung failed; try again after the spawn interval (a failed batch spends no daily budget)
+        state["dayCount"] = int(state.get("dayCount", 0)) + len(items)
         state["runtime"] = runtime
         seconds = round(time.monotonic() - call_started, 2)
         appended: list[tuple[str, str, str]] = []
@@ -921,6 +924,8 @@ def _spawn(args: list[str], cwd: Path) -> bool:
 def _spawn_due(state: dict[str, Any], cfg: dict[str, Any], directory: Path, cap_key: str) -> str | None:
     now = time.time()
     if state.get("day") == _today() and int(state.get("dayCount", 0)) >= int(cfg.get(cap_key, 0)):
+        return None
+    if state.get("day") == _today() and int(state.get("failToday", 0)) >= MAX_FAILED_BATCHES_PER_DAY:
         return None
     interval = float(cfg.get("minIntervalSeconds", 1800))
     if state.get("lastError") == "no-translator":
@@ -1151,10 +1156,11 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
             ladder, [{"h": c["key"], "text": c["text"]} for c in batch], fixed, float(cfg.get("callTimeoutSeconds", 240)))
         if not _project_translation_enabled():
             return {**receipt, "skipped": "feature-disabled"}
-        state["dayCount"] = int(state.get("dayCount", 0)) + len(batch)
         if not results:
             state["lastError"] = error
-            break
+            state["failToday"] = int(state.get("failToday", 0)) + 1
+            break  # a failed batch spends no daily budget
+        state["dayCount"] = int(state.get("dayCount", 0)) + len(batch)
         state["runtime"] = runtime_name
         for chunk in batch:
             if not _project_translation_enabled():
