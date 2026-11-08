@@ -984,7 +984,7 @@ async function main() {
       if (denied) { results.push(step.name + ': BLOCKED(' + denied.actionType + ')'); writeClient({ jsonrpc: '2.0', id: replyId, result: { content: [{ type: 'text', text: 'Replay stopped. ' + refusalText(denied.actionType, denied.reason) + ' (set AGENTLAS_BROWSER_AUTONOMY=trust for unattended replay)' }], isError: true } }); return; }
       if (step.name === 'browser_navigate' && step.arguments && step.arguments.url) currentUrl = String(step.arguments.url);
       const resp = await callChild(step.name, step.arguments || {});
-      const isErr = resp && resp.result && resp.result.isError;
+      const isErr = !resp || typeof resp !== 'object' || Array.isArray(resp) || resp.error != null || !resp.result || typeof resp.result !== 'object' || Array.isArray(resp.result) || !!resp.result.isError;
       results.push(step.name + (isErr ? ': error' : ': ok'));
       if (isErr) { writeClient({ jsonrpc: '2.0', id: replyId, result: { content: [{ type: 'text', text: 'Replay failed at ' + step.name + '. The page may have changed — re-explore and re-save the skill.\n' + results.join('\n') }], isError: true } }); return; }
     }

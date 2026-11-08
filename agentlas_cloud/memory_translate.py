@@ -51,8 +51,15 @@ TRANSLATE_SWITCH_ENV = "AGENTLAS_TRANSLATE"  # "off" disables every spawn and ru
 
 MIGRATION_ID = "english-memory-backfill.v1"
 PROJECT_MIGRATION_ID = "project-english-surface.v1"
-# Failed batches no longer spend dayCount, so this is the only daily bound on retrying a translator that keeps failing.
-MAX_FAILED_BATCHES_PER_DAY = 6
+# A batch every translator rung failed (offline, a usage limit, a timeout) spends no dayCount. The next try waits longer after each
+# failure in a row, from minIntervalSeconds doubling up to FAILED_BATCH_BACKOFF_MAX_SECONDS, and the first success resets it. Before,
+# six failed batches stopped translation until UTC midnight: about three hours of outage left the day's new memories untranslated
+# even when the network was back minutes later. The cap keeps at most about four tries a day during a long outage (fewer than six).
+FAILED_BATCH_BACKOFF_MAX_SECONDS = 6 * 3600
+# A kept-native row records which acceptance rules judged it. Rows written before the glued-token rule (2026-11-08) whose reason that
+# day's change touched get one more try (_gave_up); the measured cause was identifier-lost on prose like "Shorts10의" -> "10 Shorts".
+KEPT_CHECK = 2
+_RECHECK_REASONS = frozenset({"identifier-lost", "empty", "backcheck-unavailable"})
 STATE_FILE = "translation-state.json"
 LEDGER_FILE = "translation-ledger.jsonl"
 GLOSSARY_FILE = "translation-glossary.json"
@@ -75,7 +82,7 @@ DEFAULTS: dict[str, Any] = {
     "noTranslatorBackoffSeconds": 6 * 3600,
     "backcheckFloor": 0.25,       # cos(native, english); same-meaning 0.420, unrelated 0.135
     "requireBackcheck": True,
-    "maxAttempts": 2,             # safety-rejected blocks get one retry, then stay native
+    "maxAttempts": 2,             # a judged rejection gets one retry, then stays native (_next_attempts)
     "glossaryInject": 40,
     "claudeModel": "haiku",
     "codexModel": "",             # empty = codex rung off (no known cheapest model)
@@ -332,12 +339,37 @@ def _token_count(haystack: str, token: str) -> int:
     return haystack.count(token)
 
 
+_TOKEN_PART_RE = re.compile(r"[A-Za-z]+|[0-9]+(?:[.,][0-9]+)?")
+
+
+def _part_count(english: str, part: str) -> int:
+    if part[0].isalpha():
+        return len(re.findall(rf"(?<![A-Za-z]){re.escape(part)}(?![A-Za-z])", english, re.IGNORECASE))
+    return len(re.findall(rf"(?<![0-9]){re.escape(part)}(?![0-9])", english))
+
+
+def _token_kept(english: str, tok: str, count: int) -> bool:
+    """A token is kept when its exact spelling occurs often enough. Korean prose glues a word to a number ("Shorts10",
+    "exit0") that English splits ("10 Shorts", "exit 0"), so a token made only of letter runs (2+ letters) and number runs,
+    with at least one of each, is also kept when every part occurs on its own word boundary at least `count` times."""
+    if _token_count(english, tok) >= count:
+        return True
+    # One linear pass: the parts must spell the whole token, every letter run 2+ letters. (A nested-repeat fullmatch here took
+    # exponential time on a long digit run or CamelCase word followed by "_x": 20 s and more per token, deploy review 6b2e19f1.)
+    parts = _TOKEN_PART_RE.findall(tok)
+    if "".join(parts) != tok or any(x[0].isalpha() and len(x) < 2 for x in parts):
+        return False
+    if not (any(x[0].isalpha() for x in parts) and any(x[0].isdigit() for x in parts)):
+        return False
+    return all(_part_count(english, part) >= count for part in parts)
+
+
 def missing_tokens(native: str, english: str) -> list[str]:
     """Tokens of `native` not preserved (as a multiset) in `english`."""
     need: dict[str, int] = {}
     for tok in protected_tokens(native):
         need[tok] = need.get(tok, 0) + 1
-    missing = [tok for tok, count in need.items() if _token_count(english, tok) < count]
+    missing = [tok for tok, count in need.items() if not _token_kept(english, tok, count)]
     for span in _CODE_SPAN_RE.findall(native or ""):
         if span.isascii() and span not in english:
             missing.append(f"`{span}`")
@@ -400,6 +432,43 @@ def check_translation(native: str, english: str, cfg: dict[str, Any], *, multili
     elif cosine < float(cfg.get("backcheckFloor", 0.25)):
         return {**verdict, "reason": "backcheck-below-floor"}
     return {**verdict, "ok": True, "reason": "accepted"}
+
+
+def _next_attempts(prev: dict[str, Any], reason: str) -> int:
+    """Only a judged translation spends an attempt. A back-check that could not run judged nothing, and a block the model
+    left out of its answer was not tried; leaving the same block out twice running counts, so a block the model always
+    skips still settles."""
+    attempts = int(prev.get("attempts", 0))
+    if reason == "backcheck-unavailable" or (reason == "empty" and prev.get("reason") != "empty"):
+        return attempts
+    return attempts + 1
+
+
+def _kept_row(prev: Any, reason: str) -> dict[str, Any]:
+    prev = prev if isinstance(prev, dict) else {}
+    attempts = _next_attempts(prev, reason)
+    row: dict[str, Any] = {"reason": reason, "attempts": attempts, "at": ow._now()}
+    if attempts > int(prev.get("attempts", 0)):
+        row["check"] = KEPT_CHECK  # a counted attempt was judged by the current rules
+    elif prev.get("check") is not None:
+        row["check"] = prev["check"]  # not judged: keep what the old row had, so an old row keeps its one more try
+    return row
+
+
+def _gave_up(row: Any, max_attempts: int) -> bool:
+    if not isinstance(row, dict):
+        return False
+    if row.get("permanent"):
+        return True
+    attempts = int(row.get("attempts", 0))
+    if row.get("check") != KEPT_CHECK and row.get("reason") in _RECHECK_REASONS:
+        attempts = min(attempts, max_attempts - 1)
+    return attempts >= max_attempts
+
+
+def _backcheck_missing(cfg: dict[str, Any]) -> bool:
+    """With a required back-check that cannot run, every translation would be rejected — do not call the model."""
+    return bool(cfg.get("requireBackcheck", True)) and _embedding_adapter() is None
 
 
 # ------------------------------------------------------------------- glossary
@@ -603,7 +672,7 @@ class _WorkerLock:
 
 def _budget_left(state: dict[str, Any], cap: int) -> int:
     if state.get("day") != _today():
-        state["day"], state["dayCount"], state["failToday"] = _today(), 0, 0
+        state["day"], state["dayCount"] = _today(), 0
     return max(0, int(cap) - int(state.get("dayCount", 0)))
 
 
@@ -664,8 +733,7 @@ def drawer_pending(root: Path, cfg: dict[str, Any] | None = None) -> dict[str, A
         if twin and twin != digest:
             recover.append((digest, twin))  # appended before a crash, never superseded
             continue
-        row = kept.get(digest) if isinstance(kept.get(digest), dict) else None
-        if row and (row.get("permanent") or int(row.get("attempts", 0)) >= max_attempts):
+        if _gave_up(kept.get(digest), max_attempts):
             continue
         todo.append((index, block))
     queue = _read_json(paths["queue"], [])
@@ -759,6 +827,10 @@ def _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root) -
         state["lastError"] = "no-translator"
         receipt["skipped"] = "no-translator"
         return _finish_drawer(paths, state, receipt, root, started, reindex=False, complete=False)
+    if _backcheck_missing(cfg):
+        state["lastError"] = "no-backcheck"
+        receipt["skipped"] = "no-backcheck"
+        return _finish_drawer(paths, state, receipt, root, started, reindex=False, complete=False)
 
     glossary_terms = load_glossary(paths["glossary"])
     batch_size = max(1, int(cfg.get("batchSize", 20)))
@@ -795,8 +867,9 @@ def _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root) -
         if not results:
             state["lastError"] = error
             ledger_rows.append({"batch": len(items), "decision": "failed", "reason": error, "at": ow._now()})
-            state["failToday"] = int(state.get("failToday", 0)) + 1
-            break  # every rung failed; try again after the spawn interval (a failed batch spends no daily budget)
+            state["failStreak"] = int(state.get("failStreak", 0)) + 1
+            break  # every rung failed; the next spawn waits longer (_spawn_due), and a failed batch spends no daily budget
+        state["failStreak"] = 0
         state["dayCount"] = int(state.get("dayCount", 0)) + len(items)
         state["runtime"] = runtime
         seconds = round(time.monotonic() - call_started, 2)
@@ -807,9 +880,7 @@ def _run_drawer_locked(paths, cfg, receipt, translators, limit, reindex, root) -
             row: dict[str, Any] = {"h": digest, "runtime": runtime, "batchSeconds": seconds, "at": ow._now(),
                                    "reason": verdict["reason"], "cosine": verdict.get("cosine")}
             if not verdict["ok"]:
-                prev = state["kept"].get(digest) if isinstance(state["kept"].get(digest), dict) else {}
-                state["kept"][digest] = {"reason": verdict["reason"], "attempts": int(prev.get("attempts", 0)) + 1,
-                                         "at": ow._now()}
+                state["kept"][digest] = _kept_row(state["kept"].get(digest), verdict["reason"])
                 ledger_rows.append({**row, "decision": "kept-native",
                                     **({"lost": verdict["lost"]} if verdict.get("lost") else {}),
                                     # the rejected English, for the mistranslation audit —
@@ -925,10 +996,11 @@ def _spawn_due(state: dict[str, Any], cfg: dict[str, Any], directory: Path, cap_
     now = time.time()
     if state.get("day") == _today() and int(state.get("dayCount", 0)) >= int(cfg.get(cap_key, 0)):
         return None
-    if state.get("day") == _today() and int(state.get("failToday", 0)) >= MAX_FAILED_BATCHES_PER_DAY:
-        return None
-    interval = float(cfg.get("minIntervalSeconds", 1800))
-    if state.get("lastError") == "no-translator":
+    interval = max(60.0, float(cfg.get("minIntervalSeconds", 1800)))
+    streak = int(state.get("failStreak", 0))
+    if streak > 0:
+        interval = min(max(interval, interval * 2 ** min(streak - 1, 16)), max(interval, float(FAILED_BATCH_BACKOFF_MAX_SECONDS)))
+    if state.get("lastError") in ("no-translator", "no-backcheck"):
         interval = max(interval, float(cfg.get("noTranslatorBackoffSeconds", 6 * 3600)))
     if now - float(state.get("lastSpawnEpoch", 0)) < interval:
         return None
@@ -1124,8 +1196,7 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
     for key, chunk in current.items():
         if key in existing:
             continue
-        row = state["kept"].get(key) if isinstance(state["kept"].get(key), dict) else None
-        if row and (row.get("permanent") or int(row.get("attempts", 0)) >= max_attempts):
+        if _gave_up(state["kept"].get(key), max_attempts):
             continue
         todo.append(chunk)
     receipt["pendingBefore"] = len(todo)
@@ -1133,6 +1204,9 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
     ladder = list(translators) if translators is not None else (translator_ladder(cfg) if todo and budget else [])
     if todo and budget and not ladder:
         state["lastError"] = "no-translator"
+    elif todo and budget and _backcheck_missing(cfg):
+        state["lastError"] = "no-backcheck"
+        ladder = []
     glossary_terms = load_glossary(paths["glossary"])
     ledger_rows: list[dict[str, Any]] = []
     batch_size = max(1, int(cfg.get("projectBatchSize", 8)))
@@ -1158,8 +1232,9 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
             return {**receipt, "skipped": "feature-disabled"}
         if not results:
             state["lastError"] = error
-            state["failToday"] = int(state.get("failToday", 0)) + 1
-            break  # a failed batch spends no daily budget
+            state["failStreak"] = int(state.get("failStreak", 0)) + 1
+            break  # a failed batch spends no daily budget; the next spawn waits longer (_spawn_due)
+        state["failStreak"] = 0
         state["dayCount"] = int(state.get("dayCount", 0)) + len(batch)
         state["runtime"] = runtime_name
         for chunk in batch:
@@ -1170,9 +1245,7 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
             row = {"key": chunk["key"], "doc": chunk["name"], "reason": verdict["reason"],
                    "cosine": verdict.get("cosine"), "runtime": runtime_name, "at": ow._now()}
             if not verdict["ok"]:
-                prev = state["kept"].get(chunk["key"]) or {}
-                state["kept"][chunk["key"]] = {"reason": verdict["reason"], "attempts": int(prev.get("attempts", 0)) + 1,
-                                               "at": ow._now()}
+                state["kept"][chunk["key"]] = _kept_row(state["kept"].get(chunk["key"]), verdict["reason"])
                 ledger_rows.append({**row, "decision": "kept-native",
                                     **({"lost": verdict["lost"]} if verdict.get("lost") else {}),
                                     **({"en": verdict["en"][:600]} if verdict["reason"] != "secret-in-output" else {})})
@@ -1202,8 +1275,7 @@ def _run_project_locked(root, paths, cfg, receipt, translators, limit, open_runt
             return {**receipt, "skipped": "feature-disabled"}
         _write_json(paths["state"], state)
     remaining = [c for c in todo if not (paths["en"] / f"{c['key']}.md").exists()
-                 and not (state["kept"].get(c["key"]) or {}).get("permanent")
-                 and int((state["kept"].get(c["key"]) or {}).get("attempts", 0)) < max_attempts]
+                 and not _gave_up(state["kept"].get(c["key"]), max_attempts)]
     receipt["pendingAfter"] = len(remaining)
     try:
         from .project_full_ingest import migration_applied  # noqa: PLC0415

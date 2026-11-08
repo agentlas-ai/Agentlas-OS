@@ -3,6 +3,10 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.89 — 2026-11-08
+
+- Improve memory translation retries and browser error handling.
+
 ## 1.2.88 — 2026-11-07
 
 - The background English translation of memory drawers and project documents no longer

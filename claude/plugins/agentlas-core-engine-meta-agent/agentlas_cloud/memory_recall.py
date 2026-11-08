@@ -197,6 +197,32 @@ def _set_meta(db: sqlite3.Connection, key: str, value: str) -> None:
     db.execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)", (key, value))
 
 
+def _repair_empty_vectors(index_db: sqlite3.Connection, adapter: Any, started: float, budget_seconds: float) -> None:
+    """Re-embed items stored with an all-zero vector under an older segmentation (embeddings.SEGMENTATION_REVISION).
+
+    Other items embed the same as before, so only these are redone, inside the sync budget; the meta key ends the
+    scan once a pass finishes.
+    """
+    from ontology.embeddings import SEGMENTATION_REVISION
+
+    revision = str(SEGMENTATION_REVISION)
+    if _meta(index_db, "empty_vector_repair") == revision:
+        return
+    rows = index_db.execute(
+        "SELECT id, text FROM items WHERE vec = zeroblob(length(vec)) AND length(trim(text)) > 0").fetchall()
+    done = 0
+    for row in rows:
+        if time.monotonic() - started > budget_seconds:
+            break
+        index_db.execute("UPDATE items SET vec = ? WHERE id = ?", (_pack(adapter.embed(row["text"])), row["id"]))
+        done += 1
+    if done:
+        _set_meta(index_db, "generation", str(int(_meta(index_db, "generation") or 0) + 1))
+    if done == len(rows):
+        _set_meta(index_db, "empty_vector_repair", revision)
+    index_db.commit()
+
+
 def sync_index(store_db: sqlite3.Connection, index_db: sqlite3.Connection, *,
                budget_seconds: float = SYNC_BUDGET_SECONDS) -> dict[str, Any]:
     """Bring the side index in line with the store; stop at the time budget."""
@@ -211,6 +237,7 @@ def sync_index(store_db: sqlite3.Connection, index_db: sqlite3.Connection, *,
         _set_meta(index_db, "adapter", identity)
         _set_meta(index_db, "store_signature", "")
         index_db.commit()
+    _repair_empty_vectors(index_db, adapter, started, budget_seconds)
     if _meta(index_db, "store_signature") == signature:
         total = index_db.execute("SELECT count(*) FROM items").fetchone()[0]
         return {"indexed": total, "pending": 0, "changed": 0, "partial": False}

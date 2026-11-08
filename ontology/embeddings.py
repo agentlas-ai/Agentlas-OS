@@ -75,6 +75,7 @@ class Model2VecInt8Adapter:
     _vocab: dict[str, int] | None = field(default=None, init=False, repr=False)
     _unigram_scores: array | None = field(default=None, init=False, repr=False)
     _unknown_id: int | None = field(default=None, init=False, repr=False)
+    _unknown_score: float = field(default=float("-inf"), init=False, repr=False)
     _tokenizer_type: str | None = field(default=None, init=False, repr=False)
     _embedding_handles: list[Any] = field(default_factory=list, init=False, repr=False)
     _embedding_maps: list[mmap.mmap] = field(default_factory=list, init=False, repr=False)
@@ -149,15 +150,25 @@ class Model2VecInt8Adapter:
             if best_score[start] == float("-inf"):
                 continue
             limit = min(length, start + UNIGRAM_MAX_PIECE_CHARS)
+            covers_one = False
             for end in range(start + 1, limit + 1):
                 token_id = self._vocab.get("".join(characters[start:end]))
                 if token_id is None:
                     continue
+                covers_one = covers_one or end == start + 1
                 candidate = best_score[start] + self._unigram_scores[token_id]
                 if candidate > best_score[end]:
                     best_score[end] = candidate
                     best_start[end] = start
                     best_id[end] = token_id
+            # A character no piece covers is the unknown token for that character alone, scored below every piece, as
+            # SentencePiece and tokenizers do (and the desktop's local-embedding.ts). Before, one such character — a
+            # rare Hangul syllable like 뜀/켬/쟀 or an emoji — emptied the whole text's vector: 389 of 20,813 owner
+            # project chunks had none, and every text that already segmented keeps the same ids.
+            if not covers_one and best_score[start] + self._unknown_score > best_score[start + 1]:
+                best_score[start + 1] = best_score[start] + self._unknown_score
+                best_start[start + 1] = start
+                best_id[start + 1] = self._unknown_id
         if best_score[length] == float("-inf"):
             return []
         output: list[int] = []
@@ -208,6 +219,7 @@ class Model2VecInt8Adapter:
             self._vocab = vocab
             self._unigram_scores = scores
             self._unknown_id = int(model["unk_id"])
+            self._unknown_score = min(scores, default=0.0) - UNIGRAM_UNKNOWN_PENALTY
         else:
             self._vocab = {str(token): int(token_id) for token, token_id in model["vocab"].items()}
             self._unknown_id = self._vocab.get("[UNK]")
@@ -234,6 +246,7 @@ class Model2VecInt8Adapter:
         self._vocab = None
         self._unigram_scores = None
         self._unknown_id = None
+        self._unknown_score = float("-inf")
         self._tokenizer_type = None
 
     def __del__(self) -> None:  # pragma: no cover - best-effort process cleanup
@@ -302,6 +315,11 @@ def vector_adapter_metadata(adapter: VectorAdapter) -> dict[str, Any]:
 
 METASPACE = "\u2581"
 UNIGRAM_MAX_PIECE_CHARS = 24
+UNIGRAM_UNKNOWN_PENALTY = 10.0
+# Bumped when segmentation changes in a way that leaves stored vectors equal except for texts that had none. Stores repair
+# their all-zero rows once per revision instead of re-embedding everything (runtime._repair_empty_vectors,
+# memory_recall.sync_index). 2 = an uncovered character no longer empties a Unigram text (2026-11-08).
+SEGMENTATION_REVISION = 2
 
 
 def _unigram_normalize(text: str) -> str:

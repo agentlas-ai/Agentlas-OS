@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlparse
 from .embeddings import (
     CJK_RUN_PATTERN,
     LATIN_TOKEN_PATTERN,
+    SEGMENTATION_REVISION,
     VectorAdapter,
     cosine_similarity,
     encode_vector,
@@ -166,6 +167,10 @@ RELATION_COLUMNS = (
     "evidence_ref",
 )
 ENTITY_LAYER_ADAPTER = "entity_layer"
+# Marker row (runtime_adapters) for the one-time repair of all-zero vectors left by an older segmentation.
+VECTOR_REPAIR_ADAPTER = "vector_repair"
+# Per writable open, so a hook that opens the runtime pays at most this once the repair is pending (about 30 chunks).
+VECTOR_REPAIR_BUDGET_SECONDS = 0.5
 # Structural (code map / ledger) edges describe the project's own code, which
 # is internal to the project: never public, never elevated to private-only.
 STRUCTURAL_SCOPE = "internal"
@@ -531,6 +536,17 @@ class OntologyRuntime:
                     "DELETE FROM runtime_adapters WHERE kind = 'vector' AND name != ?",
                     (self.vector_adapter.name,),
                 )
+                self._mark_vectors_repaired(conn)
+            else:
+                # A repair never fails the open (migrate() did no embedding before it): what it did is undone, no marker is
+                # written, and the next writable open tries again.
+                conn.execute("SAVEPOINT vector_repair")
+                try:
+                    self._repair_empty_vectors(conn)
+                    conn.execute("RELEASE vector_repair")
+                except Exception:  # noqa: BLE001
+                    conn.execute("ROLLBACK TO vector_repair")
+                    conn.execute("RELEASE vector_repair")
             conn.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (SCHEMA_VERSION, utc_now()),
@@ -795,6 +811,51 @@ class OntologyRuntime:
         rows = conn.execute("SELECT chunk_id, text FROM chunks").fetchall()
         for row in rows:
             conn.execute("INSERT INTO chunk_fts(chunk_id, text) VALUES (?, ?)", (row["chunk_id"], row["text"]))
+
+    def _repair_empty_vectors(self, conn: sqlite3.Connection) -> None:
+        """Re-embed rows stored with an all-zero vector under an older segmentation, a budget at a time.
+
+        An int8 vector with no digit 1-9 is all zero. Every other stored vector is unchanged by the segmentation fix, so
+        only these rows are embedded again; the marker ends the scan once a pass finishes inside the budget.
+        """
+        row = conn.execute(
+            "SELECT config_json FROM runtime_adapters WHERE name = ?", (VECTOR_REPAIR_ADAPTER,)
+        ).fetchone()
+        if row is not None and json_loads(row["config_json"], {}).get("revision") == SEGMENTATION_REVISION:
+            return
+        import time as _time
+
+        deadline = _time.monotonic() + VECTOR_REPAIR_BUDGET_SECONDS
+        for chunk in conn.execute(
+            "SELECT chunk_id, text FROM chunks WHERE vector_json NOT GLOB '*[1-9]*' AND length(trim(text)) > 0"
+        ).fetchall():
+            if _time.monotonic() > deadline:
+                return
+            vector = encode_vector(self.vector_adapter.embed(chunk["text"]))
+            conn.execute("UPDATE chunks SET vector_json = ? WHERE chunk_id = ?", (json_dumps(vector), chunk["chunk_id"]))
+        for candidate in conn.execute(
+            "SELECT ticket_id, candidate_text, embedding_adapter FROM memory_candidates"
+            " WHERE embedding_json NOT GLOB '*[1-9]*' AND length(trim(candidate_text)) > 0"
+        ).fetchall():
+            if not self._vector_adapter_matches(candidate["embedding_adapter"]):
+                continue
+            if _time.monotonic() > deadline:
+                return
+            vector = self.vector_adapter.embed(candidate["candidate_text"])
+            conn.execute(
+                "UPDATE memory_candidates SET embedding_dimensions = ?, embedding_json = ? WHERE ticket_id = ?",
+                (len(vector), json_dumps(encode_vector(vector)), candidate["ticket_id"]),
+            )
+        self._mark_vectors_repaired(conn)
+
+    def _mark_vectors_repaired(self, conn: sqlite3.Connection) -> None:
+        self._upsert_runtime_adapter(
+            conn,
+            name=VECTOR_REPAIR_ADAPTER,
+            kind="repair",
+            status="done",
+            config_json=json_dumps({"revision": SEGMENTATION_REVISION}),
+        )
 
     def _reindex_chunks(self, conn: sqlite3.Connection) -> None:
         rows = conn.execute("SELECT chunk_id, text FROM chunks").fetchall()
@@ -2850,6 +2911,8 @@ class OntologyRuntime:
             # Entity mentions/keys are derived, not exported: the next ingest
             # re-extracts every imported chunk.
             conn.execute("DELETE FROM runtime_adapters WHERE name = ?", (ENTITY_LAYER_ADAPTER,))
+            # Imported vectors may predate the segmentation fix: the next writable open repairs any left empty.
+            conn.execute("DELETE FROM runtime_adapters WHERE name = ?", (VECTOR_REPAIR_ADAPTER,))
             foreign_key_issues = conn.execute("PRAGMA foreign_key_check").fetchall()
             integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
             if foreign_key_issues or integrity != "ok":

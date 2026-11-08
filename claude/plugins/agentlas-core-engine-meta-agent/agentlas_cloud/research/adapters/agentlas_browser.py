@@ -172,14 +172,19 @@ class _McpSession:
 
 
 def _text_of(result: dict) -> str:
-    content = (result or {}).get("result", {}).get("content") or []
+    payload = result.get("result") if isinstance(result, dict) else None
+    content = payload.get("content") if isinstance(payload, dict) else None
+    if not isinstance(content, list):
+        return ""
     parts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
-    return "\n".join(p for p in parts if p).strip()
+    return "\n".join(p for p in parts if isinstance(p, str) and p).strip()
 
 
 def _is_error(result: dict) -> bool:
-    r = (result or {}).get("result") or {}
-    return bool(r.get("isError")) or bool((result or {}).get("error"))
+    if not isinstance(result, dict) or result.get("error") is not None:
+        return True
+    r = result.get("result")
+    return not isinstance(r, dict) or bool(r.get("isError"))
 
 
 class AgentlasBrowserAdapter:
@@ -212,6 +217,8 @@ class AgentlasBrowserAdapter:
             if _is_error(nav):
                 return None, ResearchAttempt(self.module_id, "error", "navigate_failed", source_hint, weight=self.weight)
             snap = s.call_tool("browser_snapshot", {})
+            if _is_error(snap):
+                return None, ResearchAttempt(self.module_id, "error", "snapshot_failed", source_hint, weight=self.weight)
             text = _text_of(snap)
         except TimeoutError:
             return None, ResearchAttempt(self.module_id, "error", "timeout", source_hint, weight=self.weight)
@@ -254,6 +261,8 @@ class AgentlasBrowserAdapter:
             s = self._session()
             nav = s.call_tool("browser_navigate", {"url": source_hint})
             steps.append({"label": "navigate", "isError": _is_error(nav)})
+            if _is_error(nav):
+                return {"status": "error", "reason": "navigate_failed", "url": source_hint, "module": self.module_id, "engine": "agentlas-browser", "steps": steps}
             for i, action in enumerate(actions or []):
                 atype = str(action.get("type") or "").strip()
                 target = str(action.get("target") or "").strip()
@@ -265,9 +274,13 @@ class AgentlasBrowserAdapter:
                     resp = s.call_tool("browser_type", {"element": target, "text": str(action.get("text") or "")})
                 else:
                     steps.append({"label": f"skip:{atype}", "isError": True})
-                    continue
+                    return {"status": "error", "reason": "unsupported_action", "url": source_hint, "module": self.module_id, "engine": "agentlas-browser", "steps": steps}
                 steps.append({"label": f"{atype}:{i+1}", "isError": _is_error(resp)})
+                if _is_error(resp):
+                    return {"status": "error", "reason": "action_failed", "url": source_hint, "module": self.module_id, "engine": "agentlas-browser", "steps": steps}
             snap = s.call_tool("browser_snapshot", {})
+            if _is_error(snap):
+                return {"status": "error", "reason": "snapshot_failed", "url": source_hint, "module": self.module_id, "engine": "agentlas-browser", "steps": steps}
             snapshot_text = _text_of(snap)
         except TimeoutError:
             return {"status": "error", "reason": "timeout", "url": source_hint, "module": self.module_id, "steps": steps}
@@ -299,15 +312,22 @@ class AgentlasBrowserAdapter:
         try:
             s = self._session()
             skills = []
+            skill_list = s.call_tool("browser_skill_list", {})
+            if _is_error(skill_list):
+                return {"status": "error", "reason": "skill_list_failed", "url": source_hint, "module": self.module_id}
             try:
-                skills = json.loads(_text_of(s.call_tool("browser_skill_list", {})))
+                skills = json.loads(_text_of(skill_list))
             except (json.JSONDecodeError, ValueError):
                 skills = []
             if want in skills:
                 resp = s.call_tool("browser_skill_replay", {"name": want})
                 return {"status": "error" if _is_error(resp) else "ok", "mode": "skill_replay", "module": self.module_id, "skill": want, "detail": _text_of(resp)}
             nav = s.call_tool("browser_navigate", {"url": source_hint})
+            if _is_error(nav):
+                return {"status": "error", "reason": "navigate_failed", "url": source_hint, "module": self.module_id}
             snap = s.call_tool("browser_snapshot", {})
+            if _is_error(snap):
+                return {"status": "error", "reason": "snapshot_failed", "url": source_hint, "module": self.module_id}
             return {
                 "status": "needs_host_llm",
                 "reason": "Natural-language automation needs the host LLM to drive the MCP browser tools, or a saved skill. Explore via the tools, then call browser_skill_save to learn it once.",
