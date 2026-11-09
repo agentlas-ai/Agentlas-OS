@@ -1613,6 +1613,9 @@ def reconcile_host_plugin_transition_without_cli(
     }
     if claude_detected and claude_exact and not claude_source_bound:
         claude_registry_migration = _migrate_claude_registry(marketplace, source_root)
+    if claude_detected and claude_exact:
+        # Same rule as reconcile_host_plugins: the settings entry would put the registry back.
+        _rebind_claude_settings_marketplace(home_dir, source_root)
     # The bridge has just materialized/migrated persistent next-load state.
     # Record that host-local activation before comparing already-running host
     # sessions, otherwise an old archive mtime can yield a false first pass.
@@ -1806,6 +1809,8 @@ def reconcile_host_plugins(
                 plugin_root / "known_marketplaces.json",
                 source_root,
             )
+        if not claude_before.get("settingsPinCurrent", True):
+            _rebind_claude_settings_marketplace(home_dir, source_root)
     # The runtime updater can materialize exact persistent state immediately
     # before this call. Seed its host-local cutoff before evaluating processes
     # that may still retain the previous release.

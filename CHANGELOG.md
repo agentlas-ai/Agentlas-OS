@@ -3,6 +3,10 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.94 — 2026-11-09
+
+- Updating a runtime that has a Claude Code settings entry pinned to an old generation no longer ends with `blocked` / exit code 2 although the update worked. The bridge that runs right after activation judged the Claude plugin "not current" and stopped, because the settings pin was only moved by a later step. Every place that moves the Claude marketplace registry now moves that settings entry in the same step, with the same safeguards as in 1.2.93.
+
 ## 1.2.93 — 2026-11-09
 
 - The postponed host-plugin switch of 1.2.92 now also moves the Claude Code settings entry that pins the Agentlas marketplace to an old runtime generation. Claude Code rebuilds its marketplace registry from `extraKnownMarketplaces` in `~/.claude/settings.json`, so a registry that was moved to the stable `current` folder was put back on the next start and the host kept loading the old plugin. Only a directory entry inside the Agentlas runtime folder that points at an older generation of this adapter is moved, by replacing that one path in place (every other byte of the file stays as it is, the result is checked as valid JSON, and the file is replaced atomically only if it did not change meanwhile). A settings file that is a link, an entry outside the runtime folder, or any other marketplace is left alone.
