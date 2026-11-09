@@ -19,6 +19,7 @@ import re
 import secrets
 import shlex
 import shutil
+import stat as _stat_mod
 import subprocess
 import sys
 import tarfile
@@ -1426,6 +1427,7 @@ _LEGACY_BASELINE_SHA256 = {
     "v1.2.93": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
     "v1.2.94": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
     "v1.2.95": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
+    "v1.2.96": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
 }
 _LEGACY_BASELINE_PATHS = (
     Path(".claude/commands"), Path("codex/prompts"), Path("cursor/plugin/commands"),
@@ -4722,28 +4724,155 @@ def _local_diagnostic_failure(runtime_root: Path) -> str | None:
     return reason if reason in {"source_unverified", "copy_failed"} else None
 
 
+# Releases whose own archive carried the runner at `_LOCAL_DIAGNOSTIC_PATH`: the legacy `v1.2.x`
+# compatibility releases listed in `_LEGACY_BASELINE_SHA256`, and the standalone-channel releases
+# v1.2.73 .. v1.2.89. Every public tag of these releases holds the same bytes (`_LOCAL_DIAGNOSTIC_SHA256`).
+# Any other generation (this release onward ships no runner) is trusted only through the updater's
+# own `preserved` receipt. The bytes are pinned either way: a file whose SHA-256 differs is never used.
+_LOCAL_DIAGNOSTIC_NATIVE_RELEASES = frozenset(f"v1.2.{number}" for number in range(73, 90))
+_LOCAL_DIAGNOSTIC_MAX_BYTES = 1024 * 1024
+_O_CLOEXEC = getattr(os, "O_CLOEXEC", 0)
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
+_O_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
+# POSIX: walk the path one component at a time from an open directory, never following a link, so
+# there is no gap between "is this a link?" and "open it" for a swapped component to fit in.
+# Windows has no O_NOFOLLOW/dir_fd; it keeps the link/junction check plus a file-identity recheck.
+_FD_WALK = bool(os.name == "posix" and _O_NOFOLLOW and _O_DIRECTORY and os.open in os.supports_dir_fd)
+
+
+def _local_diagnostic_native_release(release: str | None) -> bool:
+    return release in _LEGACY_BASELINE_SHA256 or release in _LOCAL_DIAGNOSTIC_NATIVE_RELEASES
+
+
+def _owned_by_this_account(info: os.stat_result) -> bool:
+    """POSIX: the entry belongs to the account running the updater and is not world-writable.
+
+    Windows reports no owner in os.stat (st_uid is always 0), so ownership there rests on the
+    per-user profile ACL that already protects ``%USERPROFILE%\\.agentlas``; this function does
+    not inspect ACLs on any platform, only the mode bits and the uid.
+    """
+    if os.name != "posix":
+        return True
+    return info.st_uid == os.geteuid() and not (info.st_mode & _stat_mod.S_IWOTH)
+
+
+def _owned_plain_dir(path: Path) -> bool:
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    return _stat_mod.S_ISDIR(info.st_mode) and _owned_by_this_account(info)
+
+
+def _walk_owned_dirs(root: Path, parts: tuple[str, ...]) -> int | None:
+    """Open ``root/parts`` as a directory fd without following links; every level must be ours."""
+    fd = os.open(root, os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC)
+    try:
+        if not (_stat_mod.S_ISDIR(os.fstat(fd).st_mode) and _owned_by_this_account(os.fstat(fd))):
+            os.close(fd)
+            return None
+        for part in parts:
+            child = os.open(part, os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC, dir_fd=fd)
+            os.close(fd)
+            fd = child
+            if not _owned_by_this_account(os.fstat(fd)):
+                os.close(fd)
+                return None
+        return fd
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
+
+
+def _read_owned_regular_file(root: Path, relative: Path, limit: int) -> bytes | None:
+    """The file's bytes (at most ``limit``), or None unless it is a plain file we may trust.
+
+    Reached through no link, owned by this account (POSIX), a regular file, small enough. The
+    caller still pins the SHA-256 of the returned bytes, so a swapped file could at worst be
+    rejected: only the bytes read here are ever executed or copied, never the path again.
+    """
+    parts = relative.parts
+    if _FD_WALK:
+        directory = _walk_owned_dirs(root, parts[:-1])
+        if directory is None:
+            return None
+        try:
+            handle = os.open(parts[-1], os.O_RDONLY | _O_NOFOLLOW | _O_CLOEXEC | _O_NONBLOCK, dir_fd=directory)
+        finally:
+            os.close(directory)
+        try:
+            info = os.fstat(handle)
+            if not _stat_mod.S_ISREG(info.st_mode) or not _owned_by_this_account(info) or info.st_size > limit:
+                return None
+            chunks: list[bytes] = []
+            remaining = limit + 1
+            while remaining > 0:
+                chunk = os.read(handle, min(65536, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            data = b"".join(chunks)
+            return data if len(data) <= limit else None
+        finally:
+            os.close(handle)
+    path = root / relative
+    if _has_symlink_in_path(path, root):
+        return None
+    before = os.lstat(path)
+    if not _stat_mod.S_ISREG(before.st_mode):
+        return None
+    with path.open("rb") as source:
+        opened = os.fstat(source.fileno())
+        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino) or not _stat_mod.S_ISREG(opened.st_mode):
+            return None
+        data = source.read(limit + 1)
+    after = os.lstat(path)
+    if (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino) or _is_link(path):
+        return None
+    return data if len(data) <= limit else None
+
+
 def _verified_local_diagnostic(runtime_root: Path) -> bytes | None:
     """Read an unchanged, already-installed diagnostic without shipping it."""
     try:
         root = runtime_root.resolve(strict=True)
-        path = root / _LOCAL_DIAGNOSTIC_PATH
-        if _has_symlink_in_path(path, root) or not path.is_file():
-            return None
         release = current_release(root)
-        if release not in _LEGACY_BASELINE_SHA256 and release != "v1.2.89":
+        if not _local_diagnostic_native_release(release):
             receipt_path = root / _LOCAL_DIAGNOSTIC_RECEIPT
             if (_is_link(receipt_path) or _read_json(receipt_path) != {
                     "schemaVersion": "agentlas.local-diagnostic-preservation.v1",
                     "release": release, "sha256": _LOCAL_DIAGNOSTIC_SHA256,
                     "status": "preserved"}):
                 return None
-        with path.open("rb") as source:
-            data = source.read(1024 * 1024 + 1)
-        if len(data) > 1024 * 1024 or hashlib.sha256(data).hexdigest() != _LOCAL_DIAGNOSTIC_SHA256:
+        data = _read_owned_regular_file(root, _LOCAL_DIAGNOSTIC_PATH, _LOCAL_DIAGNOSTIC_MAX_BYTES)
+        if data is None or hashlib.sha256(data).hexdigest() != _LOCAL_DIAGNOSTIC_SHA256:
             return None
         return data
     except (OSError, ValueError):
         return None
+
+
+def _open_new_owned_file(root: Path, relative: Path):
+    """Create ``root/relative`` exclusively, through directories this account owns, following no link."""
+    parts = relative.parts
+    if _FD_WALK:
+        directory = _walk_owned_dirs(root, parts[:-1])
+        if directory is None:
+            raise OSError(errno.EPERM, "local_diagnostic_target_not_owned")
+        try:
+            fd = os.open(parts[-1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_NOFOLLOW | _O_CLOEXEC, 0o644, dir_fd=directory)
+        finally:
+            os.close(directory)
+        return os.fdopen(fd, "wb")
+    target = root / relative
+    if _has_symlink_in_path(target.parent, root) or not target.parent.is_dir() or _path_present(target):
+        raise OSError(errno.EPERM, "local_diagnostic_target_unsafe")
+    return target.open("xb")
 
 
 def _preserve_local_diagnostic() -> None:
@@ -4761,6 +4890,14 @@ def _preserve_local_diagnostic() -> None:
     lock = base / ".update.lock"
     if lock.is_symlink() or not lock.is_file():
         return
+    try:
+        lock_info = os.lstat(lock)
+    except OSError:
+        return
+    # Position alone ("a direct child of the base") says nothing about who made the entry:
+    # the base, the staged directory and the lock must all belong to the account updating.
+    if not (_owned_by_this_account(lock_info) and _owned_plain_dir(base) and _owned_plain_dir(root)):
+        return
     lock_data = _read_json(lock)
     token = lock_data.get("token")
     if lock_data.get("pid") != os.getppid() or not isinstance(token, str) or not re.fullmatch(r"[0-9a-f]{32}", token):
@@ -4771,6 +4908,8 @@ def _preserve_local_diagnostic() -> None:
     if not current.is_dir():
         return
     active = current.resolve()
+    # A generation owned by someone else is read like a modified file: the reader below refuses it
+    # and the staged directory records why, instead of this function silently doing nothing.
     if not _is_generation_dir(active, base.resolve()) or not _is_comparable_release(current_release(current)):
         return
     data = _verified_local_diagnostic(active)
@@ -4792,11 +4931,12 @@ def _preserve_local_diagnostic() -> None:
     if _has_symlink_in_path(target.parent, root) or not target.parent.is_dir() or _path_present(target):
         return
     # The staged directory is owned by this updater.  Exclusive creation avoids
-    # replacing a pre-existing or concurrently created file.
+    # replacing a pre-existing or concurrently created file; on POSIX the path is
+    # also walked from the staged root without following a link.
     identity: tuple[int, int] | None = None
     written = False
     try:
-        with target.open("xb") as output:
+        with _open_new_owned_file(root, _LOCAL_DIAGNOSTIC_PATH) as output:
             stat = os.fstat(output.fileno())
             identity = (stat.st_dev, stat.st_ino)
             if output.write(data) != len(data):

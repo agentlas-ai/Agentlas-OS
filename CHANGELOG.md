@@ -3,6 +3,14 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.96 — 2026-11-09
+
+- Context Map answers plain-language questions far better. Asking in everyday words now puts the right file near the top of the results, results no longer list byte-identical plugin mirror copies or vendored libraries for guesses, and the text handed to the model is shorter.
+- The code map now reads imports and names definitions in the languages people actually use. Before, only Python and JavaScript/TypeScript imports were read, and definitions in Java, Kotlin, C, PHP, Swift, Dart and Go were mostly invisible. Project-internal imports now link for JavaScript/TypeScript, Dart, C, Go, Ruby, Python, Java/Kotlin and Rust. `tsconfig` path aliases, Dart `package:` imports, Go modules, Rust `crate::`, C headers and Python `from . import module` are understood. Swift, C#, Elixir and PSR-4 PHP have no file-level imports to follow.
+- Impact and verify now say when the changed file's language has no import support ("not looked at", not "none found"), and separate the files that import a changed file directly from the chain behind them. The warning shown just before an edit lists direct dependents first and counts the rest instead of listing up to 24 files, and for a change so large that impact refuses to list it, the warning now still names the files that import it directly instead of going silent. The completion gate itself is unchanged.
+- A code map built by an older version is rebuilt once on first use.
+- New installs no longer include the routing benchmark runner (`hephaestus network bench`), a development tool that needs suites you provide yourself. Nothing else depends on it: the command is offered only where the runner is already installed, `network status` and automatic routing read their own state, and an update checks the installed copy's exact SHA-256 and rejects links before carrying it forward. On POSIX it also requires ownership by the current user and rejects world-writable directories; ACLs are not checked. A copy that fails verification is refused and the command says why.
+
 ## 1.2.95 — 2026-11-09
 
 - On Windows, a Claude Code settings entry that spells the Agentlas folder with a different drive-letter case (for example `c:\users\...` instead of `C:\Users\...`) was not recognised as the one to move, so the stale pin stayed and Claude Code put the old plugin back at its next start. Paths are now compared the way the file system does (case-insensitive, either slash direction), and a sibling folder that merely shares a prefix is not treated as inside the runtime folder. Found by running the real 1.2.72 to latest update on Windows 11.

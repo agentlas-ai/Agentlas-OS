@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import math
 import os
 import re
 import stat
@@ -964,13 +965,16 @@ def _project_layout(code_map: Mapping[str, Any], *, per_turn: bool = False) -> l
             if isinstance(site, Mapping) and site.get("f"):
                 if per_turn and _per_turn_excluded(str(site["f"])):
                     continue
-                weight[str(Path(str(site["f"])).parent)] += incoming
+                weight[Path(str(site["f"])).parent.as_posix()] += incoming
     grouped: dict[str, set[str]] = {}
+    directory_files: dict[str, list[str]] = {}
     for relative in files:
         path = Path(relative)
         if path.suffix.lower() not in CODE_EXTENSIONS:
             continue
-        grouped.setdefault(str(path.parent), set()).add(path.stem)
+        directory = path.parent.as_posix()
+        grouped.setdefault(directory, set()).add(path.stem)
+        directory_files.setdefault(directory, []).append(relative)
     if not grouped:
         return []
     ordered = sorted(
@@ -978,8 +982,29 @@ def _project_layout(code_map: Mapping[str, Any], *, per_turn: bool = False) -> l
         key=lambda row: (-weight.get(row[0], 0), -len(row[1]), row[0]),
     )[:MAX_LAYOUT_DIRECTORIES]
     lines: list[str] = []
+    mirrors = {} if per_turn else _mirror_map(code_map)
     for directory, names in ordered:
         listed = sorted(names)
+        if not per_turn:
+            # Still visible to callers who ask for copies, but not spelled out again:
+            # the same file list three times (canonical, claude mirror, codex mirror)
+            # was a third of the whole overview. A mirror or vendored directory says
+            # what it is; the canonical directory carries the names.
+            # "Mirror" is claimed only when every code file in the directory is a
+            # byte-identical copy of a file in one other directory.
+            mirrored_into = {
+                Path(mirrors[value]).parent.as_posix() if value in mirrors else None
+                for value in directory_files.get(directory, [])
+            }
+            if len(mirrored_into) == 1 and None not in mirrored_into:
+                (canonical_directory,) = mirrored_into
+                if canonical_directory in grouped:
+                    target = "the project root" if canonical_directory == "." else f"{canonical_directory}/"
+                    lines.append(f"{directory}/ ({len(listed)}): mirror of {target}")
+                    continue
+            if _is_vendored(directory + "/x"):
+                lines.append(f"{directory}/ ({len(listed)}): vendored")
+                continue
         shown = listed[:MAX_LAYOUT_NAMES_PER_DIRECTORY]
         suffix = f" +{len(listed) - len(shown)}" if len(listed) > len(shown) else ""
         lines.append(f"{directory}/ ({len(listed)}): " + ", ".join(shown) + suffix)
@@ -1160,6 +1185,203 @@ def _fallback_symbols(
     return hits
 
 
+# --- Noise control for explicit slices -------------------------------------------
+# A task in plain words used to get a full-length list in which the right file was
+# rarely near the top and a third of the rows were mirror copies or vendored libraries.
+# Three causes, one fix each:
+#   1. file-scope symbols were ranked by reference count, which is how often a
+#      NAME is written (``__init__``, ``row``), not how much it matters here;
+#   2. references are name based, so a name defined in many files drags in every
+#      file that merely uses the same word;
+#   3. words in the task never touched a file name or a symbol name unless a
+#      whole identifier was typed.
+# A name defined in this many distinct files is a word, not a thing.
+_UBIQUITOUS_DEF_FILES = 4
+# A symbol this widely written is a hub; following it floods the slice.
+_HUB_REFERENCE_COUNT = 40
+_LEXICAL_MAX_SEEDS = 8
+_LEXICAL_MAX_SYMBOLS_SCANNED = 400_000
+_LEXICAL_TEST_WEIGHT = 0.6
+_WORD_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
+
+
+def _stem(word: str) -> str:
+    return word[:-1] if len(word) > 4 and word.endswith("s") and not word.endswith("ss") else word
+
+
+def _name_words(name: str) -> frozenset[str]:
+    """Lowercase words of a symbol or path (snake_case, camelCase, separators)."""
+
+    out: set[str] = set()
+    for raw in _WORD_RE.findall(str(name).replace("_", " ")):
+        word = raw.lower()
+        if len(word) >= 3:
+            out.add(_stem(word))
+    return frozenset(out)
+
+
+def _task_words(terms: Iterable[str]) -> frozenset[str]:
+    words: set[str] = set()
+    for term in terms:
+        if term.isascii():
+            words.update(_name_words(term))
+    return frozenset(words - {_stem(stop) for stop in _STOP_TERMS})
+
+
+def _is_vendored(path: str) -> bool:
+    parts = path.split("/")
+    return "_vendor" in parts or "node_modules" in parts or path.startswith("opencode/plugins/")
+
+
+def _mirror_map(code_map: Mapping[str, Any]) -> dict[str, str]:
+    """Mirror path -> canonical path, only where the two files hold the same bytes.
+
+    A path shaped like ``claude/plugins/x/src/a.py`` next to ``src/a.py`` proves
+    nothing by itself (an ordinary plugin repository has both as different files);
+    the content hashes the map already stores do. Without hashes (an incomplete
+    snapshot) nothing is folded.
+    """
+
+    hashes = code_map.get("contentHashes")
+    if not isinstance(hashes, Mapping) or not hashes:
+        return {}
+    mirrors: dict[str, str] = {}
+    for path, digest in hashes.items():
+        if not isinstance(path, str) or not isinstance(digest, str):
+            continue
+        match = _MIRROR_PATH_RE.match(path)
+        if match and hashes.get(match.group(1)) == digest:
+            mirrors[path] = match.group(1)
+    return mirrors
+
+
+def _canonical_file(path: str, mirrors: Mapping[str, str]) -> str:
+    """A byte-identical plugin mirror maps to its canonical file."""
+
+    return mirrors.get(path, path)
+
+
+def _def_file_count(sites: Any, mirrors: Mapping[str, str]) -> int:
+    if not isinstance(sites, list):
+        return 0
+    return len(
+        {
+            _canonical_file(str(site.get("f") or ""), mirrors)
+            for site in sites
+            if isinstance(site, Mapping) and site.get("f")
+        }
+    )
+
+
+def _lexical_door(
+    code_map: Mapping[str, Any],
+    words: frozenset[str],
+    known_files: frozenset[str],
+    mirrors: Mapping[str, str],
+) -> tuple[list[str], list[str]]:
+    """Files and symbols whose NAMES carry the task's words, rarest words first.
+
+    No new index: ``fileSymbols`` and the file paths already in the map. A word that
+    names few files weighs more (inverse document frequency); a word the project
+    uses everywhere weighs almost nothing. Mirror copies and vendored libraries are
+    never candidates, and a lone weak word opens nothing, so a vague task gets no
+    guess instead of sixty.
+    """
+
+    file_symbols = code_map.get("fileSymbols")
+    definitions = code_map.get("defIndex")
+    if not words or not isinstance(file_symbols, Mapping) or not isinstance(definitions, Mapping):
+        return [], []
+    if sum(len(v) for v in file_symbols.values() if isinstance(v, list)) > _LEXICAL_MAX_SYMBOLS_SCANNED:
+        return [], []
+    rows: list[tuple[str, frozenset[str], dict[str, frozenset[str]], bool]] = []
+    frequency: Counter[str] = Counter()
+    for path, items in file_symbols.items():
+        if not isinstance(path, str) or not isinstance(items, list):
+            continue
+        if _is_vendored(path) or _canonical_file(path, mirrors) != path:
+            continue
+        path_words = _name_words(path.replace("/", "_").replace(".", "_"))
+        symbol_words: dict[str, frozenset[str]] = {}
+        for item in items:
+            if isinstance(item, Mapping) and item.get("n"):
+                # Words come from the name as written (camelCase boundaries); the whole
+                # lowercase name is a word too, since a task may type it that way.
+                key = str(item["n"]).lower()
+                symbol_words[key] = _name_words(str(item["n"])) | _name_words(key)
+        present = set(path_words)
+        for value in symbol_words.values():
+            present |= value
+        for word in present & words:
+            frequency[word] += 1
+        rows.append((path, path_words, symbol_words, _is_test_path(path)))
+    # Files with no indexed symbols (shell scripts, configs) are still named things:
+    # their path alone can carry the task's words.
+    for path in known_files:
+        if path in file_symbols or _is_vendored(path) or _canonical_file(path, mirrors) != path:
+            continue
+        path_words = _name_words(path.replace("/", "_").replace(".", "_"))
+        for word in path_words & words:
+            frequency[word] += 1
+        rows.append((path, path_words, {}, _is_test_path(path)))
+    if not rows or not frequency:
+        return [], []
+    total = len(rows)
+    weights = {
+        word: math.log((total + 1) / (count + 0.5))
+        for word, count in frequency.items()
+        if count <= max(25, total // 10)
+    }
+    if not weights:
+        return [], []
+    scored: list[tuple[float, str, set[str]]] = []
+    for path, path_words, symbol_words, is_test in rows:
+        score = 0.0
+        matched: set[str] = set()
+        for word, weight in weights.items():
+            in_path = word in path_words
+            hits = sum(1 for value in symbol_words.values() if word in value)
+            if in_path or hits:
+                matched.add(word)
+                score += weight * ((2.0 if in_path else 0.0) + min(3, hits) * 0.7)
+        if matched and (len(matched) >= 2 or len(weights) == 1):
+            scored.append((score * (_LEXICAL_TEST_WEIGHT if is_test else 1.0), path, matched))
+    if not scored:
+        return [], []
+    scored.sort(key=lambda row: (-row[0], row[1]))
+    floor = scored[0][0] * 0.5
+    seeds = [row for row in scored if row[0] >= floor][:_LEXICAL_MAX_SEEDS]
+    seed_paths = {row[1] for row in seeds}
+    ref_count = code_map.get("refCount") if isinstance(code_map.get("refCount"), Mapping) else {}
+    candidates: dict[str, tuple[float, int, int]] = {}
+    for path, _path_words, symbol_words, _is_test in rows:
+        if path not in seed_paths:
+            continue
+        for name, value in symbol_words.items():
+            overlap = sum(weights.get(word, 0.0) for word in value & words)
+            if overlap <= 0 or name not in definitions:
+                continue
+            files = _def_file_count(definitions.get(name), mirrors)
+            if files >= _UBIQUITOUS_DEF_FILES:
+                continue
+            candidates[name] = (-overlap, files, -int(ref_count.get(name) or 0))
+    ranked = sorted(candidates, key=lambda name: (*candidates[name], name))
+    return [row[1] for row in seeds], ranked[:MAX_SELECTED_SYMBOLS]
+
+
+def _dependency_neighbours(code_map: Mapping[str, Any]) -> dict[str, set[str]]:
+    adjacency: dict[str, set[str]] = {}
+    for edge in code_map.get("dependencyEdges") or []:
+        if not isinstance(edge, Mapping):
+            continue
+        source = str(edge.get("from") or "")
+        target = str(edge.get("to") or "")
+        if source and target:
+            adjacency.setdefault(source, set()).add(target)
+            adjacency.setdefault(target, set()).add(source)
+    return adjacency
+
+
 # --- Per-turn slice gate (hook path only; explicit MCP tools are unchanged) ---
 # The per-turn slice is injected into every prompt, so it must earn its place:
 # it is produced only when the prompt names an identifier that the index knows
@@ -1275,6 +1497,7 @@ def _selected_symbols(
     terms: Sequence[str],
     files: Sequence[str],
     fallback_terms: Sequence[str] = (),
+    task_words: frozenset[str] = frozenset(),
 ) -> tuple[list[str], str]:
     """Return ``(symbols, match_mode)``.
 
@@ -1289,6 +1512,7 @@ def _selected_symbols(
         return [], "none"
     exact = list(dict.fromkeys(term for term in terms if term in definitions))
     selected: list[str] = list(exact)
+    written: dict[str, str] = {}  # lowercase key -> the name as written (camelCase boundaries)
     if isinstance(file_symbols, dict):
         for file_path in files:
             symbols = file_symbols.get(file_path)
@@ -1299,11 +1523,28 @@ def _selected_symbols(
                     key = str(item.get("n") or "").lower()
                     if key and key in definitions:
                         selected.append(key)
+                        written.setdefault(key, str(item["n"]))
     ref_count = code_map.get("refCount") if isinstance(code_map.get("refCount"), dict) else {}
-    ranked = sorted(
-        set(selected) - set(exact),
-        key=lambda key: (-int(ref_count.get(key) or 0), key),
-    )
+    if task_words:
+        # Symbols taken from a file the task named: the ones whose NAME carries the
+        # task's words come first, then the ones few files define; a name written
+        # in many files (``__init__``) says nothing about this file and is left out.
+        mirrors = _mirror_map(code_map)
+        scored: list[tuple[int, int, int, str]] = []
+        common: list[tuple[int, int, int, str]] = []
+        for key in set(selected) - set(exact):
+            sites = _def_file_count(definitions.get(key), mirrors)
+            overlap = len((_name_words(written.get(key, key)) | _name_words(key)) & task_words)
+            row = (-overlap, sites, -int(ref_count.get(key) or 0), key)
+            (common if sites >= _UBIQUITOUS_DEF_FILES else scored).append(row)
+        # A file whose every symbol is a common name (``main``, ``__init__``) still
+        # answers a question about it: the common names are the last resort, not nothing.
+        ranked = [row[3] for row in sorted(scored or common)]
+    else:
+        ranked = sorted(
+            set(selected) - set(exact),
+            key=lambda key: (-int(ref_count.get(key) or 0), key),
+        )
     resolved = [*exact, *ranked][:MAX_SELECTED_SYMBOLS]
     if resolved:
         return resolved, ("exact" if exact else "file")
@@ -1339,6 +1580,7 @@ def context_slice(
     )
     terms = _query_terms(task)
     known_files: frozenset[str] = frozenset()
+    mirrors: Mapping[str, str] = {}
     if per_turn:
         known_files = frozenset(
             value for value in code_map.get("mappedFiles") or [] if isinstance(value, str)
@@ -1364,24 +1606,71 @@ def context_slice(
             return {"schemaVersion": CONTEXT_SLICE_SCHEMA, "status": "ok", "symbols": [], "files": []}
         selected_files = list(named_files)
     else:
+        known_files = frozenset(
+            value for value in code_map.get("mappedFiles") or [] if isinstance(value, str)
+        )
+        mirrors = _mirror_map(code_map)
+        folded_mirrors: set[str] = set()
+        folded_vendored: set[str] = set()
+        # Files the caller asked for, and every definition site of a symbol the caller
+        # named exactly, are returned as they are (see the explicit-slice contract).
+        keep_paths: set[str] = set()
 
         def _clean_paths(values: Iterable[str]) -> list[str]:
-            return list(values)
+            # What the task only GUESSED at loses its mirror copies (the canonical file
+            # stands for them) and vendored libraries; both are counted, not hidden.
+            kept: list[str] = []
+            for value in values:
+                if not value:
+                    continue
+                if value in keep_paths:
+                    kept.append(value)
+                    continue
+                canonical = _canonical_file(value, mirrors)
+                if canonical != value:
+                    folded_mirrors.add(value)
+                    kept.append(canonical)
+                elif _is_vendored(value):
+                    folded_vendored.add(value)
+                else:
+                    kept.append(value)
+            return list(dict.fromkeys(kept))
 
         selected_files = _task_path_hints(root, task, targets)
+        keep_paths.update(selected_files)
     # `selected_files` is reassigned below to the dependency-expanded set. Co-edit
     # history must anchor on what the task actually named, not on the expansion,
     # or every co-edit partner is already inside the set and nothing is reported.
     task_named_files = list(selected_files)
+    task_named_set = frozenset(task_named_files)
     if not per_turn:
+        words = _task_words(terms)
         symbols, symbol_match = _selected_symbols(
             code_map,
             terms=_symbol_terms(task, code_map),
             files=selected_files,
-            fallback_terms=terms,
+            fallback_terms=(),
+            task_words=words,
         )
+        if not symbols:
+            # Nothing was named exactly and no file was named: find files and symbols
+            # whose names carry the task's words (rare words weigh most) instead of
+            # substring-matching every symbol and ranking by how often a name is written.
+            lexical_files, lexical_symbols = _lexical_door(code_map, words, known_files, mirrors)
+            if lexical_symbols or lexical_files:
+                symbols, symbol_match = lexical_symbols, "substring"
+                # Files the task named by path stay first; the words' guesses follow.
+                selected_files = [*selected_files, *lexical_files]
+                if not symbols:
+                    symbol_match = "none"
+        if symbol_match == "exact":
+            for key in symbols:
+                for site in (code_map.get("defIndex") or {}).get(key) or []:
+                    if isinstance(site, Mapping) and site.get("f"):
+                        keep_paths.add(str(site["f"]))
     definitions = code_map.get("defIndex", {})
     references = code_map.get("refIndex", {})
+    adjacency = _dependency_neighbours(code_map)
 
     related_files: list[str] = list(selected_files)
     symbol_rows: list[dict[str, Any]] = []
@@ -1414,6 +1703,34 @@ def context_slice(
             )
             if not definition_rows:
                 continue
+        if not per_turn and symbol_match != "exact":
+            # A symbol recovered by guessing, not by name. A distinctive name (one
+            # defining file, not written everywhere) keeps its references: same-package
+            # users need no import line (Go, Swift, Java). A name that several files
+            # define, or that is written all over the project, keeps only references in
+            # files linked to its definition by an import edge; the rest merely use the word.
+            sites = _def_file_count(defs, mirrors)
+            named_rows = [row for row in definition_rows if str(row.get("f") or "") in task_named_set]
+            if sites >= _UBIQUITOUS_DEF_FILES and named_rows:
+                # A common name (``main``) taken from a file the task named is about THAT
+                # file; its twenty other definition sites are other people's.
+                definition_rows = named_rows
+            if sites >= 2 or int((code_map.get("refCount") or {}).get(key) or 0) > _HUB_REFERENCE_COUNT:
+                linked = {str(i.get("f")) for i in definition_rows if i.get("f")}
+                for site_file in list(linked):
+                    linked |= adjacency.get(site_file, set())
+                reference_files = [r for r in reference_files if r in linked]
+            reference_files = _clean_paths(reference_files)
+            # One row per canonical file; the canonical file's own row wins, and the
+            # first site found stays first (a dict rebuild kept the last).
+            folded_rows: dict[str, dict[str, Any]] = {}
+            for row in sorted(
+                definition_rows,
+                key=lambda i: (str(i.get("f") or "") in mirrors, str(i.get("f") or "") not in task_named_set),
+            ):
+                canonical_file = _canonical_file(str(row.get("f") or ""), mirrors)
+                folded_rows.setdefault(canonical_file, {**row, "f": canonical_file})
+            definition_rows = list(folded_rows.values())
         definition_rows = definition_rows[:8]
         reference_files = reference_files[:64]
         related_files.extend(str(item.get("f") or "") for item in definition_rows)
@@ -1438,7 +1755,9 @@ def context_slice(
     # first, then each matched symbol's definition sites, then its references.
     # Sorting that alphabetically before the cap is what made every task return
     # the same dot-prefixed files.
-    selected_files = _bounded_by_relevance(related_files, MAX_SELECTED_FILES)
+    selected_files = _bounded_by_relevance(
+        _clean_paths(related_files) if not per_turn else related_files, MAX_SELECTED_FILES
+    )
     # A task phrased in a language the symbol table cannot contain (Korean over
     # an English codebase — three of four measured projects) matched nothing.
     # The library must still open a door: the project's conventional entry
@@ -1496,17 +1815,28 @@ def context_slice(
                 neighbours.append(source)
         file_symbols_index = code_map.get("fileSymbols")
         if isinstance(file_symbols_index, Mapping):
+            ref_totals = code_map.get("refCount") if isinstance(code_map.get("refCount"), Mapping) else {}
             for name in list(seeds):
                 for item in file_symbols_index.get(name) or []:
                     if not isinstance(item, Mapping):
                         continue
                     key = str(item.get("n") or "").lower()
+                    if not per_turn and (
+                        _def_file_count(definitions.get(key), mirrors) >= _UBIQUITOUS_DEF_FILES
+                        or int(ref_totals.get(key) or 0) > _HUB_REFERENCE_COUNT
+                    ):
+                        continue  # a common name: its "references" are other people's words
                     for value in (references.get(key) or []) if isinstance(references, Mapping) else []:
                         if isinstance(value, str):
                             neighbours.append(value)
         if neighbours:
             # Seeds keep their places; neighbours fill what is left. An
-            # alphabetical cap here evicted the seeds themselves.
+            # alphabetical cap here evicted the seeds themselves. Among neighbours the
+            # ones reached from several seeds come first (edge order says nothing).
+            if not per_turn:
+                reach = Counter(neighbours)
+                order = {value: index for index, value in reversed(list(enumerate(neighbours)))}
+                neighbours = sorted(reach, key=lambda value: (-reach[value], order[value]))
             selected_files = _bounded_by_relevance(
                 _clean_paths([*selected_files, *neighbours]), MAX_SELECTED_FILES
             )
@@ -1649,6 +1979,11 @@ def context_slice(
         "coEditedFiles": _co_edited_files(root, task_named_files),
         "symbols": symbol_rows,
         "files": selected_files,
+        **(
+            {"omittedFiles": {"mirrors": len(folded_mirrors), "vendored": len(folded_vendored)}}
+            if not per_turn and (folded_mirrors or folded_vendored)
+            else {}
+        ),
         "modules": selected_modules,
         "moduleEdges": module_edges,
         "verification": {
@@ -1949,6 +2284,50 @@ def drift(project: str | Path, *, refresh: bool = True) -> dict[str, Any]:
     }
 
 
+def direct_dependents(
+    project: str | Path,
+    changed: Sequence[str],
+    *,
+    refresh: bool = True,
+    allow_stale: bool = False,
+    freshness_budget_seconds: float | None = None,
+) -> dict[str, Any]:
+    """Files that import a changed file directly (one hop), with no size cap.
+
+    ``impact`` refuses a change whose import chain exceeds ``MAX_IMPACT_FILES``
+    because a clipped list is not completion evidence. The edit-time warning has
+    no such duty: it only has to say who reads the file being edited, and one hop
+    is always small enough to list.
+    """
+
+    _root, code_map, _receipt = load_code_map(
+        project,
+        refresh=refresh,
+        allow_stale=allow_stale,
+        freshness_budget_seconds=freshness_budget_seconds,
+    )
+    roles = code_map.get("fileRoles") if isinstance(code_map.get("fileRoles"), dict) else {}
+    changed_set = {str(value) for value in changed}
+    found: set[str] = set()
+    for edge in code_map.get("dependencyEdges") or []:
+        if not isinstance(edge, Mapping):
+            continue
+        target = str(edge.get("to") or "")
+        if (
+            str(edge.get("from") or "") in changed_set
+            and target
+            and target not in changed_set
+            and str(roles.get(target) or "") != "test"
+        ):
+            found.add(target)
+    ordered = sorted(found)
+    return {
+        "directDependents": ordered[:MAX_IMPACT_FILES],
+        "directDependentCount": len(ordered),
+        "impactedFiles": ordered[:MAX_IMPACT_FILES],
+    }
+
+
 def impact(
     project: str | Path,
     changed: Sequence[str],
@@ -2045,7 +2424,10 @@ def impact(
     impacted: set[str] = set(changed_files)
     paths: list[dict[str, Any]] = []
     dependency_frontier = set(changed_files)
+    hop_of: dict[str, int] = {}
+    hop = 0
     while dependency_frontier:
+        hop += 1
         next_frontier: set[str] = set()
         for edge in dependency_edges:
             source = str(edge.get("from") or "")
@@ -2057,6 +2439,7 @@ def impact(
                 and target not in impacted
             ):
                 impacted.add(target)
+                hop_of[target] = hop
                 next_frontier.add(target)
                 if len(impacted) > MAX_IMPACT_FILES:
                     break
@@ -2243,7 +2626,35 @@ def impact(
         # clipped list as status=ok.
         raise ContextMapError("context_impact_incomplete")
     impacted_files = sorted(impacted)
+    # Files that import a changed file directly (one hop) come first for a reader; the rest is
+    # the import chain behind them. Lexical references of a symbol-only change count as direct.
+    changed_set = set(changed_files)
+    direct_dependents = sorted(
+        value for value in impacted_files if value not in changed_set and hop_of.get(value, 1) == 1
+    )
+    downstream_count = sum(1 for value in impacted_files if value not in changed_set and hop_of.get(value, 1) > 1)
     map_stats = code_map.get("stats") if isinstance(code_map.get("stats"), dict) else {}
+    resolution = map_stats.get("importResolution") if isinstance(map_stats.get("importResolution"), dict) else {}
+    dependency_coverage: list[dict[str, Any]] = []
+    if resolution:
+        by_language: dict[str, list[str]] = {}
+        for value in sorted(changed_set):
+            language = CODE_EXTENSIONS.get(Path(value).suffix.lower())
+            if language:
+                by_language.setdefault(language, []).append(value)
+        for language, paths_in_language in sorted(by_language.items()):
+            row = resolution.get(language)
+            if not isinstance(row, dict):
+                continue
+            if not row.get("resolver"):
+                status = "no_import_resolver"
+            elif int(row.get("files") or 0) >= 5 and int(row.get("linked") or 0) == 0:
+                status = "no_imports_linked"
+            else:
+                continue
+            dependency_coverage.append(
+                {"language": language, "status": status, "changedFiles": paths_in_language[:8]}
+            )
     map_budget_stop = str(map_stats.get("budgetStop") or "")
     map_output_truncated = map_stats.get("outputTruncated") is True
     map_complete = (
@@ -2279,6 +2690,9 @@ def impact(
         "changes": canonical_changes,
         "changedSymbols": sorted(set(changed_symbols)),
         "impactedFiles": impacted_files,
+        "directDependentCount": len(direct_dependents),
+        "downstreamCount": downstream_count,
+        "dependencyCoverage": dependency_coverage,
         "verificationTargets": target_rows,
         "verificationChannelPolicy": "one-executed-valid-channel",
         "verificationChannels": verification_channels,
@@ -2303,6 +2717,8 @@ def impact(
         "project": root.name,
         "paths": paths,
         "impactedFiles": impacted_files,
+        "directDependents": direct_dependents,
+        "dependencyCoverage": dependency_coverage,
         "verificationTargets": receipt["verificationTargets"],
         "impactedModules": _bounded_strings((_module_of(value) for value in impacted_files), 48),
         "receipt": receipt,
@@ -2406,6 +2822,7 @@ def verify_impact(
         "changeSetDigest": impact_receipt.get("changeSetDigest"),
         "verificationGraphDigest": impact_receipt.get("verificationGraphDigest"),
         "verificationTargets": impact_receipt.get("verificationTargets", []),
+        "dependencyCoverage": impact_receipt.get("dependencyCoverage", []),
         "verificationChannelPolicy": "one-executed-valid-channel",
         "verificationChannels": {
             name: sorted(paths)
@@ -2516,6 +2933,18 @@ def render_context_slice(value: Mapping[str, Any], *, max_chars: int = MAX_RENDE
         }.get(file_match, "Related files:")
         lines.append(heading)
         lines.extend(f"- {_printable(path)}" for path in files[:40])
+        omitted_files = value.get("omittedFiles")
+        if isinstance(omitted_files, Mapping):
+            folded = [
+                f"{count} {label}"
+                for label, count in (
+                    ("mirror copies", omitted_files.get("mirrors")),
+                    ("vendored", omitted_files.get("vendored")),
+                )
+                if isinstance(count, int) and count > 0
+            ]
+            if folded:
+                lines.append(f"({', '.join(folded)} not listed; name a symbol or path to list them)")
     co_edited = value.get("coEditedFiles")
     if isinstance(co_edited, list) and co_edited:
         # Observed history, not inference: files repeatedly changed together

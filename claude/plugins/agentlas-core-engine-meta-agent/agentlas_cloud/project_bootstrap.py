@@ -26,6 +26,16 @@ from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+from .import_resolution import (
+    MAX_CONFIG_BYTES as MAX_RESOLUTION_CONFIG_BYTES,
+    MAX_CONFIG_FILES as MAX_RESOLUTION_CONFIG_FILES,
+    MAX_PACKAGE_TARGETS as MAX_RESOLUTION_PACKAGE_TARGETS,
+    MAX_SUFFIX_INDEX_FILES as MAX_RESOLUTION_SUFFIX_INDEX_FILES,
+    RESOLVER_LANGUAGES,
+    ImportResolver,
+    extract_specifiers as extract_import_specifiers,
+    is_config_path as is_resolution_config,
+)
 from .windows_console import no_console_window
 
 _O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
@@ -61,7 +71,7 @@ AUTO_BOOTSTRAP_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_AUTO"
 MCP_AUTO_BOOTSTRAP_ENV = "AGENTLAS_MCP_PROJECT_BOOTSTRAP_AUTO"
 AUTO_ALLOWED_ROOTS_ENV = "AGENTLAS_PROJECT_BOOTSTRAP_ALLOWED_ROOTS"
 CODE_MAP_CACHE_SCHEMA = "agentlas.code-map-cache.v4"
-CODE_MAP_POLICY_VERSION = "content-snapshot-precision-index.v4"
+CODE_MAP_POLICY_VERSION = "content-snapshot-precision-index.v5"
 VERIFICATION_MAP_SCHEMA = "agentlas.verification-map.v2"
 CONTEXT_INDEX_POLICY_SCHEMA = "agentlas.context-index-policy.v1"
 CODE_MAP_MANIFEST_SCHEMA = "agentlas.code-map-manifest.v3"
@@ -106,6 +116,10 @@ PRIVACY_PATTERNS = (
 
 CODE_EXTENSIONS = {
     ".c": "c",
+    ".h": "c",
+    ".hh": "cpp",
+    ".hpp": "cpp",
+    ".hxx": "cpp",
     ".cc": "cpp",
     ".cjs": "javascript",
     ".cpp": "cpp",
@@ -241,17 +255,6 @@ DEFAULT_CONTEXT_INDEX_POLICY = {
     ],
 }
 
-JS_IMPORT_SPECIFIER_PATTERNS = (
-    re.compile(r"(?m)^\s*import\s*['\"]([^'\"]+)['\"]"),
-    re.compile(r"(?ms)^\s*(?:import|export)\s+[^;]{0,2000}?\s+from\s*['\"]([^'\"]+)['\"]"),
-    re.compile(r"\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)"),
-    re.compile(r"\bimport\(\s*['\"]([^'\"]+)['\"]\s*\)"),
-)
-PYTHON_IMPORT_SPECIFIER_PATTERNS = (
-    re.compile(r"(?m)^\s*from\s+([.]*[A-Za-z_][\w.]*)\s+import\s+"),
-    re.compile(r"(?m)^\s*import\s+([A-Za-z_][\w.]*)"),
-)
-
 # Identifier start: any Unicode letter, `_`, or `$`. The ASCII-only start class
 # silently dropped every non-ASCII symbol name — measured: `def 한글함수()` was
 # counted as a code file but never entered defIndex, so the file was invisible
@@ -263,6 +266,101 @@ SYMBOL_PATTERNS = (
     ("type", re.compile(rf"^\s*(?:export\s+)?(?:interface|type|enum|struct|trait)\s+((?:{_IDENT})[\w$]*)")),
     ("function", re.compile(rf"^\s*(?:export\s+)?(?:const|let|var)\s+((?:{_IDENT})[\w$]*)\s*=\s*(?:async\s*)?\(")),
 )
+# Definitions the four generic patterns above cannot see. They start at "def|function|func|fn|class"
+# with at most `export`/`async` before it, so `public class X`, `pub fn x`, `fun x`, a Go method,
+# a C function or a Dart method were invisible, and a name the map does not know has no references
+# either. In Java, Kotlin, C, PHP, Swift, Dart and Go most definitions were missing from the map.
+# These per-language patterns are tried FIRST (they know the modifiers), the generic ones after; a language without a table keeps
+# exactly the old behaviour. One line, one symbol, and very long lines are skipped (minified code
+# must never turn a regex into a stall).
+_NAME = rf"((?:{_IDENT})[\w$]*)"
+_ANN = r"(?:@[\w.]+(?:\([^)]*\))?\s+)*"
+_TYPE_WORDS = r"[\w$.\[\]]+(?:<[^;(){}]*>)?\??(?:\[\])*\??"
+_NOT_CONTROL = r"(?!(?:if|for|while|switch|catch|return|else|do|new|throw|await|yield|sizeof|typeof|case|in|is|as)\b)"
+MAX_SYMBOL_LINE_CHARS = 500
+# After a name: the parameter list runs on to the next line (no `;` yet), or it closes and the body
+# opens on this line. A statement that CALLS something ends in `);` and matches neither.
+_SIG = r"\((?:[^;{]*|[^;]*\)\s*(?:throws [\w$., ]+)?\s*\{.*)$"
+_SIG_C = r"\((?:[^;{]*|[^;]*\)\s*\{.*)$"
+_SIG_DART = r"\((?:[^;{]*|[^;]*\)\s*(?:async\*?|sync\*)?\s*(?:\{.*|=>.*))$"
+_C_HEAD = rf"^(?!\s|#|//|/\*|\*|\}}|typedef\b|extern\b|return\b){_NOT_CONTROL}[A-Za-z_][\w \t\*&:<>,~]*?[ \t\*&:]{_NOT_CONTROL}{_NAME}[ \t]*"
+_MACRO_WORDS = r"(?:_*[A-Z][A-Z0-9_]{2,}\s+)*"
+_SKIP_TEMPLATE_PARAM = re.compile(r"^\s*(?:template\s*<\s*)?(?:class|typename)\s+[\w$]+\s*(?:=.*|,.*|>\s*(?:[,)].*)?)$")
+_SKIP_FORWARD_DECL = re.compile(r"^\s*(?:class|struct|union|enum(?:\s+class|\s+struct)?)\s+(?:[\w$]+\s+)*[\w$]+\s*;")
+_JAVA_TYPE = r"(?:[A-Z][\w$.<>\[\]?,]*|void|int|long|double|float|boolean|char|byte|short)(?:<[^>]*>)?(?:\[\])*"
+LANGUAGE_SYMBOL_PATTERNS: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
+    "java": (
+        ("class", re.compile(rf"^\s*{_ANN}(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed|strictfp)\s+)*(?:class|interface|enum|record|@interface)\s+{_NAME}")),
+        ("function", re.compile(rf"^\s*{_ANN}(?:(?:public|protected|private|static|final|abstract|synchronized|native|default|strictfp)\s+)+(?:<[^;(){{}}]*>\s+)?{_TYPE_WORDS}\s+{_NAME}\s*{_SIG}")),
+        ("function", re.compile(rf"^\s{{2,}}{_ANN}(?:<[^>]+>\s+)?{_JAVA_TYPE}\s+{_NAME}\s*\([^;]*\)\s*(?:throws [\w$., ]+)?\s*[{{;].*$")),
+    ),
+    "kotlin": (
+        ("class", re.compile(rf"^\s*{_ANN}(?:(?:public|private|internal|protected|abstract|open|final|sealed|data|enum|annotation|inline|value|inner|fun|companion|expect|actual)\s+)*(?:class|interface|object)\s+{_NAME}")),
+        ("function", re.compile(rf"^\s*{_ANN}(?:(?:public|private|internal|protected|override|open|abstract|final|suspend|inline|operator|infix|tailrec|external|expect|actual|const)\s+)*fun\s+(?:<[^>]+>\s*)?(?:[\w$.<>?,\s]+\.)?{_NAME}\s*\(")),
+    ),
+    "c": (
+        ("skip", _SKIP_FORWARD_DECL),
+        ("type", re.compile(rf"^\s*(?:typedef\s+)?(?:struct|union|enum)\s+{_MACRO_WORDS}{_NAME}\s*(?:\{{|$)")),
+        ("function", re.compile(rf"^\s*#\s*define\s+{_NAME}\(")),
+        ("type", re.compile(rf"^\s*typedef\b[^;(]*?\b{_NAME}\s*;")),
+        ("function", re.compile(rf"{_C_HEAD}{_SIG_C}")),
+    ),
+    "cpp": (
+        ("skip", _SKIP_TEMPLATE_PARAM),
+        ("skip", _SKIP_FORWARD_DECL),
+        ("class", re.compile(rf"^\s*(?:template\s*<[^>]*>\s*)?(?:class|struct|union|enum(?:\s+class)?|namespace)\s+{_MACRO_WORDS}{_NAME}\s*(?:\{{|:|<|$|final\b)")),
+        ("function", re.compile(rf"^\s*#\s*define\s+{_NAME}\(")),
+        ("function", re.compile(rf"{_C_HEAD}{_SIG_C}")),
+    ),
+    "objective-c": (
+        ("class", re.compile(rf"^\s*@(?:interface|implementation|protocol)\s+{_NAME}")),
+        ("function", re.compile(rf"^\s*[-+]\s*\([^)]+\)\s*{_NAME}")),
+        ("function", re.compile(rf"{_C_HEAD}{_SIG_C}")),
+    ),
+    "go": (
+        ("function", re.compile(rf"^func\s+\([^)]*\)\s*{_NAME}\s*[\[(]")),
+    ),
+    "rust": (
+        ("function", re.compile(rf"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:(?:const|async|unsafe|extern(?:\s+\"[^\"]*\")?)\s+)*fn\s+{_NAME}")),
+        ("type", re.compile(rf"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|trait|union|type|mod)\s+{_NAME}")),
+    ),
+    "ruby": (
+        ("function", re.compile(rf"^\s*def\s+(?:self\.)?{_NAME}")),
+        ("class", re.compile(rf"^\s*(?:class|module)\s+{_NAME}")),
+    ),
+    "php": (
+        ("function", re.compile(rf"^\s*(?:(?:public|protected|private|static|final|abstract|readonly)\s+)*function\s+&?{_NAME}")),
+        ("class", re.compile(rf"^\s*(?:(?:final|abstract|readonly)\s+)*(?:class|interface|trait|enum)\s+{_NAME}")),
+    ),
+    "swift": (
+        ("class", re.compile(rf"^\s*{_ANN}(?:(?:public|private|internal|fileprivate|open|final|indirect)\s+)*(?:class|struct|enum|protocol|extension|actor)\s+{_NAME}")),
+        ("function", re.compile(rf"^\s*{_ANN}(?:(?:public|private|internal|fileprivate|open|static|class|final|override|mutating|nonmutating|convenience|required|nonisolated)\s+)*func\s+{_NAME}")),
+    ),
+    "csharp": (
+        ("class", re.compile(rf"^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|internal|static|sealed|abstract|partial|readonly|unsafe|new)\s+)*(?:class|interface|struct|enum|record(?:\s+struct|\s+class)?)\s+{_NAME}")),
+        ("function", re.compile(rf"^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|partial|readonly|ref|required|volatile|const)\s+)+{_TYPE_WORDS}\s+{_NAME}\s*(?:<[^>]*>)?{_SIG_C}")),
+    ),
+    "dart": (
+        ("class", re.compile(rf"^\s*(?:abstract\s+|base\s+|sealed\s+|final\s+|interface\s+|mixin\s+)*(?:class|mixin|enum|extension\s+type)\s+{_NAME}")),
+        ("class", re.compile(rf"^\s*extension\s+(?!on\b){_NAME}\s+on\b")),
+        ("function", re.compile(rf"^\s*{_ANN}(?:(?:static|external|abstract|const|factory)\s+)*[A-Za-z_][\w<>?,.\[\]]*\s+get\s+{_NAME}\b")),
+        ("function", re.compile(rf"^\s*{_ANN}(?:(?:static|external|abstract|const|factory)\s+)*(?!(?:return|await|throw|yield|else|new|final|var|late|const|in|is|as|case|when|default|assert)\b)[A-Za-z_][\w<>?,.\[\]]*\s+{_NOT_CONTROL}{_NAME}\s*(?:<[^>]*>)?{_SIG_DART}")),
+    ),
+    "elixir": (
+        ("function", re.compile(r"^\s*(?:defp?|defmacrop?|defguardp?|defdelegate)\s+([\w.!?]+)")),
+        ("class", re.compile(r"^\s*defmodule\s+([\w.]+)")),
+    ),
+    "shell": (
+        ("function", re.compile(rf"^\s*(?:function\s+)?{_NAME}\s*\(\)\s*\{{?")),
+        ("function", re.compile(rf"^\s*function\s+{_NAME}\b")),
+    ),
+    "sql": (
+        ("function", re.compile(rf"^\s*create\s+(?:or\s+replace\s+)?(?:function|procedure|view|table|materialized\s+view|trigger)\s+(?:if\s+not\s+exists\s+)?(?:[\w\"]+\.)?\"?{_NAME}", re.IGNORECASE)),
+    ),
+}
+LANGUAGE_SYMBOL_PATTERNS["objective-cpp"] = LANGUAGE_SYMBOL_PATTERNS["objective-c"]
+
+
 TOKEN_PATTERN = re.compile(rf"(?:{_IDENT})[\w$]{{2,}}")
 
 
@@ -1738,14 +1836,27 @@ def _walk_local_test_files(
     return files, None, skipped_unsafe
 
 
-def _extract_symbols(text: str, limit: int) -> tuple[list[dict[str, Any]], bool]:
+def _extract_symbols(text: str, limit: int, language: str = "") -> tuple[list[dict[str, Any]], bool]:
     effective_limit = min(MAX_SYMBOLS_PER_FILE, max(0, limit))
+    text = text.lstrip("\ufeff")
+    local = LANGUAGE_SYMBOL_PATTERNS.get(language, ())
+    patterns = (*local, *SYMBOL_PATTERNS)
     if effective_limit <= 0:
-        return [], any(pattern.search(line) for line in text.splitlines() for _kind, pattern in SYMBOL_PATTERNS)
+        return [], any(
+            pattern.search(line)
+            for line in text.splitlines()
+            for _kind, pattern in patterns
+            if _kind != "skip" and (len(line) <= MAX_SYMBOL_LINE_CHARS or (_kind, pattern) in SYMBOL_PATTERNS)
+        )
     symbols: list[dict[str, Any]] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
-        for kind, pattern in SYMBOL_PATTERNS:
+        long_line = len(line) > MAX_SYMBOL_LINE_CHARS
+        for kind, pattern in patterns:
+            if long_line and (kind, pattern) not in SYMBOL_PATTERNS:
+                continue
             match = pattern.search(line)
+            if match and kind == "skip":
+                break  # not a definition, and no generic pattern may claim the line either
             if match:
                 if len(symbols) >= effective_limit:
                     return symbols, True
@@ -2254,94 +2365,95 @@ def _resolve_import_specifier(
     specifier: str,
     source_files: set[str],
 ) -> str | None:
-    specifier = specifier.strip()
-    if not specifier:
-        return None
-    importer_parent = Path(importer).parent
-    importer_suffix = Path(importer).suffix.lower()
-    raw_candidates: list[Path] = []
-    if importer_suffix == ".py":
-        leading_dots = len(specifier) - len(specifier.lstrip("."))
-        module = specifier[leading_dots:].replace(".", "/")
-        if leading_dots:
-            base = importer_parent
-            for _ in range(max(0, leading_dots - 1)):
-                base = base.parent
-            raw_candidates.append(base / module)
-        else:
-            raw_candidates.extend((Path(module), Path("src") / module))
-    elif specifier.startswith("."):
-        raw_candidates.append(importer_parent / specifier)
-    elif specifier.startswith("@/"):
-        alias_path = specifier[2:]
-        raw_candidates.extend((Path(alias_path), Path("src") / alias_path))
-    else:
-        # Bare JS/TS specifiers name external packages unless a project alias
-        # explicitly says otherwise. Treating `react` as local `src/react.ts`
-        # creates authoritative false edges.
-        return None
-    if importer_suffix == ".py" and not raw_candidates:
-        dotted = specifier.replace(".", "/")
-        raw_candidates.extend((Path(specifier), Path(dotted), Path("src") / dotted))
-    candidates: list[str] = []
-    extensions = tuple(sorted(CODE_EXTENSIONS))
-    for raw in raw_candidates:
-        normalized = Path(os.path.normpath(raw.as_posix())).as_posix()
-        if normalized.startswith("../") or normalized == "..":
-            continue
-        candidates.append(normalized)
-        if not Path(normalized).suffix:
-            candidates.extend(normalized + extension for extension in extensions)
-            candidates.extend((Path(normalized) / ("index" + extension)).as_posix() for extension in extensions)
-            candidates.extend((Path(normalized) / ("__init__" + extension)).as_posix() for extension in extensions)
-    exact = sorted({candidate for candidate in candidates if candidate in source_files})
-    return exact[0] if len(exact) == 1 else None
+    """The one project file ``specifier`` names, or None (see import_resolution)."""
+
+    return ImportResolver(source_files).resolve_one(importer, specifier)
 
 
 def _import_specifiers(importer: str, text: str) -> list[str]:
-    suffix = Path(importer).suffix.lower()
-    if suffix == ".py":
-        # Python comments end at the line boundary; import strings are not
-        # meaningful dependency declarations.
-        searchable = re.sub(r"(?m)#.*$", "", text)
-        patterns = PYTHON_IMPORT_SPECIFIER_PATTERNS
-    elif suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}:
-        # Remove comments before scanning require()/import() so examples and
-        # disabled code never become blocking dependency edges.
-        searchable = re.sub(r"/\*[\s\S]*?\*/", "", text)
-        searchable = re.sub(r"(?m)//.*$", "", searchable)
-        patterns = JS_IMPORT_SPECIFIER_PATTERNS
-    else:
-        return []
-    return sorted(
-        {
-            match.group(1).strip()
-            for pattern in patterns
-            for match in pattern.finditer(searchable)
-            if match.group(1).strip()
-        }
+    return extract_import_specifiers(importer, text)
+
+
+def _resolution_configs_skipped(relative_files: Sequence[str]) -> int:
+    return max(0, sum(1 for relative in relative_files if is_resolution_config(relative)) - MAX_RESOLUTION_CONFIG_FILES)
+
+
+def _go_packages_over_target_cap(relative_files: Sequence[str]) -> int:
+    """Go packages with more files than one import is linked to (the files past the cap have no importers)."""
+
+    counts: Counter[str] = Counter(
+        relative.rpartition("/")[0]
+        for relative in relative_files
+        if relative.endswith(".go") and not relative.endswith("_test.go")
     )
+    return sum(1 for count in counts.values() if count > MAX_RESOLUTION_PACKAGE_TARGETS)
+
+
+def _read_resolution_configs(root: Path, relative_files: Sequence[str]) -> dict[str, str]:
+    """tsconfig / pubspec / go.mod / Cargo.toml texts: the files that decide what an import means.
+
+    They are part of the content snapshot already (every listed file is hashed), so editing one
+    rebuilds the map. Bounded in count and size; unreadable or oversized files are skipped.
+    """
+
+    configs: dict[str, str] = {}
+    for relative in relative_files:
+        if len(configs) >= MAX_RESOLUTION_CONFIG_FILES:
+            break
+        if not is_resolution_config(relative):
+            continue
+        path = root / relative
+        try:
+            metadata = os.stat(path, follow_symlinks=False)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_RESOLUTION_CONFIG_BYTES:
+                continue
+            configs[relative] = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+    return configs
+
+
+def _import_resolution_stats(
+    scanned_files: Sequence[str],
+    dependency_edges: Sequence[Mapping[str, str]],
+) -> dict[str, dict[str, Any]]:
+    """Per language: files scanned, files that reached the dependency graph, and whether imports
+    are read at all. impact and verify say "dependency data missing" from this instead of
+    reporting an empty list as if it were an answer. A dozen small rows, deleted with the map."""
+
+    linked = {edge["from"] for edge in dependency_edges} | {edge["to"] for edge in dependency_edges}
+    rows: dict[str, dict[str, Any]] = {}
+    for path in scanned_files:
+        language = CODE_EXTENSIONS.get(Path(path).suffix.lower())
+        if not language:
+            continue
+        row = rows.setdefault(language, {"files": 0, "linked": 0, "resolver": language in RESOLVER_LANGUAGES})
+        row["files"] += 1
+        row["linked"] += 1 if path in linked else 0
+    return dict(sorted(rows.items()))
 
 
 def _exact_dependency_edges(
     *,
     scanned_files: Sequence[str],
     file_texts: Mapping[str, str],
+    configs: Mapping[str, str] | None = None,
+    known_files: Sequence[str] | None = None,
 ) -> tuple[list[dict[str, str]], bool]:
     """Build authoritative reverse dependencies from exact import paths only."""
 
-    source_files = set(scanned_files)
+    resolver = ImportResolver(scanned_files, configs=configs, known_files=known_files)
     rows: set[tuple[str, str, str]] = set()
     truncated = False
     for importer in sorted(scanned_files):
         text = file_texts.get(importer, "")
         for specifier in _import_specifiers(importer, text):
-            target = _resolve_import_specifier(importer, specifier, source_files)
-            if target is None or target == importer:
-                continue
-            rows.add((target, importer, "imports"))
-            if len(rows) > MAX_DEPENDENCY_EDGES:
-                truncated = True
+            for target in resolver.resolve(importer, specifier):
+                rows.add((target, importer, "imports"))
+                if len(rows) > MAX_DEPENDENCY_EDGES:
+                    truncated = True
+                    break
+            if truncated:
                 break
         if truncated:
             break
@@ -2878,7 +2990,11 @@ def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: b
         read_bytes += file_stat.st_size
         scanned_files.append(relative)
         file_texts[relative] = text
-        symbols, symbols_truncated = _extract_symbols(text, MAX_TOTAL_SYMBOLS - total_symbols)
+        symbols, symbols_truncated = _extract_symbols(
+            text,
+            MAX_TOTAL_SYMBOLS - total_symbols,
+            CODE_EXTENSIONS.get(Path(relative).suffix.lower(), ""),
+        )
         total_symbols += len(symbols)
         if symbols_truncated:
             budget_stop = budget_stop or "symbol_count"
@@ -2993,6 +3109,8 @@ def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: b
     dependency_edges, dependency_edges_truncated = _exact_dependency_edges(
         scanned_files=all_scanned_files,
         file_texts=file_texts,
+        configs=_read_resolution_configs(project, relative_files),
+        known_files=relative_files,
     )
     verification_graph = _verification_graph(
         project,
@@ -3092,6 +3210,12 @@ def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: b
             "verificationGraphTruncated": verification_graph["stats"]["truncated"],
             "dependencyEdges": len(dependency_edges),
             "dependencyEdgesTruncated": dependency_edges_truncated,
+            "importResolution": _import_resolution_stats(all_scanned_files, dependency_edges),
+            "importResolutionLimits": {
+                "configsSkipped": _resolution_configs_skipped(relative_files),
+                "goPackagesOverTargetCap": _go_packages_over_target_cap(relative_files),
+                "tailIndexDisabled": len(all_scanned_files) > MAX_RESOLUTION_SUFFIX_INDEX_FILES,
+            },
             "fallbackReason": fallback_reason,
             "genMs": int((time.monotonic() - started) * 1000),
         },

@@ -1140,6 +1140,7 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
     if not changed:
         return None, project_root
     _append_contact_ledger(project_root, payload, changed)
+    capped = False
     try:
         from .context_map import RECALL_FRESHNESS_BUDGET_SECONDS, impact
 
@@ -1152,8 +1153,24 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
             allow_stale=True,
             freshness_budget_seconds=RECALL_FRESHNESS_BUDGET_SECONDS,
         )
-    except Exception:
-        return None, project_root
+    except Exception as error:
+        if getattr(error, "code", "") != "context_impact_incomplete":
+            return None, project_root
+        # The import chain is too long to list, which is exactly when a warning
+        # matters most: say who imports the file directly instead of saying nothing.
+        try:
+            from .context_map import direct_dependents
+
+            result = direct_dependents(
+                project_root,
+                changed,
+                refresh=False,
+                allow_stale=True,
+                freshness_budget_seconds=RECALL_FRESHNESS_BUDGET_SECONDS,
+            )
+            capped = True
+        except Exception:
+            return None, project_root
     impacted = [
         str(value)
         for value in result.get("impactedFiles", [])
@@ -1165,13 +1182,39 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
         "Project-local dependency check. No source contents or paths were sent over the network.",
         f"Changing: {', '.join(changed)}",
     ]
+    direct = [value for value in (result.get("directDependents") or []) if isinstance(value, str) and value not in changed]
+    coverage = result.get("dependencyCoverage") if isinstance(result.get("dependencyCoverage"), list) else []
     if impacted:
-        lines.append("Inspect affected files before completing this edit:")
-        lines.extend(f"- {value}" for value in impacted[:24])
-        if len(impacted) > 24:
-            lines.append(f"- ... and {len(impacted) - 24} more from context impact")
-    else:
+        if "directDependents" in result:
+            lines.append("Inspect the files that import this one before completing this edit:")
+            lines.extend(f"- {value}" for value in direct[:16])
+            direct_total = result.get("directDependentCount")
+            direct_total = direct_total if isinstance(direct_total, int) and direct_total >= len(direct) else len(direct)
+            if direct_total > 16:
+                lines.append(f"- ... and {direct_total - 16} more direct dependents")
+            further = len(impacted) - len(direct)
+            if further > 0:
+                lines.append(f"({further} more files further down the import chain: context.impact lists them)")
+        else:
+            lines.append("Inspect affected files before completing this edit:")
+            lines.extend(f"- {value}" for value in impacted[:24])
+            if len(impacted) > 24:
+                lines.append(f"- ... and {len(impacted) - 24} more from context impact")
+    elif not coverage and not capped:
         lines.append("No additional reverse-reference files were found in the current map.")
+    for note in coverage:
+        if isinstance(note, dict):
+            language = str(note.get("language") or "this language")
+            if note.get("status") == "no_import_resolver":
+                lines.append(
+                    f"Dependency data is not available for {language} files (imports are not read): "
+                    "this list can be incomplete; check who uses the changed file yourself."
+                )
+            else:
+                lines.append(
+                    f"No {language} imports were linked in this project (check its config): "
+                    "this list can be incomplete."
+                )
     # Reverse references say what else reads this file; they do not say what
     # proves it still works. The verification graph knows — measured on the
     # pilot, changing context_map.py points at test_context_map.py,
@@ -1190,13 +1233,23 @@ def _pretool_impact_context(payload: dict[str, Any], cwd_override: str | None) -
             kind = str(target.get("kind") or "check")
             mark = " (name match, verify it applies)" if target.get("confidence") == "advisory" else ""
             lines.append(f"- [{kind}] {path}{mark}")
-    lines.extend(
-        (
-            f"Impact receipt: {receipt.get('receiptDigest', 'missing')}",
-            "Before completion, run context.verify or explicitly account for every affected file.",
-            "</agentlas-pretool-impact>",
+    if capped:
+        lines.extend(
+            (
+                "This change reaches more files down the import chain than can be listed; "
+                "context.impact needs a narrower change to list them."
+                + (" The files above import it directly." if direct else ""),
+                "</agentlas-pretool-impact>",
+            )
         )
-    )
+    else:
+        lines.extend(
+            (
+                f"Impact receipt: {receipt.get('receiptDigest', 'missing')}",
+                "Before completion, run context.verify or explicitly account for every affected file.",
+                "</agentlas-pretool-impact>",
+            )
+        )
     return "\n".join(lines)[:3_600], project_root
 
 
