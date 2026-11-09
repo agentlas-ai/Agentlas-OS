@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "agentlas.runtime-adapter-baseline.v1",
+  "release": "v1.2.90",
+  "algorithm": "sha256-tree-v1",
+  "paths": [
+    ".claude/commands",
+    "codex/prompts",
+    "cursor/plugin/commands",
+    "opencode/commands",
+    "antigravity/workflows",
+    "skills",
+    "openclaw/skills"
+  ],
+  "digest": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716"
+}

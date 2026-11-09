@@ -75,6 +75,7 @@ def run_stormbreaker_query(
     scope: str = "network",
     caller_id: str | None = None,
     session_inventory: list[Any] | None = None,
+    model_allocation_policy: Mapping[str, Any] | None = None,
     executor_command: str | None = None,
     verifier_command: str | None = None,
     execute_card_commands: bool = False,
@@ -104,6 +105,7 @@ def run_stormbreaker_query(
         scope=scope,
         caller_id=caller_id,
         session_inventory=session_inventory,
+        model_allocation_policy=model_allocation_policy,
         work_brief=work_brief,
     )
     decision = dict(decision)
@@ -118,6 +120,7 @@ def run_stormbreaker_query(
         home=home,
         project_dir=project_dir,
         session_inventory=session_inventory,
+        model_allocation_policy=model_allocation_policy,
     )
     if prepared["status"] == "blocked":
         return {
@@ -159,6 +162,7 @@ def prepare_hub_task_force_decision(
     home: Path | str | None = None,
     project_dir: Path | str = ".",
     session_inventory: list[Any] | None = None,
+    model_allocation_policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Promote a Hub temporary-orchestrator plan into an executable fabric.
 
@@ -358,6 +362,7 @@ def prepare_hub_task_force_decision(
         pipeline_id=pipeline_id,
         handoff_dir=handoff_dir,
         session_inventory=session_inventory,
+        model_allocation_policy=model_allocation_policy,
     )
     current.update(
         {
@@ -757,6 +762,15 @@ def _run_packet(
         )
 
 
+def _packet_session_id(packet: Mapping[str, Any]) -> str | None:
+    session = packet.get("session_hint") or {}
+    if session.get("selection_status") in {"no_available_session", "invalid_session_inventory"} or (
+        session.get("selection_status") == "policy_unresolved" and not session.get("session_id")
+    ):
+        return None
+    return str(session.get("session_id") or "host:primary")
+
+
 def _run_packet_claimed(
     packet: dict[str, Any],
     *,
@@ -791,7 +805,7 @@ def _run_packet_claimed(
     except FileNotFoundError:
         pass
     session = packet.get("session_hint") or {}
-    session_id = str(session.get("session_id") or "host:primary")
+    session_id = _packet_session_id(packet)
     mode = _execution_mode(executor_command, execute_card_commands)
     resume_identity = _packet_resume_identity(
         packet,
@@ -806,7 +820,9 @@ def _run_packet_claimed(
     )
     started_at = utc_now()
     execution_receipt_id = uuid.uuid4().hex[:16]
-    research_summary = _collect_packet_research_evidence(
+    selection_status = session.get("selection_status")
+    blocked_selection = selection_status in {"no_available_session", "invalid_session_inventory", "policy_unresolved"}
+    research_summary = None if blocked_selection else _collect_packet_research_evidence(
         packet,
         enabled=research_evidence,
         project=project,
@@ -899,7 +915,14 @@ def _run_packet_claimed(
     if research_summary is not None:
         packet_for_execution["research_evidence"] = research_summary
     loop_spec = packet.get("loop") if isinstance(packet.get("loop"), dict) else None
-    if loop_spec and str(loop_spec.get("goal_command") or "").strip():
+    if blocked_selection:
+        if mode == "materialize":
+            stdout_file.write_text("packet contract materialized; no external executor configured\n", encoding="utf-8")
+            stderr_file.write_text("", encoding="utf-8")
+            completed = {"ok": True, "materialized": True, "detail": "packet_contract_materialized", "returncode": 0}
+        else:
+            completed = {"ok": False, "detail": selection_status, "returncode": None}
+    elif loop_spec and str(loop_spec.get("goal_command") or "").strip():
         # The packet declared a goal loop: re-run it until the goal verifies,
         # guarded against stalls/runaway/transient failures (goal_loop).
         completed = _run_packet_goal_loop(
@@ -1790,7 +1813,7 @@ def _inflight_packet_result(
         "stage": packet.get("stage"),
         "stage_order": packet.get("stage_order"),
         "card": packet.get("card"),
-        "session_id": (packet.get("session_hint") or {}).get("session_id") or "host:primary",
+        "session_id": _packet_session_id(packet),
         "parallel_group": group_id,
         "execution_mode": "resume_wait",
         "status": "blocked",
@@ -1848,7 +1871,7 @@ def _blocked_packet_result(
         "stage": packet.get("stage"),
         "stage_order": packet.get("stage_order"),
         "card": packet.get("card"),
-        "session_id": (packet.get("session_hint") or {}).get("session_id") or "host:primary",
+        "session_id": _packet_session_id(packet),
         "parallel_group": group_id,
         "execution_mode": "dependency_gate",
         "status": "blocked",
@@ -1870,7 +1893,7 @@ def _blocked_packet_result(
         pipeline_id=pipeline_id,
         packet_id=packet_id,
         stage_order=_int_or_none(packet.get("stage_order")),
-        session_id=str(result["session_id"]),
+        session_id=result["session_id"],
         parallel_group=group_id,
         parent_receipt_id=parent_receipt_id or None,
     )

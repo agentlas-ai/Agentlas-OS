@@ -1327,11 +1327,41 @@ def _maybe_start_runtime_auto_update() -> None:
     """
 
     try:
-        from .update import maybe_auto_update
+        from .update import _allowed_update_root, _runtime_base_for_root, maybe_auto_update
 
-        current = Path.home() / ".agentlas" / "runtime" / "current"
-        root = current if (current / "RELEASE").is_file() else None
-        maybe_auto_update(root)
+        override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
+        if override:
+            # Legacy uses the override as its base; standalone uses it as a
+            # parent (or accepts the default os-runtime base directly).
+            parent = Path(override).expanduser().absolute()
+            candidates = [parent / "current", parent / "os-runtime" / "current"]
+        else:
+            state = Path.home() / ".agentlas"
+            candidates = [state / "runtime" / "current", state / "os-runtime" / "current"]
+
+        # A hook loaded from an installed generation should update its own
+        # namespace. Host plugin caches have no such owner, so they retain the
+        # historical legacy-first order when both installations exist.
+        module_root = Path(__file__).resolve().parent.parent
+        for candidate in candidates:
+            try:
+                if (candidate / "RELEASE").is_file() and module_root == candidate.resolve():
+                    candidates = [candidate, *(item for item in candidates if item != candidate)]
+                    break
+            except OSError:
+                continue
+
+        for candidate in candidates:
+            try:
+                if not (candidate / "RELEASE").is_file():
+                    continue
+                base = _runtime_base_for_root(candidate)
+                if _allowed_update_root(candidate, base):
+                    maybe_auto_update(candidate)
+                    return
+            except (OSError, ValueError):
+                continue
+        maybe_auto_update(None)
     except Exception:
         return
 

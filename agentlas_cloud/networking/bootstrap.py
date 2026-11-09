@@ -426,7 +426,7 @@ def remove_source(path: Path | str, home: Path | str | None = None) -> dict[str,
 
 
 def network_status(home: Path | str | None = None) -> dict[str, Any]:
-    from .bench import validate_benchmark_state
+    from .routing_readiness import validate_benchmark_state
     from .card_lint import effective_status
     from .card_store import load_global_cards
 

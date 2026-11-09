@@ -3,6 +3,15 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.90 — 2026-11-09
+
+- Installs that are still on the old `v1.2.x` update channel (1.2.72 and earlier) can update to this release with their own update command or auto-update, and they follow the standalone channel afterwards. Files the owner edited, including edited command files, host settings and the local `network bench` command, are left as they were, and an edited file never blocks a later update.
+- A memory-hook file that the owner edited, or that a dotfile manager links elsewhere, is left as it is and reported as preserved instead of failing the update. Runtimes that the shell installer placed under `.generations/` update like any other, and a leftover host step is retried at most three times.
+- When this release refreshes a Grok marketplace cache clone of this repository it only fast-forwards a clean clone; it no longer hard-resets one.
+- Network workers use the model and reasoning effort of the host session. An exact model pin is used as given. A model whose price tier or effort ceiling cannot be proven is reported as unverified instead of being assumed, and a saved run records which policy applied.
+- Network status no longer depends on benchmark files.
+- The code map of a nested project follows that project's `.gitignore`, and the Git check that decides this no longer opens a console window on Windows.
+
 ## 1.2.89 — 2026-11-08
 
 - Improve memory translation retries and browser error handling.

@@ -121,6 +121,14 @@ class InstallError(RuntimeError):
     pass
 
 
+class PreservedError(InstallError):
+    """A file the owner controls (edited, linked, or not ours) was left exactly as it is.
+
+    Leaving it alone is the intended outcome, not a failure: reporting it as one made the
+    updater retry the whole host sync on every run and hold back its own cleanup.
+    """
+
+
 def _command(command: str, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [command, *args], capture_output=True, text=True, timeout=15, check=False, **no_console_window()
@@ -527,6 +535,8 @@ def _validate_runtime_copy(root: Path, source_dir: Path, version: str) -> None:
 def _managed_runtime_copies(
     source_dir: Path,
     home: Path,
+    *,
+    runtime_base: Path | None = None,
 ) -> tuple[str, list[Path]]:
     source_identity = _directory_identity(source_dir)
     try:
@@ -539,7 +549,7 @@ def _managed_runtime_copies(
         raise InstallError("not a verified runtime update extraction")
 
     version = _source_runtime_version(resolved_source)
-    configured_base = Path(
+    configured_base = runtime_base or Path(
         os.environ.get("HEPHAESTUS_RUNTIME_BASE")
         or home / ".agentlas" / "runtime"
     ).expanduser()
@@ -815,6 +825,154 @@ def run_host_plugin_transition_bridge(source_dir: Path, home: Path) -> dict[str,
         }
 
 
+def _legacy_parent_cwd_candidates() -> list[Path]:
+    """Find the old updater's cwd without relying on its inherited PWD.
+
+    The installer runs with the extracted archive as its own cwd.  A shell's
+    PWD may be absent or stale, so prefer the OS-reported parent cwd.  These
+    paths are only candidates: the caller still validates the parent's lock
+    and the activated runtime before performing any write.
+    """
+    candidates: list[Path] = []
+    if sys.platform.startswith("linux"):
+        try:
+            candidates.append(Path(os.readlink(f"/proc/{os.getppid()}/cwd")))
+        except OSError:
+            pass
+    elif sys.platform == "darwin":
+        try:
+            # PROC_PIDVNODEPATHINFO returns raw path bytes. lsof's printable
+            # rendering is ambiguous for e.g. literal ^A versus control-A.
+            import ctypes
+
+            class VnodePathInfo(ctypes.Structure):
+                _fields_ = [("vnode_info", ctypes.c_byte * 152), ("path", ctypes.c_char * 1024)]
+
+            class ProcVnodePathInfo(ctypes.Structure):
+                _fields_ = [("cwd", VnodePathInfo), ("root", VnodePathInfo)]
+
+            proc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True).proc_pidinfo
+            proc.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int]
+            proc.restype = ctypes.c_int
+            info = ProcVnodePathInfo()
+            if proc(os.getppid(), 9, 0, ctypes.byref(info), ctypes.sizeof(info)) == ctypes.sizeof(info):
+                candidates.append(Path(os.fsdecode(info.cwd.path)))
+        except (OSError, AttributeError, ValueError):
+            pass
+    pwd = os.environ.get("PWD")
+    if pwd:
+        candidates.append(Path(pwd))
+    return list(dict.fromkeys(path for path in candidates if path.is_absolute()))
+
+
+def _verified_legacy_runtime_base(source_dir: Path, home: Path) -> Path:
+    override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
+    runtime_base = Path(override).expanduser() if override else home / ".agentlas" / "runtime"
+    if not runtime_base.is_absolute():
+        # Each candidate must have the old updater's exclusive parent lock
+        # and pass the release/hash checks before any writes.
+        verified_base = None
+        for parent_cwd in _legacy_parent_cwd_candidates():
+            candidate = parent_cwd / runtime_base
+            try:
+                candidate = candidate.resolve(strict=True)
+                _directory_identity(candidate)
+                lock = candidate / ".update.lock"
+                _regular_single_link(lock)
+                lock_payload = json.loads(lock.read_text(encoding="utf-8"))
+                if not isinstance(lock_payload, dict) or lock_payload.get("pid") != os.getppid():
+                    continue
+                _managed_runtime_copies(source_dir, home, runtime_base=candidate)
+                verified_base = candidate
+                break
+            except (InstallError, OSError, ValueError):
+                continue
+        if verified_base is None:
+            raise InstallError("relative runtime base has no verified parent cwd")
+        runtime_base = verified_base
+    else:
+        # Old managed installations allowed a symlink as the configured
+        # base. Resolve it once before validating or writing to the target.
+        runtime_base = runtime_base.resolve(strict=True)
+        _directory_identity(runtime_base)
+    _managed_runtime_copies(source_dir, home, runtime_base=runtime_base)
+    return runtime_base
+
+
+def _verified_hook_runtime_base(source_dir: Path, home: Path) -> Path:
+    """Find the managed runtime for staged updates and direct installations."""
+    if any(parent.name.startswith("hephaestus-update-") for parent in source_dir.resolve().parents):
+        return _verified_legacy_runtime_base(source_dir, home)
+    override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
+    if not override or not Path(override).expanduser().is_absolute():
+        raise InstallError("custom runtime base must be absolute")
+    base = Path(override).expanduser().resolve(strict=True)
+    _directory_identity(base)
+    _directory_identity(source_dir)
+    version = _source_runtime_version(source_dir)
+    target = base / version
+    _validate_runtime_copy(target, source_dir, version)
+    current = base / "current"
+    if current.is_symlink():
+        if current.resolve(strict=True) != target.resolve(strict=True):
+            raise InstallError("managed runtime current does not select source version")
+    else:
+        _validate_runtime_copy(current, source_dir, version)
+    return base
+
+
+def run_legacy_adapter_bridge(source_dir: Path, home: Path) -> dict[str, Any]:
+    """Finish a verified legacy update without reacquiring the update lock."""
+    try:
+        runtime_base = _verified_legacy_runtime_base(source_dir, home)
+        _, copies = _managed_runtime_copies(source_dir, home, runtime_base=runtime_base)
+        active = copies[0]
+        payload = active / "agentlas_cloud" / "legacy-adapters"
+        old_payload = active / "runtime-support" / "legacy-adapters"
+        if old_payload.exists() or old_payload.is_symlink():
+            return {"status": "blocked", "reason": "legacy_payload_location_unsupported"}
+        if not payload.is_dir():
+            return {"status": "not_applicable", "reason": "legacy_payload_missing"}
+        code = (
+            "import json, pathlib, sys\n"
+            "root = pathlib.Path(sys.argv[1]).resolve(strict=True)\n"
+            "sys.path.insert(0, str(root))\n"
+            "from agentlas_cloud import update\n"
+            "module = pathlib.Path(update.__file__).resolve(strict=True)\n"
+            "if module != root / 'agentlas_cloud' / 'update.py': raise SystemExit(2)\n"
+            "print(json.dumps(update.reconcile_legacy_bridge()))\n"
+        )
+        env = os.environ.copy()
+        env.pop("PYTHONHOME", None)
+        env["HOME"] = str(home)
+        env["HEPHAESTUS_RUNTIME_BASE"] = str(runtime_base)
+        if os.name == "nt":
+            env["USERPROFILE"] = str(home)
+        completed = subprocess.run(
+            [sys.executable, "-I", "-c", code, str(active)],
+            cwd=str(active), env=env, capture_output=True, text=True,
+            timeout=20, check=False, **no_console_window(),
+        )
+        if completed.returncode != 0:
+            return {"status": "blocked", "reason": "legacy_adapter_bridge_failed"}
+        result = json.loads(completed.stdout)
+        if not isinstance(result, dict) or result.get("status") not in {"pass", "blocked", "not_applicable"}:
+            return {"status": "blocked", "reason": "legacy_adapter_bridge_invalid_result"}
+        return result
+    except (InstallError, OSError):
+        # A payload in a staged update is a requested migration, not an
+        # optional hook: expose a verification failure to the old caller.
+        if any((source_dir / relative).is_dir() for relative in (
+            "agentlas_cloud/legacy-adapters", "runtime-support/legacy-adapters"
+        )) and any(
+            parent.name.startswith("hephaestus-update-") for parent in source_dir.resolve().parents
+        ):
+            return {"status": "blocked", "reason": "legacy_runtime_context_unverified"}
+        return {"status": "not_applicable", "reason": "unverified_runtime_update_context"}
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+        return {"status": "blocked", "reason": "legacy_adapter_bridge_failed"}
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -833,14 +991,58 @@ def _copy_owned(source: Path, target: Path) -> None:
     _atomic_write(target, source.read_text(encoding="utf-8"))
 
 
-def install_antigravity(source_dir: Path, home: Path) -> list[str]:
+def _render_hook_commands(value: Any, runtime_base: Path | None) -> Any:
+    if runtime_base is None:
+        return value
+    if isinstance(value, dict):
+        return {key: _render_hook_commands(item, runtime_base) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_render_hook_commands(item, runtime_base) for item in value]
+    if isinstance(value, str):
+        old = '"${HOME}/.agentlas/runtime/current/bin/agentlas-memory-hook"'
+        path = str(runtime_base / "current" / "bin" / "agentlas-memory-hook")
+        if os.name == "nt":
+            if any(char in path for char in '"%!?\r\n'):
+                raise InstallError("custom runtime path cannot be represented safely")
+            replacement = '"' + path + '"'
+        else:
+            replacement = shlex.quote(path)
+        return value.replace(old, replacement)
+    return value
+
+
+def _owned_regular_file(path: Path) -> os.stat_result:
+    try:
+        return _regular_single_link(path)
+    except InstallError as exc:
+        raise PreservedError(str(exc)) from exc
+
+
+def _require_owned_hook(target: Path, acceptable: list[str]) -> None:
+    if not target.exists() and not target.is_symlink():
+        return
+    _owned_regular_file(target)
+    if target.read_text(encoding="utf-8") not in acceptable:
+        raise PreservedError("modified managed memory hook preserved")
+
+
+def install_antigravity(source_dir: Path, home: Path, runtime_base: Path | None = None) -> list[str]:
     source = source_dir / "antigravity" / "hooks" / "agentlas-memory.json"
     incoming = _read_json(source)
     if set(incoming) != {"agentlas-memory"}:
         raise InstallError(f"invalid Agentlas Antigravity hook asset: {source}")
+    if runtime_base is not None and '${HOME}/.agentlas/runtime/current/bin/agentlas-memory-hook' not in json.dumps(incoming):
+        raise InstallError("Antigravity runtime hook template changed")
     target = home / ".gemini" / "config" / "hooks.json"
+    if target.exists() or target.is_symlink():
+        _owned_regular_file(target)
     merged = _read_json(target)
-    merged["agentlas-memory"] = incoming["agentlas-memory"]
+    rendered = _render_hook_commands(incoming["agentlas-memory"], runtime_base)
+    existing = merged.get("agentlas-memory")
+    if existing is not None:
+        if existing not in (incoming["agentlas-memory"], rendered):
+            raise PreservedError("modified Antigravity memory hook preserved")
+    merged["agentlas-memory"] = rendered
     _atomic_write(target, json.dumps(merged, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     return [str(target)]
 
@@ -873,20 +1075,46 @@ def _merge_markdown_block(target: Path, block: str) -> None:
     _atomic_write(target, content)
 
 
-def install_grok(source_dir: Path, home: Path) -> list[str]:
+def install_grok(source_dir: Path, home: Path, runtime_base: Path | None = None) -> list[str]:
     hook_source = source_dir / "grok" / "hooks" / "agentlas-memory.json"
     hook_target = home / ".grok" / "hooks" / "agentlas-memory.json"
-    _copy_owned(hook_source, hook_target)
+    hooks = _read_json(hook_source)
+    if runtime_base is not None and '${HOME}/.agentlas/runtime/current/bin/agentlas-memory-hook' not in json.dumps(hooks):
+        raise InstallError("Grok runtime hook template changed")
+    rendered = (hook_source.read_text(encoding="utf-8") if runtime_base is None else
+                json.dumps(_render_hook_commands(hooks, runtime_base), ensure_ascii=False, indent=2) + "\n")
+    acceptable = [rendered, hook_source.read_text(encoding="utf-8")]
+    _require_owned_hook(hook_target, acceptable)
     rule_source = source_dir / "grok" / "agentlas-memory-rule.md"
     rule_target = home / ".grok" / "AGENTS.md"
+    if rule_target.exists() or rule_target.is_symlink():
+        _owned_regular_file(rule_target)
+        existing = rule_target.read_text(encoding="utf-8")
+        if BEGIN_MARKER in existing and END_MARKER in existing:
+            block = existing[existing.index(BEGIN_MARKER):existing.index(END_MARKER) + len(END_MARKER)].strip()
+            if block != _managed_block(rule_source):
+                raise PreservedError("modified Grok memory rule preserved")
+    _atomic_write(hook_target, rendered)
     _merge_markdown_block(rule_target, _managed_block(rule_source))
     return [str(hook_target), str(rule_target)]
 
 
-def install_opencode(source_dir: Path, home: Path) -> list[str]:
+def install_opencode(source_dir: Path, home: Path, runtime_base: Path | None = None) -> list[str]:
     source = source_dir / "opencode" / "plugins" / "agentlas-memory.js"
     target = home / ".config" / "opencode" / "plugins" / "agentlas-memory.js"
-    _copy_owned(source, target)
+    def render(text: str) -> str:
+        if runtime_base is None:
+            return text
+        for name in ("agentlas-one", "agentlas-memory-hook"):
+            old = f'`${{home}}/.agentlas/runtime/current/bin/{name}`'
+            if text.count(old) != 1:
+                raise InstallError("OpenCode runtime hook template changed")
+            text = text.replace(old, json.dumps(str(runtime_base / "current" / "bin" / name), ensure_ascii=False))
+        return text
+    rendered = render(source.read_text(encoding="utf-8"))
+    acceptable = [rendered, source.read_text(encoding="utf-8")]
+    _require_owned_hook(target, acceptable)
+    _atomic_write(target, rendered)
     return [str(target)]
 
 
@@ -904,7 +1132,7 @@ def _detected_hosts(home: Path) -> list[str]:
     return hosts
 
 
-def _runtime_memory_hook_receipt(home: Path, hosts: list[str]) -> dict[str, Any]:
+def _runtime_memory_hook_receipt(home: Path, hosts: list[str], runtime_base: Path | None = None) -> dict[str, Any]:
     """Prove that every installed hook will point at a callable runner.
 
     Host hook assets deliberately reference the promoted runtime rather than
@@ -920,12 +1148,17 @@ def _runtime_memory_hook_receipt(home: Path, hosts: list[str]) -> dict[str, Any]
             "status": "not_required",
             "reason": "no_detected_hosts",
         }
-    runner = home / ".agentlas" / "runtime" / "current" / "bin" / "agentlas-memory-hook"
+    base = runtime_base if runtime_base is not None else home / ".agentlas" / "runtime"
+    runner = base / "current" / "bin" / "agentlas-memory-hook"
     if not runner.is_file() or (os.name != "nt" and not os.access(runner, os.X_OK)):
         return {
             "status": "blocked",
             "reason": "runtime_memory_hook_unavailable",
         }
+    if runtime_base is not None and "opencode" in hosts:
+        one = base / "current" / "bin" / "agentlas-one"
+        if not one.is_file() or (os.name != "nt" and not os.access(one, os.X_OK)):
+            return {"status": "blocked", "reason": "runtime_memory_hook_unavailable"}
     return {
         "status": "ready",
         "reason": "runtime_memory_hook_callable",
@@ -964,17 +1197,31 @@ def main(argv: list[str] | None = None) -> int:
     installed["desktop_npm_repair"] = desktop_npm_repair
     runtime_shim_repair = repair_managed_runtime_python_shims(source_dir, home)
     host_plugin_transition = run_host_plugin_transition_bridge(source_dir, home)
+    legacy_adapter_bridge = run_legacy_adapter_bridge(source_dir, home)
     # v1.2.32's parent updater preserves only the `installed` and `errors`
     # objects from this subprocess. Keep the typed receipt under `installed` as
     # a compatibility envelope, and also expose it directly to newer callers.
     installed["host_plugin_transition"] = host_plugin_transition
+    installed["legacy_adapter_bridge"] = legacy_adapter_bridge
+    if legacy_adapter_bridge.get("status") == "blocked":
+        errors["legacy_adapter_bridge"] = str(
+            legacy_adapter_bridge.get("reason") or "legacy_adapter_bridge_failed"
+        )
     if host_plugin_transition.get("status") == "blocked":
         errors["host_plugin_transition"] = str(
             host_plugin_transition.get("reason") or "transition_blocked"
         )
     desktop_updater_cleanup = {"status": "not_applicable", "reason": "engine_independent"}
     desktop_repair = {"status": "not_applicable", "reason": "engine_independent"}
-    runtime_memory_hook = _runtime_memory_hook_receipt(home, hosts)
+    runtime_base = None
+    if hosts and os.environ.get("HEPHAESTUS_RUNTIME_BASE"):
+        try:
+            runtime_base = _verified_hook_runtime_base(source_dir, home)
+        except (InstallError, OSError, ValueError):
+            errors["runtime_memory_hook"] = "custom_runtime_unverified"
+    runtime_memory_hook = (_runtime_memory_hook_receipt(home, hosts, runtime_base)
+                           if "runtime_memory_hook" not in errors
+                           else {"status": "blocked", "reason": "custom_runtime_unverified"})
     installed["runtime_memory_hook"] = runtime_memory_hook
     if runtime_memory_hook["status"] == "blocked":
         for host in hosts:
@@ -982,7 +1229,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         for host in hosts:
             try:
-                installed[host] = installers[host](source_dir, home)
+                installed[host] = installers[host](source_dir, home, runtime_base)
+            except PreservedError as exc:
+                installed[host] = {"status": "preserved", "reason": str(exc)}
             except (InstallError, OSError) as exc:
                 errors[host] = str(exc)
     print(
@@ -993,6 +1242,7 @@ def main(argv: list[str] | None = None) -> int:
                 "errors": errors,
                 "runtime_shim_repair": runtime_shim_repair,
                 "host_plugin_transition": host_plugin_transition,
+                "legacy_adapter_bridge": legacy_adapter_bridge,
                 "desktop_repair": desktop_repair,
                 "desktop_updater_cleanup": desktop_updater_cleanup,
                 "desktop_npm_repair": desktop_npm_repair,

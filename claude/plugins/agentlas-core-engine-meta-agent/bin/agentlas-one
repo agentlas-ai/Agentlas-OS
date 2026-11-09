@@ -426,10 +426,21 @@ TIERS = ("economy", "balanced", "frontier")
 def load():
     try:
         with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
-        return data if isinstance(data, dict) else {}
-    except Exception:
+            raw = fh.read()
+    except FileNotFoundError:
         return {}
+    except (OSError, UnicodeError):
+        raise SystemExit("model policy could not be read; existing policy was not changed") from None
+    # Match the policy reader's established empty-file semantics.
+    if not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        raise SystemExit("model policy is invalid; existing policy was not changed") from None
+    if not isinstance(data, dict):
+        raise SystemExit("model policy must be an object; existing policy was not changed")
+    return data
 
 def show(policy):
     if not policy:
@@ -448,18 +459,19 @@ def show(policy):
         print(f"{role:14} {' '.join(bits) or '(inherits)'}")
 
 args = sys.argv[1:]
-policy = load()
-
-if not args or args[0] in ("show", "status"):
-    show(policy)
-    raise SystemExit(0)
-
-if args[0] in ("clear", "reset"):
+# Clearing remains possible even when the policy cannot be parsed.
+if args and args[0] in ("clear", "reset"):
     try:
         os.remove(path)
     except FileNotFoundError:
         pass
     print("model policy cleared")
+    raise SystemExit(0)
+
+policy = load()
+
+if not args or args[0] in ("show", "status"):
+    show(policy)
     raise SystemExit(0)
 
 # role=value pairs. A bare tier name is a ceiling; anything else is an exact
@@ -515,10 +527,23 @@ for arg in args:
         scope.pop("maxTier", None)
     policy[role] = scope
 
-with open(path, "w", encoding="utf-8") as fh:
-    json.dump(policy, fh, ensure_ascii=False, indent=2)
-    fh.write("\n")
-os.chmod(path, 0o600)
+# Prepare the complete policy in the same directory before replacing it.
+# Readers must never see a truncated file as an unconstrained policy. Resolve
+# an existing symlink so updating the policy preserves the link itself.
+import tempfile
+policy_path = os.path.realpath(path)
+fd, temp_path = tempfile.mkstemp(prefix=".model-policy.", dir=os.path.dirname(policy_path))
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(policy, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.chmod(temp_path, 0o600)
+    os.replace(temp_path, policy_path)
+finally:
+    try:
+        os.unlink(temp_path)
+    except FileNotFoundError:
+        pass
 show(policy)
 PYEOF
 }

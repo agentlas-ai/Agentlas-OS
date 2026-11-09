@@ -6,7 +6,7 @@ metadata: {"openclaw": {"emoji": "🔨", "requires": {"bins": ["python3"]}, "hom
 
 # Hephaestus Agent Workforce Network
 
-<!-- prompt-module: {"id":"skill.network.host-execution","revision":2,"stability":"fixed-policy","changeTriggers":["release"],"order":0} -->
+<!-- prompt-module: {"id":"skill.network.host-execution","revision":3,"stability":"fixed-policy","changeTriggers":["release"],"order":0} -->
 
 The active host LLM staffs the task. Agentlas Core federates content menus from
 registered Local, owner Cloud, and public Hub inventory. No source and no
@@ -303,29 +303,33 @@ Call `workforce.complete_goal` only after the user or authoritative host goal
 state explicitly marks the whole goal completed or cancelled. It requires
 `explicitCompletion=true`; completing one model turn is not a goal-completion signal.
 
-## 5. Resolve the model for every invocation
+## 5. Use the host's model and honor operator policy
 
-Before every bound planner/manager, worker, synthesis, and verifier invocation,
-advertise the current host's real available sessions and call
-`model.resolve_allocation`. The host owns the invocation stage:
+Read `hostModelPolicy` from the current `workforce.goal_context` response. For
+`inherit_host`, launch native delegates without a model or effort override;
+the host supplies its current model and effort. An unknown model identifier is
+not by itself a reason to prevent native delegation. Do not invent a model ID.
 
-- `planner`, `manager-plan`, and `nested-manager` resolve as `orchestrator`;
-- `worker`, `execute`, `delegate`, and `task` resolve as `worker`;
-- `manager-synthesis` and `synthesis` resolve as `orchestrator`;
-- `verifier` resolves as `orchestrator`.
+Use the stage's role from `model_role_for_stage`: `plan`, `planner`, `leader`,
+`manager-plan`, `nested-manager`, `verify`, `verifier`, `synthesize`,
+`synthesis`, `manager-synthesis`, `route`, and `clarify` are `orchestrator`;
+`build`, `execute`, `worker`, `delegate`, and `task` are `worker`. An unknown
+stage uses the `orchestrator` role.
 
-Model pins and ceilings come only from the MCP server's operator policy in
-`AGENTLAS_MODEL_ALLOCATION_POLICY_JSON`; a task, Hub bundle, or tool argument
-must not override them. Prefer role-scoped `orchestrator` and `worker` policy
-objects. A missing worker policy inherits the orchestrator for quality;
-orchestrator never falls through to a cheaper worker policy.
+For `allocation_required`, advertise real live host sessions and call
+`model.resolve_allocation` for the invocation stage. Honor its exact resolved
+provider, model, session, and effort, and launch only when `executionAllowed`
+is true; do not bypass an operator pin, ceiling,
+or capability requirement. If the host cannot establish or apply the result,
+report the policy boundary rather than claiming it was met. If policy is invalid
+or the posture is absent, do not assume it is unrestricted: use the existing
+allocation path or report the boundary. Model pins and ceilings come only from
+the MCP server's operator policy, not task or tool arguments. A missing worker
+policy inherits orchestrator; orchestrator never falls through to worker.
 
-Use the allocation receipt's exact provider, model, session, and effort for the
-invocation. The pre-invocation receipt has `usage: null`; record observed usage
-only in the later invocation/run receipt. A resolved allocation proves policy
-selection, not that a worker model ran. If the host cannot launch the selected
-provider/model as a distinct invocation, stop at allocation-only evidence and
-report that boundary.
+A resolved allocation does not prove invocation. Record only observed usage in
+the later invocation/run receipt; strict receipt telemetry is separate from
+actual execution. Never claim an unobserved model or effort as fact.
 
 ## 6. Execute the real task force
 

@@ -9,6 +9,7 @@ metadata-check window so the user's command does not wait on network or install 
 from __future__ import annotations
 
 import ast
+import base64
 import errno
 from functools import cmp_to_key
 import hashlib
@@ -674,8 +675,8 @@ def _canonical_update_marker(
     channel_tag = result.get("channelTag")
     if (result.get("status") in {"current", "updated"}
             and isinstance(channel_tag, str)
-            and re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", channel_tag)
-            and result.get("latest") == channel_tag[3:]):
+            and _channel_engine_tag(channel_tag) is not None
+            and result.get("latest") == _channel_engine_tag(channel_tag)):
         canonical["noticeSchema"] = "agentlas.standalone-notice.v1"
         canonical["noticeTag"] = channel_tag
     return canonical
@@ -700,10 +701,16 @@ def _standalone_json(url: str) -> tuple[Any, str]:
     return json.loads(raw.decode("utf-8")), link
 
 
+def _channel_engine_tag(tag: str) -> str | None:
+    if not re.fullmatch(r"(?:os-)?v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
+        return None
+    return tag[3:] if tag.startswith("os-") else tag
+
+
 def _standalone_tag_metadata(tag: str, release: dict[str, Any]) -> dict[str, Any]:
-    if not re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
+    if _channel_engine_tag(tag) is None:
         raise ValueError("standalone_channel_tag_invalid")
-    if release.get("tag_name") != tag or release.get("draft") is not False:
+    if release.get("tag_name") != tag or release.get("draft") is not False or release.get("prerelease") is not False:
         raise ValueError("standalone_release_mismatch")
     lines = [line for line in str(release.get("body") or "").splitlines() if line.startswith("agentlas-os-channel:")]
     if lines != ["agentlas-os-channel: stable"]:
@@ -773,18 +780,18 @@ def fetch_standalone_latest() -> dict[str, Any]:
         raise ValueError("standalone_channel_incomplete")
     candidates: dict[tuple[int, int, int], dict[str, Any]] = {}
     for item in releases:
-        if not isinstance(item, dict) or item.get("draft") is not False:
+        if not isinstance(item, dict) or item.get("draft") is not False or item.get("prerelease") is not False:
             continue
         tag = str(item.get("tag_name") or "")
-        match = re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag)
+        match = re.fullmatch(r"(os-)v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag)
         if not match:
-            continue
+            continue  # a legacy-channel tag (v1.2.x) is never chosen as the newest release
         lines = [line for line in str(item.get("body") or "").splitlines() if line.startswith("agentlas-os-channel:")]
         if not lines or lines == ["agentlas-os-channel: preview"]:
             continue  # preview or unclassified release; never automatically use it
         if lines != ["agentlas-os-channel: stable"]:
             raise ValueError("standalone_channel_marker_invalid")
-        key = tuple(int(v) for v in match.groups())
+        key = tuple(int(v) for v in match.groups()[1:])
         if key in candidates:
             raise ValueError("standalone_channel_duplicate")
         candidates[key] = item
@@ -813,6 +820,13 @@ def _allowed_update_root(runtime_root: Path, base: Path) -> bool:
 
 
 def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, Any]:
+    if root is None:
+        try:
+            active = _active_runtime_for_cached_updater()
+            if active is not None:
+                return _run_update_in_active_runtime(active, check_only)
+        except ValueError as exc:
+            return {"status": "blocked", "error": str(exc), "writeAttempted": False}
     try:
         base = _runtime_base()
     except ValueError as exc:
@@ -820,6 +834,18 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
     runtime_root = root or base / "current"
     if not _allowed_update_root(runtime_root, base):
         return {"status": "blocked", "error": "standalone_runtime_outside_base", "writeAttempted": False}
+    # Host-adapter housekeeping left over from an older update is retried on every run, but a
+    # step that keeps failing (a read-only host file, a surface that vanished) is reported and
+    # must never stop the runtime from receiving a newer release: that would be a dead end the
+    # owner cannot repair. The newer generation repeats the same work with its own checks.
+    reconciliation_notes: dict[str, Any] = {}
+    if not check_only:
+        bridge = reconcile_legacy_bridge()
+        if bridge.get("status") == "blocked":
+            reconciliation_notes["bridge"] = bridge
+        retry = _retry_legacy_host_reconciliation(base)
+        if retry.get("status") == "blocked":
+            reconciliation_notes["hostRetry"] = retry
     current = current_release(runtime_root)
     selected = base / "current"
     if _path_present(selected):
@@ -836,14 +862,28 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
     write_attempted = False
     try:
         release = fetch_standalone_latest()
-        engine_tag = release["tag_name"][3:]
+        engine_tag = _channel_engine_tag(release["tag_name"])
+        if engine_tag is None:
+            raise ValueError("standalone_channel_tag_invalid")
         state = _release_status(current, engine_tag)
         result = {"status": state, "current": current, "latest": engine_tag, "channelTag": release["tag_name"], "writeAttempted": False}
+        if reconciliation_notes:
+            result["reconciliation"] = reconciliation_notes
         if check_only or state != "update_available":
             return result
         write_attempted = True
         installed = install_latest_runtime(release)
-        return {**result, **installed, "status": "updated", "writeAttempted": True}
+        adapter_result = installed.get("adapter_sync") or {}
+        activation = installed.get("activation") or {}
+        hook_result = installed.get("memory_hook_sync") or {}
+        router_result = installed.get("global_router_sync") or {}
+        host_result = installed.get("host_plugin_sync") or {}
+        incomplete = (activation.get("status") == "blocked" or bool(adapter_result.get("failed"))
+                      or hook_result.get("status") in {"fail", "failed", "blocked"}
+                      or router_result.get("status") in {"fail", "failed", "blocked"}
+                      or host_result.get("status") in {"partial", "fail", "failed", "blocked"})
+        return {**result, **installed, "status": "blocked" if incomplete else "updated",
+                **({"reason": "post_activation_incomplete"} if incomplete else {}), "writeAttempted": True}
     except (OSError, ValueError, RuntimeError, tarfile.TarError, urllib.error.URLError) as exc:
         unreachable = isinstance(exc, urllib.error.URLError) and not isinstance(exc, urllib.error.HTTPError)
         message = ("Could not reach api.github.com; check the network and retry. " if unreachable else "") + \
@@ -863,7 +903,7 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
         if _auto_update_disabled():
             return
         runtime_root = root or Path(__file__).resolve().parent.parent
-        base = _runtime_base()
+        base = _runtime_base_for_root(runtime_root)
         if not _allowed_update_root(runtime_root, base):
             return
         current = current_release(runtime_root)
@@ -909,9 +949,15 @@ def maybe_auto_update(root: Path | None = None, *, background: bool = True) -> N
                 try:
                     _spawn_auto_update_worker(runtime_root)
                 except Exception:
-                    _record_auto_update_failure("spawn_failed")
+                    _record_auto_update_failure("spawn_failed", base=base)
             else:
-                _run_auto_update_guarded(runtime_root)
+                try:
+                    if Path(__file__).resolve().parent.parent != runtime_root.resolve():
+                        _run_external_auto_update_worker(runtime_root, base)
+                    else:
+                        _run_auto_update_guarded(runtime_root)
+                except Exception:
+                    _record_auto_update_failure("worker_failed", base=base)
         finally:
             _release_lock(check_lock, check_token)
     except Exception:
@@ -923,7 +969,7 @@ def maybe_print_update_notice(root: Path | None = None) -> None:
         return
     runtime_root = root or Path(__file__).resolve().parent.parent
     try:
-        base = _runtime_base()
+        base = _runtime_base_for_root(runtime_root)
         # Keep the pre-existing notice scope: a bundled Desktop engine is not
         # itself the active standalone installation. Never follow current out
         # of the standalone base or compare an inactive generation when an
@@ -942,11 +988,11 @@ def maybe_print_update_notice(root: Path | None = None) -> None:
                 or marker.get("noticeSchema") != "agentlas.standalone-notice.v1"
                 or marker.get("status") not in {"current", "updated"}
                 or not isinstance(tag, str)
-                or not re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag)
-                or marker.get("latest") != tag[3:]
+                or _channel_engine_tag(tag) is None
+                or marker.get("latest") != _channel_engine_tag(tag)
                 or not _marker_recent(marker.get("last_checked_epoch"), METADATA_TTL_SECONDS)):
             return
-        engine_tag = tag[3:]
+        engine_tag = _channel_engine_tag(tag)
     except Exception:
         return
     if current and _release_status(current, engine_tag) == "update_available":
@@ -1004,10 +1050,16 @@ def _post_activation_state(
         current_target = current_path.resolve()
     except OSError:
         current_target = current_path
+    same_generation = _canonical_path(current_target) == _canonical_path(target)
+    if not same_generation and current_path.is_dir() and not _is_link(current_path):
+        # Symlink/junction creation can fail even on POSIX. In that case
+        # _point_current_at copies the generation; prove contents match before
+        # acknowledging activation rather than treating every copy as broken.
+        same_generation = _managed_content_matches(current_path, target)
     runtime_current = (
         current_release(current_path) == release_tag
         and current_release(target) == release_tag
-        and _canonical_path(current_target) == _canonical_path(target)
+        and same_generation
     )
     model_current = model_path.is_dir()
     host_blockers: list[dict[str, Any]] = []
@@ -1053,9 +1105,9 @@ def _post_activation_state(
 
 def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     channel_tag = str(release.get("tag_name") or "").strip()
-    if not re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", channel_tag):
+    tag = _channel_engine_tag(channel_tag)
+    if tag is None:
         raise ValueError("standalone_channel_tag_invalid")
-    tag = channel_tag[3:]  # os-v1.2.73 -> engine v1.2.73
     source_commit = str(release.get("standalone_source_commit") or "").strip().lower()
     if not _COMMIT_SHA_RE.fullmatch(source_commit):
         raise ValueError("standalone_tag_commit_missing")
@@ -1068,6 +1120,9 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     expected_size = archive_asset["size"]
 
     base = _runtime_base()
+    legacy_install = _legacy_runtime_base() == base
+    previous_release = current_release(base / "current") if legacy_install else None
+    previous_adapter_bundle = base / "current" / HOST_ADAPTER_BUNDLE_DIR if legacy_install else None
     target = base / _runtime_version_dir_name(tag)
     if target.exists() or target.is_symlink():
         raise ValueError("standalone_target_already_exists")
@@ -1110,6 +1165,18 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             if len(source_dirs) != 1:
                 raise ValueError("downloaded release must contain exactly one source directory")
             source = source_dirs[0]
+            if legacy_install and previous_adapter_bundle is not None:
+                if (not previous_release or _is_link(previous_adapter_bundle)
+                        or not previous_adapter_bundle.is_dir()):
+                    raise ValueError("legacy_adapter_baseline_unverified")
+                # Snapshot the active generation, including copy-based current,
+                # then verify official bytes before using it as an ownership baseline.
+                snapshot = tmp_path / "previous-adapter-bundle"
+                shutil.copytree(previous_adapter_bundle, snapshot, ignore=PYTHON_CACHE_IGNORE, symlinks=True)
+                if not _official_legacy_baseline_matches(
+                        previous_release, snapshot, base / "current" / ".runtime-adapter-verified-v1.json"):
+                    raise ValueError("legacy_adapter_baseline_unverified")
+                previous_adapter_bundle = snapshot
             if source.name != "Agentlas-OS-" + tag[1:]:
                 raise ValueError("standalone_archive_root_mismatch")
             if _source_release_tag(source) != tag:
@@ -1125,6 +1192,10 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("standalone_provenance_missing")
             if provenance_commit != source_commit:
                 raise ValueError("standalone_provenance_tag_mismatch")
+            if not channel_tag.startswith("os-") and not (source / _LEGACY_ADAPTER_PAYLOAD).is_dir():
+                raise ValueError("legacy_adapter_payload_missing")
+            _restore_relocated_release_payload(source)
+            source_baseline_manifest = _validate_source_adapter_manifest(source, tag)
             source_model = _validate_runtime_layout(source, release_source=True)
 
             staged_target = _unique_sibling(target, "staged")
@@ -1164,6 +1235,14 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
                 shutil.copy2(hook_installer, adapter_bundle / "scripts" / hook_installer.name)
             (adapter_bundle / "RELEASE").write_text(f"{tag}\n", encoding="utf-8")
             _validate_host_adapter_bundle(adapter_bundle, tag)
+            if source_baseline_manifest is not None:
+                if _legacy_baseline_digest(adapter_bundle) != source_baseline_manifest["digest"]:
+                    raise ValueError("legacy_baseline_bundle_mismatch")
+                _write_json(staged_target / ".runtime-adapter-verified-v1.json", {
+                    "schemaVersion": "agentlas.runtime-adapter-verification.v1",
+                    "release": tag, "commit": source_commit, "assetSha256": expected_sha256,
+                    "digest": source_baseline_manifest["digest"],
+                })
             runtime_model = staged_target / "models" / "model2vec" / source_model.name
             runtime_model.parent.mkdir(parents=True)
             shutil.copytree(source_model, runtime_model, ignore=PYTHON_CACHE_IGNORE)
@@ -1174,15 +1253,28 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
             # each one or the commands disappear from cmd.exe on every update.
             write_windows_command_shims(staged_target / "bin")
             _healthcheck_runtime(staged_target)
+            if legacy_install:
+                _write_json(base / ".legacy-host-reconcile.json", {
+                    "schemaVersion": "agentlas.legacy-host-reconcile.v1",
+                    "target": tag, "previous": previous_release,
+                })
             _activate_runtime(staged_target, target)
             applied_epoch = int(time.time())
             staged_target = None
-            # Standalone must not alter existing host registrations or One.
-            adapter_sync = {"status": "not_run", "reason": "isolated_namespace"}
-            host_plugin_sync = {"status": "not_run", "hosts": []}
-            plugin_cache_sync = {"status": "not_run", "preserved": []}
-            memory_hook_sync = {"status": "not_run", "reason": "isolated_namespace"}
-            global_router_sync = {"status": "not_run", "reason": "isolated_namespace"}
+            if legacy_install:
+                adapter_sync = sync_installed_runtime_adapters(source, previous_source=previous_adapter_bundle)
+                from .host_update import reconcile_host_plugins
+                host_plugin_sync = reconcile_host_plugins(target / HOST_ADAPTER_BUNDLE_DIR, tag)
+                plugin_cache_sync = {"status": "not_run", "reason": "preserve_existing_caches"}
+                memory_hook_sync = sync_installed_memory_hooks(source)
+                global_router_sync = _sync_installed_global_router(target)
+            else:
+                # Standalone must not alter existing host registrations or One.
+                adapter_sync = {"status": "not_run", "reason": "isolated_namespace"}
+                host_plugin_sync = {"status": "not_run", "hosts": []}
+                plugin_cache_sync = {"status": "not_run", "preserved": []}
+                memory_hook_sync = {"status": "not_run", "reason": "isolated_namespace"}
+                global_router_sync = {"status": "not_run", "reason": "isolated_namespace"}
     finally:
         if staged_target is not None and _path_present(staged_target):
             _remove_path(staged_target)
@@ -1191,7 +1283,8 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     # 활성화가 끝나고 잠금을 놓은 뒤에만 옛 세대를 거둔다. 정리는 어떤 이유로든
     # 업데이트 결과를 바꾸지 못한다(항목별 OSError 는 안에서 삼키고, 나머지도 여기서 막는다).
     try:
-        _prune_runtime_homes(base)
+        if not (legacy_install and _path_present(base / ".legacy-host-reconcile.json")):
+            _prune_runtime_homes(base)
     except Exception:
         pass
 
@@ -1203,6 +1296,19 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
         host_plugin_sync,
         plugin_cache_sync,
     )
+    if legacy_install and not (
+        activation.get("status") == "blocked" or adapter_sync.get("failed")
+        or host_plugin_sync.get("status") in {"partial", "fail", "failed", "blocked"}
+        or memory_hook_sync.get("status") in {"fail", "failed", "blocked"}
+        or global_router_sync.get("status") in {"fail", "failed", "blocked"}
+    ):
+        marker = base / ".legacy-host-reconcile.json"
+        if not marker.is_symlink() and _read_json(marker).get("target") == tag:
+            marker.unlink(missing_ok=True)
+            try:
+                _prune_runtime_homes(base)
+            except Exception:
+                pass
     return {
         "runtime_root": str(target),
         "current_link": str(base / "current"),
@@ -1229,7 +1335,575 @@ def install_latest_runtime(release: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> dict[str, Any]:
+_LEGACY_ADAPTER_PAYLOAD = Path("agentlas_cloud") / "legacy-adapters"
+_LEGACY_CONTRACT_PAYLOAD = Path("agentlas_cloud") / "legacy-contracts"
+_LEGACY_RUNTIME_PAYLOAD = Path("agentlas_cloud") / "legacy-runtime"
+_LEGACY_RUNTIME_ROOTS = ("system-agents", "goose", "openclaw", "runtime-support")
+_LEGACY_ADAPTER_PATHS = (
+    Path("codex/prompts"), Path(".claude/commands"), Path("cursor/plugin/commands"),
+    Path("opencode/commands"), Path("antigravity/workflows"), Path("skills"),
+    Path("openclaw/skills"),
+)
+
+# Adapter tree fingerprints checked against the exact verified release asset.
+# Unknown historical assets are never inferred from a source tag alone.
+_LEGACY_BASELINE_SHA256 = {
+    "v1.2.0": "068f314e234d1e6fb07bfd5e39f1d8bf5c16d465d22ec04a12baef330dc8d776",
+    "v1.2.1": "12bf33f8dc565a7208a2ba1efe96abf2b0e400ddd67bb394344e2e6527b611a4",
+    "v1.2.2": "12bf33f8dc565a7208a2ba1efe96abf2b0e400ddd67bb394344e2e6527b611a4",
+    "v1.2.3": "d7893771432aae593c90d24620cdccbe6009f1c978c79b8b19b7a9c8ddcb3438",
+    "v1.2.4": "de67782772faca1bfab2348544e115de013ba6066c6a6d1d0cc3037f5c8f895a",
+    "v1.2.5": "38dd92be57cad3656c73a44f940603b668c6041f6751e74f0180d466e3f908be",
+    "v1.2.6": "c26c614a731ff25981e87a2a6ebc556ca545cb2e9bb3d7447673865ab9b30cd6",
+    "v1.2.7": "c26c614a731ff25981e87a2a6ebc556ca545cb2e9bb3d7447673865ab9b30cd6",
+    "v1.2.9": "c8234567294a611d0017f532d873e5e07b1f31790f2322b173e3b27ceb345771",
+    "v1.2.10": "24d92533ad423b7fd19285525d3fc5319637cb9c9a39fc81374882beae677459",
+    "v1.2.11": "24d92533ad423b7fd19285525d3fc5319637cb9c9a39fc81374882beae677459",
+    "v1.2.12": "5ad3982273909990d7911af959ef4712a6b65db17f1a71a3f72e1bf5a5939dfe",
+    "v1.2.14": "971d26ea547e4b47807f79ab07dce542ca06f0f57911fd343fb915fe76655db8",
+    "v1.2.16": "4c0249a2a80e618e63926673b08dc8734dccb3755974acc939d1820c31879382",
+    "v1.2.17": "46707077b81024cdf65b19f0ad6da92c3178119667988df93908a94db56c3aae",
+    "v1.2.18": "46707077b81024cdf65b19f0ad6da92c3178119667988df93908a94db56c3aae",
+    "v1.2.19": "46707077b81024cdf65b19f0ad6da92c3178119667988df93908a94db56c3aae",
+    "v1.2.20": "46707077b81024cdf65b19f0ad6da92c3178119667988df93908a94db56c3aae",
+    "v1.2.21": "46707077b81024cdf65b19f0ad6da92c3178119667988df93908a94db56c3aae",
+    "v1.2.22": "46707077b81024cdf65b19f0ad6da92c3178119667988df93908a94db56c3aae",
+    "v1.2.23": "09ecf5ca9bfa2428c766c7bba9d93d08c2d3d87d9ce8b8cea0b333d3ee9fb299",
+    "v1.2.24": "ab11c9552f55deafa4c19556dd32518f59271703f0e544393ed34aec3497e91c",
+    "v1.2.25": "ab11c9552f55deafa4c19556dd32518f59271703f0e544393ed34aec3497e91c",
+    "v1.2.26": "ab11c9552f55deafa4c19556dd32518f59271703f0e544393ed34aec3497e91c",
+    "v1.2.27": "ab11c9552f55deafa4c19556dd32518f59271703f0e544393ed34aec3497e91c",
+    "v1.2.28": "96908b3c3b2608090f2c779d3e2f5efe9aeb5fdbf4d248502cdbc24cc192dbf5",
+    "v1.2.29": "96908b3c3b2608090f2c779d3e2f5efe9aeb5fdbf4d248502cdbc24cc192dbf5",
+    "v1.2.30": "96908b3c3b2608090f2c779d3e2f5efe9aeb5fdbf4d248502cdbc24cc192dbf5",
+    "v1.2.31": "7618434115dcbfdbd3731c628254c04fe811b67858c7532fcd07674fc2b81093",
+    "v1.2.32": "7618434115dcbfdbd3731c628254c04fe811b67858c7532fcd07674fc2b81093",
+    "v1.2.33": "74779d82746f95a64c9f54898bdead28adfe273e2677b2fab3645761383aac8e",
+    "v1.2.34": "7d8945f6e4f0d95b07cd3315b384dd129a6f739a6e744ce35816015615729d47",
+    "v1.2.35": "26bbf9ba551d3d46a3bda219b67df33e308ccfc69788a8bc3d6f02ad4a41813a",
+    "v1.2.36": "26bbf9ba551d3d46a3bda219b67df33e308ccfc69788a8bc3d6f02ad4a41813a",
+    "v1.2.37": "26bbf9ba551d3d46a3bda219b67df33e308ccfc69788a8bc3d6f02ad4a41813a",
+    "v1.2.38": "26bbf9ba551d3d46a3bda219b67df33e308ccfc69788a8bc3d6f02ad4a41813a",
+    "v1.2.39": "26bbf9ba551d3d46a3bda219b67df33e308ccfc69788a8bc3d6f02ad4a41813a",
+    "v1.2.40": "26bbf9ba551d3d46a3bda219b67df33e308ccfc69788a8bc3d6f02ad4a41813a",
+    "v1.2.42": "26bbf9ba551d3d46a3bda219b67df33e308ccfc69788a8bc3d6f02ad4a41813a",
+    "v1.2.43": "26bbf9ba551d3d46a3bda219b67df33e308ccfc69788a8bc3d6f02ad4a41813a",
+    "v1.2.44": "26bbf9ba551d3d46a3bda219b67df33e308ccfc69788a8bc3d6f02ad4a41813a",
+    "v1.2.45": "4e7130ccabbfed0b217cb806597faa1cb3315b2eaead2d57d649f01d19607b09",
+    "v1.2.46": "6bc6941a22ba4680095b73ed47764c0780ed4347679d0a04c05481d0dd93ae69",
+    "v1.2.47": "6bc6941a22ba4680095b73ed47764c0780ed4347679d0a04c05481d0dd93ae69",
+    "v1.2.48": "6bc6941a22ba4680095b73ed47764c0780ed4347679d0a04c05481d0dd93ae69",
+    "v1.2.49": "6bc6941a22ba4680095b73ed47764c0780ed4347679d0a04c05481d0dd93ae69",
+    "v1.2.50": "fae3e304d5bd05b216de29086f6b98684d2249e3bc8b715c84b578b707e671b5",
+    "v1.2.51": "fae3e304d5bd05b216de29086f6b98684d2249e3bc8b715c84b578b707e671b5",
+    "v1.2.54": "c9dca33c4678fae5e76d1c14fad095f32d6b657e21321a35fd3866108b7718ba",
+    "v1.2.55": "c9dca33c4678fae5e76d1c14fad095f32d6b657e21321a35fd3866108b7718ba",
+    "v1.2.56": "506d5c4e7bb99947e5e2b665833359ea0f8a5740d2f8110618620901f4338ba9",
+    "v1.2.57": "df7bad0ff40d29cf0efe84b140687a5b3e103b1d056e0589fe5221c4e8860a6a",
+    "v1.2.58": "9ea55d2c75031d15f5d2f8a979d822d35974741589ee5707a66101b9fe3bcdfd",
+    "v1.2.59": "9ea55d2c75031d15f5d2f8a979d822d35974741589ee5707a66101b9fe3bcdfd",
+    "v1.2.60": "9ea55d2c75031d15f5d2f8a979d822d35974741589ee5707a66101b9fe3bcdfd",
+    "v1.2.61": "9ea55d2c75031d15f5d2f8a979d822d35974741589ee5707a66101b9fe3bcdfd",
+    "v1.2.62": "9ea55d2c75031d15f5d2f8a979d822d35974741589ee5707a66101b9fe3bcdfd",
+    "v1.2.63": "9ea55d2c75031d15f5d2f8a979d822d35974741589ee5707a66101b9fe3bcdfd",
+    "v1.2.64": "dd4de82021f07a52bc0f8cd491c2594aa32b40f91ddc73493fd6cbc6688cf67b",
+    "v1.2.65": "ca758dab5201928fe037802535ed9b8014b41a3dd688a7f83c2921e0a54bbfde",
+    "v1.2.66": "ca758dab5201928fe037802535ed9b8014b41a3dd688a7f83c2921e0a54bbfde",
+    "v1.2.67": "ca758dab5201928fe037802535ed9b8014b41a3dd688a7f83c2921e0a54bbfde",
+    "v1.2.68": "ca758dab5201928fe037802535ed9b8014b41a3dd688a7f83c2921e0a54bbfde",
+    "v1.2.69": "ca758dab5201928fe037802535ed9b8014b41a3dd688a7f83c2921e0a54bbfde",
+    "v1.2.70": "33503e7aab139cecaed3c79537b1d0cecf58a1127afd7a6b9f081bfeb40863df",
+    "v1.2.71": "33503e7aab139cecaed3c79537b1d0cecf58a1127afd7a6b9f081bfeb40863df",
+    "v1.2.72": "33503e7aab139cecaed3c79537b1d0cecf58a1127afd7a6b9f081bfeb40863df",
+    "v1.2.90": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
+}
+_LEGACY_BASELINE_PATHS = (
+    Path(".claude/commands"), Path("codex/prompts"), Path("cursor/plugin/commands"),
+    Path("opencode/commands"), Path("antigravity/workflows"), Path("skills"),
+    Path("openclaw/skills"),
+)
+
+
+def _legacy_baseline_digest(root: Path) -> str:
+    """Hash all managed trees, including names and empty directories."""
+    digest = hashlib.sha256()
+    for relative in _LEGACY_BASELINE_PATHS:
+        tree = root / relative
+        if _has_symlink_in_path(tree, root) or not tree.is_dir():
+            raise ValueError("legacy_baseline_tree_invalid")
+        digest.update(f"D {relative.as_posix()}\n".encode())
+        for entry in sorted(tree.rglob("*"), key=lambda p: p.relative_to(root).as_posix()):
+            if "__pycache__" in entry.parts or entry.suffix in {".pyc", ".pyo"}:
+                continue
+            name = entry.relative_to(root).as_posix()
+            if _is_link(entry):
+                raise ValueError("legacy_baseline_symlink")
+            if entry.is_dir():
+                digest.update(f"D {name}\n".encode())
+            elif entry.is_file():
+                digest.update(f"F {name} {_sha256_file(entry)}\n".encode())
+            else:
+                raise ValueError("legacy_baseline_entry_invalid")
+    return digest.hexdigest()
+
+
+def _validate_source_adapter_manifest(source: Path, release: str, *, tree: Path | None = None) -> dict[str, Any] | None:
+    """Reject a present release contract that disagrees with its artifact."""
+    path = source / "contracts" / "runtime-adapter-baseline.json"
+    if not _path_present(path):
+        return None
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("legacy_baseline_manifest_invalid")
+    manifest = _read_json(path)
+    if (manifest.get("schemaVersion") != "agentlas.runtime-adapter-baseline.v1"
+            or manifest.get("release") != release
+            or manifest.get("algorithm") != "sha256-tree-v1"
+            or manifest.get("paths") != [p.as_posix() for p in _LEGACY_BASELINE_PATHS]
+            or not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("digest") or ""))
+            or _legacy_baseline_digest(tree or source) != manifest["digest"]):
+        raise ValueError("legacy_baseline_manifest_invalid")
+    return manifest
+
+
+def _official_legacy_baseline_matches(release: str, baseline: Path, attestation: Path | None = None) -> bool:
+    """Check official defaults against the verified release archive."""
+    known = _LEGACY_BASELINE_SHA256.get(release)
+    if known:
+        return _legacy_baseline_digest(baseline) == known
+    if not re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", release):
+        raise ValueError("legacy_baseline_release_invalid")
+    url = "https://api.github.com/repos/agentlas-ai/Agentlas-OS/releases/tags/" + release
+    raw, _ = _standalone_json(url)
+    if not isinstance(raw, dict):
+        raise ValueError("legacy_baseline_release_invalid")
+    previous = _standalone_tag_metadata(release, raw)
+    asset = _verified_runtime_archive_asset(previous)
+    commit = previous["standalone_source_commit"]
+    # The tag's contract is trusted only for releases whose publisher checks
+    # the contract against the final archive before publishing.
+    manifest_path = "contracts/runtime-adapter-baseline.json"
+    manifest_url = ("https://api.github.com/repos/agentlas-ai/Agentlas-OS/contents/"
+                    + manifest_path + "?ref=" + commit)
+    receipt = _read_json(attestation) if attestation is not None and not attestation.is_symlink() else {}
+    attested = (receipt.get("schemaVersion") == "agentlas.runtime-adapter-verification.v1"
+                and receipt.get("release") == release and receipt.get("commit") == commit
+                and receipt.get("assetSha256") == asset["sha256"])
+    manifest_ref = None
+    if attested:
+        try:
+            manifest_ref, _ = _standalone_json(manifest_url)
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+    if attested and isinstance(manifest_ref, dict) and manifest_ref.get("type") == "file" and manifest_ref.get("path") == manifest_path:
+        encoded = manifest_ref.get("content")
+        blob_sha = manifest_ref.get("sha")
+        if (manifest_ref.get("encoding") == "base64" and isinstance(encoded, str)
+                and len(encoded) <= 32768 and isinstance(blob_sha, str)
+                and re.fullmatch(r"[0-9a-f]{40}", blob_sha)):
+            try:
+                raw_manifest = base64.b64decode("".join(encoded.split()), validate=True)
+                blob = hashlib.sha1(b"blob " + str(len(raw_manifest)).encode() + b"\0" + raw_manifest).hexdigest()
+                manifest = json.loads(raw_manifest.decode("utf-8"))
+            except (ValueError, UnicodeError):
+                manifest = None
+                blob = ""
+            if (blob == blob_sha and isinstance(manifest, dict)
+                    and manifest.get("schemaVersion") == "agentlas.runtime-adapter-baseline.v1"
+                    and manifest.get("release") == release and manifest.get("algorithm") == "sha256-tree-v1"
+                    and manifest.get("paths") == [p.as_posix() for p in _LEGACY_BASELINE_PATHS]
+                    and re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("digest") or ""))
+                    and receipt.get("digest") == manifest["digest"]
+                    and _legacy_baseline_digest(baseline) == manifest["digest"]):
+                return True
+    with tempfile.TemporaryDirectory(prefix="agentlas-official-baseline-") as temporary:
+        temp = Path(temporary)
+        archive = temp / "previous.tar.gz"
+        _download(asset["url"], archive)
+        if archive.stat().st_size != asset["size"] or _sha256_file(archive) != asset["sha256"]:
+            raise ValueError("legacy_baseline_archive_mismatch")
+        extraction = temp / "extract"
+        extraction.mkdir()
+        with tarfile.open(archive, "r:gz") as source:
+            _safe_extract(source, extraction)
+        source = extraction / ("Agentlas-OS-" + release[1:])
+        if not source.is_dir() or _source_release_tag(source) != release:
+            raise ValueError("legacy_baseline_archive_root_mismatch")
+        entries = list(extraction.iterdir())
+        if len(entries) != 1 or entries[0] != source:
+            raise ValueError("legacy_baseline_archive_root_mismatch")
+        manifest = _read_json(source / "manifest.json")
+        if (manifest.get("version") != release[1:]
+                or _release_provenance_commit(source) != previous["standalone_source_commit"]):
+            raise ValueError("legacy_baseline_provenance_mismatch")
+        _restore_relocated_release_payload(source)
+        _validate_source_adapter_manifest(source, release)
+        return _legacy_baseline_digest(source) == _legacy_baseline_digest(baseline)
+
+
+def _legacy_staged_baseline() -> None:
+    """Capture the actual old generation while the legacy installer holds its lock.
+
+    The pre-activation healthcheck is a child of the old installer.  Limit this
+    side effect to its exact staging directory; ordinary imports and the
+    post-activation healthcheck must never write a snapshot.
+    """
+    requested = os.environ.get("HEPHAESTUS_HEALTHCHECK_ROOT")
+    if not requested:
+        return
+    root = Path(requested).resolve()
+    if root != Path(__file__).resolve().parent.parent:
+        return
+    match = re.fullmatch(r"\.(\d+\.\d+\.\d+)\.staged\.(\d+)\.(\d+)", root.name)
+    if not match or int(match.group(2)) != os.getppid():
+        return
+    payload = root / _LEGACY_ADAPTER_PAYLOAD
+    if not payload.is_dir() or _is_link(payload):
+        return
+    base = root.parent
+    lock = base / ".update.lock"
+    if lock.is_symlink() or not lock.is_file():
+        raise RuntimeError("legacy_baseline_update_lock_unverified")
+    lock_data = _read_json(lock)
+    token = lock_data.get("token")
+    if lock_data.get("pid") != os.getppid() or not isinstance(token, str) or not re.fullmatch(r"[0-9a-f]{32}", token):
+        raise RuntimeError("legacy_baseline_update_lock_unverified")
+    # The oldest supported updaters do not stage contracts/.  The release
+    # archive carries a duplicate inside the mandatory agentlas_cloud tree.
+    contract_payload = root / _LEGACY_CONTRACT_PAYLOAD
+    contracts = root / "contracts"
+    if _path_present(contract_payload):
+        if _has_symlink_in_path(contract_payload, root) or not contract_payload.is_dir():
+            raise RuntimeError("legacy_contract_payload_unsafe")
+        if not _path_present(contracts):
+            shutil.copytree(contract_payload, contracts, symlinks=True)
+        elif _is_link(contracts) or not _managed_content_matches(contracts, contract_payload):
+            raise RuntimeError("legacy_contract_payload_mismatch")
+        shutil.rmtree(contract_payload)
+    if _is_link(contracts) or not contracts.is_dir():
+        raise RuntimeError("legacy_contract_payload_missing")
+    runtime_payload = root / _LEGACY_RUNTIME_PAYLOAD
+    if _path_present(runtime_payload):
+        if _has_symlink_in_path(runtime_payload, root) or not runtime_payload.is_dir():
+            raise RuntimeError("legacy_runtime_payload_unsafe")
+        for name in _LEGACY_RUNTIME_ROOTS:
+            source = runtime_payload / name
+            if _is_link(source) or not source.is_dir():
+                raise RuntimeError("legacy_runtime_payload_missing")
+            _copy_missing_payload(source, root / name, strict=True,
+                                  source_boundary=runtime_payload, dest_boundary=root)
+        provenance = runtime_payload / "release-provenance.json"
+        destination = root / "release-provenance.json"
+        if _is_link(provenance) or not provenance.is_file():
+            raise RuntimeError("legacy_provenance_payload_missing")
+        if not _path_present(destination):
+            shutil.copy2(provenance, destination)
+        elif not _managed_content_matches(destination, provenance):
+            raise RuntimeError("legacy_provenance_payload_mismatch")
+        shutil.rmtree(runtime_payload)
+    # Early v1.2 updaters did not copy these roots at all.
+    if any(not (root / name).is_dir() or _is_link(root / name) for name in _LEGACY_RUNTIME_ROOTS):
+        raise RuntimeError("legacy_runtime_payload_missing")
+    if _is_link(root / "release-provenance.json") or not (root / "release-provenance.json").is_file():
+        raise RuntimeError("legacy_provenance_payload_missing")
+    _copy_missing_payload(payload / "skills", root / "skills", strict=True,
+                          source_boundary=payload, dest_boundary=root)
+    _validate_source_adapter_manifest(root, "v" + match.group(1), tree=payload)
+    current = base / "current"
+    active = current.resolve()
+    if not current.is_dir() or not _is_generation_dir(active, base.resolve()):
+        raise RuntimeError("legacy_baseline_active_generation_unverified")
+    release = current_release(current)
+    expected = _LEGACY_BASELINE_SHA256.get(release or "")
+    previous = current / HOST_ADAPTER_BUNDLE_DIR
+    if not expected or _is_link(previous) or not previous.is_dir():
+        raise RuntimeError("legacy_adapter_baseline_unverified")
+    snapshot = root / ".legacy-pre-activation-v1"
+    if _path_present(snapshot):
+        raise RuntimeError("legacy_baseline_snapshot_conflict")
+    with tempfile.TemporaryDirectory(prefix=".legacy-baseline-", dir=root) as temporary:
+        pending = Path(temporary) / "snapshot"
+        pending.mkdir()
+        for relative in _LEGACY_BASELINE_PATHS:
+            if _has_symlink_in_path(previous / relative, previous):
+                raise RuntimeError("legacy_baseline_symlink")
+            target = pending / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(previous / relative, target, symlinks=True)
+        if _legacy_baseline_digest(pending) != expected or current.resolve() != active:
+            raise RuntimeError("legacy_adapter_baseline_unverified")
+        if _read_json(lock).get("token") != token:
+            raise RuntimeError("legacy_baseline_update_lock_changed")
+        _write_json(pending / "receipt.json", {
+            "schemaVersion": "agentlas.legacy-pre-activation.v1",
+            "release": release, "digest": expected, "lockToken": token,
+            "parentPid": os.getppid(), "targetRelease": "v" + match.group(1),
+        })
+        pending.rename(snapshot)
+
+
+def _has_symlink_in_path(path: Path, boundary: Path) -> bool:
+    if not path.is_relative_to(boundary):
+        return True
+    for part in (path, *path.parents):
+        if _is_link(part):
+            return True
+        if part == boundary:
+            return False
+    return True
+
+
+def _copy_missing_payload(source: Path, dest: Path, *, strict: bool, source_boundary: Path, dest_boundary: Path) -> list[str]:
+    """Merge verified payload into an owned tree without replacing existing files."""
+    preserved: list[str] = []
+    if not source.exists():
+        return preserved
+    if not source.is_dir() or _has_symlink_in_path(source, source_boundary):
+        raise ValueError("legacy_adapter_payload_unsafe")
+    for entry in sorted(source.rglob("*")):
+        relative = entry.relative_to(source)
+        target = dest / relative
+        if entry.is_symlink():
+            raise ValueError("legacy_adapter_payload_unsafe")
+        if _has_symlink_in_path(target, dest_boundary):
+            raise ValueError("legacy_adapter_destination_unsafe")
+        if entry.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        elif entry.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists():
+                if not target.is_file() or target.read_bytes() != entry.read_bytes():
+                    if strict:
+                        raise ValueError("legacy_adapter_payload_conflict")
+                    preserved.append(str(target))
+                continue
+            try:
+                with target.open("xb") as output, entry.open("rb") as input_file:
+                    shutil.copyfileobj(input_file, output)
+                shutil.copymode(entry, target, follow_symlinks=False)
+            except FileExistsError:
+                if strict:
+                    raise ValueError("legacy_adapter_payload_conflict")
+                preserved.append(str(target))
+    return preserved
+
+
+def _restore_relocated_release_payload(source: Path) -> None:
+    """Normalize a legacy-safe archive only after its digest is verified."""
+    source = source.resolve()
+    payload = source / _LEGACY_ADAPTER_PAYLOAD
+    if not payload.exists():
+        return
+    if payload.is_symlink() or not payload.is_dir():
+        raise ValueError("legacy_adapter_payload_unsafe")
+    if any(not (payload / relative).is_dir() for relative in _LEGACY_ADAPTER_PATHS):
+        raise ValueError("legacy_adapter_payload_incomplete")
+    for relative in _LEGACY_ADAPTER_PATHS:
+        _copy_missing_payload(payload / relative, source / relative, strict=True, source_boundary=payload, dest_boundary=source)
+    # This is the updater-owned temporary extraction, not an installed tree.
+    shutil.rmtree(payload)
+    contract_payload = source / _LEGACY_CONTRACT_PAYLOAD
+    if _path_present(contract_payload):
+        if (_has_symlink_in_path(contract_payload, source) or not contract_payload.is_dir()
+                or not _managed_content_matches(source / "contracts", contract_payload)):
+            raise ValueError("legacy_contract_payload_mismatch")
+        shutil.rmtree(contract_payload)
+    runtime_payload = source / _LEGACY_RUNTIME_PAYLOAD
+    if _path_present(runtime_payload):
+        if _has_symlink_in_path(runtime_payload, source) or not runtime_payload.is_dir():
+            raise ValueError("legacy_runtime_payload_unsafe")
+        for name in _LEGACY_RUNTIME_ROOTS:
+            if not _managed_content_matches(source / name, runtime_payload / name):
+                raise ValueError("legacy_runtime_payload_mismatch")
+        if not _managed_content_matches(source / "release-provenance.json", runtime_payload / "release-provenance.json"):
+            raise ValueError("legacy_provenance_payload_mismatch")
+        shutil.rmtree(runtime_payload)
+
+
+def reconcile_legacy_bridge() -> dict[str, Any]:
+    """Complete a legacy-safe archive installed by an older updater.
+
+    The old updater runs the hook installer after activation.  Only that
+    active, self-owned generation is eligible; no foreign checkout is touched.
+    """
+    try:
+        base = _legacy_runtime_base()
+        if base is None:
+            return {"status": "not_applicable"}
+        root = (base / "current").resolve()
+        if root != Path(__file__).resolve().parent.parent:
+            return {"status": "blocked", "reason": "legacy_bridge_not_active_generation"}
+        payload = root / _LEGACY_ADAPTER_PAYLOAD
+        if not payload.exists():
+            return {"status": "not_applicable"}
+        if (not payload.is_dir() or _is_link(payload) or _is_link(payload.parent)
+                or payload.resolve().parent != (root / "agentlas_cloud").resolve()):
+            return {"status": "blocked", "reason": "legacy_adapter_payload_unsafe"}
+        if any(not (payload / relative).is_dir() for relative in _LEGACY_ADAPTER_PATHS):
+            return {"status": "blocked", "reason": "legacy_adapter_payload_incomplete"}
+        marker = root / ".legacy-adapters-reconciled-v1.json"
+        if _read_json(marker).get("status") == "pass":
+            return {"status": "pass", "alreadyReconciled": True}
+        lock = base / ".legacy-adapter-reconcile.lock"
+        token = _acquire_lock(lock)
+        try:
+            current = current_release(root)
+            previous = root / ".legacy-pre-activation-v1"
+            receipt_path = previous / "receipt.json"
+            if _is_link(previous) or not previous.is_dir() or _is_link(receipt_path) or not receipt_path.is_file():
+                return {"status": "blocked", "reason": "legacy_adapter_baseline_unverified"}
+            receipt = _read_json(receipt_path)
+            previous_release = receipt.get("release")
+            expected = _LEGACY_BASELINE_SHA256.get(previous_release) if isinstance(previous_release, str) else None
+            update_lock = base / ".update.lock"
+            lock_data = _read_json(update_lock) if not update_lock.is_symlink() else {}
+            old_lock_present = _path_present(update_lock)
+            receipt_token = receipt.get("lockToken")
+            if (receipt.get("schemaVersion") != "agentlas.legacy-pre-activation.v1"
+                    or not expected or receipt.get("digest") != expected
+                    or receipt.get("targetRelease") != current
+                    or not isinstance(receipt_token, str) or not re.fullmatch(r"[0-9a-f]{32}", receipt_token)
+                    or not isinstance(receipt.get("parentPid"), int) or receipt["parentPid"] <= 0
+                    or (old_lock_present and (receipt_token != lock_data.get("token")
+                                              or receipt["parentPid"] != lock_data.get("pid")))
+                    or _compare_semver(previous_release, current) is None
+                    or _compare_semver(previous_release, current) >= 0):
+                return {"status": "blocked", "reason": "legacy_adapter_baseline_unverified"}
+            bundle = root / HOST_ADAPTER_BUNDLE_DIR
+            if bundle.is_symlink() or not bundle.is_dir():
+                raise ValueError("legacy_bridge_bundle_unavailable")
+            # Keep the verified tree stable while comparing installed files.
+            with tempfile.TemporaryDirectory(prefix="agentlas-legacy-baseline-") as temporary:
+                baseline = Path(temporary) / "baseline"
+                baseline.mkdir()
+                for relative in _LEGACY_BASELINE_PATHS:
+                    target = baseline / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(previous / relative, target, symlinks=True)
+                if _legacy_baseline_digest(baseline) != expected:
+                    return {"status": "blocked", "reason": "legacy_adapter_baseline_changed"}
+                preserved: list[str] = []
+                for relative in _LEGACY_ADAPTER_PATHS:
+                    src = payload / relative
+                    preserved.extend(_copy_missing_payload(src, bundle / relative, strict=False, source_boundary=payload, dest_boundary=bundle))
+                    if relative in (Path("skills"), Path("openclaw/skills")):
+                        preserved.extend(_copy_missing_payload(src, root / relative, strict=False, source_boundary=payload, dest_boundary=root))
+                sync = sync_installed_runtime_adapters(bundle, previous_source=baseline, skip_grok=True)
+                if sync.get("failed"):
+                    return {"status": "blocked", "reason": "legacy_adapter_sync_failed", "failedCount": len(sync["failed"])}
+                if preserved:
+                    # The generation's own adapter bundle disagrees with the verified payload.
+                    return {"status": "blocked", "reason": "legacy_adapter_bundle_conflict",
+                            "preservedCount": len(preserved)}
+            # Installed files the owner edited are left exactly as they are. That is the
+            # intended result of the sync, not a failure: blocking here would stop every
+            # later update on a machine whose owner customized one command.
+            kept = len(sync.get("preserved_modified") or [])
+            _write_json(marker, {"schemaVersion": "agentlas.legacy-adapters.v1", "status": "pass", "release": current,
+                                 "preservedModifiedCount": kept})
+            return {"status": "pass", "preservedCount": kept}
+        finally:
+            _release_lock(lock, token)
+    except (OSError, ValueError, RuntimeError) as exc:
+        return {"status": "blocked", "reason": str(exc)[:200]}
+
+
+_LEGACY_HOST_RETRY_LIMIT = 3
+
+
+def _retry_legacy_host_reconciliation(base: Path) -> dict[str, Any]:
+    """Retry post-activation host work after an interrupted legacy update."""
+    if _legacy_runtime_base() != base:
+        return {"status": "not_applicable"}
+    marker = base / ".legacy-host-reconcile.json"
+    if not _path_present(marker):
+        return {"status": "not_applicable"}
+    if marker.is_symlink() or not marker.is_file():
+        return {"status": "blocked", "reason": "legacy_host_marker_unsafe"}
+    record = _read_json(marker)
+    if record.get("schemaVersion") != "agentlas.legacy-host-reconcile.v1":
+        return {"status": "blocked", "reason": "legacy_host_marker_invalid"}
+    current = base / "current"
+    release = current_release(current)
+    if record.get("target") != release:
+        # An activation that rolled back leaves the previous generation live.
+        return {"status": "not_applicable", "reason": "legacy_host_marker_stale"}
+    try:
+        token = _acquire_lock(base / ".update.lock")
+    except RuntimeError:
+        return {"status": "blocked", "reason": "legacy_host_update_in_progress"}
+    try:
+        # Retry a bounded number of times. A step that keeps failing would otherwise rewrite the
+        # host files on every update check forever and hold back the cleanup of old generations.
+        attempts = record.get("attempts")
+        attempts = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) and attempts >= 0 else 0
+        if attempts >= _LEGACY_HOST_RETRY_LIMIT:
+            if not marker.is_symlink() and _read_json(marker) == record:
+                marker.unlink(missing_ok=True)
+            return {"status": "gave_up", "reason": "legacy_host_reconcile_incomplete", "attempts": attempts}
+        record = {**record, "attempts": attempts + 1}
+        _write_json(marker, record)
+        bundle = current / HOST_ADAPTER_BUNDLE_DIR
+        _validate_host_adapter_bundle(bundle, release)
+        previous = record.get("previous")
+        if not isinstance(previous, str) or not _is_comparable_release(previous):
+            return {"status": "blocked", "reason": "legacy_adapter_baseline_unverified"}
+        candidate = base / _runtime_version_dir_name(previous)
+        old_bundle = candidate / HOST_ADAPTER_BUNDLE_DIR
+        if (_is_link(candidate) or not candidate.is_dir() or current_release(candidate) != previous
+                or _is_link(old_bundle) or not old_bundle.is_dir()):
+            return {"status": "blocked", "reason": "legacy_adapter_baseline_unverified"}
+        with tempfile.TemporaryDirectory(prefix="agentlas-legacy-retry-") as temporary:
+            baseline = Path(temporary) / "baseline"
+            shutil.copytree(old_bundle, baseline, ignore=PYTHON_CACHE_IGNORE, symlinks=True)
+            if not _official_legacy_baseline_matches(
+                    previous, baseline, candidate / ".runtime-adapter-verified-v1.json"):
+                return {"status": "blocked", "reason": "legacy_adapter_baseline_unverified"}
+            adapters = sync_installed_runtime_adapters(bundle, previous_source=baseline)
+        from .host_update import reconcile_host_plugins
+        plugins = reconcile_host_plugins(bundle, release)
+        hooks = sync_installed_memory_hooks(bundle)
+        router = _sync_installed_global_router(current)
+        if (adapters.get("failed")
+                or plugins.get("status") in {"partial", "fail", "failed", "blocked"}
+                or hooks.get("status") in {"fail", "failed", "blocked"}
+                or router.get("status") in {"fail", "failed", "blocked"}):
+            return {"status": "blocked", "reason": "legacy_host_reconcile_incomplete"}
+        if marker.is_symlink() or _read_json(marker) != record:
+            return {"status": "blocked", "reason": "legacy_host_marker_changed"}
+        marker.unlink()
+        return {"status": "pass"}
+    except (OSError, ValueError, RuntimeError) as exc:
+        return {"status": "blocked", "reason": str(exc)[:200]}
+    finally:
+        _release_lock(base / ".update.lock", token)
+
+
+def _managed_content_matches(left: Path, right: Path) -> bool:
+    """Only replace an installed adapter if it still matches its old bundle."""
+    try:
+        if left.is_symlink() or right.is_symlink():
+            return False
+        if left.is_file() and right.is_file():
+            return left.read_bytes() == right.read_bytes()
+        if not left.is_dir() or not right.is_dir():
+            return False
+        left_paths = {p.relative_to(left) for p in left.rglob("*") if "__pycache__" not in p.parts and p.suffix not in {".pyc", ".pyo"}}
+        right_paths = {p.relative_to(right) for p in right.rglob("*") if "__pycache__" not in p.parts and p.suffix not in {".pyc", ".pyo"}}
+        if left_paths != right_paths:
+            return False
+        for relative in left_paths:
+            a, b = left / relative, right / relative
+            if a.is_symlink() or b.is_symlink() or a.is_dir() != b.is_dir():
+                return False
+            if a.is_file() and (not b.is_file() or a.read_bytes() != b.read_bytes()):
+                return False
+        return True
+    except OSError:
+        return False
+
+
+def sync_installed_runtime_adapters(source: Path, home: Path | None = None, *, previous_source: Path | None = None, skip_grok: bool = False) -> dict[str, Any]:
     """Refresh already-installed command and skill adapters from ``source``.
 
     A surface the user never set up is still never created. But "did the user
@@ -1261,6 +1935,7 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
     cache_updated: list[str] = []
     cache_added: list[str] = []
     cache_preserved: list[str] = []
+    preserved_modified: list[str] = []
 
     # A host-owned plugin cache is immutable once its version directory exists.
     # A Claude/Codex MCP process may still have modules loaded from any old
@@ -1288,6 +1963,11 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
             skipped_missing.append(str(dest))
             continue
         existed = dest.exists()
+        if existed and previous_source is not None and not _managed_content_matches(dest, previous_source / src_rel):
+            # A previous retry may already have installed this exact content.
+            if not _managed_content_matches(dest, src):
+                preserved_modified.append(str(dest))
+            continue
         if not existed and not dest.parent.is_dir():
             skipped_missing.append(str(dest))
             continue
@@ -1302,6 +1982,10 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
         src = source / src_rel
         if not src.is_dir() or not dest.exists():
             skipped_missing.append(str(dest))
+            continue
+        if previous_source is not None and not _managed_content_matches(dest, previous_source / src_rel):
+            if not _managed_content_matches(dest, src):
+                preserved_modified.append(str(dest))
             continue
         try:
             _replace_directory(src, dest)
@@ -1318,6 +2002,11 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
         src = source / src_rel
         if not src.is_dir() or (dest.exists() and (not dest.is_dir() or dest.is_symlink())):
             skipped_missing.append(str(dest))
+            continue
+        if previous_source is not None and dest.exists():
+            # A versioned cache may have been populated by a host or user;
+            # never replace it while migrating an existing installation.
+            cache_preserved.append(str(dest))
             continue
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1337,9 +2026,11 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
         if child.name != target_cache_name or _canonical_path(child) in protected_cache_paths:
             cache_preserved.append(str(child))
 
-    grok_result = _sync_grok_marketplace_cache(home_dir)
+    grok_result = {"updated": [], "failed": []} if skip_grok else _sync_grok_marketplace_cache(home_dir)
     updated.extend(grok_result["updated"])
-    failed.extend(grok_result["failed"])
+    # A Grok marketplace clone that is dirty, offline or not fast-forwardable is a cache of
+    # this repository. Report it, but never let it fail (and so block) a runtime update.
+    grok_cache_skipped = list(grok_result["failed"])
 
     return {
         "updated": updated,
@@ -1349,6 +2040,8 @@ def sync_installed_runtime_adapters(source: Path, home: Path | None = None) -> d
         "added": added,
         "skipped_missing": skipped_missing,
         "failed": failed,
+        "preserved_modified": preserved_modified,
+        "grok_cache_skipped": grok_cache_skipped,
         "plugin_cache": {
             "updated": cache_updated,
             "added": cache_added,
@@ -2186,7 +2879,57 @@ def _is_comparable_release(value: str | None) -> bool:
     return _parse_semver(value) is not None
 
 
+def _is_default_standalone_namespace(candidate: Path, home: Path) -> bool:
+    if candidate.resolve() != (home / ".agentlas" / "os-runtime").resolve():
+        return False
+    marker = candidate / ".agentlas-os-namespace-v1"
+    if not _path_present(marker):
+        # A legacy user was allowed to choose this very path before namespaces.
+        return False
+    if marker.is_symlink() or not marker.is_file() or marker.read_bytes() != b"agentlas-os-namespace-v1\n":
+        raise ValueError("standalone_namespace_ownership_unverified")
+    return True
+
+
+def _legacy_runtime_base() -> Path | None:
+    """Recognize an updater loaded from an existing legacy generation.
+
+    The environment override named the legacy base itself in older versions;
+    standalone uses the same setting as the parent of its isolated namespace.
+    The executable's actual path determines which contract it belongs to.
+    """
+    home = Path.home().resolve()
+    override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
+    candidate = Path(override) if override else home / ".agentlas" / "runtime"
+    if override and _is_default_standalone_namespace(candidate, home):
+        return None
+    try:
+        base = candidate.resolve()
+        module = Path(__file__).resolve()
+        relative = module.relative_to(base)
+        if len(relative.parts) != 3 or relative.parts[1:] != ("agentlas_cloud", "update.py"):
+            return None
+        generation = base / relative.parts[0]
+        current = base / "current"
+        selected = current.resolve()
+        if not _path_present(current) or not current.is_dir() or not _is_generation_dir(selected, base):
+            raise RuntimeError("legacy_runtime_current_unsafe")
+        if not _is_comparable_release(current_release(generation)):
+            raise RuntimeError("legacy_runtime_generation_unverified")
+        if not _is_comparable_release(current_release(current)):
+            raise RuntimeError("legacy_runtime_current_unverified")
+        return base
+    except (OSError, ValueError):
+        return None
+
+
 def _runtime_base() -> Path:
+    try:
+        legacy = _legacy_runtime_base()
+    except RuntimeError as exc:
+        raise ValueError(str(exc)) from exc
+    if legacy is not None:
+        return legacy
     home = Path.home().resolve()
     state = home / ".agentlas"
     override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
@@ -2214,12 +2957,102 @@ def _runtime_base() -> Path:
             raise ValueError("standalone_namespace_ownership_unverified")
         current = base / "current"
         if current.exists() or current.is_symlink():
-            if not current.is_symlink() or not current.resolve().is_relative_to(base.resolve()):
+            if (not current.is_dir() or not _is_generation_dir(current.resolve(), base.resolve())
+                    or not _is_comparable_release(current_release(current))):
                 raise ValueError("standalone_namespace_current_unsafe")
     return base
 
 
+def _legacy_base_for_root(runtime_root: Path) -> Path | None:
+    """Resolve an explicit active legacy root passed by an installed hook."""
+    override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
+    candidate = Path(override) if override else Path.home().resolve() / ".agentlas" / "runtime"
+    if override and _is_default_standalone_namespace(candidate, Path.home().resolve()):
+        return None
+    base = candidate.resolve()
+    current = base / "current"
+    try:
+        selected = current.resolve()
+        requested = runtime_root.resolve()
+        if requested != selected:
+            return None
+        if (not current.is_dir() or not _is_generation_dir(selected, base)
+                or not _is_comparable_release(current_release(current))):
+            raise ValueError("legacy_runtime_current_unsafe")
+        return base
+    except OSError as exc:
+        raise ValueError("legacy_runtime_current_unsafe") from exc
+
+
+def _runtime_base_for_root(runtime_root: Path) -> Path:
+    return _legacy_base_for_root(runtime_root) or _runtime_base()
+
+
+def _active_runtime_for_cached_updater() -> Path | None:
+    """A host plugin's cached CLI must update its installed runtime, not itself."""
+    module = Path(__file__).resolve()
+    home = Path.home().resolve()
+    from_cache = False
+    for _, _, cache in _plugin_cache_roots(home):
+        try:
+            relative = module.relative_to(cache.resolve())
+        except ValueError:
+            continue
+        if len(relative.parts) == 3 and relative.parts[1:] == ("agentlas_cloud", "update.py"):
+            from_cache = True
+            break
+    if not from_cache:
+        return None
+    override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
+    legacy = Path(override) if override else home / ".agentlas" / "runtime"
+    current = legacy / "current"
+    if _path_present(current) and not _is_default_standalone_namespace(legacy, home):
+        if _legacy_base_for_root(current) is None:
+            raise ValueError("legacy_runtime_current_unsafe")
+        return current.resolve()
+    base = _runtime_base()
+    current = base / "current"
+    if _path_present(current):
+        if not _allowed_update_root(current, base) or not _is_comparable_release(current_release(current)):
+            raise ValueError("standalone_current_unverified")
+        return current.resolve()
+    return None
+
+
+def _run_update_in_active_runtime(runtime_root: Path, check_only: bool) -> dict[str, Any]:
+    base = _runtime_base_for_root(runtime_root)
+    env = os.environ.copy()
+    if env.get("HEPHAESTUS_RUNTIME_BASE") and _legacy_base_for_root(runtime_root) is not None:
+        env["HEPHAESTUS_RUNTIME_BASE"] = str(base)
+    code = (
+        "import json,sys\n"
+        "sys.path.insert(0,sys.argv[1])\n"
+        "from agentlas_cloud.update import run_update,UpdateUnavailableError\n"
+        "try:\n result=run_update(check_only=sys.argv[2]=='1')\n"
+        "except UpdateUnavailableError as exc:\n print(json.dumps({'errorPayload':exc.payload})); raise SystemExit(3)\n"
+        "print(json.dumps({'result':result},ensure_ascii=False))\n"
+    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", code, str(runtime_root), "1" if check_only else "0"],
+            cwd=str(base), env=env, stdin=subprocess.DEVNULL, capture_output=True,
+            text=True, timeout=1800, check=False, **no_console_window(),
+        )
+        payload = json.loads(completed.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        raise UpdateUnavailableError({"status": "check_failed", "error": "runtime_worker_failed", "writeAttempted": not check_only},
+                                     "Runtime update result unavailable; inspect runtime status.") from exc
+    if completed.returncode == 3 and isinstance(payload, dict) and isinstance(payload.get("errorPayload"), dict):
+        raise UpdateUnavailableError(payload["errorPayload"], "Runtime update unavailable; inspect runtime status.")
+    if completed.returncode != 0 or not isinstance(payload, dict) or not isinstance(payload.get("result"), dict):
+        raise UpdateUnavailableError({"status": "check_failed", "error": "runtime_worker_failed", "writeAttempted": not check_only},
+                                     "Runtime update unavailable; inspect runtime status before retrying.")
+    return payload["result"]
+
+
 def _prepare_update_base(base: Path) -> None:
+    if _legacy_runtime_base() == base:
+        return
     override = os.environ.get("HEPHAESTUS_RUNTIME_BASE")
     default_base = Path.home().resolve() / ".agentlas" / "os-runtime"
     use_default = not override or Path(override).expanduser().resolve() == default_base.resolve()
@@ -2263,13 +3096,14 @@ def _run_auto_update_once(root: Path | None = None) -> dict[str, Any]:
         return exc.payload
 
 
-def _record_auto_update_failure(code: str) -> None:
+def _record_auto_update_failure(code: str, *, base: Path | None = None) -> None:
     # Never persist exception text: it can contain URLs, paths or credentials.
-    marker_path = _runtime_base() / AUTO_UPDATE_MARKER
+    base = base or _runtime_base()
+    marker_path = base / AUTO_UPDATE_MARKER
     marker = _read_json(marker_path)
     marker.pop("updated_to", None)
     try:
-        marker["current"] = current_release(_runtime_base() / "current")
+        marker["current"] = current_release(base / "current")
     except (OSError, ValueError):
         marker["current"] = None
     previous = marker.get("failure_count", 0)
@@ -2294,16 +3128,25 @@ def _run_auto_update_guarded(runtime_root: Path) -> None:
         _record_auto_update_failure("update_failed")
 
 
-def _spawn_auto_update_worker(runtime_root: Path) -> None:
+def _auto_update_worker_settings(runtime_root: Path) -> tuple[dict[str, str], Path]:
     env = os.environ.copy()
     env["HEPHAESTUS_AUTO_UPDATE_WORKER"] = "1"
     existing_pythonpath = env.get("PYTHONPATH")
     env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
+    worker_cwd = _runtime_base_for_root(runtime_root)
+    # In legacy versions the override names the base itself. A relative value
+    # must be frozen before changing cwd or the child selects base/base.
+    if env.get("HEPHAESTUS_RUNTIME_BASE") and _legacy_base_for_root(runtime_root) is not None:
+        env["HEPHAESTUS_RUNTIME_BASE"] = str(worker_cwd)
+    return env, worker_cwd
+
+
+def _spawn_auto_update_worker(runtime_root: Path) -> None:
+    env, worker_cwd = _auto_update_worker_settings(runtime_root)
     # The worker is what replaces `current`, so its cwd must not be inside a
     # generation: Windows refuses to rename a directory that is any process's
     # cwd (current is a plain copy there without symlink privilege), and the
     # worker would block its own activation. PYTHONPATH still finds the code.
-    worker_cwd = _runtime_base()
     try:
         worker_cwd.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -2320,6 +3163,21 @@ def _spawn_auto_update_worker(runtime_root: Path) -> None:
             start_new_session=True,
             **no_console_window(),
         )
+
+
+def _run_external_auto_update_worker(runtime_root: Path, base: Path) -> None:
+    """Run a foreign-cache request with the active runtime's own updater."""
+    env, worker_cwd = _auto_update_worker_settings(runtime_root)
+    if worker_cwd != base:
+        raise ValueError("runtime_worker_namespace_mismatch")
+    completed = subprocess.run(
+        [sys.executable, "-m", "agentlas_cloud.update", "--auto-update-worker", str(runtime_root)],
+        cwd=str(worker_cwd), env=env, stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1800,
+        check=False, **no_console_window(),
+    )
+    if completed.returncode:
+        raise RuntimeError("runtime_worker_failed")
 
 
 def _installed_adapter_file_targets(source: Path, home: Path) -> list[tuple[Path, Path]]:
@@ -2740,7 +3598,7 @@ def _grok_marketplace_cache_targets(home: Path) -> list[Path]:
 def _sync_grok_marketplace_cache(home: Path) -> dict[str, Any]:
     """Fast-forward any Grok marketplace-cache clone of this repo to latest.
 
-    This stays git-native (fetch + hard reset) instead of replacing the
+    This stays git-native (fetch + fast-forward) instead of replacing the
     directory wholesale, because Grok may rely on the clone's ``.git``
     metadata for its own integrity checks. It never invokes the ``grok``
     binary itself: the exact marketplace name Grok registers this repo under
@@ -2754,6 +3612,13 @@ def _sync_grok_marketplace_cache(home: Path) -> dict[str, Any]:
     failed: list[dict[str, str]] = []
     for cache_dir in _grok_marketplace_cache_targets(home):
         try:
+            status = subprocess.run(
+                ["git", "-C", str(cache_dir), "status", "--porcelain"],
+                capture_output=True, timeout=20, check=True, **no_console_window(),
+            )
+            if status.stdout:
+                failed.append({"path": str(cache_dir), "error": "local_changes_preserved"})
+                continue
             subprocess.run(
                 ["git", "-C", str(cache_dir), "fetch", "--quiet", "origin", "main"],
                 capture_output=True,
@@ -2762,7 +3627,7 @@ def _sync_grok_marketplace_cache(home: Path) -> dict[str, Any]:
                 **no_console_window(),
             )
             subprocess.run(
-                ["git", "-C", str(cache_dir), "reset", "--quiet", "--hard", "FETCH_HEAD"],
+                ["git", "-C", str(cache_dir), "merge", "--quiet", "--ff-only", "FETCH_HEAD"],
                 capture_output=True,
                 timeout=20,
                 check=True,
@@ -2892,9 +3757,11 @@ def _verified_runtime_archive_asset(release: dict[str, Any]) -> dict[str, Any]:
     tag = str(release.get("tag_name") or "").strip()
     if not tag:
         raise ValueError("release tag_name is required")
-    if not re.fullmatch(r"os-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
+    engine_tag = _channel_engine_tag(tag)
+    if engine_tag is None:
         raise ValueError("standalone_channel_tag_invalid")
-    expected_name = f"agentlas-os-runtime-{tag[3:]}.tar.gz"
+    expected_name = (f"agentlas-os-runtime-{engine_tag}.tar.gz" if tag.startswith("os-")
+                     else f"hephaestus-runtime-{engine_tag}.tar.gz")
     assets = release.get("assets")
     if not isinstance(assets, list):
         raise ValueError(f"release is missing verified runtime asset: {expected_name}")
@@ -3200,6 +4067,16 @@ def _is_junction(path: Path) -> bool:
     except (OSError, ValueError):
         return False
     return getattr(metadata, "st_reparse_tag", 0) == _IO_REPARSE_TAG_MOUNT_POINT
+
+
+def _is_generation_dir(selected: Path, base: Path) -> bool:
+    """A runtime generation is a direct child of the base, or of its `.generations` folder.
+
+    The shell installer promotes every runtime into `<base>/.generations/<version>.<random>`
+    and points `current` there; the updaters create `<base>/<version>`. Both are owned layouts.
+    """
+    parent = selected.parent
+    return parent == base or (parent.name == ".generations" and parent.parent == base)
 
 
 def _is_link(path: Path) -> bool:
@@ -3755,6 +4632,139 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
     tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}.{time.time_ns()}")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     tmp.replace(path)
+
+
+_LOCAL_DIAGNOSTIC_SHA256 = "5e3076ccfcac7bfd927e7af38bfe1832ef5d7776f447381eeca7a164e4add2b3"
+_LOCAL_DIAGNOSTIC_PATH = Path("agentlas_cloud") / "networking" / "bench.py"
+_LOCAL_DIAGNOSTIC_RECEIPT = ".local-diagnostic-preservation-v1.json"
+
+
+def _local_diagnostic_failure(runtime_root: Path) -> str | None:
+    """Return a bounded preservation failure recorded by the updater."""
+    root = runtime_root.resolve()
+    path = root / _LOCAL_DIAGNOSTIC_RECEIPT
+    if _is_link(path):
+        return None
+    receipt = _read_json(path)
+    if (receipt.get("schemaVersion") != "agentlas.local-diagnostic-preservation.v1"
+            or receipt.get("release") != current_release(root)
+            or receipt.get("status") != "not_preserved"):
+        return None
+    reason = receipt.get("reason")
+    return reason if reason in {"source_unverified", "copy_failed"} else None
+
+
+def _verified_local_diagnostic(runtime_root: Path) -> bytes | None:
+    """Read an unchanged, already-installed diagnostic without shipping it."""
+    try:
+        root = runtime_root.resolve(strict=True)
+        path = root / _LOCAL_DIAGNOSTIC_PATH
+        if _has_symlink_in_path(path, root) or not path.is_file():
+            return None
+        release = current_release(root)
+        if release not in _LEGACY_BASELINE_SHA256 and release != "v1.2.89":
+            receipt_path = root / _LOCAL_DIAGNOSTIC_RECEIPT
+            if (_is_link(receipt_path) or _read_json(receipt_path) != {
+                    "schemaVersion": "agentlas.local-diagnostic-preservation.v1",
+                    "release": release, "sha256": _LOCAL_DIAGNOSTIC_SHA256,
+                    "status": "preserved"}):
+                return None
+        with path.open("rb") as source:
+            data = source.read(1024 * 1024 + 1)
+        if len(data) > 1024 * 1024 or hashlib.sha256(data).hexdigest() != _LOCAL_DIAGNOSTIC_SHA256:
+            return None
+        return data
+    except (OSError, ValueError):
+        return None
+
+
+def _preserve_local_diagnostic() -> None:
+    """Preserve a verified installed file inside an updater-owned staging root."""
+    requested = os.environ.get("HEPHAESTUS_HEALTHCHECK_ROOT")
+    if not requested:
+        return
+    root = Path(requested).resolve()
+    if root != Path(__file__).resolve().parent.parent:
+        return
+    match = re.fullmatch(r"\.(\d+\.\d+\.\d+)\.staged\.(\d+)\.(\d+)", root.name)
+    if not match or int(match.group(2)) != os.getppid():
+        return
+    base = root.parent
+    lock = base / ".update.lock"
+    if lock.is_symlink() or not lock.is_file():
+        return
+    lock_data = _read_json(lock)
+    token = lock_data.get("token")
+    if lock_data.get("pid") != os.getppid() or not isinstance(token, str) or not re.fullmatch(r"[0-9a-f]{32}", token):
+        return
+    if _path_present(root / _LOCAL_DIAGNOSTIC_RECEIPT):
+        return
+    current = base / "current"
+    if not current.is_dir():
+        return
+    active = current.resolve()
+    if not _is_generation_dir(active, base.resolve()) or not _is_comparable_release(current_release(current)):
+        return
+    data = _verified_local_diagnostic(active)
+    if data is None:
+        # Preserve modified or linked source files in place and explain why
+        # the optional command cannot be carried into the new generation.
+        previous_failure = _local_diagnostic_failure(active)
+        if _path_present(active / _LOCAL_DIAGNOSTIC_PATH) or previous_failure:
+            try:
+                _write_json(root / _LOCAL_DIAGNOSTIC_RECEIPT, {
+                    "schemaVersion": "agentlas.local-diagnostic-preservation.v1",
+                    "release": "v" + match.group(1), "status": "not_preserved",
+                    "reason": previous_failure or "source_unverified",
+                })
+            except OSError:
+                pass
+        return
+    target = root / _LOCAL_DIAGNOSTIC_PATH
+    if _has_symlink_in_path(target.parent, root) or not target.parent.is_dir() or _path_present(target):
+        return
+    # The staged directory is owned by this updater.  Exclusive creation avoids
+    # replacing a pre-existing or concurrently created file.
+    identity: tuple[int, int] | None = None
+    written = False
+    try:
+        with target.open("xb") as output:
+            stat = os.fstat(output.fileno())
+            identity = (stat.st_dev, stat.st_ino)
+            if output.write(data) != len(data):
+                raise OSError("local_diagnostic_short_write")
+        written = True
+        _write_json(root / _LOCAL_DIAGNOSTIC_RECEIPT, {
+            "schemaVersion": "agentlas.local-diagnostic-preservation.v1",
+            "release": "v" + match.group(1), "sha256": _LOCAL_DIAGNOSTIC_SHA256,
+            "status": "preserved",
+        })
+    except OSError:
+        # This locally preserved optional file must not prevent a core update.
+        # Remove only an incomplete file created by this invocation, and only
+        # if it is still the same inode (never replace or delete user files).
+        if not written and identity is not None:
+            try:
+                stat = target.lstat()
+                if (stat.st_dev, stat.st_ino) == identity and not _is_link(target):
+                    target.unlink()
+            except OSError:
+                pass
+        try:
+            _write_json(root / _LOCAL_DIAGNOSTIC_RECEIPT, {
+                "schemaVersion": "agentlas.local-diagnostic-preservation.v1",
+                "release": "v" + match.group(1), "status": "not_preserved",
+                "reason": "copy_failed",
+            })
+        except OSError:
+            pass
+        return
+    if current.resolve() != active or _read_json(lock).get("token") != token:
+        raise RuntimeError("local_diagnostic_update_context_changed")
+
+
+_legacy_staged_baseline()
+_preserve_local_diagnostic()
 
 
 def _main(argv: list[str] | None = None) -> int:

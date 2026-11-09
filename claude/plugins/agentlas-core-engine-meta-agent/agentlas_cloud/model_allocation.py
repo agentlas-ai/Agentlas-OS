@@ -363,12 +363,51 @@ def validate_allocation_decision(raw: Mapping[str, Any] | None) -> tuple[dict[st
     return normalized, issues
 
 
+def _capability_observation(raw: Any, snake: str, camel: str) -> bool | None:
+    """Preserve explicit denial; absent, malformed, or conflicted values are not proof."""
+    if not isinstance(raw, Mapping):
+        return None
+    values = [raw[key] for key in (snake, camel) if key in raw]
+    if any(value is False for value in values):
+        return False
+    if values and all(value is True for value in values):
+        return True
+    return None
+
+
+def _as_capabilities(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value.strip().lower()] if value.strip() else []
+    if isinstance(value, list):
+        return [item.strip().lower() for item in value if isinstance(item, str) and item.strip()]
+    return []
+
+
+def _context_window(raw: Any) -> int | None:
+    if not isinstance(raw, Mapping):
+        return None
+    value = raw.get("context_window")
+    if _is_integer(value):
+        return value if value >= 0 else None
+    if isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
+        try:
+            return int(value)
+        except ValueError:
+            pass
+    return None
+
+
 def _normalize_inventory(raw_inventory: list[Any] | None) -> list[dict[str, Any]]:
     inventory: list[dict[str, Any]] = []
     for index, raw in enumerate(raw_inventory or []):
         if isinstance(raw, str):
             raw = {"model": raw, "session_id": raw}
         if not isinstance(raw, Mapping):
+            continue
+        # `active` identifies the current session, not whether another
+        # advertised session can be selected for a different role. Only an
+        # explicit availability denial removes a session from selection.
+        if raw.get("available") is False:
             continue
         model_id = _text(raw.get("model") or raw.get("model_id") or raw.get("id"))
         if not model_id:
@@ -383,8 +422,8 @@ def _normalize_inventory(raw_inventory: list[Any] | None) -> list[dict[str, Any]
             for item in raw_efforts
             if (effort := normalize_effort(item))
         ]
-        raw_context_window = raw.get("context_window")
-        context_window_known = _is_integer(raw_context_window) and raw_context_window >= 0
+        raw_context_window = _context_window(raw)
+        context_window_known = raw_context_window is not None
         # Hosts advertise a session by model id; almost none of them report a
         # context window, and an unknown window used to fail EVERY compatibility
         # check ("requested_exact_model_unavailable" for a model sitting right
@@ -394,22 +433,24 @@ def _normalize_inventory(raw_inventory: list[Any] | None) -> list[dict[str, Any]
         # assumption so the receipt never presents it as a measured fact — a
         # relaxation you cannot announce is not one we take.
         context_window = raw_context_window if context_window_known else ASSUMED_CONTEXT_WINDOW
-        supports_tools = raw.get("supports_tools")
-        supports_multimodal = raw.get("supports_multimodal")
+        supports_tools = _capability_observation(raw, "supports_tools", "supportsTools")
+        supports_multimodal = _capability_observation(raw, "supports_multimodal", "supportsMultimodal")
         inventory.append(
             {
                 "index": index,
                 "session_id": _text(raw.get("session_id") or raw.get("id") or model_id),
+                "active": raw.get("active") if isinstance(raw.get("active"), bool) else None,
                 "provider": _text(raw.get("provider") or raw.get("family") or "host").lower(),
                 "model_id": model_id,
                 "tier": tier,
                 "supported_efforts": efforts or ["none"],
+                "supported_efforts_observed": efforts,
                 "supported_efforts_known": efforts_known,
                 "context_window": context_window,
                 "context_window_assumed": not context_window_known,
                 "supports_tools": supports_tools if isinstance(supports_tools, bool) else None,
                 "supports_multimodal": supports_multimodal if isinstance(supports_multimodal, bool) else None,
-                "capabilities": [str(item).lower() for item in (raw.get("capabilities") or [])],
+                "capabilities": _as_capabilities(raw.get("capabilities")),
             }
         )
     return inventory
@@ -462,24 +503,25 @@ def _known_effort_rank(value: str) -> int:
     return EFFORT_RANK.get(value, len(EFFORT_RANK))
 
 
-def _bounded_effort(requested: str, supported: list[str], max_effort: str) -> tuple[str, bool]:
+def _bounded_effort(requested: str, supported: list[str], max_effort: str | None) -> tuple[str | None, bool]:
     if not supported:
         return requested, False
-    ceiling_rank = _known_effort_rank(max_effort)
+    if requested not in supported and requested not in EFFORT_RANK:
+        return None, True
+    ceiling_rank = _known_effort_rank(max_effort) if max_effort is not None else None
     requested_rank = _effort_rank(requested, supported)
     eligible = [
         item
         for item in supported
-        if _effort_rank(item, supported) <= requested_rank and _known_effort_rank(item) <= ceiling_rank
+        if _effort_rank(item, supported) <= requested_rank
+        and (ceiling_rank is None or _known_effort_rank(item) <= ceiling_rank)
     ]
     if eligible:
         resolved = max(eligible, key=lambda item: _effort_rank(item, supported))
     else:
-        # Nothing matches both the request and the ceiling at once — fall
-        # back as conservatively as possible, to the lowest value the model
-        # offers (same as the original fallback; the ceiling takes priority,
-        # so this never escalates above what was requested).
-        resolved = min(supported, key=lambda item: _effort_rank(item, supported))
+        # No advertised effort is provably at or below the request and ceiling.
+        # Leaving the override unset avoids inventing a stronger selection.
+        return None, True
     return resolved, resolved != requested
 
 
@@ -583,33 +625,64 @@ def resolve_model_allocation(
     pinned_provider = _text(role_policy.get("pinnedProvider")).lower()
     configured_max_tier = normalize_tier(role_policy.get("maxTier"))
     max_tier = configured_max_tier or "frontier"
-    max_effort = normalize_effort(role_policy.get("maxEffort")) or "max"
+    max_effort = normalize_effort(role_policy.get("maxEffort"))
     required_capabilities = {
-        str(item).lower() for item in (role_policy.get("requiredCapabilities") or [])
+        str(item).strip().lower() for item in (role_policy.get("requiredCapabilities") or [])
     }
 
+    def has_capability(item: Mapping[str, Any], capability: str) -> bool:
+        field = {"tools": "supports_tools", "multimodal": "supports_multimodal"}.get(capability)
+        observed = item[field] if field else None
+        return observed is not False and (observed is True or capability in item["capabilities"])
+
     def compatible(item: Mapping[str, Any]) -> bool:
-        if required_capabilities and not required_capabilities.issubset(set(item["capabilities"])):
+        if configured_max_tier is not None and (
+            item["tier"] is None or TIER_RANK[item["tier"]] > TIER_RANK[max_tier]
+        ):
+            return False
+        if pinned_provider and item["provider"] != pinned_provider:
+            return False
+        if any(not has_capability(item, capability) for capability in required_capabilities):
             return False
         if decision is None:
             return True
         features = decision["features"]
         total_tokens = features["inputTokens"] + features["expectedOutputTokens"]
-        if item["tier"] is None:
+        # An exact model does not need an inferred cost tier unless the host
+        # actually configured a tier ceiling (checked above).  An operator pin
+        # takes precedence even when the parent only supplied a tier decision.
+        # Unpinned tier-based selection still requires tier evidence.
+        exact_operator_pin = bool(pinned_model_id and item["model_id"] == pinned_model_id)
+        if item["tier"] is None and not (
+            exact_operator_pin or (not issues and decision["selection"]["exactModelId"])
+        ):
             return False
         if total_tokens and (
             item["context_window"] is None or item["context_window"] < total_tokens
         ):
             return False
-        if features["toolRequired"] and item["supports_tools"] is not True:
+        if features["toolRequired"] and not has_capability(item, "tools"):
             return False
-        if features["multimodalRequired"] and item["supports_multimodal"] is not True:
+        if features["multimodalRequired"] and not has_capability(item, "multimodal"):
             return False
         if decision["selection"]["effort"] != "none" and not item["supported_efforts_known"]:
             return False
         return True
 
     compatible_inventory = [item for item in inventory if compatible(item)]
+
+    def current_matches(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        # Establish current identity before filtering by policy/capability;
+        # an ineligible active session cannot make an unmarked twin current.
+        matches = [item for item in inventory if item["model_id"] == current_model_id and item["active"] is not False]
+        marked = [item for item in matches if item["active"] is True]
+        current = marked or matches
+        return [item for item in current if any(item is eligible for eligible in items)]
+
+    def unique_current(items: list[dict[str, Any]]) -> dict[str, Any] | None:
+        matches = current_matches(items)
+        return matches[0] if len(matches) == 1 else None
+
     selected: dict[str, Any] | None = None
     status = "resolved"
     reasons: list[str] = []
@@ -636,7 +709,7 @@ def resolve_model_allocation(
     # An escalated retry is governed by the orchestrator role policy, not the
     # worker stage's parent decision — the decision stays only as context and
     # is not used for model selection.
-    if selected is None and decision is not None and not issues and escalation_request is None:
+    if selected is None and not pinned_model_id and decision is not None and not issues and escalation_request is None:
         requested_tier = decision["selection"]["tier"]
         if TIER_RANK[requested_tier] > TIER_RANK[max_tier]:
             requested_tier = max_tier
@@ -649,10 +722,14 @@ def resolve_model_allocation(
         )
         exact = decision["selection"]["exactModelId"]
         if exact:
+            requested_provider = _text(decision["selection"]["provider"]).lower()
+            advertised_exact = [
+                item for item in inventory
+                if item["model_id"] == exact and (not requested_provider or item["provider"] == requested_provider)
+            ]
             exact_candidates = [
                 item for item in compatible_inventory if item["model_id"] == exact
             ]
-            requested_provider = _text(decision["selection"]["provider"]).lower()
             if requested_provider:
                 exact_candidates = [
                     item for item in exact_candidates if item["provider"] == requested_provider
@@ -661,7 +738,20 @@ def resolve_model_allocation(
             if len(exact_candidates) > 1:
                 reasons.append("requested_exact_model_ambiguous_across_sessions")
             elif exact_candidate is None:
-                reasons.append("requested_exact_model_unavailable")
+                if advertised_exact and configured_max_tier is not None and all(item["tier"] is None for item in advertised_exact):
+                    reasons.append("requested_exact_model_cost_tier_unknown")
+                elif advertised_exact and configured_max_tier is not None and all(
+                    item["tier"] is not None and TIER_RANK[item["tier"]] > TIER_RANK[max_tier]
+                    for item in advertised_exact
+                ):
+                    reasons.append("requested_exact_model_exceeds_cost_policy")
+                elif advertised_exact and configured_max_tier is not None and all(
+                    item["tier"] is None or TIER_RANK[item["tier"]] > TIER_RANK[max_tier]
+                    for item in advertised_exact
+                ):
+                    reasons.extend(("requested_exact_model_cost_tier_unknown", "requested_exact_model_exceeds_cost_policy"))
+                else:
+                    reasons.append("requested_exact_model_unavailable")
             elif exact_candidate["tier"] is None and configured_max_tier is not None:
                 reasons.append("requested_exact_model_cost_tier_unknown")
             elif exact_candidate["tier"] is not None and TIER_RANK[exact_candidate["tier"]] > TIER_RANK[max_tier]:
@@ -672,10 +762,7 @@ def resolve_model_allocation(
                 selected = exact_candidate
         else:
             tier_candidates = [item for item in compatible_inventory if item["tier"] in tiers]
-            current_candidate = next(
-                (item for item in tier_candidates if item["model_id"] == current_model_id),
-                None,
-            )
+            current_candidate = unique_current(tier_candidates)
             if current_candidate is not None:
                 selected = current_candidate
                 if current_candidate["tier"] != requested_tier:
@@ -686,7 +773,7 @@ def resolve_model_allocation(
             elif len(tier_candidates) > 1:
                 reasons.append("parent_exact_model_required_for_ambiguous_inventory")
 
-    if selected is None and escalation_request is not None:
+    if selected is None and not pinned_model_id and escalation_request is not None:
         # An escalation retry deliberately skips the parent decision in the
         # block above. So without an operator pin (pinnedModelId), no branch
         # up to this point had filled `selected`, and the one allowed retry
@@ -706,10 +793,7 @@ def resolve_model_allocation(
         if allowed:
             top_rank = max(TIER_RANK[item["tier"]] for item in allowed)
             top_candidates = [item for item in allowed if TIER_RANK[item["tier"]] == top_rank]
-            current_candidate = next(
-                (item for item in top_candidates if item["model_id"] == current_model_id),
-                None,
-            )
+            current_candidate = unique_current(top_candidates)
             if current_candidate is not None:
                 selected = current_candidate
             elif len(top_candidates) == 1:
@@ -720,8 +804,10 @@ def resolve_model_allocation(
                 reasons.append("escalation_target_ambiguous_across_sessions")
 
     if selected is None:
-        if decision is None or issues:
-            selected = next((item for item in compatible_inventory if item["model_id"] == current_model_id), None)
+        if (decision is None or issues) and not pinned_model_id:
+            selected = unique_current(compatible_inventory)
+            if selected is None and len(current_matches(compatible_inventory)) > 1:
+                reasons.append("current_model_ambiguous_across_sessions")
         status = "fallback-current" if selected else "unresolved"
         if decision is None or issues:
             reasons.append("parent_decision_missing_or_invalid")
@@ -756,7 +842,21 @@ def resolve_model_allocation(
             reasons.append("effort_unresolved_without_request")
         else:
             resolved_effort, effort_changed = _bounded_effort(requested_effort, selected["supported_efforts"], max_effort)
-            if effort_changed:
+            explicit_ceiling = normalize_effort(role_policy.get("maxEffort"))
+            if not selected["supported_efforts_observed"]:
+                resolved_effort = None
+            if explicit_ceiling:
+                advertised = selected["supported_efforts_known"] and resolved_effort in selected["supported_efforts_observed"]
+                within_ceiling = resolved_effort == explicit_ceiling or (
+                    resolved_effort in EFFORT_RANK and explicit_ceiling in EFFORT_RANK
+                    and EFFORT_RANK[resolved_effort] <= EFFORT_RANK[explicit_ceiling]
+                )
+                if not advertised or not within_ceiling:
+                    resolved_effort = None
+                    reasons.append("effort_policy_unverified")
+            elif resolved_effort is None:
+                reasons.append("effort_request_unavailable" if selected["supported_efforts_observed"] else "effort_capability_unobserved")
+            if effort_changed and resolved_effort is not None:
                 reasons.append("effort_clamped_to_host_support")
 
     risk = decision["features"]["risk"] if decision else "unknown"

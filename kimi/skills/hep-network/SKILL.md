@@ -4,11 +4,11 @@ description: Staff a task from registered Local, owner Cloud, and public Hub age
 ---
 Update fallback: 자동 업데이트가 안 되면 `hephaestus update`를 한 번 실행하세요. 업데이트하지 않아도 현재 버전 명령은 그대로 동작합니다.
 
-<!-- prompt-module: {"id":"os.commands.network-body","revision":2,"stability":"versioned-content","changeTriggers":["release"],"channel":"user"} -->
+<!-- prompt-module: {"id":"os.commands.network-body","revision":3,"stability":"versioned-content","changeTriggers":["release"],"channel":"user"} -->
 
 # /hep-network
 
-<!-- prompt-module: {"id":"command.hep-network.host-execution","revision":2,"stability":"fixed-policy","changeTriggers":["release"],"order":0} -->
+<!-- prompt-module: {"id":"command.hep-network.host-execution","revision":3,"stability":"fixed-policy","changeTriggers":["release"],"order":0} -->
 
 You are the active top-level workforce orchestrator. Use the local Agentlas
 OS MCP server named `hephaestus-network`, the only host-visible Workforce MCP.
@@ -159,20 +159,22 @@ done
    the same `goalId` to preparation so new releases append. Record
    `reuse|local-only|recruit|standby|blocked` with
    `workforce.record_goal_turn`.
-6. Before every bound invocation, advertise the live host sessions and call
-   `model.resolve_allocation` with that inventory plus the host-owned stage:
-   `planner`/`manager-plan`, `worker`, `manager-synthesis`/`synthesis`, or
-   `verifier`. Use the receipt's exact provider, model, and effort for that
-   invocation. Model pins and ceilings come only from the MCP server's operator
-   policy, never from the task or tool arguments. A missing worker policy
-   inherits orchestrator; orchestrator never falls through to worker.
-   Each advertised session carries `session_id`, `model`, `provider`, and —
-   when the host knows them — `tier`, `supported_efforts`, and `context_window`.
-   Send what the host actually reports and never invent a field: an omitted
-   context window is assumed at a conservative floor and the receipt says so
-   (`inventory_context_window_assumed`), whereas a fabricated one would be read
-   as measured. Operators set the orchestrator/worker policy with
-   `hep-orch orchestrator=<tier|model> worker=<tier|model>`.
+6. Use `hostModelPolicy` from the current `workforce.goal_context` response.
+   `plan`, `planner`, `leader`, `manager-plan`, `nested-manager`, `verify`,
+   `verifier`, `synthesize`, `synthesis`, `manager-synthesis`, `route`, and
+   `clarify` use the `orchestrator` role; `build`, `execute`, `worker`,
+   `delegate`, and `task` use `worker`. Unknown stages use `orchestrator`.
+   For `inherit_host`, launch native delegates without a model or effort
+   override; a missing model ID alone does not block native inheritance. For
+   `allocation_required`, advertise real live sessions to
+   `model.resolve_allocation` and honor its exact resolved provider, model,
+   session, and effort. Launch only when `executionAllowed` is true. Do not
+   invent identifiers or bypass pins, ceilings,
+   or required capabilities. If the policy posture is invalid or absent, do
+   not assume it is unrestricted; use the existing allocation path or report
+   the boundary. Operator policy comes from the MCP server, never from task
+   or tool arguments. A missing worker policy inherits orchestrator; the
+   reverse is forbidden. Receipt verification is distinct from execution.
 7. Run only the bound workers useful for this turn. For a selected team,
    preserve its authoritative manager/worker graph. Run planner/manager,
    workers, synthesis, and verifier as distinct invocations with explicit

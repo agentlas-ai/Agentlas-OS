@@ -43,10 +43,11 @@ contract = json.loads((engine / "package-contract.json").read_text(encoding="utf
 # binding is half of what this contract promises; skipping it on an import error
 # would report PASS for a package nobody validated.
 try:
-    from jsonschema import Draft202012Validator
-except ImportError:
-    print("verify-generated-package: FAIL - jsonschema is required to check bound schemas")
-    print("- install it (pip install jsonschema) or the contract's `schema` bindings go unchecked")
+    from agentlas_cloud._vendor import load_jsonschema
+    Draft202012Validator = load_jsonschema().Draft202012Validator
+except Exception:
+    print("verify-generated-package: FAIL - schema validator is unavailable")
+    print("- install a working jsonschema or restore the engine's bundled validator")
     raise SystemExit(1)
 
 from agentlas_cloud.package_contract import _minimal_private_profile_active

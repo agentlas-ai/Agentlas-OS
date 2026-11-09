@@ -1603,18 +1603,48 @@ def _git_file_list(root: Path, deadline: float) -> tuple[list[Path] | None, str 
         return None, "file_list_" + str(prefix_stop or "unavailable"), 0
     if prefix_stop is not None:
         return None, "file_list_prefix_" + str(prefix_stop), 0
-    if raw_prefix.strip(b"\r\n"):
-        # The explicit Agentlas project boundary is authoritative. A parent
-        # repository must not make an ignored or untracked nested project look
-        # like a complete, empty Git listing.
-        return None, "outside_git_root", 0
+    nested = bool(raw_prefix.strip(b"\r\n"))
+    if nested:
+        # A project may sit inside a larger Git checkout. Git can still list
+        # paths relative to this project and honor its ignore rules. But an
+        # ignored nested project is an independent boundary: falling back to
+        # a filesystem walk keeps it visible instead of silently losing it.
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None, "file_list_timeout", 0
+            ignored = subprocess.run(
+                ["git", "-C", str(root), "check-ignore", "--no-index", "-q", "--", "."],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=min(5.0, remaining), check=False,
+                **no_console_window(),
+            ).returncode
+        except (OSError, subprocess.TimeoutExpired):
+            return None, "file_list_ignore_check_failed", 0
+        if ignored == 0:
+            return None, "outside_git_root", 0
+        if ignored != 1:
+            return None, "file_list_ignore_check_failed", 0
+        tracked, tracked_stop = _run_bounded_stdout(
+            ["git", "-C", str(root), "ls-files", "--cached", "-z", "--", "."],
+            deadline=deadline, max_bytes=MAX_GIT_FILE_LIST_BYTES,
+        )
+        if tracked is None or tracked_stop is not None:
+            return None, "file_list_tracked_check_failed", 0
+        if not tracked:
+            # A merely untracked folder may be its own explicit project, not
+            # part of the parent checkout. Preserve its full local boundary.
+            return None, "outside_git_root", 0
     raw_output, process_stop = _run_bounded_stdout(
-        ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z"],
+        ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z", "--", "."],
         deadline=deadline,
         max_bytes=MAX_GIT_FILE_LIST_BYTES,
     )
     if raw_output is None:
         return None, "file_list_" + str(process_stop or "unavailable"), 0
+    if nested and not raw_output and process_stop is None:
+        # Empty can mean the parent hides all of an otherwise real project.
+        return None, "outside_git_root", 0
     stop = {
         "output_bytes": "file_list_bytes",
         "timeout": "file_list_timeout",

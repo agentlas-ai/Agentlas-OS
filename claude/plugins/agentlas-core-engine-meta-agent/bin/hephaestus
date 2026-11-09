@@ -264,7 +264,7 @@ Usage:
   bin/hephaestus meta-agent "<request>"
   bin/hephaestus hep-build "<request>"             # build/create/package surface
   bin/hephaestus build "<request>"                 # shorthand for hep-build
-  bin/hephaestus network init|status|reindex|bench
+  bin/hephaestus network init|status|reindex
   bin/hephaestus network add-source <path> | remove-source <path>
   bin/hephaestus network grant <capability> --target <id> [--scope ...]
   bin/hephaestus workforce goal-bind <goal-id> <prepared-plan.json> [--project <dir>]

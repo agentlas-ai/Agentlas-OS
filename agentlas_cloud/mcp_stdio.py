@@ -24,10 +24,12 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .model_allocation import (
-    EFFORT_TOKEN_RE,
+    EFFORT_RANK,
     INVOCATION_STAGE_PHASES,
     canonical_phase_for_stage,
     model_role_for_stage,
+    normalize_effort,
+    _policy_for_role,
     resolve_model_allocation,
 )
 from .workforce.contracts import (
@@ -60,7 +62,7 @@ from .networking.lease_tools import LEASE_TOOLS, PURCHASE as LEASE_PURCHASE, QUO
 from .networking.takedown_tools import TAKEDOWN, TAKEDOWN_TOOLS, call_agent_takedown_tool
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.89"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.90"}
 
 # Roots this process has already seeded, so only the first tool call in a
 # session pays the bootstrap cost.
@@ -103,24 +105,7 @@ def _claim_first_contact(project_dir: str) -> bool:
         return False
     _FIRST_CONTACT_ROOTS.add(key)
     return True
-MODEL_ALLOCATION_POLICY_ENV = "AGENTLAS_MODEL_ALLOCATION_POLICY_JSON"
-_HOST_MODEL_POLICY_FIELDS = frozenset({
-    "pinnedModelId",
-    "pinnedProvider",
-    "maxTier",
-    "maxEffort",
-    "requiredCapabilities",
-    "orchestrator",
-    "worker",
-})
-_HOST_MODEL_ROLE_POLICY_FIELDS = frozenset({
-    "pinnedModelId",
-    "pinnedProvider",
-    "maxTier",
-    "maxEffort",
-    "requiredCapabilities",
-    "inherit",
-})
+from .model_policy import MODEL_ALLOCATION_POLICY_ENV, _host_model_allocation_policy
 WORKFORCE_PROTOCOL_VERSION = "2026-08-21.1"
 
 
@@ -1186,119 +1171,24 @@ def _resolve_ordinal_assignments(
     return resolved, None, None
 
 
-def _host_model_allocation_policy() -> dict[str, Any]:
-    """Read operator cost guardrails from the MCP process boundary.
 
-    Tool arguments are untrusted workload input. They may carry a parent-AI
-    allocation decision, but they must never raise the host's model/effort
-    ceiling or forge a user pin. Operators configure this JSON in the MCP
-    server launch environment instead.
-    """
-
-    raw = os.environ.get(MODEL_ALLOCATION_POLICY_ENV, "").strip()
-    if not raw:
-        # Fall back to the file `agentlas-one orch` writes. The env var is the
-        # operator override and still wins; without this file the policy was
-        # empty on every host because nobody hand-writes JSON into a launch
-        # environment, so every worker silently inherited the orchestrator's
-        # frontier model — the opposite of why the allocator exists.
-        policy_file = Path(
-            os.environ.get("AGENTLAS_ONE_DIR") or (Path.home() / ".agentlas" / "one")
-        ) / "model-policy.json"
-        try:
-            raw = policy_file.read_text(encoding="utf-8").strip()
-        except OSError:
-            return {}
-        if not raw:
-            return {}
+def _goal_context_model_policy(context: dict[str, Any]) -> dict[str, Any]:
+    """Expose this server's effective policy posture without policy values."""
     try:
-        parsed = json.loads(raw)
-    except (TypeError, ValueError) as exc:
-        # Keep the decoder's line/column so a trailing comma is locatable. The
-        # decoder message carries a position, never the policy value itself.
-        raise ValueError(f"invalid host model allocation policy JSON: {exc}") from None
-    if not isinstance(parsed, Mapping):
-        raise ValueError("host model allocation policy must be an object")
-    unknown = sorted(set(parsed) - _HOST_MODEL_POLICY_FIELDS)
-    if unknown:
-        raise ValueError(f"host model allocation policy has unknown fields: {','.join(unknown)}")
-    policy = {key: parsed[key] for key in _HOST_MODEL_POLICY_FIELDS if key in parsed}
-
-    def validate_scope(value: Mapping[str, Any], label: str, *, allow_inherit: bool) -> dict[str, Any]:
-        unknown = sorted(set(value) - _HOST_MODEL_ROLE_POLICY_FIELDS)
-        if unknown:
-            raise ValueError(f"host {label} model policy has unknown fields: {','.join(unknown)}")
-        scoped = dict(value)
-        if "inherit" in scoped:
-            if not allow_inherit or not isinstance(scoped["inherit"], bool):
-                raise ValueError(f"host {label} inherit flag is invalid")
-            if scoped["inherit"] and set(scoped) != {"inherit"}:
-                raise ValueError(f"host {label} inherit policy cannot also pin or clamp a model")
-        pinned_model_id = scoped.get("pinnedModelId")
-        if pinned_model_id is not None and (
-            not isinstance(pinned_model_id, str)
-            or not pinned_model_id.strip()
-            or len(pinned_model_id) > 255
-        ):
-            raise ValueError(f"host {label} pinnedModelId is invalid")
-        pinned_provider = scoped.get("pinnedProvider")
-        if pinned_provider is not None and (
-            not isinstance(pinned_provider, str)
-            or not pinned_provider.strip()
-            or len(pinned_provider) > 80
-        ):
-            raise ValueError(f"host {label} pinnedProvider is invalid")
-        if scoped.get("maxTier") not in {None, "economy", "balanced", "frontier"}:
-            raise ValueError(f"host {label} maxTier is invalid")
-        scoped_max_effort = scoped.get("maxEffort")
-        if scoped_max_effort is not None and (
-            not isinstance(scoped_max_effort, str) or not EFFORT_TOKEN_RE.fullmatch(scoped_max_effort)
-        ):
-            raise ValueError(f"host {label} maxEffort is invalid")
-        capabilities = scoped.get("requiredCapabilities")
-        if capabilities is not None and (
-            not isinstance(capabilities, list)
-            or len(capabilities) > 32
-            or any(not isinstance(item, str) or not item.strip() or len(item) > 80 for item in capabilities)
-        ):
-            raise ValueError(f"host {label} requiredCapabilities is invalid")
-        return scoped
-
-    for role in ("orchestrator", "worker"):
-        scoped = policy.get(role)
-        if scoped is None:
-            continue
-        if not isinstance(scoped, Mapping):
-            raise ValueError(f"host {role} model policy must be an object")
-        policy[role] = validate_scope(scoped, role, allow_inherit=role == "worker")
-
-    if "pinnedModelId" in policy and (
-        not isinstance(policy["pinnedModelId"], str)
-        or not policy["pinnedModelId"].strip()
-        or len(policy["pinnedModelId"]) > 255
-    ):
-        raise ValueError("host pinnedModelId is invalid")
-    if "pinnedProvider" in policy and (
-        not isinstance(policy["pinnedProvider"], str)
-        or not policy["pinnedProvider"].strip()
-        or len(policy["pinnedProvider"]) > 80
-    ):
-        raise ValueError("host pinnedProvider is invalid")
-    if policy.get("maxTier") not in {None, "economy", "balanced", "frontier"}:
-        raise ValueError("host maxTier is invalid")
-    top_level_max_effort = policy.get("maxEffort")
-    if top_level_max_effort is not None and (
-        not isinstance(top_level_max_effort, str) or not EFFORT_TOKEN_RE.fullmatch(top_level_max_effort)
-    ):
-        raise ValueError("host maxEffort is invalid")
-    capabilities = policy.get("requiredCapabilities")
-    if capabilities is not None and (
-        not isinstance(capabilities, list)
-        or len(capabilities) > 32
-        or any(not isinstance(item, str) or not item.strip() or len(item) > 80 for item in capabilities)
-    ):
-        raise ValueError("host requiredCapabilities is invalid")
-    return policy
+        policy = _host_model_allocation_policy()
+    except ValueError:
+        posture = {"status": "invalid", "roles": {}}
+    else:
+        roles = {}
+        for role in ("orchestrator", "worker"):
+            effective, _ = _policy_for_role(policy, role)
+            constrained = any(
+                effective.get(key) not in (None, "", [])
+                for key in ("pinnedModelId", "pinnedProvider", "maxTier", "maxEffort", "requiredCapabilities")
+            )
+            roles[role] = "allocation_required" if constrained else "inherit_host"
+        posture = {"status": "ok", "roles": roles}
+    return {**context, "hostModelPolicy": posture}
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -1462,19 +1352,13 @@ TOOLS: list[dict[str, Any]] = [
                             "provider": {"type": "string"},
                             "model": {"type": "string"},
                             "active": {"type": "boolean"},
+                            "available": {"type": "boolean"},
                             "tier": {"enum": ["economy", "balanced", "frontier"]},
                             "supported_efforts": {
                                 "type": "array",
                                 "items": {
-                                    "enum": [
-                                        "none",
-                                        "minimal",
-                                        "low",
-                                        "medium",
-                                        "high",
-                                        "xhigh",
-                                        "max",
-                                    ]
+                                    "type": "string",
+                                    "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$",
                                 },
                             },
                             "context_window": {"type": "integer", "minimum": 0},
@@ -2842,7 +2726,16 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         active = [
             item
             for item in inventory
-            if isinstance(item, Mapping) and item.get("active") is True
+            if isinstance(item, Mapping) and item.get("active") is True and item.get("available") is not False
+        ]
+        # MCP documents model and session_id separately. The legacy pure
+        # allocator also accepts an ambiguous `id` shorthand; at this boundary
+        # an id-only row must not become a fabricated model identifier.
+        allocation_inventory = [
+            {key: value for key, value in item.items() if key != "id"}
+            if isinstance(item, Mapping) and not (item.get("model") or item.get("model_id"))
+            else item
+            for item in inventory
         ]
         active_session_ids = [
             str(
@@ -2864,7 +2757,6 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 current_model_id = str(
                     active[0].get("model")
                     or active[0].get("model_id")
-                    or active[0].get("id")
                     or ""
                 ).strip()
                 if current_model_id:
@@ -2872,7 +2764,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         raw_decision = arguments.get("decision")
         receipt = resolve_model_allocation(
             raw_decision,
-            inventory,
+            allocation_inventory,
             policy=host_model_policy,
             role=model_role_for_stage(stage),
             expected_phase=phase,
@@ -2888,7 +2780,54 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             "usageStatus": "not-observed-before-invocation",
             "executionAllowed": bool(receipt["resolved"].get("modelId")),
         }
-        if len(active) > 1 and not response["executionAllowed"]:
+        effective_policy, _ = _policy_for_role(host_model_policy, receipt["role"])
+        ceiling = normalize_effort(effective_policy.get("maxEffort"))
+        if response["executionAllowed"] and ceiling is not None:
+            resolved = receipt["resolved"]
+            effort = normalize_effort(resolved.get("effort"))
+            matching = [
+                item for item in allocation_inventory
+                if isinstance(item, Mapping)
+                and item.get("available") is not False
+                and str(item.get("session_id") or item.get("id") or item.get("model") or item.get("model_id") or "").strip() == resolved.get("sessionId")
+                and str(item.get("model") or item.get("model_id") or item.get("id") or "").strip() == resolved.get("modelId")
+            ]
+            advertised = matching[0].get("supported_efforts") if len(matching) == 1 else None
+            supported = isinstance(advertised, list) and effort is not None and any(
+                normalize_effort(value) == effort for value in advertised
+            )
+            within_ceiling = effort == ceiling or (
+                effort in EFFORT_RANK and ceiling in EFFORT_RANK
+                and EFFORT_RANK[effort] <= EFFORT_RANK[ceiling]
+            )
+            if not supported or not within_ceiling:
+                response["executionAllowed"] = False
+                response["status"] = "effort_policy_unverified"
+                response["policyVerification"] = "effort_unverified"
+        # Provider aliases inferred from a session id, family, or a default
+        # label are not proof of an operator's explicit provider pin.  This
+        # check applies only to that pin; unpinned host inheritance is unchanged.
+        pinned_provider = effective_policy.get("pinnedProvider")
+        if isinstance(pinned_provider, str) and pinned_provider.strip() and receipt["resolved"].get("modelId"):
+            resolved = receipt["resolved"]
+            matching = [
+                item for item in allocation_inventory
+                if isinstance(item, Mapping)
+                and item.get("available") is not False
+                and str(item.get("session_id") or item.get("id") or item.get("model") or item.get("model_id") or "").strip() == resolved.get("sessionId")
+                and str(item.get("model") or item.get("model_id") or item.get("id") or "").strip() == resolved.get("modelId")
+            ]
+            advertised = matching[0].get("provider") if len(matching) == 1 else None
+            observed = advertised.strip().lower() if isinstance(advertised, str) and advertised.strip() else None
+            if observed != pinned_provider.strip().lower():
+                resolved["provider"] = observed
+                response["executionAllowed"] = False
+                response["providerPolicyVerification"] = "unverified"
+                if response["status"] != "effort_policy_unverified":
+                    response["status"] = "provider_policy_unverified"
+        ambiguous_reason = any("ambiguous" in code for code in receipt.get("reasonCodes", []))
+        missing_choice = raw_decision is None and not effective_policy.get("pinnedModelId")
+        if len(active) > 1 and not receipt["resolved"].get("modelId") and (ambiguous_reason or missing_choice):
             response.update(
                 {
                     "status": "ambiguous_active_session",
@@ -3326,8 +3265,9 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                         "standbyMeansBoundNotContinuouslyExecuting": True,
                     },
                 }
-                return context if arguments.get("fullDossier") is True else _goal_context_projection(
+                projected = context if arguments.get("fullDossier") is True else _goal_context_projection(
                     context, known_revisions=arguments.get("knownRevisions"))
+                return _goal_context_model_policy(projected)
             except OSError:
                 return {"action": name, "status": "error", "error": "workforce_goal_store_unavailable"}
             if store_path.is_symlink():
@@ -3372,11 +3312,11 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     include_terminal=arguments.get("includeTerminal") is True,
                 )
                 if arguments.get("fullDossier") is True:
-                    return context
-                return _goal_context_projection(
+                    return _goal_context_model_policy(context)
+                return _goal_context_model_policy(_goal_context_projection(
                     context,
                     known_revisions=arguments.get("knownRevisions"),
-                )
+                ))
             if name == "workforce.goal_runtime":
                 goal_id = arguments.get("goalId")
                 return goal_runtime_execution_contract(store.runtime_context(
@@ -4511,6 +4451,7 @@ def _handle(message: dict[str, Any]) -> dict[str, Any] | None:
             "rejected",
             "blocked",
             "failed",
+            "effort_policy_unverified",
         }:
             # Keep the finite JSON payload intact while also honoring MCP's
             # application-error signal. Hosts can persist the exact code instead

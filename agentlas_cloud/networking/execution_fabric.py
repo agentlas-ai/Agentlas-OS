@@ -11,9 +11,16 @@ import re
 from typing import Any, Mapping
 
 from ..model_allocation import (
+    EFFORT_RANK,
+    _as_capabilities,
+    _capability_observation,
+    _context_window,
+    _policy_for_role,
     canonical_phase_for_stage,
     model_role_for_stage,
+    normalize_effort,
     resolve_model_allocation,
+    validate_allocation_decision,
 )
 from .stormbreaker_harness import goal_ultracode_harness, harness_reference
 from .runtime_capabilities import descriptor_from_session, scrub_identity_features
@@ -54,6 +61,32 @@ def _provider_from_session(raw: Any, family: str) -> str:
     return family
 
 
+def _raw_session_matches(raw_sessions: list[Any] | None, session_id: str) -> list[Any]:
+    """Find all available raw rows for a normalized session identity."""
+    matches: list[Any] = []
+    for idx, raw in enumerate(raw_sessions or []):
+        if isinstance(raw, Mapping):
+            if raw.get("available") is False:
+                continue
+            candidate = str(raw.get("session_id") or raw.get("id") or raw.get("name") or raw.get("provider") or f"session:{idx + 1}").strip()
+        elif isinstance(raw, str):
+            candidate = raw.strip() or f"session:{idx + 1}"
+        else:
+            continue
+        if candidate == session_id:
+            matches.append(raw)
+    return matches
+
+
+def _advertised_provider_for_session(raw_sessions: list[Any] | None, session_id: str) -> str | None:
+    """Return only a unique session's explicit provider, never an inferred family."""
+    matches = _raw_session_matches(raw_sessions, session_id)
+    if len(matches) != 1 or not isinstance(matches[0], Mapping):
+        return None
+    provider = matches[0].get("provider")
+    return provider.strip().lower() if isinstance(provider, str) and provider.strip() else None
+
+
 def _access_path_from_session(raw: Any) -> str:
     if isinstance(raw, Mapping):
         advertised = str(raw.get("access_path") or raw.get("accessPath") or "").strip().lower()
@@ -64,19 +97,9 @@ def _access_path_from_session(raw: Any) -> str:
     return "unknown"
 
 
-def _as_capabilities(value: Any) -> list[str]:
-    if isinstance(value, str):
-        return [value.lower()]
-    if not isinstance(value, list):
-        return []
-    capabilities: list[str] = []
-    for item in value:
-        if isinstance(item, str):
-            capabilities.append(item.lower())
-    return capabilities
-
-
-def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str, Any]]:
+def _normalize_session_inventory(
+    raw_sessions: list[Any] | None, *, preserve_unknown_efforts: bool
+) -> list[dict[str, Any]]:
     """Normalize host-advertised model sessions for scheduling.
 
     A host can pass strings ("codex", "claude") or dictionaries. The inventory
@@ -90,7 +113,7 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
                 "session_id": "host:primary",
                 "family": "host",
                 "provider": "host",
-                "model": "host-runtime",
+                "model": None,
                 "access_path": "unknown",
                 "trust": "host",
                 "capabilities": ["route_selected_execution"],
@@ -104,10 +127,14 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
     for idx, raw in enumerate(raw_sessions):
         if isinstance(raw, str):
             session_id = raw.strip() or f"session:{idx + 1}"
-            model = session_id
+            # A bare string identifies the session, not its model. Only an
+            # explicit model field on an inventory object establishes one.
+            model = None
             capabilities: list[str] = []
             trust = "approved_external"
         elif isinstance(raw, Mapping):
+            if raw.get("available") is False:
+                continue
             session_id = str(
                 raw.get("session_id")
                 or raw.get("id")
@@ -115,7 +142,8 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
                 or raw.get("provider")
                 or f"session:{idx + 1}"
             )
-            model = str(raw.get("model") or raw.get("model_family") or raw.get("provider") or session_id)
+            advertised_model = raw.get("model") or raw.get("model_id")
+            model = (str(advertised_model).strip() or None) if advertised_model else None
             capabilities = _as_capabilities(raw.get("capabilities"))
             trust = str(raw.get("trust") or ("host" if raw.get("local") else "approved_external")).lower()
         else:
@@ -141,28 +169,31 @@ def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str
                 # capability descriptor below must never learn these values.
                 "provider": provider,
                 "model": model,
+                **({"active": raw["active"]} if isinstance(raw, Mapping) and isinstance(raw.get("active"), bool) else {}),
+                **({"available": raw["available"]} if isinstance(raw, Mapping) and isinstance(raw.get("available"), bool) else {}),
                 "access_path": _access_path_from_session(raw),
                 "trust": trust if trust in {"host", "local", "approved_external", "untrusted"} else "approved_external",
                 "capabilities": capabilities,
                 "max_parallel": max(1, max_parallel),
                 "tier": str(raw.get("tier")).lower() if isinstance(raw, Mapping) and raw.get("tier") else None,
                 "supported_efforts": (
-                    list(raw.get("supported_efforts") or [])
-                    if isinstance(raw, Mapping)
-                    else []
+                    list(raw["supported_efforts"])
+                    if isinstance(raw, Mapping) and isinstance(raw.get("supported_efforts"), list)
+                    else None if preserve_unknown_efforts else []
                 ),
-                "context_window": (
-                    int(raw.get("context_window") or 0)
-                    if isinstance(raw, Mapping) and str(raw.get("context_window") or "0").isdigit()
-                    else 0
-                ),
-                "supports_tools": bool(raw.get("supports_tools", True)) if isinstance(raw, Mapping) else True,
-                "supports_multimodal": bool(raw.get("supports_multimodal", False)) if isinstance(raw, Mapping) else False,
+                "context_window": _context_window(raw),
+                "supports_tools": _capability_observation(raw, "supports_tools", "supportsTools"),
+                "supports_multimodal": _capability_observation(raw, "supports_multimodal", "supportsMultimodal"),
                 "capability_descriptor": capability_descriptor,
             }
         )
 
-    return sessions or normalize_session_inventory(None)
+    return sessions
+
+
+def normalize_session_inventory(raw_sessions: list[Any] | None) -> list[dict[str, Any]]:
+    """Normalize sessions using the established public array-shaped contract."""
+    return _normalize_session_inventory(raw_sessions, preserve_unknown_efforts=False)
 
 
 def _session_score(session: dict[str, Any], stage: str) -> int:
@@ -194,7 +225,6 @@ def _choose_session(
         )
     )
     chosen = eligible[0]
-    session_loads[str(chosen["session_id"])] = session_loads.get(str(chosen["session_id"]), 0) + 1
     return chosen
 
 
@@ -243,7 +273,7 @@ def build_execution_fabric(
 ) -> dict[str, Any]:
     """Return a Stormbreaker work-packet contract for a routed pipeline."""
 
-    sessions = normalize_session_inventory(session_inventory)
+    sessions = _normalize_session_inventory(session_inventory, preserve_unknown_efforts=True)
     execution_harness = goal_ultracode_harness()
     session_loads: dict[str, int] = {}
     packets: list[dict[str, Any]] = []
@@ -255,7 +285,7 @@ def build_execution_fabric(
         produced = [str(item) for item in (stage.get("produces") or [])]
         primary_output = produced[0] if produced else "artifact"
         packet_id = f"{pipeline_id}:{order}:{stage_name}"
-        chosen_session = _choose_session(sessions, stage_name, session_loads)
+        chosen_session = _choose_session(sessions, stage_name, session_loads) if sessions else None
         decisions = model_allocation_decisions or {}
         raw_decision = (
             decisions.get(packet_id)
@@ -263,7 +293,8 @@ def build_execution_fabric(
             or decisions.get(str(order))
         )
         allocation_policy = dict(model_allocation_policy or {})
-        allocation_policy.setdefault("currentModelId", chosen_session["model"])
+        if chosen_session and chosen_session.get("model"):
+            allocation_policy.setdefault("currentModelId", chosen_session["model"])
         host_phase = canonical_phase_for_stage(stage_name)
         model_role = model_role_for_stage(stage_name)
         allocation_receipt = resolve_model_allocation(
@@ -275,10 +306,141 @@ def build_execution_fabric(
         )
         resolved_session_id = allocation_receipt["resolved"].get("sessionId")
         if resolved_session_id:
-            chosen_session = next(
-                (session for session in sessions if session["session_id"] == resolved_session_id),
-                chosen_session,
+            # The allocator canonicalizes surrounding whitespace when comparing
+            # identifiers.  Map back only a unique canonical match, retaining
+            # the host's original opaque identifier for the executor.
+            matching_sessions = [
+                session for session in sessions
+                if session["session_id"].strip() == resolved_session_id
+            ]
+            if len(matching_sessions) == 1:
+                chosen_session = matching_sessions[0]
+            elif len(matching_sessions) > 1:
+                # A canonical collision cannot identify an exact native session.
+                # Without a pin the host may still choose its advisory session;
+                # with a pin the policy validation below remains fail-closed.
+                allocation_receipt["status"] = "unresolved"
+                allocation_receipt["resolved"] = {key: None for key in allocation_receipt["resolved"]}
+                allocation_receipt["reasonCodes"].append("session_identity_ambiguous")
+                resolved_session_id = None
+        effective_policy, _ = _policy_for_role(allocation_policy, model_role)
+        constrained = any(effective_policy.get(key) for key in (
+            "pinnedModelId", "pinnedProvider", "maxTier", "maxEffort", "requiredCapabilities"
+        ))
+        decision_selection = raw_decision.get("selection") if isinstance(raw_decision, Mapping) else None
+        normalized_decision, decision_issues = validate_allocation_decision(raw_decision)
+        valid_parent_decision = bool(
+            normalized_decision is not None
+            and not decision_issues
+            and (host_phase is None or normalized_decision.get("phase") == host_phase)
+        )
+        # A rejected decision cannot impose a model choice on an unambiguous
+        # host session. Keep its issues in the receipt; host policy and known
+        # task requirements must still hold. The trust field is only a host
+        # declaration and does not grant execution authority.
+        features = raw_decision.get("features") if isinstance(raw_decision, Mapping) else None
+        # No feature claims is equivalent to the existing no-decision host
+        # path; partial or malformed claims are not proof of requirements.
+        features_absent = isinstance(raw_decision, Mapping) and "features" not in raw_decision
+        feature_shape_known = (
+            isinstance(features, Mapping)
+            and isinstance(features.get("toolRequired"), bool)
+            and isinstance(features.get("multimodalRequired"), bool)
+            and all(
+                isinstance(features.get(key), int)
+                and not isinstance(features.get(key), bool)
+                and features[key] >= 0
+                for key in ("inputTokens", "expectedOutputTokens")
             )
+        )
+        known_requirement_conflict = bool(
+            feature_shape_known
+            and chosen_session
+            and (
+                (features["toolRequired"] and chosen_session.get("supports_tools") is False)
+                or (features["multimodalRequired"] and chosen_session.get("supports_multimodal") is False)
+                or (
+                    chosen_session.get("context_window") is not None
+                    and features["inputTokens"] + features["expectedOutputTokens"] > chosen_session["context_window"]
+                )
+            )
+        )
+        safe_host_fallback = (
+            not constrained
+            and len(sessions) == 1
+            and (not session_inventory or len(session_inventory) == 1)
+            and chosen_session is not None
+            and chosen_session.get("active") is not False
+            and chosen_session.get("trust") in {"host", "local", "approved_external"}
+            and (features_absent or feature_shape_known)
+            and not known_requirement_conflict
+        )
+        exact_requested = (
+            bool(normalized_decision["selection"]["exactModelId"])
+            if valid_parent_decision and normalized_decision is not None
+            else (
+                isinstance(decision_selection, Mapping)
+                and bool(decision_selection.get("exactModelId"))
+                and not safe_host_fallback
+            )
+        )
+        policy_unresolved = bool((constrained or exact_requested) and not resolved_session_id)
+        if (constrained or exact_requested) and resolved_session_id and (
+            len(_raw_session_matches(session_inventory, str(resolved_session_id))) != 1
+            or not chosen_session or str(chosen_session.get("session_id") or "").strip() != resolved_session_id
+        ):
+            allocation_receipt["status"] = "unresolved"
+            allocation_receipt["resolved"] = {key: None for key in allocation_receipt["resolved"]}
+            allocation_receipt["reasonCodes"].append("session_identity_ambiguous")
+            policy_unresolved = True
+            resolved_session_id = None
+            chosen_session = None
+        pinned_provider = effective_policy.get("pinnedProvider")
+        requested_provider = decision_selection.get("provider") if exact_requested and not effective_policy.get("pinnedModelId") else None
+        required_provider = pinned_provider or requested_provider
+        if isinstance(required_provider, str) and required_provider.strip() and resolved_session_id:
+            advertised_provider = _advertised_provider_for_session(session_inventory, str(resolved_session_id))
+            if advertised_provider != required_provider.strip().lower():
+                allocation_receipt["status"] = "unresolved"
+                allocation_receipt["resolved"] = {key: None for key in allocation_receipt["resolved"]}
+                allocation_receipt["reasonCodes"].append("provider_policy_unverified")
+                policy_unresolved = True
+                resolved_session_id = None
+                chosen_session = None
+        if exact_requested:
+            resolved = allocation_receipt["resolved"]
+            requested_model = str(decision_selection["exactModelId"]).strip()
+            requested_provider = str(decision_selection.get("provider") or "").strip().lower()
+            policy_unresolved = policy_unresolved or bool(allocation_receipt.get("validationIssues"))
+            if not effective_policy.get("pinnedModelId"):
+                policy_unresolved = policy_unresolved or resolved.get("modelId") != requested_model
+                if requested_provider:
+                    policy_unresolved = policy_unresolved or str(resolved.get("provider") or "").lower() != requested_provider
+        ceiling = normalize_effort(effective_policy.get("maxEffort"))
+        if ceiling and resolved_session_id:
+            effort = normalize_effort(allocation_receipt["resolved"].get("effort"))
+            efforts = chosen_session.get("supported_efforts") if chosen_session else None
+            supported = isinstance(efforts, list) and effort is not None and any(normalize_effort(item) == effort for item in efforts)
+            within = effort == ceiling or (effort in EFFORT_RANK and ceiling in EFFORT_RANK and EFFORT_RANK[effort] <= EFFORT_RANK[ceiling])
+            policy_unresolved = policy_unresolved or not (supported and within)
+        if policy_unresolved:
+            allocation_receipt["status"] = "unresolved"
+            allocation_receipt["resolved"] = {key: None for key in allocation_receipt["resolved"]}
+            resolved_session_id = None
+            chosen_session = None
+        elif resolved_session_id and chosen_session and str(chosen_session.get("session_id") or "").strip() != resolved_session_id:
+            # Preserve the native host's identifier, but do not claim the
+            # allocator resolved a different, normalized identity.
+            allocation_receipt["status"] = "unresolved"
+            allocation_receipt["resolved"] = {key: None for key in allocation_receipt["resolved"]}
+            allocation_receipt["reasonCodes"].append("session_identity_unverified")
+            resolved_session_id = None
+        elif resolved_session_id and chosen_session:
+            # Report and dispatch the same identifier the host advertised.
+            allocation_receipt["resolved"]["sessionId"] = chosen_session["session_id"]
+        if chosen_session:
+            chosen_id = str(chosen_session["session_id"])
+            session_loads[chosen_id] = session_loads.get(chosen_id, 0) + 1
         depends_on = _packet_dependencies(stage, produced_by_kind)
         packet = {
                 "packet_id": packet_id,
@@ -290,12 +452,21 @@ def build_execution_fabric(
                 "produces": produced,
                 "write_scope": f"{handoff_dir}{order}-{primary_output}/",
                 "session_hint": {
-                    "session_id": chosen_session["session_id"],
-                    "family": chosen_session["family"],
-                    "model": chosen_session["model"],
-                    "trust": chosen_session["trust"],
+                    "session_id": chosen_session["session_id"] if chosen_session else None,
+                    "family": chosen_session["family"] if chosen_session else None,
+                    "model": chosen_session["model"] if chosen_session else None,
+                    "trust": chosen_session["trust"] if chosen_session else None,
                     "effort": allocation_receipt["resolved"].get("effort"),
-                    "capability_descriptor": chosen_session["capability_descriptor"],
+                    "capability_descriptor": chosen_session["capability_descriptor"] if chosen_session else None,
+                    "selection_status": (
+                        "no_available_session" if not chosen_session and session_inventory and all(
+                            isinstance(row, Mapping) and row.get("available") is False for row in session_inventory
+                        ) else "policy_unresolved" if policy_unresolved
+                        else "resolved" if resolved_session_id else "advisory"
+                    ),
+                    **({"inventory_status": "invalid"} if not sessions and session_inventory and not all(
+                        isinstance(row, Mapping) and row.get("available") is False for row in session_inventory
+                    ) else {}),
                 },
                 "model_allocation": allocation_receipt,
                 "model_allocation_contract": {
@@ -337,7 +508,13 @@ def build_execution_fabric(
         "mode": "stormbreaker-goal-ultracode",
         "execution_harness": execution_harness,
         "pipeline_id": pipeline_id,
-        "sessions": sessions,
+        # Keep the established array shape for existing fabric consumers.
+        # The resolver above still receives None for unobserved capabilities.
+        "sessions": [
+            {**session, "supported_efforts": session["supported_efforts"] or []}
+            if "supported_efforts" in session else session
+            for session in sessions
+        ],
         "packets": packets,
         "parallel_groups": groups,
         "required_packet_ids": [packet["packet_id"] for packet in packets],

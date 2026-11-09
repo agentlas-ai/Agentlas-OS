@@ -22,6 +22,15 @@ from .runtime import (
 )
 from .update import (
     UpdateUnavailableError,
+    _LOCAL_DIAGNOSTIC_RECEIPT,
+    _LOCAL_DIAGNOSTIC_SHA256,
+    _active_runtime_for_cached_updater,
+    _is_link,
+    _legacy_base_for_root,
+    _local_diagnostic_failure,
+    _read_json,
+    _verified_local_diagnostic,
+    current_release,
     maybe_auto_update,
     maybe_print_update_notice,
     reconcile_adapters,
@@ -29,6 +38,72 @@ from .update import (
     write_python_shims,
 )
 from .windows_console import no_console_window
+
+
+def _diagnostic_fallback_root() -> Path | None:
+    """Resolve only an owned legacy cache or pinned standalone adapter."""
+    try:
+        module = Path(__file__).resolve()
+        if len(module.parents) > 5:
+            candidate = module.parents[5]
+            for host in ("claude", "codex"):
+                expected = candidate / "host_adapters" / host / "plugins" / "agentlas-core-engine-meta-agent" / "agentlas_cloud" / "cli.py"
+                if module == expected:
+                    from .host_core import _identity
+                    _identity(candidate, Path.home().resolve(), host, "core")
+                    return candidate
+        root = _active_runtime_for_cached_updater()
+        if root is None or _legacy_base_for_root(root) is None:
+            return None
+        return root
+    except Exception:
+        return None
+
+
+def _cached_local_diagnostic() -> bytes | None:
+    root = _diagnostic_fallback_root()
+    return _verified_local_diagnostic(root) if root is not None else None
+
+
+def _local_diagnostic_available() -> bool:
+    root = Path(__file__).resolve().parent.parent
+    receipt = root / _LOCAL_DIAGNOSTIC_RECEIPT
+    if (root / "agentlas_cloud" / "networking" / "bench.py").is_file() or receipt.exists() or receipt.is_symlink():
+        return True
+    fallback = _diagnostic_fallback_root()
+    return fallback is not None and (_verified_local_diagnostic(fallback) is not None or _local_diagnostic_failure(fallback) is not None)
+
+
+def _run_local_diagnostic(suites: list[str]) -> dict[str, Any]:
+    root = Path(__file__).resolve().parent.parent
+    local = root / "agentlas_cloud" / "networking" / "bench.py"
+    receipt = root / _LOCAL_DIAGNOSTIC_RECEIPT
+    if receipt.exists() or receipt.is_symlink():
+        # A migrated copy is valid only while the preservation receipt and
+        # official bytes still agree. Never fall back to a different runtime.
+        if _is_link(receipt) or _read_json(receipt) != {
+            "schemaVersion": "agentlas.local-diagnostic-preservation.v1",
+            "release": current_release(root), "sha256": _LOCAL_DIAGNOSTIC_SHA256,
+            "status": "preserved",
+        }:
+            raise RuntimeError("local_diagnostic_unavailable")
+        source = _verified_local_diagnostic(root)
+        if source is None:
+            raise RuntimeError("local_diagnostic_unavailable")
+        namespace: dict[str, Any] = {"__name__": "agentlas_cloud.networking.bench", "__package__": "agentlas_cloud.networking"}
+        exec(compile(source, "<verified-local-diagnostic>", "exec"), namespace)
+        return namespace["run_bench"](suites)
+    if local.is_file():
+        from .networking.bench import run_bench
+        return run_bench(suites)
+    source = _cached_local_diagnostic()
+    if source is None:
+        raise RuntimeError("local_diagnostic_unavailable")
+    # This byte string is accepted only after an exact official SHA-256 match;
+    # compiling the verified bytes avoids a path replacement between check/use.
+    namespace: dict[str, Any] = {"__name__": "agentlas_cloud.networking.bench", "__package__": "agentlas_cloud.networking"}
+    exec(compile(source, "<verified-local-diagnostic>", "exec"), namespace)
+    return namespace["run_bench"](suites)
 
 
 def _build_telemetry_tracker(event: str, mode: str | None = None) -> Any:
@@ -1155,8 +1230,10 @@ def main(argv: list[str] | None = None) -> int:
     network_remove = network_sub.add_parser("remove-source", help="Unregister an indexed folder")
     network_remove.add_argument("path")
     network_sub.add_parser("reindex", help="Re-import cards from registered sources and rebuild registry.sqlite")
-    network_bench = network_sub.add_parser("bench", help="Run the routing benchmark suites")
-    network_bench.add_argument("--suite", action="append", required=True, help="Path to a user-provided .jsonl suite (repeatable)")
+    # A verified locally installed runner may be preserved across upgrades.
+    if _local_diagnostic_available():
+        network_bench = network_sub.add_parser("bench", help="Run the routing benchmark suites")
+        network_bench.add_argument("--suite", action="append", required=True, help="Path to a user-provided .jsonl suite (repeatable)")
     network_grant = network_sub.add_parser("grant", help="Record a legacy capability grant")
     network_grant.add_argument("capability")
     network_grant.add_argument("--target", required=True)
@@ -2499,10 +2576,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.network_command == "reindex":
             return emit(networking.reindex())
         if args.network_command == "bench":
-            from .networking.bench import run_bench
-
             suites = args.suite
-            report = run_bench(suites)
+            try:
+                report = _run_local_diagnostic(suites)
+            except RuntimeError as exc:
+                if str(exc) != "local_diagnostic_unavailable":
+                    raise
+                local_root = Path(__file__).resolve().parent.parent
+                receipt = local_root / _LOCAL_DIAGNOSTIC_RECEIPT
+                root = local_root if receipt.exists() or receipt.is_symlink() else (_diagnostic_fallback_root() or local_root)
+                emit({"status": "blocked", "reason": _local_diagnostic_failure(root) or "local_diagnostic_unavailable"})
+                return 2
             emit(report)
             return 0 if report["passed"] else 1
         if args.network_command == "grant":
@@ -3456,6 +3540,13 @@ def main(argv: list[str] | None = None) -> int:
         if brief_error:
             emit({"action": "route", "status": "error", "error": brief_error})
             return 2
+        from .model_policy import _host_model_allocation_policy
+
+        try:
+            host_model_policy = _host_model_allocation_policy()
+        except ValueError:
+            emit({"action": "route", "status": "error", "error": "invalid_host_model_allocation_policy"})
+            return 2
         decision = route_request(
             args.query,
             project_dir=args.project,
@@ -3466,6 +3557,7 @@ def main(argv: list[str] | None = None) -> int:
             scope=args.scope,
             caller_id=getattr(args, "caller", None),
             session_inventory=session_inventory,
+            model_allocation_policy=host_model_policy or None,
             work_brief=work_brief,
         )
         if brief_warning:
@@ -3587,6 +3679,15 @@ def main(argv: list[str] | None = None) -> int:
         from .networking import init_networking
         from .networking.bootstrap import networking_home
         from .networking.stormbreaker_runner import run_stormbreaker_decision, run_stormbreaker_query
+        host_model_policy = None
+        if not args.decision_file and args.query:
+            from .model_policy import _host_model_allocation_policy
+
+            try:
+                host_model_policy = _host_model_allocation_policy()
+            except ValueError:
+                emit({"action": "stormbreaker_run", "status": "error", "error": "invalid_host_model_allocation_policy"})
+                return 2
 
         bootstrap = _project_bootstrap_receipt(
             args.project,
@@ -3675,6 +3776,32 @@ def main(argv: list[str] | None = None) -> int:
                 research_variants=args.research_variant,
                 max_replans=max(0, args.max_replans),
             )
+            # Report the current host posture separately from packet and
+            # resume identities. This observation does not authorize a run,
+            # describe the past policy, or prove what the executor applied.
+            try:
+                from .model_allocation import _policy_for_role
+                from .model_policy import _host_model_allocation_policy
+
+                observed_policy = _host_model_allocation_policy()
+                policy_fields = ("pinnedModelId", "pinnedProvider", "maxTier", "maxEffort", "requiredCapabilities")
+                configured = any(
+                    any(_policy_for_role(observed_policy, role)[0].get(key) for key in policy_fields)
+                    for role in ("orchestrator", "worker")
+                )
+                observation_status = "configured_unverified" if configured else "not_configured"
+            except Exception:
+                # Reporting must never change a completed execution or cause a
+                # caller to retry work whose external effects may have occurred.
+                observation_status = "unavailable"
+            result["host_model_policy_observation"] = {
+                "status": observation_status,
+                "observed_at": "after_run",
+                "change_since_decision": "unknown",
+                "applied_model": "unobserved",
+                "applied_effort": "unobserved",
+                "enforcement": "unverified",
+            }
         else:
             if not args.query:
                 emit({"action": "stormbreaker_run", "status": "error", "error": "query or --decision-file is required"})
@@ -3696,6 +3823,7 @@ def main(argv: list[str] | None = None) -> int:
                 scope=args.scope,
                 caller_id=args.caller,
                 session_inventory=session_inventory,
+                model_allocation_policy=host_model_policy,
                 executor_command=args.executor_command,
                 verifier_command=args.verifier_command,
                 execute_card_commands=args.execute_card_commands,

@@ -1618,46 +1618,25 @@ def _replace_directory(source: Path, destination: Path) -> None:
 
 
 def _retire_gemini(home: Path, execute: bool) -> dict[str, Any]:
-    """Gemini CLI is no longer a supported host; remove what an older Agentlas put there.
+    """Report possible legacy Gemini CLI artifacts without modifying them.
 
-    The Gemini CLI individual-tier service ended 2026-06-18 and Antigravity is
-    its successor, with its own `~/.gemini/antigravity*` data that this never
-    touches. Only the engine-owned extension and its stable source copy are
-    removed, and fallback command files whose content names Hephaestus or
-    points at a `/hep-*` command (the `agentlas-*` alias files do the latter).
+    Names and contents cannot establish ownership or prove an installation is
+    usable. Reconciliation preserves these paths even when execute is true.
     """
 
+    del execute
     extension = home / ".gemini" / "extensions" / "hephaestus"
     stable_source = home / ".gemini" / "hephaestus-extension-source"
     commands = home / ".gemini" / "commands"
-    owned: list[Path] = [path for path in (extension, stable_source) if path.exists()]
+    candidates = [path for path in (extension, stable_source) if path.exists() or path.is_symlink()]
     if commands.is_dir():
-        for candidate in sorted(commands.glob("hep-*.toml")) + sorted(commands.glob("agentlas*.toml")):
-            try:
-                text = candidate.read_text(encoding="utf-8", errors="ignore").lower() if candidate.is_file() else ""
-                if "hephaestus" in text or re.search(r"/hep-[a-z]", text):
-                    owned.append(candidate)
-            except OSError:
-                continue
-    status: dict[str, Any] = {"host": "gemini", "supported": False, "detected": bool(owned)}
-    if not owned:
+        candidates.extend(sorted(commands.glob("hep-*.toml")))
+        candidates.extend(sorted(commands.glob("agentlas*.toml")))
+    candidates = list(dict.fromkeys(candidates))
+    status: dict[str, Any] = {"host": "gemini", "supported": False, "detected": bool(candidates)}
+    if not candidates:
         return {**status, "status": "not_installed"}
-    if not execute:
-        return {**status, "status": "planned", "wouldRemove": [str(path) for path in owned]}
-    steps: list[dict[str, Any]] = []
-    if shutil.which("gemini"):
-        _run_best_effort(["gemini", "extensions", "uninstall", "hephaestus"], home=home, steps=steps)
-    removed: list[str] = []
-    for path in owned:
-        try:
-            if path.is_dir():
-                shutil.rmtree(path)
-            elif path.exists():
-                path.unlink()
-            removed.append(str(path))
-        except OSError:
-            continue
-    return {**status, "status": "removed", "removed": removed, "steps": steps}
+    return {**status, "status": "preserved", "preserved": [str(path) for path in candidates]}
 
 
 def reconcile_host_plugins(
