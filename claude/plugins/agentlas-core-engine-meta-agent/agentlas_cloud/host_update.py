@@ -391,6 +391,17 @@ def _claude_registry_source_bound(text: str, source: Path) -> bool:
     )
 
 
+def _same_path(left: str, right: str, path_module: Any = os.path) -> bool:
+    """Path equality as the file system sees it: case-insensitive on Windows (c: vs C:), slashes either way."""
+    return path_module.normcase(path_module.abspath(left)) == path_module.normcase(path_module.abspath(right))
+
+
+def _path_inside(child: str, parent: str, path_module: Any = os.path) -> bool:
+    child_n = path_module.normcase(path_module.abspath(child))
+    parent_n = path_module.normcase(path_module.abspath(parent))
+    return child_n.startswith(parent_n.rstrip("\\/") + path_module.sep)
+
+
 def _claude_settings_pin_state(home: Path, source: Path) -> dict[str, Any]:
     """Where the user-level Claude settings pin the Agentlas marketplace, and whether we may move it.
 
@@ -419,15 +430,13 @@ def _claude_settings_pin_state(home: Path, source: Path) -> dict[str, Any]:
         return state
     pin = origin["path"]
     state["pin"] = pin
-    stable = os.path.abspath(str(source / "claude"))
-    if os.path.abspath(pin) == stable:
+    stable = str(source / "claude")  # the same spelling the registry check expects
+    if _same_path(pin, stable):
         state["reason"] = "bound"
         return state
-    runtime_root = os.path.abspath(
-        os.environ.get("HEPHAESTUS_RUNTIME_BASE") or str(home / ".agentlas" / "runtime")
-    )
+    runtime_root = os.environ.get("HEPHAESTUS_RUNTIME_BASE") or str(home / ".agentlas" / "runtime")
     pin_abs = os.path.abspath(pin)
-    inside = pin_abs.startswith(runtime_root + os.sep)
+    inside = _path_inside(pin, runtime_root)
     if not (inside and Path(pin_abs).name == "claude" and Path(pin_abs).parent.name == "host_adapters"):
         state["reason"] = "pin_outside_agentlas_runtime"
         return state

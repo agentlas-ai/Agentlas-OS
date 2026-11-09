@@ -1425,6 +1425,7 @@ _LEGACY_BASELINE_SHA256 = {
     "v1.2.92": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
     "v1.2.93": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
     "v1.2.94": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
+    "v1.2.95": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
 }
 _LEGACY_BASELINE_PATHS = (
     Path(".claude/commands"), Path("codex/prompts"), Path("cursor/plugin/commands"),

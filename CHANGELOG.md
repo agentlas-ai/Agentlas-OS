@@ -3,6 +3,10 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.95 — 2026-11-09
+
+- On Windows, a Claude Code settings entry that spells the Agentlas folder with a different drive-letter case (for example `c:\users\...` instead of `C:\Users\...`) was not recognised as the one to move, so the stale pin stayed and Claude Code put the old plugin back at its next start. Paths are now compared the way the file system does (case-insensitive, either slash direction), and a sibling folder that merely shares a prefix is not treated as inside the runtime folder. Found by running the real 1.2.72 to latest update on Windows 11.
+
 ## 1.2.94 — 2026-11-09
 
 - Updating a runtime that has a Claude Code settings entry pinned to an old generation no longer ends with `blocked` / exit code 2 although the update worked. The bridge that runs right after activation judged the Claude plugin "not current" and stopped, because the settings pin was only moved by a later step. Every place that moves the Claude marketplace registry now moves that settings entry in the same step, with the same safeguards as in 1.2.93.
