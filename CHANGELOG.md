@@ -3,6 +3,10 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.92 — 2026-11-09
+
+- An install that is still on the legacy runtime directory finishes a postponed host-plugin switch by itself. An update cannot move Claude Code or Codex to the new plugin while that host is still running the old one, so it reported the switch as pending, and nothing looked again after the host was restarted: the host kept loading the old plugin from an older generation. Every update run now checks the host registries (read-only, no process scan) and repeats only the plugin registration while it is still owed, never the installed command files. The background worker retries at most every 30 minutes and 20 times per release; a manual `hep-update` always tries. Runtimes on the standalone channel never touch host registrations.
+
 ## 1.2.91 — 2026-11-09
 
 - A cost ceiling set with `/agentlas-orch` (for example `worker=economy`) no longer stops work. The model the host is already running is always usable: when the host did not report a price tier, or the model is above the ceiling, the allocation receipt records `cost_tier_unverified` or `current_model_exceeds_cost_policy` and the stage runs on that model instead of ending as unresolved. A parent request the host cannot satisfy (a tier or effort it never reported) falls back to the host model the same way. An operator pin, a provider pin and an exact model request are still never replaced silently.

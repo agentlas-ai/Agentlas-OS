@@ -846,6 +846,11 @@ def run_update(check_only: bool = False, root: Path | None = None) -> dict[str, 
         retry = _retry_legacy_host_reconciliation(base)
         if retry.get("status") == "blocked":
             reconciliation_notes["hostRetry"] = retry
+        pending_switch = _retry_pending_host_plugins(base)
+        if pending_switch.get("status") == "retried":
+            reconciliation_notes["hostPluginSync"] = pending_switch["hostPluginSync"]
+        elif pending_switch.get("status") in {"failed", "skipped", "gave_up"}:
+            reconciliation_notes["hostPlugins"] = pending_switch
     current = current_release(runtime_root)
     selected = base / "current"
     if _path_present(selected):
@@ -1417,6 +1422,7 @@ _LEGACY_BASELINE_SHA256 = {
     "v1.2.72": "33503e7aab139cecaed3c79537b1d0cecf58a1127afd7a6b9f081bfeb40863df",
     "v1.2.90": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
     "v1.2.91": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
+    "v1.2.92": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
 }
 _LEGACY_BASELINE_PATHS = (
     Path(".claude/commands"), Path("codex/prompts"), Path("cursor/plugin/commands"),
@@ -1810,6 +1816,64 @@ def reconcile_legacy_bridge() -> dict[str, Any]:
 
 
 _LEGACY_HOST_RETRY_LIMIT = 3
+
+
+_HOST_RETRY_STATE = ".host-plugin-retry-v1.json"
+_HOST_RETRY_INTERVAL_SECONDS = 30 * 60
+_HOST_RETRY_LIMIT = 20
+
+
+def _retry_pending_host_plugins(base: Path) -> dict[str, Any]:
+    """Finish a host-plugin switch that an earlier update had to postpone.
+
+    An update cannot move a host to the new plugin while that host is still running the old one,
+    so it reports the switch as pending. Nothing used to look again once the host was restarted,
+    and the host kept loading the old plugin. This checks the host registries (cheap, read-only)
+    on every update run and repeats the switch only while it is still owed. Only the plugin
+    registration is touched, never the installed command files. The background worker retries at
+    most every 30 minutes and at most 20 times per release; a manual update always tries.
+    """
+
+    try:
+        if _legacy_runtime_base() != base:
+            return {"status": "not_applicable"}
+        current = base / "current"
+        release = current_release(current)
+        bundle = current / HOST_ADAPTER_BUNDLE_DIR
+        if not release or not _is_comparable_release(release) or _is_link(bundle) or not bundle.is_dir():
+            return {"status": "not_applicable"}
+        from .host_update import hosts_need_reconcile, reconcile_host_plugins
+
+        state_path = base / _HOST_RETRY_STATE
+        if not hosts_need_reconcile(bundle, release):
+            if _path_present(state_path) and not state_path.is_symlink():
+                state_path.unlink(missing_ok=True)
+            return {"status": "not_needed"}
+        state = _read_json(state_path) if not state_path.is_symlink() else {}
+        attempts = state.get("attempts") if state.get("release") == release else 0
+        attempts = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) and attempts >= 0 else 0
+        background = os.environ.get("HEPHAESTUS_AUTO_UPDATE_WORKER") == "1"
+        if background:
+            last = state.get("epoch") if state.get("release") == release else None
+            if attempts >= _HOST_RETRY_LIMIT:
+                return {"status": "gave_up", "attempts": attempts}
+            if isinstance(last, (int, float)) and 0 <= time.time() - float(last) < _HOST_RETRY_INTERVAL_SECONDS:
+                return {"status": "waiting", "attempts": attempts}
+        token = _acquire_lock(base / ".update.lock")
+    except (OSError, ValueError, RuntimeError) as exc:
+        return {"status": "skipped", "reason": str(exc)[:120]}
+    try:
+        _validate_host_adapter_bundle(bundle, release)
+        _write_json(state_path, {"schemaVersion": "agentlas.host-plugin-retry.v1", "release": release,
+                                 "epoch": int(time.time()), "attempts": attempts + 1})
+        plugins = reconcile_host_plugins(bundle, release)
+        if not plugins.get("pendingHosts") and plugins.get("status") == "pass":
+            state_path.unlink(missing_ok=True)
+        return {"status": "retried", "hostPluginSync": plugins}
+    except (OSError, ValueError, RuntimeError) as exc:
+        return {"status": "failed", "reason": str(exc)[:200]}
+    finally:
+        _release_lock(base / ".update.lock", token)
 
 
 def _retry_legacy_host_reconciliation(base: Path) -> dict[str, Any]:

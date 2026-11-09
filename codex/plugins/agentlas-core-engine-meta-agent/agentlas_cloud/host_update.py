@@ -1639,6 +1639,29 @@ def _retire_gemini(home: Path, execute: bool) -> dict[str, Any]:
     return {**status, "status": "preserved", "preserved": [str(path) for path in candidates]}
 
 
+def hosts_need_reconcile(source: Path, release_tag: str, *, home: Path | None = None) -> bool:
+    """Is any installed host still not set to load this release the next time it starts?
+
+    Cheap and stateless: it reads the host registries only (no process scan, no host CLI, no
+    writes). An earlier update has to postpone the switch while a host is still running the old
+    plugin; this tells a later run whether that switch is still owed.
+    """
+
+    home_dir = (home or Path.home()).expanduser().resolve()
+    target = _normal_version(release_tag)
+    if not target:
+        return False
+    source_root = _stable_adapter_source(source.expanduser().resolve(), home_dir)
+    commit = _release_commit_sha(source_root)
+    for status in (
+        _codex_status(home_dir, source_root, target, None),
+        _claude_status(home_dir, source_root, target, None, commit),
+    ):
+        if status.get("detected") and not status.get("nextLoadCurrent"):
+            return True
+    return False
+
+
 def reconcile_host_plugins(
     source: Path,
     release_tag: str,
