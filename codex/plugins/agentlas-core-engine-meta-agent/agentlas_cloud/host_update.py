@@ -391,6 +391,93 @@ def _claude_registry_source_bound(text: str, source: Path) -> bool:
     )
 
 
+def _claude_settings_pin_state(home: Path, source: Path) -> dict[str, Any]:
+    """Where the user-level Claude settings pin the Agentlas marketplace, and whether we may move it.
+
+    Claude Code rebuilds its marketplace registry from the ``extraKnownMarketplaces`` entry in
+    ``~/.claude/settings.json``. A shell-installed runtime registered the versioned generation
+    folder there, so a registry that was moved to the stable ``current`` path was put back on
+    the next start and the host kept loading the old plugin. Only an entry that is a directory
+    source inside this machine's Agentlas runtime tree (an older generation of this same
+    adapter) is ours to move; anything else, and a settings file that is a link, is preserved.
+    """
+
+    settings = home / ".claude" / "settings.json"
+    state: dict[str, Any] = {"path": str(settings), "pin": None, "movable": False, "reason": "no_pin"}
+    try:
+        if settings.is_symlink() or not settings.is_file():
+            state["reason"] = "settings_unavailable_or_linked" if settings.exists() or settings.is_symlink() else "no_settings"
+            return state
+        data = json.loads(settings.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state["reason"] = "settings_unreadable"
+        return state
+    markets = data.get("extraKnownMarketplaces") if isinstance(data, dict) else None
+    entry = markets.get(MARKETPLACE_ID) if isinstance(markets, dict) else None
+    origin = entry.get("source") if isinstance(entry, dict) else None
+    if not (isinstance(origin, dict) and origin.get("source") == "directory" and isinstance(origin.get("path"), str)):
+        return state
+    pin = origin["path"]
+    state["pin"] = pin
+    stable = os.path.abspath(str(source / "claude"))
+    if os.path.abspath(pin) == stable:
+        state["reason"] = "bound"
+        return state
+    runtime_root = os.path.abspath(
+        os.environ.get("HEPHAESTUS_RUNTIME_BASE") or str(home / ".agentlas" / "runtime")
+    )
+    pin_abs = os.path.abspath(pin)
+    inside = pin_abs.startswith(runtime_root + os.sep)
+    if not (inside and Path(pin_abs).name == "claude" and Path(pin_abs).parent.name == "host_adapters"):
+        state["reason"] = "pin_outside_agentlas_runtime"
+        return state
+    state.update(movable=True, reason="stale_generation_pin", stable=stable)
+    return state
+
+
+def _rebind_claude_settings_marketplace(home: Path, source: Path) -> dict[str, Any]:
+    """Move a stale generation pin in ~/.claude/settings.json to the stable current bundle.
+
+    A textual replacement of that one path keeps every other byte of the file as it was; the
+    result is verified as valid JSON that differs from the original only in that value, and the
+    file is replaced atomically only if it did not change since it was read.
+    """
+
+    state = _claude_settings_pin_state(home, source)
+    if not state["movable"]:
+        owned_elsewhere = state["pin"] is not None or state["reason"] in {"settings_unavailable_or_linked", "settings_unreadable"}
+        return {"status": "preserved" if owned_elsewhere else "not_applicable", "reason": state["reason"]}
+    settings = Path(state["path"])
+    try:
+        raw = settings.read_bytes()  # bytes, so CRLF files keep their line endings
+        text = raw.decode("utf-8")
+        data = json.loads(text)
+        old_literal = json.dumps(state["pin"], ensure_ascii=False)
+        new_literal = json.dumps(state["stable"], ensure_ascii=False)
+        if text.count(old_literal) != 1:
+            return {"status": "skipped", "reason": "pin_text_not_unique"}
+        updated = text.replace(old_literal, new_literal, 1)
+        expected = json.loads(json.dumps(data))
+        expected["extraKnownMarketplaces"][MARKETPLACE_ID]["source"]["path"] = state["stable"]
+        if json.loads(updated) != expected:
+            return {"status": "skipped", "reason": "replacement_not_verified"}
+        mode = settings.stat().st_mode & 0o777
+        temporary = settings.with_name(f".{settings.name}.agentlas-{os.getpid()}.tmp")
+        try:
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), mode)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(updated.encode("utf-8"))
+            if settings.is_symlink() or settings.read_bytes() != raw:
+                return {"status": "skipped", "reason": "settings_changed_while_updating"}
+            os.replace(temporary, settings)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        return {"status": "rebound", "from": state["pin"], "to": state["stable"]}
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return {"status": "skipped", "reason": "settings_update_failed", "error": str(exc)[:120]}
+
+
 def _migrate_codex_registry(config: Path, source: Path) -> dict[str, Any]:
     """Point the existing Agentlas marketplace at the stable runtime/current bundle."""
 
@@ -1094,7 +1181,10 @@ def _claude_status(
         target,
         Path(".claude-plugin") / "plugin.json",
     )
-    next_load_current = exact_cache_current and source_bound and bool(ledger["current"])
+    settings_pin = _claude_settings_pin_state(home, source)
+    next_load_current = (
+        exact_cache_current and source_bound and bool(ledger["current"]) and not settings_pin["movable"]
+    )
     activation_epoch = _activation_epoch(home, "claude", target, manifest)
     host_process = _host_process_evidence("claude", snapshot, activation_epoch, home)
     process_state_unknown = cache_process_unknown or host_process["state"] == "unknown"
@@ -1115,6 +1205,7 @@ def _claude_status(
         "versions": versions,
         "targetVersion": target,
         "sourceBound": source_bound,
+        "settingsPinCurrent": not settings_pin["movable"],
         "ledgerCurrent": bool(ledger["current"]),
         "ledgerVersion": ledger["version"],
         "ledgerInstallPath": ledger["installPath"],
@@ -1298,6 +1389,7 @@ def _reconcile_claude(
         "reason": None if status.get("sourceBound") else "not_attempted",
         "source": str(source / "claude"),
     }
+    settings_pin_migration: dict[str, Any] = {"status": "not_attempted"}
     if execute and status.get("detected") and status.get("exactCacheCurrent"):
         if initial_ledger_migration is None and not status.get("ledgerCurrent"):
             ledger_migration = _migrate_claude_ledger(
@@ -1308,6 +1400,8 @@ def _reconcile_claude(
             )
         if initial_registry_migration is None and not status.get("sourceBound"):
             registry_migration = _migrate_claude_registry(marketplace, source)
+        if not status.get("settingsPinCurrent", True):
+            settings_pin_migration = _rebind_claude_settings_marketplace(home, source)
         status = _claude_status(
             home,
             source,
@@ -1321,6 +1415,7 @@ def _reconcile_claude(
             **status,
             "ledgerMigration": ledger_migration,
             "registryMigration": registry_migration,
+            "settingsPinMigration": settings_pin_migration,
             **extra,
         }
 

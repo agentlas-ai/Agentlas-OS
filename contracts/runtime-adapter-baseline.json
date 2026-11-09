@@ -1,6 +1,6 @@
 {
   "schemaVersion": "agentlas.runtime-adapter-baseline.v1",
-  "release": "v1.2.92",
+  "release": "v1.2.93",
   "algorithm": "sha256-tree-v1",
   "paths": [
     ".claude/commands",

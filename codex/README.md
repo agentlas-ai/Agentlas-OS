@@ -67,7 +67,7 @@ Automatic Codex adapter registration and reconciliation are not yet available.
 Codex-only manual install:
 
 ```bash
-codex plugin marketplace add agentlas-ai/Agentlas-OS --ref os-v1.2.92
+codex plugin marketplace add agentlas-ai/Agentlas-OS --ref os-v1.2.93
 codex plugin add hephaestus@agentlas-core-engine
 ```
 

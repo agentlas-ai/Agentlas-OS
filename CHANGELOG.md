@@ -3,6 +3,10 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.93 — 2026-11-09
+
+- The postponed host-plugin switch of 1.2.92 now also moves the Claude Code settings entry that pins the Agentlas marketplace to an old runtime generation. Claude Code rebuilds its marketplace registry from `extraKnownMarketplaces` in `~/.claude/settings.json`, so a registry that was moved to the stable `current` folder was put back on the next start and the host kept loading the old plugin. Only a directory entry inside the Agentlas runtime folder that points at an older generation of this adapter is moved, by replacing that one path in place (every other byte of the file stays as it is, the result is checked as valid JSON, and the file is replaced atomically only if it did not change meanwhile). A settings file that is a link, an entry outside the runtime folder, or any other marketplace is left alone.
+
 ## 1.2.92 — 2026-11-09
 
 - An install that is still on the legacy runtime directory finishes a postponed host-plugin switch by itself. An update cannot move Claude Code or Codex to the new plugin while that host is still running the old one, so it reported the switch as pending, and nothing looked again after the host was restarted: the host kept loading the old plugin from an older generation. Every update run now checks the host registries (read-only, no process scan) and repeats only the plugin registration while it is still owed, never the installed command files. The background worker retries at most every 30 minutes and 20 times per release; a manual `hep-update` always tries. Runtimes on the standalone channel never touch host registrations.
