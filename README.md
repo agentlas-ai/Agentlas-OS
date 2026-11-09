@@ -26,6 +26,11 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 </p>
 
 <p align="center">
+  <b>The open-source alternative to Grok Bot, Muse and dots.</b> For research, <a href="https://agentlas.cloud/science">Agentlas Science</a> is the alternative to Claude Science.<br>
+  <sub>Not affiliated with xAI, Meta, OpenAI or Anthropic. Product names belong to their owners.</sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
 </p>
 
@@ -73,6 +78,10 @@ Type "Sign-ups by channel this week, as a table" on the bus. The Analyst agent r
 ## Bring the AI you already pay for
 
 Sign in with Claude Code, Codex, Antigravity, Grok, Kimi, Cursor or GitHub Copilot CLI, add an API key, or run a free local model with Ollama, LM Studio or MLX. When one plan runs out of quota, chats move to the next.
+
+## No VM. It works on the computer you already have
+
+Grok Bot, Muse and dots give each agent its own computer in the cloud, and some agent apps boot a virtual machine on yours. By default the agent then works on a second computer, away from your files, logins and apps, and a local VM holds RAM, disk and battery while it runs. Agentlas runs no VM: agents work in the apps you already use. Instead of isolation, you get control: you set how much it may do on its own, every step is logged, and you can stop it from your phone.
 
 ## What stays on your computer
 

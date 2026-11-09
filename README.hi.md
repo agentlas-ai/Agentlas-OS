@@ -26,6 +26,11 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 </p>
 
 <p align="center">
+  <b>Grok Bot, Muse और dots का open-source alternative.</b> Research के लिए <a href="https://agentlas.cloud/science">Agentlas Science</a>, Claude Science का alternative है।<br>
+  <sub>xAI, Meta, OpenAI या Anthropic से कोई संबंध नहीं। Product names उनके owners के हैं।</sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Agentlas डाउनलोड करें" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
 </p>
 
@@ -73,6 +78,10 @@ Agentlas काम के हर हिस्से के लिए एक job 
 ## जिस AI के पैसे आप पहले से देते हैं, वही इस्तेमाल कीजिए
 
 Claude Code, Codex, Antigravity, Grok, Kimi, Cursor या GitHub Copilot CLI से sign in कीजिए, API key जोड़िए, या Ollama, LM Studio या MLX पर मुफ़्त local model चलाइए। जब एक plan का quota ख़त्म हो जाता है, chats अगले plan पर चली जाती हैं।
+
+## कोई VM नहीं। आपके मौजूदा computer पर काम करता है
+
+Grok Bot, Muse और dots हर agent को cloud में अलग computer देते हैं, और कुछ agent apps आपके computer पर virtual machine (VM) चलाते हैं। तब agent default रूप से एक दूसरे computer पर काम करता है, आपकी files, logins और apps से दूर; और local VM चलते समय RAM, disk और battery भी लेता है। Agentlas कोई VM नहीं चलाता: agents उन्हीं apps में काम करते हैं जो आप पहले से इस्तेमाल करते हैं। Isolation की जगह आपको control मिलता है: वह खुद कितना करे, यह आप तय करते हैं, हर step log होता है, और आप फ़ोन से उसे रोक सकते हैं।
 
 ## आपके computer पर क्या रहता है
 

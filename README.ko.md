@@ -26,6 +26,11 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 </p>
 
 <p align="center">
+  <b>Grok Bot · Muse · dots의 오픈소스 대안.</b> 연구용으로는 <a href="https://agentlas.cloud/science">Agentlas Science</a>가 Claude Science의 대안입니다.<br>
+  <sub>xAI, Meta, OpenAI, Anthropic과 제휴 관계가 없습니다. 각 제품명은 해당 회사의 상표입니다.</sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Agentlas 다운로드" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
 </p>
 
@@ -73,6 +78,10 @@ Agentlas는 작업의 각 부분마다 채용 공고를 쓰고, 내 컴퓨터의
 ## 이미 쓰는 AI를 그대로
 
 Claude Code, Codex, Antigravity, Grok, Kimi, Cursor, GitHub Copilot CLI로 로그인하거나, API 키를 추가하거나, Ollama, LM Studio, MLX로 무료 로컬 모델을 돌리세요. 한 요금제의 한도가 다 차면 대화는 다음 요금제로 넘어갑니다.
+
+## VM 없이, 지금 쓰는 컴퓨터에서
+
+Grok Bot, Muse, dots는 에이전트마다 클라우드 컴퓨터를 따로 붙이고, 내 PC에 가상 머신(VM)을 띄우는 에이전트 앱도 있습니다. 이 경우 에이전트는 기본적으로 다른 컴퓨터에서 일하기 때문에 내 파일·로그인·앱과 떨어져 있고, 로컬 VM은 돌아가는 동안 메모리·디스크·배터리도 차지합니다. Agentlas는 VM을 쓰지 않습니다. 에이전트가 지금 쓰는 앱에서 바로 일합니다. 격리 대신 통제권을 드립니다. 혼자 어디까지 해도 되는지 직접 정하고, 모든 단계가 기록되며, 폰에서 언제든 멈출 수 있습니다.
 
 ## 내 컴퓨터에 남는 것
 
