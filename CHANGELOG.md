@@ -3,6 +3,10 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.91 — 2026-11-09
+
+- A cost ceiling set with `/agentlas-orch` (for example `worker=economy`) no longer stops work. The model the host is already running is always usable: when the host did not report a price tier, or the model is above the ceiling, the allocation receipt records `cost_tier_unverified` or `current_model_exceeds_cost_policy` and the stage runs on that model instead of ending as unresolved. A parent request the host cannot satisfy (a tier or effort it never reported) falls back to the host model the same way. An operator pin, a provider pin and an exact model request are still never replaced silently.
+
 ## 1.2.90 — 2026-11-09
 
 - Installs that are still on the old `v1.2.x` update channel (1.2.72 and earlier) can update to this release with their own update command or auto-update, and they follow the standalone channel afterwards. Files the owner edited, including edited command files, host settings and the local `network bench` command, are left as they were, and an edited file never blocks a later update.

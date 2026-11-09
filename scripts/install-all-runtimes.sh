@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-release_ref="${HEPHAESTUS_REF:-os-v1.2.90}"
+release_ref="${HEPHAESTUS_REF:-os-v1.2.91}"
 version="${release_ref#os-}"
 repo_was_explicit="${HEPHAESTUS_REPO:-}"
 github_url_was_explicit="${HEPHAESTUS_GITHUB_URL:-}"

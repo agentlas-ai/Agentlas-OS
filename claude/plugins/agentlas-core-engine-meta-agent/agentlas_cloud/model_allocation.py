@@ -635,8 +635,13 @@ def resolve_model_allocation(
         observed = item[field] if field else None
         return observed is not False and (observed is True or capability in item["capabilities"])
 
-    def compatible(item: Mapping[str, Any]) -> bool:
-        if configured_max_tier is not None and (
+    def compatible(item: Mapping[str, Any], *, host_fallback: bool = False) -> bool:
+        # ``host_fallback`` judges the model the host is ALREADY running when nothing better can be
+        # proven. A cost ceiling, or evidence the host never reported (a tier, advertised efforts),
+        # can never make that model unavailable: the ceiling limits what a request may ask for, it
+        # cannot un-run the host's own model. Hard requirements (provider pin, capabilities, tools,
+        # multimodal, context window) still apply.
+        if not host_fallback and configured_max_tier is not None and (
             item["tier"] is None or TIER_RANK[item["tier"]] > TIER_RANK[max_tier]
         ):
             return False
@@ -653,7 +658,7 @@ def resolve_model_allocation(
         # takes precedence even when the parent only supplied a tier decision.
         # Unpinned tier-based selection still requires tier evidence.
         exact_operator_pin = bool(pinned_model_id and item["model_id"] == pinned_model_id)
-        if item["tier"] is None and not (
+        if not host_fallback and item["tier"] is None and not (
             exact_operator_pin or (not issues and decision["selection"]["exactModelId"])
         ):
             return False
@@ -665,7 +670,7 @@ def resolve_model_allocation(
             return False
         if features["multimodalRequired"] and not has_capability(item, "multimodal"):
             return False
-        if decision["selection"]["effort"] != "none" and not item["supported_efforts_known"]:
+        if not host_fallback and decision["selection"]["effort"] != "none" and not item["supported_efforts_known"]:
             return False
         return True
 
@@ -808,6 +813,26 @@ def resolve_model_allocation(
             selected = unique_current(compatible_inventory)
             if selected is None and len(current_matches(compatible_inventory)) > 1:
                 reasons.append("current_model_ambiguous_across_sessions")
+            if selected is None:
+                # The host keeps running its own model. A cost ceiling that cannot be checked (the
+                # host reported no tier) or that this model exceeds is recorded, never enforced here.
+                host_candidates = [item for item in inventory if compatible(item, host_fallback=True)]
+                selected = unique_current(host_candidates)
+                if selected is not None and configured_max_tier is not None:
+                    if selected["tier"] is None:
+                        reasons.append("cost_tier_unverified")
+                    elif TIER_RANK[selected["tier"]] > TIER_RANK[max_tier]:
+                        reasons.append("current_model_exceeds_cost_policy")
+        if (selected is None and decision is not None and not issues and escalation_request is None
+                and not pinned_model_id and not decision["selection"]["exactModelId"]):
+            # A parent request the inventory cannot satisfy (a tier or effort the host never
+            # reported) must not stop work: the host keeps running its own model, and the
+            # receipt says the request was not met. An operator pin or an exact model request
+            # stays strict: those name a model and are never replaced silently.
+            host_candidates = [item for item in inventory if compatible(item, host_fallback=True)]
+            selected = unique_current(host_candidates)
+            if selected is not None:
+                reasons.append("requested_model_unavailable_host_model_used")
         status = "fallback-current" if selected else "unresolved"
         if decision is None or issues:
             reasons.append("parent_decision_missing_or_invalid")
