@@ -50,7 +50,7 @@ Install Agentlas Desktop via the button below for the full runtime and mobile pa
 Instead of stitching together single-purpose wrappers, Agentlas OS combines five agent patterns in one local-first runtime.
 
 - Persistent autonomous execution (inspired by OpenAI Dots): Goals survive across sessions. Work resumes from the last checkpoint, and a step counts as complete only after an independent verifier checks its execution receipt.
-- Domain-complete workflows (inspired by Meta Muse): Work runs to a finished deliverable across personal operations (One), investment research that keeps the inputs behind each calculation (Finance), literature and molecular research (Science), and team governance (Business).
+- Domain-complete workflows (inspired by Meta Muse): Work runs to a finished deliverable across personal operations (One), investment research that keeps the inputs behind each calculation (Finance), and literature and molecular research (Science).
 - Desktop execution, mobile decisions (inspired by Claude Duet): Execution stays on your computer, where your files and tools are. Decision points reach your phone as question cards, and the desktop continues after you answer.
 - Portable skills and A2A packaging (inspired by Nous Hermes): `40-session-agent-builder` compiles the procedure and checks from a working session into a package, and `30-agentlas-packager` packages existing agents. Every package carries an A2A Agent Card and installs on any supported host.
 - Scoped memory governance (inspired by Mem0): `memory-hooks`, context maps, and project indexes are scoped per project. Workers emit memory events; a Memory Curator validates, redacts, and deduplicates them, and a Policy Gate approves promotion to shared team memory.
@@ -85,18 +85,15 @@ The model you chose makes each selection and records the reason and the exact re
 
 Completion requires distinct worker invocations, artifact handoffs, synthesis, and a passing independent verifier. The host-produced execution receipt is validated locally. A selection or a prepared bundle is not a receipt.
 
-## Four environments, one runtime
+## Three environments, one runtime
 
-One, Finance, Science, and Business run in Agentlas Desktop on top of this runtime.
+One, Finance, and Science run in Agentlas Desktop on top of this runtime.
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="Agentlas One on the Desktop"></a><br>One<br>A personal agent that runs on your computer. It opens Work sessions, assigns agents, sends question cards, and attaches results as files.</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br>Finance<br>Save research criteria as an Analyst. Reports keep the inputs behind each calculation.</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br>Science<br>Molecular views and typeset manuscripts in one app, as a signed Agentlas Desktop extension.</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/business"><img src="https://agentlas.cloud/landing/v3/business-en.jpg" alt="Agentlas Business"></a><br>Business<br>Members, API keys, usage policies, and billing for a team.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="Agentlas One on the Desktop"></a><br>One<br>A personal agent that runs on your computer. It opens Work sessions, assigns agents, sends question cards, and attaches results as files.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br>Finance<br>Save research criteria as an Analyst. Reports keep the inputs behind each calculation.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br>Science<br>Molecular views and typeset manuscripts in one app, as a signed Agentlas Desktop extension.</td>
 </tr>
 </table>
 

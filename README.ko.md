@@ -50,7 +50,7 @@ OpenAI Dots, Meta Muse, Claude Duet, Nous Hermes, Mem0의 영감을 받아 설�
 Agentlas OS는 단일 목적 도구들을 이어 붙이는 대신, 다섯 가지 에이전트 패러다임을 하나의 로컬 중심 런타임으로 통합했습니다.
 
 - 장기 자율 실행과 재개 (OpenAI Dots 지향): 세션이나 앱을 닫아도 목표는 유지됩니다. 마지막 체크포인트부터 다시 이어가며, 독립 검증자(Verifier)가 실행 영수증(Receipt)을 확인하기 전까지 완료를 선언하지 않습니다.
-- 도메인 완결형 워크플로우 (Meta Muse 지향): 일상 및 개인 업무(One), 계산에 쓴 입력값이 보고서에 함께 남는 투자 리서치(Finance), 문헌·분자 연구(Science), 조직 거버넌스(Business)까지 실무 결과물을 끝까지 완성합니다.
+- 도메인 완결형 워크플로우 (Meta Muse 지향): 일상 및 개인 업무(One), 계산에 쓴 입력값이 보고서에 함께 남는 투자 리서치(Finance), 문헌·분자 연구(Science)까지 실무 결과물을 끝까지 완성합니다.
 - 데스크톱 실행과 모바일 결정 (Claude Duet 지향): 코드 실행과 로컬 파일 작업은 내 컴퓨터에서 돌아가고, 결정이 필요한 순간에만 폰으로 질문 카드(Question Card)를 보냅니다. 답하면 데스크톱이 바로 다음 작업을 이어갑니다.
 - 이식 가능한 스킬과 A2A 패키징 (Nous Hermes 지향): `40-session-agent-builder`는 작업 세션의 절차와 검증 방식을 패키지로 컴파일하고, `30-agentlas-packager`는 기존 에이전트를 패키징합니다. 모든 패키지에는 A2A Agent Card가 들어 있어, 지원하는 어느 호스트에서든 설치할 수 있습니다.
 - 스코프 메모리 거버넌스 (Mem0 지향): `memory-hooks`, 컨텍스트 맵, 프로젝트 인덱스를 프로젝트별로 분리해 관리합니다. 워커가 남긴 메모리 이벤트는 Memory Curator가 검증·비식별화·중복 제거하고, 팀 공유 메모리로 올리는 것은 Policy Gate가 승인합니다.
@@ -85,18 +85,15 @@ Agentlas OS는 단일 목적 도구들을 이어 붙이는 대신, 다섯 가지
 
 완료로 처리되려면 워커별 개별 실행, 산출물 인계, 종합, 독립 검증자의 통과가 모두 필요합니다. 호스트가 만든 실행 영수증은 로컬에서 검증합니다. 에이전트를 고르거나 실행 준비를 마친 것만으로는 영수증이 되지 않습니다.
 
-## 네 개의 환경, 하나의 런타임
+## 세 개의 환경, 하나의 런타임
 
-One, Finance, Science, Business는 이 런타임 위에서 Agentlas Desktop으로 실행됩니다.
+One, Finance, Science는 이 런타임 위에서 Agentlas Desktop으로 실행됩니다.
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="데스크톱의 Agentlas One"></a><br>One<br>내 컴퓨터에서 돌아가는 개인 에이전트. Work 세션을 만들어 작업을 배정하고, 질문 카드와 결과 파일을 대화로 보냅니다.</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-ko.jpg" alt="Agentlas Finance"></a><br>Finance<br>투자 리서치 기준을 Analyst로 저장합니다. 계산에 쓴 입력값은 보고서에 함께 남습니다.</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br>Science<br>분자 구조 탐색과 조판된 논문 원고 작성을 한 앱에서. Agentlas Desktop의 서명 확장입니다.</td>
-<td width="50%" valign="top"><a href="https://agentlas.cloud/business"><img src="https://agentlas.cloud/landing/v3/business-ko.jpg" alt="Agentlas Business"></a><br>Business<br>구성원, API 키, 사용 정책, 청구를 팀 단위로 관리합니다.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="데스크톱의 Agentlas One"></a><br>One<br>내 컴퓨터에서 돌아가는 개인 에이전트. Work 세션을 만들어 작업을 배정하고, 질문 카드와 결과 파일을 대화로 보냅니다.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-ko.jpg" alt="Agentlas Finance"></a><br>Finance<br>투자 리서치 기준을 Analyst로 저장합니다. 계산에 쓴 입력값은 보고서에 함께 남습니다.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br>Science<br>분자 구조 탐색과 조판된 논문 원고 작성을 한 앱에서. Agentlas Desktop의 서명 확장입니다.</td>
 </tr>
 </table>
 
