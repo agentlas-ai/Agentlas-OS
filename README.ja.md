@@ -26,6 +26,11 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 </p>
 
 <p align="center">
+  <b>Grok Bot・Muse・dots のオープンソース代替。</b>研究には、Claude Science の代替として <a href="https://agentlas.cloud/science">Agentlas Science</a> があります。<br>
+  <sub>xAI、Meta、OpenAI、Anthropic とは提携していません。各製品名は各社の商標です。</sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Agentlas をダウンロード" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
 </p>
 
@@ -73,6 +78,10 @@ Agentlasは作業の各パートごとに求人票を書き、あなたのPC上�
 ## 契約中のAIをそのまま使う
 
 Claude Code、Codex、Antigravity、Grok、Kimi、Cursor、GitHub Copilot CLIでサインインするか、APIキーを追加するか、Ollama、LM Studio、MLXで無料のローカルモデルを動かせます。1つのプランの上限に達したら、会話は次のプランへ移ります。
+
+## VMなし。今あるPCで動きます
+
+Grok Bot、Muse、dots はエージェントごとにクラウド上のコンピューターを用意し、PC上に仮想マシン(VM)を立ち上げるエージェントアプリもあります。その場合エージェントは基本的に別のコンピューターで作業するため、あなたのファイル・ログイン・アプリから離れています。ローカルのVMは動いている間、メモリ・ディスク・バッテリーも使います。Agentlas は VM を使いません。エージェントは普段使っているアプリで直接作業します。隔離の代わりにコントロールを提供します。どこまで任せるかはあなたが決め、すべての手順が記録され、スマホからいつでも止められます。
 
 ## PCの中に残るもの
 

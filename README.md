@@ -16,14 +16,19 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 <!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-<h1 align="center">Agentlas</h1>
-
-<h3 align="center">Give it a goal. It hires the team.</h3>
-
 <p align="center">
-  A desktop AI agent that hires a specialist for every part of your project,<br>
-  does the work in your real apps, and keeps going for weeks. Steer it from your phone.
+  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.hi.md">हिन्दी</a>
 </p>
+
+# Agentlas OS
+
+An open-source AI agent OS inspired by OpenAI Dots, Meta Muse, Claude Duet, Nous Hermes, and Mem0.
+
+Built to lead entire projects rather than isolated prompts. Model-agnostic (BYOM) and native to Claude Code, Codex, Cursor, Antigravity, and Agentlas Desktop.
+
+Most agent products take one of two approaches. Some are prompt loops that report a task as done without checking the result. Others run each agent in a virtual machine, in the cloud or on your computer, apart from your files, credentials, and tools; a local VM also holds memory and disk while it runs. Agentlas OS takes neither approach. It runs no VM: agents work in the terminal, files, and tools already on your machine, and a task is complete only after an independent verifier accepts its execution receipt.
+
+Install Agentlas Desktop via the button below for the full runtime and mobile pairing (One), or attach this repository's runtime packs directly to Claude Code, Codex, or Cursor.
 
 <p align="center">
   <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Download Agentlas" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
@@ -31,46 +36,74 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 <p align="center">
   macOS · Windows · Linux · <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas">Android</a> · iOS coming soon<br>
-  <b>12,000+ desktop downloads</b> · Free to download, runs on your own AI plan or key · Apache-2.0
+  12,000+ desktop downloads · Free to download, runs on your own AI plan or key · Apache-2.0
 </p>
 
 <p align="center">
-  <a href="https://agentlas.cloud">Website</a> · <a href="https://agentlas.cloud/hub">Agent Hub</a> · <a href="https://discord.gg/wbWfdGZ6S">Discord</a> · <a href="#developers">Developers ↓</a><br>
-  <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.hi.md">हिन्दी</a>
+  <a href="https://agentlas.cloud">Website</a> · <a href="https://agentlas.cloud/hub">Agent Hub</a> · <a href="https://discord.gg/wbWfdGZ6S">Discord</a> · <a href="#developers">Developers ↓</a>
 </p>
 
 <p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="Agentlas fixing a spreadsheet, charting it, building a deck, posting to Slack and editing a product photo on a Mac" width="880"></a></p>
 
-## Things people hand it
+## Architectural Foundations
 
-| You type | It does, in your apps |
-| --- | --- |
-| "Clean up the Q3 sales sheet and chart it." | Fixes 3 broken cells, adds totals, builds the chart in the spreadsheet. |
-| "Turn it into a 5-slide deck for Friday." | Summary, regions, risks and next steps, saved as `Q3-review.pptx`. |
-| "Send it to #sales and tell Dana." | Posts it in Slack. |
-| "Cut out the product and brighten the cover." | Removes the background and edits the image in the photo editor. |
-| "Rebuild the beta product page around conversion." | Hires a market researcher, UX designer, frontend engineer and reviewer, then ships the page. |
-| "Ship the beta and reach 1,000 users." | Opens a goal tree and works on it for weeks. |
+Instead of stitching together single-purpose wrappers, Agentlas OS combines five agent patterns in one local-first runtime.
 
-## It hires the right specialist for each part
+- Persistent autonomous execution (inspired by OpenAI Dots): Goals survive across sessions. Work resumes from the last checkpoint, and a step counts as complete only after an independent verifier checks its execution receipt.
+- Domain-complete workflows (inspired by Meta Muse): Work runs to a finished deliverable across personal operations (One), investment research that keeps the inputs behind each calculation (Finance), and literature and molecular research (Science).
+- Desktop execution, mobile decisions (inspired by Claude Duet): Execution stays on your computer, where your files and tools are. Decision points reach your phone as question cards, and the desktop continues after you answer.
+- Portable skills and A2A packaging (inspired by Nous Hermes): `40-session-agent-builder` compiles the procedure and checks from a working session into a package, and `30-agentlas-packager` packages existing agents. Every package carries an A2A Agent Card and installs on any supported host.
+- Scoped memory governance (inspired by Mem0): `memory-hooks`, context maps, and project indexes are scoped per project. Workers emit memory events; a Memory Curator validates, redacts, and deduplicates them, and a Policy Gate approves promotion to shared team memory.
 
-Agentlas writes a job opening for each part of the work and fills it from the agents on your computer, your private cloud and the free public Hub. Your AI picks the best fit and notes why.
+## Elsewhere, a split task is a prompt. Here, it is a job opening.
 
-<p align="center"><img src="assets/readme/work-team.gif" alt="'Rebuild the beta product page around conversion': four hired specialists research, design, build and review the page" width="880"></p>
+Elsewhere, an agent that splits a task writes sub-prompts to itself. In Agentlas OS, each part of the work becomes a job opening filled by a specialist agent, and the work runs on your own machine.
 
-## Goals that run for weeks
+Give Agentlas OS one objective. The Hephaestus engine decomposes it, searches for specialists on your computer, in your private Agent Cloud, and on the public Hub, and does not mark the work complete until an independent verifier checks the execution receipt.
 
-"Ship the beta and reach 1,000 users" becomes strategies and sub-goals, each with a number. When newsletter opens come in low, it changes the method and keeps the goal. Close the laptop; tomorrow it picks up from the last checkpoint.
+## Hephaestus: decompose, recruit, verify
+
+### 1. Decompose
+
+A goal becomes a task graph. Each task states its inputs and outputs, the tools and permissions it needs, and its pass/fail criteria. Long goals become a tree of strategic goals and sub-goals that can be re-planned mid-run.
 
 <p align="center"><img src="assets/readme/goal-tree.gif" alt="A launch goal split into strategic goals and sub-goals, re-planned when newsletter opens are low" width="880"></p>
 
-## Steer it from your phone
+### 2. Recruit
+
+For each task, Hephaestus searches three tiers:
+
+- Local: agents, scripts, and CLI tools already on your machine, run directly without a VM.
+- Agent Cloud: your private library of personal or team agents.
+- Public Hub: community agents. Publishing and using them is free, and nothing is ranked by payment.
+
+The model you chose makes each selection and records the reason and the exact release. A selection pins the release, package hash, and content digest.
+
+<p align="center"><img src="assets/readme/work-team.gif" alt="'Rebuild the beta product page around conversion': four hired specialists research, design, build and review the page" width="880"></p>
+
+### 3. Verify
+
+Completion requires distinct worker invocations, artifact handoffs, synthesis, and a passing independent verifier. The host-produced execution receipt is validated locally. A selection or a prepared bundle is not a receipt.
+
+## Three environments, one runtime
+
+One, Finance, and Science run in Agentlas Desktop on top of this runtime.
+
+<table>
+<tr>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="Agentlas One on the Desktop"></a><br>One<br>A personal agent that runs on your computer. It opens Work sessions, assigns agents, sends question cards, and attaches results as files.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br>Finance<br>Save research criteria as an Analyst. Reports keep the inputs behind each calculation.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br>Science<br>Molecular views and typeset manuscripts in one app, as a signed Agentlas Desktop extension.</td>
+</tr>
+</table>
+
+<sub>Names and figures on screen are examples.</sub>
 
 <p align="center"><img src="assets/readme/mobile.gif" alt="Asking for sign-ups by channel from a phone; an Analyst agent answers with a table and asks when to send the summary" width="260"></p>
 
-Type "Sign-ups by channel this week, as a table" on the bus. The Analyst agent runs it on your computer at home and the table lands in the chat. When a decision is yours, a card asks: "Send the summary now, or tomorrow morning?" One tap. [Get the Android app →](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
+On your phone, the conversation is the same one running on your paired computer. The work happens on the desktop; the phone shows the results and answers question cards. [Android app](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 
-## Bring the AI you already pay for
+## Bring your own model
 
 Sign in with Claude Code, Codex, Antigravity, Grok, Kimi, Cursor or GitHub Copilot CLI, add an API key, or run a free local model with Ollama, LM Studio or MLX. When one plan runs out of quota, chats move to the next.
 
@@ -81,15 +114,11 @@ Sign in with Claude Code, Codex, Antigravity, Grok, Kimi, Cursor or GitHub Copil
 - The phone app sends requests to your desktop and shows the results; the work happens on your computer.
 - The engine is open source under Apache-2.0.
 
-## Make your own specialist
-
-Describe one in a sentence and Agentlas builds an installable agent. Keep it private, or publish it to the [Agent Hub](https://agentlas.cloud/hub), where publishing and using agents is free and nothing is ranked by payment.
-
 <p align="center">
-  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><b>Download Agentlas</b></a> ·
-  <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas"><b>Android app</b></a> ·
-  <a href="https://discord.gg/wbWfdGZ6S"><b>Join the Discord</b></a>
-  <br>⭐ <b>Star it so the next person finds it</b> · <a href="https://github.com/agentlas-ai/Agentlas-OS/issues">Tell us what broke</a>
+  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">Download Agentlas</a> ·
+  <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas">Android app</a> ·
+  <a href="https://discord.gg/wbWfdGZ6S">Join the Discord</a>
+  <br>Star the repository so the next person finds it · <a href="https://github.com/agentlas-ai/Agentlas-OS/issues">Tell us what broke</a>
 </p>
 
 <a name="developers"></a>

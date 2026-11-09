@@ -26,6 +26,11 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 </p>
 
 <p align="center">
+  <b>Grok Bot、Muse、dots 的开源替代品。</b>做科研，<a href="https://agentlas.cloud/science">Agentlas Science</a> 是 Claude Science 的替代品。<br>
+  <sub>与 xAI、Meta、OpenAI、Anthropic 无任何关联。产品名称归各自所有者所有。</sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="下载 Agentlas" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
 </p>
 
@@ -73,6 +78,10 @@ Agentlas 会为工作的每个部分写一份岗位需求，再从你电脑上�
 ## 直接用你已经付费的 AI
 
 用 Claude Code、Codex、Antigravity、Grok、Kimi、Cursor 或 GitHub Copilot CLI 登录，或者填入 API Key，也可以用 Ollama、LM Studio、MLX 跑免费的本地模型。一个套餐的额度用完后，对话会自动切到下一个。
+
+## 不用虚拟机，就在你现有的电脑上干活
+
+Grok Bot、Muse 和 dots 给每个智能体分配一台云端电脑，也有一些智能体应用会在你的电脑上启动虚拟机（VM）。默认情况下，智能体就在另一台电脑上干活，离你的文件、登录状态和应用都很远；本地虚拟机运行时还会占用内存、磁盘和电量。Agentlas 不用虚拟机：智能体直接在你常用的应用里干活。它给你的不是隔离，而是控制权：能自主做多少由你决定，每一步都有记录，还能用手机随时叫停。
 
 ## 留在你电脑上的东西
 

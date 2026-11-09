@@ -16,14 +16,19 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 <!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
-<h1 align="center">Agentlas</h1>
-
-<h3 align="center">목표만 주세요. 팀은 알아서 뽑습니다.</h3>
-
 <p align="center">
-  프로젝트의 각 단계마다 전문가를 직접 뽑는 데스크톱 AI 에이전트입니다.<br>
-  실제 사용하는 앱에서 일하고, 몇 주 동안 멈추지 않습니다. 폰으로 지시하세요.
+  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.hi.md">हिन्दी</a>
 </p>
+
+# Agentlas OS
+
+OpenAI Dots, Meta Muse, Claude Duet, Nous Hermes, Mem0의 영감을 받아 설계된 오픈소스 에이전트 OS.
+
+단순한 프롬프트 실행을 넘어 프로젝트를 완주하는 에이전트 런타임입니다. 특정 모델에 종속되지 않으며(BYOM), Claude Code, Codex, Cursor, Antigravity 및 Agentlas Desktop에서 동작합니다.
+
+지금의 에이전트 제품은 대체로 두 방식 중 하나입니다. 결과를 확인하지 않고 완료를 보고하는 프롬프트 루프이거나, 에이전트마다 클라우드나 내 PC에 가상 머신(VM)을 띄워 내 파일·자격 증명·도구와 떨어진 곳에서 일하게 하는 방식입니다. 로컬 VM은 돌아가는 동안 메모리와 디스크도 차지합니다. Agentlas OS는 두 방식을 모두 쓰지 않습니다. VM 없이 내 컴퓨터에 이미 있는 터미널, 파일, 도구에서 일하고, 독립 검증자가 실행 영수증을 승인해야 완료로 처리합니다.
+
+전체 GUI 환경과 모바일 연동(One)을 바로 사용하려면 아래 버튼을 눌러 Agentlas Desktop을 설치하세요. CLI 및 IDE 호스트(Claude Code, Codex, Cursor) 사용자는 이 레포지토리의 런타임 팩을 직접 연결할 수 있습니다.
 
 <p align="center">
   <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><img alt="Agentlas 다운로드" src="https://img.shields.io/badge/Download-Agentlas-6D28D9?style=for-the-badge"></a>
@@ -31,46 +36,74 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 <p align="center">
   macOS · Windows · Linux · <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas">Android</a> · iOS 출시 예정<br>
-  <b>데스크톱 다운로드 12,000회 이상</b> · 무료 다운로드, 쓰고 계신 AI 요금제나 API 키로 실행 · Apache-2.0
+  데스크톱 다운로드 12,000회 이상 · 무료 다운로드, 쓰고 계신 AI 요금제나 API 키로 실행 · Apache-2.0
 </p>
 
 <p align="center">
-  <a href="https://agentlas.cloud">웹사이트</a> · <a href="https://agentlas.cloud/hub">Agent Hub</a> · <a href="https://discord.gg/wbWfdGZ6S">Discord</a> · <a href="#developers">개발자 ↓</a><br>
-  <a href="README.md">English</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.hi.md">हिन्दी</a>
+  <a href="https://agentlas.cloud">웹사이트</a> · <a href="https://agentlas.cloud/hub">Agent Hub</a> · <a href="https://discord.gg/wbWfdGZ6S">Discord</a> · <a href="#developers">개발자 ↓</a>
 </p>
 
 <p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="Mac에서 Agentlas가 스프레드시트를 고치고, 차트를 만들고, 발표 자료를 만들고, Slack에 올리고, 제품 사진을 편집하는 모습" width="880"></a></p>
 
-## 이런 일을 맡깁니다
+## 설계 배경 (Architectural Foundations)
 
-| 이렇게 입력하면 | 사용 중인 앱에서 이렇게 처리합니다 |
-| --- | --- |
-| "3분기 매출 시트 정리하고 차트로 만들어줘." | 깨진 셀 3개를 고치고, 합계를 넣고, 스프레드시트에 차트를 만듭니다. |
-| "금요일 발표용 5장짜리 자료로 만들어줘." | 요약, 지역별 현황, 리스크, 다음 단계를 담아 `Q3-review.pptx`로 저장합니다. |
-| "#sales에 올리고 다나한테 알려줘." | Slack에 게시합니다. |
-| "제품 누끼 따고 커버 사진 밝게 해줘." | 사진 편집기에서 배경을 지우고 이미지를 보정합니다. |
-| "베타 제품 페이지를 전환율 중심으로 다시 만들어줘." | 시장 조사원, UX 디자이너, 프런트엔드 엔지니어, 리뷰어를 뽑아 페이지를 완성합니다. |
-| "베타 출시하고 사용자 1,000명 모아줘." | 목표 트리를 만들고 몇 주 동안 작업합니다. |
+Agentlas OS는 단일 목적 도구들을 이어 붙이는 대신, 다섯 가지 에이전트 패러다임을 하나의 로컬 중심 런타임으로 통합했습니다.
 
-## 단계마다 맞는 전문가를 뽑습니다
+- 장기 자율 실행과 재개 (OpenAI Dots 지향): 세션이나 앱을 닫아도 목표는 유지됩니다. 마지막 체크포인트부터 다시 이어가며, 독립 검증자(Verifier)가 실행 영수증(Receipt)을 확인하기 전까지 완료를 선언하지 않습니다.
+- 도메인 완결형 워크플로우 (Meta Muse 지향): 일상 및 개인 업무(One), 계산에 쓴 입력값이 보고서에 함께 남는 투자 리서치(Finance), 문헌·분자 연구(Science)까지 실무 결과물을 끝까지 완성합니다.
+- 데스크톱 실행과 모바일 결정 (Claude Duet 지향): 코드 실행과 로컬 파일 작업은 내 컴퓨터에서 돌아가고, 결정이 필요한 순간에만 폰으로 질문 카드(Question Card)를 보냅니다. 답하면 데스크톱이 바로 다음 작업을 이어갑니다.
+- 이식 가능한 스킬과 A2A 패키징 (Nous Hermes 지향): `40-session-agent-builder`는 작업 세션의 절차와 검증 방식을 패키지로 컴파일하고, `30-agentlas-packager`는 기존 에이전트를 패키징합니다. 모든 패키지에는 A2A Agent Card가 들어 있어, 지원하는 어느 호스트에서든 설치할 수 있습니다.
+- 스코프 메모리 거버넌스 (Mem0 지향): `memory-hooks`, 컨텍스트 맵, 프로젝트 인덱스를 프로젝트별로 분리해 관리합니다. 워커가 남긴 메모리 이벤트는 Memory Curator가 검증·비식별화·중복 제거하고, 팀 공유 메모리로 올리는 것은 Policy Gate가 승인합니다.
 
-Agentlas는 작업의 각 부분마다 채용 공고를 쓰고, 내 컴퓨터의 에이전트, 비공개 클라우드, 무료 공개 Hub에서 적임자를 채웁니다. 가장 잘 맞는 에이전트는 AI가 고르고 이유도 남깁니다.
+## 다른 곳에서 나뉜 태스크는 프롬프트입니다. 여기서는 구인 요청입니다.
 
-<p align="center"><img src="assets/readme/work-team.gif" alt="'베타 제품 페이지를 전환율 중심으로 다시 만들어줘': 전문가 네 명이 조사하고, 디자인하고, 만들고, 검토합니다" width="880"></p>
+다른 곳에서 에이전트가 작업을 나눈다는 것은 자기 자신에게 보낼 하위 프롬프트를 쓰는 것입니다. Agentlas OS에서는 나뉜 작업마다 구인 요청이 나가고, 전문가 에이전트가 맡아 내 컴퓨터에서 실행합니다.
 
-## 몇 주씩 이어지는 목표
+목표 하나를 주세요. Hephaestus 엔진이 작업을 나누고, 내 컴퓨터, 비공개 Agent Cloud, 공개 Hub에서 전문가를 찾습니다. 독립 검증자가 실행 영수증을 확인하기 전까지는 완료로 처리하지 않습니다.
 
-"베타 출시하고 사용자 1,000명 모아줘"는 전략과 하위 목표로 나뉘고, 각각 숫자가 붙습니다. 뉴스레터 오픈율이 낮게 나오면 방법을 바꾸고 목표는 그대로 둡니다. 노트북을 닫아도 내일 마지막 체크포인트부터 다시 이어갑니다.
+## Hephaestus: 분리, 배치, 검증
+
+### 1. 분리 (Decompose)
+
+목표를 태스크 그래프로 바꿉니다. 태스크마다 입력과 출력, 필요한 도구와 권한, 통과/실패 기준이 붙습니다. 긴 목표는 전략 목표와 하위 목표의 트리가 되고, 실행 중에도 다시 계획할 수 있습니다.
 
 <p align="center"><img src="assets/readme/goal-tree.gif" alt="출시 목표가 전략 목표와 하위 목표로 나뉘고, 뉴스레터 오픈율이 낮으면 다시 계획하는 모습" width="880"></p>
 
-## 폰으로 지시하세요
+### 2. 배치 (Recruit)
+
+태스크마다 세 계층을 검색합니다.
+
+- Local: 내 컴퓨터에 이미 있는 에이전트, 스크립트, CLI 도구. VM 없이 바로 실행합니다.
+- Agent Cloud: 나 또는 우리 팀만 쓰는 비공개 에이전트 보관소.
+- Public Hub: 커뮤니티 에이전트. 게시와 사용은 무료이고, 결제 여부로 순위가 정해지지 않습니다.
+
+선택은 내가 고른 모델이 하고, 역할마다 이유와 정확한 릴리스를 기록합니다. 선택된 에이전트는 릴리스, 패키지 해시, 콘텐츠 다이제스트로 고정됩니다.
+
+<p align="center"><img src="assets/readme/work-team.gif" alt="'베타 제품 페이지를 전환율 중심으로 다시 만들어줘': 전문가 네 명이 조사하고, 디자인하고, 만들고, 검토합니다" width="880"></p>
+
+### 3. 검증 (Verify)
+
+완료로 처리되려면 워커별 개별 실행, 산출물 인계, 종합, 독립 검증자의 통과가 모두 필요합니다. 호스트가 만든 실행 영수증은 로컬에서 검증합니다. 에이전트를 고르거나 실행 준비를 마친 것만으로는 영수증이 되지 않습니다.
+
+## 세 개의 환경, 하나의 런타임
+
+One, Finance, Science는 이 런타임 위에서 Agentlas Desktop으로 실행됩니다.
+
+<table>
+<tr>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="데스크톱의 Agentlas One"></a><br>One<br>내 컴퓨터에서 돌아가는 개인 에이전트. Work 세션을 만들어 작업을 배정하고, 질문 카드와 결과 파일을 대화로 보냅니다.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-ko.jpg" alt="Agentlas Finance"></a><br>Finance<br>투자 리서치 기준을 Analyst로 저장합니다. 계산에 쓴 입력값은 보고서에 함께 남습니다.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br>Science<br>분자 구조 탐색과 조판된 논문 원고 작성을 한 앱에서. Agentlas Desktop의 서명 확장입니다.</td>
+</tr>
+</table>
+
+<sub>화면 속 이름과 수치는 예시입니다.</sub>
 
 <p align="center"><img src="assets/readme/mobile.gif" alt="폰에서 채널별 가입자 수를 요청하면 분석가 에이전트가 표로 답하고 요약을 언제 보낼지 묻는 모습" width="260"></p>
 
-버스에서 "이번 주 채널별 가입자, 표로"라고 입력하세요. 분석가 에이전트가 집에 있는 컴퓨터에서 실행하고, 표가 채팅으로 도착합니다. 결정이 필요한 순간에는 카드가 묻습니다. "요약을 지금 보낼까요, 내일 아침에 보낼까요?" 한 번 탭하면 끝입니다. [Android 앱 받기 →](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
+폰에서 보는 대화는 페어링한 컴퓨터에서 실행 중인 대화와 같습니다. 작업은 데스크톱에서 실행되고, 폰은 결과를 보여주고 질문 카드에 답합니다. [Android 앱 받기](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 
-## 이미 쓰는 AI를 그대로
+## 이미 쓰는 모델을 그대로 (BYOM)
 
 Claude Code, Codex, Antigravity, Grok, Kimi, Cursor, GitHub Copilot CLI로 로그인하거나, API 키를 추가하거나, Ollama, LM Studio, MLX로 무료 로컬 모델을 돌리세요. 한 요금제의 한도가 다 차면 대화는 다음 요금제로 넘어갑니다.
 
@@ -81,15 +114,11 @@ Claude Code, Codex, Antigravity, Grok, Kimi, Cursor, GitHub Copilot CLI로 로�
 - 폰 앱은 요청을 데스크톱으로 보내고 결과만 보여줍니다. 작업은 내 컴퓨터에서 실행됩니다.
 - 엔진은 Apache-2.0 오픈소스입니다.
 
-## 나만의 전문가 만들기
-
-한 문장으로 설명하면 Agentlas가 설치 가능한 에이전트를 만듭니다. 비공개로 쓰거나 [Agent Hub](https://agentlas.cloud/hub)에 공개하세요. 에이전트 게시와 사용은 무료이고, 결제 여부로 순위가 정해지지 않습니다.
-
 <p align="center">
-  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest"><b>Agentlas 다운로드</b></a> ·
-  <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas"><b>Android 앱</b></a> ·
-  <a href="https://discord.gg/wbWfdGZ6S"><b>Discord 참여</b></a>
-  <br>⭐ <b>Star를 눌러 다음 사람이 찾을 수 있게 해주세요</b> · <a href="https://github.com/agentlas-ai/Agentlas-OS/issues">문제가 생겼다면 알려주세요</a>
+  <a href="https://github.com/agentlas-ai/agentlas-desktop-releases/releases/latest">Agentlas 다운로드</a> ·
+  <a href="https://play.google.com/store/apps/details?id=com.agentai.agentlas">Android 앱</a> ·
+  <a href="https://discord.gg/wbWfdGZ6S">Discord 참여</a>
+  <br>다음 사람이 찾을 수 있도록 Star를 눌러 주세요 · <a href="https://github.com/agentlas-ai/Agentlas-OS/issues">문제가 생겼다면 알려주세요</a>
 </p>
 
 <a name="developers"></a>
