@@ -20,6 +20,10 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
   <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.hi.md">हिन्दी</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/NipunaRanasinghe/awesome-ai-agents"><img alt="Featured in Awesome AI Agents" src="https://img.shields.io/badge/Featured_in-Awesome_AI_Agents-2ea44f"></a>
+</p>
+
 # Agentlas OS
 
 An open-source AI agent OS inspired by OpenAI Dots, Meta Muse, Claude Duet, Nous Hermes, and Mem0.
