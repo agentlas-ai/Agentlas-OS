@@ -35,7 +35,7 @@ PYTHONPYCACHEPREFIX="$(agentlas_installer_python_cache_prefix)" || {
 }
 export PYTHONPYCACHEPREFIX
 
-release_ref="${HEPHAESTUS_REF:-os-v1.2.96}"
+release_ref="${HEPHAESTUS_REF:-os-v1.2.97}"
 version="${release_ref#os-}"
 repo_was_explicit="${HEPHAESTUS_REPO:-}"
 github_url_was_explicit="${HEPHAESTUS_GITHUB_URL:-}"
@@ -1093,7 +1093,13 @@ set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONDONTWRITEBYTECODE=1"
 if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\Agentlas\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\Agentlas-PythonCache")
+if defined PYTHONPATH goto agentlas_pythonpath_join
+set "PYTHONPATH=%~dp0.."
+goto agentlas_pythonpath_done
+:agentlas_pythonpath_join
 set "PYTHONPATH=%~dp0..;%PYTHONPATH%"
+:agentlas_pythonpath_done
+set "AGENTLAS_SAFE_RUNPY=import os,sys;sys.path[:]=[p for p in sys.path if os.path.isabs(p) and not (os.path.exists(p) and os.path.exists(os.curdir) and os.path.samefile(p,os.curdir))];import runpy;r=sys.argv[1];sys.path.insert(0,r);sys.argv=sys.argv[2:];runpy.run_module(sys.argv[0],run_name='__main__',alter_sys=True)"
 if defined HEPHAESTUS_PYTHON goto use_env_python
 if exist "%~dp0python3.cmd" goto use_python3_shim
 where py >nul 2>nul
@@ -1104,19 +1110,19 @@ echo hephaestus: Python 3.9+ not found. Install Python from python.org and rerun
 exit /b 127
 
 :use_env_python
-"%HEPHAESTUS_PYTHON%" -m agentlas_cloud %*
+"%HEPHAESTUS_PYTHON%" -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*
 exit /b %ERRORLEVEL%
 
 :use_python3_shim
-call "%~dp0python3.cmd" -m agentlas_cloud %*
+call "%~dp0python3.cmd" -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*
 exit /b %ERRORLEVEL%
 
 :use_py_launcher
-py -3 -m agentlas_cloud %*
+py -3 -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*
 exit /b %ERRORLEVEL%
 
 :use_path_python
-python -m agentlas_cloud %*
+python -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*
 exit /b %ERRORLEVEL%
 EOF
   cat > "$bin_dir/hephaestus-env.cmd" <<'EOF'
@@ -1125,7 +1131,12 @@ set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONDONTWRITEBYTECODE=1"
 if defined LOCALAPPDATA (set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\Agentlas\PythonCache") else (set "PYTHONPYCACHEPREFIX=%TEMP%\Agentlas-PythonCache")
+if defined PYTHONPATH goto agentlas_pythonpath_join
+set "PYTHONPATH=%~dp0.."
+goto agentlas_pythonpath_done
+:agentlas_pythonpath_join
 set "PYTHONPATH=%~dp0..;%PYTHONPATH%"
+:agentlas_pythonpath_done
 EOF
   chmod +x "$bin_dir/python3"
 }

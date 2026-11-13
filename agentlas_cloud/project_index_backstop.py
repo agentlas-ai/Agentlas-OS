@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from .runtime import SECRET_PATTERNS
+from .safe_launch import module_command
 from .windows_console import no_console_window
 
 STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
@@ -389,8 +390,8 @@ def _spawn_detached_ingest(project_root: Path, *, include_memory: bool = True,
         if not digest:
             return
         operation = "--guarded-auto-ingest" if include_memory else "--guarded-private-ingest"
-        command = [sys.executable, "-m", "agentlas_cloud.project_index_backstop",
-                   operation, str(project_root), digest]
+        command = module_command("agentlas_cloud.project_index_backstop",
+                                 [operation, str(project_root), digest], root=runtime_root)
         subprocess.Popen(
             command,
             cwd=str(project_root),

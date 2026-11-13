@@ -2448,14 +2448,16 @@ def _spawn_project_soul_refresh(project_root: Path) -> bool:
         except Exception:  # noqa: BLE001
             return False
     try:
+        from .safe_launch import module_command
+
         runtime_root = Path(__file__).resolve().parent.parent
         env = os.environ.copy()
         existing = env.get("PYTHONPATH")
         env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
         with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
             subprocess.Popen(
-                [sys.executable, "-m", "agentlas_cloud.project_full_ingest",
-                 "--project", str(project_root), "--soul-only"],
+                module_command("agentlas_cloud.project_full_ingest",
+                               ["--project", str(project_root), "--soul-only"], root=runtime_root),
                 cwd=str(project_root),
                 env=env,
                 stdin=stdin,

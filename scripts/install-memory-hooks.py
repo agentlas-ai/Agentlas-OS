@@ -40,6 +40,17 @@ else:
             "python",
         )
 _BOOTSTRAP_EXECUTABLE = os.path.realpath(sys.executable)
+# Same text as agentlas_cloud/safe_launch.py BOOTSTRAP (tested): the Windows launcher this
+# installer writes must not load agentlas_cloud from the current directory.
+_SAFE_RUNPY = (
+    "import os,sys;"
+    "sys.path[:]=[p for p in sys.path if os.path.isabs(p) and not (os.path.exists(p) and os.path.exists(os.curdir) and os.path.samefile(p,os.curdir))];"
+    "import runpy;"
+    "r=sys.argv[1];"
+    "sys.path.insert(0,r);"
+    "sys.argv=sys.argv[2:];"
+    "runpy.run_module(sys.argv[0],run_name='__main__',alter_sys=True)"
+)
 _BOOTSTRAP_MARKER = f".app{os.sep}Contents{os.sep}Resources"
 if _BOOTSTRAP_MARKER in _BOOTSTRAP_EXECUTABLE:
     _BOOTSTRAP_RESOURCES = (
@@ -636,7 +647,13 @@ def _shim_payloads(
         'set "PYTHONIOENCODING=utf-8"\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
         f"{cmd_cache}"
+        'if defined PYTHONPATH goto agentlas_pythonpath_join\r\n'
+        'set "PYTHONPATH=%~dp0.."\r\n'
+        'goto agentlas_pythonpath_done\r\n'
+        ':agentlas_pythonpath_join\r\n'
         'set "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n'
+        ':agentlas_pythonpath_done\r\n'
+        f'set "AGENTLAS_SAFE_RUNPY={_SAFE_RUNPY}"\r\n'
         'if defined HEPHAESTUS_PYTHON goto use_env_python\r\n'
         'if exist "%~dp0python3.cmd" goto use_python3_shim\r\n'
         'where py >nul 2>nul\r\n'
@@ -647,19 +664,19 @@ def _shim_payloads(
         'exit /b 127\r\n'
         '\r\n'
         ':use_env_python\r\n'
-        '"%HEPHAESTUS_PYTHON%" -m agentlas_cloud %*\r\n'
+        '"%HEPHAESTUS_PYTHON%" -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*\r\n'
         'exit /b %ERRORLEVEL%\r\n'
         '\r\n'
         ':use_python3_shim\r\n'
-        'call "%~dp0python3.cmd" -m agentlas_cloud %*\r\n'
+        'call "%~dp0python3.cmd" -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*\r\n'
         'exit /b %ERRORLEVEL%\r\n'
         '\r\n'
         ':use_py_launcher\r\n'
-        'py -3 -m agentlas_cloud %*\r\n'
+        'py -3 -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*\r\n'
         'exit /b %ERRORLEVEL%\r\n'
         '\r\n'
         ':use_path_python\r\n'
-        'python -m agentlas_cloud %*\r\n'
+        'python -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*\r\n'
         'exit /b %ERRORLEVEL%\r\n'
     )
     env_cmd = (
@@ -669,7 +686,12 @@ def _shim_payloads(
         'set "PYTHONIOENCODING=utf-8"\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
         f"{cmd_cache}"
+        'if defined PYTHONPATH goto agentlas_pythonpath_join\r\n'
+        'set "PYTHONPATH=%~dp0.."\r\n'
+        'goto agentlas_pythonpath_done\r\n'
+        ':agentlas_pythonpath_join\r\n'
         'set "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n'
+        ':agentlas_pythonpath_done\r\n'
     )
     return {
         "python3": (

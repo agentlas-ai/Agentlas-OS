@@ -1428,6 +1428,7 @@ _LEGACY_BASELINE_SHA256 = {
     "v1.2.94": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
     "v1.2.95": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
     "v1.2.96": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
+    "v1.2.97": "01dbf7ccfd9360de450579fd1430d69e87ea7594a894b76bed3f4e089ccf0716",
 }
 _LEGACY_BASELINE_PATHS = (
     Path(".claude/commands"), Path("codex/prompts"), Path("cursor/plugin/commands"),
@@ -2747,7 +2748,12 @@ def write_python_shims(bin_dir: Path, executable: str) -> None:
         'set "PYTHONIOENCODING=utf-8"\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
         f"{cmd_cache}"
-        'set "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n',
+        'if defined PYTHONPATH goto agentlas_pythonpath_join\r\n'
+        'set "PYTHONPATH=%~dp0.."\r\n'
+        'goto agentlas_pythonpath_done\r\n'
+        ':agentlas_pythonpath_join\r\n'
+        'set "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n'
+        ':agentlas_pythonpath_done\r\n',
     )
 
 
@@ -2821,6 +2827,8 @@ def write_windows_command_shims(bin_dir: Path) -> list[str]:
 
 
 def _write_cmd_runner(path: Path, cache_prefix: Path | None = None) -> None:
+    # Imported here, not at module level: this file is also run as the updater bridge next to a minimal set of siblings.
+    from .safe_launch import BOOTSTRAP
     cache_utf8 = False
     if cache_prefix is not None and os.name == "nt":
         cmd_cache_path, cache_utf8 = windows_cmd_path(str(cache_prefix))
@@ -2839,7 +2847,13 @@ def _write_cmd_runner(path: Path, cache_prefix: Path | None = None) -> None:
         'set "PYTHONIOENCODING=utf-8"\r\n'
         'set "PYTHONDONTWRITEBYTECODE=1"\r\n'
         f"{cmd_cache}"
+        'if defined PYTHONPATH goto agentlas_pythonpath_join\r\n'
+        'set "PYTHONPATH=%~dp0.."\r\n'
+        'goto agentlas_pythonpath_done\r\n'
+        ':agentlas_pythonpath_join\r\n'
         'set "PYTHONPATH=%~dp0..;%PYTHONPATH%"\r\n'
+        ':agentlas_pythonpath_done\r\n'
+        f'set "AGENTLAS_SAFE_RUNPY={BOOTSTRAP}"\r\n'
         'if defined HEPHAESTUS_PYTHON goto use_env_python\r\n'
         'if exist "%~dp0python3.cmd" goto use_python3_shim\r\n'
         'where py >nul 2>nul\r\n'
@@ -2850,19 +2864,19 @@ def _write_cmd_runner(path: Path, cache_prefix: Path | None = None) -> None:
         'exit /b 127\r\n'
         '\r\n'
         ':use_env_python\r\n'
-        '"%HEPHAESTUS_PYTHON%" -m agentlas_cloud %*\r\n'
+        '"%HEPHAESTUS_PYTHON%" -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*\r\n'
         'exit /b %ERRORLEVEL%\r\n'
         '\r\n'
         ':use_python3_shim\r\n'
-        'call "%~dp0python3.cmd" -m agentlas_cloud %*\r\n'
+        'call "%~dp0python3.cmd" -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*\r\n'
         'exit /b %ERRORLEVEL%\r\n'
         '\r\n'
         ':use_py_launcher\r\n'
-        'py -3 -m agentlas_cloud %*\r\n'
+        'py -3 -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*\r\n'
         'exit /b %ERRORLEVEL%\r\n'
         '\r\n'
         ':use_path_python\r\n'
-        'python -m agentlas_cloud %*\r\n'
+        'python -c "%AGENTLAS_SAFE_RUNPY%" "%~dp0.." agentlas_cloud %*\r\n'
         'exit /b %ERRORLEVEL%\r\n',
     )
 

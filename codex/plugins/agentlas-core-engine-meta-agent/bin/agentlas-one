@@ -55,12 +55,35 @@ _one_resolve_python() {
   printf '%s' "python3"
 }
 PY="$(_one_resolve_python)"
+# The Stop hook runs in whatever project the host is in: the current directory
+# must not be able to supply agentlas_cloud (or a standard-library module).
+# Same text as AGENTLAS_SAFE_RUNPY in agentlas-python-cache-boundary (tested).
+_one_safe_runpy="import os,sys;sys.path[:]=[p for p in sys.path if os.path.isabs(p) and not (os.path.exists(p) and os.path.exists(os.curdir) and os.path.samefile(p,os.curdir))];import runpy;r=sys.argv[1];sys.path.insert(0,r);sys.argv=sys.argv[2:];runpy.run_module(sys.argv[0],run_name='__main__',alter_sys=True)"
+
+# Python resolves an empty or relative PYTHONPATH entry (a stray ':' or ';', '.')
+# against the current directory, which is the project a hook runs in. The
+# Desktop-mode checkpoint runs a script from that directory, so keep only the
+# absolute entries (POSIX /x, Windows C:\x, C:/x, \\server\x) before it starts.
+_one_scrub_pythonpath() {
+  [ -n "${PYTHONPATH+x}" ] || return 0
+  local sep=":" rest entry out=""
+  case "${OSTYPE:-}" in msys*|cygwin*|win32*) sep=";" ;; esac
+  rest="${PYTHONPATH}${sep}"
+  while [ -n "$rest" ]; do
+    entry="${rest%%"$sep"*}"
+    rest="${rest#*"$sep"}"
+    case "$entry" in
+      /*|[A-Za-z]:\\*|[A-Za-z]:/*|\\\\*) out="${out:+$out$sep}$entry" ;;
+    esac
+  done
+  if [ -n "$out" ]; then export PYTHONPATH="$out"; else unset PYTHONPATH; fi
+}
 
 # Standalone One owns only its private preference. Legacy host wiring remains
 # reachable solely through a positively identified Desktop host.
 case "${AGENTLAS_HOST_RUNTIME:-}" in
   desktop|agentlas-desktop|agentlas_desktop|runtime:desktop) ;;
-  *) exec "$PY" -B -c 'import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module("agentlas_cloud.standalone_one",run_name="__main__")' "$_one_root" "$@" ;;
+  *) exec "$PY" -B -c "$_one_safe_runpy" "$_one_root" agentlas_cloud.standalone_one "$@" ;;
 esac
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
@@ -150,6 +173,7 @@ PYEOF
 directive_block() {
   ONE_NAME="$1" AGENTLAS_ONE_SOURCE_ROOT="$_one_root" "$PY" -c '
 import os, sys
+sys.path[:] = [p for p in sys.path if os.path.isabs(p) and not (os.path.exists(p) and os.path.exists(os.curdir) and os.path.samefile(p, os.curdir))]
 sys.path.insert(0, os.environ["AGENTLAS_ONE_SOURCE_ROOT"])
 from agentlas_cloud.prompt_composition import one_directive_for_runtime
 sys.stdout.write(one_directive_for_runtime(name=os.environ["ONE_NAME"]))
@@ -1452,7 +1476,11 @@ case "${1:-status}" in
   stop-hook)  shift
               # Session-end is the one moment every install passes through, so
               # legacy wiring heals here (fail-open; stdout stays hook-clean).
-              if "$PY" - "$STATE_FILE" <<'PYEOF' >/dev/null 2>&1
+              # The heal steps start python on stdin, which puts the current
+              # directory first on sys.path: run them from the installed root so a
+              # project folder cannot supply a standard-library module.
+              ( cd "$_one_root" 2>/dev/null || exit 0
+                if "$PY" - "$STATE_FILE" <<'PYEOF' >/dev/null 2>&1
 import json, sys
 try:
     with open(sys.argv[1], encoding="utf-8") as fh:
@@ -1461,11 +1489,12 @@ try:
 except (OSError, ValueError):
     raise SystemExit(1)
 PYEOF
-              then
-                self_heal_claude_settings >/dev/null 2>&1 || true
-                self_heal_entrypoints >/dev/null 2>&1 || true
-                drift_kick_daily >/dev/null 2>&1 || true
-              fi
-              ( cmd_workspace stop-hook ${1:+--host "$1"} ) || true ;;
+                then
+                  self_heal_claude_settings >/dev/null 2>&1 || true
+                  self_heal_entrypoints >/dev/null 2>&1 || true
+                  drift_kick_daily >/dev/null 2>&1 || true
+                fi
+              ) || true
+              ( _one_scrub_pythonpath; cmd_workspace stop-hook ${1:+--host "$1"} ) || true ;;
   *)          die "Usage: agentlas-one {install|on [name]|off|uninstall [--purge]|name <name>|status [--runtimes|--drift]|memory|remember <text>|curate|seed|coverage|orch [role=value...]}" ;;
 esac

@@ -18,6 +18,7 @@ from ontology.runtime import file_uri_path_text
 
 from . import context_markers, evolution_proposals
 from .memory_hosts import HOST_CHOICES, host_spec
+from .safe_launch import module_command
 
 
 CAPSULE_VERSION = "1"
@@ -1462,15 +1463,19 @@ def _spawn_project_ensure(target: Path, *, reason: str) -> bool:
         if reason == "hook-format-migration":
             command = [
                 sys.executable, "-c",
-                "import sys; from agentlas_cloud.memory_hook import _run_project_migration; "
+                "import os,sys; "
+                "sys.path[:]=[p for p in sys.path if os.path.isabs(p) and not (os.path.exists(p) and os.path.exists(os.curdir) and os.path.samefile(p,os.curdir))]; "
+                "sys.path.insert(0,sys.argv[2]); "
+                "from agentlas_cloud.memory_hook import _run_project_migration; "
                 "raise SystemExit(_run_project_migration(sys.argv[1]))",
-                str(target),
+                str(target), str(runtime_root),
             ]
         else:
-            command = [
-                sys.executable, "-m", "agentlas_cloud.cli", "project", "ensure",
-                "--project", str(target), "--reason", reason,
-            ]
+            command = module_command(
+                "agentlas_cloud.cli",
+                ["project", "ensure", "--project", str(target), "--reason", reason],
+                root=runtime_root,
+            )
         with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
             subprocess.Popen(
                 command,
@@ -1503,17 +1508,11 @@ def _spawn_project_ingest(target: Path, *, reason: str) -> bool:
         env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
         with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
             subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
+                module_command(
                     "agentlas_cloud.cli",
-                    "project",
-                    "ingest",
-                    "--project",
-                    str(target),
-                    "--reason",
-                    reason,
-                ],
+                    ["project", "ingest", "--project", str(target), "--reason", reason],
+                    root=runtime_root,
+                ),
                 cwd=str(target),
                 env=env,
                 stdin=stdin,

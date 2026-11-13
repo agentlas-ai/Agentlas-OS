@@ -37,6 +37,7 @@ from .update import (
     run_update,
     write_python_shims,
 )
+from .safe_launch import module_command
 from .windows_console import no_console_window
 
 
@@ -4444,7 +4445,8 @@ def _stormbreaker_background_environment(base: Mapping[str, str] | None = None) 
 
 
 def _stormbreaker_child_argv(args: argparse.Namespace, result_file: Path, decision_file: Path | None = None) -> list[str]:
-    child = [sys.executable, "-m", "agentlas_cloud", "network-pipeline"] if decision_file is not None else [sys.executable, "-m", "agentlas_cloud", "stormbreaker", "run"]
+    # The child inherits the project as its cwd; it must not load agentlas_cloud from there.
+    child = module_command("agentlas_cloud", ["network-pipeline"] if decision_file is not None else ["stormbreaker", "run"])
     if decision_file is not None:
         child.extend(["--decision-file", str(decision_file)])
     elif args.query:

@@ -3,6 +3,10 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.97 — 2026-11-13
+
+- Security: opening a project folder in Claude Code or Codex can no longer make the Agentlas hooks run code from that folder. Before this release the memory hook, the session-end checkpoint, `career-graph`, `ontology`, the Windows launcher and the background workers they start looked in the folder you were working in before they looked in the installed engine, so a folder you did not write (a download, a clone, a shared project) could supply code that ran in place of Agentlas. They now start from the installed engine only. If you open projects from other people, please update: run `/agentlas-update` (or `hep-update`), update the plugin as well if you installed it from the Claude Code or Codex marketplace, and restart Claude Code and Codex so the new hooks are loaded. Hook output for ordinary project folders is unchanged. On Windows, the `hephaestus` command-prompt launcher that an update writes is refreshed by the update after this one.
+
 ## 1.2.96 — 2026-11-09
 
 - Context Map answers plain-language questions far better. Asking in everyday words now puts the right file near the top of the results, results no longer list byte-identical plugin mirror copies or vendored libraries for guesses, and the text handed to the model is shorter.

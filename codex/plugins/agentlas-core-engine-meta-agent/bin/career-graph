@@ -17,7 +17,7 @@ path_sep="$(agentlas_path_sep)"
 for candidate in "${HEPHAESTUS_PYTHON:-}" "$root/bin/python3" python3 python; do
   [[ -n "$candidate" ]] || continue
   if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
-    PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" exec "$candidate" -m career_graph "$@"
+    PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" exec "$candidate" -c "$AGENTLAS_SAFE_RUNPY" "$root_native" career_graph "$@"
   fi
 done
 

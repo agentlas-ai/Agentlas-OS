@@ -20,7 +20,7 @@ for candidate in "${AGENTLAS_PYTHON:-}" "${HEPHAESTUS_PYTHON:-}" "$root/bin/pyth
   [[ -n "$candidate" ]] || continue
   if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
     if PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" \
-      "$candidate" -m agentlas_cloud.subagent_observer "$@"; then
+      "$candidate" -c "$AGENTLAS_SAFE_RUNPY" "$root_native" agentlas_cloud.subagent_observer "$@"; then
       exit 0
     fi
     break

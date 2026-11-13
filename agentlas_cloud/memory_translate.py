@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from . import one_workspace as ow
+from .safe_launch import module_command
 from .windows_console import no_console_window
 
 _O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
@@ -982,7 +983,7 @@ def _spawn(args: list[str], cwd: Path) -> bool:
         env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
         with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
             subprocess.Popen(
-                [sys.executable, "-m", "agentlas_cloud.memory_translate", *args],
+                module_command("agentlas_cloud.memory_translate", args, root=runtime_root),
                 cwd=str(cwd), env=env, stdin=stdin, stdout=out, stderr=out,
                 close_fds=True, start_new_session=True,
                 **no_console_window(),

@@ -54,7 +54,7 @@ run_python_module() {
   fi
   local -a python_command=("$HEPHAESTUS_PY")
   if [[ "$HEPHAESTUS_PY" == "py -3" ]]; then python_command=(py -3); fi
-  local -a invocation=("${python_command[@]}" -c 'import os, runpy, sys; cwd=os.getcwd(); root=os.environ["HEPHAESTUS_RUNTIME_ROOT"]; sys.path=[p for p in sys.path if p not in ("", cwd, root)]; sys.path.insert(0, root); sys.argv=sys.argv[1:]; runpy.run_module(sys.argv[0], run_name="__main__", alter_sys=True)' "$@")
+  local -a invocation=("${python_command[@]}" -c 'import os, sys; root=os.environ["HEPHAESTUS_RUNTIME_ROOT"]; sys.path[:]=[p for p in sys.path if os.path.isabs(p) and not any(os.path.exists(p) and os.path.exists(q) and os.path.samefile(p, q) for q in (os.curdir, root))]; import runpy; sys.path.insert(0, root); sys.argv=sys.argv[1:]; runpy.run_module(sys.argv[0], run_name="__main__", alter_sys=True)' "$@")
   if [[ "${1:-}" == "agentlas_cloud" && "${2:-}" == "host" && "${3:-}" == "session" ]]; then
     HEPHAESTUS_RUNTIME_ROOT="$root_native" PYTHONPATH="$root_native${PYTHONPATH:+$path_sep$PYTHONPATH}" exec "${invocation[@]}"
   fi

@@ -205,6 +205,15 @@ agentlas_cmd_path() {
   printf '%s\n' "${path//\%/%%}"
 }
 
+# `python -m module` and `python -c` put the current directory first on
+# sys.path, so a folder named agentlas_cloud (or a json.py) in the project a hook
+# runs in would be loaded instead of the installed engine. Launchers run engine
+# modules as `"$python" -c "$AGENTLAS_SAFE_RUNPY" "$root_native" <module> "$@"`:
+# the current directory is removed and only the runtime root is put on the path.
+# Plain text, Python 3.9 to 3.14 and Windows alike; unlike -I it keeps PYTHONPATH
+# and PYTHONUTF8. Identical to agentlas_cloud/safe_launch.py BOOTSTRAP (tested).
+AGENTLAS_SAFE_RUNPY="import os,sys;sys.path[:]=[p for p in sys.path if os.path.isabs(p) and not (os.path.exists(p) and os.path.exists(os.curdir) and os.path.samefile(p,os.curdir))];import runpy;r=sys.argv[1];sys.path.insert(0,r);sys.argv=sys.argv[2:];runpy.run_module(sys.argv[0],run_name='__main__',alter_sys=True)"
+
 # Export PYTHONPATH for a runtime root in native form with the native
 # separator. Exported instead of printed so no caller can reintroduce ':'.
 agentlas_export_pythonpath() {

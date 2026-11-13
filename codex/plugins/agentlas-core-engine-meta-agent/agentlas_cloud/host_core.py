@@ -66,7 +66,7 @@ def _identity(root,home,host,kind):
 
 def _payloads(root,host,kind):
     # A module launch avoids shell syntax differences across macOS/Windows/Linux.
-    bootstrap='import os,runpy,sys; root=sys.argv.pop(1); os.environ["HEPHAESTUS_RUNTIME_BASE"]=sys.argv.pop(1); sys.path.insert(0,root); os.environ["HEPHAESTUS_RUNTIME_ROOT"]=root; os.environ["AGENTLAS_HOST_RUNTIME"]="standalone"; os.environ["PYTHONDONTWRITEBYTECODE"]="1"; runpy.run_module(sys.argv.pop(1),run_name="__main__")'
+    bootstrap='import os,sys; sys.path[:]=[p for p in sys.path if os.path.isabs(p) and not (os.path.exists(p) and os.path.exists(os.curdir) and os.path.samefile(p,os.curdir))]; import runpy; root=sys.argv.pop(1); os.environ["HEPHAESTUS_RUNTIME_BASE"]=sys.argv.pop(1); sys.path.insert(0,root); os.environ["HEPHAESTUS_RUNTIME_ROOT"]=root; os.environ["AGENTLAS_HOST_RUNTIME"]="standalone"; os.environ["PYTHONDONTWRITEBYTECODE"]="1"; runpy.run_module(sys.argv.pop(1),run_name="__main__")'
     module={'core':'agentlas_cloud','memory':'agentlas_cloud.memory_hook','one':'agentlas_cloud.standalone_one'}[kind]
     namespace=_namespace(Path.home().resolve())
     runtime_base=namespace if namespace==Path.home().resolve()/'.agentlas/os-runtime' else namespace.parent
@@ -251,7 +251,7 @@ def status(root,home,host,*,plugin_kind='core',_include_session=True):
 def _session_launch_command(root,home,host):
     namespace=_namespace(home)
     runtime_base=namespace if namespace==home/'.agentlas/os-runtime' else namespace.parent
-    bootstrap='import os,runpy,sys; root=sys.argv.pop(1); os.environ["HEPHAESTUS_RUNTIME_BASE"]=sys.argv.pop(1); os.environ["AGENTLAS_HOST_RUNTIME"]="standalone"; sys.path.insert(0,root); runpy.run_module("agentlas_cloud.host_session",run_name="__main__")'
+    bootstrap='import os,sys; sys.path[:]=[p for p in sys.path if os.path.isabs(p) and not (os.path.exists(p) and os.path.exists(os.curdir) and os.path.samefile(p,os.curdir))]; import runpy; root=sys.argv.pop(1); os.environ["HEPHAESTUS_RUNTIME_BASE"]=sys.argv.pop(1); os.environ["AGENTLAS_HOST_RUNTIME"]="standalone"; sys.path.insert(0,root); runpy.run_module("agentlas_cloud.host_session",run_name="__main__")'
     return [sys.executable,'-B','-c',bootstrap,str(root),str(runtime_base),'--host',host,'--']
 
 
