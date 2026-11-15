@@ -1,0 +1,201 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "agentlas.memory-curation-input.v2",
+ "title": "Memory curator input v2 (one finished stretch of work)",
+ "description": "Built by code, never by a model. Compact JSON, at most 8,000 UTF-8 bytes (system-agents/curator-ruleset.json curator.input.fitSteps says what is cut first). Unknown (not measured) integers are null, never guessed.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "schema_version",
+  "boundary",
+  "turns",
+  "related",
+  "omitted"
+ ],
+ "properties": {
+  "schema_version": {
+   "const": "agentlas.memory-curation-input.v2"
+  },
+  "boundary": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "conversation",
+    "project_bound",
+    "agent_bound",
+    "subject",
+    "owner_spoke_turns"
+   ],
+   "properties": {
+    "conversation": {
+     "enum": [
+      "work_session",
+      "agent_chat",
+      "group_room",
+      "personal",
+      "engine_hook"
+     ]
+    },
+    "project_bound": {
+     "type": "boolean"
+    },
+    "agent_bound": {
+     "type": "boolean"
+    },
+    "subject": {
+     "enum": [
+      "resident",
+      "folderAgent",
+      "special"
+     ]
+    },
+    "owner_spoke_turns": {
+     "type": "array",
+     "maxItems": 8,
+     "items": {
+      "type": "integer",
+      "minimum": 0
+     }
+    }
+   }
+  },
+  "turns": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 8,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "i",
+     "request",
+     "summary",
+     "extract",
+     "host"
+    ],
+    "properties": {
+     "i": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "turn number; never renumbered when a turn is dropped"
+     },
+     "request": {
+      "type": "string",
+      "maxLength": 600,
+      "description": "empty when the host wrote the prompt"
+     },
+     "summary": {
+      "type": "string",
+      "maxLength": 360,
+      "description": "the turn_summary line"
+     },
+     "extract": {
+      "type": "string",
+      "maxLength": 400,
+      "description": "the start of the answer with the memory envelope removed"
+     },
+     "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "status",
+       "tools",
+       "tool_failures",
+       "files_changed",
+       "verified",
+       "owner_correction"
+      ],
+      "properties": {
+       "status": {
+        "enum": [
+         "ok",
+         "failed",
+         "stopped",
+         "unknown"
+        ]
+       },
+       "tools": {
+        "type": [
+         "integer",
+         "null"
+        ],
+        "minimum": 0
+       },
+       "tool_failures": {
+        "type": [
+         "integer",
+         "null"
+        ],
+        "minimum": 0
+       },
+       "files_changed": {
+        "type": [
+         "integer",
+         "null"
+        ],
+        "minimum": 0
+       },
+       "verified": {
+        "type": [
+         "string",
+         "null"
+        ],
+        "description": "a receipt reference, or null"
+       },
+       "owner_correction": {
+        "type": "boolean"
+       }
+      }
+     }
+    }
+   }
+  },
+  "related": {
+   "type": "array",
+   "maxItems": 8,
+   "description": "the closest existing lines of the turn's owner store, most similar first",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "ref",
+     "kind",
+     "scope",
+     "content"
+    ],
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^h:[0-9a-f]{16}$"
+     },
+     "kind": {
+      "enum": [
+       "fact",
+       "decision",
+       "preference",
+       "risk",
+       "procedure",
+       "hypothesis"
+      ]
+     },
+     "scope": {
+      "enum": [
+       "user_identity",
+       "project",
+       "agent_repo"
+      ]
+     },
+     "content": {
+      "type": "string",
+      "maxLength": 300
+     }
+    }
+   }
+  },
+  "omitted": {
+   "type": "integer",
+   "minimum": 0,
+   "description": "turns dropped whole by fitting"
+  }
+ }
+}

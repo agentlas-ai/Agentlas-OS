@@ -155,8 +155,34 @@ def find_verified_model_asset(explicit_path: Path | str | None = None) -> Verifi
     return None
 
 
+# A process that asks for the verified asset again (the hook alone selects the adapter in four places: the router and hub_fallback modules at import,
+# the memory recall, the ontology query) used to hash and parse the whole payload each time, ~0.3-0.5 s apiece. The result of a verification that
+# passed is kept for this process only, against the size and modification time of every file in the asset folder: a file that changed, was added or
+# removed gives a different signature and is verified again from scratch. Never written to disk; a failed verification is never kept.
+_VERIFIED_IN_PROCESS: dict[str, tuple[tuple[Any, ...], "VerifiedModelAsset"]] = {}
+
+
+def _folder_signature(root: Path) -> tuple[Any, ...] | None:
+    try:
+        with os.scandir(root) as entries:
+            return tuple(sorted((entry.name, stat.st_size, stat.st_mtime_ns) for entry in entries for stat in [entry.stat()]))
+    except OSError:
+        return None
+
+
 def verify_model_asset(path: Path | str) -> VerifiedModelAsset:
     root = Path(path).expanduser().resolve()
+    signature = _folder_signature(root)
+    cached = _VERIFIED_IN_PROCESS.get(str(root)) if signature is not None else None
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+    asset = _verify_model_asset_files(root)
+    if signature is not None and _folder_signature(root) == signature:  # nothing moved while it was being read
+        _VERIFIED_IN_PROCESS[str(root)] = (signature, asset)
+    return asset
+
+
+def _verify_model_asset_files(root: Path) -> VerifiedModelAsset:
     manifest_path = root / "manifest.json"
     if not manifest_path.is_file():
         raise ModelAssetError(f"missing Model2Vec asset manifest: {manifest_path}")

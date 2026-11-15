@@ -3,6 +3,16 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.98 — 2026-11-15
+
+- Memory is kept in four separate places: personal (about you), agent (what one agent learned that holds across projects), project (what is true only inside one project) and session (what is needed to continue one conversation). The engine reads across the places an owner has and answers with one recall rule on every surface. Nothing is moved by this update; a converted layout is switched on only by the Agentlas desktop app, one time, when it asks.
+- Memory writes are one call: the model doing the work adds, rewrites, condenses or removes lines itself with `memory.record`, and a guess about the person is never stored as a fact about them. The session-end hook records the turn and starts nothing; no model is named for memory work.
+- Agent folders live under `~/.agentlas/agents` (override with `AGENTLAS_AGENT_HOME`). `hephaestus register-agent <ref>` registers a Hub or Cloud agent on this computer and gives it a folder, and the engine answers whether an agent can be used right now (`not_registered`, `no_folder` and so on) so every host says the same words.
+- A newly created project marker carries its own unique id, so two projects with the same folder name need not share one key. A project's code index can live with that project's memory.
+- Windows: the memory tree opens with the extended-path prefix, so a long user name no longer breaks memory reads and writes past 259 characters.
+- A forget that did not finish is carried until it does, and a forget reaches only the owner of the forgotten line. A hook that cannot read everything now says so instead of answering nothing.
+- Compatibility: after the desktop app converts a memory store (store schema version 2), engines 1.2.96 and 1.2.97 do not open that store and keep working without memory until updated. Update the engine before opening the 2.0 desktop app.
+
 ## 1.2.97 — 2026-11-13
 
 - Security: opening a project folder in Claude Code or Codex can no longer make the Agentlas hooks run code from that folder. Before this release the memory hook, the session-end checkpoint, `career-graph`, `ontology`, the Windows launcher and the background workers they start looked in the folder you were working in before they looked in the installed engine, so a folder you did not write (a download, a clone, a shared project) could supply code that ran in place of Agentlas. They now start from the installed engine only. If you open projects from other people, please update: run `/agentlas-update` (or `hep-update`), update the plugin as well if you installed it from the Claude Code or Codex marketplace, and restart Claude Code and Codex so the new hooks are loaded. Hook output for ordinary project folders is unchanged. On Windows, the `hephaestus` command-prompt launcher that an update writes is refreshed by the update after this one.

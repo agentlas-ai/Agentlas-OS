@@ -17,7 +17,7 @@ from the number of tools, people, or turns mentioned in the conversation.
    > 이 세션에서 만든 에이전트를 기본 전역 Agentlas 에이전트 폴더에 만들까요? 다른 위치를 원하면 경로를 알려주세요. 별도 위치를 지정하지 않으면 전역 폴더에 만듭니다.
 
    The default global agent home is `AGENTLAS_AGENT_HOME` when set, otherwise
-   `~/.agentlas/agentlas-agent`. Create one new child package below that home,
+   `~/.agentlas/agents`. Create one new child package below that home,
    using a safe slug derived from the approved capability. Never overwrite an
    existing child; if the derived child already exists, ask for another name or
    an explicit destination. Do not ask for a generic `PACKAGE_TARGET` before

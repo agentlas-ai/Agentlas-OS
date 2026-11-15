@@ -31,6 +31,7 @@ def invoke_hub_agent(
     version: str = "latest",
     local_inventory: list[str] | None = None,
     expected_entity_kind: str | None = None,
+    source: str = "hub",
 ) -> dict[str, Any]:
     """Fetch an exact Hub agent bundle, or return candidates for host selection."""
 
@@ -56,6 +57,15 @@ def invoke_hub_agent(
                 ),
             },
         )
+
+    # (Agentlas 2.0, behind the 2.0 switch): an agent is used only after it is registered on this computer. This is the one funnel of
+    # hephaestus_hub_invoke, hephaestus_call / `hephaestus call` / /hep-call, route --auto-run and the Stormbreaker runner.
+    from ..agent_usability import agent_usability, refusal_fields
+
+    usability = agent_usability(requested_slug, source=source)
+    if not usability["usable"]:
+        return {"action": "hub_invoke", "status": usability["code"], **refusal_fields(usability),
+                "request_hash": _request_hash(request), "local_slug_audit": local}
 
     selected = _select_candidate(results, requested_slug)
     if selected is None:
@@ -190,17 +200,12 @@ def invoke_hub_agent(
         lease = _lease_from_response(bundle_response)
         if lease is not None:
             _cache_lease(base, selected_slug, lease)
-        from ..feature_preferences import feature_enabled
-        memory_enabled = feature_enabled("memory-hooks")
-        if memory_enabled:
-            resolved_memory_root = Path(memory_root).expanduser() if memory_root else _default_memory_root(base, selected_slug)
-            memory = _touch_agentlas_memory(memory_root=resolved_memory_root, slug=selected_slug, request=request,
-                routing_receipt_id=(hub_decision or {}).get("receipt_id"), home=base)
-        else:
-            resolved_memory_root = None
-            memory = {"status": "skipped", "reason": "feature_disabled", "feature": "memory-hooks",
-                "memory_root": None, "created": [], "status_tool": None, "wizard": None,
-                "soul_update": None, "memory_ticket": None, "tool_errors": []}
+        # a Hub agent that is only called (not downloaded) keeps no memory anywhere: no drawer folder, no
+        # invocation ledger, no ticket, nothing for the hook to recall later. The `memory` key keeps its old
+        # "skipped" shape so callers that read it see no change in structure.
+        memory = {"status": "skipped", "reason": "hub_call_only", "feature": "memory-hooks",
+            "memory_root": None, "created": [], "status_tool": None, "wizard": None,
+            "memory_ticket": None, "tool_errors": []}
     except HubToolError as exc:
         if exc.code == "insufficient_credits":
             return _record(
@@ -238,13 +243,14 @@ def invoke_hub_agent(
     execution_id = uuid.uuid4().hex[:16]
     agent_id = _hub_agent_id(selected_slug)
     agent_display_name = selected.get("nameEn") or selected.get("name")
-    if resolved_memory_root is not None and feature_enabled("memory-hooks"):
-        grounding = _grounding_directive(agent_id=agent_id, memory_root=resolved_memory_root,
-            project_dir=Path(project_dir), request=request)
-        next_step = hub_next_step(memory_enabled=True, display_name=agent_display_name or selected_slug)
+    from ..feature_preferences import feature_enabled
+    # Project reading (code, project ontology) follows the owner's memory-hooks switch; agent memory is never on.
+    project_ontology = feature_enabled("memory-hooks")
+    if project_ontology:
+        grounding = _grounding_project_only(agent_id=agent_id, project_dir=Path(project_dir), request=request)
     else:
         grounding = _grounding_without_memory(agent_id=agent_id, project_dir=Path(project_dir))
-        next_step = hub_next_step(memory_enabled=False, display_name=agent_display_name or selected_slug)
+    next_step = hub_next_step(project_ontology=project_ontology, display_name=agent_display_name or selected_slug)
 
     # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.hub.invocation.next-step-and-grounding).
     # The fixed instructions (next_step, grounding) precede the agent's versioned runtime_bundle.
@@ -309,15 +315,6 @@ def invoke_hub_agent(
         "lease": lease,
         "output": output,
     }
-    if not feature_enabled("memory-hooks"):
-        grounding = _grounding_without_memory(agent_id=agent_id, project_dir=Path(project_dir))
-        next_step = hub_next_step(memory_enabled=False, display_name=agent_display_name or selected_slug)
-        record["memory"] = {"status": "skipped", "reason": "feature_disabled", "feature": "memory-hooks",
-            "memory_root": None, "created": [], "status_tool": None, "wizard": None,
-            "soul_update": None, "memory_ticket": None, "tool_errors": [],
-            "priorWorkMayHaveCompleted": bool(memory_enabled)}
-        output["grounding"] = grounding
-        output["next_step"] = next_step
     return _record(base, record)
 
 
@@ -549,193 +546,6 @@ def _bundle_response_summary(response: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def _touch_agentlas_memory(
-    *,
-    memory_root: Path | None,
-    slug: str,
-    request: str,
-    routing_receipt_id: str | None,
-    home: Path,
-) -> dict[str, Any]:
-    from ..feature_preferences import feature_enabled
-    if not feature_enabled("memory-hooks"):
-        return {"status": "skipped", "reason": "feature_disabled", "feature": "memory-hooks"}
-    if memory_root is None:
-        return {"status": "skipped", "reason": "memory_root not provided"}
-    memory_root.mkdir(parents=True, exist_ok=True)
-    # The drop box the `experience_record` command in the grounding directive
-    # ingests from. It has to exist before the agent runs, or the one write in
-    # that contract fails on a missing path and the drawer stays empty for the
-    # same reason it was empty before: nothing could put anything in it.
-    (memory_root / "notes").mkdir(parents=True, exist_ok=True)
-    created = _ensure_agentlas_memory_files(memory_root)
-    tool_errors: list[str] = []
-    status = _optional_hub_memory_tool("agentlas.memory.status", {"memoryRoot": str(memory_root)}, home, tool_errors)
-    wizard = _optional_hub_memory_tool(
-        "agentlas.wizard.start",
-        {"memoryRoot": str(memory_root), "scope": "global"},
-        home,
-        tool_errors,
-    )
-    soul = _optional_hub_memory_tool(
-        "agentlas.soul.update",
-        {
-            "memoryRoot": str(memory_root),
-            "field": "note",
-            "content": f"Hub-only Hephaestus Network invocation prepared for {slug}; routing receipt {routing_receipt_id or 'none'}.",
-        },
-        home,
-        tool_errors,
-    )
-    if soul:
-        _apply_soul_append(memory_root, soul)
-    else:
-        with open(memory_root / "project-soul-memory.md", "a", encoding="utf-8") as handle:
-            handle.write(
-                f"\n### note\n- Hub-only Hephaestus Network invocation prepared for {slug}; routing receipt {routing_receipt_id or 'none'}.\n"
-            )
-    append_jsonl(
-        memory_root / "invocation-ledger.jsonl",
-        {
-            "ts": utc_now(),
-            "source": "hephaestus-network",
-            "slug": slug,
-            "routing_receipt_id": routing_receipt_id,
-            "request_hash": _request_hash(request),
-            "mode": "hub_byom_bundle",
-        },
-    )
-
-    # A candidate memory event for the curator to judge later. Without this the
-    # curator has nothing to judge: measured on 60 borrowed agents on a host that
-    # had been running for months, `memory-tickets.jsonl` and
-    # `curator-decisions.jsonl` were empty in all 60 while the invocation ledger,
-    # the soul and the experience database were written in every one. The Hub
-    # serves `agentlas.memory.ticket` (lib/mcp/memory.ts); this path created the
-    # ledger file and then called three other tools, never that one, so the
-    # promotion pipeline downstream was starved rather than broken.
-    #
-    # The ticket carries the request HASH, never the request: this ledger travels
-    # with the agent folder and a raw prompt is exactly what must not.
-    # The Hub tool reads the learning ONLY inside `candidate` ({type, content,
-    # scope, evidence}); it requires that key. This payload sent slug/kind/status/
-    # evidence at the top level instead, so the server dropped them as undeclared
-    # arguments and every ticket came back `reject: 빈 candidate` — the starvation
-    # this block was written to fix survived as a contract mismatch. Measured on
-    # live logs 2026-08-08: four "[mcp] undeclared argument ignored —
-    # agentlas.memory.ticket does not accept evidence, kind, slug, status".
-    ticket_payload = {
-        "memoryRoot": str(memory_root),
-        "candidate": {
-            "type": "fact",
-            "scope": "project",
-            "content": (
-                f"Hephaestus Network invocation: {slug} "
-                f"(mode hub_byom_bundle, routing receipt {routing_receipt_id or 'none'})"
-            ),
-            "evidence": {
-                "routingReceiptId": routing_receipt_id,
-                "requestHash": _request_hash(request),
-                "mode": "hub_byom_bundle",
-            },
-        },
-    }
-    ticket = _optional_hub_memory_tool("agentlas.memory.ticket", ticket_payload, home, tool_errors)
-    # A rejection also comes back as a dict, so bool(ticket) recorded refusals as
-    # acknowledgements. Record the decision the server actually made.
-    ticket_decision = ticket.get("decision") if isinstance(ticket, dict) else None
-    # The local ledger is written either way. A ticket that only exists when the
-    # Hub answers is a ticket that goes missing exactly when a run had trouble.
-    append_jsonl(
-        memory_root / "memory-tickets.jsonl",
-        {
-            "ts": utc_now(),
-            "source": "hephaestus-network",
-            "slug": slug,
-            "kind": "invocation",
-            "status": "candidate",
-            "routing_receipt_id": routing_receipt_id,
-            "request_hash": _request_hash(request),
-            "hub_acknowledged": ticket_decision in ("admit", "merge"),
-            "hub_decision": ticket_decision,
-        },
-    )
-    return {
-        "status": "updated" if not tool_errors else "updated_with_warnings",
-        "memory_root": str(memory_root),
-        "created": created,
-        "status_tool": status,
-        "wizard": wizard,
-        "soul_update": soul,
-        "memory_ticket": ticket,
-        "tool_errors": tool_errors,
-    }
-
-
-def _optional_hub_memory_tool(
-    name: str,
-    arguments: dict[str, Any],
-    home: Path,
-    tool_errors: list[str],
-) -> dict[str, Any] | None:
-    try:
-        return call_hub_tool(name, arguments, home=home)
-    except HubToolError as exc:
-        tool_errors.append(str(exc))
-        return None
-
-
-def _ensure_agentlas_memory_files(root: Path) -> list[str]:
-    defaults: dict[str, str] = {
-        "memory-map.json": json.dumps(
-            {
-                "schemaVersion": "1.0",
-                "scope": "global",
-                "owner": "agentlas-memory",
-                "rule": "missing-only bootstrap; no secrets or raw transcripts",
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
-        "memory-tickets.jsonl": "",
-        "curator-decisions.jsonl": "",
-        "project-soul-memory.md": "# Agentlas Global Soul Memory\n\n",
-        "invocation-ledger.jsonl": "",
-        "vault-references.json": "{}\n",
-    }
-    created: list[str] = []
-    for name, body in defaults.items():
-        path = root / name
-        if not path.exists():
-            path.write_text(body, encoding="utf-8")
-            created.append(str(path))
-    experience_db = root / "experience.sqlite"
-    experience_db_exists = experience_db.exists()
-    # Imported lazily so ordinary networking discovery does not pay ontology
-    # startup cost. This creates/migrates the same public-core schema Desktop
-    # writes as a rebuildable per-agent experience projection.
-    from ontology.runtime import OntologyRuntime, RuntimeConfig
-
-    OntologyRuntime(RuntimeConfig(db_path=experience_db))
-    if not experience_db_exists:
-        created.append(str(experience_db))
-    return created
-
-
-def _apply_soul_append(root: Path, soul: dict[str, Any]) -> None:
-    rel = str(soul.get("write_to") or "")
-    append = str(soul.get("append") or "")
-    if not append:
-        return
-    target = root / "project-soul-memory.md"
-    if rel.endswith("project-soul-memory.md"):
-        current = target.read_text(encoding="utf-8") if target.exists() else ""
-        if append not in current:
-            with open(target, "a", encoding="utf-8") as handle:
-                handle.write(append)
-
-
 def _record(home: Path, record: dict[str, Any]) -> dict[str, Any]:
     record = {"ts": utc_now(), **record}
     append_jsonl(home / "ledgers" / "executions.jsonl", record)
@@ -756,10 +566,6 @@ def _hub_agent_id(slug: str) -> str:
     # Stable per-agent id that also keys this borrowed agent's ontology working
     # memory, so memory persists across invocations of the same Hub agent.
     return f"hub:{_norm_slug(slug)}"
-
-
-def _default_memory_root(home: Path, slug: str) -> Path:
-    return home / "hub-agents" / _norm_slug(slug) / "memory"
 
 
 def _ontology_db_path(project_dir: Path) -> Path:
@@ -789,11 +595,11 @@ def _attached_project(project_dir: Path | str) -> Path | None:
 
 
 def _grounding_without_memory(*, agent_id: str, project_dir: Path) -> dict[str, Any]:
-    """One structural OFF projection for initial opt-out and the final race guard."""
+    """Memory-hooks switched off by the owner: no memory, no ontology, no Context Map state."""
     project = _attached_project(project_dir)
     return {
         "policy": "attach_codebase_when_relevant" if project else "no_project",
-        "directive": hub_grounding_directive(memory_enabled=False, project_attached=project is not None),
+        "directive": hub_grounding_directive(project_ontology=False, project_attached=project is not None),
         "agent_id": agent_id, "project_dir": str(project) if project else None, "memory_root": None,
         "ontology_db": None, "experience_db": None,
         "commands": {"project_overview": f"ls -la {_shell_quote(str(project))}" if project else None,
@@ -802,87 +608,37 @@ def _grounding_without_memory(*, agent_id: str, project_dir: Path) -> dict[str, 
     }
 
 
-def _grounding_directive(
-    *,
-    agent_id: str,
-    memory_root: Path,
-    project_dir: Path,
-    request: str,
-) -> dict[str, Any]:
-    """Tell the executing runtime HOW (and WHEN) to ground a borrowed agent.
+def _grounding_project_only(*, agent_id: str, project_dir: Path, request: str) -> dict[str, Any]:
+    """Grounding for a Hub agent that is only called.
 
-    Grounding has two tiers. The FIRST is the live working project at
-    ``project_dir`` when one is attached: the borrowed agent reads it first when
-    the request concerns that project, and leaves it alone for a self-contained
-    request (E56). The SECOND tier (the agent's own memory and the semantic ontology) is selective:
-    consult it ONLY when the task needs deeper grounding (brand facts, prior
-    decisions, domain knowledge). Retrieval is relevance-gated, and this directive
-    makes the host LLM the judge of whether to consult the second tier at all.
+    The agent keeps no memory of its own, so there is no drawer, no experience store and nothing to record into.
+    What stays is reading the PROJECT: the live codebase and the project's semantic ontology (read-only query).
     """
 
     project = _attached_project(project_dir)
     ontology_db = _ontology_db_path(project) if project else None
-    experience_db = memory_root / "experience.sqlite"
-    # The host can execute this directive from any project/CWD. Rely on the
-    # versioned runtime installed by Agentlas OS, never an ambient PYTHONPATH or
-    # a source checkout that happens to make `python3 -m ontology` importable.
+    # The host can execute this from any project/CWD. Rely on the versioned runtime installed by Agentlas OS, never an
+    # ambient PYTHONPATH or a source checkout that happens to make `python3 -m ontology` importable.
     from ..feature_preferences import _DESKTOP_HOSTS
     if os.environ.get("AGENTLAS_HOST_RUNTIME", "").strip().lower() in _DESKTOP_HOSTS:
         ontology_cli = '"${HOME}/.agentlas/runtime/current/bin/ontology"'
     else:
         ontology_cli = _shell_quote(str(Path(__file__).resolve().parents[2] / "bin" / "ontology"))
-    # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.hub.invocation.next-step-and-grounding).
     return {
-        "policy": "attach_codebase_when_relevant_then_selective_memory" if project else "no_project_selective_memory",
-        "directive": hub_grounding_directive(memory_enabled=True, project_attached=project is not None),
+        "policy": "attach_codebase_when_relevant_then_project_ontology" if project else "no_project",
+        "directive": hub_grounding_directive(project_ontology=True, project_attached=project is not None),
         "agent_id": agent_id,
         "project_dir": str(project) if project else None,
-        "memory_root": str(memory_root),
+        "memory_root": None,
         "ontology_db": str(ontology_db) if ontology_db else None,
-        "experience_db": str(experience_db),
+        "experience_db": None,
         "commands": {
             "project_overview": f"ls -la {_shell_quote(str(project))}" if project else None,
             "ontology_query": (
                 f"{ontology_cli} --db {_shell_quote(str(ontology_db))} "
                 f"query {_shell_quote(_compact(request, 160))}"
             ) if ontology_db else None,
-            "experience_query": (
-                f"{ontology_cli} --db {_shell_quote(str(experience_db))} "
-                f"query {_shell_quote(_compact(request, 160))} --agent {agent_id}"
-            ),
-            # Compatibility key for older callers; the operation is now the
-            # same read-only vector query, never a whole-file cat.
-            "memory_read": (
-                f"{ontology_cli} --db {_shell_quote(str(experience_db))} "
-                f"query {_shell_quote(_compact(request, 160))} --agent {agent_id}"
-            ),
-            "working_memory_read": (
-                f"{ontology_cli} --db {_shell_quote(str(ontology_db))} "
-                f"working-memory read --agent {agent_id}"
-            ) if ontology_db else None,
-            # The one WRITE in this contract. Everything above reads; without this
-            # a borrowed agent could consult its drawer but never put anything in
-            # it, so the drawer stayed empty by construction. Measured 2026-08-07
-            # across all 32 per-slug stores on this machine: sources, chunks,
-            # entities, relations, memory_candidates and every experience table
-            # were 0 rows, while the same machine's Desktop store held 1,026
-            # episodes — the work happened, the agent's own drawer just had no way
-            # to receive it.
-            #
-            # `internal`, NOT `private`, and that is not a privacy choice — it is
-            # the only scope this drawer can be read back from. `OntologyRuntime.
-            # query` resolves document scopes as `["public", "internal"]` with no
-            # private branch (ontology/runtime.py), so a chunk ingested as private
-            # is stored, indexed in FTS, and then filtered out of every recall.
-            # Measured 2026-08-07 on two identical fresh stores: scope=private
-            # returned 0 chunks for a term the FTS index matched, scope=internal
-            # returned 1 for the same term in both English and Korean. The drawer
-            # is already isolated by being per-agent and on-device; writing it
-            # private would only make it write-only.
-            "experience_record": (
-                f"{ontology_cli} --db {_shell_quote(str(experience_db))} "
-                f"ingest {_shell_quote(str(memory_root / 'notes'))} --scope internal"
-            ),
+            "experience_query": None, "memory_read": None, "working_memory_read": None, "experience_record": None,
         },
     }
 

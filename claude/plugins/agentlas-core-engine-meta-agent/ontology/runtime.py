@@ -251,7 +251,17 @@ class OntologyRuntime:
 
     def connect(self) -> sqlite3.Connection:
         if self.config.read_only:
-            conn = sqlite3.connect(f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True)
+            uri = f"{self.db_path.resolve().as_uri()}?mode=ro"
+            conn = sqlite3.connect(uri, uri=True)
+            if not os.access(self.db_path.parent, os.W_OK):
+                # A WAL database needs its -shm file even to be read, and a folder this process cannot write may not
+                # have one. Try the normal read-only open first (it also sees rows that exist only in the -wal file);
+                # only when that cannot read at all, read the file as it is (immutable: whatever the last checkpoint holds).
+                try:
+                    conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+                except sqlite3.OperationalError:
+                    conn.close()
+                    conn = sqlite3.connect(uri + "&immutable=1", uri=True)
         else:
             conn = sqlite3.connect(self.db_path)
             # Default (rollback-journal) mode makes a writer's transaction take

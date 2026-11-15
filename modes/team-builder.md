@@ -9,8 +9,8 @@ small operating system, not a loose list of prompts.
 
 Generated packages must be exactly one of two valid shapes. A team is valid only
 when it has two or more worker roles, an orchestrator/HQ, company-blueprint
-topology with nodes and edges, PM Soul, Memory Curator, Policy Gate, eval judge,
-QA/evidence gate, Memory Tickets, and one HQ public command. A loose folder with
+topology with nodes and edges, Memory Tickets (the Memory Curator, Policy Gate, eval
+judge and QA gate are OS-resident, not package members), and one HQ public command. A loose folder with
 multiple worker `agent.md` files and no HQ/topology is a degenerate team and
 must fail `scripts/verify-team-package.sh <package-root>`.
 
@@ -23,8 +23,7 @@ separate unrelated single-agent packages.
 ## Required Team Layers
 
 - Orchestrator/HQ for intake, routing, sequencing, and final synthesis.
-- PM Soul or project owner for intent, decisions, risks, evidence, and open
-  loops.
+- Project owner for intent, decisions, risks, evidence, and open loops.
 - Memory Curator for source-map-first routing, redaction, deduplication,
   conflict handling, and future searchability.
 - Policy Gate for dangerous actions, secret boundaries, budget/tool changes,
@@ -47,7 +46,8 @@ separate unrelated single-agent packages.
 - Return contract: `status`, `evidence`, `output`, `blockers`.
 - Memory Events emitted by workers after substantial work.
 - Memory Tickets wrapped by runtime/orchestrator before Memory Curator review.
-- PM Soul owns project memory. Policy Gate controls shared team-memory
+- Project memory is written only through Memory Tickets and the OS-resident
+  Memory Curator. Policy Gate controls shared team-memory
   promotion.
 - `.agentlas/global-commands.json` owns the public team command. Worker roles
   route through orchestrator/HQ unless the user explicitly requested direct

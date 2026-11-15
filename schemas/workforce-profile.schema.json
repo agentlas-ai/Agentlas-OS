@@ -120,7 +120,8 @@
         "ontologyVersion": { "$ref": "#/$defs/id" },
         "sourceRefs": { "$ref": "#/$defs/strings" },
         "compiledAt": { "type": "string", "format": "date-time" },
-        "contentDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        "contentDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "localRules": { "type": "string", "pattern": "^[0-9A-Za-z._-]{1,32}$" }
       }
     }
   },

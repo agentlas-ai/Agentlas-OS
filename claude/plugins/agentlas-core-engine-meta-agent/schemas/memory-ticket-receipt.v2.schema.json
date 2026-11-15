@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agentlas.memory-ticket-receipt.v2",
+  "title": "What receive_tickets returns",
+  "type": "object",
+  "required": ["schema", "items", "answers", "counts", "unreadable"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "agentlas.memory-ticket-receipt.v2"},
+    "unreadable": {"enum": [null, "not_json", "tickets_not_list", "unrecognized_shape"]},
+    "answers": {"type": "array", "items": {"$ref": "#/$defs/answer"}},
+    "counts": {
+      "type": "object",
+      "required": ["received", "ok", "refused", "invalid", "fixed", "by_code"],
+      "additionalProperties": false,
+      "properties": {
+        "received": {"type": "integer", "minimum": 0}, "ok": {"type": "integer", "minimum": 0},
+        "refused": {"type": "integer", "minimum": 0}, "invalid": {"type": "integer", "minimum": 0},
+        "fixed": {"type": "integer", "minimum": 0}, "by_code": {"type": "object", "additionalProperties": {"type": "integer"}}
+      }
+    },
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}}
+  },
+  "$defs": {
+    "answer": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["ok", "refused", "invalid"]},
+        "result": {"enum": ["saved", "merged", "rewritten", "condensed", "removed"]},
+        "why": {"type": "string"}, "scope": {"type": "string"}, "kind": {"type": ["string", "null"]},
+        "id": {"type": "string"}, "ask_owner": {"const": "conflict"},
+        "max": {"type": "integer", "minimum": 0}, "min": {"type": "integer", "minimum": 0}, "chars": {"type": "integer", "minimum": 0}, "got": {"type": "integer", "minimum": 0}
+      }
+    },
+    "line": {
+      "type": "object",
+      "required": ["scope", "kind", "store_kind", "text", "native", "origin_class", "certainty", "replaces", "contradicts", "why", "marks", "context", "carry_evidence_from"],
+      "properties": {
+        "scope": {"enum": ["user_identity", "project", "agent_repo"]},
+        "kind": {"type": "string"}, "store_kind": {"type": "string"},
+        "text": {"type": "string"}, "native": {"type": ["string", "null"]},
+        "origin_class": {"enum": ["user", "observed", "result", "inferred"]},
+        "certainty": {"enum": ["self_reported", "run_verified", "unverified"]},
+        "replaces": {"type": "array", "items": {"type": "string"}},
+        "contradicts": {"type": "array", "items": {"type": "string"}},
+        "why": {"enum": [null, "changed", "corrected"]},
+        "marks": {"type": "array", "items": {"enum": ["owner_instruction"]}},
+        "context": {"type": ["object", "null"]},
+        "carry_evidence_from": {"type": "array", "items": {"type": "string"}},
+        "moved_from": {"type": "string"}
+      }
+    },
+    "item": {
+      "type": "object",
+      "required": ["index", "status", "result", "why", "ask_owner", "scope", "kind", "store", "line", "targets", "merge_into", "same_as_ticket", "fixes"],
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "status": {"enum": ["ok", "refused", "invalid"]},
+        "result": {"enum": [null, "saved", "merged", "rewritten", "condensed", "removed"]},
+        "why": {"type": ["string", "null"]},
+        "ask_owner": {"enum": [null, "conflict"]},
+        "scope": {"type": ["string", "null"]}, "kind": {"type": ["string", "null"]},
+        "store": {"enum": [null, "personal", "card", "project", "agent", "worker"]},
+        "line": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/line"}]},
+        "targets": {"type": "array", "items": {"type": "string"}},
+        "merge_into": {"type": ["string", "null"]}, "same_as_ticket": {"type": ["integer", "null"]},
+        "fixes": {"type": "array", "items": {"type": "string"}},
+        "limit": {"type": "object", "additionalProperties": {"type": "integer"}}
+      }
+    }
+  }
+}

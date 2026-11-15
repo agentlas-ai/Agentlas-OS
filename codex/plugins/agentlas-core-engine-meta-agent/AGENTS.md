@@ -288,8 +288,8 @@ passing or the run is explicitly reported as blocked.
 
 - `10-single-agent-builder`: one installable self-evolving worker package.
 - `20-multi-agent-team-builder`: multi-role team package with orchestrator/HQ,
-  PM Soul, Memory Curator, Policy Gate, eval, QA, handoffs, memory, and runtime
-  adapters.
+  handoffs, memory outputs, and runtime adapters (PM Soul, Memory Curator,
+  Policy Gate, eval, and QA are OS-resident, not packaged).
 - `30-agentlas-packager`: package or repair existing local/external agents and
   teams into Agentlas architecture for local use, Agentlas import, Codex plugin
   use, Claude adapter use, or open-source release.
@@ -366,9 +366,9 @@ that command to the user after creation. It must not emit multiple loose worker
 `agent.md` files; that is a team shape and requires HQ/topology.
 
 `team-builder` produces a multi-role team package. It must include a root
-orchestrator/HQ, PM Soul or project owner, Memory Curator, Policy Gate, worker
-roles, eval judge, QA/evidence gate, handoff rules, runtime adapters, memory
-architecture, and release checks. It must expose the orchestrator/HQ global
+orchestrator/HQ, worker roles, handoff rules, runtime adapters, memory
+architecture (PM Soul, Memory Curator, Policy Gate, eval judge and QA gate are
+OS-resident and are not packaged), and release checks. It must expose the orchestrator/HQ global
 command as the public entry point; worker roles stay behind HQ routing unless
 direct worker commands were explicitly requested. Team packages must pass
 `scripts/verify-team-package.sh <package-root>` before completion.
@@ -416,10 +416,11 @@ local Curator approves promotion.
   (`.env`, `.env.local`, `signing/`, `credentials/`) or a local keychain/vault.
   Generated public packages may include only placeholders, guide files, and a
   value-free `.agentlas/local-credentials.map.json`.
-- Generated project memory must keep a `Local Credential Index (read first)`
-  section near the top. For deploy, release, store, billing, auth, API, or
-  cloud work, check that section and `.agentlas/local-credentials.map.json`
-  before reporting missing credentials.
+- For deploy, release, store, billing, auth, API, or cloud work, check
+  `.agentlas/local-credentials.map.json` and the `.env` files and
+  `signing/` / `credentials/` folders it names before reporting missing
+  credentials. An older project's soul file may still carry a `Local Credential
+  Index` section; read it too. New projects no longer get a soul file.
 - Do not copy private local research folders into public output.
 - Do not call runtime adapters canonical.
 - Ask for explicit approval before destructive file actions, production deploys,

@@ -702,6 +702,10 @@ def _release_advisory_lock(descriptor: int) -> None:
         fcntl.flock(descriptor, fcntl.LOCK_UN)
 
 
+# Project folders whose bootstrap lock this process holds (the code index adoption must not wait on its own lock).
+_HELD_PROJECT_LOCKS: set[str] = set()
+
+
 @contextmanager
 def _project_lock(root: Path, timeout_seconds: float = 15.0) -> Iterable[None]:
     agentlas = root / ".agentlas"
@@ -723,9 +727,11 @@ def _project_lock(root: Path, timeout_seconds: float = 15.0) -> Iterable[None]:
     os.lseek(descriptor, 0, os.SEEK_SET)
     os.write(descriptor, payload.encode("utf-8"))
     os.fsync(descriptor)
+    _HELD_PROJECT_LOCKS.add(str(root))
     try:
         yield
     finally:
+        _HELD_PROJECT_LOCKS.discard(str(root))
         try:
             _release_advisory_lock(descriptor)
         finally:
@@ -800,10 +806,15 @@ def _seed_project_files(root: Path, *, context_enabled: bool = True, memory_enab
     created: list[str] = []
     warnings: list[str] = []
     project_id = re.sub(r"[^A-Za-z0-9._-]+", "-", root.name).strip("-") or "project"
+    from .project_identity import new_project_uid
+
     replacements = {
         "project_id": project_id,
         "projectId": project_id,
         "PROJECT_NAME": root.name,
+        # New markers carry their own identity; the name-derived projectId above stays for older readers.
+        # No absolute path goes into the marker: it is packaged and uploaded with the folder.
+        "project_uid": new_project_uid(),
         "draft_id": "local-first-contact",
         "intent": "Preserve project continuity across Agentlas hosts.",
         "audience": "Project operators and authorized local agents.",
@@ -820,7 +831,7 @@ def _seed_project_files(root: Path, *, context_enabled: bool = True, memory_enab
                 "kind": "agentlas-ai-sitemap",
                 "projectId": project_id,
                 "state": "active",
-                "memoryRoots": [".agentlas/project-soul-memory.md", ".agentlas/memory-tickets.jsonl"],
+                "memoryRoots": [".agentlas/memory-tickets.jsonl"],
                 "codeMap": ".agentlas/code-map/project-map.json",
                 "ontologyRuntime": ".agentlas/ontology-runtime.json",
                 "careerGraph": ".agentlas/career-graph.json",
@@ -933,7 +944,6 @@ def _seed_project_files(root: Path, *, context_enabled: bool = True, memory_enab
         # spelling. Same consent rules as every other seeded map — none asked.
         "feature-map.json.tpl": ".agentlas/feature-map.json",
         "memory-map.json.tpl": ".agentlas/memory-map.json",
-        "project-soul-memory.md.tpl": ".agentlas/project-soul-memory.md",
         "skill-registry.json.tpl": ".agentlas/skill-registry.json",
         "local-credentials.map.json.tpl": ".agentlas/local-credentials.map.json",
         # Never seed secret-shaped scaffolding (`.env.example`, `signing/`,
@@ -947,7 +957,7 @@ def _seed_project_files(root: Path, *, context_enabled: bool = True, memory_enab
         # the user creates stays protected; existing files are never touched.
     }
     for template_name, relative in template_targets.items():
-        if not memory_enabled and relative in {".agentlas/memory-map.json", ".agentlas/project-soul-memory.md", ".agentlas/skill-registry.json", ".agentlas/local-credentials.map.json"}:
+        if not memory_enabled and relative in {".agentlas/memory-map.json", ".agentlas/skill-registry.json", ".agentlas/local-credentials.map.json"}:
             continue
         rendered = _render_template(template_name, replacements)
         if rendered is None:
@@ -1040,6 +1050,9 @@ def _apply_additive_memory_migrations(root: Path) -> tuple[list[str], list[str]]
                 payload["sources"] = []
                 changed = True
             if changed:
+                # An earlier 2.0 build wrote an absolute `rootPath` here; it is never read and travels with uploads,
+                # so it is left out of any marker that is rewritten anyway (no rewrite is made just for this).
+                payload.pop("rootPath", None)
                 bump_version(payload, "1.2")
                 save(memory_map_path, payload, "memory-map.json")
         else:
@@ -1947,10 +1960,12 @@ def _code_map_binding_complete(
     project: Path,
     project_map: dict[str, Any],
     cache: dict[str, Any],
+    directory: Path | None = None,
 ) -> bool:
+    map_dir = directory if directory is not None else project / ".agentlas" / "code-map"
     stats = project_map.get("stats") if isinstance(project_map.get("stats"), dict) else {}
     expected_root_hash = _project_root_hash(project)
-    manifest = _read_json_object(project / ".agentlas" / "code-map" / "manifest.json")
+    manifest = _read_json_object(map_dir / "manifest.json")
     compatibility = (
         manifest.get("compatibilityMap")
         if isinstance(manifest.get("compatibilityMap"), dict)
@@ -1962,9 +1977,7 @@ def _code_map_binding_complete(
             cache.get("mapFileDigest") == declared_file_digest
             and cache.get("mapPayloadDigest") == compatibility.get("digest")
             and bool(re.fullmatch(r"sha256:[0-9a-f]{64}", str(compatibility.get("digest") or "")))
-            and _regular_file_digest(
-                project / ".agentlas" / "code-map" / "project-map.json"
-            )
+            and _regular_file_digest(map_dir / "project-map.json")
             == declared_file_digest
         )
     else:
@@ -2065,7 +2078,10 @@ def diagnose_code_map(project: str | Path) -> dict[str, Any]:
     """Report code-map health as ``{"healthy", "lines", "stats"}``."""
 
     root = Path(project).resolve()
-    path = root / ".agentlas" / "code-map" / "project-map.json"
+    from .code_index_location import code_map_dir
+
+    map_dir = code_map_dir(root)
+    path = map_dir / "project-map.json"
     lines: list[str] = []
     if not path.exists():
         return {"healthy": False, "lines": ["code-map 없음 — 생성 필요"], "stats": {}}
@@ -2090,7 +2106,7 @@ def diagnose_code_map(project: str | Path) -> dict[str, Any]:
         lines.append(f"중단 사유: {stats['budgetStop']}")
 
     for sidecar in (".cache.json", "manifest.json"):
-        if not (root / ".agentlas" / "code-map" / sidecar).exists():
+        if not (map_dir / sidecar).exists():
             lines.append(f"{sidecar} 없음 — 무결성 검사 통과 불가")
 
     return {
@@ -2784,6 +2800,36 @@ def multi_repository_root_children(project: Path) -> list[str]:
     return children
 
 
+def _adopt_old_code_map(project: Path) -> bool:
+    """Rename the old code-map folder into the new place, under the project lock. Gives up quietly on any failure."""
+    from . import code_index_location as place
+
+    try:
+        if not (place.legacy_dir(project) / "manifest.json").is_file():
+            return False
+        root_hash = _project_root_hash(project)
+        if str(project) in _HELD_PROJECT_LOCKS:
+            return place.adopt_old_map(project, root_hash)
+        with _project_lock(project, timeout_seconds=0.5):
+            return place.adopt_old_map(project, root_hash)
+    except (OSError, TimeoutError, ValueError):
+        return False
+
+
+def _settle_new_place(project: Path, fresh: bool) -> None:
+    """After a complete map sits in the new place: drop an old copy nobody has touched for 30 days, and (when this
+    index folder is new) look for index folders of projects that are gone."""
+    from . import code_index_location as place
+
+    try:
+        place.stamp_root(project)  # an adopted map has no projectRoot; without it a gone project's index is never pruned
+        place.reclaim_old(project)
+        if fresh:
+            place.prune_orphans(project)
+    except Exception:  # noqa: BLE001 - housekeeping never fails a refresh
+        pass
+
+
 def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: bool = True) -> dict[str, Any]:
     project = _project_root(root)
     child_repositories = multi_repository_root_children(project)
@@ -2799,7 +2845,16 @@ def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: b
         }
     policy = _context_index_policy(project)
     policy_digest = _policy_digest(policy)
-    out_dir = project / ".agentlas" / "code-map"
+    from . import code_index_location as _index_place
+
+    # Old place unless the layout switch is on (then the project's memory folder); see code_index_location.
+    out_dir = _index_place.code_map_dir(project, for_write=True)
+    use_new_place = out_dir != _index_place.legacy_dir(project)
+    new_place_fresh = use_new_place and not out_dir.exists()
+    if use_new_place and not _index_place.new_place_writable(out_dir):
+        out_dir, use_new_place, new_place_fresh = _index_place.legacy_dir(project), False, False
+    if use_new_place:
+        _adopt_old_code_map(project)
     json_path = out_dir / "project-map.json"
     md_path = out_dir / "project-map.md"
     seed_path = out_dir / "project-seed.json"
@@ -2886,7 +2941,7 @@ def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: b
     cache = _read_json_object(cache_path)
     existing_map = _read_json_object(json_path)
     existing_binding_complete = (
-        not force and _code_map_binding_complete(project, existing_map, cache)
+        not force and _code_map_binding_complete(project, existing_map, cache, out_dir)
     )
     previous_hashes = (
         existing_map.get("contentHashes")
@@ -2927,6 +2982,8 @@ def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: b
     )
     if json_path.exists() and md_path.exists() and seed_path.exists() and manifest_path.exists() and not force and cache_current:
         sitemap_warning = _merge_managed_sitemap_context(project, _read_json_object(json_path))
+        if use_new_place:
+            _settle_new_place(project, False)
         return {
             "status": "existing",
             "path": ".agentlas/code-map/project-map.json",
@@ -3322,6 +3379,8 @@ def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: b
                 "snapshotId": snapshot_id,
                 "policyDigest": policy_digest,
                 "complete": coverage_complete,
+                # New place only: lets a later cleanup find the index of a project that is gone. Never in receipts.
+                **({"projectRoot": str(project)} if use_new_place else {}),
                 "compatibilityMap": {
                     "path": "project-map.json",
                     "schemaVersion": project_map["schemaVersion"],
@@ -3368,11 +3427,13 @@ def generate_code_map(root: str | Path, *, force: bool = False, merge_sitemap: b
         + "\n",
     )
     sitemap_warning = _merge_managed_sitemap_context(project, project_map) if merge_sitemap else None
+    if use_new_place and coverage_complete:
+        _settle_new_place(project, new_place_fresh)
     return {
         "status": "refreshed" if json_path in existed else "generated",
         "path": ".agentlas/code-map/project-map.json",
         "created": [
-            path.relative_to(project).as_posix()
+            _index_place.receipt_name(path.name)
             for path in (json_path, md_path, seed_path, cache_path, manifest_path)
             if path not in existed
         ],
@@ -3409,8 +3470,10 @@ def _tracked_sensitive_paths(root: Path) -> tuple[list[str], bool]:
 def project_status(project: str | Path, *, optional_features: dict[str, bool] | None = None) -> dict[str, Any]:
     root = _project_root(project)
     agentlas = root / ".agentlas"
+    from .code_index_location import code_map_dir
+
+    map_dir = code_map_dir(root)
     required = (
-        "project-soul-memory.md",
         "sitemap.json",
         "feature-map.json",
         "context-map.json",
@@ -3430,13 +3493,17 @@ def project_status(project: str | Path, *, optional_features: dict[str, bool] | 
     if optional_features is not None:
         omitted = set()
         if not optional_features.get("memory-hooks", False):
-            omitted.update({"project-soul-memory.md", "memory-map.json", "memory-tickets.jsonl", "vault-references.json"})
+            omitted.update({"memory-map.json", "memory-tickets.jsonl", "vault-references.json"})
         if not optional_features.get("context-map", False):
             omitted.update({"context-map.json", "code-map/project-map.json", "code-map/project-map.md", "code-map/project-seed.json", "code-map/.cache.json"})
         if not optional_features.get("project-index", False):
             omitted.update({"ontology-runtime.json", "ontology-runtime.sqlite", "career-graph.json", "career-graph.sqlite"})
         required = tuple(item for item in required if item not in omitted)
-    missing = [f".agentlas/{relative}" for relative in required if not (agentlas / relative).exists()]
+    missing = [
+        f".agentlas/{relative}"
+        for relative in required
+        if not ((map_dir / relative[len("code-map/"):]) if relative.startswith("code-map/") else (agentlas / relative)).exists()
+    ]
     privacy_warnings: list[str] = []
     try:
         gitignore_text = _read_bounded_regular_text(root / ".gitignore", MAX_GITIGNORE_BYTES)
@@ -3474,9 +3541,9 @@ def project_status(project: str | Path, *, optional_features: dict[str, bool] | 
     tracked_sensitive, tracked_scan_complete = _tracked_sensitive_paths(root)
     if not tracked_scan_complete:
         privacy_warnings.append("tracked_sensitive_scan_incomplete")
-    code_map_payload = _read_json_object(agentlas / "code-map" / "project-map.json")
-    code_map_cache = _read_json_object(agentlas / "code-map" / ".cache.json")
-    code_map_complete = _code_map_binding_complete(root, code_map_payload, code_map_cache)
+    code_map_payload = _read_json_object(map_dir / "project-map.json")
+    code_map_cache = _read_json_object(map_dir / ".cache.json")
+    code_map_complete = _code_map_binding_complete(root, code_map_payload, code_map_cache, map_dir)
     if missing:
         status = "incomplete"
     elif not privacy_block or permission_issues or tracked_sensitive or privacy_warnings:

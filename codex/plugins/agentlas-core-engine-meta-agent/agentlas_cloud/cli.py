@@ -795,8 +795,18 @@ def _session_command(args: argparse.Namespace) -> int:
                     "package_target_conflict",
                     "choose either --global-agent or --package-target, not both",
                 )
+            from .agent_home import agents_root_status, explicit_env_root
             from .agent_package_sweep import local_agents_home
 
+            root_status = agents_root_status()
+            if not root_status["available"] and explicit_env_root() is None:
+                # A root named in agents-root.json that is not there (unplugged drive): building into the default would split
+                # the owner's agents across two places once the drive returns. Say so; create nothing.
+                raise SessionBuildError(
+                    "agent_root_unavailable",
+                    f"the agents folder {root_status.get('path') or '(agents-root.json)'} is not available right now; "
+                    "reconnect it, or pass --package-target",
+                )
             package_target = str(local_agents_home() / slugify(args.slug or args.title or "session-agent"))
         draft = build_agent_draft(
             brief,
@@ -821,6 +831,19 @@ def _session_command(args: argparse.Namespace) -> int:
                 experience_candidate=args.experience_candidate,
                 allow_conflicts=args.allow_conflicts,
             )
+            if global_agent and isinstance(package_receipt, dict):
+                # The build registers the one package it just wrote, through the same function the
+                # owner-run local-autoregister uses, so a fresh agent is routable at once.
+                try:
+                    from .workforce.local_autoregister import register_package
+                    from .workforce.local_registry import LocalWorkforceRegistry
+
+                    outcome = register_package(LocalWorkforceRegistry(), Path(package_target))
+                    package_receipt["localRegistration"] = {
+                        key: outcome.get(key) for key in ("status", "reasonCode", "routingEligible", "routingStatus") if key in outcome
+                    }
+                except Exception as exc:  # noqa: BLE001 - the package is written; report, never fail the build
+                    package_receipt["localRegistration"] = {"status": "failed", "reasonCode": type(exc).__name__}
         elif args.candidate_skill:
             destination = Path(args.project or ".").expanduser()
             skill_receipt = write_candidate_skill(draft, destination, slug=args.slug)
@@ -960,7 +983,7 @@ def main(argv: list[str] | None = None) -> int:
     session.add_argument("--approve", action="store_true", help="Approve the current Work Brief for draft compilation")
     session.add_argument("--allow-conflicts", action="store_true", help="Continue only after explicitly acknowledging merge conflicts")
     session.add_argument("--package-target", default=None, help="Exact empty folder for an atomic verified package build")
-    session.add_argument("--global-agent", action="store_true", help="Materialize below the global Agentlas agent home; interactive hosts choose this without exposing a path")
+    session.add_argument("--global-agent", action="store_true", help="Materialize below the global Agentlas agent home; interactive hosts choose this without exposing a path. The package is registered by the build itself; `cards migrate --tier local` does the same for a folder built elsewhere")
     session.add_argument("--candidate-skill", action="store_true", help="Write the derived skill as a candidate (never first-class)")
     session.add_argument("--experience-candidate", action="store_true", help=argparse.SUPPRESS)
     session.add_argument("--trials", default=None, help="JSONL trial ledger for promote")
@@ -1520,6 +1543,12 @@ def main(argv: list[str] | None = None) -> int:
     call.add_argument("--version", default="latest")
     call.add_argument("--local-inventory", default=None, help="JSON array or comma list of installed plugin names for Hub plugin resolution")
 
+    register_agent = sub.add_parser("register-agent", help="Register an agent on this computer so it can be used (a Hub/Cloud slug, or a folder path)")
+    register_agent.add_argument("ref", nargs="?", help="hub:<slug>, cloud:<slug>, <slug> or an agent folder path")
+    register_agent.add_argument("--character", default=None, help="One of the preset characters (default: picked from the slug)")
+    register_agent.add_argument("--remove", default=None, metavar="SLUG", help="Remove a pointer folder this command made")
+    register_agent.add_argument("--legacy-drawers", action="store_true", help="Count the old networking/hub-agents drawers and the ones that need registering (deletes nothing)")
+
     hep_browser = sub.add_parser("hep-browser", help="Short Agentlas browser hardpoint command")
     hep_browser.add_argument("target", nargs="*", help="URL(s) to open or task/search text")
     hep_browser.add_argument("--url", action="append", default=[], help="Explicit http/https URL to read through Agentlas browser")
@@ -1700,7 +1729,7 @@ def main(argv: list[str] | None = None) -> int:
     workforce_repair_release.add_argument("target", help="Definition id or source folder")
     workforce_autoregister = workforce_sub.add_parser(
         "local-autoregister",
-        help="Register contract-passing packages from the builder's agent folder",
+        help="Register packages that have an instruction file from the builder's agent folder",
     )
     workforce_autoregister.add_argument("--home", default=None, help="Agent folder (default: the global Agentlas agent folder)")
     workforce_validate = workforce_sub.add_parser("validate", help="Validate a host-LLM staffing decision")
@@ -3505,7 +3534,19 @@ def main(argv: list[str] | None = None) -> int:
         result["project_bootstrap"] = bootstrap
         # Same truth rule for call: a failed preparation is not a success exit.
         call_status = str(result.get("status") or "")
-        return emit(result) or (4 if call_status in {"failed", "error"} else 0)
+        return emit(result) or (4 if call_status in {"failed", "error", "needs_registration"} else 0)
+    if args.command == "register-agent":
+        from . import agent_registration, agent_usability
+
+        if args.legacy_drawers:
+            return emit({"status": "ok", **agent_usability.legacy_drawers()})
+        if args.remove:
+            result = agent_registration.remove_pointer(args.remove)
+            return emit(result) or (0 if result.get("status") == "removed" else 4)
+        if not args.ref:
+            return emit({"status": "error", "error": "agent_ref_required"}) or 2
+        result = agent_registration.register(args.ref, character=args.character)
+        return emit(result) or (0 if result.get("status") in {"registered", "already_registered", "active"} else 4)
     if args.command == "hep-browser":
         return _run_hep_browser(args)
     if args.command == "route":

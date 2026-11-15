@@ -15,6 +15,8 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from . import long_path
+from .file_locks import replace_with_retry
 from .memory_actor_family import MEMORY_ACTOR_FAMILY_SCHEMA, DESKTOP_ONE_ACTOR_ID, is_one_memory_actor
 
 _O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
@@ -100,7 +102,7 @@ def _write(db: sqlite3.Connection, base: Path, relative: str, value: Any, owner_
         _guard(db)
         _directory(base, str(parent.relative_to(base)).replace("\\", "/") if parent != base else "")
         _managed(target, owner_ref)
-        os.replace(temporary, target)
+        replace_with_retry(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -152,7 +154,8 @@ def process_memory_views(db: sqlite3.Connection, database_path: Path, owner: str
     """Bounded, synchronous background projection; original commit never waits for a model here."""
     if db.in_transaction:
         return {"completed": 0, "state": "idle"}
-    base, ref = database_path.parent / "views", _hash(owner)
+    home = long_path.extended(database_path.parent, long_path.OWNER_FOLDER_RESERVE)  # Windows: the prefix when the tree below passes 259 characters
+    base, ref = home / "views", _hash(owner)
     if database_path.parent.name != ref:
         return {"completed": 0, "state": "retry", "reason": "memory_view_owner_path_mismatch"}
     try:
@@ -161,7 +164,7 @@ def process_memory_views(db: sqlite3.Connection, database_path: Path, owner: str
         revision, epoch = _state(db, owner)
         pending = db.execute("SELECT outbox_id FROM memory_projection_outbox WHERE outbox_id LIKE 'core-projection:%' AND state IN ('queued','processing','retry') ORDER BY created_at LIMIT 32").fetchall()
         if base.exists():
-            _directory(database_path.parent, "views")
+            _directory(home, "views")
         existing = _managed(base / "manifest.json", ref) if base.exists() else None
         if existing and (not isinstance(existing.get("files"), list) or len(existing["files"]) > MAX_ROWS):
             raise ValueError("memory_view_manifest_invalid")
@@ -182,7 +185,13 @@ def process_memory_views(db: sqlite3.Connection, database_path: Path, owner: str
             for row in db.execute("SELECT memory_id,project_id,relation FROM memory_project_links"):
                 links.setdefault(row[0], []).append({"projectId": row[1], "relation": row[2]})
             groups: dict[str, dict[str, Any]] = {}
+            from . import memory_stores
+            # Under the split layout an agent's and a project's memory live in their own stores; a second copy of their
+            # text under views/ would defeat that, so only the personal view is rendered.
+            split = memory_stores.layout_of(db) == memory_stores.SPLIT
             def add(key: str, description: dict[str, Any], entry: dict[str, Any]) -> None:
+                if split and key.startswith(("agents/", "projects/")):
+                    return
                 groups.setdefault(key, {**description, "entries": []})["entries"].append(entry)
             for row in rows:
                 actor = row["actor_id"] if row["actor_id"] is not None else row["agent_id"]
@@ -197,6 +206,10 @@ def process_memory_views(db: sqlite3.Connection, database_path: Path, owner: str
                     "confidence": row["confidence"], "sensitivity": row["sensitivity"], "createdAt": row["created_at"]}
                 if row["id"] in native:
                     entry["contentNative"] = native[row["id"]]
+                if row["scope"] == "user_identity" and row["kind"] == "fact":
+                    # a Personal fact is the personal agent's alone, whoever wrote the line: only its view holds it.
+                    add("one/memory.json", {"kind": "one", "actorId": DESKTOP_ONE_ACTOR_ID}, entry)
+                    continue
                 if actor:
                     one = is_one_memory_actor(actor)
                     key = "one/memory.json" if one else "agents/" + _hash(actor) + "/memory.json"
@@ -212,9 +225,17 @@ def process_memory_views(db: sqlite3.Connection, database_path: Path, owner: str
             rendered = [(key, {**common, **group}) for key, group in sorted(groups.items())]
             if sum(len(_json(value)) for _, value in rendered) > MAX_BYTES:
                 raise ValueError("memory_view_budget_exceeded")
-            _directory(database_path.parent, "views")
+            _directory(home, "views")
+            failure: OSError | None = None
             for key, value in rendered:
-                _write(db, base, key, value, ref)
+                # A file that cannot be written must not keep the others from being refreshed: a view left as it was would keep
+                # the words of a line forgotten since. The projection still ends in the failure (no manifest, no complete).
+                try:
+                    _write(db, base, key, value, ref)
+                except OSError as error:
+                    failure = failure or error
+            if failure is not None:
+                raise failure
             next_files = set(groups)
             for file in (existing or {}).get("files", []):
                 if file["path"] not in next_files:
@@ -229,11 +250,17 @@ def process_memory_views(db: sqlite3.Connection, database_path: Path, owner: str
         more = bool(db.execute("SELECT 1 FROM memory_projection_outbox WHERE outbox_id LIKE 'core-projection:%' AND state IN ('queued','processing','retry') LIMIT 1").fetchone())
         db.commit()
         return {"completed": len(pending), "state": "complete" if pending or not fresh else "idle", "moreWork": more}
-    except (OSError, ValueError, sqlite3.Error, TypeError, KeyError):
+    except (OSError, ValueError, sqlite3.Error, TypeError, KeyError) as error:
         db.rollback()
         try:
+            # The outbox has no state for "will not pass by itself" (its CHECK lists four), so the rows stay 'retry'; the answer says it.
             db.execute("UPDATE memory_projection_outbox SET state='retry' WHERE outbox_id LIKE 'core-projection:%' AND state IN ('queued','processing','retry')")
             db.commit()
         except (ValueError, sqlite3.Error):
             db.rollback()
+        if long_path.too_long(error):
+            # The path cannot be opened on this machine even with the extended prefix: the same call fails the same way every time.
+            return {"completed": 0, "state": "failed", "reason": "views_path_too_long", "retryable": False}
+        if long_path.busy(error):
+            return {"completed": 0, "state": "retry", "reason": "views_file_busy", "retryable": True}
         return {"completed": 0, "state": "retry"}

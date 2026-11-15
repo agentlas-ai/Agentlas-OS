@@ -8,6 +8,9 @@
 # these by hand; raising one and not the others turns into a refusal on the
 # next surface with a code and no file name attached.
 
+AGENT_LOCAL_STATE_DIRECTORIES = (".agentlas-local",)
+AGENT_LOCAL_STATE_PATHS = (".agentlas/ledgers",)
+
 PACKAGE_MAX_TOTAL_BYTES = 31457280
 PACKAGE_MAX_FILE_BYTES = 6291456
 PACKAGE_MAX_UNCOMPRESSED_TOTAL_BYTES = 125829120

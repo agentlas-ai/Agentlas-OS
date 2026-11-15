@@ -464,6 +464,15 @@ class CareerGraphRuntime:
             "line_count": 0,
         }
 
+    def _code_map_file(self, agentlas: Path) -> Path:
+        old = agentlas / "code-map" / "project-map.json"
+        try:
+            from agentlas_cloud.code_index_location import code_map_dir
+
+            return code_map_dir(self.config.root) / "project-map.json"
+        except Exception:  # noqa: BLE001 - the old place is always a valid answer
+            return old
+
     def _canonical_sources(self) -> list[dict[str, Any]]:
         agentlas = self.config.agentlas_dir
         sources: list[dict[str, Any]] = []
@@ -477,7 +486,7 @@ class CareerGraphRuntime:
         add("memory_tickets", agentlas / "memory-tickets.jsonl")
         add("curator_decisions", agentlas / "curator-decisions.jsonl")
         add("sitemap", agentlas / "sitemap.json")
-        add("code_map", agentlas / "code-map" / "project-map.json")
+        add("code_map", self._code_map_file(agentlas))
         add("experience_relations", agentlas / EXPERIENCE_RELATION_LEDGER_FILE)
 
         journal_dir = agentlas / "stormbreaker" / "journal"

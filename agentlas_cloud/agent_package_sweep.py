@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -29,10 +28,10 @@ def local_agents_home() -> Path:
     패키지 저장소와 networking/hub-agents 메모리 서랍은 구분한다.
     AGENTS.md 또는 agentlas.json 을 가진 설치 패키지를 대상으로 한다.
     """
-    override = os.environ.get("AGENTLAS_AGENT_HOME")
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".agentlas" / "agentlas-agent"
+    # 2.0: one resolver for the agents root (AGENTLAS_AGENT_HOME -> agents-root.json -> ~/.agentlas/agents).
+    from .agent_home import agents_root  # noqa: PLC0415
+
+    return agents_root()
 
 
 def _is_package(path: Path) -> bool:
@@ -41,7 +40,14 @@ def _is_package(path: Path) -> bool:
 
 def sweep(home: str | Path | None = None) -> dict[str, Any]:
     """설치된 패키지 전부를 계약으로 재고, 결과를 한 장으로 돌려준다."""
-    base = Path(home).expanduser() if home else local_agents_home()
+    if home:
+        bases = [Path(home).expanduser()]
+    else:
+        from .agent_home import agent_homes_to_read  # noqa: PLC0415
+
+        # The agents root and the pre-2.0 `agentlas-agent` home are both read.
+        bases = agent_homes_to_read() or [local_agents_home()]
+    base = bases[0]
     report: dict[str, Any] = {
         "home": str(base),
         "sweepId": SWEEP_ID,
@@ -50,13 +56,34 @@ def sweep(home: str | Path | None = None) -> dict[str, Any]:
         "failing": 0,
         "skipped": 0,
     }
-    if not base.is_dir():
-        report["error"] = f"agent home not found: {base}"
+    if not home:
+        from .agent_home import agents_root_status  # noqa: PLC0415
+
+        # Say what the configured root is and why it is not readable (an unplugged drive), instead of
+        # reporting "not found" for a default folder nobody configured.
+        report["rootStatus"] = agents_root_status()
+    bases = [item for item in bases if item.is_dir()]
+    if not bases:
+        status = report.get("rootStatus") or {}
+        if status.get("configured") and not status.get("available"):
+            report["error"] = f"agents folder not available: {status.get('path') or 'agents-root.json'} ({status.get('reason')}); reconnect it"
+        else:
+            report["error"] = f"agent home not found: {base}"
         return report
 
     from .package_contract import verify  # noqa: PLC0415
 
-    for entry in sorted(base.iterdir()):
+    entries: list[Path] = []
+    seen_names: set[str] = set()
+    for item in bases:
+        for entry in sorted(item.iterdir()):
+            # The first home wins: a folder with the same name in the older home is the same agent left behind.
+            if entry.name in seen_names:
+                report["skipped"] += 1
+                continue
+            seen_names.add(entry.name)
+            entries.append(entry)
+    for entry in entries:
         if not entry.is_dir():
             continue
         if not _is_package(entry):

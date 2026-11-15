@@ -499,7 +499,10 @@ def load_code_map(
             or refresh_stats.get("outputTruncated") is True
         ):
             raise ContextMapError("context_refresh_incomplete")
-    map_path = root / ".agentlas" / "code-map" / "project-map.json"
+    from .code_index_location import code_map_dir
+
+    map_dir = code_map_dir(root)
+    map_path = map_dir / "project-map.json"
     payload = _regular_json(map_path, max_bytes=MAX_MAP_BYTES)
     schema = str(payload.get("schemaVersion") or "")
     if schema not in {CODE_MAP_SCHEMA, "5.0"}:
@@ -529,9 +532,9 @@ def load_code_map(
         )
     ):
         raise ContextMapError("context_map_upgrade_required")
-    cache = _regular_json(root / ".agentlas" / "code-map" / ".cache.json")
+    cache = _regular_json(map_dir / ".cache.json")
     try:
-        manifest = _regular_json(root / ".agentlas" / "code-map" / "manifest.json")
+        manifest = _regular_json(map_dir / "manifest.json")
     except ContextMapError as exc:
         raise ContextMapError("context_map_integrity_failed") from exc
     expected_root_hash = "sha256:" + hashlib.sha256(str(root).encode("utf-8")).hexdigest()

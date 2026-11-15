@@ -78,6 +78,12 @@ def install_global_commands(pkg_dir: Path) -> list[dict[str, Any]]:
     scope entries install; prose instructions ("Codex plugin install …") and
     anything outside _COMMAND_INSTALL_ROOTS are skipped with a reason. An
     existing file with different content is never overwritten.
+
+    A target the OS will not let us write (a sandboxed builder, a read-only
+    home) is a receipt with status ``install_failed``, never an exception: the
+    card is already promoted and registration must not die over a convenience
+    copy (measure/02 §6.1: a Codex sandbox build died with a PermissionError
+    traceback here and the package was never registered).
     """
     doc = read_json(pkg_dir / ".agentlas" / "global-commands.json", default={}) or {}
     receipts: list[dict[str, Any]] = []
@@ -85,7 +91,15 @@ def install_global_commands(pkg_dir: Path) -> list[dict[str, Any]]:
         if not isinstance(entry, dict) or entry.get("scope") != "global":
             continue
         adapter = str(entry.get("adapterPath") or "")
-        raw_targets, target_error = _command_install_targets(entry, adapter)
+        try:
+            raw_targets, target_error = _command_install_targets(entry, adapter)
+        except OSError as exc:
+            receipts.append({
+                "runtime": entry.get("runtime"),
+                "status": "install_failed",
+                "error": _os_error_text(exc),
+            })
+            continue
         if target_error:
             receipts.append({
                 "runtime": entry.get("runtime"),
@@ -120,21 +134,53 @@ def install_global_commands(pkg_dir: Path) -> list[dict[str, Any]]:
             )
             receipt: dict[str, Any] = {"runtime": entry.get("runtime"), "target": str(resolved)}
             source = pkg_dir / adapter
-            if not allowed:
-                receipt["status"] = "skipped_disallowed_target"
-            elif not source.is_file():
-                receipt["status"] = "skipped_missing_adapter"
-                receipt["adapterPath"] = adapter
-            else:
-                content = source.read_text(encoding="utf-8")
-                if resolved.exists() and resolved.read_text(encoding="utf-8") != content:
-                    receipt["status"] = "skipped_existing_differs"
+            try:
+                if not allowed:
+                    receipt["status"] = "skipped_disallowed_target"
+                elif not source.is_file():
+                    receipt["status"] = "skipped_missing_adapter"
+                    receipt["adapterPath"] = adapter
                 else:
-                    resolved.parent.mkdir(parents=True, exist_ok=True)
-                    resolved.write_text(content, encoding="utf-8")
-                    receipt["status"] = "installed"
+                    content = source.read_text(encoding="utf-8")
+                    if resolved.exists() and resolved.read_text(encoding="utf-8") != content:
+                        receipt["status"] = "skipped_existing_differs"
+                    else:
+                        resolved.parent.mkdir(parents=True, exist_ok=True)
+                        resolved.write_text(content, encoding="utf-8")
+                        receipt["status"] = "installed"
+            except (OSError, UnicodeError) as exc:
+                receipt["status"] = "install_failed"
+                receipt["adapterPath"] = adapter
+                receipt["error"] = _os_error_text(exc)
             receipts.append(receipt)
     return receipts
+
+
+def _os_error_text(exc: BaseException) -> str:
+    """`PermissionError: Operation not permitted`, without the path repeated."""
+
+    detail = getattr(exc, "strerror", None) or str(exc) or "unknown error"
+    return f"{type(exc).__name__}: {detail}"[:200]
+
+
+def _command_install_warnings(receipts: list[dict[str, Any]]) -> list[str]:
+    warnings: list[str] = []
+    for receipt in receipts:
+        if receipt.get("status") != "install_failed":
+            continue
+        target = receipt.get("target")
+        adapter = receipt.get("adapterPath")
+        where = f" at {target}" if target else ""
+        fix = (
+            f" To add it, copy {adapter} from the package to {target} yourself."
+            if target and adapter
+            else ""
+        )
+        warnings.append(
+            f"global_command_not_installed: the card was registered, but the {receipt.get('runtime') or 'global'} "
+            f"command could not be written{where} ({receipt.get('error')}).{fix}"
+        )
+    return warnings
 
 
 def _snake(value: str) -> str:
@@ -472,13 +518,23 @@ def migrate_package(
     # package_adapter.materialize_package also calls this with home=None for
     # borrow-time staging snapshots — borrowing an agent must never write into
     # the user's ~/.claude/commands.
-    command_installs = install_global_commands(pkg_dir) if tier == "local" and home is not None else []
+    command_installs: list[dict[str, Any]] = []
+    if tier == "local" and home is not None:
+        try:
+            command_installs = install_global_commands(pkg_dir)
+        except (OSError, UnicodeError) as exc:
+            # install_global_commands reports per-target failures itself; this
+            # only catches a failure before any target (e.g. an unreadable
+            # global-commands.json), so the promoted card still stands.
+            command_installs = [{"status": "install_failed", "error": _os_error_text(exc)}]
+    install_warnings = _command_install_warnings(command_installs)
     return {
         "id": card_id,
         "status": "migrated",
         "type": card_type,
         "path": str(local_path),
         **({"command_installs": command_installs} if command_installs else {}),
+        **({"warnings": install_warnings} if install_warnings else {}),
         **({"work_brief_warning": brief_warning} if brief_warning else {}),
     }
 
@@ -513,6 +569,7 @@ def migrate_tree(
         result = migrate_package(child, tier=tier, home=home, overwrite=overwrite)
         if result:
             results.append(result)
+    warnings = [warning for item in results for warning in item.get("warnings") or []]
     return {
         "root": str(root_path),
         "tier": tier,
@@ -520,6 +577,7 @@ def migrate_tree(
         "kept_existing": sum(1 for item in results if item.get("status") == "kept_existing"),
         "skipped": skipped,
         "results": results,
+        **({"warnings": warnings} if warnings else {}),
     }
 
 

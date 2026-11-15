@@ -345,11 +345,21 @@ def _load_code_map(path: Path, size: int) -> dict[str, Any]:
     }
 
 
+def _code_map_path(root: Path) -> Path:
+    """The project's code map file: the new place when the map lives there, else the old one (also on any failure)."""
+    try:
+        from agentlas_cloud.code_index_location import code_map_dir
+
+        return code_map_dir(root) / "project-map.json"
+    except Exception:  # noqa: BLE001 - the old place is always a valid answer
+        return root / CODE_MAP_RELATIVE
+
+
 def code_map_edges(root: Path | None) -> dict[str, Any]:
     if root is None:
         return {}
     try:
-        return _cached("code-map", root / CODE_MAP_RELATIVE, _load_code_map) or {}
+        return _cached("code-map", _code_map_path(root), _load_code_map) or {}
     except OSError:
         return {}
 

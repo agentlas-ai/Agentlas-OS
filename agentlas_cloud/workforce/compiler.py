@@ -16,9 +16,16 @@ from .contracts import (
 
 
 # 1.2.0: skill concept ids no longer double an existing `skill:` prefix.
-# The version is the migration trigger — local_registry compares a stored
-# profile's compilerVersion to this and recompiles instead of replaying,
-# so a fixed compiler actually reaches releases that are already imported.
+# The version is a migration trigger — local_registry recompiles a stored
+# profile whose compilerVersion differs, so a fixed compiler reaches releases
+# that are already imported.
+#
+# Keep it at the released value. An older engine compares with `!=` too, so a
+# newer value makes the old and new engines on one machine (Claude plugin caches
+# keep several engine copies) recompile each other's profiles on every call and
+# flip routingEligible back and forth (§2-2). A change in the local
+# registration rules moves local_registry.LOCAL_RULES_VERSION instead, which
+# only the newer engine reads.
 COMPILER_VERSION = "awo-compiler:1.2.0"
 LEVELS = {"declared", "checked", "demonstrated", "attested"}
 _NEGATION_TOKENS = {
@@ -297,6 +304,23 @@ def _authorities(routing_card: Mapping[str, Any], manifest: Mapping[str, Any]) -
     return sorted(allowed), sorted(forbidden)
 
 
+def team_graph_ready(team_graph: Mapping[str, Any] | None) -> bool:
+    """A team graph can run: a manager and at least one worker, declared or derived.
+
+    `derived` is set only by the local package adapter when no file names the
+    manager and it picked one from the member folders. The profile keeps
+    `teamPattern.authoritative` false for such a graph, so the derivation stays
+    visible; readiness does not depend on that declaration.
+    """
+
+    return bool(
+        team_graph
+        and (team_graph.get("authoritative") or team_graph.get("derived") is True)
+        and team_graph.get("manager")
+        and normalized_strings(team_graph.get("workers"))
+    )
+
+
 def _qualification(
     routing_card: Mapping[str, Any],
     entity_kind: str,
@@ -321,7 +345,7 @@ def _qualification(
         )
     required = bool(routing_card.get("id") and routing_card.get("name") and routing_card.get("capabilities"))
     if entity_kind == "team":
-        required = required and bool(team_graph and team_graph.get("authoritative") and team_graph.get("manager"))
+        required = required and team_graph_ready(team_graph)
     return {
         "structuralStatus": "complete" if required else ("partial" if routing_card else "invalid"),
         "assertions": normalized,
@@ -399,17 +423,9 @@ def compile_workforce_profile(
 
     qualification = _qualification(routing_card, entity_kind, team_graph, evals)
     routing_eligible = bool(operational_input.get("routingEligible", qualification["structuralStatus"] != "invalid"))
-    team_graph_ready = bool(
-        entity_kind != "team"
-        or (
-            team_graph
-            and team_graph.get("authoritative")
-            and team_graph.get("manager")
-            and normalized_strings(team_graph.get("workers"))
-        )
-    )
+    graph_ready = entity_kind != "team" or team_graph_ready(team_graph)
     unavailable_reasons = normalized_strings(operational_input.get("unavailableReasons"))
-    if not team_graph_ready:
+    if not graph_ready:
         unavailable_reasons = normalized_strings(
             [*unavailable_reasons, "authoritative team execution graph unavailable"]
         )
@@ -455,7 +471,7 @@ def compile_workforce_profile(
         "semantic": semantic,
         "qualification": qualification,
         "operational": {
-            "callable": bool(operational_input.get("callable")) and team_graph_ready,
+            "callable": bool(operational_input.get("callable")) and graph_ready,
             "installable": bool(operational_input.get("installable")),
             "routingEligible": routing_eligible,
             "unavailableReasons": unavailable_reasons,

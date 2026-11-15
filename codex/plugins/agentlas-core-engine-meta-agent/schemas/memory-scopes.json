@@ -1,0 +1,75 @@
+{
+  "schema": "agentlas.memory-scopes.v1",
+  "revision": 1,
+  "doc": "Who owns a memory row. Ownership is COMPUTED from columns that already exist; it is never stored. memory-store.sql, schema_version, core_schema_version, the scope value set and every CHECK stay exactly as older engines and desktops read them. Python: agentlas_cloud/memory_scopes.py owner_scope_of(). The desktop ports the same table.",
+  "ownerKinds": ["personal", "agent", "project", "session", "legacy-shared", "worker"],
+  "scopes": {
+    "stored": ["agent_repo", "agent_team", "project", "session", "team_memory", "user_identity"],
+    "neverStored": ["discard"],
+    "ticketOnly": ["sitemap"],
+    "doc": "stored = values a memory_entries.scope may hold on disk. agent_team is the legacy alias of team_memory. discard is a curator verdict and never becomes a row. sitemap exists only in schemas/memory-ticket.schema.json."
+  },
+  "surfaces": {
+    "engine": {
+      "classified": ["agent_repo", "project", "session", "user_identity"],
+      "curatedWrite": ["agent_repo", "project", "user_identity"],
+      "recallRead": ["agent_repo", "project", "team_memory", "user_identity"],
+      "oneOwned": ["agent_repo", "project", "user_identity"],
+      "mcpInput": ["agent_repo", "project", "user_identity"],
+      "ticketSchema": ["agent_repo", "discard", "project", "session", "sitemap", "team_memory"],
+      "bridgeSchema": ["agent_repo", "discard", "project", "session", "team_memory", "user_identity"]
+    },
+    "desktop": {
+      "declared": ["agent_repo", "agent_team", "discard", "project", "session", "team_memory", "user_identity"],
+      "noteInput": ["agent_repo", "discard", "project", "session", "team_memory", "user_identity"]
+    }
+  },
+  "oneActorFamily": ["builtin-agentlas-one", "agentlas-one"],
+  "specialAgentIds": ["builtin-agentlas-science-research-director", "builtin-agentlas-finance"],
+  "personalSet": {
+    "scopes": [
+      "user_identity"
+    ],
+    "residentActorKinds": [
+      "preference"
+    ],
+    "doc": "The owner's Personal memory is the user_identity scope. A resident actor (oneActorFamily and the systemActorPrefixes actors, never a special agent) may write only these kinds into it; an agent_repo line of any other kind that such an actor writes inside a project becomes a project line. Read by memory_scopes.personal_set(); pinned by contracts/test-vectors/memory-classification-vectors.json."
+  },
+  "splitTwoRules": {
+    "doc": "The ownership of a row under the layout memory_layout = split-2 (the 2.0 structure conversion; no caller uses it before that): these rules are tried BEFORE rows.rules, first match wins, no match falls through to rows.rules. The resident subjects' own agent lines (the One family and the systemActorPrefixes actors such as host:claude, never a special agent, never a borrowed Hub agent) belong to the owner kind worker, the one work-knowledge store of this computer (stores/worker/memory.sqlite, no id). owner_scope_of(row) without split2 never reads this block, so every answer of the table above is unchanged. worker is not a kind any 1.x engine or desktop knows: they never receive it.",
+    "rules": [
+      {"scope": ["agent_repo"], "when": {"oneActor": true}, "owner": "worker"},
+      {"scope": ["agent_repo"], "when": {"systemActor": true}, "owner": "worker"}
+    ]
+  },
+  "hubAgentIdPrefix": "hub:",
+  "systemActorPrefixes": ["host:", "builtin-agentlas-"],
+  "rows": {
+    "doc": "First matching rule wins, so the ORDER IS MEANING: oneActor and systemActor rules must stay ahead of the agentId rules. 'when' keys: oneActor (agent_id is a One actor id), specialAgent (agent_id is one of specialAgentIds: Finance and Science are agents with their own store, ahead of the systemActor rule that would make every other builtin-agentlas-* personal), hubActor (agent_id starts with hubAgentIdPrefix: a borrowed Hub agent whose rows stay in the root store, never a folder), systemActor (agent_id starts with one of systemActorPrefixes, case-insensitive: hook attribution 'host:*' and resident system actors 'builtin-agentlas-*', never an agent folder), agentId / projectLink / chatId (the field is present). 'id' lists the row fields to read, first non-empty wins. 'idFrom' specialAgentId = the id as spelled in specialAgentIds (so BUILTIN-AGENTLAS-FINANCE and builtin-agentlas-finance are one owner); 'idFrom' projectKey = 'project-path:'+sha256(project_path) (the engine's own authority key, memory_runtime.py canonical_writer). A project_id alone is NOT a key for this computation: it is derived from a folder name and two repositories can share it, so a project row with only an id is owned legacy-shared (it is never MOVED out of the root). It is NOT a rule of this table that such a line is only ever read from the root: memory_runtime._store_target (engine) and the desktop's storeForRow both WRITE a new project line that has a project id and no folder to projects/sha256(project id)[:32] (a Science study has no folder), and a recall that is given the same project id reads that store; the id is then the key by agreement of the two writers, not by this table. A host path is never returned. owner_id is an opaque key: callers derive a folder name with memory_scopes.safe_store_key() and nothing else (the same function as the desktop's safeHomeName; shared vectors: contracts/test-vectors/safe-store-key-vectors.json) ('host:x' and 'hub:slug' contain ':' which Windows folder names cannot hold). A row that cannot be owned (project/session without its link, a non-string id) falls to the fallback and stays in the root. Team lines (scope team_memory, legacy alias agent_team) are shared: with a project folder they belong to that project; otherwise, whatever agent_id they carry, they stay in the root (legacy-shared), because recall reads every agent's team lines from the root and reads an agent's own store only for agent_repo lines. An agent id on a team line is who wrote it, not who owns it (the desktop's ownerScopeOf answers the same). The function never looks anything up. Unknown shapes (None, sqlite3.Row, missing columns) never raise.",
+    "rules": [
+      {"scope": ["user_identity"], "owner": "personal"},
+      {"scope": ["agent_repo"], "when": {"oneActor": true}, "owner": "personal"},
+      {"scope": ["agent_repo"], "when": {"specialAgent": true}, "owner": "agent", "idFrom": "specialAgentId"},
+      {"scope": ["agent_repo"], "when": {"systemActor": true}, "owner": "personal"},
+      {"scope": ["agent_repo"], "when": {"hubActor": true}, "owner": "legacy-shared"},
+      {"scope": ["agent_repo"], "when": {"agentId": true}, "owner": "agent", "id": ["agent_id"]},
+      {"scope": ["project"], "when": {"projectLink": true}, "owner": "project", "idFrom": "projectKey"},
+      {"scope": ["session"], "when": {"chatId": true}, "owner": "session", "id": ["chat_id"]},
+      {"scope": ["team_memory", "agent_team"], "when": {"projectLink": true}, "owner": "project", "idFrom": "projectKey"}
+    ],
+    "fallback": "legacy-shared",
+    "unmapped": ["discard"]
+  },
+  "admission": {
+    "doc": "What the engine still enforces when a line is written (memory_ticket_write / memory_runtime.canonical_writer). No evidence, no model confidence and no rule list decides whether a line is kept; where it came from is the two host-decided columns origin_class and certainty. Desktop must keep the same meaning; this file does not add a check.",
+    "projectScopeNeedsProjectRef": true,
+    "sensitivityNeverRecalled": ["secret"],
+    "persist": "never secrets, credentials, raw transcripts or host-absolute paths"
+  },
+  "supersedes": {
+    "doc": "Never delete or overwrite. The older row gets superseded_at; the successor gets a memory_origin_links row (source_kind 'memory', relation 'supersedes') naming the older row id and revision. Recall skips rows with superseded_at.",
+    "table": "memory_origin_links",
+    "relation": "supersedes",
+    "oldRowMarker": "memory_entries.superseded_at"
+  }
+}

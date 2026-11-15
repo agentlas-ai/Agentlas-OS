@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from . import long_path
+
 _O_BINARY = getattr(os, "O_BINARY", 0)  # Windows: os.open() fds are text mode without it
 
 SCHEMA = "agentlas.memory-owner-binding.v1"
@@ -16,19 +18,32 @@ FILE_ENV = "AGENTLAS_MEMORY_BINDING_FILE"
 REV_ENV = "AGENTLAS_MEMORY_BINDING_REVISION"
 
 
-def _private_json(path: Path, maximum: int = 16384) -> dict[str, Any]:
+class _Replaced(Exception):
+    """The file was replaced (atomic rename) between this reader's open and its checks: the one thing the host's own renewal does every few seconds."""
+
+
+REPLACED_ATTEMPTS = 6  # a renewal replaces the file once per 5 s; a reader that loses the race once wins the next try. Bounded: a swapper that never stops still fails.
+
+
+def _private_json_once(path: Path, maximum: int) -> dict[str, Any]:
+    path = long_path.extended(path)  # a file deeper than 259 characters on Windows opens only with the prefix
     if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)):
         raise ValueError("memory_host_binding_path_invalid")
     fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | _O_BINARY)
     try:
         info = os.fstat(fd)
+        # An open file whose name was replaced since the open has no name left: nlink 0 (the host's atomic renewal, not a damaged file).
+        if info.st_nlink == 0 and stat.S_ISREG(info.st_mode):
+            raise _Replaced()
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > maximum:
             raise ValueError("memory_host_binding_file_invalid")
         if os.name == "posix" and (info.st_uid != os.getuid() or info.st_mode & 0o077):
             raise ValueError("memory_host_binding_file_permissions")
         raw = os.read(fd, maximum + 1)
         current = os.stat(path, follow_symlinks=False)
-        if current.st_ino != info.st_ino or current.st_dev != info.st_dev or len(raw) > maximum:
+        if current.st_ino != info.st_ino or current.st_dev != info.st_dev:
+            raise _Replaced()
+        if len(raw) > maximum:
             raise ValueError("memory_host_binding_changed")
     finally:
         os.close(fd)
@@ -38,6 +53,17 @@ def _private_json(path: Path, maximum: int = 16384) -> dict[str, Any]:
     return value
 
 
+def _private_json(path: Path, maximum: int = 16384) -> dict[str, Any]:
+    """Every attempt is a complete fresh check (open, type, links, owner, permissions, same file at the end); only a replaced file is tried again."""
+    for attempt in range(REPLACED_ATTEMPTS):
+        try:
+            return _private_json_once(path, maximum)
+        except _Replaced:
+            if attempt + 1 < REPLACED_ATTEMPTS:
+                time.sleep(0.002 * (attempt + 1))
+    raise ValueError("memory_host_binding_changed")
+
+
 def host_binding() -> dict[str, Any] | None:
     file, revision = os.environ.get(FILE_ENV), os.environ.get(REV_ENV)
     if not file and not revision:
@@ -45,10 +71,10 @@ def host_binding() -> dict[str, Any] | None:
     try:
         if not file or not revision:
             raise ValueError("memory_host_binding_missing")
-        if Path(file + ".revoked." + revision).exists():
+        if long_path.extended(Path(file + ".revoked." + revision)).exists():
             raise ValueError("memory_host_binding_revoked")
         p = _private_json(Path(file))
-        if Path(file + ".revoked." + revision).exists():
+        if long_path.extended(Path(file + ".revoked." + revision)).exists():
             raise ValueError("memory_host_binding_revoked")
         root = Path(os.environ.get("AGENTLAS_MEMORY_ROOT", "")).expanduser()
         if p.get("state") == "unavailable" and p.get("reason") == "memory_account_binding_unavailable":

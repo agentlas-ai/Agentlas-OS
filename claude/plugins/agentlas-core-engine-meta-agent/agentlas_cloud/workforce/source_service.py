@@ -166,6 +166,32 @@ class WorkforceSourceError(ValueError):
         super().__init__(f"{code}: {self.reason}" if self.reason else code)
 
 
+
+def _assert_remote_pins_registered(pins: list[dict[str, Any]], names: Mapping[tuple[str, str], str]) -> None:
+    """Refuse (``needs_registration``) when a remote pin's agent is not registered here. Off the 2.0 switch: nothing."""
+    remote = [pin for pin in pins if pin.get("source") in {"hub", "cloud"}]
+    if not remote:
+        return
+    from ..agent_usability import REGISTER_COMMAND, RegisteredHere, agent_usability, registration_rule_on
+
+    if not registration_rule_on():
+        return
+    here = RegisteredHere()
+    missing = []
+    for pin in remote:
+        result = agent_usability(None, source=str(pin["source"]), agent_definition_id=str(pin.get("agentDefinitionId") or ""), enforce=True, here=here)
+        if not result["usable"]:
+            missing.append({"name": names.get((str(pin.get("slotId")), str(pin.get("agentDefinitionId")))) or None, "source": pin["source"],
+                            "slotId": pin.get("slotId")})
+    if missing:
+        raise WorkforceSourceError(
+            "needs_registration",
+            "not registered on this computer: " + ", ".join(str(item["name"] or item["slotId"]) for item in missing),
+            repair={"why": "not_registered", "unregistered": missing, "ownerAction": True,
+                    "register": f"{REGISTER_COMMAND} <hub:slug> (find the slug with `hephaestus search \"<name>\"`), or register it in the Agentlas app",
+                    "reselectionRequired": False},
+        )
+
 def _finite_failure(code: str) -> str:
     return code if code in WORKFORCE_SOURCE_FAILURE_CODES else "source_unavailable"
 
@@ -798,23 +824,19 @@ class WorkforceSourceService:
                             # last registration) must not stay invisible. Best
                             # effort: a failure here never costs the search.
                             adopt = getattr(self.local_registry, "adopt_new_networking_cards", None)
-                            if callable(adopt):
+                            # with the 2.0 switch on, a search registers nothing; the owner's registration step is the only way in.
+                            from ..agent_usability import registration_rule_on
+
+                            if callable(adopt) and not registration_rule_on():
                                 try:
                                     adopt()
                                 except (OSError, RuntimeError, TypeError, ValueError):
                                     pass
-                            # The builder's own output folder: a package that
-                            # passes the contract is registered without anyone
-                            # having to run `cards migrate` for it.
-                            # Only the machine's own roster: an injected registry
-                            # (tests, another home) must never pull real packages in.
-                            try:
-                                from .local_autoregister import autoregister_builder_home, serves_default_home
-
-                                if serves_default_home(self.local_registry):
-                                    autoregister_builder_home(self.local_registry)
-                            except Exception:  # best effort: never costs the search
-                                pass
+                            # A search does not scan folders. It lists agents the
+                            # owner's card store already holds (adopt above); the
+                            # builder registers what it builds (`cards migrate`)
+                            # and `workforce local-autoregister` is the explicit
+                            # command for hand-placed packages.
                         else:
                             self.local_registry.reconcile()
                     index = WorkforceIndex(
@@ -964,6 +986,7 @@ class WorkforceSourceService:
         # later pin must never leave an earlier exact bundle charged but unable
         # to be durably associated with this prepare attempt.
         pins: list[dict[str, Any]] = []
+        pin_names: dict[tuple[str, str], str] = {}
         for raw_pin in federated_selection.get("selectedSourcePins") or []:
             if not isinstance(raw_pin, Mapping):
                 raise WorkforceSourceError("selected_release_source_pin_mismatch")
@@ -997,8 +1020,12 @@ class WorkforceSourceService:
             ):
                 raise WorkforceSourceError("selected_release_source_pin_mismatch")
             pins.append(pin)
+            pin_names[(str(pin.get("slotId")), str(pin.get("agentDefinitionId")))] = str(source_candidate.get("name") or "")
         if not pins:
             raise WorkforceSourceError("selected_release_source_pin_mismatch")
+        # (Agentlas 2.0, behind the 2.0 switch): a Hub or Cloud agent is prepared only when it is registered on this computer. Checked once,
+        # before the first billable fetch, for every remote pin; the refusal names every one so a single registration round covers them.
+        _assert_remote_pins_registered(pins, pin_names)
 
         try:
             accepted_prepare_attempt = validate_prepare_attempt(

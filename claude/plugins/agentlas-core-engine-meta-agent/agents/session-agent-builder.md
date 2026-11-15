@@ -46,7 +46,7 @@ current interactive context is unavailable.
    > 이 세션에서 만든 에이전트를 기본 전역 Agentlas 에이전트 폴더에 만들까요? 다른 위치를 원하면 경로를 알려주세요. 별도 위치를 지정하지 않으면 전역 폴더에 만듭니다.
 
    Use `AGENTLAS_AGENT_HOME` when configured, otherwise
-   `~/.agentlas/agentlas-agent`. Create a new child package under that home,
+   `~/.agentlas/agents`. Create a new child package under that home,
    using a safe slug derived from the approved capability. If the child already
    exists, ask for another name or an explicit destination; never overwrite it.
    Do not ask for a generic `PACKAGE_TARGET` or a JSON export in this route.

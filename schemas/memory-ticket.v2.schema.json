@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agentlas.memory-ticket.v2",
+  "title": "memory_ticket tool input",
+  "description": "One call = 1 to 5 tickets. Only action, scope and text are needed; everything else is read as far as it is filled (a missing en, source or kind is not an error). The receiver is agentlas_cloud/memory_curation_v2.receive_tickets.",
+  "type": "object",
+  "required": ["tickets"],
+  "additionalProperties": false,
+  "properties": {
+    "tickets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["action", "scope", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "action": {"enum": ["add", "rewrite", "condense", "remove"]},
+          "targets": {"type": "array", "items": {"type": "string"}, "maxItems": 8, "description": "ids of shown lines: rewrite 1, condense 2-8, remove 1 or more, add none"},
+          "why": {"enum": ["changed", "corrected"], "description": "rewrite only"},
+          "scope": {"enum": ["user_identity", "project", "agent_repo"]},
+          "kind": {"enum": ["identity", "preference", "fact", "boundary", "decision", "procedure", "risk"]},
+          "text": {"type": "string", "description": "one sentence in the person's language"},
+          "en": {"type": "string", "description": "the same sentence in English"},
+          "source": {"enum": ["said", "seen", "did", "inferred"]},
+          "quote": {"type": "string", "description": "the person's own words, when source is said"},
+          "permission": {"type": "boolean", "description": "true only when the line lets you act without asking the person next time (that is an approval, never a memory line: it is refused); leave it out otherwise, and whenever you are unsure"}
+        }
+      }
+    }
+  }
+}

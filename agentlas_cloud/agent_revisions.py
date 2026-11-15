@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .agent_home import is_agent_local_state_path
+
 TREE_SCHEMA = "agentlas.agent-tree.v1"
 REVISION_SCHEMA = "agentlas.agent-revision.v1"
 PROPOSAL_SCHEMA = "agentlas.evolution-proposal.v2"
@@ -53,7 +55,7 @@ def asset_path(value: str) -> str:
     if any(len(p.encode("utf-16-le")) // 2 > 255 or len(p.encode("utf-8")) > 255 or p in {"", ".", ".."} or p.endswith((".", " ")) or re.match(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)", p, re.I) for p in parts):
         raise RevisionError("invalid_asset_path")
     lowered = [p.lower() for p in parts]
-    if any(p in _PRIVATE_PARTS or p.startswith(".env") for p in lowered) or lowered[0] in _PRIVATE_ROOTS or lowered[-1] in _PRIVATE_NAMES or lowered[-1].endswith(_PRIVATE_SUFFIXES):
+    if is_agent_local_state_path(value) or any(p in _PRIVATE_PARTS or p.startswith(".env") for p in lowered) or lowered[0] in _PRIVATE_ROOTS or lowered[-1] in _PRIVATE_NAMES or lowered[-1].endswith(_PRIVATE_SUFFIXES):
         raise RevisionError("private_asset_excluded")
     return value
 

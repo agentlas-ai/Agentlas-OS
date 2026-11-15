@@ -60,12 +60,23 @@ class FeaturePreferenceError(ValueError):
     """A feature name, value, or persisted preference document is invalid."""
 
 
-def _home_path(home: str | os.PathLike[str] | None) -> Path:
-    return Path(home).expanduser() if home is not None else Path.home()
+def _agentlas_dir(home: str | os.PathLike[str] | None) -> Path:
+    """The Agentlas home that holds this file.
+
+    An explicit ``home`` is a user home (``<home>/.agentlas``). Otherwise the
+    engine-wide rule applies: ``AGENTLAS_HOME`` when set, else ``~/.agentlas``
+    (the same rule as auth.auth_home and workforce.goal_binding). Reading
+    ``Path.home()`` alone wrote a sandboxed or test run's preference into the
+    real ``~/.agentlas/engine-features.json`` (measure/02 §2).
+    """
+
+    if home is not None:
+        return Path(home).expanduser() / ".agentlas"
+    return Path(os.environ.get("AGENTLAS_HOME") or (Path.home() / ".agentlas")).expanduser()
 
 
 def _config_path(home: str | os.PathLike[str] | None) -> Path:
-    return _home_path(home) / ".agentlas" / "engine-features.json"
+    return _agentlas_dir(home) / "engine-features.json"
 
 
 def _read_config(home: str | os.PathLike[str] | None) -> tuple[dict[str, Any] | None, str]:

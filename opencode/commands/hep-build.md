@@ -115,7 +115,7 @@ Ask first:
 > 이 세션에서 만든 에이전트를 기본 전역 Agentlas 에이전트 폴더에 만들까요? 다른 위치를 원하면 경로를 알려주세요. 별도 위치를 지정하지 않으면 전역 폴더에 만듭니다.
 
 If no alternate location is named, use `AGENTLAS_AGENT_HOME` or
-`~/.agentlas/agentlas-agent` and create a new safe-slug child package there.
+`~/.agentlas/agents` and create a new safe-slug child package there.
 Never overwrite an existing child. If the destination is supplied, validate
 that one exact folder and use it as the package root.
 

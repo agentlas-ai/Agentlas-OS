@@ -322,6 +322,13 @@ def redact(text: str) -> str:
     return redacted
 
 
+def _is_agent_local_state_path(rel: str) -> bool:
+    # Imported late: agent_home reads a generated constants module and nothing else, but runtime.py is imported very early.
+    from .agent_home import is_agent_local_state_path
+
+    return is_agent_local_state_path(rel)
+
+
 def collect_package_files(root: str | Path) -> list[PackageFile]:
     base = Path(root).expanduser().resolve()
     files: list[PackageFile] = []
@@ -330,6 +337,8 @@ def collect_package_files(root: str | Path) -> list[PackageFile]:
             continue
         rel = path.relative_to(base).as_posix()
         if is_local_experience_lineage_path(rel):
+            continue
+        if _is_agent_local_state_path(rel):
             continue
         if rel.startswith(".git/") or "/node_modules/" in f"/{rel}/" or rel.startswith("node_modules/"):
             continue
@@ -958,11 +967,7 @@ existing entry, and write one entry per learning rather than one long one.
 
 Never record secrets, credentials, tokens, environment values, raw logs, or
 transcripts. When a finding contradicts an existing entry, record it as a conflict and
-correct that entry; never silently overwrite it.
-
-When the learning was made while acting as a hired Hub agent, add `"agent_slug":
-"<that agent's slug>"` to the Memory Events candidate so the runtime routes it into
-that agent's own experience drawer instead of the host's."""
+correct that entry; never silently overwrite it."""
 
 
 def _entry_payload(entry: Any) -> tuple[dict[str, Any], dict[str, Any] | None]:

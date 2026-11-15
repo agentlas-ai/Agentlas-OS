@@ -9,7 +9,6 @@
     "neverOverwriteWithoutApproval": true
   },
   "seedFiles": [
-    ".agentlas/project-soul-memory.md",
     ".agentlas/sitemap.json",
     ".agentlas/memory-map.json",
     ".agentlas/memory-tickets.jsonl",

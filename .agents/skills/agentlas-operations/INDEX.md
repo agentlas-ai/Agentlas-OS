@@ -4,9 +4,7 @@
 
 | 도구 | 요지 |
 |---|---|
-| `hephaestus_route` | Legacy compatibility/debug card router. |
 | `model.resolve_allocation` | Resolve one host-owned invocation stage to an orchestrator or worker model using the operator's provider-neutral role policy. |
-| `hephaestus_cloud_search` | Legacy compatibility/debug owner-cargo router. |
 | `hephaestus_search` | Power-user search: return top Agentlas Cloud (owner packages) and public Hub candidates side by side without invoking any agent. |
 | `hephaestus_call` | Prepare explicitly named Agentlas Hub/cloud agents. |
 | `hephaestus_network_status` | Report Hephaestus Network state: card counts, benchmark state, auto-routing gate. |

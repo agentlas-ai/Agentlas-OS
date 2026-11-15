@@ -17,7 +17,7 @@ description: "Use when generating a single installable agent that should keep le
 3. Add memory architecture even for the single worker:
    - `.agentlas/memory-map.json`;
    - `.agentlas/vault-references.json`;
-   - project memory owned by PM Soul/project owner;
+   - project memory written only through Memory Tickets;
    - Memory Events and Memory Tickets for durable updates.
 4. If the task depends on current sources, add a research-refresh command,
    watchlist memory section, references, and optional scheduled workflow.

@@ -222,10 +222,12 @@ done
    again; never swap in a different agent without a new selection. A refusal
    that carries `alternates` lists other callable agents from the same search:
    present them as candidates.
-   An agent built into the global agent folder is registered automatically at
-   the next local search once it passes `contract verify`;
-   `hephaestus workforce local-autoregister` does it now and prints
-   `contractFailing` and `refused` rows for any that are missing.
+   A search does not scan folders; it lists agents already registered or already
+   in the owner's card store. An agent the builder wrote is registered by the
+   build itself; for a package you placed in the global agent folder by
+   hand, `hephaestus workforce local-autoregister` registers it, returns what
+   the contract still wants as `advisories`, and prints `refused` and `skipped`
+   rows for any that are missing.
 
 ## Recurring Hub use
 

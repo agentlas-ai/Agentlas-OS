@@ -36,8 +36,8 @@ separate single-agent packages rather than one degenerate team.
   user explicitly asks for a team.
 - `.agentlas/memory-map.json` and `.agentlas/vault-references.json`.
 - `.agentlas/global-commands.json` with one public command for the worker.
-- `memory/<slug>-memory.md` or `.agentlas/project-soul-memory.md` for project
-  memory owned by PM Soul/project owner.
+- `memory/<slug>-memory.md` for agent memory; project memory is written only
+  through Memory Tickets.
 - Thin adapters for Codex, Claude Code, Antigravity, Cursor, and
   generic `AGENTS.md` tools.
 - Runtime command files or aliases for Claude Code, Codex, Antigravity, generic AGENTS.md tools, and terminal use.

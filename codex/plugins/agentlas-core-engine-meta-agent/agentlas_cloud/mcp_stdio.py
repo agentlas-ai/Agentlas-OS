@@ -62,7 +62,7 @@ from .networking.lease_tools import LEASE_TOOLS, PURCHASE as LEASE_PURCHASE, QUO
 from .networking.takedown_tools import TAKEDOWN, TAKEDOWN_TOOLS, call_agent_takedown_tool
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.97"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.98"}
 
 # Roots this process has already seeded, so only the first tool call in a
 # session pays the bootstrap cost.
@@ -2227,11 +2227,25 @@ _SCOPE_ARG = {"type": "string", "enum": ["default", "owner_all"],
               "description": "default: this project, the owner and this agent. owner_all: every project on this machine."}
 _PROJECT_ARG = {"type": "string", "maxLength": 4096, "description": "Project folder; defaults to the current working directory."}
 _TIME_ARG = {"type": "string", "maxLength": 40, "description": "ISO 8601 time, e.g. 2026-08-30T05:00:00Z."}
+
+
+def _ticket_tool_text() -> str:
+    """The memory_ticket description: the one string of the curator ruleset (ticket.tool.text), the same on every surface.
+    A damaged or missing ruleset must not stop the server: the short fallback names the shape and nothing else."""
+    try:
+        from .one_workspace import _rule
+        text = _rule("ticket.tool.text", None)
+    except Exception:  # noqa: BLE001
+        text = None
+    return text if isinstance(text, str) and text.strip() else 'Write to memory: {"tickets":[{action, scope, kind, text, ...}]}.'
+
+
+_TICKET_TOOL_TEXT = _ticket_tool_text()
 _LOCAL_MEMORY_TOOLS = [
     {
         "name": "memory.search",
-        "description": ("Search this machine's Agentlas memory (curated memories and dated turn summaries from every runtime) "
-                        "by meaning and keywords. Each result carries its date, source and match strength."),
+        "description": ("Search this machine's Agentlas memory by meaning and keywords. `items` are memory lines, best first; each carries its date, "
+                        "match strength and `line` ([id · kind] text: that id goes in memory.record targets). `recent` lists dated turn records, apart from the lines."),
         "inputSchema": {"type": "object", "additionalProperties": False, "properties": {
             "query": {"type": "string", "minLength": 1, "maxLength": 2000,
                       "description": "Keywords or a short phrase in any language work best."},
@@ -2269,17 +2283,21 @@ _LOCAL_MEMORY_TOOLS = [
     },
     {
         "name": "memory.record",
-        "description": ("Record a one-sentence summary of this turn's work, and optional observations, into Agentlas memory. "
-                        "Never include secrets, credentials or transcripts."),
+        "description": _TICKET_TOOL_TEXT,
         "inputSchema": {"type": "object", "additionalProperties": False, "properties": {
-            "turn_summary": {"type": "string", "minLength": 1, "maxLength": 300},
-            "observations": {"type": "array", "maxItems": 8, "items": {"type": "object", "additionalProperties": False, "properties": {
-                "content": {"type": "string", "minLength": 1, "maxLength": 500},
-                "kind": {"type": "string", "enum": ["fact", "decision", "preference", "risk", "procedure"]},
-                "scope": {"type": "string", "enum": ["project", "agent_repo", "user_identity"]},
-                "evidence": {"type": "string", "maxLength": 300},
-                "confidence": {"type": "string", "enum": ["high", "medium", "low"]}}, "required": ["content", "kind"]}},
-            "projectDir": _PROJECT_ARG}, "required": ["turn_summary"]},
+            "tickets": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "object", "additionalProperties": False, "properties": {
+                "action": {"type": "string", "enum": ["add", "rewrite", "condense", "remove"]},
+                "targets": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+                "why": {"type": "string", "enum": ["changed", "corrected"]},
+                "scope": {"type": "string", "enum": ["user_identity", "project", "agent_repo"]},
+                "kind": {"type": "string", "enum": ["identity", "preference", "fact", "boundary", "decision", "procedure", "risk"]},
+                "text": {"type": "string"}, "en": {"type": "string"},
+                "source": {"type": "string", "enum": ["said", "seen", "did", "inferred"]},
+                "quote": {"type": "string"},
+                "permission": {"type": "boolean", "description": "true only when the line lets you act without asking the person next time (that is an approval, never a memory line: it is refused); leave it out otherwise, and whenever you are unsure"}}}},
+            "turn_summary": {"type": "string", "maxLength": 300},
+            "observations": {"type": "array", "maxItems": 8, "items": {"type": "object"}},
+            "projectDir": _PROJECT_ARG}},
     },
 ]
 TOOLS.extend(_LOCAL_MEMORY_TOOLS)
@@ -2301,10 +2319,16 @@ def _inventory_state() -> tuple[bool, bool]:
     return (_feature_on("context-map"), _feature_on("memory-hooks"))
 
 
+_LEGACY_ROUTER_TOOL_NAMES = frozenset({"hephaestus_route", "hephaestus_cloud_search"})
+
+
 def _available_tools() -> list[dict[str, Any]]:
     context_on, memory_on = _inventory_state()
+    legacy_router_on = os.environ.get("HEPHAESTUS_LEGACY_ROUTER") == "1"
     return [tool for tool in TOOLS if (context_on or tool["name"] not in _CONTEXT_MAP_TOOL_NAMES)
-            and (memory_on or tool["name"] not in _MEMORY_GATED_TOOL_NAMES)]
+            and (memory_on or tool["name"] not in _MEMORY_GATED_TOOL_NAMES)
+            # Agentlas 2.0: the two legacy routers answer `legacy_router_disabled` unless the operator sets the variable, so they are not advertised either.
+            and (legacy_router_on or tool["name"] not in _LEGACY_ROUTER_TOOL_NAMES)]
 
 
 # MCP tool annotations (spec 2025-03-26, "Tool annotations"): every tool states
@@ -2550,6 +2574,10 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from .networking import init_networking, network_status, route_request
     from .networking.bootstrap import networking_home
 
+    if name in _LOCAL_MEMORY_TOOL_NAMES:
+        from .memory_scope_guard import narrow as _narrow_memory_scope
+
+        arguments = _narrow_memory_scope(arguments)  # E2: the host's own project decides, not a caller argument (a no-op without the host's ref)
     missing_arguments = _missing_required_arguments(name, arguments)
     if missing_arguments:
         # Refuse the call in words the caller can act on, before any handler
@@ -2575,7 +2603,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 return {"action": name, **memory_recall.record(arguments, host=_CLIENT_NAME[0])}
             handler = {"memory.search": memory_recall.search, "memory.timeline": memory_recall.timeline,
                        "memory.get": memory_recall.get, "memory.crosscheck": memory_recall.crosscheck}[name]
-            return {"action": name, **handler(arguments)}
+            return {"action": name, **handler(arguments, host=_CLIENT_NAME[0])}
         except memory_recall.RecallError as error:
             return {"action": name, "status": "rejected", "error": error.code, "writeAttempted": False}
         except ValueError as error:
@@ -4266,6 +4294,15 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if name == "hephaestus_hub_invoke":
         from .networking.hub_invocation import invoke_hub_agent
 
+        # (2.0 switch): an exact slug that is not registered here is refused before any route or Hub call; the same gate is inside invoke_hub_agent.
+        _slug_arg = arguments.get("slug")
+        if isinstance(_slug_arg, str) and _slug_arg.strip():
+            from .agent_usability import agent_usability, refusal_fields
+
+            _usable = agent_usability(_slug_arg.strip(), source="hub")
+            if not _usable["usable"]:
+                return with_bootstrap({"action": "hub_invoke", "status": _usable["code"], **refusal_fields(_usable)})
+
         # Hub invocation picks its agent from a real route, so the brief that
         # shapes hephaestus_route must shape this one too — otherwise the same
         # project yields brief-shaped candidates through one tool and
@@ -4283,9 +4320,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         )
         requested_slug = arguments.get("slug")
         exact_slug = requested_slug.strip() if isinstance(requested_slug, str) else ""
-        # A borrowed agent's memory files and soul appends stay under the
-        # host's hub-agents drawer; a model-supplied path elsewhere is ignored
-        # in favour of the per-agent default.
+        # A model-supplied memory path is ignored in favour of the per-agent default.
         requested_memory_root = arguments.get("memory_root")
         memory_root = None
         if requested_memory_root:

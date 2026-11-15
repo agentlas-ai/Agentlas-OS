@@ -18,7 +18,7 @@ host and the deterministic terminal utility:
 
 1. Ask where the new agent should be written. Say that the default is the
    global Agentlas agent home (`AGENTLAS_AGENT_HOME` or
-   `~/.agentlas/agentlas-agent`) and that a different folder can be supplied.
+   `~/.agentlas/agents`) and that a different folder can be supplied.
    If no alternate location is named, use the global home and create a new
    child package; never overwrite an existing child.
 2. Analyze the visible user/assistant turns and relevant visible outcomes from

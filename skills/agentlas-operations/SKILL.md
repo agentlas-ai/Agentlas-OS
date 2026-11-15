@@ -44,10 +44,10 @@ description: Agentlas 시스템 운용 절차 — hep-network 편성, cargo/Agen
 ## 4. 메모리 계약 (One 워커로서)
 
 - 작업 전 `agentlas.memory.preflight` — 아는 사실 재유도 금지.
-- durable은 직접 쓰지 않는다. 답 끝의 `## Memory Events` 봉투가 유일한 기록 경로이고
-  런타임이 티켓으로 포장한다. 근거 없는 fact/decision/procedure는 hypothesis로 강등된다.
-- 앞선 durable을 **대체**하는 학습이면 candidate에 `"supersedes":"<h:16hex>"`를 넣는다
-  (회수에서 숨겨질 뿐 삭제되지 않는다).
+- durable은 직접 쓰지 않는다. 남길 것이 있을 때 `memory.record` 도구를 부른다 — 답 끝에
+  블록을 붙이지 않는다. 호스트가 출처를 붙이고, 저장했다는 말은 답이 `ok`일 때만 한다.
+- 앞선 줄을 **대체**하는 학습이면 보이는 줄의 id를 `targets`에 넣어 `rewrite`(하나)나
+  `condense`(여럿)로 쓴다(옛 줄은 회수에서 숨겨질 뿐 지워지지 않는다).
 - One 서랍(`~/.agentlas/one/`)은 읽기 자유·쓰기 금지(D3) — 편집 시도는 PreToolUse가 거절한다.
 
 ## 5. 표면별 함정 (실측 기반)

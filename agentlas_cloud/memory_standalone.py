@@ -6,7 +6,6 @@ import json
 import os
 import re
 import stat
-import time
 from pathlib import Path
 from typing import Any
 
@@ -54,30 +53,6 @@ def excerpt_summary(texts: list[str]) -> str | None:
                 cleaned = cut[: stop_at + 1] if stop_at > 80 else cut.rstrip() + "…"
             return cleaned
     return None
-
-
-def _recorded_recently(host: str, minutes: int = 10) -> bool:
-    """A memory.record ticket from this runtime in the last few minutes covers the turn."""
-    try:
-        import sqlite3
-        from .memory_runtime import memory_path, owner_binding
-        owner = owner_binding(create=False)
-        if not owner:
-            return False
-        path = memory_path(owner)
-        if not path.exists():
-            return False
-        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=0.5)
-        try:
-            cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - minutes * 60))
-            from .memory_runtime import host_actor_id
-            row = db.execute("SELECT 1 FROM memory_operations WHERE source_ref LIKE 'mcp-record:%' AND actor_id=? "
-                             "AND created_at >= ? LIMIT 1", (host_actor_id(host), cutoff)).fetchone()
-            return row is not None
-        finally:
-            db.close()
-    except Exception:
-        return False
 
 
 def _current_texts(payload: dict[str, Any], host: str) -> list[str]:
@@ -169,10 +144,13 @@ def _current_texts(payload: dict[str, Any], host: str) -> list[str]:
 
 
 def stop(payload: dict[str, Any], host: str) -> dict[str, Any]:
-    """Queue an observed current-session summary, with no legacy side effects."""
+    """Record one finished turn (Agentlas 2.0): the host's excerpt of the reply as a turn record, nothing queued, no worker, no model.
+
+    Memory worth keeping is written by the model through memory.record. A model that still ends its answer with an old ``## Memory Events`` envelope (a session whose
+    instructions predate') is not discarded: the envelope is cut away, its ``turn_summary`` is the turn record and its candidates go through the ticket receiver."""
     if not feature_enabled("memory-hooks"):
         return {"state": "disabled", "reason": "feature_disabled"}
-    from .memory_runtime import hook_identity, owner_binding, queue_hook_summary, schedule_worker
+    from .memory_runtime import hook_identity
     if not hook_identity(payload, host):
         return {"state": "skipped", "reason": "session_identity_missing"}
     from .one_workspace import harvest_memory_events_from_texts, latest_turn_summary
@@ -180,8 +158,6 @@ def stop(payload: dict[str, Any], host: str) -> dict[str, Any]:
     summary = latest_turn_summary(texts)
     source = "memory_events"
     if not summary:
-        if _recorded_recently(host):
-            return {"state": "skipped", "reason": "recorded_by_tool"}
         summary = excerpt_summary(texts)
         source = "host_excerpt"
         if summary:
@@ -192,16 +168,14 @@ def stop(payload: dict[str, Any], host: str) -> dict[str, Any]:
                 return {"state": "skipped", "reason": "excerpt_not_safe"}
     if not summary:
         return {"state": "skipped", "reason": "observed_summary_missing"}
-    observations = harvest_memory_events_from_texts(texts)
+    candidates = harvest_memory_events_from_texts(texts[-1:])
     # Serialize intake with OFF's preference commit. Once OFF returns, this
-    # process cannot subsequently create a queue entry from an earlier read.
+    # process cannot subsequently create a record from an earlier read.
     from .feature_preferences import _settings_lock
+    from .memory_ticket_write import record_stop
     with _settings_lock(None):
         if not feature_enabled("memory-hooks"):
             return {"state": "disabled", "reason": "feature_disabled"}
-        result = queue_hook_summary(payload, host, summary, 1, observations)
+        result = record_stop(payload, host, summary, candidates)
     result["summarySource"] = source
-    operation_id = result.get("operation_id")
-    if isinstance(operation_id, str) and result.get("state") in {"queued", "deferred"} and feature_enabled("memory-hooks"):
-        result["workerScheduled"] = schedule_worker(operation_id, owner_binding() or "")
     return result

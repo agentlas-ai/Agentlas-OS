@@ -133,6 +133,10 @@ _RULESET_DEFAULTS: dict[str, Any] = {
             "flags": "",
         },
         "hostAbsolutePath": {"regex": r"(?:/Users/|/home/|[A-Za-z]:\\Users\\|file://)", "flags": ""},
+        # Migration-only gate (first-run step 5b): read by first_run.label_text_ok, never by the admission gate; declared here so the embedded set equals the canonical one.
+        "migrationSecretKeyValue": {"regex": r'''(?<![A-Za-z0-9])(api[_-]?key|secret|token|password|passwd|cookie|bearer)\b\s*[:=]\s*\S{16,}''', "flags": "i"},
+        "migrationSecretCredentials": {"regex": r'''(?<![A-Za-z0-9])[A-Za-z0-9_-]*(?:api[_-]?key|secret|token|password|passwd)[A-Za-z0-9_-]*\s*[:=]\s*["']?\S{8,}|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}|\b[A-Za-z][A-Za-z0-9+.-]*://[^\s/:@]+:[^\s/@]+@''', "flags": "i"},
+        "migrationHostPath": {"regex": r'''(?:^|[\s"'`(\[=:,])(?:\\\\[A-Za-z0-9_.$-]+\\[A-Za-z0-9_.$-]+|/(?:etc|var|opt|private|tmp|Volumes|mnt|srv|media|root)/)''', "flags": ""},
         # Desktop-executor pattern (curator-rules.ts); declared here only so the embedded set stays equal to the canonical one.
         "projectBoundaryPath": {"regex": r'(?:^|[\s`"' r"'(\[=:,])(?:\/(?:Users|home|var|opt|private)\/|~\/|[A-Za-z]:[\\/]|file:\/\/)", "flags": ""},
         # Mirror of the canonical ruleset entry; the verify-curator-fixtures gate
@@ -153,11 +157,6 @@ _RULESET_DEFAULTS: dict[str, Any] = {
             "regex": r"^(?:ignore\s+(?:previous|all\s+previous|the\s+above)|disregard|forget\s+(?:everything|all|previous|the\s+above))\b",
             "flags": "i",
         },
-        # R21 W2a — mirror of the canonical ruleset entry; keep byte-identical.
-        "evidenceShapeAccept": {
-            "regex": r"[\w./~-]+\.[A-Za-z0-9]{1,6}(?::\d+)?|:\d+\b|https?://|`[^`]+`|\b[a-f0-9]{7,40}\b|\btest[_-][\w-]+|\bverify[-_][\w-]+|\bpytest\b|arXiv:\d{4}\.\d{4,5}|\$ |^\s*(?:bash|node|python3?|npm|git)\b",
-            "flags": "im",
-        },
         # capabilityWidening / capabilityWideningException were REMOVED 2026-08-12
         # (owner decision): a content wordlist cannot separate a widening
         # assertion from a safety lesson across languages, and misevolution
@@ -166,8 +165,6 @@ _RULESET_DEFAULTS: dict[str, Any] = {
     "kinds": {
         "promotable": ["fact", "decision", "procedure", "preference", "risk", "deprecation"],
         "craft": ["procedure", "decision"],
-        "evidenceRequired": ["fact", "decision", "procedure"],
-        "evidenceMissingDowngradeTo": "hypothesis",
     },
     "limits": {"minContentChars": 12, "ticketContentMaxChars": 600, "evidenceMaxItems": 8},
     "concurrency": {
@@ -222,6 +219,22 @@ def _rule(path: str, default: Any) -> Any:
     return node
 
 
+_RULE_TOKEN_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
+
+
+def rule_tokens(path: str, default: Any) -> frozenset[str]:
+    """A ruleset list of lowercase tokens (kind, scope, confidence names), or `default`.
+
+    The canonical Memory Curator reads the values it used to hard-code through this one function. A file that
+    is missing, from another version, or malformed (not a non-empty list of plain tokens) yields the embedded
+    default, so an old or damaged ruleset never stops a curation.
+    """
+    value = _rule(path, None)
+    if isinstance(value, list) and value and all(isinstance(v, str) and _RULE_TOKEN_RE.fullmatch(v) for v in value):
+        return frozenset(value)
+    return frozenset(default)
+
+
 def _rule_re(name: str) -> "re.Pattern[str]":
     spec = _rule(f"patterns.{name}", {}) or {}
     fallback = _RULESET_DEFAULTS["patterns"][name]
@@ -229,8 +242,7 @@ def _rule_re(name: str) -> "re.Pattern[str]":
     # Honour every declared flag, not just 'i': the Desktop executor compiles
     # `new RegExp(regex, flags)` and applies them all, so dropping 'm'/'s' here
     # made the byte-identical ruleset behave differently across surfaces
-    # (evidenceShapeAccept declares 'im'; its `^(?:bash|node|…)` line-anchor
-    # needs MULTILINE — 2026-08-12 set 4).
+    # (a pattern that declares 'im' and anchors a line needs MULTILINE — set 4).
     flag_str = str(spec.get("flags", fallback["flags"]))
     flags = 0
     if "i" in flag_str:
@@ -239,6 +251,10 @@ def _rule_re(name: str) -> "re.Pattern[str]":
         flags |= re.MULTILINE
     if "s" in flag_str:
         flags |= re.DOTALL
+    if name == "secretValueShapes":
+        # \b is ASCII in the desktop's RegExp: a key shape glued to a Hangul letter is a secret there, so it is here (
+        # flaw 11). This pattern has no \s, so ASCII mode changes nothing else.
+        flags |= re.ASCII
     return re.compile(regex, flags)
 
 
@@ -516,10 +532,6 @@ def seed(root: Path, name: str = "One") -> dict[str, Any]:
             "  # Never write durable memory directly. Use ticket -> curator -> policy gate.\n"
             "  - id: no-direct-durable-write\n"
             "    enforce: deny\n"
-            "  # Downgrade unsupported facts, decisions, and procedures to hypotheses.\n"
-            "  - id: evidence-required\n"
-            "    kinds: [fact, decision, procedure]\n"
-            "    on_missing_evidence: downgrade_to_hypothesis\n"
             "  # A component may not promote content it harvested itself.\n"
             "  - id: no-self-confirmation\n"
             "    enforce: deny\n"
@@ -760,12 +772,7 @@ def emit_ticket(
     one_id = read_one_id(root)
     evidence = _memory_evidence(evidence)
 
-    # Downgrade unsupported facts, decisions, and procedures to hypotheses.
-    downgrade_kinds = set(_rule("kinds.evidenceRequired", ["fact", "decision", "procedure"]))
-    downgraded = False
-    if kind in downgrade_kinds and not evidence:
-        kind = str(_rule("kinds.evidenceMissingDowngradeTo", "hypothesis"))
-        downgraded = True
+    # Agentlas 2.0: a line is never lowered to a hypothesis for lack of the model's own evidence; where it came from is recorded by the host.
 
     body = content.strip()[: int(_rule("limits.ticketContentMaxChars", 600))]
     # G6 declares the id scheme in the ruleset, so read it instead of assuming it.
@@ -796,7 +803,6 @@ def emit_ticket(
             "evidence": evidence[: int(_rule("limits.evidenceMaxItems", 8))],
             **({"supersedes": supersedes_arg} if supersedes_arg else {}),
         },
-        "downgraded": downgraded,
         "createdAt": _now(),
     }
     tickets_path = meta / MEMORY_TICKETS_FILE
@@ -994,6 +1000,8 @@ def _memory_evidence(*sources: Any) -> list[str]:
             if not isinstance(value, str):
                 continue
             ref = value.strip()[:_MAX_EVIDENCE_ITEM_CHARS]
+            if ref.startswith("supersedes:"):
+                continue   # D2: only the host writes this mark (a replacement it made itself); a citation a model hands in never names a line to forget with
             if ref and ref not in seen:
                 if len(found) >= limit:
                     return found
@@ -1450,6 +1458,10 @@ def _session_active_agents(started_epoch: float) -> list[str]:
             if not ledger.is_file():
                 continue
             for row in _read_jsonl(ledger):
+                # a Hub call leaves no memory, so an old Hub-call row (written before that rule) never makes
+                # the agent "active" and nothing is routed into its drawer.
+                if row.get("mode") == "hub_byom_bundle":
+                    continue
                 if _iso_to_epoch(str(row.get("ts") or "")) >= window_start:
                     active.append(drawer.name)
                     break
@@ -1795,6 +1807,17 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def excerpt_summary(texts: list[str]) -> str:
+    """The host's excerpt of the last reply (first paragraph, at most 300 characters; no model): the turn record's text when the model wrote no summary of its own."""
+    # absolute imports: this module is also run as a script by bin/agentlas-one (no package, so a relative import fails there)
+    from agentlas_cloud.memory_standalone import excerpt_summary as _excerpt
+    try:
+        from agentlas_cloud.memory_runtime import _safe_summary
+        return _safe_summary(_excerpt(texts) or "")
+    except ValueError:
+        return ""
+
+
 def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, Any]:
     """Run the non-blocking session-end checkpoint.
 
@@ -1864,21 +1887,21 @@ def stop_hook(root: Path, payload: dict[str, Any], host: str = "") -> dict[str, 
         historical_custody = not os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE") or os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE", "").startswith("device-local:")
         if enabled and historical_custody:
             record_turn_summary(root, workspace, summary)
-        # Stop performs bounded local intake only. Model consolidation is a
-        # separate host-injected worker; it never blocks this hook or infers
-        # another installed agent's owner from transcript prose.
+        # Agentlas 2.0: Stop records the turn and nothing else (the host's excerpt of the reply, or the turn_summary of an old envelope). No queue, no worker,
+        # no model. What is worth keeping is written by the model through memory.record; an old envelope's candidates go through the same ticket receiver.
         if memory_enabled:
             try:
-                from agentlas_cloud.memory_runtime import owner_binding, queue_hook_summary, schedule_worker
-                # The installed Claude Stop entry omits --host; its prompt entry
-                # explicitly uses claude, so both must name the same partition.
-                if not summary and current_observations:
-                    summary = "The host observed unapproved memory candidates from a completed turn."
-                queued = queue_hook_summary(payload, host or "claude", summary, max(1, len(summary_texts)), current_observations)
-                canonical_receipt = {"canonicalMemory": queued}
-                if queued.get("state") in {"queued", "deferred"} and feature_enabled("memory-hooks"):
-                    schedule_worker(queued["operation_id"], owner_binding() or "")
-            except Exception:  # intake failure must not suppress existing use receipts
+                from agentlas_cloud.memory_ticket_write import record_stop
+                last = payload.get("last_assistant_message")
+                envelope_texts = [last] if isinstance(last, str) else summary_texts[-1:]
+                candidates = harvest_memory_events_from_texts(envelope_texts)
+                # the turn record's line: the old envelope's turn_summary when the model still wrote one, else the host's excerpt of the reply, else the edited file names
+                turn_line = latest_turn_summary(envelope_texts) or (excerpt_summary([last]) if isinstance(last, str) else "") or summary
+                if not turn_line and candidates:
+                    turn_line = "The host observed memory candidates from a completed turn."
+                recorded = record_stop(payload, host or "claude", turn_line, candidates)
+                canonical_receipt = {"canonicalMemory": recorded}
+            except Exception:  # turn-record failure must not suppress existing use receipts
                 pass
         if enabled and transcripts and historical_custody:
             record_block_use(root, hook_session_key(payload), transcripts[0])
@@ -2096,18 +2119,9 @@ def _classify(
                 return ("merge", "near-duplicate-of-durable")
     if kind not in set(_rule("kinds.promotable", list(PROMOTABLE_KINDS))):
         return ("defer", f"kind-not-promotable:{kind}")
-    if not evidence:
-        return ("defer", "evidence-required")
-    # R21 W2a — evidence must be machine-checkable in SHAPE (path:line, URL,
-    # command, hash, test/gate name). A candidate whose only support is
-    # self-reported satisfaction ("user rating 5/5") never reaches durable —
-    # this blocks the arXiv:2509.26354 refund reward-hacking case by evidence
-    # shape, after semantic screening measured non-separable (R20). ANY single
-    # well-shaped entry passes, so real evidence is never starved (harness B3).
-    shape_re = _rule_re("evidenceShapeAccept")
-    if not any(shape_re.search(str(item)) for item in evidence):
-        return ("defer", "evidence-shape-insufficient")
-    return ("admit", "evidence-backed")
+    # Agentlas 2.0: no evidence is asked for and none is checked for shape; the secret, host-path, override-phrase and
+    # duplicate checks above stay, and the origin of a line is written by the host (origin_class, certainty).
+    return ("admit", "accepted")
 
 
 def _mentions_project_specifics(content: str, folder: str) -> bool:
@@ -2276,200 +2290,6 @@ def _durable_block_text(
     if native and native != content and native_ok:
         block += f"  - Native: {native}\n"
     return block
-
-
-# ---------------------------------------------------------------------------
-# Project memory writes (2026-09-23)
-#
-# Measured: every session's Memory Events envelope reached the One drawer, and
-# candidates the model scoped `project` were tagged with a project slug there —
-# but nothing ever reached the project itself. `<project>/.agentlas/
-# project-soul-memory.md` had last changed 08-29 / 07-16 on the owner's three
-# main checkouts while the One drawer grew every day. The project layer is
-# what every host and product reads for that folder (Desktop readProjectSoul,
-# Terminal cliMemoryContext, the ontology project layer), so a project learning
-# that lives only in a personal drawer is invisible to all of them.
-#
-# Now the One curator, when it admits a `project`-scoped block (explicit, or
-# narrowed by the project-specifics guard) for the project the SAME stop hook
-# is running in, also appends that block to the project's soul under the
-# Desktop's `## Auto-curated memory` section. The resolved root is passed
-# through the curate call and never stored: tickets and every shared ledger
-# keep only the basename/slug.
-# ---------------------------------------------------------------------------
-
-PROJECT_AUTO_SECTION = "## Auto-curated memory"  # Desktop project-files.ts AUTO_SECTION
-PROJECT_MEMORY_LOG_FILE = "memory-log.jsonl"
-
-
-def resolve_project_memory_root(workspace: str) -> Path | None:
-    """The project whose soul a `project` learning from this session belongs to.
-
-    Same walk the recall hook uses (memory_hook._agentlas_project_root), so a
-    learning is written to exactly the project recall reads for this folder.
-    Never the runtime's own home (`~/.agentlas`, One's drawer), never a
-    symlinked `.agentlas`.
-    """
-    if not workspace:
-        return None
-    try:
-        cwd = Path(workspace).expanduser()
-        if not cwd.is_dir():
-            return None
-        from .memory_hook import _agentlas_project_root
-
-        project = _agentlas_project_root(cwd)
-        if project is None:
-            return None
-        project = project.resolve()
-        runtime_home = (Path.home() / ".agentlas").resolve()
-        one_home = Path(os.environ.get("AGENTLAS_ONE_DIR") or (runtime_home / "one")).expanduser().resolve()
-        for forbidden in (runtime_home, one_home):
-            if project == forbidden or forbidden in project.parents:
-                return None
-        meta = project / META_DIR
-        if meta.is_symlink() or not meta.is_dir():
-            return None
-        return project
-    except Exception:  # noqa: BLE001 — resolving a target must never cost a session end
-        return None
-
-
-def _project_soul_header(project_root: Path) -> str:
-    # Mirrors Desktop soulTemplate's shape (title + auto section) — a name, never a path.
-    return (
-        f"# Project Soul Memory: {project_root.name or 'Project'}\n\n"
-        "Durable memory for this project folder, maintained by the Agentlas PM Soul.\n"
-        "Keep it concise. Auto-curated items are appended under the last section.\n\n"
-        f"{PROJECT_AUTO_SECTION}\n"
-    )
-
-
-def append_project_durable(
-    project_root: Path,
-    items: list[tuple[dict[str, Any], str]],
-) -> dict[str, Any]:
-    """Append admitted project blocks to `<project>/.agentlas/project-soul-memory.md`.
-
-    Idempotent by the block's `h:` content hash (the same key the One drawer
-    uses), serialized by the G6 ledger lock, and bounded per call and by file
-    size. Fail-open: returns a receipt, never raises.
-    """
-    receipt: dict[str, Any] = {"written": 0, "duplicate": 0, "skipped": 0}
-    if not items:
-        return receipt
-    try:
-        meta = Path(project_root) / META_DIR
-        if meta.is_symlink() or not meta.is_dir():
-            return {**receipt, "error": "project_not_initialized"}
-        soul = meta / PROJECT_SOUL_FILE
-        if soul.is_symlink() or (soul.exists() and not soul.is_file()):
-            return {**receipt, "error": "unsafe_soul_file"}
-        max_blocks = int(_rule("projectWrite.maxBlocksPerStop", 12))
-        max_bytes = int(_rule("projectWrite.maxSoulBytes", 2_000_000))
-        try:
-            if soul.exists() and soul.stat().st_size >= max_bytes:
-                return {**receipt, "skipped": len(items), "error": "soul_size_cap"}
-        except OSError:
-            pass
-        secret_kv, secret_shape = _rule_re("secretKeyValue"), _rule_re("secretValueShapes")
-        host_re = _rule_re("hostAbsolutePath")
-        written_rows: list[dict[str, Any]] = []
-        with _LedgerLock(soul) as acquired:
-            if not acquired:
-                return {**receipt, "skipped": len(items), "error": "soul_busy"}
-            existing = _durable_hashes(soul)
-            try:
-                current = soul.read_text(encoding="utf-8") if soul.exists() else ""
-            except (OSError, UnicodeDecodeError):
-                return {**receipt, "skipped": len(items), "error": "soul_unreadable"}
-            chunks: list[str] = []
-            if not current:
-                chunks.append(_project_soul_header(Path(project_root)))
-            elif PROJECT_AUTO_SECTION not in current:
-                chunks.append(("" if current.endswith("\n") else "\n") + f"\n{PROJECT_AUTO_SECTION}\n")
-            for candidate, ticket_id in items:
-                content = str(candidate.get("content") or "").strip()
-                key = _content_hash(content)
-                if key in existing:
-                    receipt["duplicate"] += 1
-                    continue
-                if len(written_rows) >= max_blocks:
-                    receipt["skipped"] += 1
-                    continue
-                # The curator screened content and evidence; the native wording
-                # was never screened, so it only rides along when it is clean.
-                native = str(candidate.get("contentNative") or "")
-                native_ok = not (secret_kv.search(native) or secret_shape.search(native) or host_re.search(native))
-                chunks.append(_durable_block_text(candidate, ticket_id, native_ok=native_ok))
-                existing.add(key)
-                written_rows.append({
-                    "action": "written",
-                    "scope": "project",
-                    "kind": str(candidate.get("type") or "fact"),
-                    "content": content,
-                    "h": key,
-                    "ticket": ticket_id,
-                    "source_provenance": "one-curator",
-                    "at": _now(),
-                })
-            if not written_rows and len(chunks) <= 1 and current:
-                return receipt
-            if written_rows:
-                with soul.open("a", encoding="utf-8") as handle:
-                    handle.write("".join(chunks))
-        receipt["written"] = len(written_rows)
-        if written_rows:
-            try:
-                with (meta / PROJECT_MEMORY_LOG_FILE).open("a", encoding="utf-8") as log:
-                    for row in written_rows:
-                        log.write(json.dumps(row, ensure_ascii=False) + "\n")
-            except OSError:
-                pass
-        return receipt
-    except Exception as exc:  # noqa: BLE001
-        return {**receipt, "error": f"{type(exc).__name__}"[:60]}
-
-
-def _spawn_project_soul_refresh(project_root: Path) -> bool:
-    """Re-ingest just the project soul, detached (hooks run on a 10s contract).
-
-    `AGENTLAS_PROJECT_SOUL_REFRESH=inline` runs it in-process (tests and
-    measurements), `off` disables it.
-    """
-    mode = os.environ.get("AGENTLAS_PROJECT_SOUL_REFRESH", "").strip().lower()
-    if mode == "off":
-        return False
-    if mode == "inline":
-        try:
-            from .project_full_ingest import refresh_project_soul
-
-            return refresh_project_soul(project_root).get("status") == "complete"
-        except Exception:  # noqa: BLE001
-            return False
-    try:
-        from .safe_launch import module_command
-
-        runtime_root = Path(__file__).resolve().parent.parent
-        env = os.environ.copy()
-        existing = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = str(runtime_root) + (os.pathsep + existing if existing else "")
-        with open(os.devnull, "rb") as stdin, open(os.devnull, "wb") as out:
-            subprocess.Popen(
-                module_command("agentlas_cloud.project_full_ingest",
-                               ["--project", str(project_root), "--soul-only"], root=runtime_root),
-                cwd=str(project_root),
-                env=env,
-                stdin=stdin,
-                stdout=out,
-                stderr=out,
-                close_fds=True,
-                start_new_session=True,
-                **no_console_window(),
-            )
-    except Exception:  # noqa: BLE001
-        return False
-    return True
 
 
 def _make_experience_chip(
@@ -3133,6 +2953,8 @@ def _record_exposure(
         data = _read_json_dict(path)
         row = data.get(session_key) if isinstance(data.get(session_key), dict) else {}
         new_row: dict[str, Any] = {"at": _now(), "hashes": list(row.get("hashes") or [])[-200:]}
+        if row.get("canon"):
+            new_row["canon"] = row["canon"]  # the memory-line ids of the capsule (canon_record) ride in the same row
         if channel == "placeholder":
             new_row["placeholder"] = list(dict.fromkeys([*(row.get("placeholder") or []), *block_hashes]))[-50:]
         else:
@@ -3149,6 +2971,50 @@ def _record_exposure(
         if len(data) > _EXPOSURE_MAX_SESSIONS:
             for key, _value in sorted(data.items(), key=lambda item: str((item[1] or {}).get("at", "")))[
                     : len(data) - _EXPOSURE_MAX_SESSIONS]:
+                data.pop(key, None)
+        try:
+            _atomic_write(path, json.dumps(data) + "\n")
+        except OSError:
+            pass
+
+
+CANON_MAX_IDS = 100
+
+
+def canon_shown(root: Path, session_key: str) -> set[str]:
+    """The ids of the recalled memory lines the turn-start hook already sent in this session, from the exposure ledger's row
+    of the session. The row is read by the next UserPromptSubmit of the same session; a SessionStart empties it (``canon_record(reset=True)``);
+    it goes with its session row when the ledger drops the oldest session past ``_EXPOSURE_MAX_SESSIONS``. No new file and no table."""
+    row = _read_json_dict(root / META_DIR / EXPOSURE_FILE).get(session_key) if session_key else None
+    ids = row.get("canon") if isinstance(row, dict) else None
+    return {value for value in ids if isinstance(value, str)} if isinstance(ids, list) else set()
+
+
+def canon_record(root: Path, session_key: str, ids: list[str], *, reset: bool = False) -> None:
+    """Remember that these memory-line ids went out in this session (the last ``CANON_MAX_IDS``; an older one is simply sent again if it comes
+    back). ``reset`` first forgets what the session had: the model may have lost it. A row that holds nothing else goes away when emptied."""
+    if not session_key:
+        return
+    meta = root / META_DIR
+    meta.mkdir(parents=True, exist_ok=True)
+    path = meta / EXPOSURE_FILE
+    with _LedgerLock(path) as acquired:
+        if not acquired:
+            return
+        data = _read_json_dict(path)
+        row = data.get(session_key) if isinstance(data.get(session_key), dict) else {}
+        kept = [] if reset else [value for value in (row.get("canon") or []) if isinstance(value, str)]
+        merged = list(dict.fromkeys([*kept, *ids]))[-CANON_MAX_IDS:]
+        new_row = {key: value for key, value in row.items() if key != "canon"}
+        if merged:
+            new_row["canon"] = merged
+        if not new_row or set(new_row) <= {"at"}:
+            data.pop(session_key, None)
+        else:
+            new_row["at"] = _now()
+            data[session_key] = new_row
+        if len(data) > _EXPOSURE_MAX_SESSIONS:
+            for key, _value in sorted(data.items(), key=lambda item: str((item[1] or {}).get("at", "")))[: len(data) - _EXPOSURE_MAX_SESSIONS]:
                 data.pop(key, None)
         try:
             _atomic_write(path, json.dumps(data) + "\n")

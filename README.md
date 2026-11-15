@@ -320,7 +320,7 @@ hep-build session
 In an interactive host, the current visible conversation is the source. Agentlas
 asks for the destination first; if you do not name another folder, it creates a
 new safe-slug child below `AGENTLAS_AGENT_HOME` or, by default,
-`~/.agentlas/agentlas-agent`. Existing children are never overwritten. It then
+`~/.agentlas/agents`. Existing children are never overwritten. It then
 shows a generalized session report for your review, turns the approved method
 into a standalone agent prompt and package, registers it locally, and runs the
 normal verification gates.

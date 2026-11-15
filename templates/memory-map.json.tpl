@@ -1,15 +1,16 @@
 {
   "schemaVersion": "1.0",
   "projectId": "{{project_id}}",
+  "projectUid": "{{project_uid}}",
   "canonicalMemoryRoots": {
-    "project": [".agentlas/project-soul-memory.md"],
+    "project": [],
     "agent_repo": ["memory.md"],
     "sitemap": [".agentlas/sitemap.json", ".agentlas/validation-ledger.jsonl"],
     "team_memory": [],
     "session": [".agentlas/memory-tickets.jsonl"]
   },
   "writeOwners": {
-    "project": "10-single-agent-builder or 20-multi-agent-team-builder",
+    "project": "memory-curator",
     "agent_repo": "30-agentlas-packager",
     "sitemap": "30-agentlas-packager",
     "team_memory": "30-agentlas-packager",

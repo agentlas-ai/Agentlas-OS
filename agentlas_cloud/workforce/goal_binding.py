@@ -341,6 +341,23 @@ def _roster_rows(
     return plan, output
 
 
+
+def unregistered_remote_rows(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Roster rows from the Hub or Cloud whose agent is not registered on this computer. Empty off the 2.0 switch."""
+    remote = [row for row in rows if row.get("source") in {"hub", "cloud"}]
+    if not remote:
+        return []
+    from ..agent_usability import RegisteredHere, agent_usability, registration_rule_on
+
+    if not registration_rule_on():
+        return []
+    here = RegisteredHere()
+    return [
+        {"label": row.get("label"), "source": row["source"], "agentDefinitionId": row.get("agentDefinitionId")}
+        for row in remote
+        if not agent_usability(None, source=str(row["source"]), agent_definition_id=str(row.get("agentDefinitionId") or ""), enforce=True, here=here)["usable"]
+    ]
+
 class WorkforceGoalStore:
     """SQLite-backed append-only roster bindings shared by local host adapters."""
 
@@ -590,6 +607,11 @@ class WorkforceGoalStore:
         if any(row["source"] in {"hub", "cloud"} for row in rows):
             if self.account_partition == unsigned_local_partition():
                 raise WorkforceGoalBindingError("workforce_goal_remote_account_required")
+            if unregistered_remote_rows(rows):
+                raise WorkforceGoalBindingError(
+                    "needs_registration",
+                    "Register these agents on this computer first (`hephaestus register-agent <hub:slug>` or the Agentlas app), then prepare the roster again.",
+                )
         timestamp = _now()
         label = str(goal_label or "").strip()[:240] or None
         binding_id = canonical_digest(
@@ -835,10 +857,17 @@ class WorkforceGoalStore:
                         for value in expirations
                     ]
                     lease_expires_at = min(parsed_expirations).isoformat().replace("+00:00", "Z") if parsed_expirations else None
+                    unregistered = False
+                    if remote:
+                        try:
+                            unregistered = bool(unregistered_remote_rows(_roster_rows(payload["preparation"], None)[1]))
+                        except (WorkforceGoalBindingError, KeyError, TypeError, ValueError):
+                            unregistered = False
                     lease_active = (
-                        not remote
+                        not unregistered
+                        and (not remote
                         or self._remote_execution_authorized(payload["preparation"], instant)
-                        or bool(parsed_expirations and all(value > instant for value in parsed_expirations))
+                        or bool(parsed_expirations and all(value > instant for value in parsed_expirations)))
                     )
                     plans.append(
                         {
@@ -856,7 +885,7 @@ class WorkforceGoalStore:
                                 if isinstance(value, str)
                             ],
                             "leaseExpiresAt": lease_expires_at,
-                            "status": "ready" if lease_active else "lease-refresh-required",
+                            "status": "needs_registration" if unregistered else ("ready" if lease_active else "lease-refresh-required"),
                             **({"preparation": payload["preparation"]} if lease_active else {}),
                         }
                     )

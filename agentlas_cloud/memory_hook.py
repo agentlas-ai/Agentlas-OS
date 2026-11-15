@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import time
@@ -18,14 +19,28 @@ from ontology.runtime import file_uri_path_text
 
 from . import context_markers, evolution_proposals
 from .memory_hosts import HOST_CHOICES, host_spec
+from .memory_recall import HOOK_MEMORY_LAYER_BYTES
+from .project_identity import canonical_spelling
 from .safe_launch import module_command
 
 
 CAPSULE_VERSION = "1"
-MAX_STDIN_BYTES = 256_000
+MAX_STDIN_BYTES = 16_000_000
+# the limit was 256,000 and a larger hook input (a pasted log; 300 KB in the audit) made the whole hook answer nothing. The input is JSON of which
+# the hook needs a few short fields and the prompt (cut to its two ends by _extract_prompt), so it is read whole up to 16 MB (parsing 16 MB takes about 0.15 s and
+# 100 MB of memory, measured on the benchmark machine, and runs only for such an input). Above that the JSON is not read and the capsule says
+# "memory=unavailable; reason=input_too_large" instead of silence.
+_INPUT_TOO_LARGE = False
 MAX_PROMPT_CHARS = 12_000
-MAX_CAPSULE_CHARS = 6_000
-# Reserved for the wrapper tag plus the fixed policy and emit lines, which are
+# Every number below is a ceiling, not a target; a capsule is as long as what it has to say. Sum rule (tests/test_memory_recall_k4c.py): the layer shares
+# plus CAPSULE_FIXED_OVERHEAD_CHARS equal MAX_CAPSULE_CHARS, so the tail of the body is never cut. Audit: the "one" layer (memory lines +
+# One drawer) grew from 1,200 to HOOK_MEMORY_LAYER_BYTES (3,192: the ruleset's 2,400 bytes of lines, room for one longest line next to the Personal lines, and
+# the ids), so the cap grew from 6,300 to 8,292. Claude Code takes hook context up to 10,000 characters (its documented limit, not measured here), so 8,292
+# leaves 1,708 spare; a host with a lower limit cuts the TAIL of the capsule (experience, then project lines), never the recalled memory lines.
+MAX_CAPSULE_CHARS = 8_292
+# SessionStart only, only when .agentlas/local-credentials.map.json exists (see build_capsule).
+CREDENTIAL_LINE = "creds=read .agentlas/local-credentials.map.json before saying a credential is missing"
+# Reserved for the wrapper tag plus the fixed policy lines, which are
 # never dropped.
 CAPSULE_FIXED_OVERHEAD_CHARS = 800
 # Every variable layer gets a declared share, and the shares must fit. Before
@@ -35,10 +50,12 @@ CAPSULE_FIXED_OVERHEAD_CHARS = 800
 # survived. Order of assembly is not a statement about value.
 LAYER_BUDGETS: dict[str, int] = {
     "workforce": 700,
-    "one": 1_200,
+    "one": HOOK_MEMORY_LAYER_BYTES,
     "context_slice": 1_200,
     "project": 1_400,
     "experience": 700,
+    # Agentlas 2.0 the turn records of other conversations ("what was done recently"), their own layer (3 lines) so they never take a memory line's room.
+    "recent": 300,
 }
 DEFAULT_SESSION_QUERY = "current project decisions constraints architecture and active work"
 
@@ -55,7 +72,7 @@ def _trim_layer(lines: list[str], budget: int) -> list[str]:
     for line in lines:
         cost = len(line) + 1
         if used + cost > budget:
-            break
+            continue  # a line over the share is skipped and the next, shorter one is tried (the recall contract's own rule); it never hides the lines after it
         kept.append(line)
         used += cost
     return kept
@@ -96,8 +113,10 @@ def _compact_text(value: Any, limit: int) -> str:
 
 
 def _read_payload() -> dict[str, Any]:
+    global _INPUT_TOO_LARGE
     raw = sys.stdin.buffer.read(MAX_STDIN_BYTES + 1)
-    if not raw or len(raw) > MAX_STDIN_BYTES:
+    _INPUT_TOO_LARGE = len(raw) > MAX_STDIN_BYTES
+    if not raw or _INPUT_TOO_LARGE:
         return {}
     try:
         payload = json.loads(raw.decode("utf-8"))
@@ -136,7 +155,9 @@ def _resolve_cwd(payload: dict[str, Any], override: str | None = None) -> Path |
         return None
     if path.is_file():
         path = path.parent
-    return path if path.is_dir() else None
+    if not path.is_dir():
+        return None
+    return Path(canonical_spelling(str(path)))  # EK4: the folder in the disk's spelling, so the hash a turn is stamped with is the desktop's
 
 
 # Stop upward search at a project boundary so a nested project cannot adopt
@@ -212,7 +233,7 @@ def _project_boundary(root: Path) -> bool:
 
 
 def _agentlas_project_root(cwd: Path) -> Path | None:
-    """Nearest enclosing project. The home and scratch roots are never one.
+    """Nearest enclosing project that carries Agentlas project state (``.agentlas``). The home and scratch roots are never one.
 
     `~/.agentlas` is the runtime's own home (runtime/, one/, cache/), not
     project state, and this walk used to accept it: every folder under $HOME
@@ -223,8 +244,20 @@ def _agentlas_project_root(cwd: Path) -> Path | None:
     exactly where first contact disappears.
     """
 
+    return _project_walk(cwd)[0]
+
+
+def _project_walk(cwd: Path) -> tuple[Path | None, Path | None]:
+    """One walk up from ``cwd``: ``(the nearest folder with Agentlas project state, the nearest project boundary)``.
+
+    The first is what ``_agentlas_project_root`` answers. The second is where the walk stopped at a VCS root or a manifest root without
+    finding project state: the project a folder belongs to when nobody ran the project bootstrap there. A session that starts in ``<repo>/src/deep`` of a repository
+    with no ``.agentlas`` is in the project ``<repo>``, the one the desktop has, not in a project of its own named ``deep``. At most one of the two is not None.
+    The home, the filesystem root and the shared scratch roots are never either."""
+
     try:
         unsafe = {Path.home().resolve(), Path(cwd.anchor).resolve()}
+        unsafe.add(Path(canonical_spelling(str(Path.home().resolve()))))
     except (OSError, RuntimeError):
         unsafe = set()
     # project_bootstrap refuses the same three as bootstrap targets, and this
@@ -250,11 +283,24 @@ def _agentlas_project_root(cwd: Path) -> Path | None:
             agentlas_dir / "routing-card.json"
         ).is_file() or (
             agentlas_dir / "code-map" / "project-map.json"
-        ).is_file():
-            return root
+        ).is_file() or _map_in_new_place(root, agentlas_dir):
+            return root, None
         if _project_boundary(root):
-            return None
-    return None
+            return None, root
+    return None, None
+
+
+def _map_in_new_place(root: Path, agentlas_dir: Path) -> bool:
+    """A project whose code map moved to its memory folder (layout switch on) still counts as a project root."""
+    try:
+        if not agentlas_dir.is_dir():
+            return False
+        from .code_index_location import index_dir
+
+        place = index_dir(root)
+        return place is not None and (place / "project-map.json").is_file()
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _extract_prompt(payload: dict[str, Any], override: str | None = None) -> str:
@@ -262,7 +308,19 @@ def _extract_prompt(payload: dict[str, Any], override: str | None = None) -> str
         payload,
         ("user_prompt", "userPrompt", "prompt", "query", "message_text", "text"),
     )
-    return _compact_text(raw, MAX_PROMPT_CHARS)
+    # A pasted megabyte is clipped to its two ends before the whitespace and secret passes run (bounded work), then cut to MAX_PROMPT_CHARS the same way:
+    # the head and the tail are kept, because the question of a long prompt is at its start or its end (the first 12,000 characters dropped it).
+    raw = _head_tail(raw, MAX_PROMPT_CHARS * 4)
+    text = " ".join(raw.replace("\x00", " ").split())
+    return _head_tail(_redact_secrets(text), MAX_PROMPT_CHARS)
+
+
+def _head_tail(text: str, limit: int) -> str:
+    """``text`` itself when it fits ``limit``, else its first half and its last half of ``limit`` characters joined by a newline."""
+    if len(text) <= limit:
+        return text
+    half = limit // 2
+    return text[:half] + "\n" + text[-(limit - half):]
 
 
 def _normalize_slug(value: str) -> str:
@@ -302,6 +360,11 @@ def _trusted_agent_projection(project_root: Path) -> tuple[str, Path] | None:
         return None
     if not isinstance(referenced_payload, dict) or _normalize_slug(str(referenced_payload.get("slug") or "")) != slug:
         return None
+    # an agent that was only called from the Hub keeps no memory, so its old drawer is neither read nor injected.
+    # Only a locally built or downloaded agent (its card id is `local/<slug>`) still has a drawer until its memory
+    # moves into its own folder.
+    if not str(card.get("id") or "").startswith("local/"):
+        return None
     # Resolve the drawer with the canonical One resolver so recall and evolution
     # use the same experience store under every supported relocation setting.
     from .networking.bootstrap import hub_agents_dir
@@ -316,11 +379,19 @@ def _query_runtime(
     *,
     agent_id: str | None = None,
     allowed_scopes: list[str] | None = None,
+    read_only: bool = False,
 ) -> dict[str, Any]:
     # RuntimeConfig deliberately leaves vector selection at its canonical
     # local-only default. The runtime may choose its verified bundled model and
     # explicitly degrades to hashing when that asset is unavailable.
-    runtime = OntologyRuntime(RuntimeConfig(db_path=db_path))
+    # The recall of the memory lines (memory_recall) has already loaded the model for this process: the ontology query reuses that one adapter instead
+    # of loading the tokenizer a second time (~0.35 s). When it cannot be had, the runtime selects its own as before.
+    try:
+        from .memory_recall import _adapter
+        shared = _adapter()
+    except Exception:
+        shared = None
+    runtime = OntologyRuntime(RuntimeConfig(db_path=db_path, read_only=read_only, vector_adapter=shared))
 
     def run(text: str) -> dict[str, Any]:
         return runtime.query(
@@ -472,10 +543,9 @@ _SOUL_BLOCK_KEY = re.compile(r"h:([0-9a-f]{16})")
 def _drop_delivered_blocks(text: str, delivered: set[str]) -> str:
     """Remove soul blocks the One layer already put in this capsule.
 
-    A project learning is written to BOTH the One drawer and the project soul
-    (2026-09-23), and the project soul is now in the project ontology. Without
-    this, one turn could show the same block twice — once as `one[...]`, once
-    inside a `project[...]` chunk. Blocks are matched by their `h:` key, the
+    An older project's read-only soul file is in the project ontology and a
+    learning may also sit in the One drawer. Without this, one turn could show
+    the same block twice — once as `one[...]`, once inside a `project[...]` chunk. Blocks are matched by their `h:` key, the
     content hash both files share. A chunk that starts mid-block drops that
     leading tail when its key is a delivered one.
     """
@@ -504,6 +574,56 @@ def _compact_soul_markup(text: str) -> str:
     """
 
     return _SOUL_TICKET_TAIL.sub(lambda match: f"h:{match.group(1)}", text) if "<!--" in text else text
+
+
+# --- Agentlas 2.0 who gets the recalled memory lines, and when they are not sent again -----------------------------------------------
+
+# The environment the desktop app gives every claude run it starts: electron/runtime/claude-product-home.ts CLAUDE_PRODUCT_RUN_ENV (the four
+# variables below, on every path) and CLAUDE_SECURESTORAGE_CONFIG_DIR (only the app's product home sets it). AGENTLAS_HOST_RUNTIME is not the
+# signal: the app sets it on the engine processes it starts (engine.ts withDesktopEngineHost), not on the claude it starts, and the engine's own
+# tests pin it to "desktop" for every hook. So the claude run is recognised by the environment it really receives: all four, or the second alone
+# (a person's own shell carries neither). No new variable. The app's codex runs carry no Agentlas plugin hook (codex-desktop-surface.ts: the product
+# mirror's config has none of the person's plugins), so claude is the only run with two recalls.
+_APP_RUN_ENV = {"CLAUDE_CODE_ENABLE_TODO_TOOLS": "1", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1", "CLAUDE_CODE_DISABLE_CRON": "1",
+                "CLAUDE_CODE_STARTUP_FAILURE_RESULTS": "1"}
+
+
+def _app_launched_run() -> bool:
+    """True when this hook runs inside a claude run the desktop app launched. The app puts its own recall of the same memory store in that turn's
+    prompt (agentlas_desktop/electron/memory/context.ts), so the engine's memory-line layer would carry every line twice."""
+    if "CLAUDE_SECURESTORAGE_CONFIG_DIR" in os.environ:
+        return True
+    return all(os.environ.get(name) == value for name, value in _APP_RUN_ENV.items())
+
+
+# claude is the one host whose hook output stays in the conversation and whose SessionStart fires again after a compaction (also on resume and /clear):
+# a line sent once is still there until then. codex (no compaction signal known), antigravity (an ephemeral message, gone after the turn), grok
+# (a cache file rewritten each turn) and opencode / raw (not known to keep it) get every line every turn, as before.
+_NO_REPEAT_HOSTS = frozenset({"claude"})
+
+
+def _shown_before(host: str, event: str, session_key: str) -> set[str]:
+    """The ids of the memory lines this conversation already received since its last SessionStart. Empty at SessionStart itself (the model may
+    have lost them: a compaction, a resume, /clear), for any other host, and without a session id."""
+    if host not in _NO_REPEAT_HOSTS or event != "UserPromptSubmit" or not session_key:
+        return set()
+    try:
+        from .one_workspace import canon_shown
+        return canon_shown(_one_root(), session_key)
+    except Exception:
+        return set()
+
+
+def _record_shown(host: str, event: str, session_key: str, ids: list[str]) -> None:
+    """Remember what went out (a SessionStart starts the list over). Never raises: a failed write only means the lines are sent again."""
+    if host not in _NO_REPEAT_HOSTS or event not in {"UserPromptSubmit", "SessionStart"} or not session_key:
+        return
+    try:
+        from .one_workspace import canon_record
+        canon_record(_one_root(), session_key, ids, reset=event == "SessionStart")
+    except Exception:
+        pass
+
 
 
 def _context_lines(
@@ -666,7 +786,11 @@ def build_capsule(
     prompt_override: str | None = None,
     host: str = "",
     locale: str = "en",
+    event: str = "",
+    pending_record: list[tuple[str, str, str, list[str]]] | None = None,
 ) -> tuple[str | None, Path | None]:
+    """The capsule of one hook call. ``pending_record``: when a list is given, what this capsule sends is appended to it (host, event, session key,
+    line ids) instead of being remembered at once, so the caller remembers it only after the capsule was written out."""
     cwd = _resolve_cwd(payload, cwd_override)
     if cwd is None:
         return None, None
@@ -683,17 +807,48 @@ def build_capsule(
             workforce_lines = compact_goal_context(project_root)
     except Exception:  # fail-open — continuity projection must not break recall
         workforce_lines = []
+    continuation_line, previous_summary = None, None
+    recalled: dict[str, Any] = {"lines": [], "recent": []}
+    historical_owner_allowed = False
+    memory_status: tuple[str, str] | None = ("unavailable", "input_too_large") if _INPUT_TOO_LARGE else None  # (state, reason): see _memory_status_line
     try:
-        from .memory_runtime import read_hook_capsule, read_hook_longterm, owner_binding
-        continuation_line = read_hook_capsule(payload, host or "raw")
-        canonical_lines = read_hook_longterm(payload, host or "raw", str(context_root))
+        from .memory_runtime import read_hook_continuation, read_hook_recall, owner_binding
+        try:
+            continuation_line, previous_summary = read_hook_continuation(payload, host or "raw")
+        except sqlite3.Error as error:  # a store another process is writing: the recall below is tried on its own, and the capsule says what could not be read
+            from . import memory_recall
+            memory_recall.READ_BUSY_SECONDS = 0.1
+            memory_status = memory_status or ("partial", _store_reason(error))  # only the previous turn's summary is missing; the lines below decide if worse
+        if not _app_launched_run():
+            # Agentlas 2.0 the lines come from the recall contract (the same ranking, ties and reader as memory.search). A run the desktop app
+            # launched gets none of them here: the app puts its own recall of the same store in that turn's prompt (electron/memory/context.ts).
+            try:
+                recalled = read_hook_recall(payload, host or "raw", str(cwd), user_text=_extract_prompt(payload, prompt_override) or None,
+                                            previous_summary=previous_summary)
+                memory_status = _coverage_status(recalled.get("coverage")) or memory_status
+            except sqlite3.Error as error:
+                memory_status = ("unavailable", _store_reason(error))
+        else:
+            memory_status = None
         recall_owner = owner_binding(create=False)
         historical_owner_allowed = bool((recall_owner or "").startswith("device-local:")) or (recall_owner is None and not os.environ.get("AGENTLAS_MEMORY_OWNER_NAMESPACE"))
     except Exception:
         continuation_line = None
-        canonical_lines = []
+        recalled = {"lines": [], "recent": []}
         historical_owner_allowed = False
-    if project_root is None and not workforce_lines and not continuation_line and not canonical_lines:
+    # A line this conversation already received is not sent again (claude only; see _shown_before). The ids of what goes out now are recorded
+    # at the end, once the capsule is assembled.
+    session_key = _session_key_raw(payload)
+    if event == "SessionStart":
+        _record_shown(host, event, session_key, [])  # a new start, a resume, /clear or a compaction: the model may have lost the lines, so every one is sent again
+    shown_before = _shown_before(host, event, session_key)
+    canonical_rows = [row for row in recalled["lines"] if row["id"] not in shown_before]
+    recent_rows = [row for row in recalled["recent"] if row["id"] not in shown_before]
+    omitted = len(recalled["lines"]) + len(recalled["recent"]) - len(canonical_rows) - len(recent_rows)
+    canonical_lines = [row["line"] for row in canonical_rows]
+    recent_lines = ["recent: " + row["line"] for row in recent_rows]
+    memory_line = _memory_status_line(memory_status, recalled.get("coverage"))
+    if project_root is None and not workforce_lines and not continuation_line and not canonical_lines and not recent_lines and not memory_line:
         return None, cwd
     question = _extract_prompt(payload, prompt_override) or DEFAULT_SESSION_QUERY
     # Record prompt intent with the same session hash as the PreToolUse ledger
@@ -705,21 +860,30 @@ def build_capsule(
         if project_root is not None
         else cwd / ".agentlas" / "ontology-runtime.sqlite"
     )
-    project_result = (
-        _query_runtime(project_db, question)
-        if project_db.is_file() and not project_db.is_symlink()
-        else {}
-    )
+    # Each recall layer fails open on its own. A project folder the user cannot write to cannot open the
+    # database for writing, so it is opened read-only once more: the layer is kept, not lost.
+    project_result = {}
+    if project_db.is_file() and not project_db.is_symlink():
+        for read_only in (False, True):
+            try:
+                project_result = _query_runtime(project_db, question, read_only=read_only)
+                break
+            except Exception as error:
+                if read_only and os.environ.get("AGENTLAS_MEMORY_HOOK_DEBUG") == "1":
+                    print(f"agentlas-memory-hook: project recall skipped: {type(error).__name__}: {error}", file=sys.stderr)
     agent_result: dict[str, Any] | None = None
     projection = _trusted_agent_projection(project_root) if project_root is not None and historical_owner_allowed else None
     if projection is not None:
         agent_id, agent_db = projection
-        agent_result = _query_runtime(
-            agent_db,
-            question,
-            agent_id=agent_id,
-            allowed_scopes=["public", "internal", "private"],
-        )
+        try:
+            agent_result = _query_runtime(
+                agent_db,
+                question,
+                agent_id=agent_id,
+                allowed_scopes=["public", "internal", "private"],
+            )
+        except Exception:
+            agent_result = None
     # Content-free recall observability (Phase 4+): record which sources entered
     # the prompt and their approximate token size, then the human-visible growth
     # proposal notice (Phase 2+).
@@ -731,7 +895,7 @@ def build_capsule(
     )
     context_slice_line: str | None = None
     # True once the map answered, even with "nothing to send". The rest of the
-    # capsule (emit/framing/policy lines) is independent of the slice and was
+    # capsule (framing/policy lines) is independent of the slice and was
     # always sent when the map was readable, so an empty slice must not drop it.
     slice_map_readable = False
     if project_root is not None:
@@ -835,20 +999,32 @@ def build_capsule(
     ) if one_lines else set()
     # Canonical LTM takes the same declared layer budget. Historical package
     # and project documents remain sources; exact copies are projected once.
-    canonical_texts = {line.split("]: ", 1)[-1].strip().casefold() for line in canonical_lines}
+    canonical_texts = {row["text"].strip().casefold() for row in recalled["lines"]}
     one_lines = canonical_lines + [line for line in one_lines if line.split("]: ", 1)[-1].strip().casefold() not in canonical_texts]
     project_lines, experience_lines = _context_lines(project_result, agent_result, delivered_one)
     project_lines = [line for line in project_lines if line.split("]: ", 1)[-1].strip().casefold() not in canonical_texts]
     experience_lines = [line for line in experience_lines if line.split("]: ", 1)[-1].strip().casefold() not in canonical_texts]
+    # One line, once per session, only where the project has a credential map: the model otherwise says a
+    # credential is "missing" without opening the map that names the .env files and secret folders.
+    credential_map = project_root / ".agentlas" / "local-credentials.map.json" if project_root is not None else None
+    credential_line = (
+        CREDENTIAL_LINE if event == "SessionStart" and credential_map is not None
+        and credential_map.is_file() and not credential_map.is_symlink() else None
+    )
     if (
         not project_lines
         and not experience_lines
+        and not credential_line
         and not continuation_line
         and not evolution_line
         and not workforce_lines
         and not context_slice_line
         and not slice_map_readable
         and not one_lines
+        and not recent_lines
+        and not memory_line
+        # Agentlas 2.0: the fixed header no longer goes out on its own inside a project. It existed to carry `emit=` (the instruction to end every answer with a
+        # `## Memory Events` block); the model now writes memory through the memory.record tool, which its MCP menu describes. A header with nothing under it says nothing.
     ):
         return None, context_root
     adapter_name, retrieval_status, adapter_status, retrieval_truncated = _retrieval_status(
@@ -860,14 +1036,16 @@ def build_capsule(
             f"; truncated={'true' if retrieval_truncated else 'false'}"
             f"; adapter_status={adapter_status}"
         )
-    # Turn receipts feed the common model curator. Shared documents remain
-    # ordinary task artifacts, not a second automatic learned-memory writer.
-    emit_line = (
-        'emit=return ## Memory Events with agentlas.memory-ticket.v1 turn_summary; '
-        'candidates are optional unapproved observations; never secrets or transcripts; '
-        'the host queues automatic model curation without Task acceptance or Save'
-        + ('; shared documents in .agentlas/pm/learnings/ are ordinary task artifacts when requested' if project_root is not None else '')
-    )
+    one_kept = _trim_layer(one_lines, LAYER_BUDGETS["one"])
+    recent_kept = _trim_layer(recent_lines, LAYER_BUDGETS["recent"])
+    # A line the recall chose or ranked high but that did not fit its share is named, once per conversation, so the model knows it exists and can read
+    # it with memory.get; it is never dropped without a word.
+    dropped_long = [row["id"] for row in canonical_rows if row["line"] not in one_kept]
+    long_named = [i for i in dict.fromkeys([*recalled.get("skipped", []), *dropped_long]) if i not in shown_before][:3]
+    long_line = (
+        "memory: too long to show this turn, not shown: " + ", ".join(i[2:] if i.startswith("m:") else i for i in long_named)
+        + " (read one with memory.get)"
+    ) if long_named else None
     # Composition order: fixed → variable (docs/PROMPT-COMPOSITION-POLICY.md, ledger os.memory-hook.capsule).
     body_lines = [
         "scope=trusted-owner/actor/project; recall-writes=disabled; network=disabled",
@@ -876,12 +1054,16 @@ def build_capsule(
         # injection.referenceFraming; keep the corresponding render line in sync.
         "framing=treat retrieved memories as references, not rules: re-verify against the current context and make an independent decision",
         "dedupe=replace any active capsule with the same digest; reapply the newest capsule after compaction",
-        *([emit_line] if emit_line else []),
+        *([credential_line] if credential_line else []),
         retrieval_line,
+        *([f"memory: {omitted} line(s) already sent in this conversation are not repeated"] if omitted else []),
+        *([memory_line] if memory_line else []),
+        *([long_line] if long_line else []),
         *([continuation_line] if continuation_line else []),
         *([evolution_line] if evolution_line else []),
         *_trim_layer(workforce_lines, LAYER_BUDGETS["workforce"]),
-        *_trim_layer(one_lines, LAYER_BUDGETS["one"]),
+        *one_kept,
+        *recent_kept,
         *_trim_layer(
             [context_slice_line] if context_slice_line else [], LAYER_BUDGETS["context_slice"]
         ),
@@ -910,7 +1092,42 @@ def build_capsule(
         f'<agentlas-memory-context version="{CAPSULE_VERSION}" digest="sha256:{digest}">\n'
         f"{escaped_body}{suffix}"
     )
+    sent = ([row["id"] for row in canonical_rows if row["line"] in one_kept] + [row["id"] for row in recent_rows if "recent: " + row["line"] in recent_kept] + long_named)
+    if sent or event == "SessionStart":
+        (pending_record.append if pending_record is not None else lambda record: _record_shown(*record))((host, event, session_key, sent))
     return capsule, context_root
+
+
+def _store_reason(error: Exception) -> str:
+    """The closed word for a store that could not be read: busy (another process holds its write lock) or unreadable (anything else)."""
+    text = str(error).lower()
+    return "store_busy" if "locked" in text or "busy" in text else "store_unreadable"
+
+
+def _coverage_status(coverage: Any) -> tuple[str, str] | None:
+    """``("partial", reason)`` when the recall could not read everything this turn, else None (a complete read says nothing)."""
+    if not isinstance(coverage, dict) or not coverage.get("partial"):
+        return None
+    if coverage.get("storeLocked"):
+        return "partial", "store_busy"
+    return ("partial", "index_building") if coverage.get("pending") else None
+
+
+def _memory_status_line(status: tuple[str, str] | None, coverage: Any) -> str | None:
+    """One line of closed words, so the model can tell "there is no memory" from "memory could not be read now". Nothing is said when
+    the read was complete, or when there is nothing to read (a folder without a store)."""
+    if status is None:
+        return None
+    state, reason = status
+    line = f"memory={state}; reason={reason}"
+    if reason == "index_building" and isinstance(coverage, dict):
+        indexed, waiting = int(coverage.get("indexed") or 0), int(coverage.get("pending") or 0)
+        line += f"; indexed={indexed} of {indexed + waiting}; lines not indexed yet are matched by words only"
+    elif reason == "store_busy" and state == "partial":
+        line += "; the last index was used, the previous turn's summary may be missing"
+    elif state == "unavailable":
+        line += "; do not conclude that nothing is remembered"
+    return line
 
 
 def _cache_root() -> Path:
@@ -1867,6 +2084,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     locale = args.locale or ("ko" if os.environ.get("AGENTLAS_LOCALE", "").lower().startswith("ko") else "en")
     event = ""
+    sent_record: list[tuple[str, str, str, list[str]]] = []
     try:
         event = _event_name(payload, args.event)
         if event == "PreToolUse":
@@ -1883,6 +2101,8 @@ def main(argv: list[str] | None = None) -> int:
                 prompt_override=args.prompt,
                 host=args.host,
                 locale=locale,
+                event=event,
+                pending_record=sent_record,
             )
         output = _format_output(args.host, event, capsule, workspace)
     except Exception as exc:  # fail-open in every host runtime
@@ -1892,6 +2112,8 @@ def main(argv: list[str] | None = None) -> int:
     if output:
         sys.stdout.write(output + "\n")
         sys.stdout.flush()
+    for record in sent_record:  # remembered only now: a capsule that never went out is not counted as sent
+        _record_shown(*record)
     if event in {"SessionStart", "UserPromptSubmit"}:
         turn_cwd = _resolve_cwd(payload, args.cwd)
         _maybe_seed_project(turn_cwd)

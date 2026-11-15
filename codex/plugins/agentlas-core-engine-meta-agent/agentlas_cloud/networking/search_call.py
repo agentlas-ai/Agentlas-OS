@@ -138,6 +138,7 @@ def call_agents(
             version=version,
             local_inventory=local_inventory or [],
             expected_entity_kind=parsed.get("entity_kind"),
+            source=parsed["scope"],
         )
         result["requested_ref"] = ref
         result["requested_scope"] = parsed["scope"]
@@ -164,7 +165,8 @@ def call_agents(
     return {
         "schema": "hephaestus.call.v1",
         "action": "agent_call",
-        "status": "prepared" if statuses == {"prepared"} else "partial" if "prepared" in statuses else "failed",
+        "status": "prepared" if statuses == {"prepared"} else "partial" if "prepared" in statuses else (
+            "needs_registration" if statuses == {"needs_registration"} else "failed"),
         "context": context,
         "project_dir": str(project_dir),
         "receipt_id": receipt_id,

@@ -379,9 +379,9 @@ def derive_context_edges(
     """
 
     try:
-        payload = json.loads(
-            (root / ".agentlas" / "code-map" / "project-map.json").read_text(encoding="utf-8")
-        )
+        from .code_index_location import code_map_dir
+
+        payload = json.loads((code_map_dir(root) / "project-map.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
     known = {

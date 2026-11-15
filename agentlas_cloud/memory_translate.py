@@ -13,7 +13,7 @@ Shape (same as the semantic index backfill, a6c2cbb7):
     killed run is recovered by matching, not by a journal), and fail-open;
   * no new installs: the translator is whatever the machine already has —
     a host-supplied runtime, a local model that is ALREADY resident, or the
-    user's signed-in CLI called headless with the cheapest model and no tools.
+    user's signed-in Claude CLI called headless with its own default model and no tools (no model is named:).
     With none of them, nothing changes and recall keeps working through the
     dual query (english_recall_query) — no regression.
 
@@ -85,8 +85,6 @@ DEFAULTS: dict[str, Any] = {
     "requireBackcheck": True,
     "maxAttempts": 2,             # a judged rejection gets one retry, then stays native (_next_attempts)
     "glossaryInject": 40,
-    "claudeModel": "haiku",
-    "codexModel": "",             # empty = codex rung off (no known cheapest model)
     "ollamaResidentOnly": True,   # never load a model in the background
     "projectDailyCap": 60,        # chunks per project per day
     "projectBatchSize": 8,
@@ -225,7 +223,7 @@ def _scratch_dir() -> str:
 
 
 def _claude_translator(cfg: dict[str, Any]) -> Translator | None:
-    """Rung 2 — the signed-in Claude CLI, headless, cheapest model, zero tools.
+    """Rung 2 — the signed-in Claude CLI, headless, the model that CLI uses by default (no model is named here: Agentlas 2.0), zero tools.
 
     `--bare` would skip hooks too but it cannot read OAuth, so hooks are turned
     off through `--settings` and user/project settings are not loaded at all.
@@ -234,8 +232,7 @@ def _claude_translator(cfg: dict[str, Any]) -> Translator | None:
     exe = shutil.which("claude")
     if not exe:
         return None
-    model = str(cfg.get("claudeModel") or "haiku")
-    # Thinking OFF: measured 2026-09-23, haiku spent 12,080 thinking tokens on
+    # Thinking OFF: measured, a small model spent 12,080 thinking tokens on
     # a 5-item batch (116 s, $0.066) versus 0 thinking / 10 s / $0.006 with it
     # off — same five parseable translations. `--effort low` did not stop it.
     settings = json.dumps({"language": "English", "disableAllHooks": True, "alwaysThinkingEnabled": False})
@@ -244,7 +241,7 @@ def _claude_translator(cfg: dict[str, Any]) -> Translator | None:
         cwd = _scratch_dir()
         try:
             proc = subprocess.run(
-                [exe, "-p", "--model", model, "--tools", "", "--setting-sources", "",
+                [exe, "-p", "--tools", "", "--setting-sources", "",
                  "--strict-mcp-config", "--no-session-persistence", "--settings", settings,
                  "--system-prompt", system, "--output-format", "json"],
                 input=prompt, capture_output=True, text=True, timeout=timeout,
@@ -261,36 +258,7 @@ def _claude_translator(cfg: dict[str, Any]) -> Translator | None:
             return ""
         return str(envelope.get("result") or "")
 
-    return Translator(f"claude-cli:{model}", generate)
-
-
-def _codex_translator(cfg: dict[str, Any]) -> Translator | None:
-    """Rung 2' — codex exec, ONLY with an explicitly configured model.
-
-    A ChatGPT-account Codex rejects the "mini" API models (measured 400) and its
-    default is the user's own (often xhigh) model, so the engine cannot know the
-    cheapest one. Off unless the ruleset names a model."""
-    model = str(cfg.get("codexModel") or "").strip()
-    exe = shutil.which("codex") if model else None
-    if not exe:
-        return None
-
-    def generate(system: str, prompt: str, timeout: float) -> str:
-        cwd = _scratch_dir()
-        out_file = Path(cwd) / "last.txt"
-        try:
-            subprocess.run(
-                [exe, "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only", "-m", model,
-                 "-C", cwd, "--output-last-message", str(out_file), "-"],
-                input=f"{system}\n\n{prompt}", capture_output=True, text=True, timeout=timeout,
-                cwd=cwd, env=_child_env(),
-                **no_console_window(),
-            )
-            return out_file.read_text(encoding="utf-8") if out_file.exists() else ""
-        finally:
-            shutil.rmtree(cwd, ignore_errors=True)
-
-    return Translator(f"codex-cli:{model}", generate)
+    return Translator("claude-cli:default", generate)
 
 
 def translator_ladder(cfg: dict[str, Any] | None = None, env: dict[str, str] | None = None) -> list[Translator]:
@@ -302,7 +270,6 @@ def translator_ladder(cfg: dict[str, Any] | None = None, env: dict[str, str] | N
         lambda: _env_translator(env),
         lambda: _ollama_resident_translator() if cfg.get("ollamaResidentOnly", True) else None,
         lambda: _claude_translator(cfg),
-        lambda: _codex_translator(cfg),
     ):
         try:
             rung = build()

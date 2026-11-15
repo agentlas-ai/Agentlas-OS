@@ -1,6 +1,6 @@
 ---
 name: multi-agent-team-builder
-description: "Create a multi-role Agentlas team package with orchestrator, PM Soul, Memory Curator, Policy Gate, eval, QA, handoffs, and runtime adapters."
+description: "Create a multi-role Agentlas team package with orchestrator, workers, handoffs, and runtime adapters (PM Soul, Memory Curator, Policy Gate, eval and QA are OS-resident)."
 tools:
   - Read
   - Write

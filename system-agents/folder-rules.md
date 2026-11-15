@@ -20,7 +20,7 @@ judge chokepoints. A team package therefore contains:
 | Component | Where it lives |
 |---|---|
 | PM Soul / Memory Curator / Policy Gate / eval judge | **OS builtins — never inside the package** |
-| Their outputs | `.agentlas/memory-map.json`, `.agentlas/memory-tickets.jsonl`, project soul log (package/project-local, never uploaded raw) |
+| Their outputs | `.agentlas/memory-map.json`, `.agentlas/memory-tickets.jsonl` (package/project-local, never uploaded raw); an older project may still carry a read-only `project-soul-memory.md`, new ones get none |
 | `system-agents/orchestrator-protocol.md` | verbatim copy (protocol) → `docs/orchestrator-protocol.md` |
 | Orchestrator body | team-authored — `agents/00-orchestrator/agent.md` (commands HQs); HQ orchestrators (`01-*`) command workers. Header must state it follows `docs/orchestrator-protocol.md` |
 
@@ -42,7 +42,7 @@ package relies on instead:
 | Function | What a single package relies on |
 |---|---|
 | Memory curation | The deterministic always-on runtime curator (every turn, no extra LLM call) applying G1-G5, plus the Memory Ticket ledger `.agentlas/memory-tickets.jsonl` |
-| Project continuity | The project soul log instantiated from the PM Soul memory template in the target project |
+| Project continuity | The project's own memory rows (the memory store) and an older project's read-only soul log; new projects get no soul file |
 | Policy | The host PreToolUse hook (tool broker); the package declares needs in `.agentlas/mcp-policy.json`, never enforcement logic |
 | Evaluation | `.agentlas/capability-eval-plan.json` as declaration; judging runs in the host judge engine |
 

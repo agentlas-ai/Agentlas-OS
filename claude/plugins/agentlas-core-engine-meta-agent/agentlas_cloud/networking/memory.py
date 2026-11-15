@@ -15,25 +15,7 @@ from typing import Any
 
 from .bootstrap import append_jsonl, atomic_write_json, memory_enabled, networking_home, read_json, utc_now
 
-SECRET_PATTERNS = [
-    re.compile(r"sk-[a-z0-9]{8,}", re.IGNORECASE),
-    re.compile(r"akia[0-9a-z]{12,}", re.IGNORECASE),
-    re.compile(r"ghp_[a-z0-9_-]{20,}", re.IGNORECASE),
-    re.compile(r"xox[baprs]-[a-z0-9-]{8,}", re.IGNORECASE),
-    re.compile(r"-----begin", re.IGNORECASE),
-    re.compile(r"(api[_-]?key|password|passwd|secret|token)\s*[:=]", re.IGNORECASE),
-    re.compile(
-        r"\b(api[_-]?key|password|passwd|secret|token|credential)\b"
-        r"\s+(?!budget\b|limit\b|usage\b)\S{8,}",
-        re.IGNORECASE,
-    ),
-]
-PRIVATE_PATH_PATTERNS = [
-    re.compile(r"(?<![a-z0-9])/(?:Users|home|private|Volumes|var|tmp|etc|opt)/[^\s]+", re.IGNORECASE),
-    re.compile(r"(?<![a-z0-9])~/(?:[^\s]+)", re.IGNORECASE),
-    re.compile(r"\bfile://[^\s]+", re.IGNORECASE),
-    re.compile(r"\b[a-z]:\\(?:[^\\\s]+\\)*[^\\\s]+", re.IGNORECASE),
-]
+from ..text_safety import PRIVATE_PATH_PATTERNS, SECRET_PATTERNS, contains_secret, route_input_issues  # noqa: F401  (the one definition; the names stay importable from here)
 
 BOOST_LIMIT = 3.0
 CORRECTIONS_LIMIT = 200
@@ -47,20 +29,6 @@ def redact_tokens(tokens: list[str]) -> list[str]:
         else:
             safe.append(token)
     return safe
-
-
-def contains_secret(text: str) -> bool:
-    return any(pattern.search(text or "") for pattern in SECRET_PATTERNS)
-
-
-def route_input_issues(text: str) -> list[str]:
-    """Classify unsafe route input without retaining or returning its value."""
-    issues: list[str] = []
-    if contains_secret(text):
-        issues.append("route_secret_like_input")
-    if any(pattern.search(text or "") for pattern in PRIVATE_PATH_PATTERNS):
-        issues.append("route_private_path")
-    return issues
 
 
 def unsafe_route_refusal(text: str) -> dict[str, Any] | None:

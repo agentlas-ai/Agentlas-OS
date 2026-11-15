@@ -39,7 +39,7 @@ description: "Use when the user types /prompts:hep-build or /agentlas-build, men
    a generic `PACKAGE_TARGET` and do not ask for a JSON/JSONL export. Ask first:
    "이 세션에서 만든 에이전트를 기본 전역 Agentlas 에이전트 폴더에 만들까요? 다른 위치를 원하면 경로를 알려주세요. 별도 위치를 지정하지 않으면 전역 폴더에 만듭니다."
    If no alternate location is named, use `AGENTLAS_AGENT_HOME` or
-   `~/.agentlas/agentlas-agent` and create a new safe-slug child package. If a
+   `~/.agentlas/agents` and create a new safe-slug child package. If a
    destination is supplied, validate that exact folder. Never overwrite an
    existing child. The current conversation is the source; do not inspect
    recent sessions or host databases.

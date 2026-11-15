@@ -1,6 +1,6 @@
 ---
 name: team-builder-packaging
-description: "Use when generating or auditing a multi-role agent team package with orchestrator, PM Soul, Memory Curator, Policy Gate, workers, eval, QA, handoffs, and runtime adapters."
+description: "Use when generating or auditing a multi-role agent team package with orchestrator, workers, handoffs, Memory Ticket outputs, and runtime adapters (PM Soul, Memory Curator, Policy Gate, eval and QA are OS-resident)."
 ---
 
 # Team Builder Packaging
@@ -14,9 +14,9 @@ description: "Use when generating or auditing a multi-role agent team package wi
    repositories or comparables, academic/professional theory, and plugin docs,
    compare tool/plugin choices, and write the domain-expert synthesis plus
    prompt-performance contract.
-3. Add PM Soul or project owner.
-4. Add Memory Curator and Memory Ticket handoff.
-5. Add Policy Gate, eval judge, and QA/evidence gate.
+3. Add a project owner role if the team needs one.
+4. Add the Memory Ticket handoff (the Memory Curator is OS-resident).
+5. Rely on the OS-resident Policy Gate, eval judge, and QA/evidence gate; do not package them.
 6. Add workers only for real domain ownership proved by interview or research.
 7. Add `docs/builder-interview.md`, `docs/research-sources.md`,
    `docs/tool-selection.md`, `docs/domain-expert-synthesis.md`,

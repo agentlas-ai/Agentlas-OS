@@ -32,7 +32,7 @@ The interactive route asks for a destination before building. If no alternate
 folder is named, it uses the global Agentlas agent home:
 
 ```text
-AGENTLAS_AGENT_HOME, or ~/.agentlas/agentlas-agent
+AGENTLAS_AGENT_HOME, or ~/.agentlas/agents
 ```
 
 The actual package is a new child folder below that home, named from a safe

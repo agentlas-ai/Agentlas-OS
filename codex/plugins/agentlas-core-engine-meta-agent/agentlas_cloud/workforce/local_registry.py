@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterator, Mapping
 
 from ..networking.bootstrap import append_jsonl, atomic_write_json, networking_home, read_json, utc_now
 from ..networking.card_lint import effective_status, routing_ineligibility_reasons
-from .compiler import COMPILER_VERSION, compile_workforce_profile
+from .compiler import COMPILER_VERSION, compile_workforce_profile, team_graph_ready
 from .contracts import canonical_digest, content_tokens, verify_profile_integrity
 from .execution import WORKFORCE_EXECUTION_GRAPH_SCHEMA
 from .federation import (
@@ -26,6 +26,7 @@ from .federation import (
 )
 from .package_adapter import (
     PackageAdaptationError,
+    closed_card,
     inspect_package,
     materialize_package,
     snapshot_package_hash,
@@ -61,6 +62,35 @@ except ImportError:  # pragma: no cover - Windows packaged runtime
 LOCAL_REGISTRATION_SCHEMA = "agentlas.local-workforce-registration.v1"
 LOCAL_PROJECTION_EVENT_SCHEMA = "agentlas.local-workforce-projection-event.v1"
 LOCAL_VERIFIED_IDENTITY_SCHEMA = "agentlas.local-workforce-verified-identity.v1"
+# The local registration rules, one value for every place that must notice when
+# they change: a stored profile carries it as `provenance.localRules` and is
+# recompiled when it differs; card adoption and `local-autoregister` put it in
+# their attempt keys so a root an earlier rule refused is judged again. Raise it
+# when what registers, or how a registration is judged, changes.
+# 3: a team's manager is derived from its members; one credential, secret or
+#    linked file is left out of the snapshot instead of refusing the package.
+LOCAL_RULES_VERSION = "3"
+
+
+def _profile_is_current(profile: Mapping[str, Any]) -> bool:
+    """Replay a stored profile only when this engine would compile the same one.
+
+    `compilerVersion` stays at the released value (see compiler.COMPILER_VERSION),
+    so an older engine on the same machine, which compares only that field, keeps
+    replaying this engine's profiles instead of rewriting them.
+    """
+
+    provenance = profile.get("provenance") if isinstance(profile.get("provenance"), Mapping) else {}
+    return (
+        str(provenance.get("compilerVersion") or "") == COMPILER_VERSION
+        and str(provenance.get("localRules") or "") == LOCAL_RULES_VERSION
+    )
+
+
+def _stamp_local_rules(profile: dict[str, Any]) -> dict[str, Any]:
+    # Outside the content digest (semantic + qualification), so the stamp never changes identity.
+    profile["provenance"]["localRules"] = LOCAL_RULES_VERSION
+    return profile
 
 
 def _now() -> str:
@@ -81,91 +111,6 @@ def _detached(value: Any) -> Any:
 _WORKER_ID_SAFE_RE = re.compile(r"[^A-Za-z0-9._:@-]+")
 _TEAM_MEMBER_ENTRY_NAMES = ("agent.md", "AGENTS.md")
 _TEAM_MEMBER_MAX = 32
-# Bounded tail for the local invocation-ledger: stop_hook only needs to know if
-# the agent was active in the recent session window, so keeping the last N rows
-# is enough and stops the file (and _session_active_agents' per-stop scan) from
-# growing without bound across repeated prepares.
-_LEDGER_MAX_ROWS = 200
-_LEDGER_SEQ = [0]
-
-
-def _ledger_seq() -> int:
-    _LEDGER_SEQ[0] += 1
-    return _LEDGER_SEQ[0]
-
-
-def _hub_agents_dir() -> Path:
-    """The per-agent drawer root — delegate to the ONE canonical resolver so
-    local ledgers land exactly where one_workspace._session_active_agents scans,
-    under every relocation env (measured 2026-08-12 adversarial set 2)."""
-    from ..networking.bootstrap import hub_agents_dir
-
-    return hub_agents_dir()
-
-
-def _drawer_slug_for(package_root: Path) -> str:
-    """The bare, normalized slug that names a package's drawer directory.
-
-    MUST be the bare slug (no `local/` tier prefix): the drawer dir name, the
-    model's `agent_slug` envelope value, and evolution's `hub:<slug>` agent_id
-    must all agree (one_workspace.py:1120, memory_hook.py:197). The routing
-    card's `id` is `local/<slug>` but `agent_card_ref.slug` carries the bare
-    form (card_migrate.py:291). Normalized identically to hub_invocation._norm_slug."""
-    card = read_json(package_root / ".agentlas" / "routing-card.json", default=None)
-    ref = card.get("agent_card_ref") if isinstance(card, Mapping) else None
-    raw = str(ref.get("slug") or "") if isinstance(ref, Mapping) else ""
-    return re.sub(r"[^a-z0-9]+", "-", raw.lower()).strip("-")
-
-
-def _wire_local_agent_experience(bundle: dict[str, Any], package_root: Path) -> None:
-    """Write a local invocation-ledger row and add an attribution directive so a
-    locally built agent accumulates experience like a borrowed one (plan §46)."""
-    slug = _drawer_slug_for(package_root)
-    if not slug:
-        return
-    drawer_mem = _hub_agents_dir() / slug / "memory"
-    drawer_mem.mkdir(parents=True, exist_ok=True)
-    # A bundle is fetched once per prepare, and prepare != execute (retries,
-    # idempotent re-prepares), so an unbounded append would grow the ledger
-    # forever — and _session_active_agents re-parses the WHOLE file on every
-    # session end. stop_hook only cares whether the agent was active inside the
-    # recent session window, so a short bounded tail is sufficient and keeps the
-    # scan O(cap) instead of O(all prepares ever). Rewrite-with-cap here rather
-    # than append (measured 2026-08-12 adversarial set).
-    ledger = drawer_mem / "invocation-ledger.jsonl"
-    row = {"ts": utc_now(), "source": "local-workforce", "slug": slug, "mode": "local_bundle"}
-    try:
-        existing = ledger.read_text(encoding="utf-8").splitlines() if ledger.is_file() else []
-    except OSError:
-        existing = []
-    kept = [ln for ln in existing if ln.strip()][-(_LEDGER_MAX_ROWS - 1):]
-    kept.append(json.dumps(row, ensure_ascii=False))
-    # Per-writer unique temp name: a shared fixed ".jsonl.tmp" made concurrent
-    # prepares of the SAME slug race — writer A renames tmp→ledger, then writer
-    # B's replace() hit a now-missing tmp and raised FileNotFoundError (swallowed
-    # fail-open, so the row was silently lost). A unique name per writer means
-    # each replace() targets its own tmp; the last writer wins the ledger, which
-    # is fine — the bounded tail only needs recent activity, not every row
-    # (measured 2026-08-12 adversarial set 2).
-    tmp = ledger.with_name(f"{ledger.name}.{os.getpid()}-{_ledger_seq()}.tmp")
-    try:
-        tmp.write_text("\n".join(kept) + "\n", encoding="utf-8")
-        tmp.replace(ledger)
-    finally:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-    directive = bundle.get("directiveBundle")
-    if isinstance(directive, dict):
-        instructions = str(directive.get("instructions") or "")
-        directive["instructions"] = instructions + (
-            f"\n\n## Experience attribution\n"
-            f"You are the Agentlas agent `{slug}`. When you record a learning in a "
-            f"`## Memory Events` envelope, set `\"agent_slug\": \"{slug}\"` on each "
-            f"candidate so it accumulates in this agent's own experience store, not "
-            f"the generic project memory.\n"
-        )
 
 
 def _local_team_execution_graph(
@@ -253,6 +198,45 @@ def default_local_workforce_home() -> Path:
     return Path(override).expanduser() if override else networking_home().parent / "workforce" / "local"
 
 
+def _local_routing(status: str, team_ready: bool, routing_card: Mapping[str, Any]) -> tuple[bool, list[str], list[str]]:
+    """Eligibility of an agent the owner registered on this machine.
+
+    Benchmark counts and verification grades rank and label an agent; they never keep the owner's own
+    agent out of the owner's own local search. Only a stale source or a card that
+    fails lint outright (quarantined) or a team with no runnable graph (no member to lead or to work,
+    or an explicit `authoritative: false`) is held back. A manager no file names is derived from the
+    members (package_adapter._derived_team_graph) and reported as a warning. What a
+    public listing would still want is returned as warnings, not as reasons.
+    """
+
+    if not team_ready:
+        return False, ["team_graph_not_authoritative", *routing_ineligibility_reasons(routing_card)], []
+    if status in {"stale", "quarantined"}:
+        return False, routing_ineligibility_reasons(routing_card), []
+    warnings = [] if status in {"routing_ready", "trusted"} else routing_ineligibility_reasons(routing_card)
+    return True, [], warnings
+
+
+def _team_manager_warning(team_graph: Mapping[str, Any] | None) -> list[str]:
+    """Say on the receipt that the team's manager was picked, not declared.
+
+    Starts with a fixed code so a reader can match it without parsing the prose.
+    """
+
+    if not isinstance(team_graph, Mapping) or team_graph.get("derived") is not True:
+        return []
+    manager = str(team_graph.get("manager") or "").removeprefix("node:")
+    rule = (
+        "its folder name marks it as the lead"
+        if team_graph.get("managerRule") == "lead-named-member"
+        else "it is the first member in name order"
+    )
+    return [
+        f"team_manager_derived: no file names the team's manager, so agents/{manager} leads because {rule}; "
+        'set "orchestrator" in .agentlas/agent-card.json to choose another member'
+    ]
+
+
 class LocalWorkforceRegistry:
     """Register one explicit root at a time; never scan a home directory."""
 
@@ -324,6 +308,53 @@ class LocalWorkforceRegistry:
 
     def _by_source(self, root: Path) -> dict[str, Any] | None:
         return next((row for row in self._records() if row.get("sourceRoot") == str(root)), None)
+
+    def _moved_definition(self, package_hash: str, root: Path) -> dict[str, Any] | None:
+        """The one active definition whose folder is gone but whose registered bytes equal ``root``'s: a move.
+
+        Content decides, so no hint file is needed. Two or more such definitions are ambiguous and are left alone
+        (the caller then behaves as before). A folder that still exists is a real second copy, never a move.
+        """
+
+        found: list[dict[str, Any]] = []
+        for row in self._records():
+            old = str(row.get("sourceRoot") or "")
+            if row.get("status") != "active" or not old or old == str(root):
+                continue
+            if str(row.get("sourceIdentity") or "").startswith("verified:"):
+                continue
+            try:
+                if Path(old).exists():
+                    continue
+            except OSError:
+                continue  # cannot tell whether it is gone (permissions): not a move
+            definition_id, release_id = str(row.get("agentDefinitionId") or ""), str(row.get("currentReleaseId") or "")
+            if not definition_id or not release_id:
+                continue
+            stored = read_json(self._release_dir(definition_id, release_id) / "registration.json", default=None)
+            if isinstance(stored, Mapping) and stored.get("packageHash") == package_hash:
+                found.append(row)
+        return found[0] if len(found) == 1 else None
+
+    def _repoint_cards(self, old_root: str, new_root: str) -> None:
+        """Best effort: global cards that named the old folder now name the new one. Writes the card file only
+        (not save_card), so the desktop is not told about a "new" local agent."""
+
+        try:
+            from ..networking.card_store import card_path, content_hash, load_global_cards
+
+            base = networking_home().expanduser()
+            cards, _ = load_global_cards(base)
+            for card in cards:
+                source = card.get("source")
+                if not isinstance(source, dict) or str(source.get("ref") or "") != old_root:
+                    continue
+                path = Path(str(card.pop("_card_path", "") or card_path(base, card)))
+                source["ref"] = new_root
+                card.setdefault("integrity", {})["content_hash"] = content_hash(card)
+                atomic_write_json(path, card)
+        except Exception:  # noqa: BLE001 - a card that could not be re-pointed never fails the move
+            return
 
     def _find(self, target: Path | str) -> dict[str, Any] | None:
         text = str(target)
@@ -577,6 +608,12 @@ class LocalWorkforceRegistry:
             previous = self._by_source(root)
             try:
                 inspection = inspect_package(root)
+                # A folder that moved (the desktop's agents-folder move, a renamed parent, a new drive letter) is the
+                # same agent: keep its id instead of minting a second one or refusing with identity_conflict.
+                moved_from = None
+                if previous is None and verified_identity is None:
+                    moved_from = self._moved_definition(inspection.package_hash, root)
+                    previous = moved_from
                 if verified_identity is not None and verified_identity.get("entityKind") != (
                     inspection.entity_kind if inspection.entity_kind in {"agent", "team", "group"} else "agent"
                 ):
@@ -607,7 +644,12 @@ class LocalWorkforceRegistry:
                         release_id = f"release:local:{_token(definition_id + ':' + inspection.package_hash)[:48]}"
                         release_version = inspection.package_hash.removeprefix("sha256:")[:12]
                 existing = read_json(self._definition_path(definition_id), default=None)
-                if isinstance(existing, Mapping) and existing.get("sourceRoot") != str(root) and existing.get("status") == "active":
+                if (
+                    moved_from is None
+                    and isinstance(existing, Mapping)
+                    and existing.get("sourceRoot") != str(root)
+                    and existing.get("status") == "active"
+                ):
                     raise PackageAdaptationError(
                         "identity_conflict",
                         "another active root claims this definition",
@@ -615,18 +657,15 @@ class LocalWorkforceRegistry:
                     )
 
                 final_dir = self._release_dir(definition_id, release_id)
-                if final_dir.is_dir() and not force_restage:
+                if final_dir.is_dir() and not force_restage and moved_from is None:
                     registration = read_json(final_dir / "registration.json", default=None)
                     profile = read_json(final_dir / "profile.json", default=None)
                     if isinstance(registration, Mapping) and isinstance(profile, Mapping):
                         verify_profile_integrity(profile)
-                        # 저장된 compilerVersion 이 현재와 다르면 프로필을 재컴파일한다. 패키지
-                        # 바이트가 같으면 packageHash·releaseId·경로를 보존하며, 프로필과 contentDigest 를
-                        # registration.json 과 함께 원자적으로 교체한다.
-                        stored_compiler = str(
-                            (profile.get("provenance") or {}).get("compilerVersion") or ""
-                        )
-                        if stored_compiler == COMPILER_VERSION:
+                        # 저장된 compilerVersion 또는 localRules 가 현재와 다르면 프로필을 재컴파일한다.
+                        # 패키지 바이트가 같으면 packageHash·releaseId·경로를 보존하며, 프로필과
+                        # contentDigest 를 registration.json 과 함께 원자적으로 교체한다.
+                        if _profile_is_current(profile):
                             return self._replay(final_dir, registration, root)
 
                 stage = Path(tempfile.mkdtemp(prefix="import-", dir=str(self.home / "staging")))
@@ -638,11 +677,9 @@ class LocalWorkforceRegistry:
                         definition_id=definition_id,
                         release_id=release_id,
                     )
-                    status = effective_status(materialized.routing_card)
-                    team_ready = materialized.routing_card.get("type") != "team" or bool(
+                    status = effective_status(closed_card(materialized.routing_card, package_stage))
+                    team_ready = materialized.routing_card.get("type") != "team" or team_graph_ready(
                         materialized.team_graph
-                        and materialized.team_graph.get("authoritative")
-                        and materialized.team_graph.get("manager")
                     )
                     # Demote out loud. `effective_status` returns a bare word and
                     # drops the evidence, so this site used to compute
@@ -653,11 +690,11 @@ class LocalWorkforceRegistry:
                     # reasons come back from the same decision that demoted the
                     # card, so the answer to "why is /hep-local not using it"
                     # ships with the registration instead of being reconstructed.
-                    routing_eligible = status in {"routing_ready", "trusted"} and team_ready
-                    unavailable_reasons = ([] if team_ready else ["team_graph_not_authoritative"]) + (
-                        routing_ineligibility_reasons(materialized.routing_card)
+                    routing_eligible, unavailable_reasons, routing_warnings = _local_routing(
+                        status, team_ready, closed_card(materialized.routing_card, package_stage)
                     )
-                    profile = compile_workforce_profile(
+                    routing_warnings = [*routing_warnings, *_team_manager_warning(materialized.team_graph)]
+                    profile = _stamp_local_rules(compile_workforce_profile(
                         agent_definition_id=definition_id,
                         agent_release_id=release_id,
                         package_hash=inspection.package_hash,
@@ -673,13 +710,15 @@ class LocalWorkforceRegistry:
                             "unavailableReasons": unavailable_reasons,
                             "sourceRefs": [str(package_stage), inspection.entrypoint],
                         },
-                    )
+                    ))
                     expected_content = verified_identity.get("contentDigest") if verified_identity else None
                     if expected_content and profile.get("provenance", {}).get("contentDigest") != expected_content:
                         raise PackageAdaptationError("verified_identity_content_mismatch", "compiled content digest differs")
                     verify_profile_integrity(profile)
                     snapshot_hash = snapshot_package_hash(package_stage)
                     prior_release = str(previous.get("currentReleaseId") or "") if previous else ""
+                    if moved_from is not None and prior_release == release_id:
+                        prior_release = ""  # same bytes at a new place: a re-point, not a new version
                     registration = {
                         "schemaVersion": LOCAL_REGISTRATION_SCHEMA,
                         "status": "active",
@@ -702,6 +741,12 @@ class LocalWorkforceRegistry:
                         "routingEligible": routing_eligible,
                         "routingStatus": status,
                     }
+                    if routing_warnings:
+                        registration["routingWarnings"] = routing_warnings
+                    if inspection.advisories:
+                        # Files the snapshot left out (credentials, secrets, links) and a
+                        # repository-shaped folder, by name only; the rest registered.
+                        registration["advisories"] = list(inspection.advisories)
                     if not routing_eligible:
                         # `status: "active"` is the release lifecycle, not a
                         # promise of staffing, and on its own it reads as
@@ -764,7 +809,12 @@ class LocalWorkforceRegistry:
                         "workforceProfile": profile,
                     },
                 )
-                return {**registration, "projectionEvent": event}
+                moved_result: dict[str, Any] = {}
+                if moved_from is not None:
+                    old_root = str(moved_from.get("sourceRoot") or "")
+                    self._repoint_cards(old_root, str(root))
+                    moved_result = {"movedFrom": old_root}
+                return {**registration, "projectionEvent": event, **moved_result}
             except PackageAdaptationError as exc:
                 return self._quarantine(root, exc)
 
@@ -795,16 +845,15 @@ class LocalWorkforceRegistry:
                     registration = read_json(release_dir / "registration.json", default=None)
                     if not isinstance(profile, Mapping) or not isinstance(registration, Mapping):
                         continue
-                    stored_compiler = str(
-                        (profile.get("provenance") or {}).get("compilerVersion") or ""
-                    )
-                    if stored_compiler == COMPILER_VERSION:
+                    if _profile_is_current(profile):
                         current += 1
                         continue
+                    stored = profile.get("provenance") if isinstance(profile.get("provenance"), Mapping) else {}
                     identity = {
                         "agentDefinitionId": str(registration.get("agentDefinitionId") or ""),
                         "agentReleaseId": str(registration.get("agentReleaseId") or ""),
-                        "storedCompilerVersion": stored_compiler or None,
+                        "storedCompilerVersion": str(stored.get("compilerVersion") or "") or None,
+                        "storedLocalRules": str(stored.get("localRules") or "") or None,
                     }
                     package_root = release_dir / "package"
                     if not package_root.is_dir():
@@ -830,6 +879,7 @@ class LocalWorkforceRegistry:
         return {
             "status": "repaired" if not dry_run else "inspected",
             "compilerVersion": COMPILER_VERSION,
+            "localRules": LOCAL_RULES_VERSION,
             "alreadyCurrent": current,
             "repaired": len(repaired),
             "failed": len(failed),
@@ -852,17 +902,11 @@ class LocalWorkforceRegistry:
                 "stored_package_not_native",
                 "the stored package carries no routing card to recompile from",
             )
-        status = effective_status(routing_card)
-        team_ready = routing_card.get("type") != "team" or bool(
-            inspection.team_graph
-            and inspection.team_graph.get("authoritative")
-            and inspection.team_graph.get("manager")
-        )
-        routing_eligible = status in {"routing_ready", "trusted"} and team_ready
-        unavailable_reasons = ([] if team_ready else ["team_graph_not_authoritative"]) + (
-            routing_ineligibility_reasons(routing_card)
-        )
-        profile = compile_workforce_profile(
+        status = effective_status(closed_card(routing_card, package_root))
+        team_ready = routing_card.get("type") != "team" or team_graph_ready(inspection.team_graph)
+        routing_eligible, unavailable_reasons, routing_warnings = _local_routing(status, team_ready, closed_card(routing_card, package_root))
+        routing_warnings = [*routing_warnings, *_team_manager_warning(inspection.team_graph)]
+        profile = _stamp_local_rules(compile_workforce_profile(
             agent_definition_id=str(registration["agentDefinitionId"]),
             agent_release_id=str(registration["agentReleaseId"]),
             # Identity is not recomputed: the stored package is the same bytes
@@ -881,16 +925,32 @@ class LocalWorkforceRegistry:
                 "unavailableReasons": unavailable_reasons,
                 "sourceRefs": [str(package_root), inspection.entrypoint],
             },
-        )
+        ))
         verify_profile_integrity(profile)
+        # The receipt's reason and warnings belong to the verdict just computed. A
+        # team demoted by an older compiler kept `routingStatusReason` and its
+        # remediation after the recompile made it routable, so the receipt said
+        # both "eligible" and "will not staff it".
         updated = {
-            **dict(registration),
+            **{
+                key: value
+                for key, value in registration.items()
+                if key not in {"routingStatusReason", "remediation", "routingWarnings"}
+            },
             "contentDigest": profile["provenance"]["contentDigest"],
             "entityKind": profile["entityKind"],
             "routingEligible": routing_eligible,
             "routingStatus": status,
             "repairedAt": _now(),
         }
+        if routing_warnings:
+            updated["routingWarnings"] = routing_warnings
+        if not routing_eligible:
+            updated["routingStatusReason"] = "; ".join(unavailable_reasons)
+            updated["remediation"] = registration.get("remediation") or (
+                f"Registered, but /hep-local will not staff it yet. Fix the above in "
+                f"{registration.get('sourceRoot')}/.agentlas/routing-card.json, then run `workforce local-register` again."
+            )
         atomic_write_json(release_dir / "profile.json", profile)
         atomic_write_json(release_dir / "registration.json", updated)
         self._publish_event(
@@ -1032,7 +1092,8 @@ class LocalWorkforceRegistry:
             if key in known:
                 skipped += 1
                 continue
-            package_hash = str(source.get("package_hash") or "")
+            # The rules version is part of the attempt key: a root an earlier rule refused is judged again.
+            package_hash = str(source.get("package_hash") or "") + "|rules" + LOCAL_RULES_VERSION
             # One folder can carry several cards (an agent card and a team card),
             # each with its own package hash; remember every attempt, not the last.
             attempts = state.get(key) if isinstance(state.get(key), dict) else {}
@@ -1484,19 +1545,8 @@ class LocalWorkforceRegistry:
                 raise KeyError("local_runtime_bundle_snapshot_drift")
         bundle["declarationSourceRefs"] = observe_declarations(source_owner,actor=str(record["agentDefinitionId"]),root=package_root,
             version=release_id,assets=declarations,assert_current=source_current)
-        # Plan §46 — a locally built agent must grow its own experience too.
-        # Borrowed Hub agents get an invocation-ledger at borrow time
-        # (hub_invocation.py:508), so stop_hook can detect them as active and
-        # route learnings into their drawer. Local F2 execution wrote nothing,
-        # so a local agent was never detected and its drawer stayed empty
-        # (measured 2026-08-12). Write the same ledger row here — bundle fetch is
-        # the "about to execute" moment, exactly as the borrowed path treats it —
-        # and tell the model to attribute learnings so the drawer actually fills.
-        # Fail-open: experience wiring must never break bundle delivery.
-        try:
-            _wire_local_agent_experience(bundle, package_root)
-        except Exception:
-            pass
+        # Agentlas 2.0: no drawer ledger row is written here any more. Its only reader (the Stop hook's borrowed-agent attribution) no longer
+        # runs (' 4), and an agent's memory is its own folder's, not `networking/hub-agents/<slug>`.
         return bundle
 
     def events_after(self, cursor: int = 0) -> list[dict[str, Any]]:

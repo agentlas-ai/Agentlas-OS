@@ -262,7 +262,7 @@ GLOBAL_COMMANDS_SCHEMA_VERSION = "1.0"
 # here (python 3-8 files each, TypeScript 1-5 each). A root nobody reads is the
 # phantom-skill defect wearing a different hat.
 CANONICAL_MEMORY_ROOTS = {
-    "project": [".agentlas/project-soul-memory.md"],
+    "project": [],
     "agent_repo": ["memory.md"],
     "team_memory": [],
     "session": [".agentlas/memory-tickets.jsonl"],
@@ -274,7 +274,7 @@ CANONICAL_MEMORY_ROOTS = {
     "experience": [".agentlas/experience-relations.jsonl"],
 }
 MEMORY_WRITE_OWNERS = {
-    "project": "pm-soul",
+    "project": "memory-curator",
     "agent_repo": "memory-curator",
     "team_memory": "orchestrator",
     "session": "memory-curator",

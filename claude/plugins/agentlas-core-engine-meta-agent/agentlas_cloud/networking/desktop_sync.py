@@ -14,6 +14,7 @@ Contract (paired with the desktop's ``electron/agents/hephaestus-sync.ts``):
 - pending entries are idempotent (same filename, atomic overwrite);
 - the desktop moves a drained entry to ``done/`` carrying the card's
   ``content_hash`` so an unchanged card is not re-enqueued forever;
+- every entry carries ``"explicit": true`` (see the field's comment below);
 - everything is best-effort: a machine without the desktop app just keeps a
   few harmless pending files, and registration NEVER fails because this did.
 """
@@ -90,6 +91,10 @@ def enqueue_desktop_sync(home: Path, card: dict[str, Any]) -> Path | None:
                 "content_hash": content_hash,
                 "enqueued_at": utc_now(),
                 "origin": "hephaestus/card-store",
+                # Capability mark, not a value: this engine never registers anything on its own (a search or a
+                # directory scan writes no card), so every card that reaches save_card came from an explicit command.
+                # An older engine does not write the field, and the desktop holds such entries instead of installing.
+                "explicit": True,
             },
         )
         return target

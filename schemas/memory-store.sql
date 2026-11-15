@@ -15,7 +15,10 @@ CREATE TABLE IF NOT EXISTS memory_entries (
         embedding_model TEXT, embedding_adapter TEXT, embedding_model_sha256 TEXT,
         embedding_content_hash TEXT, embedding_dimensions INTEGER, embedding_json TEXT,
         superseded_at TEXT,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        origin_class TEXT,
+        certainty TEXT,
+        derived_by TEXT
       );
 CREATE TABLE IF NOT EXISTS memory_tickets (
         ticket_id TEXT PRIMARY KEY,
@@ -101,6 +104,7 @@ CREATE TABLE IF NOT EXISTS memory_episodes (
         embedding_dimensions INTEGER,
         embedding_json TEXT,
         created_at TEXT NOT NULL,
+        detail_json TEXT,
         FOREIGN KEY(ticket_id) REFERENCES memory_tickets(ticket_id) ON DELETE CASCADE,
         CHECK(project_path_hash IS NULL OR
           (length(project_path_hash) = 64 AND project_path_hash NOT GLOB '*[^0-9a-f]*')),

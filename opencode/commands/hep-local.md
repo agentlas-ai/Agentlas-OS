@@ -50,12 +50,11 @@ never swap in a different agent without a new selection. A refusal that carries
 `alternates` lists other callable agents from the same search: present them as
 candidates and let the user or the selection step choose.
 
-A package the builder wrote to the global agent folder is registered
-automatically at the next local search once it passes `contract verify`; one
-that does not pass is not registered and is named with its first blockers.
-`hephaestus workforce local-autoregister` does it now and prints
-`contractFailing` and `refused` rows, which is where to look when an agent you
-built is missing from the menu.
+A search does not scan folders. It lists agents already registered or already in the owner's card store; the builder registers what it builds; a
+package you placed in the global agent folder by hand is registered by
+`hephaestus workforce local-autoregister`, which returns what the contract still
+wants as `advisories`. The command prints `refused` and `skipped` rows, which is
+where to look when an agent you built is missing from the menu.
 
 For a `partial` or `failed` result, report each source receipt's exact
 `failureCode`. Never collapse several receipts into one, substitute a different

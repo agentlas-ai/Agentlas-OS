@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from ..agent_home import is_agent_local_state_path
 from ..experience_contracts import ContractValidationError, validate_mcp_policy
 from ..networking.bootstrap import atomic_write_json, read_json
 from ..networking.card_lint import VALID_STATUSES, VERB_CAPABILITY_RE, lint_card
@@ -144,6 +145,8 @@ class PackageInspection:
     source_files: tuple[PackageFile, ...]
     skill_names: tuple[str, ...]
     worker_names: tuple[str, ...]
+    # What the snapshot left out and why, by file name only (never content).
+    advisories: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -179,13 +182,30 @@ def _snapshot_json(files: Mapping[str, str], relative_path: str) -> dict[str, An
     return dict(value) if isinstance(value, Mapping) else {}
 
 
+_MAX_SNAPSHOT_ADVISORIES = 20
+
+
 def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
+    """The snapshot's files; see _safe_source_snapshot for what is left out."""
+
+    return _safe_source_snapshot(root)[0]
+
+
+def _safe_source_snapshot(root: Path) -> tuple[tuple[PackageFile, ...], tuple[str, ...]]:
     """Read one bounded snapshot anchored to a no-follow root directory fd.
 
     ``os.walk`` plus ``O_NOFOLLOW`` on only the final filename is not enough:
     an attacker can replace an already-inspected ancestor directory with a
     symlink between the walk and the file open.  Every lookup below is relative
     to a held directory fd, so renames do not retarget later reads.
+
+    One credential-named file, one file holding secret-like material, or one
+    link inside the package used to refuse the whole package (owner decision
+ leave that file out, register the rest, say which file). Such a file
+    is now left out of the snapshot — it is never copied, hashed or read again
+    — and named in the returned advisories by path only. A link is still never
+    followed. The root and its ancestors must still be real directories, and
+    the size limits still refuse.
     """
 
     path_walk = not _secure_dir_fd_available()
@@ -201,6 +221,7 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
     absolute_root = Path(os.path.abspath(os.fspath(root.expanduser())))
     root_fd: Any = _open_absolute_path_directory(absolute_root) if path_walk else _open_absolute_directory(absolute_root)
     files: list[PackageFile] = []
+    advisories: list[str] = []
     total = 0
     read_files = 0
 
@@ -224,12 +245,20 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
                     "source_changed_during_snapshot",
                     "package changed while its safe snapshot was being captured",
                 ) from exc
-            if _is_link_like(metadata):
-                raise PackageAdaptationError(
-                    "source_symlink_forbidden", "package paths cannot be symlinks"
+            if not relative_parts and name == ".git":
+                advisories.append(
+                    "looks_like_a_repository: this folder has .git, so it may be a whole project rather than one "
+                    "agent; .git is not copied, every other text file up to the size limits is"
                 )
+            if _is_link_like(metadata):
+                advisories.append(
+                    f"link_skipped: {'/'.join((*relative_parts, name))} is a link; links are never followed, "
+                    "so it was left out"
+                )
+                continue
             if stat.S_ISDIR(metadata.st_mode):
-                if name in _IGNORED_DIRS:
+                if name in _IGNORED_DIRS or is_agent_local_state_path("/".join((*relative_parts, name))):
+                    # `.agentlas-local` (any depth) is this computer's memory for the agent, not the agent.
                     continue
                 if not relative_parts and name.startswith(".") and name not in _ALLOWED_HIDDEN_ROOTS:
                     continue
@@ -258,15 +287,13 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
                 # canonical core — so for Markdown the content scan decides.
                 or (_SENSITIVE_NAME_RE.search(lowered) and suffix.lower() != ".md")
             ):
-                raise PackageAdaptationError(
-                    "source_sensitive_file_forbidden",
-                    "package contains a credential-like file",
-                    "Refused at "
-                    + relative_path
-                    + ". Move credential files out of the package root (or under an ignored directory) and register again."
-                    + " The value-free templates the Output Contract asks for — .env.example, signing/README.md,"
-                    + " credentials/README.md — are accepted as-is.",
+                # Never read: the name alone keeps it out. The value-free templates
+                # the Output Contract asks for (.env.example, signing/README.md,
+                # credentials/README.md) are not caught here.
+                advisories.append(
+                    f"file_excluded: {relative_path} has a credential-like name, so it was not copied or read"
                 )
+                continue
             # A contract template keeps a suffix the text allowlist does not
             # know (`.example`). Dropping it here would register a package
             # silently missing the file that tells a borrower which keys to set.
@@ -295,13 +322,11 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
             except UnicodeDecodeError:
                 continue
             if any(pattern.search(text) for pattern in SECRET_PATTERNS):
-                raise PackageAdaptationError(
-                    "source_secret_material_forbidden",
-                    "package text contains secret-like material",
-                    "Refused at "
-                    + "/".join(parts)
-                    + ". Replace the literal key/token with a placeholder or an env-var reference and register again.",
+                advisories.append(
+                    f"file_excluded: {relative_path} contains something that looks like a key or token, so it was "
+                    "not copied; replace the value with a placeholder or an env-var name to include the file"
                 )
+                continue
             files.append(PackageFile("/".join(parts), text))
 
         for name in directories:
@@ -315,7 +340,13 @@ def _safe_source_files(root: Path) -> tuple[PackageFile, ...]:
         visit(root_fd, ())
     finally:
         _dir_close(root_fd)
-    return tuple(files)
+    if len(advisories) > _MAX_SNAPSHOT_ADVISORIES:
+        hidden = len(advisories) - (_MAX_SNAPSHOT_ADVISORIES - 1)
+        advisories = [
+            *advisories[: _MAX_SNAPSHOT_ADVISORIES - 1],
+            f"more_excluded: {hidden} more files or links were left out for the same reasons",
+        ]
+    return tuple(files), tuple(advisories)
 
 
 def _secure_dir_fd_available() -> bool:
@@ -642,6 +673,46 @@ def _node_id(value: Any) -> str | None:
     return f"node:{slug}" if slug else None
 
 
+# A member whose folder name says it leads the team: `hq`, `00-orchestrator`, `team-lead`, ...
+# Same rule the Hub runtime uses to pick an unmarked manager, so one package reads as the
+# same team locally and on the Hub.
+_LEAD_MEMBER_RE = re.compile(
+    r"(^|[-_])(\d*[-_]?)(orchestrator|hq|lead|manager|conductor|ceo)", re.IGNORECASE
+)
+
+
+def _derived_team_graph(
+    members: list[str], edges: list[dict[str, Any]] | None = None
+) -> dict[str, Any] | None:
+    """The team graph when no file names the manager: derive it from the members.
+
+    Neither the builder template nor the contract check asks for a manager field, so
+    every model-built team (measure/02 §4: 2 of 2) registered with
+    `team_graph_not_authoritative` and never appeared in local search. The members
+    are real files in the snapshot; only who leads is inferred: the member named
+    like a lead, else the first member in sorted order. `authoritative` stays false
+    (nothing declared it) and `derived` says why the graph is still usable. Nothing
+    is written back into the package.
+    """
+
+    ordered = sorted(dict.fromkeys(node for node in members if node))
+    if not ordered:
+        return None
+    named = [node for node in ordered if _LEAD_MEMBER_RE.search(node.removeprefix("node:"))]
+    manager = named[0] if named else ordered[0]
+    # A lone member leads itself; the graph still needs one worker to be runnable.
+    workers = [node for node in ordered if node != manager] or [manager]
+    return {
+        "authoritative": False,
+        "derived": True,
+        "managerRule": "lead-named-member" if named else "first-member",
+        "manager": manager,
+        "workers": workers,
+        "edges": list(edges or [])
+        or [{"from": worker, "to": manager, "relation": "reportsTo"} for worker in workers if worker != manager],
+    }
+
+
 def _team_graph(
     files: Mapping[str, str],
     card: Mapping[str, Any],
@@ -649,20 +720,29 @@ def _team_graph(
 ) -> dict[str, Any] | None:
     if card.get("type") != "team":
         return None
+    members = [node for node in (_node_id(name) for name in inferred or []) if node]
     explicit = _snapshot_json(files, ".agentlas/team-graph.json")
     if explicit:
         manager = _node_id(explicit.get("manager"))
         workers = [node for node in (_node_id(row) for row in explicit.get("workers") or []) if node]
         edges = [dict(row) for row in explicit.get("edges") or [] if isinstance(row, Mapping)]
-        return {
+        declared = {
             "authoritative": bool(explicit.get("authoritative") and manager and workers),
             "manager": manager,
             "workers": workers,
             "edges": edges,
         }
+        # An explicit `authoritative: false` is the author's own word; keep it.
+        if manager or explicit.get("authoritative") is False:
+            return declared
+        return _derived_team_graph(workers or members, edges) or declared
     agent_card = _snapshot_json(files, ".agentlas/agent-card.json")
     manager = _node_id(agent_card.get("orchestrator") or agent_card.get("manager"))
     workers = [node for node in (_node_id(row) for row in (agent_card.get("workers") or inferred or [])) if node]
+    if not manager:
+        derived = _derived_team_graph(workers)
+        if derived:
+            return derived
     return {
         "authoritative": bool(manager and workers and agent_card),
         "manager": manager,
@@ -768,21 +848,66 @@ def _routing_card_problem(
     return None
 
 
+def closed_card(card: Mapping[str, Any], root: Path | str) -> dict[str, Any]:
+    """The card as lint must read it here: relative fixture paths resolve against THIS package root.
+
+    The card file never carries an absolute path; without a source.ref a benchmark file named by a relative
+    path counted as zero cases and a built, benchmarked agent was demoted at registration.
+    """
+
+    source = card.get("source") if isinstance(card.get("source"), Mapping) else {}
+    return {**card, "source": {**source, "ref": str(root)}}
+
+
 def inspect_package(source_root: Path | str) -> PackageInspection:
     # Do not resolve again here. LocalWorkforceRegistry already canonicalizes
     # the explicit root for its scope check; a second resolve would follow a
     # symlink installed by an attacker between that check and this snapshot.
     root = Path(os.path.abspath(os.fspath(Path(source_root).expanduser())))
-    files = _safe_source_files(root)
+    files, advisories = _safe_source_snapshot(root)
     snapshot = _snapshot_file_map(files)
     content_hash = package_hash(list(files))
     worker_names = _snapshot_worker_names(snapshot)
-    if ".agentlas/routing-card.json" in snapshot:
-        card = _snapshot_json(snapshot, ".agentlas/routing-card.json")
-        report = lint_card(card)
+    card = _snapshot_json(snapshot, ".agentlas/routing-card.json") if ".agentlas/routing-card.json" in snapshot else None
+    marker_instructions = any(name in snapshot for name in (*_TEAM_MARKERS, *_AGENT_MARKERS)) or any(
+        Path(path).name == "SKILL.md" for path in snapshot
+    )
+    has_instructions = marker_instructions
+    if card is not None and not has_instructions:
+        # A card or manifest may name its own entry file (`prompts/main.md`); that counts too.
+        declared = [
+            (card.get("entrypoints") or {}).get("agent") if isinstance(card.get("entrypoints"), Mapping) else None,
+            (_snapshot_json(snapshot, "agentlas.json") or _snapshot_json(snapshot, "manifest.json")).get("entry"),
+        ]
+        has_instructions = any(isinstance(entry, str) and entry in snapshot for entry in declared)
+    if card is not None and not has_instructions:
+        # A card describes an agent; it is not one. Say that, instead of blaming the card
+        # (`routing_card_invalid` read as "fix the card" for a package that has no agent file).
+        report = lint_card(closed_card(card, root))
+        problem = _routing_card_problem(card, report)
+        excluded = [item for item in advisories if item.startswith("file_excluded:")]
+        raise PackageAdaptationError(
+            "no_instruction_file",
+            "the package has a routing card but no instruction file to run",
+            "Add the agent's instructions as "
+            + ", ".join(_AGENT_MARKERS)
+            + " (agent), "
+            + ", ".join(_TEAM_MARKERS)
+            + " (team), or a SKILL.md, then register again."
+            + (" The card also needs: " + problem[0] + "." if problem else "")
+            + (" Left out of the snapshot: " + "; ".join(excluded[:3]) if excluded else ""),
+        )
+    if card is not None:
+        report = lint_card(closed_card(card, root))
         problem = _routing_card_problem(card, report)
         if problem:
-            raise PackageAdaptationError("routing_card_invalid", problem[0], problem[1])
+            # A card that cannot be read must not keep a package with an agent file out of the roster:
+            # register it from that file as a package without a card. When only the card names the
+            # entry file, the card is the one route in, so its field is named.
+            if not marker_instructions:
+                raise PackageAdaptationError("routing_card_invalid", problem[0], problem[1])
+            card = None
+    if card is not None:
         name = str(card.get("name") or root.name)
         manifest = _snapshot_json(snapshot, "agentlas.json") or _snapshot_json(snapshot, "manifest.json")
         if not manifest:
@@ -810,6 +935,7 @@ def inspect_package(source_root: Path | str) -> PackageInspection:
             source_files=files,
             skill_names=tuple(str(item) for item in manifest.get("skills") or []),
             worker_names=worker_names,
+            advisories=advisories,
         )
 
     root_agents = [name for name in _AGENT_MARKERS if name in snapshot]
@@ -831,6 +957,7 @@ def inspect_package(source_root: Path | str) -> PackageInspection:
         # Name the exact markers this check looks for, derived from the same
         # tuples it tests, so the eligibility rule cannot drift from the words
         # the user is given.
+        excluded = [item for item in advisories if item.startswith("file_excluded:")]
         raise PackageAdaptationError(
             "source_ineligible",
             "no agent, team, or skill marker exists",
@@ -838,7 +965,8 @@ def inspect_package(source_root: Path | str) -> PackageInspection:
             + ", ".join(_AGENT_MARKERS)
             + " (agent), "
             + ", ".join(_TEAM_MARKERS)
-            + " (team), or any SKILL.md (skill). Point at the package folder that holds one of these.",
+            + " (team), or any SKILL.md (skill). Point at the package folder that holds one of these."
+            + (" Left out of the snapshot: " + "; ".join(excluded[:3]) if excluded else ""),
         )
     marker = (root_teams or root_agents or skill_files)[0]
     text = snapshot[marker]
@@ -863,6 +991,7 @@ def inspect_package(source_root: Path | str) -> PackageInspection:
         source_files=files,
         skill_names=tuple(dict.fromkeys(Path(path).parent.name for path in skill_files)),
         worker_names=worker_names,
+        advisories=advisories,
     )
 
 
