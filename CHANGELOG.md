@@ -3,6 +3,11 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.99 — 2026-11-17
+
+- Memory rules 1.17.0: what a person says about their own life, their tastes and their wishes about their own time is kept as a `fact`, which every agent of theirs uses. `preference` is now only how one agent should answer them. Lines already stored are not relabelled.
+- The memory tool (`memory.record`) and the memory ticket schema accept an optional `boundary` object (`type`, `from`, `to`) for a limit the person sets on their own time. The engine accepts it without storing it; the Agentlas desktop app keeps it.
+
 ## 1.2.98 — 2026-11-15
 
 - Memory is kept in four separate places: personal (about you), agent (what one agent learned that holds across projects), project (what is true only inside one project) and session (what is needed to continue one conversation). The engine reads across the places an owner has and answers with one recall rule on every surface. Nothing is moved by this update; a converted layout is switched on only by the Agentlas desktop app, one time, when it asks.

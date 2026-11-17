@@ -25,7 +25,8 @@
           "en": {"type": "string", "description": "the same sentence in English"},
           "source": {"enum": ["said", "seen", "did", "inferred"]},
           "quote": {"type": "string", "description": "the person's own words, when source is said"},
-          "permission": {"type": "boolean", "description": "true only when the line lets you act without asking the person next time (that is an approval, never a memory line: it is refused); leave it out otherwise, and whenever you are unsure"}
+          "permission": {"type": "boolean", "description": "true only when the line lets you act without asking the person next time (that is an approval, never a memory line: it is refused); leave it out otherwise, and whenever you are unsure"},
+          "boundary": {"type": "object", "description": "only with kind boundary: no_proactive (never message first) or quiet_hours (no first message from `from` to `to`, HH:MM local)", "properties": {"type": {"type": "string"}, "from": {"type": "string"}, "to": {"type": "string"}}}
         }
       }
     }

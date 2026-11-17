@@ -62,7 +62,7 @@ from .networking.lease_tools import LEASE_TOOLS, PURCHASE as LEASE_PURCHASE, QUO
 from .networking.takedown_tools import TAKEDOWN, TAKEDOWN_TOOLS, call_agent_takedown_tool
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.98"}
+SERVER_INFO = {"name": "hephaestus-network", "version": "1.2.99"}
 
 # Roots this process has already seeded, so only the first tool call in a
 # session pays the bootstrap cost.
@@ -2294,7 +2294,9 @@ _LOCAL_MEMORY_TOOLS = [
                 "text": {"type": "string"}, "en": {"type": "string"},
                 "source": {"type": "string", "enum": ["said", "seen", "did", "inferred"]},
                 "quote": {"type": "string"},
-                "permission": {"type": "boolean", "description": "true only when the line lets you act without asking the person next time (that is an approval, never a memory line: it is refused); leave it out otherwise, and whenever you are unsure"}}}},
+                "permission": {"type": "boolean", "description": "true only when the line lets you act without asking the person next time (that is an approval, never a memory line: it is refused); leave it out otherwise, and whenever you are unsure"},
+                "boundary": {"type": "object", "description": "only with kind boundary: no_proactive (never message first) or quiet_hours (no first message from `from` to `to`, HH:MM local)",
+                             "properties": {"type": {"type": "string"}, "from": {"type": "string"}, "to": {"type": "string"}}}}}},
             "turn_summary": {"type": "string", "maxLength": 300},
             "observations": {"type": "array", "maxItems": 8, "items": {"type": "object"}},
             "projectDir": _PROJECT_ARG}},
