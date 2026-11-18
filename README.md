@@ -16,6 +16,29 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 <!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
+<!-- Partner: Infistar.cc -->
+<p align="center">
+  <a href="https://infistar.cc/register?aff=AGENTLASOS&amp;ref_source=link"><img src="assets/readme/infistar-partner-banner.webp" alt="Agentlas-OS × Infistar.cc: up to 99% off Claude, GPT, Gemini, Grok, DeepSeek and more with one key. Agentlas-OS users get CNY 5 free at sign-up." width="880"></a>
+</p>
+
+<details open>
+<summary><b>Partner · Infistar.cc</b>: Claude, GPT, Gemini, Grok, DeepSeek &amp; more, one key, a fraction of official prices</summary>
+
+<br>
+
+**[Agentlas-OS × Infistar.cc](https://infistar.cc/register?aff=AGENTLASOS&ref_source=link)**: Claude, GPT, Gemini, Grok, DeepSeek & more, one key, a fraction of official prices.
+
+- **Up to 99% off**: from 0.1x official pricing
+- **Official upstreams, 100% genuine models**: no downgrades, no dilution, every model verifiable
+- **1,000+ redundant routes with automatic failover**: one route stumbles, the next takes over
+- **200+ models from 16 brands**: text, image and video with one key
+- **Recommended by 100+ top open-source projects**, the largest with 100k+ stars
+- Run multi-agent workflows across 200+ models with one API key
+
+**Agentlas-OS users:** [sign up through the exclusive link](https://infistar.cc/register?aff=AGENTLASOS&ref_source=link) and get CNY 5 free.
+
+</details>
+
 <p align="center">
   <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.hi.md">हिन्दी</a>
 </p>
