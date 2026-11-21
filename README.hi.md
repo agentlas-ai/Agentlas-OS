@@ -44,7 +44,7 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
   <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="Mac पर Agentlas एक spreadsheet ठीक कर रहा है, उसका chart बना रहा है, deck तैयार कर रहा है, Slack पर पोस्ट कर रहा है और product photo edit कर रहा है" width="880"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="assets/readme/desktop-one-handoff.png" alt="Agentlas Desktop: personal agent spreadsheet का काम दूसरे desktop के agent को सौंपता है और phone agent से आया booking का काम लेता है, हर एक के लिए hand-off card" width="880"></a></p>
 
 ## लोग इसे क्या-क्या सौंपते हैं
 
@@ -61,13 +61,9 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 Agentlas काम के हर हिस्से के लिए एक job opening लिखता है और उसे आपके computer के agents, आपके private cloud और मुफ़्त public Hub से भरता है। आपका AI सबसे सही fit चुनता है और वजह भी लिखता है।
 
-<p align="center"><img src="assets/readme/work-team.gif" alt="'Beta product page को conversion के हिसाब से दोबारा बनाओ': चार hire किए गए specialists page की research, design, build और review करते हैं" width="880"></p>
-
 ## हफ़्तों चलने वाले goals
 
 "Beta ship करो और 1,000 users तक पहुँचो" strategies और sub-goals में बँट जाता है, और हर एक के साथ एक संख्या जुड़ी होती है। Newsletter की open rate कम आए तो तरीक़ा बदल जाता है, goal वही रहता है। Laptop बंद कर दीजिए; कल यह पिछले checkpoint से आगे बढ़ता है।
-
-<p align="center"><img src="assets/readme/goal-tree.gif" alt="एक launch goal strategic goals और sub-goals में बँटा हुआ, newsletter की open rate कम होने पर दोबारा plan किया गया" width="880"></p>
 
 ## फ़ोन से चलाइए
 

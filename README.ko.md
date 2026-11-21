@@ -43,7 +43,7 @@ OpenAI Dots, Meta Muse, Claude Duet, Nous Hermes, Mem0의 영감을 받아 설�
   <a href="https://agentlas.cloud">웹사이트</a> · <a href="https://agentlas.cloud/hub">Agent Hub</a> · <a href="https://discord.gg/wbWfdGZ6S">Discord</a> · <a href="#developers">개발자 ↓</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="Mac에서 Agentlas가 스프레드시트를 고치고, 차트를 만들고, 발표 자료를 만들고, Slack에 올리고, 제품 사진을 편집하는 모습" width="880"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="assets/readme/desktop-one-handoff.png" alt="Agentlas Desktop: 개인 에이전트가 다른 데스크탑의 에이전트에게 스프레드시트 작업을 넘기고, 폰 에이전트가 넘긴 예약 작업을 받는 전달 카드" width="880"></a></p>
 
 ## 설계 배경 (Architectural Foundations)
 
@@ -67,8 +67,6 @@ Agentlas OS는 단일 목적 도구들을 이어 붙이는 대신, 다섯 가지
 
 목표를 태스크 그래프로 바꿉니다. 태스크마다 입력과 출력, 필요한 도구와 권한, 통과/실패 기준이 붙습니다. 긴 목표는 전략 목표와 하위 목표의 트리가 되고, 실행 중에도 다시 계획할 수 있습니다.
 
-<p align="center"><img src="assets/readme/goal-tree.gif" alt="출시 목표가 전략 목표와 하위 목표로 나뉘고, 뉴스레터 오픈율이 낮으면 다시 계획하는 모습" width="880"></p>
-
 ### 2. 배치 (Recruit)
 
 태스크마다 세 계층을 검색합니다.
@@ -78,8 +76,6 @@ Agentlas OS는 단일 목적 도구들을 이어 붙이는 대신, 다섯 가지
 - Public Hub: 커뮤니티 에이전트. 게시와 사용은 무료이고, 결제 여부로 순위가 정해지지 않습니다.
 
 선택은 내가 고른 모델이 하고, 역할마다 이유와 정확한 릴리스를 기록합니다. 선택된 에이전트는 릴리스, 패키지 해시, 콘텐츠 다이제스트로 고정됩니다.
-
-<p align="center"><img src="assets/readme/work-team.gif" alt="'베타 제품 페이지를 전환율 중심으로 다시 만들어줘': 전문가 네 명이 조사하고, 디자인하고, 만들고, 검토합니다" width="880"></p>
 
 ### 3. 검증 (Verify)
 
@@ -91,8 +87,8 @@ One, Finance, Science는 이 런타임 위에서 Agentlas Desktop으로 실행�
 
 <table>
 <tr>
-<td width="33%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="데스크톱의 Agentlas One"></a><br>One<br>내 컴퓨터에서 돌아가는 개인 에이전트. Work 세션을 만들어 작업을 배정하고, 질문 카드와 결과 파일을 대화로 보냅니다.</td>
-<td width="33%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-ko.jpg" alt="Agentlas Finance"></a><br>Finance<br>투자 리서치 기준을 Analyst로 저장합니다. 계산에 쓴 입력값은 보고서에 함께 남습니다.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="assets/readme/desktop-work-result.png" alt="데스크톱의 Agentlas One"></a><br>One<br>내 컴퓨터에서 돌아가는 개인 에이전트. Work 세션을 만들어 작업을 배정하고, 질문 카드와 결과 파일을 대화로 보냅니다.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="assets/readme/desktop-finance.png" alt="Agentlas Finance"></a><br>Finance<br>투자 리서치 기준을 Analyst로 저장합니다. 계산에 쓴 입력값은 보고서에 함께 남습니다.</td>
 <td width="33%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br>Science<br>분자 구조 탐색과 조판된 논문 원고 작성을 한 앱에서. Agentlas Desktop의 서명 확장입니다.</td>
 </tr>
 </table>

@@ -44,7 +44,7 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
   <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.ja.md">日本語</a> · <a href="README.hi.md">हिन्दी</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="在 Mac 上，Agentlas 修复表格、生成图表、制作演示文稿、发送到 Slack 并编辑产品图片" width="880"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="assets/readme/desktop-one-handoff.png" alt="Agentlas Desktop：个人智能体把表格任务交给另一台电脑上的智能体，并接收手机智能体转来的预订任务，各有一张交接卡片" width="880"></a></p>
 
 ## 大家都在交给它的活
 
@@ -61,13 +61,9 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 Agentlas 会为工作的每个部分写一份岗位需求，再从你电脑上的智能体、私有云和免费的公开 Hub 里找人补位。最合适的人选由你的 AI 来挑，并写明理由。
 
-<p align="center"><img src="assets/readme/work-team.gif" alt="“围绕转化率重做 Beta 产品页”：四位被招来的专家分别调研、设计、开发并评审页面" width="880"></p>
-
 ## 一连跑几周的目标
 
 “发布 Beta 版，拿下 1,000 个用户”会被拆成策略和子目标，每一项都带数字。邮件的打开率偏低时，它会换方法，目标不变。合上电脑也没关系，明天从上一个检查点接着干。
-
-<p align="center"><img src="assets/readme/goal-tree.gif" alt="一个发布目标被拆成战略目标和子目标，邮件打开率偏低时重新规划" width="880"></p>
 
 ## 用手机指挥
 

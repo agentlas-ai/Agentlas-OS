@@ -44,7 +44,7 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
   <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">中文</a> · <a href="README.hi.md">हिन्दी</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="MacでAgentlasがスプレッドシートを修正してグラフ化し、スライドを作り、Slackに投稿し、商品写真を編集する様子" width="880"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="assets/readme/desktop-one-handoff.png" alt="Agentlas Desktop: パーソナルエージェントが別のデスクトップのエージェントにスプレッドシート作業を渡し、スマホのエージェントからの予約依頼を受け取る引き継ぎカード" width="880"></a></p>
 
 ## こんなことを任せられます
 
@@ -61,13 +61,9 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 Agentlasは作業の各パートごとに求人票を書き、あなたのPC上のエージェント、プライベートクラウド、無料の公開Hubから候補を埋めます。最適な1人はAIが選び、理由も残します。
 
-<p align="center"><img src="assets/readme/work-team.gif" alt="「ベータ版の商品ページをコンバージョン重視で作り直して」: 採用された4人の専門家が調査、設計、実装、レビューを行う" width="880"></p>
-
 ## 何週間も続くゴール
 
 「ベータ版をリリースして、ユーザー1,000人を集めて」は、戦略とサブゴールに分解され、それぞれに数値が付きます。ニュースレターの開封率が低ければ、ゴールはそのままに手法を変えます。ノートPCを閉じても、明日は最後のチェックポイントから再開します。
-
-<p align="center"><img src="assets/readme/goal-tree.gif" alt="ローンチのゴールが戦略ゴールとサブゴールに分かれ、ニュースレターの開封率が低いと再計画される様子" width="880"></p>
 
 ## スマホから指示
 

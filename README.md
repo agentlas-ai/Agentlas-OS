@@ -66,7 +66,7 @@ Install Agentlas Desktop via the button below for the full runtime and mobile pa
   <a href="https://agentlas.cloud">Website</a> · <a href="https://agentlas.cloud/hub">Agent Hub</a> · <a href="https://discord.gg/wbWfdGZ6S">Discord</a> · <a href="#developers">Developers ↓</a>
 </p>
 
-<p align="center"><a href="https://agentlas.cloud"><img src="https://agentlas.cloud/landing/v3/readme-hero-en.gif" alt="Agentlas fixing a spreadsheet, charting it, building a deck, posting to Slack and editing a product photo on a Mac" width="880"></a></p>
+<p align="center"><a href="https://agentlas.cloud"><img src="assets/readme/desktop-one-handoff.png" alt="Agentlas Desktop: the personal agent hands a spreadsheet job to an agent on another desktop and takes a booking from the phone agent, with a hand-off card for each" width="880"></a></p>
 
 ## Architectural Foundations
 
@@ -90,8 +90,6 @@ Give Agentlas OS one objective. The Hephaestus engine decomposes it, searches fo
 
 A goal becomes a task graph. Each task states its inputs and outputs, the tools and permissions it needs, and its pass/fail criteria. Long goals become a tree of strategic goals and sub-goals that can be re-planned mid-run.
 
-<p align="center"><img src="assets/readme/goal-tree.gif" alt="A launch goal split into strategic goals and sub-goals, re-planned when newsletter opens are low" width="880"></p>
-
 ### 2. Recruit
 
 For each task, Hephaestus searches three tiers:
@@ -101,8 +99,6 @@ For each task, Hephaestus searches three tiers:
 - Public Hub: community agents. Publishing and using them is free, and nothing is ranked by payment.
 
 The model you chose makes each selection and records the reason and the exact release. A selection pins the release, package hash, and content digest.
-
-<p align="center"><img src="assets/readme/work-team.gif" alt="'Rebuild the beta product page around conversion': four hired specialists research, design, build and review the page" width="880"></p>
 
 ### 3. Verify
 
@@ -114,8 +110,8 @@ One, Finance, and Science run in Agentlas Desktop on top of this runtime.
 
 <table>
 <tr>
-<td width="33%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="https://agentlas.cloud/landing/v3/one-desktop.jpg" alt="Agentlas One on the Desktop"></a><br>One<br>A personal agent that runs on your computer. It opens Work sessions, assigns agents, sends question cards, and attaches results as files.</td>
-<td width="33%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="https://agentlas.cloud/landing/v3/finance-en.jpg" alt="Agentlas Finance"></a><br>Finance<br>Save research criteria as an Analyst. Reports keep the inputs behind each calculation.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/docs/introduction/agentlas-one"><img src="assets/readme/desktop-work-result.png" alt="Agentlas One on the Desktop"></a><br>One<br>A personal agent that runs on your computer. It opens Work sessions, assigns agents, sends question cards, and attaches results as files.</td>
+<td width="33%" valign="top"><a href="https://agentlas.cloud/updates/agentlas-finance-build-your-own-analyst"><img src="assets/readme/desktop-finance.png" alt="Agentlas Finance"></a><br>Finance<br>Save research criteria as an Analyst. Reports keep the inputs behind each calculation.</td>
 <td width="33%" valign="top"><a href="https://agentlas.cloud/science"><img src="https://agentlas.cloud/landing/v3/science.jpg" alt="Agentlas Science"></a><br>Science<br>Molecular views and typeset manuscripts in one app, as a signed Agentlas Desktop extension.</td>
 </tr>
 </table>
