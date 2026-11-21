@@ -67,7 +67,7 @@ Agentlas काम के हर हिस्से के लिए एक job 
 
 ## फ़ोन से चलाइए
 
-<p align="center"><img src="assets/readme/mobile.gif" alt="फ़ोन से channel के हिसाब से sign-ups माँगना; Analyst agent table के साथ जवाब देता है और पूछता है कि summary कब भेजनी है" width="260"></p>
+<p align="center"><img src="assets/readme/mobile-agents-en.png" alt="फ़ोन पर हर कंप्यूटर का अपना agent: ऊपर के चेहरों को swipe करके फ़ोन agent और हर desktop agent के बीच बदलें" width="260"></p>
 
 बस में बैठे हुए लिखिए "इस हफ़्ते के sign-ups, channel के हिसाब से, table में"। Analyst agent इसे घर के आपके computer पर चलाता है और table chat में आ जाती है। जब फ़ैसला आपका हो, तो एक card पूछता है: "Summary अभी भेजूँ या कल सुबह?" बस एक tap। [Android app पाइए →](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 

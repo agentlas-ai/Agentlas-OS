@@ -67,7 +67,7 @@ Agentlas 会为工作的每个部分写一份岗位需求，再从你电脑上�
 
 ## 用手机指挥
 
-<p align="center"><img src="assets/readme/mobile.gif" alt="在手机上询问各渠道的注册数，分析师智能体用表格回答，并询问摘要何时发送" width="260"></p>
+<p align="center"><img src="assets/readme/mobile-agents-en.png" alt="手机上每台电脑各有一个智能体：滑动顶部的头像，在手机智能体和各台桌面智能体之间切换" width="260"></p>
 
 在公交上输入“本周各渠道注册数，做成表格”。分析师智能体在你家里的电脑上运行，表格直接出现在聊天里。需要你拍板时，会弹出一张卡片：“摘要现在发，还是明早发？”点一下就行。[获取 Android 应用 →](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 

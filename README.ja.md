@@ -67,7 +67,7 @@ Agentlasは作業の各パートごとに求人票を書き、あなたのPC上�
 
 ## スマホから指示
 
-<p align="center"><img src="assets/readme/mobile.gif" alt="スマホでチャネル別の登録数を依頼すると、アナリストエージェントが表で回答し、要約をいつ送るか尋ねる様子" width="260"></p>
+<p align="center"><img src="assets/readme/mobile-agents-en.png" alt="スマホでコンピューターごとのエージェントを切り替える画面：上の顔をスワイプしてスマホのエージェントと各デスクトップのエージェントを切り替えます" width="260"></p>
 
 バスの中で「今週のチャネル別登録数を表で」と入力します。アナリストエージェントが自宅のPCで実行し、表がチャットに届きます。判断が必要な場面ではカードで確認します。「要約を今送りますか、明日の朝にしますか?」 タップ一つで完了です。[Androidアプリを入手 →](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 

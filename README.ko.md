@@ -95,7 +95,7 @@ One, Finance, Science는 이 런타임 위에서 Agentlas Desktop으로 실행�
 
 <sub>화면 속 이름과 수치는 예시입니다.</sub>
 
-<p align="center"><img src="assets/readme/mobile.gif" alt="폰에서 채널별 가입자 수를 요청하면 분석가 에이전트가 표로 답하고 요약을 언제 보낼지 묻는 모습" width="260"></p>
+<p align="center"><img src="assets/readme/mobile-agents-ko.png" alt="폰에서 컴퓨터마다 있는 에이전트를 보는 모습: 위쪽 얼굴을 넘겨 폰 에이전트와 각 데스크탑 에이전트를 바꿔요" width="260"></p>
 
 폰에서 보는 대화는 페어링한 컴퓨터에서 실행 중인 대화와 같습니다. 작업은 데스크톱에서 실행되고, 폰은 결과를 보여주고 질문 카드에 답합니다. [Android 앱 받기](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 

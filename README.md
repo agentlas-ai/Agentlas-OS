@@ -118,7 +118,7 @@ One, Finance, and Science run in Agentlas Desktop on top of this runtime.
 
 <sub>Names and figures on screen are examples.</sub>
 
-<p align="center"><img src="assets/readme/mobile.gif" alt="Asking for sign-ups by channel from a phone; an Analyst agent answers with a table and asks when to send the summary" width="260"></p>
+<p align="center"><img src="assets/readme/mobile-agents-en.png" alt="A phone with an agent for each computer: swipe the faces at the top to switch between the phone agent and each desktop agent" width="260"></p>
 
 On your phone, the conversation is the same one running on your paired computer. The work happens on the desktop; the phone shows the results and answers question cards. [Android app](https://play.google.com/store/apps/details?id=com.agentai.agentlas)
 
