@@ -275,9 +275,19 @@ def _canonicalize_url(url: str) -> str:
         return ""
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
         return ""
+    try:
+        port = parsed.port
+    except ValueError:
+        # urlsplit() parses a netloc it cannot use; only `.port` refuses one
+        # (out of range, or not an integer). A search result may link anywhere,
+        # so this is a URL that cannot be fetched — not a failed ranking pass.
+        return ""
     host = parsed.hostname.lower()
-    if parsed.port:
-        host = f"{host}:{parsed.port}"
+    if ":" in host:
+        # hostname strips the brackets IPv6 needs; the netloc has to carry them.
+        host = f"[{host}]"
+    if port:
+        host = f"{host}:{port}"
     path = parsed.path or "/"
     if path != "/":
         path = path.rstrip("/")
