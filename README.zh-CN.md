@@ -16,6 +16,29 @@ completion: Preserve partial, unavailable, and unverified results. Restarting a 
 
 <!-- AGENTLAS-PROMPT-DOCUMENT: os.install.readme.document; revision=3; stability=versioned-content; changeTriggers=release,locale,capability-inventory; channel=tool-result -->
 
+<!-- Partner: Infistar.cc -->
+<p align="center">
+  <a href="https://infistar.cc/register?aff=AGENTLASOS&amp;ref_source=link"><img src="assets/readme/infistar-partner-banner-bilingual.webp" alt="Agentlas-OS × Infistar.cc（无限星河AI）：低至官方 0.1 折，一个 Key 畅用 Claude、GPT、Gemini、Grok、DeepSeek 等 200+ 模型。Agentlas-OS 用户注册即送 5 元。" width="880"></a>
+</p>
+
+<details open>
+<summary><b>合作伙伴 · Infistar.cc（无限星河AI）</b>：Claude、GPT、Gemini、Grok、DeepSeek 等，一个 Key 全家桶，只花官方价的零头</summary>
+
+<br>
+
+**[Agentlas-OS × Infistar.cc](https://infistar.cc/register?aff=AGENTLASOS&ref_source=link)**：Claude、GPT、Gemini、Grok、DeepSeek 等，一个 Key 全家桶，只花官方价的零头。
+
+- **低至官方 0.1 折，省 99%**
+- **官方上游，100% 纯血模型**：不降级、不掺水，每个模型可验真
+- **上千条冗余线路，自动切换**：一条线路出问题，下一条立刻接管
+- **200+ 模型 · 16 个品牌**：文本、图像、视频，一个 Key 搞定
+- **100+ 顶级开源项目推荐**，其中最大的项目 star 数超过 10 万
+- 一个 API Key，即可在 200+ 模型之间运行多智能体工作流
+
+**Agentlas-OS 用户：**[通过专属链接注册](https://infistar.cc/register?aff=AGENTLASOS&ref_source=link)，即送 5 元。
+
+</details>
+
 <h1 align="center">Agentlas</h1>
 
 <h3 align="center">只管定目标，团队它自己招。</h3>
