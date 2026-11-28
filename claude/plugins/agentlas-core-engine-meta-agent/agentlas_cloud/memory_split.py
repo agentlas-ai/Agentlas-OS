@@ -614,6 +614,18 @@ def _inspect_copy(label: str, root: Path | None, reason: str | None = None) -> d
     return {"host": label, "path": str(root), "state": "old", "memoryLayout": 0}  # an engine that declares nothing predates the move
 
 
+def _newest_version_folder(plugin: Path) -> Path | None:
+    """The highest `<major>.<minor>.<patch>` folder of one cached plugin (Codex keeps the older ones next to it), or None."""
+    best: tuple[tuple[int, int, int], Path] | None = None
+    for child in plugin.iterdir():
+        match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", child.name)
+        if match and child.is_dir() and not child.is_symlink():
+            key = (int(match[1]), int(match[2]), int(match[3]))
+            if best is None or key > best[0]:
+                best = (key, child)
+    return best[1] if best else None
+
+
 def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8").lstrip("﻿"))
 
@@ -672,12 +684,19 @@ def engine_inventory(extra_roots: Iterable[str | os.PathLike[str]] = ()) -> dict
         if codex.is_dir():
             try:
                 marker = _read_json(home / "runtime" / "host-plugin-activation.json")
-                release = str(marker["hosts"]["codex"]["release"]).lstrip("v")
-                versions = [path for plugin in sorted(codex.iterdir()) if plugin.is_dir() for path in [plugin / release] if path.is_dir()]
-                if not versions:
-                    copies.append({"host": "codex", "state": "unconfirmed", "reason": "active_version_not_found"})
-                copies.extend(_inspect_copy("codex", path) for path in versions)
+                release: str | None = str(marker["hosts"]["codex"]["release"]).lstrip("v")
             except (OSError, ValueError, KeyError, TypeError):
+                release = None   # a plugin added with `codex plugin add` and no managed runtime: nothing records which version is active
+            try:
+                versions = [path for plugin in sorted(codex.iterdir()) if plugin.is_dir() for path in [plugin / release] if path.is_dir()] if release else []
+                if not versions:
+                    # No record, or it names a version that is not in the cache: Codex loads the newest version it holds, so that one is read.
+                    # Without this a plugin-only install stayed "unconfirmed" for good, even after the person updated it.
+                    versions = [newest for plugin in sorted(codex.iterdir()) if plugin.is_dir() for newest in [_newest_version_folder(plugin)] if newest is not None]
+                if not versions:
+                    copies.append({"host": "codex", "state": "unconfirmed", "reason": "activation_unreadable" if release is None else "active_version_not_found"})
+                copies.extend(_inspect_copy("codex", path) for path in versions)
+            except OSError:
                 copies.append({"host": "codex", "state": "unconfirmed", "reason": "activation_unreadable"})
     for extra in extra_roots:
         copies.append(_inspect_copy("extra", Path(extra)))

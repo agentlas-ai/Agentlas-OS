@@ -3,6 +3,11 @@
 > Entries describe behavior at each release. For current standalone defaults and retired commands, see [README.md](README.md).
 
 
+## 1.2.100 — 2026-11-28
+
+- A Codex plugin installed on its own (`codex plugin marketplace add` and `codex plugin add`, without the Agentlas installer) is now recognised at the version Codex actually loads. Before, the engine could not tell which cached version was active, so the Agentlas desktop app kept asking to update the plugin even after it was updated, and its memory move never reported finished.
+- Installs that still follow the old `v1.2.x` update channel (1.2.72 and earlier) now move straight to this release instead of stopping at 1.2.97 first.
+
 ## 1.2.99 — 2026-11-17
 
 - Memory rules 1.17.0: what a person says about their own life, their tastes and their wishes about their own time is kept as a `fact`, which every agent of theirs uses. `preference` is now only how one agent should answer them. Lines already stored are not relabelled.
